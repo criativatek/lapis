@@ -1,0 +1,68 @@
+name: tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    # The local suite runs on SQLite in-memory for speed, so CI is the only place
+    # engine-specific behaviour is actually exercised — generated columns, CHECK
+    # constraints and utf8mb4 collation are exactly what SQLite will not catch.
+    # See docs/adr/0001-mysql-instead-of-postgresql.md.
+    services:
+      mysql:
+        image: mysql:9.7
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+          MYSQL_DATABASE: lapis_testing
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DB_CONNECTION: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_DATABASE: lapis_testing
+      DB_USERNAME: root
+      DB_PASSWORD: ''
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.4'
+          tools: composer:v2
+          coverage: none
+
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: '22'
+
+      - name: Setup Application
+        run: composer setup
+
+      - name: Run CI Checks
+        run: composer ci:check
+
+      - name: Assert migrations roll back cleanly
+        # §30 requires migrations to be reversible or the limitation documented.
+        run: php artisan migrate:fresh --force && php artisan migrate:rollback --force
