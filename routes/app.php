@@ -28,8 +28,9 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     $items = [...$items, ...config('navigation.footer')];
 
     foreach ($items as $item) {
-        // phase 0 = already built elsewhere (dashboard, settings). Don't shadow it.
-        if ($item['phase'] === 0) {
+        // Skip items that have real routes elsewhere: phase 0 (dashboard, settings)
+        // and anything flagged built (its own controller lives in web.php).
+        if ($item['phase'] === 0 || ! empty($item['built'])) {
             continue;
         }
 

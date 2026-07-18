@@ -61,7 +61,7 @@ class NavigationBuilder
                 // Not-yet-built pages still resolve — routes/app.php registers a
                 // placeholder route per item — so the menu never links to a 404.
                 'href' => Route::has($routeName) ? route($routeName) : null,
-                'built' => $item['phase'] === 0,
+                'built' => $item['phase'] === 0 || ! empty($item['built']),
             ];
         }
 

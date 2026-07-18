@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AcademicYearController;
+use App\Http\Controllers\AssessmentProfileController;
 use App\Http\Controllers\SubjectController;
 use Illuminate\Support\Facades\Route;
 
@@ -26,6 +27,23 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     Route::post('subjects', [SubjectController::class, 'store'])->name('subjects.store');
     Route::put('subjects/{subject}', [SubjectController::class, 'update'])->name('subjects.update');
     Route::delete('subjects/{subject}', [SubjectController::class, 'destroy'])->name('subjects.destroy');
+
+    // Assessment profiles — a sidebar module (gated by the assessment_profiles
+    // module). Activation freezes the draft into an immutable version.
+    Route::get('assessment-profiles', [AssessmentProfileController::class, 'index'])
+        ->middleware('module:assessment_profiles')->name('assessment-profiles.index');
+    Route::get('assessment-profiles/create', [AssessmentProfileController::class, 'create'])
+        ->middleware('module:assessment_profiles')->name('assessment-profiles.create');
+    Route::post('assessment-profiles', [AssessmentProfileController::class, 'store'])
+        ->middleware('module:assessment_profiles')->name('assessment-profiles.store');
+    Route::get('assessment-profiles/{assessment_profile}/edit', [AssessmentProfileController::class, 'edit'])
+        ->middleware('module:assessment_profiles')->name('assessment-profiles.edit');
+    Route::put('assessment-profiles/{assessment_profile}', [AssessmentProfileController::class, 'update'])
+        ->middleware('module:assessment_profiles')->name('assessment-profiles.update');
+    Route::post('assessment-profiles/{assessment_profile}/activate', [AssessmentProfileController::class, 'activate'])
+        ->middleware('module:assessment_profiles')->name('assessment-profiles.activate');
+    Route::delete('assessment-profiles/{assessment_profile}', [AssessmentProfileController::class, 'destroy'])
+        ->middleware('module:assessment_profiles')->name('assessment-profiles.destroy');
 });
 
 require __DIR__.'/app.php';

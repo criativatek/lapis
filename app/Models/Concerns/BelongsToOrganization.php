@@ -34,7 +34,14 @@ trait BelongsToOrganization
         });
 
         static::creating(function (self $model): void {
-            $model->organization_id ??= app(CurrentOrganization::class)->id();
+            // Fill from the resolved tenant only when organization_id was not set
+            // at all. A model that explicitly sets it — including to null, as
+            // shared system rows (e.g. system scales) do — is left untouched.
+            // array_key_exists, not ??=: ??= would treat an intentional null as
+            // "unset" and try to fill it, throwing during tenant-less seeding.
+            if (! array_key_exists('organization_id', $model->getAttributes())) {
+                $model->organization_id = app(CurrentOrganization::class)->id();
+            }
         });
     }
 

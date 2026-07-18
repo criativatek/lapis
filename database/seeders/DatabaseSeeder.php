@@ -15,9 +15,12 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // Plans and modules are reference data, not demo data: without them no
-        // organization is entitled to anything. This must run in every environment.
-        $this->call(EntitlementsSeeder::class);
+        // Reference data, not demo data — needed in every environment. Plans gate
+        // access; system scales are the shared 1–5 / 0–20 / 0–100 every org can use.
+        $this->call([
+            EntitlementsSeeder::class,
+            SystemScalesSeeder::class,
+        ]);
 
         if (app()->environment('local', 'testing')) {
             User::factory()->create([
