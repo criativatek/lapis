@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { Link } from '@inertiajs/vue3';
-import { BookOpen, FolderGit2, LayoutGrid } from '@lucide/vue';
+import { Link, usePage } from '@inertiajs/vue3';
+import { computed } from 'vue';
 import AppLogo from '@/components/AppLogo.vue';
-import NavFooter from '@/components/NavFooter.vue';
-import NavMain from '@/components/NavMain.vue';
+import NavProfessor from '@/components/NavProfessor.vue';
 import NavUser from '@/components/NavUser.vue';
 import {
     Sidebar,
@@ -15,28 +14,13 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
-import type { NavItem } from '@/types';
 
-const mainNavItems: NavItem[] = [
-    {
-        title: 'Dashboard',
-        href: dashboard(),
-        icon: LayoutGrid,
-    },
-];
-
-const footerNavItems: NavItem[] = [
-    {
-        title: 'Repository',
-        href: 'https://github.com/laravel/vue-starter-kit',
-        icon: FolderGit2,
-    },
-    {
-        title: 'Documentation',
-        href: 'https://laravel.com/docs/starter-kits#vue',
-        icon: BookOpen,
-    },
-];
+// The menu is built and entitlement-filtered on the server (NavigationBuilder)
+// and shared via Inertia, so the sidebar only renders what this organization
+// is allowed to see. A footer section (Configurações) is styled like any other.
+const page = usePage();
+const nav = computed(() => page.props.nav);
+const footerSection = computed(() => ({ label: null, items: nav.value.footer }));
 </script>
 
 <template>
@@ -54,11 +38,18 @@ const footerNavItems: NavItem[] = [
         </SidebarHeader>
 
         <SidebarContent>
-            <NavMain :items="mainNavItems" />
+            <NavProfessor
+                v-for="(section, index) in nav.sections"
+                :key="index"
+                :section="section"
+            />
         </SidebarContent>
 
         <SidebarFooter>
-            <NavFooter :items="footerNavItems" />
+            <NavProfessor
+                v-if="footerSection.items.length"
+                :section="footerSection"
+            />
             <NavUser />
         </SidebarFooter>
     </Sidebar>

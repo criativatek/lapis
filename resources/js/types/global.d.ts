@@ -1,4 +1,5 @@
 import type { Auth } from '@/types/auth';
+import type { SharedNav, WorkScope } from '@/types/navigation';
 
 // Extend ImportMeta interface for Vite...
 declare module 'vite/client' {
@@ -18,6 +19,9 @@ declare module '@inertiajs/core' {
         sharedPageProps: {
             name: string;
             auth: Auth;
+            nav: SharedNav;
+            modules: string[];
+            scope: WorkScope;
             sidebarOpen: boolean;
             [key: string]: unknown;
         };

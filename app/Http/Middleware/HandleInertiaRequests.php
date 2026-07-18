@@ -2,6 +2,9 @@
 
 namespace App\Http\Middleware;
 
+use App\Support\Entitlements\Entitlements;
+use App\Support\Navigation\NavigationBuilder;
+use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -35,11 +38,33 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $currentOrganization = app(CurrentOrganization::class);
+        $hasOrganization = $currentOrganization->isResolved();
+
         return [
             ...parent::share($request),
             'name' => config('app.name'),
             'auth' => [
                 'user' => $request->user(),
+                'organization' => $hasOrganization ? [
+                    'name' => $currentOrganization->get()->name,
+                    'type' => $currentOrganization->get()->type->value,
+                ] : null,
+            ],
+            // Menu already filtered by entitlements, and the module keys the org
+            // holds, so the client can gate presentation without re-deriving it.
+            'nav' => fn () => $hasOrganization
+                ? app(NavigationBuilder::class)->forCurrentOrganization()
+                : ['sections' => [], 'footer' => []],
+            'modules' => fn () => app(Entitlements::class)->modules(),
+            // The header context selectors. Empty until the academic model exists
+            // (Fase 1) — the structure is shipped, the data is not invented.
+            'scope' => [
+                'academicYear' => null,
+                'subject' => null,
+                'gradeLevel' => null,
+                'class' => null,
+                'period' => null,
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];

@@ -10,4 +10,5 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     Route::inertia('dashboard', 'Dashboard')->name('dashboard');
 });
 
+require __DIR__.'/app.php';
 require __DIR__.'/settings.php';
