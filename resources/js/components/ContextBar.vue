@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { usePage } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
 import {
     BookOpen,
     CalendarRange,
@@ -23,30 +23,46 @@ import type { LucideIcon } from '@lucide/vue';
 const page = usePage();
 const scope = computed(() => page.props.scope);
 
-type Selector = { key: string; icon: LucideIcon; label: string; value: string | null };
+type Selector = { key: string; icon: LucideIcon; label: string; value: string | null; href: string | null };
 
+// Only the year selector is live in this phase — it opens the year manager. The
+// rest stay disabled until subjects, classes and periods exist (Fase 1+).
 const selectors = computed<Selector[]>(() => [
-    { key: 'academicYear', icon: CalendarRange, label: 'Ano letivo', value: scope.value.academicYear },
-    { key: 'subject', icon: BookOpen, label: 'Disciplina', value: scope.value.subject },
-    { key: 'gradeLevel', icon: GraduationCap, label: 'Ano', value: scope.value.gradeLevel },
-    { key: 'class', icon: Users, label: 'Turma', value: scope.value.class },
-    { key: 'period', icon: Layers, label: 'Período', value: scope.value.period },
+    { key: 'academicYear', icon: CalendarRange, label: 'Ano letivo', value: scope.value.academicYear, href: '/academic-years' },
+    { key: 'subject', icon: BookOpen, label: 'Disciplina', value: scope.value.subject, href: null },
+    { key: 'gradeLevel', icon: GraduationCap, label: 'Ano', value: scope.value.gradeLevel, href: null },
+    { key: 'class', icon: Users, label: 'Turma', value: scope.value.class, href: null },
+    { key: 'period', icon: Layers, label: 'Período', value: scope.value.period, href: null },
 ]);
+
+const chipClass =
+    'flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-muted-foreground';
 </script>
 
 <template>
     <div class="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
-        <button
-            v-for="selector in selectors"
-            :key="selector.key"
-            type="button"
-            disabled
-            :title="`${selector.label} — disponível na próxima fase`"
-            class="flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-muted-foreground disabled:cursor-not-allowed"
-        >
-            <component :is="selector.icon" class="size-3.5 shrink-0 opacity-70" />
-            <span class="hidden font-medium text-foreground/70 sm:inline">{{ selector.label }}:</span>
-            <span class="whitespace-nowrap">{{ selector.value ?? '—' }}</span>
-        </button>
+        <template v-for="selector in selectors" :key="selector.key">
+            <Link
+                v-if="selector.href"
+                :href="selector.href"
+                :title="selector.label"
+                :class="[chipClass, 'transition-colors hover:border-primary/40 hover:text-foreground']"
+            >
+                <component :is="selector.icon" class="size-3.5 shrink-0 opacity-70" />
+                <span class="hidden font-medium text-foreground/70 sm:inline">{{ selector.label }}:</span>
+                <span class="whitespace-nowrap">{{ selector.value ?? '—' }}</span>
+            </Link>
+            <button
+                v-else
+                type="button"
+                disabled
+                :title="`${selector.label} — disponível na próxima fase`"
+                :class="[chipClass, 'disabled:cursor-not-allowed']"
+            >
+                <component :is="selector.icon" class="size-3.5 shrink-0 opacity-70" />
+                <span class="hidden font-medium text-foreground/70 sm:inline">{{ selector.label }}:</span>
+                <span class="whitespace-nowrap">{{ selector.value ?? '—' }}</span>
+            </button>
+        </template>
     </div>
 </template>
