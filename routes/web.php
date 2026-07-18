@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\AcademicYearController;
 use App\Http\Controllers\AssessmentProfileController;
+use App\Http\Controllers\ClassController;
+use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\SubjectController;
 use Illuminate\Support\Facades\Route;
 
@@ -44,6 +46,19 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         ->middleware('module:assessment_profiles')->name('assessment-profiles.activate');
     Route::delete('assessment-profiles/{assessment_profile}', [AssessmentProfileController::class, 'destroy'])
         ->middleware('module:assessment_profiles')->name('assessment-profiles.destroy');
+
+    // Classes — the teacher's own turmas (gated by the classes module). Students
+    // are enrolled from the class detail page.
+    Route::middleware('module:classes')->group(function () {
+        Route::get('classes', [ClassController::class, 'index'])->name('classes.index');
+        Route::get('classes/create', [ClassController::class, 'create'])->name('classes.create');
+        Route::post('classes', [ClassController::class, 'store'])->name('classes.store');
+        Route::get('classes/{class}', [ClassController::class, 'show'])->name('classes.show');
+        Route::delete('classes/{class}', [ClassController::class, 'destroy'])->name('classes.destroy');
+
+        Route::post('classes/{class}/students', [EnrollmentController::class, 'store'])->name('classes.students.store');
+        Route::delete('classes/{class}/students/{enrollment}', [EnrollmentController::class, 'destroy'])->name('classes.students.destroy');
+    });
 });
 
 require __DIR__.'/app.php';

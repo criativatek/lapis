@@ -30,12 +30,18 @@ class ProfileBuilder
 
             // organization_id is stamped by the BelongsToOrganization creating
             // hook from the resolved tenant — not passed here (it is not fillable).
+            // The calculation-rule defaults are the ones the product owner decided
+            // (see docs/adr/0004-pedagogical-calculation-rules.md); they are
+            // versioned with the profile and editable per version later.
             $version = $profile->versions()->create([
                 'version_number' => 1,
                 'status' => ProfileVersionStatus::Draft,
                 'scale_id' => $scaleId,
                 'domain_weight_mode' => 'must_total_100',
                 'period_result_mode' => 'weighted_domain_average',
+                'accumulated_mode' => 'all_valid_year_elements',
+                'absence_mode' => 'exclude_all_warn',
+                'rounding_mode' => 'half_up',
                 'rounding_scale' => 0,
                 'rounding_stage' => 'final_only',
             ]);
