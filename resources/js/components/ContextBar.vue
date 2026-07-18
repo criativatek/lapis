@@ -29,7 +29,7 @@ type Selector = { key: string; icon: LucideIcon; label: string; value: string | 
 // rest stay disabled until subjects, classes and periods exist (Fase 1+).
 const selectors = computed<Selector[]>(() => [
     { key: 'academicYear', icon: CalendarRange, label: 'Ano letivo', value: scope.value.academicYear, href: '/academic-years' },
-    { key: 'subject', icon: BookOpen, label: 'Disciplina', value: scope.value.subject, href: null },
+    { key: 'subject', icon: BookOpen, label: 'Disciplina', value: scope.value.subject, href: '/subjects' },
     { key: 'gradeLevel', icon: GraduationCap, label: 'Ano', value: scope.value.gradeLevel, href: null },
     { key: 'class', icon: Users, label: 'Turma', value: scope.value.class, href: null },
     { key: 'period', icon: Layers, label: 'Período', value: scope.value.period, href: null },

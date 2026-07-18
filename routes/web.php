@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AcademicYearController;
+use App\Http\Controllers\SubjectController;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'Welcome')->name('home');
@@ -18,6 +19,13 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     Route::get('academic-years/{academic_year}/edit', [AcademicYearController::class, 'edit'])->name('academic-years.edit');
     Route::put('academic-years/{academic_year}', [AcademicYearController::class, 'update'])->name('academic-years.update');
     Route::delete('academic-years/{academic_year}', [AcademicYearController::class, 'destroy'])->name('academic-years.destroy');
+
+    // Subjects — the teacher's disciplines. Managed from the header subject
+    // selector, like academic years.
+    Route::get('subjects', [SubjectController::class, 'index'])->name('subjects.index');
+    Route::post('subjects', [SubjectController::class, 'store'])->name('subjects.store');
+    Route::put('subjects/{subject}', [SubjectController::class, 'update'])->name('subjects.update');
+    Route::delete('subjects/{subject}', [SubjectController::class, 'destroy'])->name('subjects.destroy');
 });
 
 require __DIR__.'/app.php';
