@@ -4,6 +4,7 @@ use App\Http\Controllers\AcademicYearController;
 use App\Http\Controllers\AssessmentProfileController;
 use App\Http\Controllers\ClassController;
 use App\Http\Controllers\EnrollmentController;
+use App\Http\Controllers\InstrumentController;
 use App\Http\Controllers\SubjectController;
 use Illuminate\Support\Facades\Route;
 
@@ -59,6 +60,17 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
 
         Route::post('classes/{class}/students', [EnrollmentController::class, 'store'])->name('classes.students.store');
         Route::delete('classes/{class}/students/{enrollment}', [EnrollmentController::class, 'destroy'])->name('classes.students.destroy');
+    });
+
+    // Instruments and the grading grid. Created inside a class; the grid is the
+    // instrument's own page.
+    Route::middleware('module:instruments')->group(function () {
+        Route::get('instruments', [InstrumentController::class, 'index'])->name('instruments.index');
+        Route::get('classes/{class}/instruments/create', [InstrumentController::class, 'create'])->name('instruments.create');
+        Route::post('classes/{class}/instruments', [InstrumentController::class, 'store'])->name('instruments.store');
+        Route::get('instruments/{instrument}', [InstrumentController::class, 'show'])->name('instruments.show');
+        Route::post('instruments/{instrument}/scores', [InstrumentController::class, 'saveScores'])->name('instruments.scores.save');
+        Route::delete('instruments/{instrument}', [InstrumentController::class, 'destroy'])->name('instruments.destroy');
     });
 });
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Head, router, useForm } from '@inertiajs/vue3';
-import { Trash2, UserPlus } from '@lucide/vue';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { ClipboardPlus, Trash2, UserPlus } from '@lucide/vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
@@ -32,6 +32,13 @@ const props = defineProps<{
     };
     students: Student[];
     availableProfiles: ProfileOption[];
+    instruments: {
+        ulid: string;
+        title: string;
+        type: string;
+        applied_on: string;
+        status_label: string;
+    }[];
 }>();
 
 const profileForm = useForm<{ assessment_profile_version_id: number | null }>({
@@ -117,6 +124,31 @@ function remove(student: Student): void {
             <p class="text-xs text-muted-foreground">
                 O nome fica guardado de forma cifrada e separada. Só o código pseudónimo é usado no processamento por IA.
             </p>
+        </section>
+
+        <section class="space-y-3">
+            <div class="flex items-center justify-between">
+                <h2 class="text-sm font-semibold">Instrumentos de avaliação</h2>
+                <Button as-child variant="outline" size="sm">
+                    <Link :href="`/classes/${schoolClass.ulid}/instruments/create`">
+                        <ClipboardPlus class="size-4" /> Novo instrumento
+                    </Link>
+                </Button>
+            </div>
+            <p v-if="instruments.length === 0" class="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+                Ainda não há instrumentos nesta turma.
+            </p>
+            <ul v-else class="divide-y divide-border overflow-hidden rounded-lg border border-border">
+                <li v-for="instrument in instruments" :key="instrument.ulid">
+                    <Link :href="`/instruments/${instrument.ulid}`" class="flex items-center justify-between px-4 py-3 hover:bg-muted/30">
+                        <span>
+                            <span class="font-medium">{{ instrument.title }}</span>
+                            <span class="ml-2 text-xs text-muted-foreground">{{ instrument.type }} · {{ instrument.applied_on }}</span>
+                        </span>
+                        <Badge variant="secondary">{{ instrument.status_label }}</Badge>
+                    </Link>
+                </li>
+            </ul>
         </section>
 
         <section v-if="students.length" class="overflow-hidden rounded-lg border border-border">

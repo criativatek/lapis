@@ -17,7 +17,9 @@ class AcademicYearFactory extends Factory
      */
     public function definition(): array
     {
-        $startYear = fake()->numberBetween(2024, 2030);
+        // unique(): the label is unique per organization, and a small random range
+        // collided whenever a test built two years for the same teacher.
+        $startYear = fake()->unique()->numberBetween(2020, 2070);
 
         return [
             'organization_id' => Organization::factory(),

@@ -7,6 +7,7 @@ use App\Models\AcademicYear;
 use App\Models\AssessmentProfile;
 use App\Models\AssessmentProfileVersion;
 use App\Models\Enrollment;
+use App\Models\Instrument;
 use App\Models\ProfileVersionStatus;
 use App\Models\SchoolClass;
 use App\Models\Subject;
@@ -91,6 +92,14 @@ class ClassController extends Controller
                 ->map(fn (AssessmentProfile $profile) => [
                     'version_id' => $profile->current_version_id,
                     'label' => $profile->name,
+                ]),
+            'instruments' => $class->instruments()->with('type')->get()
+                ->map(fn (Instrument $instrument) => [
+                    'ulid' => $instrument->ulid,
+                    'title' => $instrument->title,
+                    'type' => $instrument->type->name,
+                    'applied_on' => $instrument->applied_on->toDateString(),
+                    'status_label' => $instrument->status->label(),
                 ]),
             // Names come from the encrypted identity — shown to the class's own
             // teacher, who is authorized. The pseudonym is what leaves the app.
