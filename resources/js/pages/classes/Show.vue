@@ -18,6 +18,8 @@ type Student = {
     status_label: string;
 };
 
+type ProfileOption = { version_id: number; label: string };
+
 const props = defineProps<{
     schoolClass: {
         ulid: string;
@@ -29,7 +31,16 @@ const props = defineProps<{
         profile_name: string | null;
     };
     students: Student[];
+    availableProfiles: ProfileOption[];
 }>();
+
+const profileForm = useForm<{ assessment_profile_version_id: number | null }>({
+    assessment_profile_version_id: null,
+});
+
+function assignProfile(): void {
+    profileForm.put(`/classes/${props.schoolClass.ulid}/profile`, { preserveScroll: true });
+}
 
 // class_number is '' when empty (the backend treats empty as null); a plain
 // null would not satisfy the Input's string|number model type.
@@ -65,9 +76,25 @@ function remove(student: Student): void {
         <p v-if="schoolClass.profile_name" class="text-sm text-muted-foreground">
             Avaliada por: <span class="font-medium text-foreground">{{ schoolClass.profile_name }}</span>
         </p>
-        <p v-else class="rounded-md border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
-            Esta turma ainda não tem perfil de avaliação associado.
-        </p>
+        <div v-else class="space-y-2 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <p>Esta turma ainda não tem perfil de avaliação associado.</p>
+            <form v-if="availableProfiles.length" class="flex flex-wrap items-center gap-2" @submit.prevent="assignProfile">
+                <select
+                    v-model.number="profileForm.assessment_profile_version_id"
+                    class="h-9 rounded-md border border-amber-300 bg-white px-3 text-sm text-foreground"
+                >
+                    <option :value="null" disabled>Escolher perfil…</option>
+                    <option v-for="profile in availableProfiles" :key="profile.version_id" :value="profile.version_id">
+                        {{ profile.label }}
+                    </option>
+                </select>
+                <Button type="submit" size="sm" :disabled="profileForm.processing">Associar</Button>
+            </form>
+            <p v-else class="text-xs">
+                Não há perfis ativos para {{ schoolClass.subject }}. Crie e ative um perfil primeiro.
+            </p>
+            <InputError :message="profileForm.errors.assessment_profile_version_id" />
+        </div>
 
         <section class="space-y-3">
             <h2 class="text-sm font-semibold">Adicionar aluno</h2>

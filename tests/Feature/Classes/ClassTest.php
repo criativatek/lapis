@@ -3,11 +3,17 @@
 namespace Tests\Feature\Classes;
 
 use App\Models\AcademicYear;
+use App\Models\AssessmentProfile;
+use App\Models\AssessmentProfileVersion;
+use App\Models\Domain;
+use App\Models\ProfileVersionStatus;
+use App\Models\Scale;
 use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\StudentIdentity;
 use App\Models\Subject;
 use App\Models\User;
+use App\Services\Assessment\ActivateProfileVersion;
 use App\Support\Privacy\BlindIndex;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -138,6 +144,66 @@ class ClassTest extends TestCase
 
         $enrollment = $class->enrollments()->firstOrFail();
         $this->assertTrue($enrollment->is_late_entry);
+    }
+
+    #[Test]
+    public function a_profile_can_be_assigned_to_a_class_after_creation(): void
+    {
+        $context = $this->context();
+        $this->actingAs($this->user)->post('/classes', ['label' => '7.º A', 'academic_year_id' => $context['year'], 'subject_id' => $context['subject']]);
+        $class = SchoolClass::withoutGlobalScope('organization')->firstOrFail();
+        $this->assertNull($class->assessment_profile_version_id);
+
+        // An activated profile for the same subject.
+        $version = app(CurrentOrganization::class)->runFor($this->user->personalOrganization(), function () use ($context) {
+            $profile = AssessmentProfile::factory()->recycle($this->user->personalOrganization())->create([
+                'academic_year_id' => $context['year'],
+                'subject_id' => $context['subject'],
+            ]);
+            $version = AssessmentProfileVersion::factory()->recycle($this->user->personalOrganization())->create([
+                'assessment_profile_id' => $profile->id,
+                'scale_id' => Scale::where('name', 'Escala 1 a 5')->firstOrFail()->id,
+                'status' => ProfileVersionStatus::Draft,
+            ]);
+            $domain = Domain::factory()->recycle($this->user->personalOrganization())->create();
+            $version->domains()->create(['domain_id' => $domain->id, 'weight_percent' => 100, 'sequence' => 1]);
+
+            return app(ActivateProfileVersion::class)->activate($version->refresh(), $this->user);
+        });
+
+        $this->actingAs($this->user)
+            ->put("/classes/{$class->ulid}/profile", ['assessment_profile_version_id' => $version->id])
+            ->assertRedirect();
+
+        $this->assertSame($version->id, $class->refresh()->assessment_profile_version_id);
+    }
+
+    #[Test]
+    public function a_draft_profile_cannot_be_assigned_to_a_class(): void
+    {
+        $context = $this->context();
+        $this->actingAs($this->user)->post('/classes', ['label' => '7.º A', 'academic_year_id' => $context['year'], 'subject_id' => $context['subject']]);
+        $class = SchoolClass::withoutGlobalScope('organization')->firstOrFail();
+
+        $draft = app(CurrentOrganization::class)->runFor($this->user->personalOrganization(), function () use ($context) {
+            $profile = AssessmentProfile::factory()->recycle($this->user->personalOrganization())->create([
+                'academic_year_id' => $context['year'],
+                'subject_id' => $context['subject'],
+            ]);
+
+            return AssessmentProfileVersion::factory()->recycle($this->user->personalOrganization())->create([
+                'assessment_profile_id' => $profile->id,
+                'scale_id' => Scale::where('name', 'Escala 1 a 5')->firstOrFail()->id,
+                'status' => ProfileVersionStatus::Draft,
+            ]);
+        });
+
+        // A class is assessed by a frozen, active version — never a draft (§10.2).
+        $this->actingAs($this->user)
+            ->put("/classes/{$class->ulid}/profile", ['assessment_profile_version_id' => $draft->id])
+            ->assertSessionHasErrors('assessment_profile_version_id');
+
+        $this->assertNull($class->refresh()->assessment_profile_version_id);
     }
 
     #[Test]

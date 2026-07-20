@@ -54,6 +54,7 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::get('classes/create', [ClassController::class, 'create'])->name('classes.create');
         Route::post('classes', [ClassController::class, 'store'])->name('classes.store');
         Route::get('classes/{class}', [ClassController::class, 'show'])->name('classes.show');
+        Route::put('classes/{class}/profile', [ClassController::class, 'updateProfile'])->name('classes.profile.update');
         Route::delete('classes/{class}', [ClassController::class, 'destroy'])->name('classes.destroy');
 
         Route::post('classes/{class}/students', [EnrollmentController::class, 'store'])->name('classes.students.store');

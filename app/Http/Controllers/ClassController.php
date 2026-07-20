@@ -5,12 +5,16 @@ namespace App\Http\Controllers;
 use App\Http\Requests\ClassRequest;
 use App\Models\AcademicYear;
 use App\Models\AssessmentProfile;
+use App\Models\AssessmentProfileVersion;
 use App\Models\Enrollment;
+use App\Models\ProfileVersionStatus;
 use App\Models\SchoolClass;
 use App\Models\Subject;
 use App\Models\User;
+use App\Rules\BelongsToCurrentOrganization;
 use App\Services\ClassService;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -77,7 +81,17 @@ class ClassController extends Controller
                 'grade_level' => $class->grade_level,
                 'status_label' => $class->status->label(),
                 'profile_name' => $class->profileVersion?->profile->name,
+                'subject_id' => $class->subject_id,
             ],
+            // Active profiles for this subject, so a class created without one can
+            // be assigned later without going back to the profile screen.
+            'availableProfiles' => AssessmentProfile::whereNotNull('current_version_id')
+                ->where('subject_id', $class->subject_id)
+                ->get()
+                ->map(fn (AssessmentProfile $profile) => [
+                    'version_id' => $profile->current_version_id,
+                    'label' => $profile->name,
+                ]),
             // Names come from the encrypted identity — shown to the class's own
             // teacher, who is authorized. The pseudonym is what leaves the app.
             'students' => $class->enrollments()->with('student.identity')->orderBy('class_number')->get()
@@ -91,6 +105,34 @@ class ClassController extends Controller
                     'status_label' => $enrollment->status->label(),
                 ]),
         ]);
+    }
+
+    /**
+     * Assign (or change) the profile version a class is assessed by.
+     *
+     * ponytail: a plain reassignment while no results exist. Once results hang
+     * off the class, §10.2 requires this to become an explicit migration with an
+     * impact preview, recorded in class_profile_migrations — hence the guard.
+     */
+    public function updateProfile(Request $request, SchoolClass $class): RedirectResponse
+    {
+        Gate::authorize('update', $class);
+
+        $data = $request->validate([
+            'assessment_profile_version_id' => ['required', new BelongsToCurrentOrganization(AssessmentProfileVersion::class)],
+        ]);
+
+        // whereKey()->firstOrFail(), not findOrFail(): findOrFail also accepts an
+        // array of ids, so its return type is a model-or-collection union.
+        $version = AssessmentProfileVersion::whereKey($data['assessment_profile_version_id'])->firstOrFail();
+
+        if ($version->status !== ProfileVersionStatus::Active) {
+            return back()->withErrors(['assessment_profile_version_id' => __('Só um perfil ativo pode ser associado a uma turma.')]);
+        }
+
+        $class->update(['assessment_profile_version_id' => $version->id]);
+
+        return back();
     }
 
     public function destroy(SchoolClass $class): RedirectResponse

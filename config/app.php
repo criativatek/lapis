@@ -60,12 +60,16 @@ return [
     |--------------------------------------------------------------------------
     |
     | Here you may specify the default timezone for your application, which
-    | will be used by the PHP date and date-time functions. The timezone
-    | is set to "UTC" by default as it is suitable for most use cases.
+    | will be used by the PHP date and date-time functions.
+    |
+    | Europe/Lisbon, not UTC (§24.4): the app reasons about school dates —
+    | period boundaries, instrument dates, enrollment entry dates — and a
+    | one-hour offset would put an evening entry on the wrong day. The stock
+    | config hardcodes "UTC" and ignores APP_TIMEZONE; this reads the env.
     |
     */
 
-    'timezone' => 'UTC',
+    'timezone' => env('APP_TIMEZONE', 'Europe/Lisbon'),
 
     /*
     |--------------------------------------------------------------------------
