@@ -96,4 +96,12 @@ class SchoolClass extends Model
     {
         return $this->hasMany(Enrollment::class, 'class_id');
     }
+
+    /**
+     * @return HasMany<Instrument, $this>
+     */
+    public function instruments(): HasMany
+    {
+        return $this->hasMany(Instrument::class, 'class_id')->orderByDesc('applied_on');
+    }
 }

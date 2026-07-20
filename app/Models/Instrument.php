@@ -117,9 +117,18 @@ class Instrument extends Model
     /**
      * The sum of the item points, excluding bonus items (which do not enter the
      * denominator). Used to check the total against the declared cotação (§12.3).
+     *
+     * Formatted to the column's 4 decimals rather than returned raw: SQLite gives
+     * "100" where MySQL gives "100.0000" for the same sum, and a grade path must
+     * not behave differently per engine.
      */
     public function itemPointsTotal(): string
     {
-        return (string) $this->items()->where('is_bonus', false)->sum('points_possible');
+        return number_format(
+            (float) $this->items()->where('is_bonus', false)->sum('points_possible'),
+            4,
+            '.',
+            '',
+        );
     }
 }
