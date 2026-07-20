@@ -16,6 +16,7 @@ class ReferenceDataSeeder extends Seeder
         $this->call([
             EntitlementsSeeder::class,
             SystemScalesSeeder::class,
+            InstrumentTypesSeeder::class,
         ]);
     }
 }
