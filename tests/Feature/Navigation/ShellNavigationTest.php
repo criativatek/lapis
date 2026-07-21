@@ -103,12 +103,13 @@ class ShellNavigationTest extends TestCase
     {
         $user = User::factory()->create();
 
-        // Results is still a placeholder; classes, profiles and instruments are built.
-        $this->actingAs($user)->get('/results')->assertInertia(
+        // Self-assessments is still a placeholder (Fase 3); the assessment chain
+        // (classes, profiles, instruments, results) is built.
+        $this->actingAs($user)->get('/self-assessments')->assertInertia(
             fn (AssertableInertia $page) => $page
                 ->component('Placeholder')
-                ->where('title', 'Resultados')
-                ->where('phase', 2)
+                ->where('title', 'Autoavaliações')
+                ->where('phase', 3)
         );
     }
 

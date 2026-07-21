@@ -5,6 +5,7 @@ use App\Http\Controllers\AssessmentProfileController;
 use App\Http\Controllers\ClassController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\InstrumentController;
+use App\Http\Controllers\ResultsController;
 use App\Http\Controllers\SubjectController;
 use Illuminate\Support\Facades\Route;
 
@@ -71,6 +72,12 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::get('instruments/{instrument}', [InstrumentController::class, 'show'])->name('instruments.show');
         Route::post('instruments/{instrument}/scores', [InstrumentController::class, 'saveScores'])->name('instruments.scores.save');
         Route::delete('instruments/{instrument}', [InstrumentController::class, 'destroy'])->name('instruments.destroy');
+    });
+
+    // Results — the calculation engine's output for a class, per period.
+    Route::middleware('module:results')->group(function () {
+        Route::get('results', [ResultsController::class, 'index'])->name('results.index');
+        Route::get('classes/{class}/results/{period?}', [ResultsController::class, 'show'])->name('results.show');
     });
 });
 

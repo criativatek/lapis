@@ -34,7 +34,7 @@ return [
                 ['key' => 'assessment-profiles', 'label' => 'Perfis de Avaliação', 'icon' => 'SlidersHorizontal', 'module' => 'assessment_profiles', 'phase' => 1, 'route' => 'assessment-profiles.index', 'built' => true],
                 ['key' => 'instruments', 'label' => 'Instrumentos', 'icon' => 'ClipboardList', 'module' => 'instruments', 'phase' => 2, 'route' => 'instruments.index', 'built' => true],
                 ['key' => 'assessments', 'label' => 'Avaliações', 'icon' => 'PenLine', 'module' => 'assessments', 'phase' => 2],
-                ['key' => 'results', 'label' => 'Resultados', 'icon' => 'BarChart3', 'module' => 'results', 'phase' => 2],
+                ['key' => 'results', 'label' => 'Resultados', 'icon' => 'BarChart3', 'module' => 'results', 'phase' => 2, 'route' => 'results.index', 'built' => true],
                 ['key' => 'self-assessments', 'label' => 'Autoavaliações', 'icon' => 'UserCheck', 'module' => 'self_assessments', 'phase' => 3],
                 ['key' => 'records', 'label' => 'Registos', 'icon' => 'NotebookPen', 'module' => 'records', 'phase' => 3],
                 ['key' => 'interventions', 'label' => 'Intervenções', 'icon' => 'HeartHandshake', 'module' => 'interventions', 'phase' => 3],
