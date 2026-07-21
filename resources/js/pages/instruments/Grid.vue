@@ -132,12 +132,51 @@ function onKeydown(event: KeyboardEvent, rowIndex: number, columnIndex: number):
     }
 }
 
-const totalFor = (student: Student) =>
-    props.items.reduce((sum, item) => {
+/**
+ * The total, or null when nothing has been marked.
+ *
+ * Returning 0 for a student with no marks would put the app's own rule on screen
+ * backwards: an absent student, or one who joined after the test, would appear
+ * to have scored nothing. No marks means no total — shown as "—".
+ */
+function totalFor(student: Student): number | null {
+    let sum = 0;
+    let assessed = 0;
+
+    for (const item of props.items) {
         const current = cells[cellKey(student.enrollment_id, item.id)];
 
-        return current?.state === 'assessed' && current.points !== null ? sum + current.points : sum;
-    }, 0);
+        if (current?.state === 'assessed' && current.points !== null) {
+            sum += current.points;
+            assessed += 1;
+        }
+    }
+
+    return assessed === 0 ? null : sum;
+}
+
+/** True while some cells are marked and others are still pending. */
+function isPartial(student: Student): boolean {
+    const marked = props.items.filter((item) => {
+        const current = cells[cellKey(student.enrollment_id, item.id)];
+
+        return current !== undefined && current.state !== 'pending';
+    }).length;
+
+    return marked > 0 && marked < props.items.length;
+}
+
+/** Compact labels so the state selector stays narrow in a wide grid. */
+const shortLabels: Record<string, string> = {
+    pending: '—',
+    assessed: '✓',
+    absent: 'Aus',
+    absent_justified: 'AusJ',
+    exempt: 'Disp',
+    not_applicable: 'N/A',
+    annulled: 'Anul',
+    under_review: 'Rev',
+};
 
 const dirtyCount = computed(() => dirty.size);
 const saving = ref(false);
@@ -244,21 +283,27 @@ const nonAssessedStates = computed(() => props.states.filter((state) => !state.c
                                 />
                                 <select
                                     :value="cell(student.enrollment_id, item.id).state"
-                                    class="h-8 w-8 cursor-pointer rounded border border-input bg-transparent text-xs"
+                                    class="h-8 w-14 cursor-pointer rounded border border-input bg-transparent text-xs"
                                     :title="states.find((s) => s.value === cell(student.enrollment_id, item.id).state)?.label"
                                     @change="onStateChange(student, item, ($event.target as HTMLSelectElement).value)"
                                 >
                                     <option value="pending">—</option>
                                     <option value="assessed">✓</option>
                                     <option v-for="state in nonAssessedStates.filter((s) => s.value !== 'pending')" :key="state.value" :value="state.value">
-                                        {{ state.label }}
+                                        {{ shortLabels[state.value] ?? state.label }}
                                     </option>
                                 </select>
                             </div>
                         </td>
 
                         <td class="px-3 py-1.5 text-right font-semibold tabular-nums">
-                            {{ totalFor(student) }}<span v-if="instrument.total_points" class="text-muted-foreground">/{{ instrument.total_points }}</span>
+                            <template v-if="totalFor(student) === null">
+                                <span class="text-muted-foreground" title="Sem classificações registadas — não é zero.">—</span>
+                            </template>
+                            <template v-else>
+                                {{ totalFor(student) }}<span v-if="instrument.total_points" class="font-normal text-muted-foreground">/{{ instrument.total_points }}</span>
+                                <span v-if="isPartial(student)" class="ml-1 text-xs font-normal text-amber-600" title="Ainda há questões por avaliar.">parcial</span>
+                            </template>
                         </td>
                     </tr>
                 </tbody>
