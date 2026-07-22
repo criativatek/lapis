@@ -5,6 +5,7 @@ use App\Http\Controllers\AssessmentProfileController;
 use App\Http\Controllers\ClassController;
 use App\Http\Controllers\ClassificationController;
 use App\Http\Controllers\ClassProfileMigrationController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\InstrumentController;
 use App\Http\Controllers\ResultsController;
@@ -16,7 +17,7 @@ Route::inertia('/', 'Welcome')->name('home');
 // Teacher-facing area. Everything here reads tenant-owned data, so an
 // organization must be resolved before the request reaches a controller.
 Route::middleware(['auth', 'verified', 'organization'])->group(function () {
-    Route::inertia('dashboard', 'Dashboard')->name('dashboard');
+    Route::get('dashboard', DashboardController::class)->name('dashboard');
 
     // Academic years are the temporal foundation (§9). Reached from the header
     // year selector, not the sidebar — the year is a context, not a menu item.
