@@ -83,6 +83,7 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // The decision layer (§7): propose from the engine, then the teacher confirms.
         Route::get('classes/{class}/classifications/{period?}', [ClassificationController::class, 'show'])->name('classifications.show');
         Route::post('classes/{class}/classifications/{period}/propose', [ClassificationController::class, 'propose'])->name('classifications.propose');
+        Route::post('classes/{class}/classifications/{period}/publish', [ClassificationController::class, 'publish'])->name('classifications.publish');
         Route::post('classifications/{classification}/confirm', [ClassificationController::class, 'confirm'])->name('classifications.confirm');
     });
 });

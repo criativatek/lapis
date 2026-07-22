@@ -10,6 +10,7 @@ use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Assessment\ConfirmClassification;
 use App\Services\Assessment\ProposeClassifications;
+use App\Services\Assessment\PublishClassifications;
 use App\Support\Assessment\ClassificationDecisionException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -27,6 +28,7 @@ class ClassificationController extends Controller
     public function __construct(
         protected ProposeClassifications $proposer,
         protected ConfirmClassification $confirmer,
+        protected PublishClassifications $publisher,
     ) {}
 
     public function show(Request $request, SchoolClass $class, ?string $period = null): Response
@@ -110,6 +112,28 @@ class ClassificationController extends Controller
                 'none' => $counts['no_value'],
             ],
         )]);
+
+        return back();
+    }
+
+    public function publish(Request $request, SchoolClass $class, string $period): RedirectResponse
+    {
+        Gate::authorize('update', $class);
+
+        $scope = ClassificationScope::tryFrom((string) $request->input('scope')) ?? ClassificationScope::Period;
+
+        $selected = AcademicPeriod::where('academic_year_id', $class->academic_year_id)
+            ->where('ulid', $period)->firstOrFail();
+
+        $counts = $this->publisher->forPeriod($class, $selected, $scope);
+
+        Inertia::flash('toast', [
+            'type' => $counts['blocked_under_review'] > 0 ? 'warning' : 'success',
+            'message' => __(
+                ':published classificações publicadas, :blocked retidas por elemento em revisão.',
+                ['published' => $counts['published'], 'blocked' => $counts['blocked_under_review']],
+            ),
+        ]);
 
         return back();
     }

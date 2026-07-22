@@ -6,12 +6,14 @@ use App\Models\CalculationSnapshot;
 use App\Models\Classification;
 use App\Models\ClassificationScope;
 use App\Models\ClassificationStatus;
+use App\Models\ResultState;
 use App\Models\SchoolClass;
 use App\Models\SnapshotTrigger;
 use App\Models\StudentItemScore;
 use App\Models\User;
 use App\Services\Assessment\ConfirmClassification;
 use App\Services\Assessment\ProposeClassifications;
+use App\Services\Assessment\PublishClassifications;
 use App\Support\Assessment\ClassificationDecisionException;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
@@ -185,6 +187,56 @@ class ClassificationTest extends TestCase
 
             $this->expectException(ClassificationDecisionException::class);
             app(ConfirmClassification::class)->confirm($carolina->refresh(), $teacher);
+        });
+    }
+
+    #[Test]
+    public function publishing_communicates_confirmed_classifications_without_recalculating(): void
+    {
+        $this->inDemoClass(function ($class, $period, $teacher): void {
+            app(ProposeClassifications::class)->forPeriod($class, $period);
+            $carolina = $this->classificationFor($period, 'Carolina Nunes');
+            app(ConfirmClassification::class)->confirm($carolina, $teacher);
+
+            $counts = app(PublishClassifications::class)->forPeriod($class, $period, ClassificationScope::Period);
+
+            $this->assertSame(1, $counts['published']);
+            $carolina->refresh();
+            $this->assertSame(ClassificationStatus::Published, $carolina->status);
+            $this->assertNotNull($carolina->published_at);
+            // Publishing recalculates nothing — the confirmed value is untouched.
+            $this->assertSame('91.000', $carolina->final_value);
+
+            // A still-proposed classification is not published — only confirmed ones.
+            $this->assertSame(
+                ClassificationStatus::Proposed,
+                $this->classificationFor($period, 'Bruno Teixeira')->status,
+            );
+        });
+    }
+
+    #[Test]
+    public function a_classification_with_an_element_under_review_is_held_back_from_publication(): void
+    {
+        $this->inDemoClass(function ($class, $period, $teacher): void {
+            app(ProposeClassifications::class)->forPeriod($class, $period);
+            $carolina = $this->classificationFor($period, 'Carolina Nunes');
+            app(ConfirmClassification::class)->confirm($carolina, $teacher);
+
+            // A complaint is opened after confirmation: one element goes under
+            // review, which blocks publication of that period's grade (§5).
+            StudentItemScore::query()
+                ->where('enrollment_id', $carolina->enrollment_id)
+                ->where('result_state', ResultState::Assessed->value)
+                ->first()
+                ->update(['result_state' => ResultState::UnderReview->value, 'points_earned' => null]);
+
+            $counts = app(PublishClassifications::class)->forPeriod($class, $period, ClassificationScope::Period);
+
+            $this->assertSame(0, $counts['published']);
+            $this->assertSame(1, $counts['blocked_under_review']);
+            $this->assertSame(ClassificationStatus::Confirmed, $carolina->refresh()->status);
+            $this->assertNull($carolina->published_at);
         });
     }
 

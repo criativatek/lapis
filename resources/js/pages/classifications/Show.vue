@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
-import { CircleAlert, PencilLine, RefreshCw } from '@lucide/vue';
+import { CircleAlert, PencilLine, RefreshCw, Send } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 
@@ -27,6 +27,7 @@ const props = defineProps<{
 const page = usePage();
 const selectedPeriod = computed(() => props.periods.find((period) => period.selected) ?? null);
 const pending = computed(() => props.rows.filter((row) => row.classification?.can_confirm).length);
+const confirmedCount = computed(() => props.rows.filter((row) => row.classification?.status === 'confirmed').length);
 
 function basePath(periodUlid?: string): string {
     const period = periodUlid ?? selectedPeriod.value?.ulid ?? '';
@@ -47,6 +48,7 @@ function selectPeriod(ulid: string): void {
 }
 
 const proposing = ref(false);
+const publishing = ref(false);
 
 function propose(): void {
     if (selectedPeriod.value === null) {
@@ -59,6 +61,21 @@ function propose(): void {
             preserveScroll: true,
             onStart: () => (proposing.value = true),
             onFinish: () => (proposing.value = false),
+        },
+    );
+}
+
+function publish(): void {
+    if (selectedPeriod.value === null || confirmedCount.value === 0) {
+        return;
+    }
+    router.post(
+        `${basePath()}/publish`,
+        { scope: props.scope },
+        {
+            preserveScroll: true,
+            onStart: () => (publishing.value = true),
+            onFinish: () => (publishing.value = false),
         },
     );
 }
@@ -162,15 +179,27 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                     <template v-else>O sistema propõe; o professor confirma.</template>
                     {{ pending }} por confirmar.
                 </p>
-                <button
-                    type="button"
-                    class="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-                    :disabled="selectedPeriod === null || proposing"
-                    @click="propose"
-                >
-                    <RefreshCw class="size-4" :class="{ 'animate-spin': proposing }" />
-                    Gerar / atualizar propostas
-                </button>
+                <div class="flex gap-2">
+                    <button
+                        v-if="confirmedCount > 0"
+                        type="button"
+                        class="inline-flex items-center gap-2 rounded-md border border-emerald-600 px-4 py-2 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-50 disabled:opacity-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                        :disabled="publishing"
+                        @click="publish"
+                    >
+                        <Send class="size-4" />
+                        Publicar confirmadas ({{ confirmedCount }})
+                    </button>
+                    <button
+                        type="button"
+                        class="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+                        :disabled="selectedPeriod === null || proposing"
+                        @click="propose"
+                    >
+                        <RefreshCw class="size-4" :class="{ 'animate-spin': proposing }" />
+                        Gerar / atualizar propostas
+                    </button>
+                </div>
             </div>
 
             <!-- An accept/confirm that fails (stale proposal, already confirmed)

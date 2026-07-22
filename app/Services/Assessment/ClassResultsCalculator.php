@@ -115,6 +115,24 @@ class ClassResultsCalculator
     }
 
     /**
+     * The periods a scope draws from — the public counterpart of the internal
+     * selection, so other services (publication's under-review guard) resolve the
+     * same set without re-deriving the rule.
+     *
+     * @return list<int>
+     */
+    public function periodIdsInScope(SchoolClass $class, AcademicPeriod $period, ClassificationScope $scope): array
+    {
+        $version = $class->profileVersion;
+
+        if ($version === null) {
+            return [$period->id];
+        }
+
+        return $this->periodIdsFor($class, $period, $scope, $version);
+    }
+
+    /**
      * Which periods feed the calculation. `period` scope → just this one.
      * `accumulated` scope → every period of the year up to and including this one
      * that the profile version marks as contributing (default true when the
