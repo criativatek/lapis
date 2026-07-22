@@ -114,7 +114,10 @@ class ClassificationController extends Controller
         Gate::authorize('update', $classification->enrollment->schoolClass);
 
         $validated = $request->validate([
-            'final_value' => ['nullable', 'numeric', 'between:0,999.999'],
+            // `decimal` (not `numeric`) rejects scientific notation like "1e2",
+            // which would pass numeric+between and then blow up bcmath with a 500;
+            // it also caps at 3 places instead of silently rounding on cast.
+            'final_value' => ['nullable', 'decimal:0,3', 'between:0,999.999'],
             'override_reason' => ['nullable', 'string', 'max:1000'],
         ]);
 

@@ -61,6 +61,10 @@ class ProposeClassifications
                 }
 
                 $proposal = [
+                    // Refreshed on every re-propose: if the class moved to a new
+                    // profile version, the row must not keep pointing at the old
+                    // one while its values came from the new (§10.2).
+                    'assessment_profile_version_id' => $version->id,
                     'proposed_normalized_value' => $outcome->normalizedValue,
                     'proposed_value' => $outcome->proposedValue,
                     // Q1: no scale bands configured, so the engine proposes no level.

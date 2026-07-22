@@ -2,11 +2,13 @@
 
 namespace Tests\Feature\Assessment;
 
+use App\Models\CalculationSnapshot;
 use App\Models\Classification;
 use App\Models\ClassificationScope;
 use App\Models\ClassificationStatus;
 use App\Models\SchoolClass;
 use App\Models\SnapshotTrigger;
+use App\Models\StudentItemScore;
 use App\Models\User;
 use App\Services\Assessment\ConfirmClassification;
 use App\Services\Assessment\ProposeClassifications;
@@ -14,6 +16,7 @@ use App\Support\Assessment\ClassificationDecisionException;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use LogicException;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -82,9 +85,44 @@ class ClassificationTest extends TestCase
             $this->assertNotNull($snapshot);
             $this->assertSame(SnapshotTrigger::ProposalConfirmed, $snapshot->trigger);
             $this->assertSame('91.000', $snapshot->result_value);
-            $this->assertSame(hash('sha256', (string) json_encode($snapshot->payload)), $snapshot->payload_hash);
+            // The hash must still verify after a round-trip through storage — the
+            // canonical form survives a JSON column reordering its keys.
+            $reloaded = CalculationSnapshot::findOrFail($snapshot->id);
+            $this->assertSame($snapshot->payload_hash, CalculationSnapshot::hashPayload($reloaded->payload));
             // The frozen document carries the engine's structured explanation (§13.5).
             $this->assertArrayHasKey('explanation', $snapshot->payload);
+        });
+    }
+
+    #[Test]
+    public function a_confirmed_snapshot_is_immutable(): void
+    {
+        $this->inDemoClass(function ($class, $period, $teacher): void {
+            app(ProposeClassifications::class)->forPeriod($class, $period);
+            $carolina = $this->classificationFor($period, 'Carolina Nunes');
+            app(ConfirmClassification::class)->confirm($carolina, $teacher);
+
+            $this->expectException(LogicException::class);
+            $carolina->refresh()->snapshot->update(['result_value' => '10.000']);
+        });
+    }
+
+    #[Test]
+    public function a_proposal_goes_stale_when_a_score_changes_after_it_was_generated(): void
+    {
+        $this->inDemoClass(function ($class, $period, $teacher): void {
+            app(ProposeClassifications::class)->forPeriod($class, $period);
+            $carolina = $this->classificationFor($period, 'Carolina Nunes');
+
+            // A grade correction after the proposal was generated: the stored
+            // proposal no longer matches the grid, so confirming is refused.
+            StudentItemScore::query()
+                ->where('enrollment_id', $carolina->enrollment_id)
+                ->where('result_state', 'assessed')
+                ->update(['points_earned' => 1]);
+
+            $this->expectException(ClassificationDecisionException::class);
+            app(ConfirmClassification::class)->confirm($carolina, $teacher);
         });
     }
 
@@ -147,6 +185,43 @@ class ClassificationTest extends TestCase
 
             $this->expectException(ClassificationDecisionException::class);
             app(ConfirmClassification::class)->confirm($carolina->refresh(), $teacher);
+        });
+    }
+
+    #[Test]
+    public function confirm_rejects_a_malformed_final_value_over_http(): void
+    {
+        $ulid = $this->seedAndProposeReturningUlid();
+
+        $this->actingAs(User::where('email', 'ana.martins@lapis.test')->firstOrFail())
+            ->post("/classifications/{$ulid}/confirm", ['final_value' => '1e2']) // scientific notation
+            ->assertSessionHasErrors('final_value');
+    }
+
+    #[Test]
+    public function a_teacher_from_another_organization_cannot_confirm_this_classification(): void
+    {
+        $ulid = $this->seedAndProposeReturningUlid();
+
+        // A teacher in a different organization: the tenant scope hides the row,
+        // so binding it 404s — the classification's existence is not even revealed.
+        $stranger = User::factory()->create();
+        $this->actingAs($stranger)
+            ->post("/classifications/{$ulid}/confirm", [])
+            ->assertNotFound();
+    }
+
+    private function seedAndProposeReturningUlid(): string
+    {
+        $teacher = User::factory()->create(['email' => 'ana.martins@lapis.test']);
+        $this->seed(DemoDataSeeder::class);
+
+        return app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function (): string {
+            $class = SchoolClass::where('label', '7.º A')->firstOrFail();
+            $period = $class->academicYear->periods()->where('sequence', 1)->firstOrFail();
+            app(ProposeClassifications::class)->forPeriod($class, $period);
+
+            return Classification::whereNotNull('proposed_value')->firstOrFail()->ulid;
         });
     }
 

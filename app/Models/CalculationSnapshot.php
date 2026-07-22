@@ -43,6 +43,51 @@ class CalculationSnapshot extends Model
 
     public $timestamps = false;
 
+    protected static function booted(): void
+    {
+        // A snapshot is written once and never again (§13.6). Convention is not
+        // enough for a tamper-evidence record: block any update at the model.
+        static::updating(function (): void {
+            throw new \LogicException('A calculation snapshot is immutable and cannot be updated.');
+        });
+    }
+
+    /**
+     * Tamper-evidence hash over a canonical form of the payload. Canonicalising
+     * (recursive key sort, list order preserved, fixed flags) is what lets the
+     * hash still verify after a round-trip through a MySQL JSON column, which
+     * reorders object keys and strips whitespace — a naive json_encode would
+     * never re-hash to the stored value once reloaded.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public static function hashPayload(array $payload): string
+    {
+        return hash('sha256', self::canonicalJson($payload));
+    }
+
+    /**
+     * @param  array<mixed>  $data
+     */
+    private static function canonicalJson(array $data): string
+    {
+        $sort = function (&$value) use (&$sort): void {
+            if (! is_array($value)) {
+                return;
+            }
+            if (! array_is_list($value)) {
+                ksort($value);
+            }
+            foreach ($value as &$item) {
+                $sort($item);
+            }
+        };
+
+        $sort($data);
+
+        return (string) json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
     /**
      * @return list<string>
      */

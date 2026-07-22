@@ -34,36 +34,52 @@ class ConfirmClassification
         ?string $finalValue = null,
         ?string $overrideReason = null,
     ): Classification {
-        if ($classification->status !== ClassificationStatus::Proposed) {
-            throw ClassificationDecisionException::notProposed();
-        }
+        // The whole decision runs under a row lock: two teachers confirming the
+        // same proposal at once would otherwise let the second write overwrite
+        // the first's override, silently erasing the A10 trail. The re-fetch and
+        // status re-check happen INSIDE the transaction, on the locked row.
+        return DB::transaction(function () use ($classification, $teacher, $finalValue, $overrideReason): Classification {
+            $locked = Classification::query()->whereKey($classification->getKey())->lockForUpdate()->firstOrFail();
 
-        $outcome = $this->freshOutcomeFor($classification);
+            if ($locked->status !== ClassificationStatus::Proposed) {
+                throw ClassificationDecisionException::notProposed();
+            }
 
-        // A proposal confirmed must match the numbers currently on the grid; a
-        // stale proposal is refused, not silently confirmed at an old value.
-        if (! $this->matchesProposal($outcome, $classification)) {
-            throw ClassificationDecisionException::stale();
-        }
+            // A proposal generated under an old profile version is stale: the
+            // class moved to a new version, so the frozen snapshot would attribute
+            // the result to the wrong rule (§10.2). Force a re-propose.
+            $currentVersionId = $locked->enrollment->schoolClass->assessment_profile_version_id;
+            if ($currentVersionId !== $locked->assessment_profile_version_id) {
+                throw ClassificationDecisionException::stale();
+            }
 
-        $isOverride = $finalValue !== null
-            && $classification->proposed_value !== null
-            && Bc::compare(Bc::of($finalValue), Bc::of($classification->proposed_value)) !== 0;
+            $outcome = $this->freshOutcomeFor($locked);
 
-        if ($isOverride && ($overrideReason === null || trim($overrideReason) === '')) {
-            throw ClassificationDecisionException::missingOverrideReason();
-        }
+            // A proposal confirmed must match the numbers currently on the grid; a
+            // stale proposal is refused, not silently confirmed at an old value.
+            if (! $this->matchesProposal($outcome, $locked)) {
+                throw ClassificationDecisionException::stale();
+            }
 
-        return DB::transaction(function () use ($classification, $teacher, $outcome, $isOverride, $finalValue, $overrideReason): Classification {
+            $isOverride = $finalValue !== null
+                && $locked->proposed_value !== null
+                && Bc::compare(Bc::of($finalValue), Bc::of($locked->proposed_value)) !== 0;
+
+            if ($isOverride && ($overrideReason === null || trim($overrideReason) === '')) {
+                throw ClassificationDecisionException::missingOverrideReason();
+            }
+
+            $payload = $this->payloadFor($locked, $outcome);
+
             $snapshot = CalculationSnapshot::create([
-                'enrollment_id' => $classification->enrollment_id,
-                'academic_period_id' => $classification->academic_period_id,
-                'scope' => $classification->scope,
-                'assessment_profile_version_id' => $classification->assessment_profile_version_id,
+                'enrollment_id' => $locked->enrollment_id,
+                'academic_period_id' => $locked->academic_period_id,
+                'scope' => $locked->scope,
+                'assessment_profile_version_id' => $locked->assessment_profile_version_id,
                 'trigger' => SnapshotTrigger::ProposalConfirmed,
                 'engine_version' => CalculationEngine::VERSION,
-                'payload' => $this->payloadFor($classification, $outcome),
-                'payload_hash' => $this->hashOf($classification, $outcome),
+                'payload' => $payload,
+                'payload_hash' => CalculationSnapshot::hashPayload($payload),
                 'result_normalized_value' => $outcome->normalizedValue,
                 'result_value' => $outcome->proposedValue,
                 'result_scale_level_id' => null,
@@ -71,7 +87,7 @@ class ConfirmClassification
                 'created_at' => now(),
             ]);
 
-            $classification->fill([
+            $locked->fill([
                 'status' => ClassificationStatus::Confirmed,
                 'calculation_snapshot_id' => $snapshot->id,
                 'confirmed_by' => $teacher->id,
@@ -79,14 +95,14 @@ class ConfirmClassification
                 // The final value is always written explicitly. Accepting the
                 // proposal sets final = proposed (satisfying the CHECK with no
                 // reason); overriding writes a different value and the reason.
-                'final_value' => $isOverride ? $finalValue : $classification->proposed_value,
-                'final_scale_level_id' => $classification->proposed_scale_level_id,
+                'final_value' => $isOverride ? $finalValue : $locked->proposed_value,
+                'final_scale_level_id' => $locked->proposed_scale_level_id,
                 'override_reason' => $isOverride ? $overrideReason : null,
                 'overridden_by' => $isOverride ? $teacher->id : null,
                 'overridden_at' => $isOverride ? now() : null,
             ])->save();
 
-            return $classification;
+            return $locked;
         });
     }
 
@@ -134,10 +150,5 @@ class ConfirmClassification
             'coverage_warning' => $outcome->coverageWarning,
             'explanation' => $outcome->explanation,
         ];
-    }
-
-    protected function hashOf(Classification $classification, CalculationOutcome $outcome): string
-    {
-        return hash('sha256', (string) json_encode($this->payloadFor($classification, $outcome)));
     }
 }

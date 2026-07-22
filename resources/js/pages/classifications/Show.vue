@@ -36,6 +36,8 @@ function selectPeriod(ulid: string): void {
     router.get(`/classes/${props.schoolClass.ulid}/classifications/${ulid}`, {}, { preserveScroll: true });
 }
 
+const proposing = ref(false);
+
 function propose(): void {
     if (selectedPeriod.value === null) {
         return;
@@ -43,7 +45,11 @@ function propose(): void {
     router.post(
         `/classes/${props.schoolClass.ulid}/classifications/${selectedPeriod.value.ulid}/propose`,
         {},
-        { preserveScroll: true },
+        {
+            preserveScroll: true,
+            onStart: () => (proposing.value = true),
+            onFinish: () => (proposing.value = false),
+        },
     );
 }
 
@@ -125,13 +131,23 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                 <button
                     type="button"
                     class="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-                    :disabled="selectedPeriod === null"
+                    :disabled="selectedPeriod === null || proposing"
                     @click="propose"
                 >
-                    <RefreshCw class="size-4" />
+                    <RefreshCw class="size-4" :class="{ 'animate-spin': proposing }" />
                     Gerar / atualizar propostas
                 </button>
             </div>
+
+            <!-- An accept/confirm that fails (stale proposal, already confirmed)
+                 comes back with an error but no editor open — show it here so the
+                 click is never silently swallowed. -->
+            <p
+                v-if="errorFor && openUlid === null"
+                class="rounded-md border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+            >
+                {{ errorFor }}
+            </p>
 
             <div v-if="rows.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
                 <p class="text-sm text-muted-foreground">Sem alunos neste período.</p>
