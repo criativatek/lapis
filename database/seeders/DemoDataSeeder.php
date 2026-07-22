@@ -49,9 +49,10 @@ class DemoDataSeeder extends Seeder
             $version = $this->activatedProfile($year, $subject, $teacher);
             $class = $this->classWithStudents($year, $subject, $version, $teacher);
             $this->instrumentWithScores($class, $year, $teacher);
+            $this->secondPeriodInstrument($class, $year, $teacher);
         });
 
-        $this->command->info('Cenário de demonstração criado: 7.º A de Português, com ingresso tardio e uma ausência.');
+        $this->command->info('Cenário de demonstração criado: 7.º A de Português, com ingresso tardio, uma ausência e um instrumento no 2.º período (acumulado).');
     }
 
     protected function academicYear(): AcademicYear
@@ -209,6 +210,71 @@ class DemoDataSeeder extends Seeder
                     'instrument_item_id' => $items[$code]->id,
                     'result_state' => ResultState::Assessed->value,
                     'points_earned' => $points,
+                ];
+            }
+        }
+
+        app(RecordScores::class)->save($instrument, $cells, $teacher);
+    }
+
+    /**
+     * A second-period instrument so the accumulated result (§6.3, Q4) has more
+     * than one period to reprocess. Applied 2027-03-10 — after Filipe's late
+     * entry (2026-11-03), so it applies to him even though the first test did
+     * not: his accumulated is built only from the elements that reach him.
+     * Diogo, absent from the first test, is present here — his accumulated gains
+     * a value where his first-period result had none.
+     */
+    protected function secondPeriodInstrument(SchoolClass $class, AcademicYear $year, User $teacher): void
+    {
+        $period = $year->periods()->where('sequence', 2)->firstOrFail();
+
+        if ($class->instruments()->where('academic_period_id', $period->id)->exists()) {
+            return;
+        }
+
+        $domains = Domain::whereIn('code', ['ORALIDADE', 'ESCRITA'])->get()->keyBy('code');
+
+        $instrument = app(InstrumentBuilder::class)->create($class, [
+            'academic_period_id' => $period->id,
+            'instrument_type_id' => InstrumentType::where('code', 'TEST')->firstOrFail()->id,
+            'title' => 'Apresentação Oral e Texto de Opinião',
+            'applied_on' => '2027-03-10',
+            'status' => 'in_correction',
+            'counts_toward_classification' => true,
+            'purpose' => 'summative',
+            'total_points' => 40,
+        ], [
+            ['code' => 'O1', 'label' => 'Apresentação oral', 'points_possible' => 20, 'domains' => [
+                ['domain_id' => $domains['ORALIDADE']->id, 'allocation_percent' => 100],
+            ]],
+            ['code' => 'E1', 'label' => 'Texto de opinião', 'points_possible' => 20, 'domains' => [
+                ['domain_id' => $domains['ESCRITA']->id, 'allocation_percent' => 100],
+            ]],
+        ]);
+
+        $items = $instrument->items->keyBy('code');
+
+        // Everyone present this time, including the late entry and the student who
+        // was absent from the first test.
+        $marks = [
+            1 => ['O1' => 15, 'E1' => 14],
+            2 => ['O1' => 12, 'E1' => 13],
+            3 => ['O1' => 17, 'E1' => 18],
+            4 => ['O1' => 14, 'E1' => 15],
+            5 => ['O1' => 16, 'E1' => 17],
+            6 => ['O1' => 13, 'E1' => 12],
+        ];
+
+        $cells = [];
+
+        foreach ($class->enrollments()->orderBy('class_number')->get() as $enrollment) {
+            foreach ($marks[$enrollment->class_number] ?? [] as $code => $points) {
+                $cells[] = [
+                    'enrollment_id' => $enrollment->id,
+                    'instrument_item_id' => $items[$code]->id,
+                    'result_state' => ResultState::Assessed->value,
+                    'points_earned' => (float) $points,
                 ];
             }
         }

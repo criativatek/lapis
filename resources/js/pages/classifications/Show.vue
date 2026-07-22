@@ -19,6 +19,7 @@ type Row = { name: string; class_number: number | null; classification: Classifi
 
 const props = defineProps<{
     schoolClass: { ulid: string; label: string; subject: string; has_profile: boolean };
+    scope: 'period' | 'accumulated';
     periods: { ulid: string; label: string; selected: boolean }[];
     rows: Row[];
 }>();
@@ -27,13 +28,22 @@ const page = usePage();
 const selectedPeriod = computed(() => props.periods.find((period) => period.selected) ?? null);
 const pending = computed(() => props.rows.filter((row) => row.classification?.can_confirm).length);
 
+function basePath(periodUlid?: string): string {
+    const period = periodUlid ?? selectedPeriod.value?.ulid ?? '';
+    return `/classes/${props.schoolClass.ulid}/classifications/${period}`;
+}
+
+function selectScope(scope: 'period' | 'accumulated'): void {
+    router.get(basePath(), { scope }, { preserveScroll: true });
+}
+
 // Value a teacher reads. "—" for a null (no computable result), never 0.
 function grade(value: string | null): string {
     return value === null ? '—' : Number(value).toFixed(1);
 }
 
 function selectPeriod(ulid: string): void {
-    router.get(`/classes/${props.schoolClass.ulid}/classifications/${ulid}`, {}, { preserveScroll: true });
+    router.get(basePath(ulid), { scope: props.scope }, { preserveScroll: true });
 }
 
 const proposing = ref(false);
@@ -43,8 +53,8 @@ function propose(): void {
         return;
     }
     router.post(
-        `/classes/${props.schoolClass.ulid}/classifications/${selectedPeriod.value.ulid}/propose`,
-        {},
+        `${basePath()}/propose`,
+        { scope: props.scope },
         {
             preserveScroll: true,
             onStart: () => (proposing.value = true),
@@ -105,17 +115,37 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                     ← Ver resultados
                 </Link>
             </div>
-            <div v-if="periods.length" class="flex gap-1">
-                <button
-                    v-for="period in periods"
-                    :key="period.ulid"
-                    type="button"
-                    class="rounded-md border px-3 py-1.5 text-sm"
-                    :class="period.selected ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:bg-muted/40'"
-                    @click="selectPeriod(period.ulid)"
-                >
-                    {{ period.label }}
-                </button>
+            <div class="flex flex-wrap items-center gap-3">
+                <div class="flex gap-1 rounded-md bg-muted/40 p-0.5">
+                    <button
+                        type="button"
+                        class="rounded px-3 py-1 text-sm"
+                        :class="scope === 'period' ? 'bg-background font-medium shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+                        @click="selectScope('period')"
+                    >
+                        Por período
+                    </button>
+                    <button
+                        type="button"
+                        class="rounded px-3 py-1 text-sm"
+                        :class="scope === 'accumulated' ? 'bg-background font-medium shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+                        @click="selectScope('accumulated')"
+                    >
+                        Acumulado
+                    </button>
+                </div>
+                <div v-if="periods.length" class="flex gap-1">
+                    <button
+                        v-for="period in periods"
+                        :key="period.ulid"
+                        type="button"
+                        class="rounded-md border px-3 py-1.5 text-sm"
+                        :class="period.selected ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:bg-muted/40'"
+                        @click="selectPeriod(period.ulid)"
+                    >
+                        {{ period.label }}
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -126,7 +156,11 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
         <template v-else>
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <p class="text-sm text-muted-foreground">
-                    O sistema propõe; o professor confirma. {{ pending }} por confirmar.
+                    <template v-if="scope === 'accumulated'">
+                        Acumulado: reprocessa todos os elementos válidos do ano até este período (não é a média dos períodos).
+                    </template>
+                    <template v-else>O sistema propõe; o professor confirma.</template>
+                    {{ pending }} por confirmar.
                 </p>
                 <button
                     type="button"

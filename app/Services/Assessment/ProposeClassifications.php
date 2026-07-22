@@ -26,7 +26,7 @@ class ProposeClassifications
     /**
      * @return array{created: int, updated: int, skipped_frozen: int, no_value: int}
      */
-    public function forPeriod(SchoolClass $class, AcademicPeriod $period): array
+    public function forPeriod(SchoolClass $class, AcademicPeriod $period, ClassificationScope $scope = ClassificationScope::Period): array
     {
         $version = $class->profileVersion;
 
@@ -34,10 +34,10 @@ class ProposeClassifications
             return ['created' => 0, 'updated' => 0, 'skipped_frozen' => 0, 'no_value' => 0];
         }
 
-        $results = $this->calculator->forPeriod($class, $period);
+        $results = $this->calculator->forScope($class, $period, $scope);
         $counts = ['created' => 0, 'updated' => 0, 'skipped_frozen' => 0, 'no_value' => 0];
 
-        DB::transaction(function () use ($results, $period, $version, &$counts): void {
+        DB::transaction(function () use ($results, $period, $scope, $version, &$counts): void {
             foreach ($results as $row) {
                 $outcome = $row['outcome'];
 
@@ -50,7 +50,7 @@ class ProposeClassifications
                 $live = Classification::query()
                     ->where('enrollment_id', $row['enrollment']->id)
                     ->where('academic_period_id', $period->id)
-                    ->where('scope', ClassificationScope::Period)
+                    ->where('scope', $scope)
                     ->whereNot('status', ClassificationStatus::Superseded)
                     ->first();
 
@@ -81,7 +81,7 @@ class ProposeClassifications
                 Classification::create([
                     'enrollment_id' => $row['enrollment']->id,
                     'academic_period_id' => $period->id,
-                    'scope' => ClassificationScope::Period,
+                    'scope' => $scope,
                     'assessment_profile_version_id' => $version->id,
                     'status' => ClassificationStatus::Proposed,
                     ...$proposal,

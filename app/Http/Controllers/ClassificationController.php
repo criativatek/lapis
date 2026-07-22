@@ -29,9 +29,11 @@ class ClassificationController extends Controller
         protected ConfirmClassification $confirmer,
     ) {}
 
-    public function show(SchoolClass $class, ?string $period = null): Response
+    public function show(Request $request, SchoolClass $class, ?string $period = null): Response
     {
         Gate::authorize('view', $class);
+
+        $scope = ClassificationScope::tryFrom((string) $request->query('scope')) ?? ClassificationScope::Period;
 
         $periods = AcademicPeriod::where('academic_year_id', $class->academic_year_id)
             ->orderBy('sequence')->get();
@@ -45,7 +47,7 @@ class ClassificationController extends Controller
         $live = $selected !== null
             ? Classification::query()
                 ->where('academic_period_id', $selected->id)
-                ->where('scope', ClassificationScope::Period)
+                ->where('scope', $scope)
                 ->whereNot('status', ClassificationStatus::Superseded)
                 ->whereIn('enrollment_id', $enrollments->pluck('id'))
                 ->get()
@@ -59,6 +61,7 @@ class ClassificationController extends Controller
                 'subject' => $class->subject->name,
                 'has_profile' => $class->assessment_profile_version_id !== null,
             ],
+            'scope' => $scope->value,
             'periods' => $periods->map(fn (AcademicPeriod $academicPeriod) => [
                 'ulid' => $academicPeriod->ulid,
                 'label' => $academicPeriod->label,
@@ -87,14 +90,16 @@ class ClassificationController extends Controller
         ]);
     }
 
-    public function propose(SchoolClass $class, string $period): RedirectResponse
+    public function propose(Request $request, SchoolClass $class, string $period): RedirectResponse
     {
         Gate::authorize('update', $class);
+
+        $scope = ClassificationScope::tryFrom((string) $request->input('scope')) ?? ClassificationScope::Period;
 
         $selected = AcademicPeriod::where('academic_year_id', $class->academic_year_id)
             ->where('ulid', $period)->firstOrFail();
 
-        $counts = $this->proposer->forPeriod($class, $selected);
+        $counts = $this->proposer->forPeriod($class, $selected, $scope);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __(
             ':created propostas geradas, :updated atualizadas, :frozen confirmadas mantidas, :none sem resultado.',

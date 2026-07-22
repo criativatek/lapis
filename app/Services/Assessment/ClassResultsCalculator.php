@@ -7,6 +7,8 @@ use App\Domain\Assessment\CalculationOutcome;
 use App\Domain\Assessment\CalculationRule;
 use App\Domain\Assessment\ScoreInput;
 use App\Models\AcademicPeriod;
+use App\Models\AssessmentProfileVersion;
+use App\Models\ClassificationScope;
 use App\Models\Enrollment;
 use App\Models\Instrument;
 use App\Models\ResultState;
@@ -30,6 +32,27 @@ class ClassResultsCalculator
      * @return list<array{enrollment: Enrollment, outcome: CalculationOutcome}>
      */
     public function forPeriod(SchoolClass $class, AcademicPeriod $period): array
+    {
+        return $this->forScope($class, $period, ClassificationScope::Period);
+    }
+
+    /**
+     * The year-to-date result at a period boundary (§6.3, Q4). With
+     * `accumulated_mode = all_valid_year_elements` the engine reprocesses the raw
+     * elements of every contributing period up to and including this one — never
+     * an average of period averages, which would over-weight the earliest marks.
+     *
+     * @return list<array{enrollment: Enrollment, outcome: CalculationOutcome}>
+     */
+    public function forAccumulated(SchoolClass $class, AcademicPeriod $period): array
+    {
+        return $this->forScope($class, $period, ClassificationScope::Accumulated);
+    }
+
+    /**
+     * @return list<array{enrollment: Enrollment, outcome: CalculationOutcome}>
+     */
+    public function forScope(SchoolClass $class, AcademicPeriod $period, ClassificationScope $scope): array
     {
         $version = $class->profileVersion;
 
@@ -62,10 +85,11 @@ class ClassResultsCalculator
         /** @var array<int, string> $domainWeights */
         $domainWeights = $version->domains()->pluck('weight_percent', 'domain_id')->all();
 
-        // Instruments that may count: in this period, flagged as counting, in a
-        // state the engine reads. Applicability per enrollment is resolved below.
+        // Instruments that may count: flagged as counting, in a state the engine
+        // reads. A period result sees only its period; an accumulated result sees
+        // every contributing period up to it (the union of raw elements, Q4).
         $instruments = $class->instruments()
-            ->where('academic_period_id', $period->id)
+            ->whereIn('academic_period_id', $this->periodIdsFor($class, $period, $scope, $version))
             ->where('counts_toward_classification', true)
             ->with(['items.domainAllocations'])
             ->get()
@@ -88,6 +112,41 @@ class ClassResultsCalculator
         }
 
         return $results;
+    }
+
+    /**
+     * Which periods feed the calculation. `period` scope → just this one.
+     * `accumulated` scope → every period of the year up to and including this one
+     * that the profile version marks as contributing (default true when the
+     * version has no per-period config). Only `all_valid_year_elements` is
+     * implemented; other accumulated modes reuse the same union for now.
+     *
+     * @param  AssessmentProfileVersion  $version
+     * @return list<int>
+     */
+    protected function periodIdsFor(SchoolClass $class, AcademicPeriod $period, ClassificationScope $scope, $version): array
+    {
+        if ($scope === ClassificationScope::Period) {
+            return [$period->id];
+        }
+
+        /** @var Collection<int, bool> $contributesByPeriod */
+        $contributesByPeriod = $version->periods()->pluck('contributes_to_accumulated', 'academic_period_id');
+
+        $periodIds = [];
+        foreach (
+            AcademicPeriod::query()
+                ->where('academic_year_id', $class->academic_year_id)
+                ->where('sequence', '<=', $period->sequence)
+                ->orderBy('sequence')
+                ->get() as $candidate
+        ) {
+            if ($contributesByPeriod->get($candidate->id, true)) {
+                $periodIds[] = (int) $candidate->id;
+            }
+        }
+
+        return $periodIds;
     }
 
     /**

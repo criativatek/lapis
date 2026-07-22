@@ -112,7 +112,9 @@ class ConfirmClassification
         $class = $enrollment->schoolClass;
         $period = $classification->academicPeriod;
 
-        foreach ($this->calculator->forPeriod($class, $period) as $row) {
+        // Recompute in the same scope the proposal was generated in — an
+        // accumulated proposal must be re-checked against the accumulated result.
+        foreach ($this->calculator->forScope($class, $period, $classification->scope) as $row) {
             if ($row['enrollment']->id === $enrollment->id) {
                 return $row['outcome'];
             }

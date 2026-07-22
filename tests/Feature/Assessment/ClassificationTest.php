@@ -189,6 +189,44 @@ class ClassificationTest extends TestCase
     }
 
     #[Test]
+    public function period_and_accumulated_are_separate_decisions_for_the_same_period(): void
+    {
+        $teacher = User::factory()->create(['email' => 'ana.martins@lapis.test']);
+        $this->seed(DemoDataSeeder::class);
+
+        app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () use ($teacher): void {
+            $class = SchoolClass::where('label', '7.º A')->firstOrFail();
+            $p2 = $class->academicYear->periods()->where('sequence', 2)->firstOrFail();
+
+            app(ProposeClassifications::class)->forPeriod($class, $p2, ClassificationScope::Period);
+            app(ProposeClassifications::class)->forPeriod($class, $p2, ClassificationScope::Accumulated);
+
+            $carolina = Classification::query()
+                ->where('academic_period_id', $p2->id)
+                ->get()
+                ->filter(fn (Classification $c) => $c->enrollment->student->identity->display_name === 'Carolina Nunes');
+
+            // Two live rows for the same (enrollment, period): one per scope — the
+            // isolated period result and the year-to-date one both stand (§6.3).
+            $this->assertCount(2, $carolina);
+            $this->assertEqualsCanonicalizing(
+                ['period', 'accumulated'],
+                $carolina->pluck('scope')->map->value->all(),
+            );
+
+            // Confirming the accumulated one leaves the period one untouched.
+            $accumulated = $carolina->firstWhere('scope', ClassificationScope::Accumulated);
+            app(ConfirmClassification::class)->confirm($accumulated, $teacher);
+
+            $this->assertSame(ClassificationStatus::Confirmed, $accumulated->refresh()->status);
+            $this->assertSame(
+                ClassificationStatus::Proposed,
+                $carolina->firstWhere('scope', ClassificationScope::Period)->refresh()->status,
+            );
+        });
+    }
+
+    #[Test]
     public function confirm_rejects_a_malformed_final_value_over_http(): void
     {
         $ulid = $this->seedAndProposeReturningUlid();

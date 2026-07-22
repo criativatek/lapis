@@ -2,6 +2,16 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.6.0] — 2026-07-22
+
+### Adicionado
+
+- **Resultado acumulado (§6.3, Q4).** Toggle «Por período / Acumulado» nas classificações. Com `accumulated_mode = all_valid_year_elements`, o motor reprocessa os elementos brutos de todos os períodos contribuintes até ao período em causa — **não** a média das médias dos períodos (que sobreponderaria os primeiros elementos).
+  - Período e acumulado são decisões distintas para o mesmo (aluno, período): coexistem na tabela por âmbito.
+  - O ingresso tardio atravessa o acumulado corretamente: o aluno é avaliado só pelos elementos que o alcançam (Filipe: só o 2.º período; nunca um zero).
+  - `ClassResultsCalculator::forScope/forAccumulated`; proposta e confirmação passam a ser scope-aware.
+  - DemoDataSeeder ganha um instrumento no 2.º período para o acumulado ter conteúdo.
+
 ## [0.5.0] — 2026-07-22
 
 ### Adicionado
