@@ -50,11 +50,12 @@ class ClassResultsCalculator
     }
 
     /**
+     * @param  AssessmentProfileVersion|null  $versionOverride  compute under this version instead of the class's current one — used to preview a profile migration's impact (A4) without touching the class
      * @return list<array{enrollment: Enrollment, outcome: CalculationOutcome}>
      */
-    public function forScope(SchoolClass $class, AcademicPeriod $period, ClassificationScope $scope): array
+    public function forScope(SchoolClass $class, AcademicPeriod $period, ClassificationScope $scope, ?AssessmentProfileVersion $versionOverride = null): array
     {
-        $version = $class->profileVersion;
+        $version = $versionOverride ?? $class->profileVersion;
 
         if ($version === null) {
             return [];

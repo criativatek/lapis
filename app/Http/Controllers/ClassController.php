@@ -6,6 +6,7 @@ use App\Http\Requests\ClassRequest;
 use App\Models\AcademicYear;
 use App\Models\AssessmentProfile;
 use App\Models\AssessmentProfileVersion;
+use App\Models\Classification;
 use App\Models\Enrollment;
 use App\Models\Instrument;
 use App\Models\ProfileVersionStatus;
@@ -137,6 +138,24 @@ class ClassController extends Controller
 
         if ($version->status !== ProfileVersionStatus::Active) {
             return back()->withErrors(['assessment_profile_version_id' => __('Só um perfil ativo pode ser associado a uma turma.')]);
+        }
+
+        if ($version->id === $class->assessment_profile_version_id) {
+            return back();
+        }
+
+        // A class that already has classifications cannot swap versions silently
+        // (§10.2, A4): route through the auditable migration, which previews the
+        // impact and records a reason. Only a class with no decisions swaps freely.
+        $hasDecisions = Classification::query()
+            ->whereIn('enrollment_id', $class->enrollments()->select('id'))
+            ->exists();
+
+        if ($hasDecisions) {
+            return redirect()->route('classes.profile-migration.create', [
+                'class' => $class->ulid,
+                'to' => $version->ulid,
+            ]);
         }
 
         $class->update(['assessment_profile_version_id' => $version->id]);

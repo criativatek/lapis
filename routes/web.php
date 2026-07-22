@@ -4,6 +4,7 @@ use App\Http\Controllers\AcademicYearController;
 use App\Http\Controllers\AssessmentProfileController;
 use App\Http\Controllers\ClassController;
 use App\Http\Controllers\ClassificationController;
+use App\Http\Controllers\ClassProfileMigrationController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\InstrumentController;
 use App\Http\Controllers\ResultsController;
@@ -59,6 +60,11 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::get('classes/{class}', [ClassController::class, 'show'])->name('classes.show');
         Route::put('classes/{class}/profile', [ClassController::class, 'updateProfile'])->name('classes.profile.update');
         Route::delete('classes/{class}', [ClassController::class, 'destroy'])->name('classes.destroy');
+
+        // Profile migration (§10.2, A4): required when a class with results changes
+        // version — preview the impact, then confirm with a reason.
+        Route::get('classes/{class}/profile-migration', [ClassProfileMigrationController::class, 'create'])->name('classes.profile-migration.create');
+        Route::post('classes/{class}/profile-migration', [ClassProfileMigrationController::class, 'store'])->name('classes.profile-migration.store');
 
         Route::post('classes/{class}/students', [EnrollmentController::class, 'store'])->name('classes.students.store');
         Route::delete('classes/{class}/students/{enrollment}', [EnrollmentController::class, 'destroy'])->name('classes.students.destroy');
