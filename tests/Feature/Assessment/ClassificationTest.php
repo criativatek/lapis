@@ -6,9 +6,11 @@ use App\Models\CalculationSnapshot;
 use App\Models\Classification;
 use App\Models\ClassificationScope;
 use App\Models\ClassificationStatus;
+use App\Models\Enrollment;
 use App\Models\ResultState;
 use App\Models\SchoolClass;
 use App\Models\SnapshotTrigger;
+use App\Models\Student;
 use App\Models\StudentItemScore;
 use App\Models\User;
 use App\Services\Assessment\ConfirmClassification;
@@ -237,6 +239,56 @@ class ClassificationTest extends TestCase
             $this->assertSame(1, $counts['blocked_under_review']);
             $this->assertSame(ClassificationStatus::Confirmed, $carolina->refresh()->status);
             $this->assertNull($carolina->published_at);
+        });
+    }
+
+    #[Test]
+    public function publishing_one_class_never_touches_another_class_in_the_same_period(): void
+    {
+        $teacher = User::factory()->create(['email' => 'ana.martins@lapis.test']);
+        $this->seed(DemoDataSeeder::class);
+
+        app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () use ($teacher): void {
+            $classA = SchoolClass::where('label', '7.º A')->firstOrFail();
+            $period = $classA->academicYear->periods()->where('sequence', 1)->firstOrFail();
+
+            app(ProposeClassifications::class)->forPeriod($classA, $period);
+            app(ConfirmClassification::class)->confirm($this->classificationFor($period, 'Carolina Nunes'), $teacher);
+
+            // A second class in the SAME organization and academic period (periods
+            // belong to the year, not the class). Its confirmed grade must not be
+            // published by publishing class A (cross-class authorization hole).
+            $classB = SchoolClass::factory()->create([
+                'organization_id' => $classA->organization_id,
+                'academic_year_id' => $classA->academic_year_id,
+                'subject_id' => $classA->subject_id,
+                'assessment_profile_version_id' => $classA->assessment_profile_version_id,
+                'label' => '7.º B',
+            ]);
+            $student = Student::factory()->create(['organization_id' => $classA->organization_id]);
+            $enrollmentB = Enrollment::factory()->create([
+                'organization_id' => $classA->organization_id,
+                'class_id' => $classB->id,
+                'student_id' => $student->id,
+                'enrolled_on' => '2026-09-14',
+            ]);
+            $classificationB = Classification::create([
+                'enrollment_id' => $enrollmentB->id,
+                'academic_period_id' => $period->id,
+                'scope' => ClassificationScope::Period,
+                'assessment_profile_version_id' => $classA->assessment_profile_version_id,
+                'status' => ClassificationStatus::Confirmed,
+                'proposed_value' => '80.000',
+                'final_value' => '80.000',
+                'confirmed_by' => $teacher->id,
+                'confirmed_at' => now(),
+            ]);
+
+            $counts = app(PublishClassifications::class)->forPeriod($classA, $period, ClassificationScope::Period);
+
+            $this->assertSame(1, $counts['published']); // only Carolina, in class A
+            $this->assertSame(ClassificationStatus::Confirmed, $classificationB->refresh()->status);
+            $this->assertNull($classificationB->published_at);
         });
     }
 

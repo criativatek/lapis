@@ -10,6 +10,7 @@ use App\Models\Instrument;
 use App\Models\ResultState;
 use App\Models\SchoolClass;
 use App\Models\StudentItemScore;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -30,17 +31,45 @@ class PublishClassifications
     {
         $periodIds = $this->calculator->periodIdsInScope($class, $period, $scope);
 
-        $confirmed = Classification::query()
+        // Scoped to THIS class's enrollments — periods belong to the academic year,
+        // not the class, so two classes share academic_period_id. Without this
+        // filter, publishing one class would publish another's grades (and skip its
+        // under-review guard) — a cross-class authorization hole within the org.
+        $confirmedIds = Classification::query()
+            ->whereIn('enrollment_id', $class->enrollments()->select('id'))
             ->where('academic_period_id', $period->id)
             ->where('scope', $scope)
             ->where('status', ClassificationStatus::Confirmed)
-            ->get();
+            ->pluck('id');
+
+        // The instruments whose elements a review can block: only those that count
+        // and are in a state the engine reads (the calculation universe, §570).
+        $countingInstrumentIds = Instrument::query()
+            ->where('class_id', $class->id)
+            ->whereIn('academic_period_id', $periodIds)
+            ->where('counts_toward_classification', true)
+            ->get()
+            ->filter(fn (Instrument $instrument) => $instrument->status->entersCalculation())
+            ->pluck('id');
 
         $counts = ['published' => 0, 'blocked_under_review' => 0];
 
-        DB::transaction(function () use ($confirmed, $class, $periodIds, &$counts): void {
-            foreach ($confirmed as $classification) {
-                if ($this->hasElementUnderReview($class, $classification->enrollment_id, $periodIds)) {
+        DB::transaction(function () use ($confirmedIds, $countingInstrumentIds, &$counts): void {
+            foreach ($confirmedIds as $id) {
+                // Re-fetch under a row lock and re-check the state: a concurrent
+                // publish or supersede between listing and writing must not be
+                // overwritten (same guard as ConfirmClassification).
+                $classification = Classification::query()
+                    ->whereKey($id)
+                    ->where('status', ClassificationStatus::Confirmed)
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($classification === null) {
+                    continue;
+                }
+
+                if ($this->hasElementUnderReview($classification->enrollment_id, $countingInstrumentIds)) {
                     $counts['blocked_under_review']++;
 
                     continue;
@@ -60,18 +89,13 @@ class PublishClassifications
     }
 
     /**
-     * @param  list<int>  $periodIds
+     * @param  Collection<int, int>  $countingInstrumentIds
      */
-    protected function hasElementUnderReview(SchoolClass $class, int $enrollmentId, array $periodIds): bool
+    protected function hasElementUnderReview(int $enrollmentId, $countingInstrumentIds): bool
     {
-        $instrumentIds = Instrument::query()
-            ->where('class_id', $class->id)
-            ->whereIn('academic_period_id', $periodIds)
-            ->pluck('id');
-
         return StudentItemScore::query()
             ->where('enrollment_id', $enrollmentId)
-            ->whereIn('instrument_id', $instrumentIds)
+            ->whereIn('instrument_id', $countingInstrumentIds)
             ->where('result_state', ResultState::UnderReview->value)
             ->exists();
     }

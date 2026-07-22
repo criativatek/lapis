@@ -3,7 +3,7 @@ import { Head, Link, useForm } from '@inertiajs/vue3';
 import { ArrowRight, TriangleAlert } from '@lucide/vue';
 import Heading from '@/components/Heading.vue';
 
-type Cell = { period_label: string; before: string | null; after: string | null; changed: boolean };
+type Cell = { period_label: string; state: 'none' | 'kept' | 'refreshed'; before: string | null; after: string | null; changed: boolean };
 type Row = { name: string; class_number: number | null; cells: Cell[]; changed: boolean };
 type Preview = {
     from: { version: number; name: string } | null;
@@ -78,15 +78,21 @@ function submit(): void {
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-border">
-                    <tr v-for="row in preview.rows" :key="row.name" class="hover:bg-muted/20" :class="{ 'bg-amber-50/40 dark:bg-amber-950/20': row.changed }">
+                    <tr v-for="(row, rowIndex) in preview.rows" :key="rowIndex" class="hover:bg-muted/20" :class="{ 'bg-amber-50/40 dark:bg-amber-950/20': row.changed }">
                         <td class="px-3 py-2 whitespace-nowrap">
                             <span class="text-muted-foreground">{{ row.class_number ?? '—' }}</span>
                             <span class="ml-2 font-medium">{{ row.name }}</span>
                         </td>
                         <template v-for="(cell, index) in row.cells" :key="index">
-                            <td class="border-l border-border px-3 py-2 text-right tabular-nums text-muted-foreground">{{ value(cell.before) }}</td>
-                            <td class="px-3 py-2 text-right tabular-nums" :class="cell.changed ? 'font-semibold text-amber-700 dark:text-amber-400' : 'text-muted-foreground'">
-                                {{ value(cell.after) }}
+                            <td class="border-l border-border px-3 py-2 text-right tabular-nums text-muted-foreground">
+                                {{ cell.state === 'none' ? '—' : value(cell.before) }}
+                            </td>
+                            <td class="px-3 py-2 text-right tabular-nums">
+                                <span v-if="cell.state === 'none'" class="text-muted-foreground">—</span>
+                                <span v-else-if="cell.state === 'kept'" class="text-xs text-muted-foreground" title="Decisão confirmada — mantida">mantida</span>
+                                <span v-else :class="cell.changed ? 'font-semibold text-amber-700 dark:text-amber-400' : 'text-muted-foreground'">
+                                    {{ value(cell.after) }}
+                                </span>
                             </td>
                         </template>
                     </tr>

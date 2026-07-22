@@ -108,6 +108,35 @@ class ClassProfileMigrationTest extends TestCase
     }
 
     #[Test]
+    public function migration_keeps_frozen_decisions_in_the_preview_and_creates_no_new_proposals(): void
+    {
+        $teacher = User::factory()->create(['email' => 'ana.martins@lapis.test']);
+        $this->seed(DemoDataSeeder::class);
+
+        app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () use ($teacher): void {
+            $class = SchoolClass::where('label', '7.º A')->firstOrFail();
+            $period = $class->academicYear->periods()->where('sequence', 1)->firstOrFail();
+
+            app(ProposeClassifications::class)->forPeriod($class, $period);
+            $carolina = $this->classificationFor($period, 'Carolina Nunes');
+            app(ConfirmClassification::class)->confirm($carolina, $teacher);
+
+            $version2 = $this->activateSecondVersion($class->refresh(), $teacher);
+            $countBefore = Classification::count();
+
+            $migration = app(MigrateClassProfile::class)->migrate($class->refresh(), $version2, 'Ponderação revista.', $teacher);
+
+            // refreshOnly: no new proposal rows were conjured by the migration.
+            $this->assertSame($countBefore, Classification::count());
+
+            // Carolina's confirmed cell is shown as kept, not as a phantom change.
+            $carolinaRow = collect($migration->impact_preview['rows'])->firstWhere('name', 'Carolina Nunes');
+            $this->assertSame('kept', $carolinaRow['cells'][0]['state']);
+            $this->assertFalse($carolinaRow['cells'][0]['changed']);
+        });
+    }
+
+    #[Test]
     public function migrating_to_the_same_version_is_refused(): void
     {
         $teacher = User::factory()->create(['email' => 'ana.martins@lapis.test']);

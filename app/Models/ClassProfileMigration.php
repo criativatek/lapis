@@ -11,7 +11,10 @@ use Illuminate\Support\Carbon;
 
 /**
  * The audit record of a class moving between profile versions (§10.2, A4). The
- * impact_preview is a frozen document of what the teacher saw before confirming.
+ * impact_preview is a frozen document of the impact computed at confirmation —
+ * the same computation that drives the migration, so it records exactly what was
+ * applied (recomputed at POST, so it may differ from an earlier on-screen preview
+ * if the underlying marks changed in between).
  *
  * @property int $id
  * @property string $ulid

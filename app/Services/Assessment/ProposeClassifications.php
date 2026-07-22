@@ -24,9 +24,10 @@ class ProposeClassifications
     public function __construct(protected ClassResultsCalculator $calculator) {}
 
     /**
+     * @param  bool  $refreshOnly  when true, only existing open proposals are recalculated — no new proposal rows are created. Used by a profile migration, whose preview showed only the impact on results that already exist.
      * @return array{created: int, updated: int, skipped_frozen: int, no_value: int}
      */
-    public function forPeriod(SchoolClass $class, AcademicPeriod $period, ClassificationScope $scope = ClassificationScope::Period): array
+    public function forPeriod(SchoolClass $class, AcademicPeriod $period, ClassificationScope $scope = ClassificationScope::Period, bool $refreshOnly = false): array
     {
         $version = $class->profileVersion;
 
@@ -37,7 +38,7 @@ class ProposeClassifications
         $results = $this->calculator->forScope($class, $period, $scope);
         $counts = ['created' => 0, 'updated' => 0, 'skipped_frozen' => 0, 'no_value' => 0];
 
-        DB::transaction(function () use ($results, $period, $scope, $version, &$counts): void {
+        DB::transaction(function () use ($results, $period, $scope, $version, $refreshOnly, &$counts): void {
             foreach ($results as $row) {
                 $outcome = $row['outcome'];
 
@@ -75,6 +76,12 @@ class ProposeClassifications
                     $live->fill($proposal)->save();
                     $counts['updated']++;
 
+                    continue;
+                }
+
+                // A migration refreshes what the teacher previewed — existing open
+                // proposals — and never conjures new ones they did not see.
+                if ($refreshOnly) {
                     continue;
                 }
 
