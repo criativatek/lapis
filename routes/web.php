@@ -8,6 +8,7 @@ use App\Http\Controllers\ClassProfileMigrationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\InstrumentController;
+use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\ResultsController;
 use App\Http\Controllers\SubjectController;
 use Illuminate\Support\Facades\Route;
@@ -92,6 +93,14 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::post('classes/{class}/classifications/{period}/propose', [ClassificationController::class, 'propose'])->name('classifications.propose');
         Route::post('classes/{class}/classifications/{period}/publish', [ClassificationController::class, 'publish'])->name('classifications.publish');
         Route::post('classifications/{classification}/confirm', [ClassificationController::class, 'confirm'])->name('classifications.confirm');
+    });
+
+    // Reports — the classification sheet (pauta) of decided grades, printable and
+    // exportable to CSV.
+    Route::middleware('module:reports')->group(function () {
+        Route::get('reports', [ReportsController::class, 'index'])->name('reports.index');
+        Route::get('classes/{class}/report', [ReportsController::class, 'show'])->name('reports.show');
+        Route::get('classes/{class}/report/export', [ReportsController::class, 'export'])->name('reports.export');
     });
 });
 

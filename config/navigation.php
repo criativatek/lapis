@@ -40,7 +40,7 @@ return [
                 ['key' => 'interventions', 'label' => 'Intervenções', 'icon' => 'HeartHandshake', 'module' => 'interventions', 'phase' => 3],
                 ['key' => 'student-progress', 'label' => 'Evolução do Aluno', 'icon' => 'TrendingUp', 'module' => 'student_progress', 'phase' => 3],
                 ['key' => 'class-analysis', 'label' => 'Análise da Turma', 'icon' => 'PieChart', 'module' => 'class_analysis', 'phase' => 3],
-                ['key' => 'reports', 'label' => 'Relatórios', 'icon' => 'FileText', 'module' => 'reports', 'phase' => 3],
+                ['key' => 'reports', 'label' => 'Relatórios', 'icon' => 'FileText', 'module' => 'reports', 'phase' => 3, 'route' => 'reports.index', 'built' => true],
             ],
         ],
 
