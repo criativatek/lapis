@@ -17,6 +17,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Application Version
+    |--------------------------------------------------------------------------
+    |
+    | Bumped with every commit alongside a CHANGELOG.md entry. Pre-1.0 while the
+    | phases are still being built (Fase 1 done; Fase 2 in progress).
+    |
+    */
+
+    'version' => '0.5.0',
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Environment
     |--------------------------------------------------------------------------
     |

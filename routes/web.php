@@ -3,6 +3,7 @@
 use App\Http\Controllers\AcademicYearController;
 use App\Http\Controllers\AssessmentProfileController;
 use App\Http\Controllers\ClassController;
+use App\Http\Controllers\ClassificationController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\InstrumentController;
 use App\Http\Controllers\ResultsController;
@@ -78,6 +79,11 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     Route::middleware('module:results')->group(function () {
         Route::get('results', [ResultsController::class, 'index'])->name('results.index');
         Route::get('classes/{class}/results/{period?}', [ResultsController::class, 'show'])->name('results.show');
+
+        // The decision layer (§7): propose from the engine, then the teacher confirms.
+        Route::get('classes/{class}/classifications/{period?}', [ClassificationController::class, 'show'])->name('classifications.show');
+        Route::post('classes/{class}/classifications/{period}/propose', [ClassificationController::class, 'propose'])->name('classifications.propose');
+        Route::post('classifications/{classification}/confirm', [ClassificationController::class, 'confirm'])->name('classifications.confirm');
     });
 });
 

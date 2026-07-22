@@ -666,7 +666,8 @@ Proposta, confirmação, publicação e **alteração manual** numa só linha, p
 
 ```sql
 CHECK (
-  override_reason IS NOT NULL
+  (final_value IS NULL AND final_scale_level_id IS NULL)
+  OR override_reason IS NOT NULL
   OR (final_value <=> proposed_value AND final_scale_level_id <=> proposed_scale_level_id)
 )
 CHECK (status <> 'confirmed' OR confirmed_by IS NOT NULL)
@@ -674,9 +675,11 @@ CHECK (status <> 'confirmed' OR confirmed_by IS NOT NULL)
 
 > O operador `<=>` (*null-safe equal*) do MySQL é essencial: com `=` normal, uma comparação envolvendo `NULL` devolve `NULL`, o `CHECK` não falharia e uma alteração manual passaria **sem motivo**. Com `<=>`, alterar a proposta sem escrever motivo é recusado pela base de dados — não pelo formulário.
 >
+> **A primeira cláusula admite o estado `proposed`.** Uma proposta ainda por decidir tem `final_*` a `NULL` mas `proposed_value` preenchido; sem esta cláusula o `CHECK` rejeitaria a própria inserção da proposta, porque `NULL <=> 80` é falso. «Sem decisão final» significa **ambas** as colunas `final_*` nulas; assim que uma é preenchida, a regra A10 volta a aplicar-se. (A versão inicial deste documento omitia esta cláusula — corrigido na implementação do slice §7, confirmado por CHECK real em MySQL.)
+>
 > **A10 preserva os quatro elementos por construção:** proposta original (`proposed_value`/`proposed_scale_level_id`, nunca sobrescritos), valor final (`final_*`), motivo (`override_reason`), autor e data (`overridden_by`/`overridden_at`). O `calculation_snapshot_id` garante ainda que se sabe **como** se chegou ao nível 3 que o professor recusou.
 >
-> **Uma só classificação viva.** Mesmo padrão de coluna gerada de §3.1: `status_active_flag TINYINT AS (IF(status <> 'superseded', 1, NULL)) STORED`, permitindo N linhas `superseded` no histórico e no máximo uma viva por (aluno, período, âmbito).
+> **Uma só classificação viva.** Mesmo padrão de coluna gerada de §3.1: `status_active_flag TINYINT AS (CASE WHEN status <> 'superseded' THEN 1 ELSE NULL END) STORED`, permitindo N linhas `superseded` no histórico e no máximo uma viva por (aluno, período, âmbito). (`CASE` em vez de `IF()` para a coluna gerada funcionar igual em MySQL e no SQLite dos testes.)
 
 ### 7.2 `calculation_snapshots`
 §13.6: ao confirmar uma proposta ou encerrar um período, preservar **inputs + versão das regras + resultado + data + autor**.

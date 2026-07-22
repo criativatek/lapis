@@ -48,7 +48,10 @@ function selectPeriod(ulid: string): void {
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
                 <Heading :title="`Resultados — ${schoolClass.label}`" :description="schoolClass.subject" />
-                <Link :href="`/classes/${schoolClass.ulid}`" class="text-sm text-muted-foreground hover:underline">← Voltar à turma</Link>
+                <div class="flex gap-3 text-sm">
+                    <Link :href="`/classes/${schoolClass.ulid}`" class="text-muted-foreground hover:underline">← Voltar à turma</Link>
+                    <Link :href="`/classes/${schoolClass.ulid}/classifications`" class="text-primary hover:underline">Classificações →</Link>
+                </div>
             </div>
             <div v-if="periods.length" class="flex gap-1">
                 <button

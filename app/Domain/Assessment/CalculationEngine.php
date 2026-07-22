@@ -16,6 +16,13 @@ use App\Models\ResultState;
 class CalculationEngine
 {
     /**
+     * Stamped into every snapshot (§13.6): a value frozen by v1.0 stays explainable
+     * by v1.0's rules even after the engine evolves. Bump on any change to the
+     * arithmetic or rule application here.
+     */
+    public const VERSION = '1.0';
+
+    /**
      * @param  list<ScoreInput>  $scores
      * @param  array<int, string>  $domainWeights  domain_id => weight_percent (the profile version's weights)
      */
