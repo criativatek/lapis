@@ -12,6 +12,7 @@ use App\Http\Controllers\EvidenceController;
 use App\Http\Controllers\InstrumentController;
 use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\ResultsController;
+use App\Http\Controllers\SelfAssessmentController;
 use App\Http\Controllers\SubjectController;
 use Illuminate\Support\Facades\Route;
 
@@ -114,6 +115,14 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::get('classes/{class}/records', [EvidenceController::class, 'show'])->name('records.show');
         Route::post('classes/{class}/records', [EvidenceController::class, 'store'])->name('records.store');
         Route::delete('records/{record}', [EvidenceController::class, 'destroy'])->name('records.destroy');
+    });
+
+    // Self-assessment (§15). Compared with the calculated grade, never summed in.
+    Route::middleware('module:self_assessments')->group(function () {
+        Route::get('self-assessments', [SelfAssessmentController::class, 'index'])->name('self-assessments.index');
+        Route::get('classes/{class}/self-assessments/{period?}', [SelfAssessmentController::class, 'show'])->name('self-assessments.show');
+        Route::get('classes/{class}/self-assessments/{period}/{enrollment}', [SelfAssessmentController::class, 'edit'])->name('self-assessments.edit');
+        Route::post('classes/{class}/self-assessments/{period}/{enrollment}', [SelfAssessmentController::class, 'store'])->name('self-assessments.store');
     });
 });
 
