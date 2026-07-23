@@ -5,6 +5,7 @@ namespace App\Services\Assessment;
 use App\Models\AssessmentProfileVersion;
 use App\Models\ProfileVersionStatus;
 use App\Models\User;
+use App\Services\Audit\AuditLog;
 use App\Support\Assessment\ProfileActivationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -27,6 +28,8 @@ use Illuminate\Support\Facades\DB;
  */
 class ActivateProfileVersion
 {
+    public function __construct(protected AuditLog $audit) {}
+
     public function activate(AssessmentProfileVersion $version, User $actor): AssessmentProfileVersion
     {
         $this->guardIsDraft($version);
@@ -51,6 +54,14 @@ class ActivateProfileVersion
             $this->freezeScale($version, $now);
 
             $version->profile()->update(['current_version_id' => $version->getKey()]);
+
+            $this->audit->record(
+                'profile_version.activated',
+                $version,
+                $actor,
+                "Versão {$version->version_number} do perfil ativada e congelada.",
+                ['version_number' => $version->version_number, 'assessment_profile_id' => $version->assessment_profile_id],
+            );
 
             return $version->refresh();
         });

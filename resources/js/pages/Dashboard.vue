@@ -33,9 +33,12 @@ const summary = computed(() => [
     <Head title="Painel do Professor" />
 
     <div class="space-y-6 p-4">
-        <div>
-            <h1 class="text-2xl font-semibold tracking-tight">Olá, {{ firstName }}</h1>
-            <p class="text-sm text-muted-foreground">Aqui está o que precisa da sua atenção.</p>
+        <div class="flex items-start justify-between gap-3">
+            <div>
+                <h1 class="text-2xl font-semibold tracking-tight">Olá, {{ firstName }}</h1>
+                <p class="text-sm text-muted-foreground">Aqui está o que precisa da sua atenção.</p>
+            </div>
+            <Link href="/activity" class="text-sm text-muted-foreground hover:underline">Registo de atividade</Link>
         </div>
 
         <div class="grid gap-4 sm:grid-cols-3">

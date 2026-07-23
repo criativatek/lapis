@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AcademicYearController;
+use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\AssessmentProfileController;
 use App\Http\Controllers\ClassController;
 use App\Http\Controllers\ClassificationController;
@@ -19,6 +20,9 @@ Route::inertia('/', 'Welcome')->name('home');
 // organization must be resolved before the request reaches a controller.
 Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     Route::get('dashboard', DashboardController::class)->name('dashboard');
+
+    // Audit trail (§22.4) — read-only view of the organization's recorded events.
+    Route::get('activity', [ActivityController::class, 'index'])->name('activity.index');
 
     // Academic years are the temporal foundation (§9). Reached from the header
     // year selector, not the sidebar — the year is a context, not a menu item.

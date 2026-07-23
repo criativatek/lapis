@@ -10,6 +10,7 @@ use App\Models\Classification;
 use App\Models\ClassificationStatus;
 use App\Models\SnapshotTrigger;
 use App\Models\User;
+use App\Services\Audit\AuditLog;
 use App\Support\Assessment\ClassificationDecisionException;
 use Illuminate\Support\Facades\DB;
 
@@ -23,7 +24,10 @@ use Illuminate\Support\Facades\DB;
  */
 class ConfirmClassification
 {
-    public function __construct(protected ClassResultsCalculator $calculator) {}
+    public function __construct(
+        protected ClassResultsCalculator $calculator,
+        protected AuditLog $audit,
+    ) {}
 
     /**
      * @param  string|null  $finalValue  the teacher's value; null or equal to the proposal means "accept the proposal"
@@ -101,6 +105,23 @@ class ConfirmClassification
                 'overridden_by' => $isOverride ? $teacher->id : null,
                 'overridden_at' => $isOverride ? now() : null,
             ])->save();
+
+            // Audit (§22.5): a confirmation, and — when the teacher changed the
+            // proposal — the override, each carry the values and the reason.
+            $this->audit->record(
+                $isOverride ? 'classification.overridden' : 'classification.confirmed',
+                $locked,
+                $teacher,
+                $isOverride
+                    ? "Classificação alterada de {$locked->proposed_value} para {$finalValue}."
+                    : "Classificação confirmada em {$locked->final_value}.",
+                [
+                    'proposed_value' => $locked->proposed_value,
+                    'final_value' => $locked->final_value,
+                    'override_reason' => $locked->override_reason,
+                    'snapshot_id' => $snapshot->id,
+                ],
+            );
 
             return $locked;
         });

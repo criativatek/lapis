@@ -9,6 +9,7 @@ use App\Models\ClassificationStatus;
 use App\Models\Enrollment;
 use App\Models\SchoolClass;
 use App\Models\User;
+use App\Services\Audit\AuditLog;
 use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
@@ -25,6 +26,8 @@ use Inertia\Response;
  */
 class ReportsController extends Controller
 {
+    public function __construct(protected AuditLog $audit) {}
+
     public function index(): Response
     {
         $classes = SchoolClass::query()
@@ -65,6 +68,9 @@ class ReportsController extends Controller
         Gate::authorize('view', $class);
 
         $pauta = $this->pauta($class);
+
+        // Audit (§22.5): a bulk export of student grades leaves a trail.
+        $this->audit->record('report.exported', $class, summary: "Pauta de {$class->label} exportada em CSV.");
 
         $handle = fopen('php://temp', 'r+');
         if ($handle === false) {

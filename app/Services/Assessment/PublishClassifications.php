@@ -10,6 +10,7 @@ use App\Models\Instrument;
 use App\Models\ResultState;
 use App\Models\SchoolClass;
 use App\Models\StudentItemScore;
+use App\Services\Audit\AuditLog;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -22,7 +23,10 @@ use Illuminate\Support\Facades\DB;
  */
 class PublishClassifications
 {
-    public function __construct(protected ClassResultsCalculator $calculator) {}
+    public function __construct(
+        protected ClassResultsCalculator $calculator,
+        protected AuditLog $audit,
+    ) {}
 
     /**
      * @return array{published: int, blocked_under_review: int}
@@ -84,6 +88,17 @@ class PublishClassifications
                 $counts['published']++;
             }
         });
+
+        // Audit (§22.5): publication is a batch communication — one line with the
+        // count, not one per grade.
+        if ($counts['published'] > 0) {
+            $this->audit->record(
+                'classification.published',
+                $class,
+                summary: "{$counts['published']} classificações publicadas ({$scope->value}).",
+                properties: ['period_id' => $period->id, 'scope' => $scope->value, ...$counts],
+            );
+        }
 
         return $counts;
     }

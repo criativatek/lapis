@@ -12,6 +12,7 @@ use App\Models\ClassProfileMigration;
 use App\Models\ProfileVersionStatus;
 use App\Models\SchoolClass;
 use App\Models\User;
+use App\Services\Audit\AuditLog;
 use App\Support\Assessment\ProfileMigrationException;
 use Illuminate\Support\Facades\DB;
 
@@ -28,6 +29,7 @@ class MigrateClassProfile
     public function __construct(
         protected ClassResultsCalculator $calculator,
         protected ProposeClassifications $proposer,
+        protected AuditLog $audit,
     ) {}
 
     /**
@@ -163,7 +165,7 @@ class MigrateClassProfile
                 }
             }
 
-            return ClassProfileMigration::create([
+            $migration = ClassProfileMigration::create([
                 'class_id' => $locked->id,
                 'from_version_id' => $fromVersion?->id,
                 'to_version_id' => $toVersion->id,
@@ -176,6 +178,22 @@ class MigrateClassProfile
                 'confirmed_at' => now(),
                 'reason' => $reason,
             ]);
+
+            $this->audit->record(
+                'class.profile_migrated',
+                $locked,
+                $teacher,
+                "Turma migrada para a versão {$toVersion->version_number}: {$preview['affected_enrollment_count']} alunos afetados.",
+                [
+                    'from_version_id' => $fromVersion?->id,
+                    'to_version_id' => $toVersion->id,
+                    'affected_enrollment_count' => $preview['affected_enrollment_count'],
+                    'reason' => $reason,
+                    'migration_id' => $migration->id,
+                ],
+            );
+
+            return $migration;
         });
     }
 
