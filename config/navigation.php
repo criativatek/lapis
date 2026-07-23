@@ -36,7 +36,7 @@ return [
                 ['key' => 'assessments', 'label' => 'Avaliações', 'icon' => 'PenLine', 'module' => 'assessments', 'phase' => 2],
                 ['key' => 'results', 'label' => 'Resultados', 'icon' => 'BarChart3', 'module' => 'results', 'phase' => 2, 'route' => 'results.index', 'built' => true],
                 ['key' => 'self-assessments', 'label' => 'Autoavaliações', 'icon' => 'UserCheck', 'module' => 'self_assessments', 'phase' => 3],
-                ['key' => 'records', 'label' => 'Registos', 'icon' => 'NotebookPen', 'module' => 'records', 'phase' => 3],
+                ['key' => 'records', 'label' => 'Registos', 'icon' => 'NotebookPen', 'module' => 'records', 'phase' => 3, 'route' => 'records.index', 'built' => true],
                 ['key' => 'interventions', 'label' => 'Intervenções', 'icon' => 'HeartHandshake', 'module' => 'interventions', 'phase' => 3],
                 ['key' => 'student-progress', 'label' => 'Evolução do Aluno', 'icon' => 'TrendingUp', 'module' => 'student_progress', 'phase' => 3],
                 ['key' => 'class-analysis', 'label' => 'Análise da Turma', 'icon' => 'PieChart', 'module' => 'class_analysis', 'phase' => 3],

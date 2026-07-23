@@ -104,4 +104,12 @@ class SchoolClass extends Model
     {
         return $this->hasMany(Instrument::class, 'class_id')->orderByDesc('applied_on');
     }
+
+    /**
+     * @return HasMany<EvidenceRecord, $this>
+     */
+    public function evidenceRecords(): HasMany
+    {
+        return $this->hasMany(EvidenceRecord::class, 'class_id');
+    }
 }

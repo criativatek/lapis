@@ -8,6 +8,7 @@ use App\Http\Controllers\ClassificationController;
 use App\Http\Controllers\ClassProfileMigrationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EnrollmentController;
+use App\Http\Controllers\EvidenceController;
 use App\Http\Controllers\InstrumentController;
 use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\ResultsController;
@@ -105,6 +106,14 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::get('reports', [ReportsController::class, 'index'])->name('reports.index');
         Route::get('classes/{class}/report', [ReportsController::class, 'show'])->name('reports.show');
         Route::get('classes/{class}/report/export', [ReportsController::class, 'export'])->name('reports.export');
+    });
+
+    // Records — the teacher's logbook (§14). Qualitative evidence, never a grade.
+    Route::middleware('module:records')->group(function () {
+        Route::get('records', [EvidenceController::class, 'index'])->name('records.index');
+        Route::get('classes/{class}/records', [EvidenceController::class, 'show'])->name('records.show');
+        Route::post('classes/{class}/records', [EvidenceController::class, 'store'])->name('records.store');
+        Route::delete('records/{record}', [EvidenceController::class, 'destroy'])->name('records.destroy');
     });
 });
 
