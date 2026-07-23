@@ -10,6 +10,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\EvidenceController;
 use App\Http\Controllers\InstrumentController;
+use App\Http\Controllers\InterventionController;
 use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\ResultsController;
 use App\Http\Controllers\SelfAssessmentController;
@@ -123,6 +124,16 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::get('classes/{class}/self-assessments/{period?}', [SelfAssessmentController::class, 'show'])->name('self-assessments.show');
         Route::get('classes/{class}/self-assessments/{period}/{enrollment}', [SelfAssessmentController::class, 'edit'])->name('self-assessments.edit');
         Route::post('classes/{class}/self-assessments/{period}/{enrollment}', [SelfAssessmentController::class, 'store'])->name('self-assessments.store');
+    });
+
+    // Interventions (§14): support measures with a lifecycle and reviews.
+    Route::middleware('module:interventions')->group(function () {
+        Route::get('interventions', [InterventionController::class, 'index'])->name('interventions.index');
+        Route::get('classes/{class}/interventions', [InterventionController::class, 'show'])->name('interventions.show');
+        Route::post('classes/{class}/interventions', [InterventionController::class, 'store'])->name('interventions.store');
+        Route::patch('interventions/{intervention}', [InterventionController::class, 'update'])->name('interventions.update');
+        Route::post('interventions/{intervention}/reviews', [InterventionController::class, 'addReview'])->name('interventions.reviews.store');
+        Route::delete('interventions/{intervention}', [InterventionController::class, 'destroy'])->name('interventions.destroy');
     });
 });
 
