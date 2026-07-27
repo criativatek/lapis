@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Toaster } from '@/components/ui/sonner';
 import { Link, router, usePage } from '@inertiajs/vue3';
 import { LogOut, Mail, ShieldCheck, UserPlus, Users } from '@lucide/vue';
 import { computed } from 'vue';
@@ -62,5 +63,6 @@ function logout(): void {
                 <slot />
             </main>
         </div>
+        <Toaster />
     </div>
 </template>
