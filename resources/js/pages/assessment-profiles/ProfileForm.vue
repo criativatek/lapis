@@ -113,10 +113,6 @@ function domainError(index: number, field: string): string | undefined {
     return (form.errors as Record<string, string>)[`domains.${index}.${field}`];
 }
 
-function scaleRangeLabel(scale: Option): string {
-    return `${scale.label} (${Number(scale.min_value)} a ${Number(scale.max_value)})`;
-}
-
 function submit(): void {
     form.submit(props.method, props.submitUrl, { preserveScroll: true });
 }
@@ -205,7 +201,7 @@ function submit(): void {
                             :key="scale.id"
                             :value="scale.id"
                         >
-                            {{ scaleRangeLabel(scale) }}
+                            {{ scale.label }}
                         </option>
                     </optgroup>
                     <optgroup label="Escalas personalizadas">
@@ -216,7 +212,7 @@ function submit(): void {
                             :key="scale.id"
                             :value="scale.id"
                         >
-                            {{ scaleRangeLabel(scale) }}
+                            {{ scale.label }}
                         </option>
                     </optgroup>
                 </select>
