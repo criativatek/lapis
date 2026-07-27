@@ -67,6 +67,10 @@ class HandleInertiaRequests extends Middleware
                 'period' => null,
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
+            // A platform admin viewing the app as a teacher — drives the banner.
+            'impersonating' => $request->session()->has('impersonator_id')
+                ? ['name' => $request->user()?->name]
+                : null,
         ];
     }
 }

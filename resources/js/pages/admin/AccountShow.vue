@@ -56,6 +56,9 @@ function post(path: string, data: Record<string, string> = {}): void {
                 <button type="button" class="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40" @click="post('/toggle-admin')">
                     {{ account.owner.is_platform_admin ? 'Revogar admin da plataforma' : 'Tornar admin da plataforma' }}
                 </button>
+                <button v-if="!account.owner.is_platform_admin" type="button" class="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40" @click="post('/impersonate')">
+                    Impersonar (suporte)
+                </button>
             </div>
         </section>
 

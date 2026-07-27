@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminAccountController;
+use App\Http\Controllers\Admin\AdminImpersonateController;
 use App\Http\Controllers\Admin\AdminSettingsController;
 use Illuminate\Support\Facades\Route;
 
@@ -34,4 +35,11 @@ Route::middleware(['auth', 'verified', 'platform-admin'])
         Route::get('settings', [AdminSettingsController::class, 'edit'])->name('settings.edit');
         Route::put('settings', [AdminSettingsController::class, 'update'])->name('settings.update');
         Route::post('settings/test', [AdminSettingsController::class, 'test'])->name('settings.test');
+
+        // Start impersonating the org's owner (support).
+        Route::post('accounts/{organization}/impersonate', [AdminImpersonateController::class, 'start'])->name('accounts.impersonate');
     });
+
+// Stop impersonation — reached AS the impersonated teacher, so it is only `auth`,
+// not `platform-admin`.
+Route::middleware('auth')->post('impersonate/stop', [AdminImpersonateController::class, 'stop'])->name('impersonate.stop');
