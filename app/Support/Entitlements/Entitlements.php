@@ -73,7 +73,11 @@ class Entitlements
             ->withoutGlobalScope('organization')
             ->where('organization_id', $organization->getKey())
             ->with('plan.modules')
+            // id as tiebreaker: two subscriptions with the same starts_at (a plan
+            // changed the same second it was created) must resolve deterministically
+            // to the newest one, not an arbitrary row.
             ->latest('starts_at')
+            ->latest('id')
             ->get()
             ->first(fn (OrganizationSubscription $subscription) => $subscription->isInForce());
 

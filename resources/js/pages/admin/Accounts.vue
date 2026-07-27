@@ -69,7 +69,7 @@ const statusClasses: Record<string, string> = {
                 <tbody class="divide-y divide-border">
                     <tr v-for="org in organizations.data" :key="org.ulid" class="hover:bg-muted/20">
                         <td class="px-3 py-2">
-                            <div class="font-medium">{{ org.name }}</div>
+                            <Link :href="`/admin/accounts/${org.ulid}`" class="font-medium text-primary hover:underline">{{ org.name }}</Link>
                             <div class="text-xs text-muted-foreground">{{ org.type === 'institutional' ? 'Institucional' : 'Pessoal' }}</div>
                         </td>
                         <td class="px-3 py-2">
