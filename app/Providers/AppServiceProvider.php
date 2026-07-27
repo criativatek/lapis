@@ -6,7 +6,9 @@ use App\Models\PlatformSetting;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Tenancy\CurrentOrganization;
 use Carbon\CarbonImmutable;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\ServiceProvider;
@@ -50,12 +52,29 @@ class AppServiceProvider extends ServiceProvider
             return;
         }
 
+        // Bypass the model's 'encrypted' cast and decrypt explicitly: a magic
+        // property read hides the throw from static analysis, and we need the
+        // try/catch to actually guard against a ciphertext that no longer matches
+        // APP_KEY (key rotated, or the row came from another environment's database).
+        $rawPassword = $settings->getRawOriginal('mail_password');
+
+        try {
+            $password = $rawPassword === null ? null : Crypt::decryptString($rawPassword);
+        } catch (DecryptException $exception) {
+            // Fall back to .env mail config instead of 500ing every request in the
+            // app; report() logs that the operator has to re-save the SMTP password
+            // from /admin to restore system email.
+            report($exception);
+
+            return;
+        }
+
         config([
             'mail.default' => 'smtp', // app-level system mail is always SMTP
             'mail.mailers.smtp.host' => $settings->mail_host,
             'mail.mailers.smtp.port' => $settings->mail_port,
             'mail.mailers.smtp.username' => $settings->mail_username,
-            'mail.mailers.smtp.password' => $settings->mail_password,
+            'mail.mailers.smtp.password' => $password,
             // Symfony wants the scheme, not "ssl"/"tls": SSL (port 465) = implicit
             // TLS = `smtps`; TLS/none uses STARTTLS, which is the null default.
             'mail.mailers.smtp.scheme' => $settings->mail_encryption === 'ssl' ? 'smtps' : null,
