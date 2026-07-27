@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Models\PlatformSetting;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Tenancy\CurrentOrganization;
 use Carbon\CarbonImmutable;
@@ -28,6 +29,37 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+        $this->applyPlatformMailSettings();
+    }
+
+    /**
+     * Let the platform's stored SMTP settings override the .env mail config, so
+     * the operator configures system email from the backoffice. Guarded against a
+     * missing table (fresh install / mid-migration): the .env config stays.
+     * ponytail: one indexed-row read per boot — cache it if it ever shows up in profiles.
+     */
+    protected function applyPlatformMailSettings(): void
+    {
+        try {
+            $settings = PlatformSetting::query()->first();
+        } catch (\Throwable) {
+            return; // table not there yet
+        }
+
+        if ($settings === null || ! $settings->mailConfigured()) {
+            return;
+        }
+
+        config([
+            'mail.default' => $settings->mail_mailer ?: 'smtp',
+            'mail.mailers.smtp.host' => $settings->mail_host,
+            'mail.mailers.smtp.port' => $settings->mail_port,
+            'mail.mailers.smtp.username' => $settings->mail_username,
+            'mail.mailers.smtp.password' => $settings->mail_password,
+            'mail.mailers.smtp.scheme' => $settings->mail_encryption ?: null,
+            'mail.from.address' => $settings->mail_from_address ?: config('mail.from.address'),
+            'mail.from.name' => $settings->mail_from_name ?: config('mail.from.name'),
+        ]);
     }
 
     /**
