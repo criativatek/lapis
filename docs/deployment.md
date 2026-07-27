@@ -8,17 +8,50 @@ default do CloudPanel («Hello World :-)»). SSH aberto (porta 22), painel na 84
 > de palavras-passe; a configuração de produção vive no `.env` **no servidor**, não
 > no git. Este documento descreve o processo — sem passwords.
 
-## Estado / bloqueador
+## Estado
 
-O deploy ainda não foi executado. O acesso SSH com o utilizador `lapis` e a
-palavra-passe fornecida foi **recusado** (`Permission denied (publickey,password)`).
-Provável causa: as credenciais dadas são do **painel CloudPanel** (:8443), e o
-**Site User** tem uma palavra-passe SSH/SFTP própria (ou só aceita chave). Para
-desbloquear, uma de:
+**Em produção** desde 2026-07-27: `https://lapis.criativatek.com` serve o LÁPIS,
+migrações + `EntitlementsSeeder` corridos, Cloudflare + HTTPS ativos. Backoffice
+`/admin` no ar. O acesso SSH faz-se pelo **SSH User `deploy`** (criado em CloudPanel
+→ Sites → SSH/FTP), não pelo Site User `lapis` (esse recusa password/chave pelo
+painel). De Windows usa-se **plink** (PuTTY) com o hostkey pinado — ver «Atualizações».
 
-1. No CloudPanel → **Sites → lapis.criativatek.com → SSH/SFTP**: obter/redefinir a
-   palavra-passe do Site User, **ou**
-2. Adicionar uma **chave SSH pública** ao Site User (recomendado — sem passwords).
+## Atualizações (redeploy de código) — o fluxo que funciona
+
+Não voltar a fazer `git clone`. O `.env`/`APP_KEY` vivem **só no servidor** —
+reescrevê-los invalida sessões, 2FA e a password SMTP cifrada. Enviar só código:
+
+```bash
+# 1. Empacotar local (Git Bash). Excluir SEMPRE bootstrap/cache e .env:
+tar --force-local -czf update.tgz \
+  --exclude=.git --exclude=node_modules --exclude=vendor \
+  --exclude=.env --exclude=.env.production \
+  --exclude='storage/logs/*.log' --exclude='storage/framework/cache/data/*' \
+  --exclude=bootstrap/cache --exclude=.claude -C d:/HERD/LAPIS .
+
+# 2. Extrair + reconstruir no servidor via plink (hostkey pinado, sem prompt):
+plink -ssh -hostkey SHA256:5a6uWUkxyqr3DhZCwveJEviWXDAOVQ72ndMgqDYpjHs -batch \
+  -pw '<pw-do-deploy>' deploy@161.97.80.63 \
+  'cd /home/lapis/htdocs/lapis.criativatek.com &&
+   tar xzf - --no-overwrite-dir --no-same-permissions --no-same-owner || true &&
+   test -f artisan &&
+   composer install --no-dev --optimize-autoloader --no-interaction &&
+   php artisan migrate --force &&
+   php artisan config:cache && php artisan route:cache && php artisan view:cache' \
+  < update.tgz
+```
+
+**Duas armadilhas que já partiram o site:**
+
+1. **Nunca enviar `bootstrap/cache/`.** O cache local lista providers de dev
+   (Laravel\Pail) que não existem em produção (`--no-dev`) → `Class ... not found`
+   no `config:cache`. Excluir do tar (acima). Se acontecer: apagar
+   `bootstrap/cache/{packages,services,config}.php` no servidor + `composer install`.
+2. **Correr sempre `composer install`** depois de extrair — regenera o cache de
+   providers para o conjunto de produção. Saltar isto foi o que expôs a armadilha 1.
+
+O `tar x` usa `--no-same-owner/permissions` porque a pasta é do user `lapis`, não
+do `deploy`; o `|| true` engole o aviso de permissões em `.`.
 
 ## Pré-requisitos no servidor (confirmar no CloudPanel)
 
