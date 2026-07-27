@@ -14,7 +14,7 @@ import AppLogoIcon from '@/components/AppLogoIcon.vue';
             >LÁPIS</span
         >
         <span class="truncate text-xs text-muted-foreground"
-            >Mais tempo para ensinar</span
+            >Menos tempo a calcular notas. Mais tempo para ensinar.</span
         >
     </div>
 </template>
