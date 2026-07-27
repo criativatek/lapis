@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { Head, router, useForm } from '@inertiajs/vue3';
+import { ref } from 'vue';
 
 type Settings = {
-    mail_mailer: string;
     mail_host: string | null;
     mail_port: number | null;
     mail_username: string | null;
@@ -15,7 +15,6 @@ type Settings = {
 const props = defineProps<{ settings: Settings }>();
 
 const form = useForm({
-    mail_mailer: props.settings.mail_mailer ?? 'smtp',
     mail_host: props.settings.mail_host ?? '',
     mail_port: props.settings.mail_port ?? 587,
     mail_username: props.settings.mail_username ?? '',
@@ -25,12 +24,14 @@ const form = useForm({
     mail_from_name: props.settings.mail_from_name ?? '',
 });
 
+const testTo = ref('');
+
 function save(): void {
     form.put('/admin/settings', { preserveScroll: true, onSuccess: () => form.reset('mail_password') });
 }
 
 function sendTest(): void {
-    router.post('/admin/settings/test', {}, { preserveScroll: true });
+    router.post('/admin/settings/test', { test_to: testTo.value }, { preserveScroll: true });
 }
 </script>
 
@@ -46,8 +47,8 @@ function sendTest(): void {
         <form class="space-y-4 rounded-lg border border-border p-4" @submit.prevent="save">
             <div class="grid gap-4 sm:grid-cols-2">
                 <label class="text-sm">
-                    <span class="mb-1 block font-medium">Mailer</span>
-                    <input v-model="form.mail_mailer" type="text" class="w-full rounded-md border border-border bg-background px-3 py-2" />
+                    <span class="mb-1 block font-medium">Host</span>
+                    <input v-model="form.mail_host" type="text" placeholder="smtp.exemplo.com" class="w-full rounded-md border border-border bg-background px-3 py-2" />
                 </label>
                 <label class="text-sm">
                     <span class="mb-1 block font-medium">Encriptação</span>
@@ -56,10 +57,6 @@ function sendTest(): void {
                         <option value="tls">TLS</option>
                         <option value="ssl">SSL</option>
                     </select>
-                </label>
-                <label class="text-sm">
-                    <span class="mb-1 block font-medium">Host</span>
-                    <input v-model="form.mail_host" type="text" placeholder="smtp.exemplo.com" class="w-full rounded-md border border-border bg-background px-3 py-2" />
                 </label>
                 <label class="text-sm">
                     <span class="mb-1 block font-medium">Porta</span>
@@ -84,10 +81,16 @@ function sendTest(): void {
                 </label>
             </div>
 
-            <div class="flex items-center justify-between gap-2">
-                <button type="button" class="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted/40" @click="sendTest">
-                    Enviar email de teste
-                </button>
+            <div class="flex flex-wrap items-end justify-between gap-2 border-t border-border pt-4">
+                <div class="flex items-end gap-2">
+                    <label class="text-sm">
+                        <span class="mb-1 block text-xs text-muted-foreground">Enviar teste para</span>
+                        <input v-model="testTo" type="email" placeholder="o-teu-email@exemplo.com" class="w-56 rounded-md border border-border bg-background px-3 py-2" />
+                    </label>
+                    <button type="button" class="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted/40" @click="sendTest">
+                        Enviar email de teste
+                    </button>
+                </div>
                 <button type="submit" class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50" :disabled="form.processing">
                     Guardar
                 </button>

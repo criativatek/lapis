@@ -51,7 +51,7 @@ class AppServiceProvider extends ServiceProvider
         }
 
         config([
-            'mail.default' => $settings->mail_mailer ?: 'smtp',
+            'mail.default' => 'smtp', // app-level system mail is always SMTP
             'mail.mailers.smtp.host' => $settings->mail_host,
             'mail.mailers.smtp.port' => $settings->mail_port,
             'mail.mailers.smtp.username' => $settings->mail_username,

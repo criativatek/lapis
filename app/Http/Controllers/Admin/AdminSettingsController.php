@@ -25,7 +25,6 @@ class AdminSettingsController extends Controller
 
         return Inertia::render('admin/Settings', [
             'settings' => [
-                'mail_mailer' => $settings->mail_mailer,
                 'mail_host' => $settings->mail_host,
                 'mail_port' => $settings->mail_port,
                 'mail_username' => $settings->mail_username,
@@ -40,7 +39,6 @@ class AdminSettingsController extends Controller
     public function update(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'mail_mailer' => ['required', 'string', 'max:50'],
             'mail_host' => ['nullable', 'string', 'max:255'],
             'mail_port' => ['nullable', 'integer', 'min:1', 'max:65535'],
             'mail_username' => ['nullable', 'string', 'max:255'],
@@ -66,7 +64,10 @@ class AdminSettingsController extends Controller
 
     public function test(Request $request): RedirectResponse
     {
-        $email = $request->user()->email;
+        // Send the test to a chosen inbox (default: the admin's), so it can land
+        // somewhere real even when the admin account uses a non-mailbox address.
+        $validated = $request->validate(['test_to' => ['nullable', 'email']]);
+        $email = $validated['test_to'] ?? $request->user()->email;
 
         try {
             Mail::raw('Email de teste do LÁPIS — o SMTP está configurado corretamente.', fn ($message) => $message

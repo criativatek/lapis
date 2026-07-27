@@ -49,7 +49,6 @@ class AdminSettingsTest extends TestCase
         PlatformSetting::current()->update(['mail_host' => 'h1', 'mail_password' => 'keepme']);
 
         $this->actingAs($this->admin())->put('/admin/settings', [
-            'mail_mailer' => 'smtp',
             'mail_host' => 'h2',
             'mail_password' => '',
         ])->assertRedirect();
