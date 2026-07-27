@@ -27,3 +27,9 @@ yarn-error.log
 /.nova
 /.vscode
 /.zed
+
+# Claude Code local tooling (skills marketplace cache, not project source)
+/.agents
+/.claude/skills
+/skills-lock.json
+/AGENTS.md.local-backup-*
