@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { Link, router, usePage } from '@inertiajs/vue3';
-import { LogOut, ShieldCheck, Users } from '@lucide/vue';
+import { LogOut, ShieldCheck, UserPlus, Users } from '@lucide/vue';
 import { computed } from 'vue';
 
 const page = usePage();
 const userName = computed(() => (page.props.auth as { user?: { name?: string } } | undefined)?.user?.name ?? '');
 
 // Nav grows as backoffice slices land (accounts → create → SMTP).
-const nav = [{ label: 'Contas', href: '/admin', icon: Users, active: (path: string) => path === '/admin' || path.startsWith('/admin/accounts') }];
+const nav = [
+    { label: 'Contas', href: '/admin', icon: Users, active: (path: string) => path === '/admin' || (path.startsWith('/admin/accounts') && path !== '/admin/accounts/create') },
+    { label: 'Nova conta', href: '/admin/accounts/create', icon: UserPlus, active: (path: string) => path === '/admin/accounts/create' },
+];
 
 const currentPath = computed(() => page.url.split('?')[0]);
 

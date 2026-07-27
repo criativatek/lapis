@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Actions\Organizations\CreatePersonalOrganization;
 use App\Http\Controllers\Controller;
 use App\Models\Organization;
 use App\Models\OrganizationSubscription;
 use App\Models\Plan;
 use App\Models\SubscriptionStatus;
+use App\Models\User;
 use App\Services\Audit\AuditLog;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Tenancy\CurrentOrganization;
@@ -14,6 +16,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -63,6 +66,53 @@ class AdminAccountController extends Controller
             'organizations' => $organizations,
             'search' => $search,
         ]);
+    }
+
+    public function create(): Response
+    {
+        return Inertia::render('admin/AccountCreate', [
+            'plans' => Plan::orderBy('id')->get(['key', 'name']),
+        ]);
+    }
+
+    public function store(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            'password' => ['nullable', 'string', 'min:8'],
+            'plan_key' => ['required', Rule::exists('plans', 'key')],
+        ]);
+
+        // Provisioned accounts skip email verification (there may be no mailbox to
+        // confirm) and can be handed a generated one-time password.
+        $generated = ($validated['password'] ?? '') === '' ? Str::password(14) : null;
+
+        $user = User::create([
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+            'password' => $generated ?? $validated['password'],
+        ]);
+        $user->forceFill(['email_verified_at' => now()])->save();
+
+        $organization = app(CreatePersonalOrganization::class)->create($user);
+
+        if ($validated['plan_key'] !== 'base') {
+            $plan = Plan::where('key', $validated['plan_key'])->firstOrFail();
+            OrganizationSubscription::query()->withoutGlobalScope('organization')->create([
+                'organization_id' => $organization->id,
+                'plan_id' => $plan->id,
+                'status' => SubscriptionStatus::Active,
+                'starts_at' => Carbon::now(),
+            ]);
+            $this->entitlements->flush();
+        }
+
+        $this->log($organization, 'admin.account_created', "Conta criada: {$user->email} ({$validated['plan_key']}).");
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Conta criada.').($generated !== null ? " Password temporária: {$generated}" : '')]);
+
+        return redirect()->route('admin.accounts.show', $organization);
     }
 
     public function show(Organization $organization): Response

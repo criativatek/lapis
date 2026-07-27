@@ -95,6 +95,39 @@ class AdminAccountManagementTest extends TestCase
     }
 
     #[Test]
+    public function provisioning_creates_a_verified_account_on_the_chosen_plan(): void
+    {
+        $this->actingAs($this->admin())->post('/admin/accounts', [
+            'name' => 'Novo Professor',
+            'email' => 'novo@escola.pt',
+            'password' => 'segredo-forte',
+            'plan_key' => 'pro',
+        ])->assertRedirect();
+
+        $user = User::where('email', 'novo@escola.pt')->firstOrFail();
+        $this->assertNotNull($user->email_verified_at); // provisioned accounts skip verification
+        $org = $user->personalOrganization();
+        $this->assertNotNull($org);
+
+        $entitlements = app(Entitlements::class);
+        $entitlements->flush();
+        $this->assertContains('calendar', $entitlements->modulesFor($org)); // pro plan applied
+        $this->assertTrue($this->trailHas($org, 'admin.account_created'));
+    }
+
+    #[Test]
+    public function provisioning_rejects_a_duplicate_email(): void
+    {
+        $existing = User::factory()->create();
+
+        $this->actingAs($this->admin())->post('/admin/accounts', [
+            'name' => 'Repetido',
+            'email' => $existing->email,
+            'plan_key' => 'base',
+        ])->assertSessionHasErrors('email');
+    }
+
+    #[Test]
     public function a_teacher_cannot_act_on_accounts(): void
     {
         [, $org] = $this->targetAccount();

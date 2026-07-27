@@ -19,6 +19,9 @@ Route::middleware(['auth', 'verified', 'platform-admin'])
     ->name('admin.')
     ->group(function () {
         Route::get('/', [AdminAccountController::class, 'index'])->name('accounts.index');
+        // create BEFORE {organization} — otherwise "create" binds as an org ulid.
+        Route::get('accounts/create', [AdminAccountController::class, 'create'])->name('accounts.create');
+        Route::post('accounts', [AdminAccountController::class, 'store'])->name('accounts.store');
         Route::get('accounts/{organization}', [AdminAccountController::class, 'show'])->name('accounts.show');
         Route::post('accounts/{organization}/verify-email', [AdminAccountController::class, 'verifyEmail'])->name('accounts.verify-email');
         Route::post('accounts/{organization}/plan', [AdminAccountController::class, 'changePlan'])->name('accounts.plan');
