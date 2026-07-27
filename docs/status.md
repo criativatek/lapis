@@ -23,8 +23,10 @@ versão em [CHANGELOG.md](../CHANGELOG.md); o "porquê" das decisões em [docs/a
 | **Registos / Evidências (§14)** | ✅ | Diário de bordo qualitativo; nunca no cálculo. |
 | **Autoavaliação (§15)** | ✅ | Por domínio, comparada com o cálculo, nunca somada. |
 | **Intervenções (§14)** | ✅ | Ciclo de vida + apreciações de eficácia. |
+| **Backoffice de plataforma** | ✅ | `/admin` super-admin: gestão de contas, criar/provisionar, SMTP na BD (sobrepõe `.env`), impersonar. Guia: [backoffice.md](backoffice.md). |
 
-Suite: ~205 testes verdes · Pint/Larastan/vue-tsc limpos.
+Suite: ~223 testes verdes · Pint/Larastan/vue-tsc limpos. **Em produção** em
+[lapis.criativatek.com](https://lapis.criativatek.com) (versão 0.19.x).
 
 ## Regras pedagógicas (5 questões que bloqueavam a Fase 1)
 

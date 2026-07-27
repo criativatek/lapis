@@ -54,7 +54,8 @@ constraints, colunas geradas e a collation são realmente exercidos (local é SQ
 | [docs/adr/](docs/adr/) | Decisões e o seu porquê (MySQL, tenancy, starter kit, regras) |
 | [docs/workflow.md](docs/workflow.md) | Fluxo de trabalho assistido por IA (orquestrador + Codex) |
 | [docs/status.md](docs/status.md) | O que está feito, o que falta, bloqueadores |
-| [docs/deployment.md](docs/deployment.md) | Deploy (CloudPanel · lapis.criativatek.com) |
+| [docs/backoffice.md](docs/backoffice.md) | Backoffice `/admin`: gerir contas, criar professores, configurar SMTP, impersonar |
+| [docs/deployment.md](docs/deployment.md) | Deploy + redeploy (CloudPanel · lapis.criativatek.com) |
 | [CLAUDE.md](CLAUDE.md) · [AGENTS.md](AGENTS.md) | Regras do projeto para Claude Code / Codex |
 
 ## Trabalhar com IA
