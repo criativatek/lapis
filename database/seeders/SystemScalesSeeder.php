@@ -8,10 +8,8 @@ use Illuminate\Database\Seeder;
 /**
  * The shared scales every organization can use (organization_id NULL).
  *
- * Levels carry codes and labels but NO bands or normalized values — §10.4 forbids
- * inventing the percentage thresholds that map a mark to "Muito Bom". Those are
- * question Q1 and must come from the product owner. Until then a profile using
- * one of these scales shows the raw value; it does not guess a level.
+ * The 1-to-5 scale carries the product-approved normalized bands. Numeric system
+ * scales have no qualitative levels and continue to expose their raw value.
  *
  * Idempotent — safe to re-run.
  */
@@ -32,11 +30,11 @@ class SystemScalesSeeder extends Seeder
         );
 
         $levels = [
-            ['code' => '1', 'label' => 'Muito Insuficiente', 'sequence' => 1, 'numeric_value' => 1, 'is_negative' => true],
-            ['code' => '2', 'label' => 'Insuficiente', 'sequence' => 2, 'numeric_value' => 2, 'is_negative' => true],
-            ['code' => '3', 'label' => 'Suficiente', 'sequence' => 3, 'numeric_value' => 3, 'is_negative' => false],
-            ['code' => '4', 'label' => 'Bom', 'sequence' => 4, 'numeric_value' => 4, 'is_negative' => false],
-            ['code' => '5', 'label' => 'Muito Bom', 'sequence' => 5, 'numeric_value' => 5, 'is_negative' => false],
+            ['code' => '1', 'label' => 'Fraco', 'sequence' => 1, 'numeric_value' => 1, 'is_negative' => true, 'band_min_normalized' => '0.000000', 'band_max_normalized' => '19.499999'],
+            ['code' => '2', 'label' => 'Insuficiente', 'sequence' => 2, 'numeric_value' => 2, 'is_negative' => true, 'band_min_normalized' => '19.500000', 'band_max_normalized' => '49.499999'],
+            ['code' => '3', 'label' => 'Suficiente', 'sequence' => 3, 'numeric_value' => 3, 'is_negative' => false, 'band_min_normalized' => '49.500000', 'band_max_normalized' => '69.499999'],
+            ['code' => '4', 'label' => 'Bom', 'sequence' => 4, 'numeric_value' => 4, 'is_negative' => false, 'band_min_normalized' => '69.500000', 'band_max_normalized' => '89.499999'],
+            ['code' => '5', 'label' => 'Muito Bom', 'sequence' => 5, 'numeric_value' => 5, 'is_negative' => false, 'band_min_normalized' => '89.500000', 'band_max_normalized' => '100.000000'],
         ];
 
         $this->syncLevels($scale, $levels);
@@ -71,8 +69,6 @@ class SystemScalesSeeder extends Seeder
         foreach ($levels as $level) {
             $scale->levels()->create($level + [
                 'normalized_value' => null,
-                'band_min_normalized' => null,
-                'band_max_normalized' => null,
             ]);
         }
     }

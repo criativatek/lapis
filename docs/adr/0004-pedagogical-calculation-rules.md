@@ -24,6 +24,8 @@ These are versioned with the profile (frozen on activation) and editable per ver
 | **Rounding (Q3)** | **Half up, final only, 0 decimals.** Intermediate values keep full precision; only the final classification is rounded to an integer. | `rounding_mode = 'half_up'`, `rounding_stage = 'final_only'`, `rounding_scale = 0` |
 | **Accumulated result (Q4)** | **All valid year elements.** The accumulated result reprocesses every valid assessment element of the year (1st + 2nd semester) as one set with the profile's weights — the literal reading of "todas as aprendizagens do ano letivo". Not an average of period averages. | `accumulated_mode = 'all_valid_year_elements'` |
 
+**Revision — 2026-07-27 (Q1):** the original 2026-07-18 decision remains the default for scales without configured bands, but is superseded for the system scale «Escala 1 a 5». Its approved inclusive normalized bands are: level 1 «Fraco» `0.000000–19.499999`; level 2 «Insuficiente» `19.500000–49.499999`; level 3 «Suficiente» `49.500000–69.499999`; level 4 «Bom» `69.500000–89.499999`; level 5 «Muito Bom» `89.500000–100.000000`. The 0–20, percentage, and custom numeric scales remain without automatic qualitative conversion.
+
 These are defaults, not hard-codes (§4.3): a version can carry different values, and the columns are `CHECK`-constrained to their allowed sets.
 
 **Still open (not blocking):** Q5 — the Intuitivo import format. A real anonymized export file is needed before writing the parser; the spec says CSV/XLSX, a mockup shows `.xml`.

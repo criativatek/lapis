@@ -980,15 +980,18 @@ Proposta determinística nível 3 → `classifications.proposed_scale_level_id` 
 
 §1 é explícito: **não inventar regras pedagógicas**. Todas as questões seguintes têm colunas no modelo prontas a receber a resposta — nenhuma bloqueia a escrita das migrations, mas **Q1–Q4 bloqueiam os testes do motor de cálculo**, porque sem elas não há resultado esperado contra o qual testar.
 
-### Q1 — Escala por defeito e bandas de conversão (BLOQUEADOR)
-O mockup mostra «Escala 1 a 5» com `1 = Muito Insuficiente` e `5 = Excelente`; a Correção Manual mostra 86% → «Muito Bom» e 57% → «Suficiente». **As fronteiras exactas não constam de lado nenhum.**
+### Q1 — Escala por defeito e bandas de conversão (RESOLVIDA PARA «ESCALA 1 A 5»)
+O professor continua a escolher explicitamente a escala do perfil. Para a escala de sistema «Escala 1 a 5», o PO aprovou estas bandas inclusivas sobre o valor normalizado:
 
-- (a) Não haver escala por defeito: o professor escolhe sempre na criação do perfil.
-- (b) 1–5 como defeito, com bandas fornecidas pelo PO.
-- (c) 0–20 como defeito.
+| Nível | Rótulo | Percentagem arredondada | `band_min_normalized` | `band_max_normalized` |
+|---|---|---|---|---|
+| 1 | Fraco | 0–19 | `0.000000` | `19.499999` |
+| 2 | Insuficiente | 20–49 | `19.500000` | `49.499999` |
+| 3 | Suficiente | 50–69 | `49.500000` | `69.499999` |
+| 4 | Bom | 70–89 | `69.500000` | `89.499999` |
+| 5 | Muito Bom | 90–100 | `89.500000` | `100.000000` |
 
-**Recomendação: (a) + (b) como modelo pré-carregado.** Sem defeito silencioso — o perfil não activa sem escala escolhida — mas com um *template* «Escala 1 a 5» pronto a usar. **Necessário do PO:** a tabela de bandas (ex.: 0–19 → 1, 20–49 → 2, 50–69 → 3, 70–89 → 4, 90–100 → 5 — **exemplo ilustrativo, não uma proposta**). Enquanto as bandas não existirem, `scale_levels.band_min/max_normalized` ficam `NULL` e o sistema apresenta o valor bruto sem propor nível, em vez de inventar um.
-Sub-questão: as fronteiras são inclusivas em baixo e em cima? Um 69,5% é 3 ou 4?
+Assim, 69,5% pertence ao nível 4 («Bom»). As restantes escalas de sistema (0–20 e Percentagem) e as escalas personalizadas continuam deliberadamente sem bandas: apresentam o valor numérico e não propõem um nível qualitativo. Uma escala futura só terá conversão automática quando as suas próprias bandas forem aprovadas e configuradas.
 
 ### Q2 — Ausências no denominador (BLOQUEADOR)
 §13.3: «ausências seguem regra configurável e não assumida». Quatro opções, todas suportadas por `absence_mode`:

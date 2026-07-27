@@ -20,13 +20,14 @@ class CalculationEngine
      * by v1.0's rules even after the engine evolves. Bump on any change to the
      * arithmetic or rule application here.
      */
-    public const VERSION = '1.0';
+    public const VERSION = '1.1';
 
     /**
      * @param  list<ScoreInput>  $scores
      * @param  array<int, string>  $domainWeights  domain_id => weight_percent (the profile version's weights)
+     * @param  list<ScaleBand>  $scaleBands
      */
-    public function calculate(array $scores, array $domainWeights, CalculationRule $rule): CalculationOutcome
+    public function calculate(array $scores, array $domainWeights, CalculationRule $rule, array $scaleBands = []): CalculationOutcome
     {
         $domainOutcomes = [];
         $domainExplanations = [];
@@ -37,7 +38,7 @@ class CalculationEngine
             $domainExplanations[] = $explanation;
         }
 
-        return $this->combine($domainOutcomes, $domainExplanations, $rule);
+        return $this->combine($domainOutcomes, $domainExplanations, $rule, $scaleBands);
     }
 
     /**
@@ -135,8 +136,9 @@ class CalculationEngine
     /**
      * @param  list<DomainOutcome>  $domains
      * @param  list<array<string, mixed>>  $domainExplanations
+     * @param  list<ScaleBand>  $scaleBands
      */
-    protected function combine(array $domains, array $domainExplanations, CalculationRule $rule): CalculationOutcome
+    protected function combine(array $domains, array $domainExplanations, CalculationRule $rule, array $scaleBands): CalculationOutcome
     {
         $weightedSum = '0';
         $weightSum = '0';
@@ -179,6 +181,18 @@ class CalculationEngine
             ? null
             : Bc::round(Bc::of($normalized), $rule->roundingScale, $rule->roundingMode);
 
+        $scaleLevelId = null;
+        if ($normalized !== null) {
+            foreach ($scaleBands as $scaleBand) {
+                if (Bc::compare($normalized, Bc::of($scaleBand->bandMin)) >= 0
+                    && Bc::compare($normalized, Bc::of($scaleBand->bandMax)) <= 0) {
+                    $scaleLevelId = $scaleBand->id;
+
+                    break;
+                }
+            }
+        }
+
         return new CalculationOutcome(
             domains: $domains,
             normalizedValue: $normalized,
@@ -186,6 +200,7 @@ class CalculationEngine
             resultState: $normalized === null ? ResultState::Pending->value : ResultState::Assessed->value,
             coverageWarning: $coverageWarning,
             contributingCount: $contributing,
+            scaleLevelId: $scaleLevelId,
             explanation: [
                 'domains' => $domainExplanations,
                 'dropped_domains' => $droppedDomains,
@@ -194,10 +209,10 @@ class CalculationEngine
                 'rounding' => ['mode' => $rule->roundingMode, 'scale' => $rule->roundingScale, 'stage' => $rule->roundingStage],
                 'proposed_value' => $proposed,
                 'coverage_warning' => $coverageWarning,
-                // Bands are not configured (Q1), so no scale level is proposed —
-                // the engine returns the value and says so rather than inventing one.
-                'scale_level' => null,
-                'scale_level_note' => 'Sem bandas de escala configuradas — o nível é atribuído pelo professor (Q1).',
+                'scale_level' => $scaleLevelId,
+                'scale_level_note' => $scaleBands === []
+                    ? 'Sem bandas de escala configuradas — o nível é atribuído pelo professor (Q1).'
+                    : null,
             ],
         );
     }

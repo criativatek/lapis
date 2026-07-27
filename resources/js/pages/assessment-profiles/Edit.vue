@@ -3,7 +3,14 @@ import { Head } from '@inertiajs/vue3';
 import Heading from '@/components/Heading.vue';
 import ProfileForm from './ProfileForm.vue';
 
-type Option = { id: number; label: string; system?: boolean };
+type Option = {
+    id: number;
+    label: string;
+    system?: boolean;
+    kind: string;
+    min_value: number;
+    max_value: number;
+};
 type DomainRow = { name: string; weight: number };
 
 const props = defineProps<{
@@ -30,7 +37,9 @@ const initial = {
     grade_level: props.profile.grade_level ?? '',
     description: props.profile.description,
     scale_id: props.profile.scale_id,
-    domains: props.profile.domains.length ? props.profile.domains : [{ name: '', weight: 0 }],
+    domains: props.profile.domains.length
+        ? props.profile.domains
+        : [{ name: '', weight: 0 }],
 };
 </script>
 
@@ -38,14 +47,18 @@ const initial = {
     <Head :title="`Editar ${profile.name}`" />
 
     <div class="mx-auto w-full max-w-3xl space-y-6 p-4">
-        <Heading :title="`Editar ${profile.name}`" description="Ajuste os domínios e ponderações do rascunho." />
+        <Heading
+            :title="`Editar ${profile.name}`"
+            description="Ajuste os domínios e ponderações do rascunho."
+        />
 
         <p
             v-if="profile.editing_active"
             class="rounded-md border border-blue-300 bg-blue-50 px-4 py-3 text-sm text-blue-900"
         >
-            Este perfil já está ativo. Guardar as alterações abre uma nova versão em rascunho —
-            a versão ativa e os seus resultados mantêm-se intactos até ativar a nova.
+            Este perfil já está ativo. Guardar as alterações abre uma nova
+            versão em rascunho — a versão ativa e os seus resultados mantêm-se
+            intactos até ativar a nova.
         </p>
 
         <ProfileForm

@@ -5,6 +5,7 @@ namespace App\Services\Assessment;
 use App\Domain\Assessment\CalculationEngine;
 use App\Domain\Assessment\CalculationOutcome;
 use App\Domain\Assessment\CalculationRule;
+use App\Domain\Assessment\ScaleBand;
 use App\Domain\Assessment\ScoreInput;
 use App\Models\AcademicPeriod;
 use App\Models\AssessmentProfileVersion;
@@ -86,6 +87,18 @@ class ClassResultsCalculator
         /** @var array<int, string> $domainWeights */
         $domainWeights = $version->domains()->pluck('weight_percent', 'domain_id')->all();
 
+        /** @var list<ScaleBand> $scaleBands */
+        $scaleBands = $version->scale->levels()
+            ->whereNotNull('band_min_normalized')
+            ->whereNotNull('band_max_normalized')
+            ->get()
+            ->map(fn ($level): ScaleBand => new ScaleBand(
+                id: $level->id,
+                bandMin: (string) $level->band_min_normalized,
+                bandMax: (string) $level->band_max_normalized,
+            ))
+            ->all();
+
         // Instruments that may count: flagged as counting, in a state the engine
         // reads. A period result sees only its period; an accumulated result sees
         // every contributing period up to it (the union of raw elements, Q4).
@@ -108,7 +121,7 @@ class ClassResultsCalculator
 
             $results[] = [
                 'enrollment' => $enrollment,
-                'outcome' => $this->engine->calculate($scoreInputs, $domainWeights, $rule),
+                'outcome' => $this->engine->calculate($scoreInputs, $domainWeights, $rule, $scaleBands),
             ];
         }
 

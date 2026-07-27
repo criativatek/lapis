@@ -91,7 +91,7 @@ O fluxo assistido por IA é **portável** e vive no repo — não na config glob
 
 `docs/domain-model.md` §13 lists these in full. They are **pedagogical rules and must not be invented** (§1):
 
-1. **Scale bands** — no thresholds exist anywhere; a mockup shows 86% → "Muito Bom" with nothing defining it.
+1. **Scale bands** — resolved for the system «Escala 1 a 5»; any new scale without explicitly approved bands remains open and must not infer thresholds.
 2. **Absences** — count as zero, exclude, or configurable? §13.3 says "configurável e não assumida".
 3. **Rounding** — rule and stage.
 4. **"Resultado acumulado"** — "todas as aprendizagens do ano letivo" admits three readings with materially different numbers.

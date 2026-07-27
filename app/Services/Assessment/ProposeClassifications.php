@@ -68,8 +68,8 @@ class ProposeClassifications
                     'assessment_profile_version_id' => $version->id,
                     'proposed_normalized_value' => $outcome->normalizedValue,
                     'proposed_value' => $outcome->proposedValue,
-                    // Q1: no scale bands configured, so the engine proposes no level.
-                    'proposed_scale_level_id' => null,
+                    // Scales without configured bands continue to propose no level.
+                    'proposed_scale_level_id' => $outcome->scaleLevelId,
                 ];
 
                 if ($live !== null) {

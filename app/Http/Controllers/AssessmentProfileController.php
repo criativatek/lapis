@@ -139,8 +139,15 @@ class AssessmentProfileController extends Controller
                 ->map(fn (AcademicYear $year) => ['id' => $year->id, 'label' => $year->label]),
             'subjects' => Subject::orderBy('name')->get(['id', 'name'])
                 ->map(fn (Subject $subject) => ['id' => $subject->id, 'label' => $subject->name]),
-            'scales' => Scale::orderByRaw('organization_id IS NOT NULL, name')->get(['id', 'name', 'organization_id'])
-                ->map(fn (Scale $scale) => ['id' => $scale->id, 'label' => $scale->name, 'system' => $scale->organization_id === null]),
+            'scales' => Scale::orderByRaw('organization_id IS NOT NULL, name')->get(['id', 'name', 'kind', 'min_value', 'max_value', 'organization_id'])
+                ->map(fn (Scale $scale) => [
+                    'id' => $scale->id,
+                    'label' => $scale->name,
+                    'system' => $scale->organization_id === null,
+                    'kind' => $scale->kind,
+                    'min_value' => $scale->min_value,
+                    'max_value' => $scale->max_value,
+                ]),
         ];
     }
 

@@ -26,6 +26,8 @@ use Illuminate\Support\Carbon;
  * @property int|null $organization_id
  * @property string $name
  * @property string $kind
+ * @property string $min_value
+ * @property string $max_value
  * @property Carbon|null $frozen_at
  */
 #[Fillable(['name', 'kind', 'min_value', 'max_value'])]
@@ -34,8 +36,9 @@ class Scale extends Model
     /** @use HasFactory<ScaleFactory> */
     use HasFactory, HasUlids;
 
-    public static function bootScale(): void
+    protected static function boot(): void
     {
+        parent::boot();
         // Visible: this organization's scales plus the shared system ones. Other
         // organizations' scales stay hidden, so isolation holds for owned scales.
         static::addGlobalScope('scaleVisibility', function (Builder $query): void {

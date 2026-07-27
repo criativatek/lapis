@@ -24,6 +24,7 @@ final readonly class CalculationOutcome
         public string $resultState,
         public bool $coverageWarning,
         public int $contributingCount,
+        public ?int $scaleLevelId,
         public array $explanation,
     ) {}
 

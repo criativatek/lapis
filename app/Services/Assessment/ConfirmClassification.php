@@ -86,7 +86,7 @@ class ConfirmClassification
                 'payload_hash' => CalculationSnapshot::hashPayload($payload),
                 'result_normalized_value' => $outcome->normalizedValue,
                 'result_value' => $outcome->proposedValue,
-                'result_scale_level_id' => null,
+                'result_scale_level_id' => $outcome->scaleLevelId,
                 'created_by' => $teacher->id,
                 'created_at' => now(),
             ]);

@@ -5,6 +5,7 @@ namespace Tests\Unit\Assessment;
 use App\Domain\Assessment\Bc;
 use App\Domain\Assessment\CalculationEngine;
 use App\Domain\Assessment\CalculationRule;
+use App\Domain\Assessment\ScaleBand;
 use App\Domain\Assessment\ScoreInput;
 use App\Models\ResultState;
 use PHPUnit\Framework\Attributes\Test;
@@ -51,6 +52,20 @@ class CalculationEngineTest extends TestCase
     protected function rule(string $absence = 'exclude_all_warn', string $roundingMode = 'half_up', int $scale = 0): CalculationRule
     {
         return new CalculationRule(absenceMode: $absence, roundingMode: $roundingMode, roundingScale: $scale);
+    }
+
+    /**
+     * @return list<ScaleBand>
+     */
+    protected function oneToFiveBands(): array
+    {
+        return [
+            new ScaleBand(1, '0.000000', '19.499999'),
+            new ScaleBand(2, '19.500000', '49.499999'),
+            new ScaleBand(3, '49.500000', '69.499999'),
+            new ScaleBand(4, '69.500000', '89.499999'),
+            new ScaleBand(5, '89.500000', '100.000000'),
+        ];
     }
 
     #[Test]
@@ -325,6 +340,53 @@ class CalculationEngineTest extends TestCase
         $this->assertSame('Q2', $domain['excluded'][0]['item']);
         $this->assertSame('not_applicable', $domain['excluded'][0]['reason']);
         $this->assertSame('half_up', $outcome->explanation['rounding']['mode']);
+        $this->assertNull($outcome->explanation['scale_level']);
+    }
+
+    #[Test]
+    public function normalized_value_at_69_5_resolves_to_level_four(): void
+    {
+        $outcome = $this->engine->calculate(
+            [$this->score('200', ResultState::Assessed, '139', [['domain_id' => 1, 'allocation_percent' => '100']])],
+            [1 => '100'],
+            $this->rule(),
+            $this->oneToFiveBands(),
+        );
+
+        $this->assertSame('69.500000', $outcome->normalizedValue);
+        $this->assertSame(4, $outcome->scaleLevelId);
+        $this->assertSame(4, $outcome->explanation['scale_level']);
+        $this->assertNull($outcome->explanation['scale_level_note']);
+    }
+
+    #[Test]
+    public function each_other_one_to_five_band_resolves_to_its_level(): void
+    {
+        foreach ([1 => '10', 2 => '30', 3 => '60', 5 => '95'] as $expectedLevel => $earned) {
+            $outcome = $this->engine->calculate(
+                [$this->score('100', ResultState::Assessed, $earned, [['domain_id' => 1, 'allocation_percent' => '100']])],
+                [1 => '100'],
+                $this->rule(),
+                $this->oneToFiveBands(),
+            );
+
+            $this->assertSame($expectedLevel, $outcome->scaleLevelId);
+            $this->assertSame($expectedLevel, $outcome->explanation['scale_level']);
+        }
+    }
+
+    #[Test]
+    public function empty_scale_bands_leave_the_level_null_with_a_normalized_value(): void
+    {
+        $outcome = $this->engine->calculate(
+            [$this->score('10', ResultState::Assessed, '8', [['domain_id' => 1, 'allocation_percent' => '100']])],
+            [1 => '100'],
+            $this->rule(),
+            [],
+        );
+
+        $this->assertSame('80.000000', $outcome->normalizedValue);
+        $this->assertNull($outcome->scaleLevelId);
         $this->assertNull($outcome->explanation['scale_level']);
     }
 }

@@ -13,6 +13,7 @@ use App\Http\Controllers\InstrumentController;
 use App\Http\Controllers\InterventionController;
 use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\ResultsController;
+use App\Http\Controllers\ScaleController;
 use App\Http\Controllers\SelfAssessmentController;
 use App\Http\Controllers\SubjectController;
 use Illuminate\Support\Facades\Route;
@@ -51,6 +52,8 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         ->middleware('module:assessment_profiles')->name('assessment-profiles.create');
     Route::post('assessment-profiles', [AssessmentProfileController::class, 'store'])
         ->middleware('module:assessment_profiles')->name('assessment-profiles.store');
+    Route::post('scales', [ScaleController::class, 'store'])
+        ->middleware('module:assessment_profiles')->name('scales.store');
     Route::get('assessment-profiles/{assessment_profile}/edit', [AssessmentProfileController::class, 'edit'])
         ->middleware('module:assessment_profiles')->name('assessment-profiles.edit');
     Route::put('assessment-profiles/{assessment_profile}', [AssessmentProfileController::class, 'update'])
