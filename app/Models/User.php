@@ -26,9 +26,11 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property string|null $two_factor_recovery_codes
  * @property Carbon|null $two_factor_confirmed_at
  * @property string|null $remember_token
+ * @property bool $is_platform_admin
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
+// is_platform_admin is intentionally absent — the admin flag is never mass-assigned.
 #[Fillable(['name', 'email', 'password'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
@@ -47,7 +49,13 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'two_factor_confirmed_at' => 'datetime',
+            'is_platform_admin' => 'boolean',
         ];
+    }
+
+    public function isPlatformAdmin(): bool
+    {
+        return $this->is_platform_admin === true;
     }
 
     /**

@@ -139,3 +139,4 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
 
 require __DIR__.'/app.php';
 require __DIR__.'/settings.php';
+require __DIR__.'/admin.php';

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsurePlatformAdmin;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\RequireModule;
@@ -31,6 +32,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'organization' => RequireOrganization::class,
             'module' => RequireModule::class,
+            'platform-admin' => EnsurePlatformAdmin::class,
         ]);
 
         // Resolve the tenant BEFORE route-model binding runs. Otherwise
