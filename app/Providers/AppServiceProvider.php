@@ -56,7 +56,9 @@ class AppServiceProvider extends ServiceProvider
             'mail.mailers.smtp.port' => $settings->mail_port,
             'mail.mailers.smtp.username' => $settings->mail_username,
             'mail.mailers.smtp.password' => $settings->mail_password,
-            'mail.mailers.smtp.scheme' => $settings->mail_encryption ?: null,
+            // Symfony wants the scheme, not "ssl"/"tls": SSL (port 465) = implicit
+            // TLS = `smtps`; TLS/none uses STARTTLS, which is the null default.
+            'mail.mailers.smtp.scheme' => $settings->mail_encryption === 'ssl' ? 'smtps' : null,
             'mail.from.address' => $settings->mail_from_address ?: config('mail.from.address'),
             'mail.from.name' => $settings->mail_from_name ?: config('mail.from.name'),
         ]);
