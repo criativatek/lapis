@@ -1,4 +1,5 @@
 /.phpunit.cache
+/.superpowers
 /bootstrap/ssr
 /node_modules
 /public/build
@@ -33,3 +34,7 @@ yarn-error.log
 /.claude/skills
 /skills-lock.json
 /AGENTS.md.local-backup-*
+
+# Real, non-anonymized student export samples used only to design the
+# roster-import feature (docs/superpowers/specs/2026-07-28-*) — never commit.
+/Ficheiros avulsos
