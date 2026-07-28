@@ -27,8 +27,9 @@ use Illuminate\Support\Carbon;
  * @property EnrollmentStatus $status
  * @property bool $is_late_entry
  * @property string|null $late_entry_note
+ * @property string|null $import_note
  */
-#[Fillable(['class_id', 'student_id', 'class_number', 'enrolled_on', 'left_on', 'status', 'is_late_entry', 'late_entry_note'])]
+#[Fillable(['class_id', 'student_id', 'class_number', 'enrolled_on', 'left_on', 'status', 'is_late_entry', 'late_entry_note', 'import_note'])]
 class Enrollment extends Model
 {
     /** @use HasFactory<EnrollmentFactory> */

@@ -6,6 +6,7 @@ use App\Models\AcademicYear;
 use App\Models\AssessmentProfile;
 use App\Models\AssessmentProfileVersion;
 use App\Models\Domain;
+use App\Models\Enrollment;
 use App\Models\ProfileVersionStatus;
 use App\Models\Scale;
 use App\Models\SchoolClass;
@@ -14,6 +15,7 @@ use App\Models\StudentIdentity;
 use App\Models\Subject;
 use App\Models\User;
 use App\Services\Assessment\ActivateProfileVersion;
+use App\Services\StudentEnrollmentService;
 use App\Support\Privacy\BlindIndex;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -216,5 +218,27 @@ class ClassTest extends TestCase
         $this->actingAs($this->user)->post("/classes/{$class->ulid}/students", ['name' => 'Aluno Pontual', 'enrolled_on' => '2026-09-14']);
 
         $this->assertFalse($class->enrollments()->firstOrFail()->is_late_entry);
+    }
+
+    #[Test]
+    public function enrolling_a_student_accepts_optional_birth_date_and_note(): void
+    {
+        $context = $this->context();
+        $this->actingAs($this->user)->post('/classes', ['label' => '7.º A', 'academic_year_id' => $context['year'], 'subject_id' => $context['subject']]);
+        $class = SchoolClass::withoutGlobalScope('organization')->firstOrFail();
+
+        app(CurrentOrganization::class)->runFor(
+            $this->user->personalOrganization(),
+            fn () => app(StudentEnrollmentService::class)->enrollNew($class, [
+                'name' => 'Maria Teste',
+                'enrolled_on' => '2026-09-14',
+                'birth_date' => '2013-05-04',
+                'import_note' => 'Repetente · ASE: B',
+            ]),
+        );
+
+        $identity = StudentIdentity::firstOrFail();
+        $this->assertSame('2013-05-04', $identity->birth_date->toDateString());
+        $this->assertSame('Repetente · ASE: B', Enrollment::withoutGlobalScope('organization')->firstOrFail()->import_note);
     }
 }

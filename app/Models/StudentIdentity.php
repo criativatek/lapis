@@ -24,8 +24,9 @@ use Illuminate\Support\Carbon;
  * @property string|null $display_name_index
  * @property string|null $school_number
  * @property Carbon|null $birth_date
+ * @property string|null $photo_path
  */
-#[Fillable(['student_id', 'organization_id', 'display_name', 'school_number', 'birth_date'])]
+#[Fillable(['student_id', 'organization_id', 'display_name', 'school_number', 'birth_date', 'photo_path'])]
 class StudentIdentity extends Model
 {
     public static function booted(): void

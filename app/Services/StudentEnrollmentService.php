@@ -19,7 +19,7 @@ class StudentEnrollmentService
     public function __construct(protected CurrentOrganization $currentOrganization) {}
 
     /**
-     * @param  array{name: string, class_number?: int|null, enrolled_on?: string|null, school_number?: string|null}  $data
+     * @param  array{name: string, class_number?: int|null, enrolled_on?: string|null, school_number?: string|null, birth_date?: string|null, photo_path?: string|null, import_note?: string|null}  $data
      */
     public function enrollNew(SchoolClass $class, array $data): Enrollment
     {
@@ -30,6 +30,8 @@ class StudentEnrollmentService
                 'organization_id' => $this->currentOrganization->id(),
                 'display_name' => $data['name'],
                 'school_number' => $data['school_number'] ?? null,
+                'birth_date' => $data['birth_date'] ?? null,
+                'photo_path' => $data['photo_path'] ?? null,
             ]);
 
             $enrolledOn = $data['enrolled_on'] ?? $class->academicYear->starts_on->toDateString();
@@ -44,6 +46,7 @@ class StudentEnrollmentService
                 'enrolled_on' => $enrolledOn,
                 'status' => 'active',
                 'is_late_entry' => $isLate,
+                'import_note' => $data['import_note'] ?? null,
             ]);
         });
     }
