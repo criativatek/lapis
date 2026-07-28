@@ -12,8 +12,11 @@ use App\Models\Subject;
 use App\Models\User;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Support\DocxFixtureBuilder;
+use Tests\Support\RosterFixture;
 use Tests\TestCase;
 
 class RosterImportTest extends TestCase
@@ -136,5 +139,90 @@ class RosterImportTest extends TestCase
         $this->actingAs($this->user)
             ->get("/students/{$student->ulid}/photo")
             ->assertForbidden();
+    }
+
+    #[Test]
+    public function uploading_only_the_roster_file_shows_a_preview_with_no_photos(): void
+    {
+        $class = $this->createClass();
+        $excel = UploadedFile::fake()->createWithContent(
+            'roster.xlsx',
+            file_get_contents((new RosterFixture)->build()),
+        );
+
+        $response = $this->actingAs($this->user)->post("/classes/{$class->ulid}/roster-imports", [
+            'roster' => $excel,
+        ]);
+
+        $response->assertInertia(fn ($page) => $page
+            ->component('roster-imports/Preview')
+            ->where('rows.0.name', 'Maria Teste')
+            ->where('rows.0.photo_index', null),
+        );
+    }
+
+    #[Test]
+    public function uploading_a_roster_and_a_photo_file_matches_them_in_the_preview(): void
+    {
+        $class = $this->createClass();
+        $excel = UploadedFile::fake()->createWithContent(
+            'roster.xlsx',
+            file_get_contents((new RosterFixture)->build()),
+        );
+        $photos = UploadedFile::fake()->createWithContent(
+            'photos.docx',
+            file_get_contents(DocxFixtureBuilder::build([
+                ['name' => 'Maria Teste', 'imageBytes' => DocxFixtureBuilder::tinyJpeg()],
+            ])),
+        );
+
+        $response = $this->actingAs($this->user)->post("/classes/{$class->ulid}/roster-imports", [
+            'roster' => $excel,
+            'photos' => $photos,
+        ]);
+
+        $response->assertInertia(fn ($page) => $page
+            ->component('roster-imports/Preview')
+            ->where('rows.0.name', 'Maria Teste')
+            ->where('rows.0.photo_index', 0),
+        );
+    }
+
+    #[Test]
+    public function a_pdf_upload_is_rejected_with_a_clear_error(): void
+    {
+        $class = $this->createClass();
+        $pdf = UploadedFile::fake()->create('roster.pdf', 10, 'application/pdf');
+
+        $this->actingAs($this->user)
+            ->post("/classes/{$class->ulid}/roster-imports", ['roster' => $pdf])
+            ->assertSessionHasErrors('roster');
+    }
+
+    #[Test]
+    public function a_teacher_who_does_not_teach_the_class_cannot_import(): void
+    {
+        $class = $this->createClass();
+
+        // A brand-new user with no relationship at all to $this->user's
+        // organization. Like a_teacher_who_does_not_teach_the_student_cannot_see_the_photo()
+        // above, this is denied before SchoolClassPolicy::update() ever runs:
+        // the tenant-scoped route-model-binding for {class} can't find the row
+        // under the stranger's own (different) organization, so Laravel 404s at
+        // binding time. It exercises organization isolation, not the Policy's
+        // "same school, wrong teacher" logic — there is no same-organization
+        // variant of this test here (unlike the photo tests) because Task 8
+        // does not add one; a future task should if that distinction ever needs
+        // its own coverage for imports.
+        $stranger = User::factory()->create();
+
+        $excel = UploadedFile::fake()->createWithContent(
+            'roster.xlsx',
+            file_get_contents((new RosterFixture)->build()),
+        );
+
+        $this->actingAs($stranger)
+            ->post("/classes/{$class->ulid}/roster-imports", ['roster' => $excel])
+            ->assertNotFound();
     }
 }

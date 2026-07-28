@@ -13,6 +13,7 @@ use App\Http\Controllers\InstrumentController;
 use App\Http\Controllers\InterventionController;
 use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\ResultsController;
+use App\Http\Controllers\RosterImportController;
 use App\Http\Controllers\ScaleController;
 use App\Http\Controllers\SelfAssessmentController;
 use App\Http\Controllers\StudentPhotoController;
@@ -81,6 +82,9 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
 
         Route::post('classes/{class}/students', [EnrollmentController::class, 'store'])->name('classes.students.store');
         Route::delete('classes/{class}/students/{enrollment}', [EnrollmentController::class, 'destroy'])->name('classes.students.destroy');
+
+        Route::post('classes/{class}/roster-imports', [RosterImportController::class, 'store'])->name('classes.roster-imports.store');
+        Route::get('classes/{class}/roster-imports/{token}/photos/{index}', [RosterImportController::class, 'previewPhoto'])->name('classes.roster-imports.preview-photo');
 
         Route::get('students/{student}/photo', [StudentPhotoController::class, 'show'])->name('students.photo');
     });
