@@ -84,6 +84,7 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::delete('classes/{class}/students/{enrollment}', [EnrollmentController::class, 'destroy'])->name('classes.students.destroy');
 
         Route::post('classes/{class}/roster-imports', [RosterImportController::class, 'store'])->name('classes.roster-imports.store');
+        Route::post('classes/{class}/roster-imports/{token}/confirm', [RosterImportController::class, 'confirm'])->name('classes.roster-imports.confirm');
         Route::get('classes/{class}/roster-imports/{token}/photos/{index}', [RosterImportController::class, 'previewPhoto'])->name('classes.roster-imports.preview-photo');
 
         Route::get('students/{student}/photo', [StudentPhotoController::class, 'show'])->name('students.photo');

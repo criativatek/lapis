@@ -4,12 +4,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\EnrollmentStatus;
 use App\Models\SchoolClass;
 use App\Models\StudentIdentity;
 use App\Services\Import\PhotoFileParser;
 use App\Services\Import\RosterFileParseException;
 use App\Services\Import\RosterFileParser;
 use App\Services\Import\RosterImportPreviewBuilder;
+use App\Services\StudentEnrollmentService;
 use App\Support\Import\RosterImportTempStorage;
 use App\Support\Privacy\BlindIndex;
 use App\Support\Tenancy\CurrentOrganization;
@@ -18,6 +20,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 
 class RosterImportController extends Controller
@@ -27,6 +30,7 @@ class RosterImportController extends Controller
         protected PhotoFileParser $photoParser,
         protected RosterImportPreviewBuilder $previewBuilder,
         protected RosterImportTempStorage $tempStorage,
+        protected StudentEnrollmentService $enrollmentService,
         protected CurrentOrganization $currentOrganization,
     ) {}
 
@@ -115,5 +119,76 @@ class RosterImportController extends Controller
         }
 
         return null;
+    }
+
+    public function confirm(Request $request, SchoolClass $class, string $token): RedirectResponse
+    {
+        Gate::authorize('update', $class);
+
+        $data = $request->validate([
+            'rows' => ['required', 'array'],
+            'rows.*.name' => ['required', 'string', 'max:255'],
+            'rows.*.class_number' => ['nullable', 'integer', 'min:1', 'max:65535'],
+            'rows.*.birth_date' => ['nullable', 'date'],
+            'rows.*.situation_code' => ['required', 'string'],
+            'rows.*.note' => ['nullable', 'string', 'max:255'],
+            'rows.*.process_number' => ['nullable', 'string', 'max:64'],
+            'rows.*.photo_temp_path' => ['nullable', 'string'],
+            'rows.*.include' => ['required', 'boolean'],
+        ]);
+
+        $created = 0;
+
+        foreach ($data['rows'] as $row) {
+            if (! $row['include']) {
+                continue;
+            }
+
+            $photoPath = null;
+
+            if (! empty($row['photo_temp_path'])) {
+                $photoPath = $this->movePhotoToPermanentStorage($row['photo_temp_path']);
+            }
+
+            $this->enrollmentService->enrollNew($class, [
+                'name' => $row['name'],
+                'class_number' => $row['class_number'] ?? null,
+                'birth_date' => $row['birth_date'] ?? null,
+                'import_note' => $row['note'] ?? null,
+                'school_number' => $row['process_number'] ?? null,
+                'photo_path' => $photoPath,
+                'status' => $this->mapSituation($row['situation_code']),
+            ]);
+
+            $created++;
+        }
+
+        $this->tempStorage->delete($token);
+
+        return to_route('classes.show', $class->ulid)
+            ->with('status', "{$created} aluno(s) inscrito(s).");
+    }
+
+    protected function movePhotoToPermanentStorage(string $tempRelativePath): ?string
+    {
+        $bytes = $this->tempStorage->readPhoto($tempRelativePath);
+
+        if ($bytes === null) {
+            return null;
+        }
+
+        $extension = pathinfo($tempRelativePath, PATHINFO_EXTENSION) ?: 'jpg';
+        $permanentPath = 'student-photos/'.Str::uuid().'.'.$extension;
+        Storage::disk('local')->put($permanentPath, $bytes);
+
+        return $permanentPath;
+    }
+
+    protected function mapSituation(string $code): string
+    {
+        return match ($code) {
+            'TR' => EnrollmentStatus::TransferredOut->value,
+            default => EnrollmentStatus::Active->value,
+        };
     }
 }

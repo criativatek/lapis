@@ -10,6 +10,7 @@ use App\Models\Student;
 use App\Models\StudentIdentity;
 use App\Models\Subject;
 use App\Models\User;
+use App\Support\Import\RosterImportTempStorage;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -248,5 +249,99 @@ class RosterImportTest extends TestCase
         $this->actingAs($stranger)
             ->post("/classes/{$class->ulid}/roster-imports", ['roster' => $excel])
             ->assertNotFound();
+    }
+
+    #[Test]
+    public function confirming_creates_an_enrollment_per_included_row_with_its_photo(): void
+    {
+        $class = $this->createClass();
+
+        $response = $this->actingAs($this->user)->post("/classes/{$class->ulid}/roster-imports/some-token/confirm", [
+            'rows' => [
+                [
+                    'name' => 'Maria Teste',
+                    'class_number' => 1,
+                    'birth_date' => '2013-05-04',
+                    'situation_code' => 'X',
+                    'note' => 'ASE: B',
+                    'process_number' => '1001',
+                    'photo_temp_path' => null,
+                    'include' => true,
+                ],
+                [
+                    'name' => 'Excluído Este',
+                    'class_number' => 2,
+                    'birth_date' => null,
+                    'situation_code' => 'X',
+                    'note' => null,
+                    'process_number' => null,
+                    'photo_temp_path' => null,
+                    'include' => false,
+                ],
+            ],
+        ]);
+
+        $response->assertRedirect("/classes/{$class->ulid}");
+        $this->assertSame(1, $class->enrollments()->count());
+
+        $identity = StudentIdentity::firstOrFail();
+        $this->assertSame('Maria Teste', $identity->display_name);
+        $this->assertSame('2013-05-04', $identity->birth_date->toDateString());
+        $this->assertSame('1001', $identity->school_number);
+
+        $enrollment = $class->enrollments()->firstOrFail();
+        $this->assertSame('ASE: B', $enrollment->import_note);
+        $this->assertSame(1, $enrollment->class_number);
+    }
+
+    #[Test]
+    public function confirming_moves_a_matched_photo_from_temp_to_permanent_storage_and_cleans_up(): void
+    {
+        $class = $this->createClass();
+        $storage = app(RosterImportTempStorage::class);
+        $token = $storage->newToken();
+        $tempPath = $storage->storePhoto($token, 0, 'fake-photo-bytes', 'jpg');
+
+        $this->actingAs($this->user)->post("/classes/{$class->ulid}/roster-imports/{$token}/confirm", [
+            'rows' => [[
+                'name' => 'Maria Teste',
+                'class_number' => 1,
+                'birth_date' => null,
+                'situation_code' => 'X',
+                'note' => null,
+                'photo_temp_path' => $tempPath,
+                'include' => true,
+            ]],
+        ]);
+
+        $identity = StudentIdentity::firstOrFail();
+        $this->assertNotNull($identity->photo_path);
+        Storage::disk('local')->assertExists($identity->photo_path);
+        $this->assertSame('fake-photo-bytes', Storage::disk('local')->get($identity->photo_path));
+
+        // The whole temp token folder is gone, not just the one file.
+        Storage::disk('local')->assertMissing($tempPath);
+        Storage::disk('local')->assertDirectoryEmpty("roster-imports/{$token}");
+    }
+
+    #[Test]
+    public function an_unrecognized_situation_code_still_enrolls_as_active(): void
+    {
+        $class = $this->createClass();
+
+        $this->actingAs($this->user)->post("/classes/{$class->ulid}/roster-imports/some-token/confirm", [
+            'rows' => [[
+                'name' => 'Maria Teste',
+                'class_number' => 1,
+                'birth_date' => null,
+                'situation_code' => 'MT',
+                'note' => null,
+                'photo_temp_path' => null,
+                'include' => true,
+            ]],
+        ]);
+
+        $enrollment = $class->enrollments()->firstOrFail();
+        $this->assertSame(EnrollmentStatus::Active, $enrollment->status);
     }
 }
