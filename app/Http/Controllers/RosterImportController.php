@@ -123,50 +123,61 @@ class RosterImportController extends Controller
 
     public function confirm(Request $request, SchoolClass $class, string $token): RedirectResponse
     {
-        Gate::authorize('update', $class);
+        // The whole method is wrapped so the temp token folder is ALWAYS
+        // cleaned up on the way out — whether authorization or validation
+        // rejects the request outright, or a row throws partway through the
+        // loop below. Rows already enrolled before such a throw are
+        // deliberately NOT rolled back (no outer DB::transaction() here):
+        // partial success is the accepted behavior, matching the "N
+        // inscritos, M ignorados" partial-completion design elsewhere in this
+        // flow. Only the temp-folder cleanup is unconditional; the exception
+        // itself still propagates so the teacher sees the failure.
+        try {
+            Gate::authorize('update', $class);
 
-        $data = $request->validate([
-            'rows' => ['required', 'array'],
-            'rows.*.name' => ['required', 'string', 'max:255'],
-            'rows.*.class_number' => ['nullable', 'integer', 'min:1', 'max:65535'],
-            'rows.*.birth_date' => ['nullable', 'date'],
-            'rows.*.situation_code' => ['required', 'string'],
-            'rows.*.note' => ['nullable', 'string', 'max:255'],
-            'rows.*.process_number' => ['nullable', 'string', 'max:64'],
-            'rows.*.photo_temp_path' => ['nullable', 'string'],
-            'rows.*.include' => ['required', 'boolean'],
-        ]);
-
-        $created = 0;
-
-        foreach ($data['rows'] as $row) {
-            if (! $row['include']) {
-                continue;
-            }
-
-            $photoPath = null;
-
-            if (! empty($row['photo_temp_path'])) {
-                $photoPath = $this->movePhotoToPermanentStorage($row['photo_temp_path']);
-            }
-
-            $this->enrollmentService->enrollNew($class, [
-                'name' => $row['name'],
-                'class_number' => $row['class_number'] ?? null,
-                'birth_date' => $row['birth_date'] ?? null,
-                'import_note' => $row['note'] ?? null,
-                'school_number' => $row['process_number'] ?? null,
-                'photo_path' => $photoPath,
-                'status' => $this->mapSituation($row['situation_code']),
+            $data = $request->validate([
+                'rows' => ['required', 'array'],
+                'rows.*.name' => ['required', 'string', 'max:255'],
+                'rows.*.class_number' => ['nullable', 'integer', 'min:1', 'max:65535'],
+                'rows.*.birth_date' => ['nullable', 'date'],
+                'rows.*.situation_code' => ['required', 'string'],
+                'rows.*.note' => ['nullable', 'string', 'max:255'],
+                'rows.*.process_number' => ['nullable', 'string', 'max:64'],
+                'rows.*.photo_temp_path' => ['nullable', 'string'],
+                'rows.*.include' => ['required', 'boolean'],
             ]);
 
-            $created++;
+            $created = 0;
+
+            foreach ($data['rows'] as $row) {
+                if (! $row['include']) {
+                    continue;
+                }
+
+                $photoPath = null;
+
+                if (! empty($row['photo_temp_path'])) {
+                    $photoPath = $this->movePhotoToPermanentStorage($row['photo_temp_path']);
+                }
+
+                $this->enrollmentService->enrollNew($class, [
+                    'name' => $row['name'],
+                    'class_number' => $row['class_number'] ?? null,
+                    'birth_date' => $row['birth_date'] ?? null,
+                    'import_note' => $row['note'] ?? null,
+                    'school_number' => $row['process_number'] ?? null,
+                    'photo_path' => $photoPath,
+                    'status' => $this->mapSituation($row['situation_code']),
+                ]);
+
+                $created++;
+            }
+
+            return to_route('classes.show', $class->ulid)
+                ->with('status', "{$created} aluno(s) inscrito(s).");
+        } finally {
+            $this->tempStorage->delete($token);
         }
-
-        $this->tempStorage->delete($token);
-
-        return to_route('classes.show', $class->ulid)
-            ->with('status', "{$created} aluno(s) inscrito(s).");
     }
 
     protected function movePhotoToPermanentStorage(string $tempRelativePath): ?string

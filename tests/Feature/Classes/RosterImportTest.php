@@ -10,12 +10,14 @@ use App\Models\Student;
 use App\Models\StudentIdentity;
 use App\Models\Subject;
 use App\Models\User;
+use App\Services\StudentEnrollmentService;
 use App\Support\Import\RosterImportTempStorage;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\Attributes\Test;
+use RuntimeException;
 use Tests\Support\DocxFixtureBuilder;
 use Tests\Support\RosterFixture;
 use Tests\TestCase;
@@ -343,5 +345,69 @@ class RosterImportTest extends TestCase
 
         $enrollment = $class->enrollments()->firstOrFail();
         $this->assertSame(EnrollmentStatus::Active, $enrollment->status);
+    }
+
+    #[Test]
+    public function the_temp_folder_is_deleted_even_when_a_row_throws_partway_through_the_loop(): void
+    {
+        $class = $this->createClass();
+        $storage = app(RosterImportTempStorage::class);
+        $token = $storage->newToken();
+
+        // No real-world input can currently make enrollNew() throw here: every
+        // field the loop passes it is already constrained by confirm()'s own
+        // validation rules, and the enrollments/students unique constraints
+        // are re-checked (fresh student per row) or MySQL/MariaDB-only CHECK
+        // constraints the SQLite test database never enforces (see addCheck()
+        // in create_classes_and_students_tables). So this binds a fake service
+        // that behaves exactly like the real one except it deliberately throws
+        // for one row, to exercise the try/finally cleanup guarantee under a
+        // genuine thrown exception rather than merely reading the code.
+        $this->app->bind(StudentEnrollmentService::class, function ($app) {
+            return new class($app->make(CurrentOrganization::class)) extends StudentEnrollmentService
+            {
+                public function enrollNew(SchoolClass $class, array $data): Enrollment
+                {
+                    if ($data['name'] === 'Explode') {
+                        throw new RuntimeException('Synthetic failure for the temp-folder-cleanup test.');
+                    }
+
+                    return parent::enrollNew($class, $data);
+                }
+            };
+        });
+
+        $response = $this->actingAs($this->user)->post("/classes/{$class->ulid}/roster-imports/{$token}/confirm", [
+            'rows' => [
+                [
+                    'name' => 'Maria Teste',
+                    'class_number' => 1,
+                    'birth_date' => null,
+                    'situation_code' => 'X',
+                    'note' => null,
+                    'photo_temp_path' => null,
+                    'include' => true,
+                ],
+                [
+                    'name' => 'Explode',
+                    'class_number' => 2,
+                    'birth_date' => null,
+                    'situation_code' => 'X',
+                    'note' => null,
+                    'photo_temp_path' => null,
+                    'include' => true,
+                ],
+            ],
+        ]);
+
+        // The request itself fails (the exception propagates, it is not swallowed)...
+        $response->assertServerError();
+
+        // ...but the row processed before the throw stays enrolled: partial
+        // success is the accepted, deliberate behavior here, not a bug.
+        $this->assertSame(1, $class->enrollments()->count());
+
+        // The whole point of this test: cleanup happened anyway.
+        Storage::disk('local')->assertDirectoryEmpty("roster-imports/{$token}");
     }
 }
