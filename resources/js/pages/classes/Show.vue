@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ClipboardPlus, FileUp, Trash2, UserPlus } from '@lucide/vue';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
@@ -94,6 +94,15 @@ const wantsPhotos = ref(false);
 const importForm = useForm<{ roster: File | null; photos: File | null }>({
     roster: null,
     photos: null,
+});
+
+// Unchecking "Queres associar fotos?" must genuinely drop any previously
+// selected file — otherwise a teacher who picks the wrong file, unchecks the
+// box, and submits would silently send a file the UI shows as un-selected.
+watch(wantsPhotos, (value) => {
+    if (!value) {
+        importForm.photos = null;
+    }
 });
 
 function openImportDialog(): void {
