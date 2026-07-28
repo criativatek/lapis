@@ -67,7 +67,18 @@ class RosterImportPreviewBuilderTest extends TestCase
     {
         $rows = [new RosterRow('Maria Teste', 1, null, 'X', null, null)];
 
-        $preview = (new RosterImportPreviewBuilder)->build($rows, [], fn (string $name) => $name === 'Maria Teste');
+        $preview = (new RosterImportPreviewBuilder)->build($rows, [], fn (string $name) => $name === 'maria teste');
+
+        $this->assertTrue($preview[0]['already_enrolled']);
+        $this->assertFalse($preview[0]['include']);
+    }
+
+    #[Test]
+    public function the_already_enrolled_callback_receives_an_already_normalized_name(): void
+    {
+        $rows = [new RosterRow('  Maria   Teste ', 1, null, 'X', null, null)];
+
+        $preview = (new RosterImportPreviewBuilder)->build($rows, [], fn (string $name) => $name === 'maria teste');
 
         $this->assertTrue($preview[0]['already_enrolled']);
         $this->assertFalse($preview[0]['include']);

@@ -19,7 +19,7 @@ class RosterImportPreviewBuilder
     /**
      * @param  list<RosterRow>  $rosterRows
      * @param  list<PhotoMatch>  $photoMatches
-     * @param  \Closure(string): bool  $isAlreadyEnrolled
+     * @param  \Closure(string): bool  $isAlreadyEnrolled  Receives the name already normalized (squished, lowercased) — not the raw roster spelling. A real (database-backed) implementation must compare against an equally normalized column/value.
      * @return list<array{name: string, class_number: ?int, birth_date: ?string, situation_code: string, situation_recognized: bool, process_number: ?string, note: ?string, photo_index: ?int, photo_extension: ?string, duplicate_in_file: bool, already_enrolled: bool, include: bool}>
      */
     public function build(array $rosterRows, array $photoMatches, \Closure $isAlreadyEnrolled): array
@@ -37,7 +37,7 @@ class RosterImportPreviewBuilder
             $key = $this->normalize($row->name);
 
             $duplicateInFile = $nameCounts[$key] > 1;
-            $alreadyEnrolled = $isAlreadyEnrolled($row->name);
+            $alreadyEnrolled = $isAlreadyEnrolled($key);
             $photoIndex = $this->findPhotoIndex($row->name, $photoMatches);
 
             $preview[] = [
