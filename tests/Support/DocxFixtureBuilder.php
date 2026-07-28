@@ -67,6 +67,82 @@ class DocxFixtureBuilder
         return $path;
     }
 
+    /**
+     * Builds a fixture reproducing the REAL Intuitivo export's actual internal
+     * structure: a whole grid ROW of images is laid out first, then that row's
+     * captions afterward — e.g. for groupSize=6: image1..image6, caption1..
+     * caption6, image7..image12, caption7..caption12, ... — NOT the simple
+     * alternating image/caption/image/caption pattern build() produces.
+     * PhotoFileParser's pairing must handle this; a single "pending image"
+     * slot cannot (it only survives the LAST image of each group, discarding
+     * the rest, and pairs it with the wrong caption).
+     *
+     * @param  list<array{name: string, imageBytes: string}>  $entries
+     */
+    public static function buildGrouped(array $entries, int $groupSize): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'photo_fixture_grouped_').'.docx';
+        $zip = new \ZipArchive;
+        $zip->open($path, \ZipArchive::CREATE | \ZipArchive::OVERWRITE);
+
+        $relationships = '';
+        $tableRows = '';
+
+        // preserve_keys=true keeps each entry's original position as its index,
+        // so image/relationship ids stay unique across groups instead of
+        // restarting at 1 for every group (which would silently overwrite
+        // earlier zip entries of the same name).
+        foreach (array_chunk($entries, $groupSize, true) as $group) {
+            $imageCells = '';
+            $captionCells = '';
+
+            foreach ($group as $index => $entry) {
+                $n = $index + 1;
+                $imageRid = "rImg{$n}";
+                $chunkRid = "rChunk{$n}";
+
+                $zip->addFromString("media/image{$n}.jpg", $entry['imageBytes']);
+                $zip->addFromString("word/afchunk{$n}.htm", self::captionHtml($entry['name']));
+
+                $relationships .= '<Relationship Id="'.$imageRid.'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="/media/image'.$n.'.jpg"/>';
+                $relationships .= '<Relationship Id="'.$chunkRid.'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/aFChunk" Target="/word/afchunk'.$n.'.htm"/>';
+
+                $imageCells .= '<w:tc><w:p><w:r><w:pict><v:shape><v:imagedata r:pict="'.$imageRid.'"/></v:shape></w:pict></w:r></w:p></w:tc>';
+                $captionCells .= '<w:tc><w:p><w:r><w:altChunk r:id="'.$chunkRid.'"/></w:r></w:p></w:tc>';
+            }
+
+            // One row of images, immediately followed (in document order) by
+            // one row of captions — the real export's actual layout, not an
+            // alternating image/caption/image/caption row.
+            $tableRows .= '<w:tr>'.$imageCells.'</w:tr><w:tr>'.$captionCells.'</w:tr>';
+        }
+
+        $documentXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            .'<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+            .'xmlns:v="urn:schemas-microsoft-com:vml" '
+            .'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            .'<w:body><w:tbl>'.$tableRows.'</w:tbl></w:body></w:document>';
+
+        $relsXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            .'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            .$relationships.'</Relationships>';
+
+        $contentTypesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            .'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            .'<Default Extension="jpg" ContentType="image/jpeg"/>'
+            .'<Default Extension="htm" ContentType="text/html"/>'
+            .'<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+            .'</Types>';
+
+        $zip->addFromString('[Content_Types].xml', $contentTypesXml);
+        $zip->addFromString('_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>');
+        $zip->addFromString('word/document.xml', $documentXml);
+        $zip->addFromString('word/_rels/document.xml.rels', $relsXml);
+        $zip->close();
+
+        return $path;
+    }
+
     protected static function captionHtml(string $name): string
     {
         return '<html><head><meta charset="utf-8"/></head><body><div>'.htmlspecialchars($name).' </div></body></html>';

@@ -15,8 +15,18 @@ use App\Domain\Import\PhotoMatch;
  *
  * Pairing is done by XML DOCUMENT ORDER (a real structural guarantee, unlike
  * zip-entry byte order): every <v:imagedata> and <w:altChunk> node is walked
- * in the order they appear in document.xml, and each image is paired with
- * the next altChunk that follows it.
+ * in the order they appear in document.xml. Images are collected into a FIFO
+ * queue (never a single "pending" slot) and each altChunk claims the OLDEST
+ * still-unpaired image. This matters because the real Intuitivo export does
+ * NOT alternate image/caption/image/caption: it lays out a whole grid ROW of
+ * images first, then that row's captions afterward (e.g. 6 images, then 6
+ * captions). A single pending slot would discard all but the last image of
+ * each row before any caption arrives. A FIFO queue handles both shapes: a
+ * strictly alternating document never lets the queue grow past size 1 (so it
+ * behaves identically to a single slot), and a grouped document dequeues the
+ * Nth enqueued image for the Nth caption seen — correct in both cases because
+ * within one row, the Nth image cell corresponds to the Nth caption cell in
+ * reading order.
  */
 class PhotoFileParser
 {
@@ -109,43 +119,46 @@ class PhotoFileParser
             return $matches;
         }
 
-        $pendingImageTarget = null;
+        /** @var list<string|null> $pendingImageTargets FIFO queue, oldest first */
+        $pendingImageTargets = [];
 
         foreach ($nodes as $node) {
             /** @var \DOMElement $node */
             if ($node->localName === 'imagedata') {
                 $rid = $node->getAttributeNS(self::NS_R, 'pict');
-                $pendingImageTarget = $relationships[$rid] ?? null;
+                $pendingImageTargets[] = $relationships[$rid] ?? null;
 
                 continue;
             }
 
             // altChunk
-            if ($pendingImageTarget === null) {
+            if ($pendingImageTargets === []) {
                 continue; // A caption with no preceding image — nothing to pair.
+            }
+
+            $imageTarget = array_shift($pendingImageTargets);
+
+            if ($imageTarget === null) {
+                continue; // That image's own relationship could not be resolved.
             }
 
             $rid = $node->getAttributeNS(self::NS_R, 'id');
             $chunkTarget = $relationships[$rid] ?? null;
 
             if ($chunkTarget === null) {
-                $pendingImageTarget = null;
-
                 continue;
             }
 
-            $imageBytes = $zip->getFromName($pendingImageTarget);
+            $imageBytes = $zip->getFromName($imageTarget);
             $captionHtml = $zip->getFromName($chunkTarget);
 
             if ($imageBytes !== false && $captionHtml !== false) {
                 $matches[] = new PhotoMatch(
                     name: $this->extractName($captionHtml),
                     imageBytes: $imageBytes,
-                    extension: strtolower(pathinfo($pendingImageTarget, PATHINFO_EXTENSION)) ?: 'jpg',
+                    extension: strtolower(pathinfo($imageTarget, PATHINFO_EXTENSION)) ?: 'jpg',
                 );
             }
-
-            $pendingImageTarget = null;
         }
 
         return $matches;
