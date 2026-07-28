@@ -189,6 +189,30 @@ class RosterImportTest extends TestCase
     }
 
     #[Test]
+    public function a_corrupted_photos_file_is_rejected_with_a_clear_error_instead_of_crashing(): void
+    {
+        $class = $this->createClass();
+        $excel = UploadedFile::fake()->createWithContent(
+            'roster.xlsx',
+            file_get_contents((new RosterFixture)->build()),
+        );
+        // Passes the mimes:doc,docx rule (Laravel's mimes check is MIME-type
+        // based, driven by the fake's declared/guessed type for the .docx
+        // name — not by sniffing real zip content), but is not a valid zip
+        // at all, so PhotoFileParser::parse() fails to open it and throws
+        // RosterFileParseException. Before this fix that exception was
+        // unguarded and bubbled up as a 500.
+        $corruptedPhotos = UploadedFile::fake()->createWithContent('photos.docx', 'not actually a zip file');
+
+        $this->actingAs($this->user)
+            ->post("/classes/{$class->ulid}/roster-imports", [
+                'roster' => $excel,
+                'photos' => $corruptedPhotos,
+            ])
+            ->assertSessionHasErrors('photos');
+    }
+
+    #[Test]
     public function a_pdf_upload_is_rejected_with_a_clear_error(): void
     {
         $class = $this->createClass();

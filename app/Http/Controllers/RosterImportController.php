@@ -12,6 +12,7 @@ use App\Services\Import\RosterFileParser;
 use App\Services\Import\RosterImportPreviewBuilder;
 use App\Support\Import\RosterImportTempStorage;
 use App\Support\Privacy\BlindIndex;
+use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -26,6 +27,7 @@ class RosterImportController extends Controller
         protected PhotoFileParser $photoParser,
         protected RosterImportPreviewBuilder $previewBuilder,
         protected RosterImportTempStorage $tempStorage,
+        protected CurrentOrganization $currentOrganization,
     ) {}
 
     public function store(Request $request, SchoolClass $class): \Inertia\Response|RedirectResponse
@@ -47,9 +49,15 @@ class RosterImportController extends Controller
             return back()->withErrors(['roster' => 'Não foi possível encontrar nenhum aluno neste ficheiro.']);
         }
 
-        $photoMatches = isset($data['photos'])
-            ? $this->photoParser->parse($data['photos']->getRealPath())
-            : [];
+        $photoMatches = [];
+
+        if (isset($data['photos'])) {
+            try {
+                $photoMatches = $this->photoParser->parse($data['photos']->getRealPath());
+            } catch (RosterFileParseException $exception) {
+                return back()->withErrors(['photos' => $exception->getMessage()]);
+            }
+        }
 
         $token = $this->tempStorage->newToken();
 
@@ -60,7 +68,16 @@ class RosterImportController extends Controller
         $isAlreadyEnrolled = function (string $name) use ($class): bool {
             $index = BlindIndex::of($name);
 
+            // StudentIdentity has no BelongsToOrganization scope (by design —
+            // see its own doc comment), so this query is otherwise unscoped
+            // across organizations. It stays tenant-safe because the
+            // whereHas narrows it to enrollments in this exact, already
+            // tenant-verified SchoolClass row (class_id is a globally unique
+            // primary key, never reused across organizations) — never rely
+            // on that alone; the explicit organization_id filter below is
+            // deliberate defense-in-depth, not redundant belt-and-braces.
             return StudentIdentity::where('display_name_index', $index)
+                ->where('organization_id', $this->currentOrganization->id())
                 ->whereHas('student.enrollments', fn ($query) => $query->where('class_id', $class->id))
                 ->exists();
         };
