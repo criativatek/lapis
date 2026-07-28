@@ -16,6 +16,7 @@ type Student = {
     enrolled_on: string;
     is_late_entry: boolean;
     status_label: string;
+    photo_url: string | null;
 };
 
 type ProfileOption = { version_id: number; label: string };

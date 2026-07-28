@@ -15,6 +15,7 @@ use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\ResultsController;
 use App\Http\Controllers\ScaleController;
 use App\Http\Controllers\SelfAssessmentController;
+use App\Http\Controllers\StudentPhotoController;
 use App\Http\Controllers\SubjectController;
 use Illuminate\Support\Facades\Route;
 
@@ -80,6 +81,8 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
 
         Route::post('classes/{class}/students', [EnrollmentController::class, 'store'])->name('classes.students.store');
         Route::delete('classes/{class}/students/{enrollment}', [EnrollmentController::class, 'destroy'])->name('classes.students.destroy');
+
+        Route::get('students/{student}/photo', [StudentPhotoController::class, 'show'])->name('students.photo');
     });
 
     // Instruments and the grading grid. Created inside a class; the grid is the

@@ -113,6 +113,9 @@ class ClassController extends Controller
                     'enrolled_on' => $enrollment->enrolled_on->toDateString(),
                     'is_late_entry' => $enrollment->is_late_entry,
                     'status_label' => $enrollment->status->label(),
+                    'photo_url' => $enrollment->student->identity->photo_path !== null
+                        ? route('students.photo', $enrollment->student->ulid)
+                        : null,
                 ]),
         ]);
     }
