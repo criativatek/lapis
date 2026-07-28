@@ -327,6 +327,92 @@ class RosterImportTest extends TestCase
     }
 
     #[Test]
+    public function a_validation_error_on_confirm_does_not_delete_the_temp_photos(): void
+    {
+        $class = $this->createClass();
+        $excel = UploadedFile::fake()->createWithContent(
+            'roster.xlsx',
+            file_get_contents((new RosterFixture)->build()),
+        );
+        $photos = UploadedFile::fake()->createWithContent(
+            'photos.docx',
+            file_get_contents(DocxFixtureBuilder::build([
+                ['name' => 'Maria Teste', 'imageBytes' => DocxFixtureBuilder::tinyJpeg()],
+            ])),
+        );
+
+        $uploadResponse = $this->actingAs($this->user)->post("/classes/{$class->ulid}/roster-imports", [
+            'roster' => $excel,
+            'photos' => $photos,
+        ]);
+
+        $token = null;
+        $uploadResponse->assertInertia(function ($page) use (&$token) {
+            $token = $page->toArray()['props']['token'];
+
+            return $page->component('roster-imports/Preview');
+        });
+
+        $photoPath = "roster-imports/{$token}/0.jpg";
+        Storage::disk('local')->assertExists($photoPath);
+
+        // An empty name fails the confirm() validation (rows.*.name is
+        // required) BEFORE any row is processed. Before the fix, the whole
+        // method body — including Gate::authorize() and validate() — sat
+        // inside the try/finally that deletes the temp folder, so a
+        // validation failure here silently destroyed the still-needed photo.
+        $response = $this->actingAs($this->user)->post("/classes/{$class->ulid}/roster-imports/{$token}/confirm", [
+            'rows' => [[
+                'name' => '',
+                'class_number' => 1,
+                'birth_date' => null,
+                'situation_code' => 'X',
+                'note' => null,
+                'photo_temp_path' => $photoPath,
+                'include' => true,
+            ]],
+        ]);
+
+        $response->assertSessionHasErrors('rows.0.name');
+
+        // The whole point of this test: the temp photo must still be there,
+        // so a corrected resubmission can still find it.
+        Storage::disk('local')->assertExists($photoPath);
+    }
+
+    #[Test]
+    public function a_photo_temp_path_pointing_outside_this_tokens_own_folder_is_not_attached(): void
+    {
+        $class = $this->createClass();
+        $storage = app(RosterImportTempStorage::class);
+
+        $otherToken = $storage->newToken();
+        $foreignPhotoPath = $storage->storePhoto($otherToken, 0, 'someone-elses-photo-bytes', 'jpg');
+
+        $thisToken = $storage->newToken();
+
+        $response = $this->actingAs($this->user)->post("/classes/{$class->ulid}/roster-imports/{$thisToken}/confirm", [
+            'rows' => [[
+                'name' => 'Maria Teste',
+                'class_number' => 1,
+                'birth_date' => null,
+                'situation_code' => 'X',
+                'note' => null,
+                'photo_temp_path' => $foreignPhotoPath,
+                'include' => true,
+            ]],
+        ]);
+
+        $response->assertRedirect("/classes/{$class->ulid}");
+
+        // The row still enrolls — it just does not get a photo, exactly as if
+        // photo_temp_path had been null. The foreign token's photo must never
+        // be copied into this student's permanent storage.
+        $identity = StudentIdentity::firstOrFail();
+        $this->assertNull($identity->photo_path);
+    }
+
+    #[Test]
     public function an_unrecognized_situation_code_still_enrolls_as_active(): void
     {
         $class = $this->createClass();

@@ -123,30 +123,36 @@ class RosterImportController extends Controller
 
     public function confirm(Request $request, SchoolClass $class, string $token): RedirectResponse
     {
-        // The whole method is wrapped so the temp token folder is ALWAYS
-        // cleaned up on the way out — whether authorization or validation
-        // rejects the request outright, or a row throws partway through the
-        // loop below. Rows already enrolled before such a throw are
+        // Authorization and validation run BEFORE the try/finally below, on
+        // purpose: they never touch the temp folder, so a rejected request
+        // (wrong permissions, or a row that fails validation — e.g. a name
+        // over 255 chars) leaves the teacher's uploaded photos untouched and
+        // resubmittable. Only the row-processing loop actually needs the temp
+        // photos and must guarantee their cleanup regardless of outcome, so
+        // only IT sits inside try/finally.
+        Gate::authorize('update', $class);
+
+        $data = $request->validate([
+            'rows' => ['required', 'array'],
+            'rows.*.name' => ['required', 'string', 'max:255'],
+            'rows.*.class_number' => ['nullable', 'integer', 'min:1', 'max:65535'],
+            'rows.*.birth_date' => ['nullable', 'date'],
+            'rows.*.situation_code' => ['required', 'string'],
+            'rows.*.note' => ['nullable', 'string', 'max:255'],
+            'rows.*.process_number' => ['nullable', 'string', 'max:64'],
+            'rows.*.photo_temp_path' => ['nullable', 'string'],
+            'rows.*.include' => ['required', 'boolean'],
+        ]);
+
+        // The temp token folder is ALWAYS cleaned up on the way out of this
+        // block — whether a row throws partway through the loop, or it
+        // completes normally. Rows already enrolled before such a throw are
         // deliberately NOT rolled back (no outer DB::transaction() here):
         // partial success is the accepted behavior, matching the "N
         // inscritos, M ignorados" partial-completion design elsewhere in this
         // flow. Only the temp-folder cleanup is unconditional; the exception
         // itself still propagates so the teacher sees the failure.
         try {
-            Gate::authorize('update', $class);
-
-            $data = $request->validate([
-                'rows' => ['required', 'array'],
-                'rows.*.name' => ['required', 'string', 'max:255'],
-                'rows.*.class_number' => ['nullable', 'integer', 'min:1', 'max:65535'],
-                'rows.*.birth_date' => ['nullable', 'date'],
-                'rows.*.situation_code' => ['required', 'string'],
-                'rows.*.note' => ['nullable', 'string', 'max:255'],
-                'rows.*.process_number' => ['nullable', 'string', 'max:64'],
-                'rows.*.photo_temp_path' => ['nullable', 'string'],
-                'rows.*.include' => ['required', 'boolean'],
-            ]);
-
             $created = 0;
 
             foreach ($data['rows'] as $row) {
@@ -156,7 +162,7 @@ class RosterImportController extends Controller
 
                 $photoPath = null;
 
-                if (! empty($row['photo_temp_path'])) {
+                if (! empty($row['photo_temp_path']) && $this->isWithinThisImportsTempFolder($row['photo_temp_path'], $token)) {
                     $photoPath = $this->movePhotoToPermanentStorage($row['photo_temp_path']);
                 }
 
@@ -178,6 +184,22 @@ class RosterImportController extends Controller
         } finally {
             $this->tempStorage->delete($token);
         }
+    }
+
+    /**
+     * A row's photo_temp_path is client-supplied and validated only as a
+     * plain string — nothing else confirms it actually points inside THIS
+     * confirm request's own token folder before it gets read and copied into
+     * permanent storage. Flysystem blocks `../` traversal, but nothing else
+     * stops a manipulated request from pointing at a DIFFERENT token's temp
+     * photo (or any other predictable path under the disk root) and
+     * attaching it to an unrelated student. A path outside this token's own
+     * folder is treated exactly like a null/missing photo — skipped, never
+     * trusted.
+     */
+    protected function isWithinThisImportsTempFolder(string $tempRelativePath, string $token): bool
+    {
+        return str_starts_with($tempRelativePath, $this->tempStorage->path($token).'/');
     }
 
     protected function movePhotoToPermanentStorage(string $tempRelativePath): ?string
