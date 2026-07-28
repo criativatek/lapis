@@ -88,10 +88,22 @@ class RosterImportController extends Controller
 
         $rows = $this->previewBuilder->build($rosterRows, $photoMatches, $isAlreadyEnrolled);
 
+        // Every parsed photo, not just the ones that auto-matched a row by
+        // name — the preview page offers the teacher the full pool so a
+        // mismatched or missing photo can be corrected manually (§3.3 "o
+        // professor associa/corrige manualmente"). `index` is the same
+        // position scheme previewPhoto() streams by.
+        $photos = [];
+
+        foreach ($photoMatches as $index => $photo) {
+            $photos[] = ['index' => $index, 'extension' => $photo->extension];
+        }
+
         return Inertia::render('roster-imports/Preview', [
             'schoolClassUlid' => $class->ulid,
             'token' => $token,
             'rows' => $rows,
+            'photos' => $photos,
         ]);
     }
 

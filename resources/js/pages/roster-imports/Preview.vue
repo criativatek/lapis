@@ -20,10 +20,18 @@ type PreviewRow = {
     include: boolean;
 };
 
+// Every photo PhotoFileParser extracted, whether or not it auto-matched a
+// row by name — the teacher can assign any of these to any row (below).
+type PhotoOption = {
+    index: number;
+    extension: string;
+};
+
 const props = defineProps<{
     schoolClassUlid: string;
     token: string;
     rows: PreviewRow[];
+    photos: PhotoOption[];
 }>();
 
 // class_number is '' when empty (the backend treats empty as null, via the
@@ -51,6 +59,30 @@ function photoUrl(index: number | null): string | null {
     }
 
     return `/classes/${props.schoolClassUlid}/roster-imports/${props.token}/photos/${index}`;
+}
+
+// A photo is offered as an option for row R if no OTHER row currently has it
+// assigned — or if it is the one already assigned to row R itself. This
+// prevents two rows from ever claiming the same photo: assigning it to a new
+// row instantly removes it from every other row's option list.
+function availablePhotosFor(rowIndex: number): PhotoOption[] {
+    return props.photos.filter(
+        (photo) =>
+            !form.rows.some(
+                (otherRow, otherIndex) =>
+                    otherIndex !== rowIndex &&
+                    otherRow.photo_index === photo.index,
+            ),
+    );
+}
+
+function assignPhoto(rowIndex: number, photo: PhotoOption | null): void {
+    const row = form.rows[rowIndex];
+    row.photo_index = photo?.index ?? null;
+    row.photo_extension = photo?.extension ?? null;
+    row.photo_temp_path = photo
+        ? `roster-imports/${props.token}/${photo.index}.${photo.extension}`
+        : null;
 }
 
 function submit(): void {
@@ -89,17 +121,61 @@ function submit(): void {
                                 <input v-model="row.include" type="checkbox" />
                             </td>
                             <td class="px-3 py-2.5">
-                                <img
-                                    v-if="photoUrl(row.photo_index)"
-                                    :src="photoUrl(row.photo_index)!"
-                                    :alt="row.name"
-                                    class="size-8 rounded-full object-cover"
-                                />
-                                <span
-                                    v-else
-                                    class="text-xs text-muted-foreground"
-                                    >sem foto</span
-                                >
+                                <div class="flex flex-col gap-1.5">
+                                    <img
+                                        v-if="photoUrl(row.photo_index)"
+                                        :src="photoUrl(row.photo_index)!"
+                                        :alt="row.name"
+                                        class="size-8 rounded-full object-cover"
+                                    />
+                                    <span
+                                        v-else
+                                        class="text-xs text-muted-foreground"
+                                        >sem foto</span
+                                    >
+
+                                    <!-- Manual photo assignment/correction: click a thumbnail to
+                                         assign that photo to this row, or "nenhuma" to clear it.
+                                         Only photos not already claimed by ANOTHER row are offered
+                                         here (availablePhotosFor), so two rows can never end up
+                                         pointing at the same photo. -->
+                                    <div class="flex flex-wrap gap-1">
+                                        <button
+                                            type="button"
+                                            class="flex size-6 shrink-0 items-center justify-center rounded border text-[10px] text-muted-foreground"
+                                            :class="
+                                                row.photo_index === null
+                                                    ? 'border-primary ring-1 ring-primary'
+                                                    : 'border-border'
+                                            "
+                                            title="Sem foto"
+                                            @click="assignPhoto(index, null)"
+                                        >
+                                            Ø
+                                        </button>
+                                        <button
+                                            v-for="photo in availablePhotosFor(
+                                                index,
+                                            )"
+                                            :key="photo.index"
+                                            type="button"
+                                            class="size-6 shrink-0 overflow-hidden rounded border"
+                                            :class="
+                                                row.photo_index === photo.index
+                                                    ? 'border-primary ring-1 ring-primary'
+                                                    : 'border-border'
+                                            "
+                                            :title="`Atribuir foto ${photo.index + 1}`"
+                                            @click="assignPhoto(index, photo)"
+                                        >
+                                            <img
+                                                :src="photoUrl(photo.index)!"
+                                                :alt="`Foto ${photo.index + 1}`"
+                                                class="size-full object-cover"
+                                            />
+                                        </button>
+                                    </div>
+                                </div>
                             </td>
                             <td class="px-3 py-2.5">
                                 <Input v-model="row.name" class="h-8" />

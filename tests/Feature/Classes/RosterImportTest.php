@@ -192,6 +192,43 @@ class RosterImportTest extends TestCase
     }
 
     #[Test]
+    public function the_preview_page_receives_every_parsed_photo_even_ones_that_did_not_auto_match_a_row(): void
+    {
+        $class = $this->createClass();
+        $excel = UploadedFile::fake()->createWithContent(
+            'roster.xlsx',
+            file_get_contents((new RosterFixture)->build()),
+        );
+        $photos = UploadedFile::fake()->createWithContent(
+            'photos.docx',
+            file_get_contents(DocxFixtureBuilder::build([
+                ['name' => 'Maria Teste', 'imageBytes' => DocxFixtureBuilder::tinyJpeg()],
+                ['name' => 'Nome Que Não Está No Excel', 'imageBytes' => DocxFixtureBuilder::tinyJpeg()],
+            ])),
+        );
+
+        $response = $this->actingAs($this->user)->post("/classes/{$class->ulid}/roster-imports", [
+            'roster' => $excel,
+            'photos' => $photos,
+        ]);
+
+        // Two photos were parsed, but only the first ("Maria Teste") matches a
+        // roster row by name. The teacher must still be offered the second,
+        // unmatched photo to manually assign to whichever row it belongs to
+        // (finding 5) — so `photos` must list every parsed entry, not just
+        // the ones that auto-matched.
+        $response->assertInertia(fn ($page) => $page
+            ->component('roster-imports/Preview')
+            ->has('photos', 2)
+            ->where('photos.0.index', 0)
+            ->where('photos.0.extension', 'jpg')
+            ->where('photos.1.index', 1)
+            ->where('photos.1.extension', 'jpg')
+            ->where('rows.0.photo_index', 0),
+        );
+    }
+
+    #[Test]
     public function a_corrupted_photos_file_is_rejected_with_a_clear_error_instead_of_crashing(): void
     {
         $class = $this->createClass();
