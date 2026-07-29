@@ -16,6 +16,7 @@ use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\Test;
 use RuntimeException;
 use Tests\Support\DocxFixtureBuilder;
@@ -295,7 +296,7 @@ class RosterImportTest extends TestCase
     {
         $class = $this->createClass();
 
-        $response = $this->actingAs($this->user)->post("/classes/{$class->ulid}/roster-imports/some-token/confirm", [
+        $response = $this->actingAs($this->user)->post("/classes/{$class->ulid}/roster-imports/".Str::uuid().'/confirm', [
             'rows' => [
                 [
                     'name' => 'Maria Teste',
@@ -477,7 +478,7 @@ class RosterImportTest extends TestCase
         // concatenated into a filesystem path".
         $class = $this->createClass();
 
-        $response = $this->actingAs($this->user)->post("/classes/{$class->ulid}/roster-imports/some-token/confirm", [
+        $response = $this->actingAs($this->user)->post("/classes/{$class->ulid}/roster-imports/".Str::uuid().'/confirm', [
             'rows' => [[
                 'name' => 'Maria Teste',
                 'class_number' => 1,
@@ -503,7 +504,7 @@ class RosterImportTest extends TestCase
         // about there.
         $class = $this->createClass();
 
-        $response = $this->actingAs($this->user)->post("/classes/{$class->ulid}/roster-imports/some-token/confirm", [
+        $response = $this->actingAs($this->user)->post("/classes/{$class->ulid}/roster-imports/".Str::uuid().'/confirm', [
             'rows' => [[
                 'name' => 'Maria Teste',
                 'class_number' => 1,
@@ -525,7 +526,7 @@ class RosterImportTest extends TestCase
     {
         $class = $this->createClass();
 
-        $this->actingAs($this->user)->post("/classes/{$class->ulid}/roster-imports/some-token/confirm", [
+        $this->actingAs($this->user)->post("/classes/{$class->ulid}/roster-imports/".Str::uuid().'/confirm', [
             'rows' => [[
                 'name' => 'Maria Teste',
                 'class_number' => 1,

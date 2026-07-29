@@ -84,8 +84,15 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::delete('classes/{class}/students/{enrollment}', [EnrollmentController::class, 'destroy'])->name('classes.students.destroy');
 
         Route::post('classes/{class}/roster-imports', [RosterImportController::class, 'store'])->name('classes.roster-imports.store');
-        Route::post('classes/{class}/roster-imports/{token}/confirm', [RosterImportController::class, 'confirm'])->name('classes.roster-imports.confirm');
-        Route::get('classes/{class}/roster-imports/{token}/photos/{index}', [RosterImportController::class, 'previewPhoto'])->name('classes.roster-imports.preview-photo');
+        // Constrained to the shape RosterImportTempStorage::newToken() actually
+        // generates (a UUID) — never a bare string, so a token can never itself
+        // carry a path segment like ".." into the temp-folder path it builds.
+        Route::post('classes/{class}/roster-imports/{token}/confirm', [RosterImportController::class, 'confirm'])
+            ->where('token', '[0-9a-fA-F-]{36}')
+            ->name('classes.roster-imports.confirm');
+        Route::get('classes/{class}/roster-imports/{token}/photos/{index}', [RosterImportController::class, 'previewPhoto'])
+            ->where(['token' => '[0-9a-fA-F-]{36}', 'index' => '[0-9]+'])
+            ->name('classes.roster-imports.preview-photo');
 
         Route::get('students/{student}/photo', [StudentPhotoController::class, 'show'])->name('students.photo');
     });
