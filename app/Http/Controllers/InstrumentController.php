@@ -101,6 +101,19 @@ class InstrumentController extends Controller
                 'state_reason' => $score->state_reason,
             ]);
 
+        $scaleBands = $instrument->schoolClass->profileVersion?->scale
+            ?->levels()
+            ->whereNotNull('band_min_normalized')
+            ->whereNotNull('band_max_normalized')
+            ->orderBy('sequence')
+            ->get()
+            ->map(fn ($level) => [
+                'label' => $level->label,
+                'band_min' => (string) $level->band_min_normalized,
+                'band_max' => (string) $level->band_max_normalized,
+            ])
+            ->all() ?? [];
+
         return Inertia::render('instruments/Grid', [
             'instrument' => [
                 'ulid' => $instrument->ulid,
@@ -138,6 +151,7 @@ class InstrumentController extends Controller
                 fn (ResultState $state) => ['value' => $state->value, 'label' => $state->label(), 'carries_value' => $state->carriesValue()],
                 ResultState::cases(),
             ),
+            'scaleBands' => $scaleBands,
         ]);
     }
 
