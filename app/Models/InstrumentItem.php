@@ -74,4 +74,16 @@ class InstrumentItem extends Model
     {
         return $this->hasMany(ItemDomainAllocation::class);
     }
+
+    /**
+     * Every score recorded against this question — the deciding factor in
+     * whether it may still be removed or have its points_possible lowered
+     * during an edit (see InstrumentBuilder::update()).
+     *
+     * @return HasMany<StudentItemScore, $this>
+     */
+    public function scores(): HasMany
+    {
+        return $this->hasMany(StudentItemScore::class);
+    }
 }

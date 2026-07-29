@@ -40,7 +40,8 @@ use Illuminate\Support\Carbon;
 #[Fillable([
     'class_id', 'academic_period_id', 'instrument_type_id', 'title', 'applied_on',
     'status', 'counts_toward_classification', 'purpose', 'total_points', 'scale_id',
-    'weight', 'allow_bonus', 'internal_notes',
+    'weight', 'allow_bonus', 'internal_notes', 'status_before_cancellation',
+    'cancelled_at', 'cancelled_by', 'cancellation_reason',
 ])]
 class Instrument extends Model
 {
