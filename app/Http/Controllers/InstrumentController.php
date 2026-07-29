@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Services\Assessment\InstrumentBuilder;
 use App\Services\Assessment\RecordScores;
 use App\Support\Assessment\InstrumentValidationException;
+use App\Support\Assessment\ScoreExceedsMaximumException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -181,7 +182,11 @@ class InstrumentController extends Controller
             abort_unless(in_array($cell['enrollment_id'], $validEnrollmentIds, true), 422);
         }
 
-        $recordScores->save($instrument, $data['cells'], $this->user());
+        try {
+            $recordScores->save($instrument, $data['cells'], $this->user());
+        } catch (ScoreExceedsMaximumException $exception) {
+            return back()->withErrors(['cells' => $exception->getMessage()]);
+        }
 
         return back();
     }

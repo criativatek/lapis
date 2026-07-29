@@ -15,6 +15,7 @@ use App\Models\StudentItemScore;
 use App\Models\Subject;
 use App\Models\User;
 use App\Services\Assessment\RecordScores;
+use App\Support\Assessment\ScoreExceedsMaximumException;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
@@ -201,6 +202,83 @@ class RecordScoresTest extends TestCase
     }
 
     #[Test]
+    public function a_score_above_the_items_points_possible_is_rejected(): void
+    {
+        $this->inTenant(function (): void {
+            ['instrument' => $instrument, 'item' => $item, 'enrollment' => $enrollment] = $this->scenario();
+            $this->assertSame('10.0000', $item->points_possible, 'InstrumentItemFactory default — sanity check the test is exercising the right ceiling.');
+
+            $this->expectException(ScoreExceedsMaximumException::class);
+
+            app(RecordScores::class)->save($instrument, [[
+                'enrollment_id' => $enrollment->id,
+                'instrument_item_id' => $item->id,
+                'result_state' => 'assessed',
+                'points_earned' => 15,
+            ]], $this->user);
+
+            $this->assertSame(0, StudentItemScore::count(), 'Nothing should have been written.');
+        });
+    }
+
+    #[Test]
+    public function a_score_exactly_at_the_items_points_possible_is_allowed(): void
+    {
+        $this->inTenant(function (): void {
+            ['instrument' => $instrument, 'item' => $item, 'enrollment' => $enrollment] = $this->scenario();
+
+            app(RecordScores::class)->save($instrument, [[
+                'enrollment_id' => $enrollment->id,
+                'instrument_item_id' => $item->id,
+                'result_state' => 'assessed',
+                'points_earned' => 10,
+            ]], $this->user);
+
+            $this->assertSame('10.0000', StudentItemScore::firstOrFail()->points_earned);
+        });
+    }
+
+    #[Test]
+    public function a_bonus_item_still_cannot_score_above_its_own_points_possible(): void
+    {
+        $this->inTenant(function (): void {
+            $org = $this->organization;
+            $year = AcademicYear::factory()->recycle($org)->create();
+            $period = AcademicPeriod::factory()->recycle($org)->for($year)->create();
+            $subject = Subject::factory()->recycle($org)->create();
+            $class = SchoolClass::factory()->recycle($org)->create([
+                'academic_year_id' => $year->id,
+                'subject_id' => $subject->id,
+            ]);
+            $class->teachers()->attach($this->user, ['role' => 'owner']);
+            $instrument = Instrument::factory()->recycle($org)->create([
+                'class_id' => $class->id,
+                'academic_period_id' => $period->id,
+                'status' => 'prepared',
+            ]);
+            $item = InstrumentItem::factory()->recycle($org)->create([
+                'instrument_id' => $instrument->id,
+                'points_possible' => 5,
+                'is_bonus' => true,
+            ]);
+            $student = Student::factory()->recycle($org)->create();
+            $enrollment = Enrollment::factory()->recycle($org)->create([
+                'class_id' => $class->id,
+                'student_id' => $student->id,
+            ]);
+
+            $this->expectException(ScoreExceedsMaximumException::class);
+
+            app(RecordScores::class)->save($instrument, [[
+                'enrollment_id' => $enrollment->id,
+                'instrument_item_id' => $item->id,
+                'result_state' => 'assessed',
+                'points_earned' => 8,
+            ]], $this->user);
+        });
+    }
+
+    #[Test]
     public function the_endpoint_refuses_a_cell_from_another_class(): void
     {
         $context = $this->inTenant(fn () => $this->scenario());
@@ -222,5 +300,26 @@ class RecordScoresTest extends TestCase
                 ]],
             ])
             ->assertStatus(422);
+    }
+
+    #[Test]
+    public function the_endpoint_returns_a_clean_validation_error_when_a_score_exceeds_the_maximum(): void
+    {
+        $context = $this->inTenant(fn () => $this->scenario());
+
+        $this->actingAs($this->user)
+            ->from("/instruments/{$context['instrument']->ulid}")
+            ->post("/instruments/{$context['instrument']->ulid}/scores", [
+                'cells' => [[
+                    'enrollment_id' => $context['enrollment']->id,
+                    'instrument_item_id' => $context['item']->id,
+                    'result_state' => 'assessed',
+                    'points_earned' => 999,
+                ]],
+            ])
+            ->assertRedirect("/instruments/{$context['instrument']->ulid}")
+            ->assertSessionHasErrors('cells');
+
+        $this->assertSame(0, $this->inTenant(fn () => StudentItemScore::count()));
     }
 }

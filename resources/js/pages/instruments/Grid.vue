@@ -100,6 +100,21 @@ function onPointsInput(student: Student, item: Item, value: string): void {
     markDirty(student.enrollment_id, item.id);
 }
 
+/**
+ * A question's own cotação is a hard ceiling — mirrors the server-side check
+ * in RecordScores::guardAgainstScoresAboveMaximum(), so the teacher sees the
+ * problem while typing instead of only after a rejected save.
+ */
+function isOverMax(student: Student, item: Item): boolean {
+    const current = cell(student.enrollment_id, item.id);
+
+    return current.state === 'assessed' && current.points !== null && current.points > item.points_possible;
+}
+
+const hasOverMaxCell = computed(() =>
+    props.students.some((student) => props.items.some((item) => isOverMax(student, item))),
+);
+
 function onStateChange(student: Student, item: Item, state: string): void {
     const current = cell(student.enrollment_id, item.id);
     current.state = state;
@@ -265,7 +280,10 @@ const nonAssessedStates = computed(() => props.states.filter((state) => !state.c
                 <span v-if="dirtyCount" class="text-sm text-amber-700">
                     {{ dirtyCount }} alteraç{{ dirtyCount === 1 ? 'ão' : 'ões' }} por guardar
                 </span>
-                <Button :disabled="dirtyCount === 0 || saving" @click="save">
+                <span v-if="hasOverMaxCell" class="text-sm text-destructive">
+                    Há notas acima da cotação máxima
+                </span>
+                <Button :disabled="dirtyCount === 0 || saving || hasOverMaxCell" @click="save">
                     <Save class="size-4" /> Guardar
                 </Button>
             </div>
@@ -318,7 +336,11 @@ const nonAssessedStates = computed(() => props.states.filter((state) => !state.c
                                     :max="item.points_possible"
                                     :value="cell(student.enrollment_id, item.id).state === 'assessed' ? cell(student.enrollment_id, item.id).points : ''"
                                     :disabled="cell(student.enrollment_id, item.id).state !== 'assessed' && cell(student.enrollment_id, item.id).state !== 'pending'"
-                                    class="h-8 w-16 rounded border border-input bg-transparent px-1.5 text-center tabular-nums disabled:opacity-40"
+                                    :class="[
+                                        'h-8 w-16 rounded border bg-transparent px-1.5 text-center tabular-nums disabled:opacity-40',
+                                        isOverMax(student, item) ? 'border-destructive text-destructive' : 'border-input',
+                                    ]"
+                                    :title="isOverMax(student, item) ? `Excede a cotação máxima (${item.points_possible} pts).` : undefined"
                                     @input="onPointsInput(student, item, ($event.target as HTMLInputElement).value)"
                                     @keydown="onKeydown($event, rowIndex, columnIndex)"
                                 />

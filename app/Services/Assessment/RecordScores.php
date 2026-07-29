@@ -6,6 +6,7 @@ use App\Models\Instrument;
 use App\Models\ResultState;
 use App\Models\StudentItemScore;
 use App\Models\User;
+use App\Support\Assessment\ScoreExceedsMaximumException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -25,6 +26,11 @@ class RecordScores
      */
     public function save(Instrument $instrument, array $cells, User $actor): int
     {
+        // Validated before the transaction opens, not inside it: a rejected
+        // batch must write nothing at all, matching how other multi-row
+        // rules in this app are enforced (e.g. InstrumentBuilder::guard()).
+        $this->guardAgainstScoresAboveMaximum($instrument, $cells);
+
         return DB::transaction(function () use ($instrument, $cells, $actor): int {
             $written = 0;
 
@@ -76,5 +82,36 @@ class RecordScores
 
             return $written;
         });
+    }
+
+    /**
+     * A question's own points_possible is a hard ceiling — is_bonus only
+     * excuses an item from the denominator (§4.2), it never raises what a
+     * single question can itself be worth.
+     *
+     * @param  list<array{enrollment_id: int, instrument_item_id: int, result_state: string, points_earned?: float|null, scale_level_id?: int|null, state_reason?: string|null}>  $cells
+     */
+    protected function guardAgainstScoresAboveMaximum(Instrument $instrument, array $cells): void
+    {
+        $itemsById = $instrument->items()->get(['id', 'code', 'points_possible'])->keyBy('id');
+
+        foreach ($cells as $cell) {
+            $state = ResultState::from($cell['result_state']);
+            $pointsEarned = $cell['points_earned'] ?? null;
+
+            if (! $state->carriesValue() || $pointsEarned === null) {
+                continue;
+            }
+
+            $item = $itemsById->get($cell['instrument_item_id']);
+
+            if ($item !== null && (float) $pointsEarned > (float) $item->points_possible) {
+                throw ScoreExceedsMaximumException::make(
+                    $item->code,
+                    (string) $pointsEarned,
+                    (string) $item->points_possible,
+                );
+            }
+        }
     }
 }
