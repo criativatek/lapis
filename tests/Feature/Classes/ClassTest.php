@@ -5,6 +5,7 @@ namespace Tests\Feature\Classes;
 use App\Models\AcademicYear;
 use App\Models\AssessmentProfile;
 use App\Models\AssessmentProfileVersion;
+use App\Models\ClassStatus;
 use App\Models\Domain;
 use App\Models\Enrollment;
 use App\Models\ProfileVersionStatus;
@@ -240,5 +241,68 @@ class ClassTest extends TestCase
         $identity = StudentIdentity::firstOrFail();
         $this->assertSame('2013-05-04', $identity->birth_date->toDateString());
         $this->assertSame('Repetente · ASE: B', Enrollment::withoutGlobalScope('organization')->firstOrFail()->import_note);
+    }
+
+    #[Test]
+    public function a_class_in_preparation_can_be_activated(): void
+    {
+        $context = $this->context();
+        $this->actingAs($this->user)->post('/classes', [
+            'label' => '7.º A',
+            'academic_year_id' => $context['year'],
+            'subject_id' => $context['subject'],
+        ]);
+        $class = SchoolClass::withoutGlobalScope('organization')->firstOrFail();
+
+        $this->actingAs($this->user)
+            ->post("/classes/{$class->ulid}/activate")
+            ->assertRedirect();
+
+        $this->assertSame(ClassStatus::Active, $class->refresh()->status);
+    }
+
+    #[Test]
+    public function the_class_page_includes_the_raw_and_labelled_active_status(): void
+    {
+        $context = $this->context();
+        $this->actingAs($this->user)->post('/classes', [
+            'label' => '7.º A',
+            'academic_year_id' => $context['year'],
+            'subject_id' => $context['subject'],
+        ]);
+        $class = SchoolClass::withoutGlobalScope('organization')->firstOrFail();
+        app(CurrentOrganization::class)->runFor(
+            $this->user->personalOrganization(),
+            fn () => $class->update(['status' => ClassStatus::Active]),
+        );
+
+        $this->actingAs($this->user)
+            ->get("/classes/{$class->ulid}")
+            ->assertInertia(fn ($page) => $page
+                ->where('schoolClass.status', 'active')
+                ->where('schoolClass.status_label', 'Ativa'),
+            );
+    }
+
+    #[Test]
+    public function a_teacher_not_assigned_to_a_class_cannot_activate_it(): void
+    {
+        $context = $this->context();
+        $this->actingAs($this->user)->post('/classes', [
+            'label' => '7.º A',
+            'academic_year_id' => $context['year'],
+            'subject_id' => $context['subject'],
+        ]);
+        $class = SchoolClass::withoutGlobalScope('organization')->firstOrFail();
+        $organization = $this->user->personalOrganization();
+        $colleague = User::factory()->create();
+        $organization->members()->attach($colleague, ['joined_at' => now()]);
+
+        $this->withSession(['organization_id' => $organization->id])
+            ->actingAs($colleague)
+            ->post("/classes/{$class->ulid}/activate")
+            ->assertForbidden();
+
+        $this->assertSame(ClassStatus::Preparation, $class->refresh()->status);
     }
 }

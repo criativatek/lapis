@@ -7,6 +7,7 @@ use App\Models\AcademicYear;
 use App\Models\AssessmentProfile;
 use App\Models\AssessmentProfileVersion;
 use App\Models\Classification;
+use App\Models\ClassStatus;
 use App\Models\Enrollment;
 use App\Models\Instrument;
 use App\Models\ProfileVersionStatus;
@@ -81,6 +82,7 @@ class ClassController extends Controller
                 'subject' => $class->subject->name,
                 'academic_year' => $class->academicYear->label,
                 'grade_level' => $class->grade_level,
+                'status' => $class->status->value,
                 'status_label' => $class->status->label(),
                 'profile_name' => $class->profileVersion?->profile->name,
                 'subject_id' => $class->subject_id,
@@ -162,6 +164,15 @@ class ClassController extends Controller
         }
 
         $class->update(['assessment_profile_version_id' => $version->id]);
+
+        return back();
+    }
+
+    public function activate(SchoolClass $class): RedirectResponse
+    {
+        Gate::authorize('update', $class);
+
+        $class->update(['status' => ClassStatus::Active]);
 
         return back();
     }

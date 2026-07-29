@@ -5,6 +5,7 @@ use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\AssessmentProfileController;
 use App\Http\Controllers\ClassController;
 use App\Http\Controllers\ClassificationController;
+use App\Http\Controllers\ClassPhotoImportController;
 use App\Http\Controllers\ClassProfileMigrationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EnrollmentController;
@@ -72,6 +73,7 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::get('classes/create', [ClassController::class, 'create'])->name('classes.create');
         Route::post('classes', [ClassController::class, 'store'])->name('classes.store');
         Route::get('classes/{class}', [ClassController::class, 'show'])->name('classes.show');
+        Route::post('classes/{class}/activate', [ClassController::class, 'activate'])->name('classes.activate');
         Route::put('classes/{class}/profile', [ClassController::class, 'updateProfile'])->name('classes.profile.update');
         Route::delete('classes/{class}', [ClassController::class, 'destroy'])->name('classes.destroy');
 
@@ -84,6 +86,7 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::delete('classes/{class}/students/{enrollment}', [EnrollmentController::class, 'destroy'])->name('classes.students.destroy');
 
         Route::post('classes/{class}/roster-imports', [RosterImportController::class, 'store'])->name('classes.roster-imports.store');
+        Route::post('classes/{class}/photos', [ClassPhotoImportController::class, 'store'])->name('classes.photos.store');
         Route::post('classes/{class}/roster-imports/{token}/photos', [RosterImportController::class, 'attachPhotos'])
             ->where('token', '[0-9a-fA-F-]{36}')
             ->name('classes.roster-imports.attach-photos');

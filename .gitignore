@@ -32,6 +32,7 @@ yarn-error.log
 # Claude Code local tooling (skills marketplace cache, not project source)
 /.agents
 /.claude/skills
+/.claude/settings.json
 /skills-lock.json
 /AGENTS.md.local-backup-*
 

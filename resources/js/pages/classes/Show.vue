@@ -2,6 +2,7 @@
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ClipboardPlus, FileUp, Trash2, UserPlus } from '@lucide/vue';
 import { ref } from 'vue';
+import FileInput from '@/components/FileInput.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
@@ -37,6 +38,7 @@ const props = defineProps<{
         subject: string;
         academic_year: string;
         grade_level: string | null;
+        status: string;
         status_label: string;
         profile_name: string | null;
     };
@@ -59,6 +61,16 @@ function assignProfile(): void {
     profileForm.put(`/classes/${props.schoolClass.ulid}/profile`, {
         preserveScroll: true,
     });
+}
+
+function activateClass(): void {
+    router.post(
+        `/classes/${props.schoolClass.ulid}/activate`,
+        {},
+        {
+            preserveScroll: true,
+        },
+    );
 }
 
 // class_number is '' when empty (the backend treats empty as null); a plain
@@ -109,6 +121,27 @@ function submitImport(): void {
         forceFormData: true,
     });
 }
+
+const photoDialogOpen = ref(false);
+const photoForm = useForm<{ photos: File | null }>({
+    photos: null,
+});
+
+function openPhotoDialog(): void {
+    photoForm.reset();
+    photoForm.clearErrors();
+    photoDialogOpen.value = true;
+}
+
+function onPhotosFileChange(event: Event): void {
+    photoForm.photos = (event.target as HTMLInputElement).files?.[0] ?? null;
+}
+
+function submitPhotos(): void {
+    photoForm.post(`/classes/${props.schoolClass.ulid}/photos`, {
+        forceFormData: true,
+    });
+}
 </script>
 
 <template>
@@ -120,7 +153,19 @@ function submitImport(): void {
                 :title="schoolClass.label"
                 :description="`${schoolClass.subject} · ${schoolClass.academic_year}`"
             />
-            <Badge variant="secondary">{{ schoolClass.status_label }}</Badge>
+            <div class="flex items-center gap-2">
+                <Button
+                    v-if="schoolClass.status === 'preparation'"
+                    type="button"
+                    size="sm"
+                    @click="activateClass"
+                >
+                    Ativar turma
+                </Button>
+                <Badge variant="secondary">{{
+                    schoolClass.status_label
+                }}</Badge>
+            </div>
         </div>
 
         <p
@@ -174,14 +219,25 @@ function submitImport(): void {
         <section class="space-y-3">
             <div class="flex items-center justify-between">
                 <h2 class="text-sm font-semibold">Adicionar aluno</h2>
-                <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    @click="openImportDialog"
-                >
-                    <FileUp class="size-4" /> Importar lista
-                </Button>
+                <div class="flex items-center gap-2">
+                    <Button
+                        v-if="students.length"
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        @click="openPhotoDialog"
+                    >
+                        <FileUp class="size-4" /> Adicionar fotos
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        @click="openImportDialog"
+                    >
+                        <FileUp class="size-4" /> Importar lista
+                    </Button>
+                </div>
             </div>
             <form
                 class="grid items-end gap-3 rounded-lg border border-border p-4 sm:grid-cols-[1fr_6rem_auto_auto]"
@@ -333,18 +389,16 @@ function submitImport(): void {
                         <DialogTitle>Importar lista de turma</DialogTitle>
                         <DialogDescription
                             >Ficheiro Excel exportado do Intuitivo. Depois de
-                            reveres a lista, podes associar fotos num
-                            passo separado.</DialogDescription
+                            reveres a lista, podes associar fotos num passo
+                            separado.</DialogDescription
                         >
                     </DialogHeader>
                     <div class="grid gap-4 py-4">
                         <div class="grid gap-2">
                             <Label for="roster-file">Ficheiro Excel</Label>
-                            <input
+                            <FileInput
                                 id="roster-file"
-                                type="file"
                                 accept=".xls,.xlsx"
-                                class="text-sm"
                                 @change="onRosterFileChange"
                             />
                             <InputError :message="importForm.errors.roster" />
@@ -354,6 +408,38 @@ function submitImport(): void {
                         <Button type="submit" :disabled="importForm.processing"
                             >Continuar</Button
                         >
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
+
+        <Dialog v-model:open="photoDialogOpen">
+            <DialogContent>
+                <form @submit.prevent="submitPhotos">
+                    <DialogHeader>
+                        <DialogTitle>Adicionar fotos</DialogTitle>
+                        <DialogDescription>
+                            Associa as fotos de um ficheiro Word aos alunos já
+                            inscritos, através do nome.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div class="grid gap-4 py-4">
+                        <div class="grid gap-2">
+                            <Label for="class-photos-file"
+                                >Ficheiro Word (fotos)</Label
+                            >
+                            <FileInput
+                                id="class-photos-file"
+                                accept=".doc,.docx"
+                                @change="onPhotosFileChange"
+                            />
+                            <InputError :message="photoForm.errors.photos" />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button type="submit" :disabled="photoForm.processing">
+                            Associar fotos
+                        </Button>
                     </DialogFooter>
                 </form>
             </DialogContent>
