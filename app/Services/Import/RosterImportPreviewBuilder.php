@@ -92,14 +92,24 @@ class RosterImportPreviewBuilder
     }
 
     /**
+     * Real Intuitivo exports were verified to name-match this way, not by
+     * exact string equality: the Word photo sheet's captions carry only
+     * first+last name ("Afonso Mordomo"), while the Excel roster carries the
+     * full name including middle names ("Afonso Pito Mordomo"). A plain
+     * normalized-string comparison never matches a single real photo against
+     * a real roster — this checks each name's words against the other's, in
+     * order, so either one may be the abbreviated side.
+     *
      * @param  list<PhotoMatch>  $photoMatches
      */
     protected function findPhotoIndex(string $name, array $photoMatches): ?int
     {
-        $target = $this->normalize($name);
+        $targetWords = $this->words($name);
 
         foreach ($photoMatches as $index => $photo) {
-            if ($this->normalize($photo->name) === $target) {
+            $photoWords = $this->words($photo->name);
+
+            if ($this->isWordSubsequence($photoWords, $targetWords) || $this->isWordSubsequence($targetWords, $photoWords)) {
                 return $index;
             }
         }
@@ -110,5 +120,50 @@ class RosterImportPreviewBuilder
     protected function normalize(string $value): string
     {
         return Str::of($value)->squish()->lower()->value();
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function words(string $value): array
+    {
+        return array_values(Str::of($value)->squish()->lower()->explode(' ')->all());
+    }
+
+    /**
+     * True when every word in $needle appears in $haystack, in the same
+     * relative order — e.g. ["afonso", "mordomo"] is a subsequence of
+     * ["afonso", "pito", "mordomo"], but never of ["pito", "afonso",
+     * "mordomo"] or of a haystack missing either word. An empty $needle
+     * never matches — it would otherwise be trivially "found" in anything.
+     *
+     * @param  list<string>  $needle
+     * @param  list<string>  $haystack
+     */
+    protected function isWordSubsequence(array $needle, array $haystack): bool
+    {
+        if ($needle === []) {
+            return false;
+        }
+
+        $position = 0;
+
+        foreach ($needle as $word) {
+            while (true) {
+                if (! array_key_exists($position, $haystack)) {
+                    return false;
+                }
+
+                if ($haystack[$position] === $word) {
+                    $position++;
+
+                    continue 2;
+                }
+
+                $position++;
+            }
+        }
+
+        return true;
     }
 }

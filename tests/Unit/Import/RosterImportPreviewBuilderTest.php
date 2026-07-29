@@ -47,6 +47,37 @@ class RosterImportPreviewBuilderTest extends TestCase
     }
 
     #[Test]
+    public function a_photo_caption_with_only_first_and_last_name_matches_a_roster_row_with_middle_names(): void
+    {
+        // Verified against a real Intuitivo export: the Word photo sheet's
+        // captions carry only first+last name, while the Excel roster
+        // carries the full name with middle names. A plain exact-string
+        // match (the previous behavior) never matched a single real photo
+        // against a real roster.
+        $rows = [new RosterRow('Genivalda Goureth E. Freitas', 1, null, 'X', null, null)];
+        $photos = [new PhotoMatch('Genivalda Freitas', 'bytes', 'jpg')];
+
+        $preview = (new RosterImportPreviewBuilder)->build($rows, $photos, fn () => false);
+
+        $this->assertSame(0, $preview[0]['photo_index']);
+    }
+
+    #[Test]
+    public function an_abbreviated_caption_does_not_cross_match_a_similarly_named_row(): void
+    {
+        $rows = [
+            new RosterRow('Ana Laura S. Simão', 1, null, 'X', null, null),
+            new RosterRow('Valentina Silva Simão', 2, null, 'X', null, null),
+        ];
+        $photos = [new PhotoMatch('Ana Simão', 'bytes', 'jpg')];
+
+        $preview = (new RosterImportPreviewBuilder)->build($rows, $photos, fn () => false);
+
+        $this->assertSame(0, $preview[0]['photo_index']);
+        $this->assertNull($preview[1]['photo_index']);
+    }
+
+    #[Test]
     public function duplicate_names_within_the_file_are_flagged_and_excluded_by_default(): void
     {
         $rows = [
