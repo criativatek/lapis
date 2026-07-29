@@ -152,7 +152,19 @@ class RosterImportController extends Controller
             'rows.*.situation_code' => ['required', 'string'],
             'rows.*.note' => ['nullable', 'string', 'max:255'],
             'rows.*.process_number' => ['nullable', 'string', 'max:64'],
-            'rows.*.photo_temp_path' => ['nullable', 'string'],
+            // Deliberately NOT a path: the client only ever names a photo by
+            // its position in the original photo pool (photo_index) and its
+            // extension (photo_extension). The server is the only party that
+            // ever builds an actual filesystem path, and it does so using
+            // $token from the route — never anything the client sends — so
+            // there is no client-controlled string that could ever resolve
+            // outside this confirm request's own temp folder. The regex on
+            // photo_extension is an allowlist (alphanumeric only): it makes a
+            // '/' or '..' in that value structurally impossible, not merely
+            // unlikely. required_with in both directions means a row must
+            // supply both fields together or neither — never just one.
+            'rows.*.photo_index' => ['nullable', 'integer', 'min:0', 'required_with:rows.*.photo_extension'],
+            'rows.*.photo_extension' => ['nullable', 'string', 'regex:/^[a-zA-Z0-9]+$/', 'max:10', 'required_with:rows.*.photo_index'],
             'rows.*.include' => ['required', 'boolean'],
         ]);
 
@@ -174,8 +186,19 @@ class RosterImportController extends Controller
 
                 $photoPath = null;
 
-                if (! empty($row['photo_temp_path']) && $this->isWithinThisImportsTempFolder($row['photo_temp_path'], $token)) {
-                    $photoPath = $this->movePhotoToPermanentStorage($row['photo_temp_path']);
+                // The temp path is always rebuilt HERE, from $token (the
+                // route's own value, never client input) plus the row's
+                // validated photo_index/photo_extension — never taken as a
+                // string from the request. If no file actually exists at
+                // that reconstructed path (e.g. a stale or out-of-range
+                // photo_index), movePhotoToPermanentStorage() below simply
+                // returns null, exactly as if no photo had been supplied.
+                $photoIndex = $row['photo_index'] ?? null;
+                $photoExtension = $row['photo_extension'] ?? null;
+
+                if ($photoIndex !== null && $photoExtension !== null) {
+                    $photoTempPath = $this->tempStorage->path($token)."/{$photoIndex}.{$photoExtension}";
+                    $photoPath = $this->movePhotoToPermanentStorage($photoTempPath);
                 }
 
                 $this->enrollmentService->enrollNew($class, [
@@ -196,22 +219,6 @@ class RosterImportController extends Controller
         } finally {
             $this->tempStorage->delete($token);
         }
-    }
-
-    /**
-     * A row's photo_temp_path is client-supplied and validated only as a
-     * plain string — nothing else confirms it actually points inside THIS
-     * confirm request's own token folder before it gets read and copied into
-     * permanent storage. Flysystem blocks `../` traversal, but nothing else
-     * stops a manipulated request from pointing at a DIFFERENT token's temp
-     * photo (or any other predictable path under the disk root) and
-     * attaching it to an unrelated student. A path outside this token's own
-     * folder is treated exactly like a null/missing photo — skipped, never
-     * trusted.
-     */
-    protected function isWithinThisImportsTempFolder(string $tempRelativePath, string $token): bool
-    {
-        return str_starts_with($tempRelativePath, $this->tempStorage->path($token).'/');
     }
 
     protected function movePhotoToPermanentStorage(string $tempRelativePath): ?string

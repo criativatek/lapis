@@ -304,7 +304,8 @@ class RosterImportTest extends TestCase
                     'situation_code' => 'X',
                     'note' => 'ASE: B',
                     'process_number' => '1001',
-                    'photo_temp_path' => null,
+                    'photo_index' => null,
+                    'photo_extension' => null,
                     'include' => true,
                 ],
                 [
@@ -314,7 +315,8 @@ class RosterImportTest extends TestCase
                     'situation_code' => 'X',
                     'note' => null,
                     'process_number' => null,
-                    'photo_temp_path' => null,
+                    'photo_index' => null,
+                    'photo_extension' => null,
                     'include' => false,
                 ],
             ],
@@ -348,7 +350,8 @@ class RosterImportTest extends TestCase
                 'birth_date' => null,
                 'situation_code' => 'X',
                 'note' => null,
-                'photo_temp_path' => $tempPath,
+                'photo_index' => 0,
+                'photo_extension' => 'jpg',
                 'include' => true,
             ]],
         ]);
@@ -405,7 +408,8 @@ class RosterImportTest extends TestCase
                 'birth_date' => null,
                 'situation_code' => 'X',
                 'note' => null,
-                'photo_temp_path' => $photoPath,
+                'photo_index' => 0,
+                'photo_extension' => 'jpg',
                 'include' => true,
             ]],
         ]);
@@ -418,13 +422,23 @@ class RosterImportTest extends TestCase
     }
 
     #[Test]
-    public function a_photo_temp_path_pointing_outside_this_tokens_own_folder_is_not_attached(): void
+    public function a_photo_index_with_no_file_staged_under_this_token_enrolls_without_a_photo(): void
     {
+        // There is no longer a client-supplied path at all: confirm() only
+        // ever accepts a bare photo_index/photo_extension pair and always
+        // rebuilds "roster-imports/{token}/{index}.{extension}" itself using
+        // the route's own $token. So a REAL photo staged under a genuinely
+        // different token can never be reached from this request — its name
+        // never appears anywhere in the payload. This test proves that:
+        // even though another token's photo exists on disk at the very same
+        // index/extension this request asks for, nothing here can resolve to
+        // it, because the path is never derived from anything but THIS
+        // confirm request's own token.
         $class = $this->createClass();
         $storage = app(RosterImportTempStorage::class);
 
         $otherToken = $storage->newToken();
-        $foreignPhotoPath = $storage->storePhoto($otherToken, 0, 'someone-elses-photo-bytes', 'jpg');
+        $storage->storePhoto($otherToken, 0, 'someone-elses-photo-bytes', 'jpg');
 
         $thisToken = $storage->newToken();
 
@@ -435,18 +449,75 @@ class RosterImportTest extends TestCase
                 'birth_date' => null,
                 'situation_code' => 'X',
                 'note' => null,
-                'photo_temp_path' => $foreignPhotoPath,
+                'photo_index' => 0,
+                'photo_extension' => 'jpg',
                 'include' => true,
             ]],
         ]);
 
         $response->assertRedirect("/classes/{$class->ulid}");
 
-        // The row still enrolls — it just does not get a photo, exactly as if
-        // photo_temp_path had been null. The foreign token's photo must never
-        // be copied into this student's permanent storage.
+        // No file was ever staged under $thisToken, so the reconstructed path
+        // ("roster-imports/{$thisToken}/0.jpg") does not exist on disk. The
+        // row still enrolls — it just does not get a photo, exactly as if
+        // photo_index had been null. The other token's real photo is never
+        // touched.
         $identity = StudentIdentity::firstOrFail();
         $this->assertNull($identity->photo_path);
+        Storage::disk('local')->assertExists("roster-imports/{$otherToken}/0.jpg");
+    }
+
+    #[Test]
+    public function a_photo_extension_containing_a_path_separator_or_traversal_sequence_fails_validation(): void
+    {
+        // photo_extension is validated against an allowlist regex
+        // (alphanumeric only), not a denylist of specific bad substrings —
+        // so this is not "we blocked the traversal sequence we thought of",
+        // it is "nothing but [a-zA-Z0-9] can ever reach the string that gets
+        // concatenated into a filesystem path".
+        $class = $this->createClass();
+
+        $response = $this->actingAs($this->user)->post("/classes/{$class->ulid}/roster-imports/some-token/confirm", [
+            'rows' => [[
+                'name' => 'Maria Teste',
+                'class_number' => 1,
+                'birth_date' => null,
+                'situation_code' => 'X',
+                'note' => null,
+                'photo_index' => 0,
+                'photo_extension' => '../../../etc/passwd',
+                'include' => true,
+            ]],
+        ]);
+
+        $response->assertSessionHasErrors('rows.0.photo_extension');
+        $this->assertSame(0, StudentIdentity::count());
+    }
+
+    #[Test]
+    public function a_photo_index_without_its_matching_photo_extension_fails_validation(): void
+    {
+        // Both fields must arrive together or not at all — a lone photo_index
+        // (or a lone photo_extension) can never make it into the row
+        // processing loop, so there is no half-supplied state to reason
+        // about there.
+        $class = $this->createClass();
+
+        $response = $this->actingAs($this->user)->post("/classes/{$class->ulid}/roster-imports/some-token/confirm", [
+            'rows' => [[
+                'name' => 'Maria Teste',
+                'class_number' => 1,
+                'birth_date' => null,
+                'situation_code' => 'X',
+                'note' => null,
+                'photo_index' => 0,
+                'photo_extension' => null,
+                'include' => true,
+            ]],
+        ]);
+
+        $response->assertSessionHasErrors('rows.0.photo_extension');
+        $this->assertSame(0, StudentIdentity::count());
     }
 
     #[Test]
@@ -461,7 +532,8 @@ class RosterImportTest extends TestCase
                 'birth_date' => null,
                 'situation_code' => 'MT',
                 'note' => null,
-                'photo_temp_path' => null,
+                'photo_index' => null,
+                'photo_extension' => null,
                 'include' => true,
             ]],
         ]);
@@ -508,7 +580,8 @@ class RosterImportTest extends TestCase
                     'birth_date' => null,
                     'situation_code' => 'X',
                     'note' => null,
-                    'photo_temp_path' => null,
+                    'photo_index' => null,
+                    'photo_extension' => null,
                     'include' => true,
                 ],
                 [
@@ -517,7 +590,8 @@ class RosterImportTest extends TestCase
                     'birth_date' => null,
                     'situation_code' => 'X',
                     'note' => null,
-                    'photo_temp_path' => null,
+                    'photo_index' => null,
+                    'photo_extension' => null,
                     'include' => true,
                 ],
             ],
