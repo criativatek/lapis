@@ -5,6 +5,7 @@ import { computed, nextTick, reactive, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { percentFor as computePercentFor, qualitativeLabelFor as computeQualitativeLabelFor } from '@/lib/instrumentQualitativeRating';
 
 type Item = {
     id: number;
@@ -167,54 +168,28 @@ function totalFor(student: Student): number | null {
  * items. Returns null under the same condition totalFor() does (nothing
  * graded yet), or if every graded item happened to be bonus (denominator
  * would be zero).
+ *
+ * This is a per-instrument indicator only — it does not mirror domain
+ * weighting, eligibility/late-entry rules, or absence_mode from
+ * CalculationEngine. See instrumentQualitativeRating.ts for the extracted,
+ * independently testable implementation.
  */
 function percentFor(student: Student): number | null {
-    let earned = 0;
-    let possible = 0;
-    let assessed = 0;
-
-    for (const item of props.items) {
-        const current = cells[cellKey(student.enrollment_id, item.id)];
-
-        if (current?.state === 'assessed' && current.points !== null) {
-            earned += current.points;
-
-            if (!item.is_bonus) {
-                possible += item.points_possible;
-            }
-
-            assessed += 1;
-        }
-    }
-
-    if (assessed === 0 || possible === 0) {
-        return null;
-    }
-
-    return Math.round((earned / possible) * 1000) / 10;
+    return computePercentFor(props.items, (itemId) => cells[cellKey(student.enrollment_id, itemId)]);
 }
 
 /**
  * The qualitative label for the student's current percentage, from the
  * class's assessment-profile scale bands (scaleBands prop). A band match is
- * inclusive on both ends, mirroring CalculationEngine::combine()'s own
- * band-matching loop. Returns null when nothing is graded yet, or when
- * scaleBands is empty (no profile assigned to the class, or its scale has
- * no bands configured) — the caller renders "—" in that case, never a
- * guessed label.
+ * inclusive on both ends, mirroring only the inclusive-boundary convention
+ * of CalculationEngine::combine()'s band-matching loop — not its domain
+ * weighting, eligibility, or absence handling (see percentFor() above).
+ * Returns null when nothing is graded yet, or when scaleBands is empty (no
+ * profile assigned to the class, or its scale has no bands configured) —
+ * the caller renders "—" in that case, never a guessed label.
  */
 function qualitativeLabelFor(student: Student): string | null {
-    const percent = percentFor(student);
-
-    if (percent === null) {
-        return null;
-    }
-
-    const band = props.scaleBands.find(
-        (band) => percent >= Number(band.band_min) && percent <= Number(band.band_max),
-    );
-
-    return band?.label ?? null;
+    return computeQualitativeLabelFor(percentFor(student), props.scaleBands);
 }
 
 /** True while some cells are marked and others are still pending. */
@@ -315,7 +290,10 @@ const nonAssessedStates = computed(() => props.states.filter((state) => !state.c
                             </div>
                         </th>
                         <th class="px-3 py-2 text-right font-medium">Total</th>
-                        <th class="px-3 py-2 text-left font-medium">Apreciação Qualitativa</th>
+                        <th
+                            class="px-3 py-2 text-left font-medium"
+                            title="Indicador só deste instrumento — não é a classificação oficial da turma/período, que pondera domínios e outras regras."
+                        >Apreciação Qualitativa</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-border">
