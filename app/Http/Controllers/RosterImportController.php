@@ -40,7 +40,6 @@ class RosterImportController extends Controller
 
         $data = $request->validate([
             'roster' => ['required', 'file', 'mimes:xls,xlsx'],
-            'photos' => ['nullable', 'file', 'mimes:doc,docx'],
         ]);
 
         try {
@@ -53,21 +52,11 @@ class RosterImportController extends Controller
             return back()->withErrors(['roster' => 'Não foi possível encontrar nenhum aluno neste ficheiro.']);
         }
 
-        $photoMatches = [];
-
-        if (isset($data['photos'])) {
-            try {
-                $photoMatches = $this->photoParser->parse($data['photos']->getRealPath());
-            } catch (RosterFileParseException $exception) {
-                return back()->withErrors(['photos' => $exception->getMessage()]);
-            }
-        }
-
+        // Photos are no longer part of this step — they are a separate,
+        // later phase (attachPhotos() below), reusing the token created
+        // here. Every row therefore starts with photo_index/photo_extension
+        // null.
         $token = $this->tempStorage->newToken();
-
-        foreach ($photoMatches as $index => $photo) {
-            $this->tempStorage->storePhoto($token, $index, $photo->imageBytes, $photo->extension);
-        }
 
         $isAlreadyEnrolled = function (string $name) use ($class): bool {
             $index = BlindIndex::of($name);
@@ -86,13 +75,81 @@ class RosterImportController extends Controller
                 ->exists();
         };
 
-        $rows = $this->previewBuilder->build($rosterRows, $photoMatches, $isAlreadyEnrolled);
+        // No photos at this step (see the comment above $token) — the
+        // preview page always starts with an empty photo pool; attachPhotos()
+        // below is the only place that ever populates it.
+        $rows = $this->previewBuilder->build($rosterRows, [], $isAlreadyEnrolled);
 
-        // Every parsed photo, not just the ones that auto-matched a row by
-        // name — the preview page offers the teacher the full pool so a
-        // mismatched or missing photo can be corrected manually (§3.3 "o
-        // professor associa/corrige manualmente"). `index` is the same
-        // position scheme previewPhoto() streams by.
+        return Inertia::render('roster-imports/Preview', [
+            'schoolClassUlid' => $class->ulid,
+            'token' => $token,
+            'rows' => $rows,
+            'photos' => [],
+        ]);
+    }
+
+    /**
+     * Second, separate phase of the import: attaches a Word photo file to an
+     * ALREADY-created preview, in place — reusing the roster upload's own
+     * $token so both phases' temp files land in the same
+     * roster-imports/{token}/ folder (the scheduled prune command and
+     * confirm()'s own cleanup keep working unchanged).
+     *
+     * The row data validated/used here is whatever the CLIENT currently
+     * holds — i.e. the teacher's own edits already made on the preview page
+     * — never a fresh re-parse of the roster file. Matching therefore runs
+     * against the CURRENT names, not the original ones.
+     */
+    public function attachPhotos(Request $request, SchoolClass $class, string $token): \Inertia\Response|RedirectResponse
+    {
+        Gate::authorize('update', $class);
+
+        // Same per-row rules confirm() already uses — see the extensive
+        // comments there on why photo_index/photo_extension are never a
+        // client-supplied path.
+        $validated = $request->validate([
+            'photos' => ['required', 'file', 'mimes:doc,docx'],
+            'rows' => ['required', 'array'],
+            'rows.*.name' => ['required', 'string', 'max:255'],
+            'rows.*.class_number' => ['nullable', 'integer', 'min:1', 'max:65535'],
+            'rows.*.birth_date' => ['nullable', 'date'],
+            'rows.*.situation_code' => ['required', 'string'],
+            'rows.*.note' => ['nullable', 'string', 'max:255'],
+            'rows.*.process_number' => ['nullable', 'string', 'max:64'],
+            'rows.*.photo_index' => ['nullable', 'integer', 'min:0', 'required_with:rows.*.photo_extension'],
+            'rows.*.photo_extension' => ['nullable', 'string', 'regex:/^[a-zA-Z0-9]+$/', 'max:10', 'required_with:rows.*.photo_index'],
+            'rows.*.include' => ['required', 'boolean'],
+        ]);
+
+        try {
+            $photoMatches = $this->photoParser->parse($validated['photos']->getRealPath());
+        } catch (RosterFileParseException $exception) {
+            return back()->withErrors(['photos' => $exception->getMessage()]);
+        }
+
+        foreach ($photoMatches as $index => $photo) {
+            $this->tempStorage->storePhoto($token, $index, $photo->imageBytes, $photo->extension);
+        }
+
+        // $request->validate() only returns the fields it was told to
+        // validate, dropping every other key — but the preview page's row
+        // shape also carries display-only fields (situation_recognized,
+        // duplicate_in_file, already_enrolled) that were never part of
+        // those rules and must still round-trip unchanged. So the raw,
+        // as-submitted row is merged with its validated/cast counterpart:
+        // validated fields win (sanitized types), everything else survives.
+        $rawRows = $request->input('rows', []);
+        $rows = [];
+
+        foreach ($rawRows as $index => $rawRow) {
+            $rows[] = array_merge($rawRow, $validated['rows'][$index]);
+        }
+
+        $rows = $this->previewBuilder->matchPhotosToRows($rows, $photoMatches);
+
+        // Same shape store() already produces — every parsed photo, not
+        // just the ones that auto-matched a row by name (see store()'s own
+        // comment on $photos below).
         $photos = [];
 
         foreach ($photoMatches as $index => $photo) {

@@ -165,14 +165,38 @@ class RosterImportTest extends TestCase
         );
     }
 
-    #[Test]
-    public function uploading_a_roster_and_a_photo_file_matches_them_in_the_preview(): void
+    /**
+     * @return array{token: string, rows: array<int, array<string, mixed>>}
+     */
+    protected function uploadRosterOnly(SchoolClass $class): array
     {
-        $class = $this->createClass();
         $excel = UploadedFile::fake()->createWithContent(
             'roster.xlsx',
             file_get_contents((new RosterFixture)->build()),
         );
+
+        $response = $this->actingAs($this->user)->post("/classes/{$class->ulid}/roster-imports", [
+            'roster' => $excel,
+        ]);
+
+        $token = null;
+        $rows = null;
+        $response->assertInertia(function ($page) use (&$token, &$rows) {
+            $token = $page->toArray()['props']['token'];
+            $rows = $page->toArray()['props']['rows'];
+
+            return $page->component('roster-imports/Preview');
+        });
+
+        return ['token' => $token, 'rows' => $rows];
+    }
+
+    #[Test]
+    public function uploading_only_the_roster_then_attaching_photos_matches_them_in_the_preview(): void
+    {
+        $class = $this->createClass();
+        $uploaded = $this->uploadRosterOnly($class);
+
         $photos = UploadedFile::fake()->createWithContent(
             'photos.docx',
             file_get_contents(DocxFixtureBuilder::build([
@@ -180,10 +204,10 @@ class RosterImportTest extends TestCase
             ])),
         );
 
-        $response = $this->actingAs($this->user)->post("/classes/{$class->ulid}/roster-imports", [
-            'roster' => $excel,
-            'photos' => $photos,
-        ]);
+        $response = $this->actingAs($this->user)->post(
+            "/classes/{$class->ulid}/roster-imports/{$uploaded['token']}/photos",
+            ['photos' => $photos, 'rows' => $uploaded['rows']],
+        );
 
         $response->assertInertia(fn ($page) => $page
             ->component('roster-imports/Preview')
@@ -193,13 +217,11 @@ class RosterImportTest extends TestCase
     }
 
     #[Test]
-    public function the_preview_page_receives_every_parsed_photo_even_ones_that_did_not_auto_match_a_row(): void
+    public function attaching_photos_gives_the_preview_every_parsed_photo_even_ones_that_did_not_auto_match_a_row(): void
     {
         $class = $this->createClass();
-        $excel = UploadedFile::fake()->createWithContent(
-            'roster.xlsx',
-            file_get_contents((new RosterFixture)->build()),
-        );
+        $uploaded = $this->uploadRosterOnly($class);
+
         $photos = UploadedFile::fake()->createWithContent(
             'photos.docx',
             file_get_contents(DocxFixtureBuilder::build([
@@ -208,10 +230,10 @@ class RosterImportTest extends TestCase
             ])),
         );
 
-        $response = $this->actingAs($this->user)->post("/classes/{$class->ulid}/roster-imports", [
-            'roster' => $excel,
-            'photos' => $photos,
-        ]);
+        $response = $this->actingAs($this->user)->post(
+            "/classes/{$class->ulid}/roster-imports/{$uploaded['token']}/photos",
+            ['photos' => $photos, 'rows' => $uploaded['rows']],
+        );
 
         // Two photos were parsed, but only the first ("Maria Teste") matches a
         // roster row by name. The teacher must still be offered the second,
@@ -230,13 +252,44 @@ class RosterImportTest extends TestCase
     }
 
     #[Test]
-    public function a_corrupted_photos_file_is_rejected_with_a_clear_error_instead_of_crashing(): void
+    public function attaching_photos_matches_against_the_clients_edited_names_not_the_original_ones(): void
+    {
+        // Proves the matching in attachPhotos() runs against the CURRENT
+        // client-supplied row names (i.e. whatever the teacher has already
+        // edited on the preview page), not a stale server-side copy of the
+        // roster. If it matched by the ORIGINAL "Maria Teste" instead, this
+        // row would incorrectly receive the photo.
+        $class = $this->createClass();
+        $uploaded = $this->uploadRosterOnly($class);
+
+        $editedRows = $uploaded['rows'];
+        $editedRows[0]['name'] = 'Nome Totalmente Diferente';
+
+        $photos = UploadedFile::fake()->createWithContent(
+            'photos.docx',
+            file_get_contents(DocxFixtureBuilder::build([
+                ['name' => 'Maria Teste', 'imageBytes' => DocxFixtureBuilder::tinyJpeg()],
+            ])),
+        );
+
+        $response = $this->actingAs($this->user)->post(
+            "/classes/{$class->ulid}/roster-imports/{$uploaded['token']}/photos",
+            ['photos' => $photos, 'rows' => $editedRows],
+        );
+
+        $response->assertInertia(fn ($page) => $page
+            ->component('roster-imports/Preview')
+            ->where('rows.0.name', 'Nome Totalmente Diferente')
+            ->where('rows.0.photo_index', null),
+        );
+    }
+
+    #[Test]
+    public function a_corrupted_photos_file_at_attach_photos_is_rejected_with_a_clear_error_instead_of_crashing(): void
     {
         $class = $this->createClass();
-        $excel = UploadedFile::fake()->createWithContent(
-            'roster.xlsx',
-            file_get_contents((new RosterFixture)->build()),
-        );
+        $uploaded = $this->uploadRosterOnly($class);
+
         // Passes the mimes:doc,docx rule (Laravel's mimes check is MIME-type
         // based, driven by the fake's declared/guessed type for the .docx
         // name — not by sniffing real zip content), but is not a valid zip
@@ -246,10 +299,10 @@ class RosterImportTest extends TestCase
         $corruptedPhotos = UploadedFile::fake()->createWithContent('photos.docx', 'not actually a zip file');
 
         $this->actingAs($this->user)
-            ->post("/classes/{$class->ulid}/roster-imports", [
-                'roster' => $excel,
-                'photos' => $corruptedPhotos,
-            ])
+            ->post(
+                "/classes/{$class->ulid}/roster-imports/{$uploaded['token']}/photos",
+                ['photos' => $corruptedPhotos, 'rows' => $uploaded['rows']],
+            )
             ->assertSessionHasErrors('photos');
     }
 
@@ -371,10 +424,9 @@ class RosterImportTest extends TestCase
     public function a_validation_error_on_confirm_does_not_delete_the_temp_photos(): void
     {
         $class = $this->createClass();
-        $excel = UploadedFile::fake()->createWithContent(
-            'roster.xlsx',
-            file_get_contents((new RosterFixture)->build()),
-        );
+        $uploaded = $this->uploadRosterOnly($class);
+        $token = $uploaded['token'];
+
         $photos = UploadedFile::fake()->createWithContent(
             'photos.docx',
             file_get_contents(DocxFixtureBuilder::build([
@@ -382,17 +434,10 @@ class RosterImportTest extends TestCase
             ])),
         );
 
-        $uploadResponse = $this->actingAs($this->user)->post("/classes/{$class->ulid}/roster-imports", [
-            'roster' => $excel,
-            'photos' => $photos,
-        ]);
-
-        $token = null;
-        $uploadResponse->assertInertia(function ($page) use (&$token) {
-            $token = $page->toArray()['props']['token'];
-
-            return $page->component('roster-imports/Preview');
-        });
+        $this->actingAs($this->user)->post(
+            "/classes/{$class->ulid}/roster-imports/{$token}/photos",
+            ['photos' => $photos, 'rows' => $uploaded['rows']],
+        )->assertInertia(fn ($page) => $page->component('roster-imports/Preview'));
 
         $photoPath = "roster-imports/{$token}/0.jpg";
         Storage::disk('local')->assertExists($photoPath);

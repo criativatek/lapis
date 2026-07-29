@@ -60,6 +60,38 @@ class RosterImportPreviewBuilder
     }
 
     /**
+     * Matches freshly-parsed photos against ALREADY-BUILT preview rows —
+     * used by the "attach photos" step, which runs after the roster has
+     * already been previewed (and possibly edited by the teacher). Unlike
+     * build(), $rows here are plain arrays (the client's current row data,
+     * name edits included), not RosterRow objects, and there is no
+     * duplicate/already-enrolled recalculation: those flags were already
+     * decided by the original build() call and are passed through unchanged.
+     *
+     * A row whose name matches no parsed photo is left exactly as it came
+     * in — so a row that already had no photo simply keeps photo_index:
+     * null, and this never clobbers a manual assignment from an earlier
+     * attach-photos call that this call's photo file happens not to repeat.
+     *
+     * @param  list<array<string, mixed>>  $rows  each must at least have a 'name' key (string)
+     * @param  list<PhotoMatch>  $photoMatches
+     * @return list<array<string, mixed>>
+     */
+    public function matchPhotosToRows(array $rows, array $photoMatches): array
+    {
+        foreach ($rows as &$row) {
+            $photoIndex = $this->findPhotoIndex($row['name'], $photoMatches);
+
+            if ($photoIndex !== null) {
+                $row['photo_index'] = $photoIndex;
+                $row['photo_extension'] = $photoMatches[$photoIndex]->extension;
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
      * @param  list<PhotoMatch>  $photoMatches
      */
     protected function findPhotoIndex(string $name, array $photoMatches): ?int

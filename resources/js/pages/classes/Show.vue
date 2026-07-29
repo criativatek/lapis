@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ClipboardPlus, FileUp, Trash2, UserPlus } from '@lucide/vue';
-import { ref, watch } from 'vue';
+import { ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
@@ -90,34 +90,18 @@ function remove(student: Student): void {
 }
 
 const importDialogOpen = ref(false);
-const wantsPhotos = ref(false);
-const importForm = useForm<{ roster: File | null; photos: File | null }>({
+const importForm = useForm<{ roster: File | null }>({
     roster: null,
-    photos: null,
-});
-
-// Unchecking "Queres associar fotos?" must genuinely drop any previously
-// selected file — otherwise a teacher who picks the wrong file, unchecks the
-// box, and submits would silently send a file the UI shows as un-selected.
-watch(wantsPhotos, (value) => {
-    if (!value) {
-        importForm.photos = null;
-    }
 });
 
 function openImportDialog(): void {
     importForm.reset();
     importForm.clearErrors();
-    wantsPhotos.value = false;
     importDialogOpen.value = true;
 }
 
 function onRosterFileChange(event: Event): void {
     importForm.roster = (event.target as HTMLInputElement).files?.[0] ?? null;
-}
-
-function onPhotosFileChange(event: Event): void {
-    importForm.photos = (event.target as HTMLInputElement).files?.[0] ?? null;
 }
 
 function submitImport(): void {
@@ -348,8 +332,9 @@ function submitImport(): void {
                     <DialogHeader>
                         <DialogTitle>Importar lista de turma</DialogTitle>
                         <DialogDescription
-                            >Ficheiro Excel exportado do
-                            Intuitivo.</DialogDescription
+                            >Ficheiro Excel exportado do Intuitivo. Depois de
+                            reveres a lista, podes associar fotos num
+                            passo separado.</DialogDescription
                         >
                     </DialogHeader>
                     <div class="grid gap-4 py-4">
@@ -363,29 +348,6 @@ function submitImport(): void {
                                 @change="onRosterFileChange"
                             />
                             <InputError :message="importForm.errors.roster" />
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <input
-                                id="wants-photos"
-                                v-model="wantsPhotos"
-                                type="checkbox"
-                            />
-                            <Label for="wants-photos"
-                                >Queres associar fotos?</Label
-                            >
-                        </div>
-                        <div v-if="wantsPhotos" class="grid gap-2">
-                            <Label for="photos-file"
-                                >Ficheiro Word (fotos)</Label
-                            >
-                            <input
-                                id="photos-file"
-                                type="file"
-                                accept=".doc,.docx"
-                                class="text-sm"
-                                @change="onPhotosFileChange"
-                            />
-                            <InputError :message="importForm.errors.photos" />
                         </div>
                     </div>
                     <DialogFooter>

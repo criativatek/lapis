@@ -84,6 +84,9 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::delete('classes/{class}/students/{enrollment}', [EnrollmentController::class, 'destroy'])->name('classes.students.destroy');
 
         Route::post('classes/{class}/roster-imports', [RosterImportController::class, 'store'])->name('classes.roster-imports.store');
+        Route::post('classes/{class}/roster-imports/{token}/photos', [RosterImportController::class, 'attachPhotos'])
+            ->where('token', '[0-9a-fA-F-]{36}')
+            ->name('classes.roster-imports.attach-photos');
         // Constrained to the shape RosterImportTempStorage::newToken() actually
         // generates (a UUID) — never a bare string, so a token can never itself
         // carry a path segment like ".." into the temp-folder path it builds.

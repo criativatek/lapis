@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, router, useForm } from '@inertiajs/vue3';
+import { ref } from 'vue';
 import Heading from '@/components/Heading.vue';
+import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 type PreviewRow = {
     name: string;
@@ -42,16 +45,69 @@ type FormRow = Omit<PreviewRow, 'class_number'> & {
     photo_temp_path: string | null;
 };
 
-const form = useForm<{ rows: FormRow[] }>({
-    rows: props.rows.map((row) => ({
+// Shared by the initial form seed AND by re-seeding form.rows after
+// attachPhotos() responds (see submitPhotos() below) — kept in one place so
+// the photo_temp_path/shape construction never drifts between the two.
+function toFormRow(row: PreviewRow): FormRow {
+    return {
         ...row,
         class_number: row.class_number ?? '',
         photo_temp_path:
             row.photo_index !== null
                 ? `roster-imports/${props.token}/${row.photo_index}.${row.photo_extension}`
                 : null,
-    })),
+    };
+}
+
+const form = useForm<{ rows: FormRow[] }>({
+    rows: props.rows.map(toFormRow),
 });
+
+const photosFile = ref<File | null>(null);
+const photosProcessing = ref(false);
+const photosError = ref<string | null>(null);
+
+function onPhotosFileChange(event: Event): void {
+    photosFile.value = (event.target as HTMLInputElement).files?.[0] ?? null;
+    photosError.value = null;
+}
+
+// A separate, later phase from the roster upload (classes/Show.vue): the
+// teacher reviews/edits the roster first, THEN optionally attaches photos —
+// so this submits form.rows (the CURRENT, possibly-edited row data) rather
+// than relying on any server-side memory of the original upload.
+function submitPhotos(): void {
+    if (!photosFile.value) {
+        return;
+    }
+
+    photosProcessing.value = true;
+
+    router.post(
+        `/classes/${props.schoolClassUlid}/roster-imports/${props.token}/photos`,
+        { photos: photosFile.value, rows: form.rows },
+        {
+            forceFormData: true,
+            preserveState: true,
+            preserveScroll: true,
+            onSuccess: () => {
+                // Inertia updates props.rows/props.photos reactively, but
+                // form.rows (this useForm's own local copy) does not
+                // automatically re-derive from updated props — it must be
+                // re-seeded explicitly, through the same toFormRow() used
+                // on initial load.
+                form.rows = props.rows.map(toFormRow);
+                photosFile.value = null;
+            },
+            onError: (errors) => {
+                photosError.value = errors.photos ?? null;
+            },
+            onFinish: () => {
+                photosProcessing.value = false;
+            },
+        },
+    );
+}
 
 function photoUrl(index: number | null): string | null {
     if (index === null) {
@@ -227,5 +283,35 @@ function submit(): void {
                 </span>
             </div>
         </form>
+
+        <div class="space-y-3 rounded-lg border border-dashed border-border p-4">
+            <h2 class="text-sm font-semibold">Adicionar fotos</h2>
+            <p class="text-xs text-muted-foreground">
+                Ficheiro Word exportado do Intuitivo com as fotos dos alunos.
+                As fotos são associadas por nome às linhas acima — inclui
+                primeiro quaisquer correções de nome que já tenhas feito.
+            </p>
+            <div class="flex flex-wrap items-end gap-3">
+                <div class="grid gap-2">
+                    <Label for="photos-file">Ficheiro Word (fotos)</Label>
+                    <input
+                        id="photos-file"
+                        type="file"
+                        accept=".doc,.docx"
+                        class="text-sm"
+                        @change="onPhotosFileChange"
+                    />
+                </div>
+                <Button
+                    type="button"
+                    variant="outline"
+                    :disabled="!photosFile || photosProcessing"
+                    @click="submitPhotos"
+                >
+                    Adicionar fotos
+                </Button>
+            </div>
+            <InputError :message="photosError ?? undefined" />
+        </div>
     </div>
 </template>
