@@ -49,6 +49,7 @@ const props = defineProps<{
     students: Student[];
     scores: Score[];
     states: StateOption[];
+    scaleBands: { label: string; band_min: string; band_max: string }[];
 }>();
 
 type Cell = { state: string; points: number | null; reason: string | null };
@@ -61,6 +62,7 @@ const cellKey = (enrollmentId: number, itemId: number) => `${enrollmentId}:${ite
 const dirty = reactive(new Set<string>());
 
 const cells = reactive<Record<string, Cell>>({});
+
 for (const score of props.scores) {
     cells[cellKey(score.enrollment_id, score.instrument_item_id)] = {
         state: score.result_state,
@@ -116,6 +118,7 @@ function onKeydown(event: KeyboardEvent, rowIndex: number, columnIndex: number):
         const next = document.querySelector<HTMLInputElement>(
             `[data-cell="${row}-${column}"]`,
         );
+
         if (next) {
             event.preventDefault();
             nextTick(() => {
@@ -153,6 +156,65 @@ function totalFor(student: Student): number | null {
     }
 
     return assessed === 0 ? null : sum;
+}
+
+/**
+ * The percentage, over only the items already graded — never the
+ * instrument's full total_points as a fixed denominator, so an ungraded
+ * item never drags the percentage down (CLAUDE.md §13.3, "vazio não é
+ * zero"). Bonus items add to the numerator but not the denominator,
+ * mirroring CalculationEngine::calculateDomain()'s treatment of bonus
+ * items. Returns null under the same condition totalFor() does (nothing
+ * graded yet), or if every graded item happened to be bonus (denominator
+ * would be zero).
+ */
+function percentFor(student: Student): number | null {
+    let earned = 0;
+    let possible = 0;
+    let assessed = 0;
+
+    for (const item of props.items) {
+        const current = cells[cellKey(student.enrollment_id, item.id)];
+
+        if (current?.state === 'assessed' && current.points !== null) {
+            earned += current.points;
+
+            if (!item.is_bonus) {
+                possible += item.points_possible;
+            }
+
+            assessed += 1;
+        }
+    }
+
+    if (assessed === 0 || possible === 0) {
+        return null;
+    }
+
+    return Math.round((earned / possible) * 1000) / 10;
+}
+
+/**
+ * The qualitative label for the student's current percentage, from the
+ * class's assessment-profile scale bands (scaleBands prop). A band match is
+ * inclusive on both ends, mirroring CalculationEngine::combine()'s own
+ * band-matching loop. Returns null when nothing is graded yet, or when
+ * scaleBands is empty (no profile assigned to the class, or its scale has
+ * no bands configured) — the caller renders "—" in that case, never a
+ * guessed label.
+ */
+function qualitativeLabelFor(student: Student): string | null {
+    const percent = percentFor(student);
+
+    if (percent === null) {
+        return null;
+    }
+
+    const band = props.scaleBands.find(
+        (band) => percent >= Number(band.band_min) && percent <= Number(band.band_max),
+    );
+
+    return band?.label ?? null;
 }
 
 /** True while some cells are marked and others are still pending. */
@@ -253,6 +315,7 @@ const nonAssessedStates = computed(() => props.states.filter((state) => !state.c
                             </div>
                         </th>
                         <th class="px-3 py-2 text-right font-medium">Total</th>
+                        <th class="px-3 py-2 text-left font-medium">Apreciação Qualitativa</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-border">
@@ -302,8 +365,12 @@ const nonAssessedStates = computed(() => props.states.filter((state) => !state.c
                             </template>
                             <template v-else>
                                 {{ totalFor(student) }}<span v-if="instrument.total_points" class="font-normal text-muted-foreground">/{{ instrument.total_points }}</span>
+                                <span v-if="percentFor(student) !== null" class="font-normal text-muted-foreground"> · {{ percentFor(student) }}%</span>
                                 <span v-if="isPartial(student)" class="ml-1 text-xs font-normal text-amber-600" title="Ainda há questões por avaliar.">parcial</span>
                             </template>
+                        </td>
+                        <td class="px-3 py-1.5 text-left text-muted-foreground">
+                            {{ qualitativeLabelFor(student) ?? '—' }}
                         </td>
                     </tr>
                 </tbody>
