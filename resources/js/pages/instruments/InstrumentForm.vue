@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
 import { Plus, Trash2 } from '@lucide/vue';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,6 +32,16 @@ type InstrumentData = {
     items: ItemRow[];
 };
 
+type ImportableInstrument = {
+    ulid: string;
+    title: string;
+    class_label: string;
+    applied_on: string;
+    total_points: number | null;
+    allow_bonus: boolean;
+    items: ItemRow[];
+};
+
 const props = defineProps<{
     periods: Option[];
     types: Option[];
@@ -39,6 +49,7 @@ const props = defineProps<{
     initial?: InstrumentData;
     submitUrl: string;
     method: 'post' | 'put';
+    importableInstruments?: ImportableInstrument[];
 }>();
 
 const form = useForm<InstrumentData>(
@@ -76,6 +87,29 @@ function addItem(): void {
 
 function removeItem(index: number): void {
     form.items.splice(index, 1);
+}
+
+const selectedImportUlid = ref<string | null>(null);
+
+function applyImportedTemplate(): void {
+    const source = props.importableInstruments?.find(
+        (instrument) => instrument.ulid === selectedImportUlid.value,
+    );
+
+    if (!source) {
+        return;
+    }
+
+    form.title = source.title;
+    form.total_points = source.total_points ?? 0;
+    form.allow_bonus = source.allow_bonus;
+    form.items = source.items.map((item) => ({
+        code: item.code,
+        label: item.label ?? '',
+        points_possible: item.points_possible,
+        is_bonus: item.is_bonus,
+        domains: item.domains.map((domain) => ({ ...domain })),
+    }));
 }
 
 function addAllocation(item: ItemRow): void {
@@ -117,6 +151,40 @@ function submit(): void {
 
 <template>
     <form class="space-y-8" @submit.prevent="submit">
+        <div
+            v-if="importableInstruments && importableInstruments.length"
+            class="flex flex-wrap items-end gap-3 rounded-lg border border-dashed border-border p-3"
+        >
+            <div class="grid gap-1.5">
+                <Label class="text-xs">Importar de outro instrumento</Label>
+                <select
+                    v-model="selectedImportUlid"
+                    class="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+                >
+                    <option :value="null">Nenhum</option>
+                    <option
+                        v-for="instrument in importableInstruments"
+                        :key="instrument.ulid"
+                        :value="instrument.ulid"
+                    >
+                        {{ instrument.title }} · {{ instrument.class_label }} · {{ instrument.applied_on }}
+                    </option>
+                </select>
+            </div>
+            <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                :disabled="!selectedImportUlid"
+                @click="applyImportedTemplate"
+            >
+                Importar questões
+            </Button>
+            <p class="w-full text-xs text-muted-foreground">
+                Copia o título, a cotação total e as questões — nunca notas de alunos. Continua tudo editável depois de importar.
+            </p>
+        </div>
+
         <section class="grid gap-4 sm:grid-cols-2">
             <div class="grid gap-2 sm:col-span-2">
                 <Label for="title">Designação</Label>
