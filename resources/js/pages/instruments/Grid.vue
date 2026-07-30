@@ -1,10 +1,19 @@
 <script setup lang="ts">
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { CircleAlert, Save } from '@lucide/vue';
 import { computed, nextTick, reactive, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
+import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { percentFor as computePercentFor, qualitativeLabelFor as computeQualitativeLabelFor } from '@/lib/instrumentQualitativeRating';
 
 type Item = {
@@ -41,6 +50,8 @@ const props = defineProps<{
         title: string;
         applied_on: string;
         status_label: string;
+        status: string;
+        cancellation_reason: string | null;
         total_points: number | null;
         class_label: string;
         class_ulid: string;
@@ -262,6 +273,30 @@ function save(): void {
 }
 
 const nonAssessedStates = computed(() => props.states.filter((state) => !state.carries_value));
+
+const isCancelled = computed(() => props.instrument.status === 'cancelled');
+
+const cancelDialogOpen = ref(false);
+const cancelForm = useForm<{ reason: string }>({ reason: '' });
+
+function openCancelDialog(): void {
+    cancelForm.reset();
+    cancelForm.clearErrors();
+    cancelDialogOpen.value = true;
+}
+
+function submitCancel(): void {
+    cancelForm.post(`/instruments/${props.instrument.ulid}/cancel`, {
+        preserveScroll: true,
+        onSuccess: () => {
+            cancelDialogOpen.value = false;
+        },
+    });
+}
+
+function revertCancellation(): void {
+    router.post(`/instruments/${props.instrument.ulid}/revert-cancellation`, {}, { preserveScroll: true });
+}
 </script>
 
 <template>
@@ -277,16 +312,31 @@ const nonAssessedStates = computed(() => props.states.filter((state) => !state.c
             </div>
             <div class="flex items-center gap-3">
                 <Badge variant="secondary">{{ instrument.status_label }}</Badge>
-                <span v-if="dirtyCount" class="text-sm text-amber-700">
-                    {{ dirtyCount }} alteraç{{ dirtyCount === 1 ? 'ão' : 'ões' }} por guardar
-                </span>
-                <span v-if="hasOverMaxCell" class="text-sm text-destructive">
-                    Há notas acima da cotação máxima
-                </span>
-                <Button :disabled="dirtyCount === 0 || saving || hasOverMaxCell" @click="save">
-                    <Save class="size-4" /> Guardar
-                </Button>
+                <template v-if="!isCancelled">
+                    <Link :href="`/instruments/${instrument.ulid}/edit`" class="text-sm text-muted-foreground hover:underline">
+                        Editar instrumento
+                    </Link>
+                    <Button type="button" variant="outline" size="sm" @click="openCancelDialog">
+                        Anular instrumento
+                    </Button>
+                    <span v-if="dirtyCount" class="text-sm text-amber-700">
+                        {{ dirtyCount }} alteraç{{ dirtyCount === 1 ? 'ão' : 'ões' }} por guardar
+                    </span>
+                    <span v-if="hasOverMaxCell" class="text-sm text-destructive">
+                        Há notas acima da cotação máxima
+                    </span>
+                    <Button :disabled="dirtyCount === 0 || saving || hasOverMaxCell" @click="save">
+                        <Save class="size-4" /> Guardar
+                    </Button>
+                </template>
             </div>
+        </div>
+
+        <div v-if="isCancelled" class="flex items-center justify-between rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <span>Instrumento anulado — motivo: {{ instrument.cancellation_reason }}</span>
+            <Button type="button" variant="outline" size="sm" @click="revertCancellation">
+                Reverter anulação
+            </Button>
         </div>
 
         <div v-if="students.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
@@ -335,7 +385,7 @@ const nonAssessedStates = computed(() => props.states.filter((state) => !state.c
                                     min="0"
                                     :max="item.points_possible"
                                     :value="cell(student.enrollment_id, item.id).state === 'assessed' ? cell(student.enrollment_id, item.id).points : ''"
-                                    :disabled="cell(student.enrollment_id, item.id).state !== 'assessed' && cell(student.enrollment_id, item.id).state !== 'pending'"
+                                    :disabled="isCancelled || (cell(student.enrollment_id, item.id).state !== 'assessed' && cell(student.enrollment_id, item.id).state !== 'pending')"
                                     :class="[
                                         'h-8 w-16 rounded border bg-transparent px-1.5 text-center tabular-nums disabled:opacity-40',
                                         isOverMax(student, item) ? 'border-destructive text-destructive' : 'border-input',
@@ -346,6 +396,7 @@ const nonAssessedStates = computed(() => props.states.filter((state) => !state.c
                                 />
                                 <select
                                     :value="cell(student.enrollment_id, item.id).state"
+                                    :disabled="isCancelled"
                                     class="h-8 w-14 cursor-pointer rounded border border-input bg-transparent text-xs"
                                     :title="states.find((s) => s.value === cell(student.enrollment_id, item.id).state)?.label"
                                     @change="onStateChange(student, item, ($event.target as HTMLSelectElement).value)"
@@ -383,5 +434,33 @@ const nonAssessedStates = computed(() => props.states.filter((state) => !state.c
             dispensa, use o seletor de estado ao lado da caixa. Um zero só é guardado se o
             introduzir como classificação.
         </p>
+
+        <Dialog v-model:open="cancelDialogOpen">
+            <DialogContent>
+                <form @submit.prevent="submitCancel">
+                    <DialogHeader>
+                        <DialogTitle>Anular instrumento</DialogTitle>
+                        <DialogDescription>
+                            O instrumento deixa de contar para o cálculo e fica só-leitura até reverteres a anulação.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div class="grid gap-4 py-4">
+                        <div class="grid gap-2">
+                            <label for="cancel-reason" class="text-sm font-medium">Motivo</label>
+                            <textarea
+                                id="cancel-reason"
+                                v-model="cancelForm.reason"
+                                rows="3"
+                                class="rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+                            ></textarea>
+                            <InputError :message="cancelForm.errors.reason" />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button type="submit" :disabled="cancelForm.processing">Anular</Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
     </div>
 </template>
