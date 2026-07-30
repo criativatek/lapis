@@ -402,4 +402,26 @@ class InstrumentBuilderTest extends TestCase
             ]);
         });
     }
+
+    #[Test]
+    public function swapping_two_existing_items_codes_in_the_same_update_succeeds(): void
+    {
+        $this->inTenant(function (): void {
+            $class = $this->schoolClass();
+            $instrument = app(InstrumentBuilder::class)->create($class, $this->attributes($class), [
+                ['code' => 'Q1', 'points_possible' => 60],
+                ['code' => 'Q2', 'points_possible' => 40],
+            ]);
+            $q1 = $instrument->items()->where('code', 'Q1')->firstOrFail();
+            $q2 = $instrument->items()->where('code', 'Q2')->firstOrFail();
+
+            app(InstrumentBuilder::class)->update($instrument, $this->attributes($class), [
+                ['ulid' => $q1->ulid, 'code' => 'Q2', 'points_possible' => 60],
+                ['ulid' => $q2->ulid, 'code' => 'Q1', 'points_possible' => 40],
+            ]);
+
+            $this->assertSame('Q2', $q1->fresh()->code);
+            $this->assertSame('Q1', $q2->fresh()->code);
+        });
+    }
 }

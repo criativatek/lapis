@@ -95,6 +95,26 @@ class InstrumentBuilder
                 $item->delete();
             }
 
+            // Two kept/edited items can swap codes in the same update (A -> B,
+            // B -> A). MySQL has no deferred unique constraints, so writing
+            // either one's real final code straight away can collide with the
+            // other's still-current code. Every kept/edited item is first
+            // parked under a code derived from its own (always-unique) id
+            // before any of them receives its real final code — that way no
+            // intermediate state can ever collide with the unique constraint
+            // on (instrument_id, code).
+            foreach ($items as $itemData) {
+                if (! isset($itemData['ulid'])) {
+                    continue;
+                }
+
+                $existing = $existingItems->get($itemData['ulid']);
+
+                if ($existing !== null) {
+                    $existing->update(['code' => '__tmp_'.$existing->id]);
+                }
+            }
+
             foreach ($items as $index => $itemData) {
                 $existing = isset($itemData['ulid']) ? $existingItems->get($itemData['ulid']) : null;
 
