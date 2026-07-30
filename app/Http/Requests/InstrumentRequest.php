@@ -59,7 +59,12 @@ class InstrumentRequest extends FormRequest
             // runs through the model, whose visibility scope allows both.
             'instrument_type_id' => ['required', new BelongsToCurrentOrganization(InstrumentType::class)],
             'applied_on' => ['required', 'date'],
-            'status' => ['required', Rule::in(['draft', 'prepared', 'in_correction', 'completed', 'published', 'cancelled', 'archived'])],
+            // 'cancelled' is deliberately excluded: only InstrumentController::cancel()
+            // may set it (it also records the mandatory reason and the status to
+            // restore on revert), and only revertCancellation() may clear it. Allowing
+            // it here would let a generic update silently produce a "cancelled"
+            // instrument with none of that bookkeeping, which then crashes revert.
+            'status' => ['required', Rule::in(['draft', 'prepared', 'in_correction', 'completed', 'published', 'archived'])],
             'purpose' => ['required', Rule::in(['diagnostic', 'formative', 'summative', 'other'])],
             'counts_toward_classification' => ['required', 'boolean'],
             'total_points' => ['nullable', 'numeric', 'min:0'],

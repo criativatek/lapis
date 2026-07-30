@@ -166,6 +166,36 @@ class InstrumentEditTest extends TestCase
     }
 
     #[Test]
+    public function updating_cannot_set_status_to_cancelled_through_the_generic_form(): void
+    {
+        $this->inTenant(function (): void {
+            ['instrument' => $instrument] = $this->scenario();
+            $q1 = $instrument->items()->where('code', 'Q1')->firstOrFail();
+            $q2 = $instrument->items()->where('code', 'Q2')->firstOrFail();
+
+            $this->actingAs($this->user)
+                ->put("/instruments/{$instrument->ulid}", [
+                    'title' => $instrument->title,
+                    'academic_period_id' => $instrument->academic_period_id,
+                    'instrument_type_id' => $instrument->instrument_type_id,
+                    'applied_on' => $instrument->applied_on->toDateString(),
+                    'status' => 'cancelled',
+                    'purpose' => $instrument->purpose,
+                    'counts_toward_classification' => true,
+                    'total_points' => 100,
+                    'allow_bonus' => false,
+                    'items' => [
+                        ['ulid' => $q1->ulid, 'code' => 'Q1', 'points_possible' => 60],
+                        ['ulid' => $q2->ulid, 'code' => 'Q2', 'points_possible' => 40],
+                    ],
+                ])
+                ->assertSessionHasErrors('status');
+
+            $this->assertSame('prepared', $instrument->refresh()->status->value);
+        });
+    }
+
+    #[Test]
     public function a_teacher_not_assigned_to_the_class_cannot_edit_or_update(): void
     {
         ['instrument' => $instrument] = $this->inTenant(fn () => $this->scenario());
