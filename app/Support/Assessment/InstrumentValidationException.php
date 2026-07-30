@@ -31,4 +31,20 @@ class InstrumentValidationException extends RuntimeException
             ['items' => $itemTotal, 'declared' => $declared],
         ));
     }
+
+    public static function cannotRemoveScoredItem(string $itemCode): self
+    {
+        return new self(__(
+            'A questão :code já tem notas lançadas e não pode ser removida. Limpe as notas dessa questão primeiro.',
+            ['code' => $itemCode],
+        ));
+    }
+
+    public static function pointsPossibleBelowExistingScore(string $itemCode, string $minValue): self
+    {
+        return new self(__(
+            'A cotação da questão :code não pode ser inferior a :min — já existe uma nota lançada com esse valor.',
+            ['code' => $itemCode, 'min' => $minValue],
+        ));
+    }
 }

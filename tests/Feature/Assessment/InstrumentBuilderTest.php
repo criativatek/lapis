@@ -5,9 +5,12 @@ namespace Tests\Feature\Assessment;
 use App\Models\AcademicPeriod;
 use App\Models\AcademicYear;
 use App\Models\Domain;
+use App\Models\Enrollment;
+use App\Models\InstrumentItem;
 use App\Models\InstrumentType;
 use App\Models\Organization;
 use App\Models\SchoolClass;
+use App\Models\StudentItemScore;
 use App\Models\Subject;
 use App\Models\User;
 use App\Services\Assessment\InstrumentBuilder;
@@ -231,6 +234,172 @@ class InstrumentBuilderTest extends TestCase
             );
 
             $this->assertTrue($inCorrection->entersCalculation());
+        });
+    }
+
+    #[Test]
+    public function updating_an_instrument_can_add_a_new_item_without_touching_existing_ones(): void
+    {
+        $this->inTenant(function (): void {
+            $class = $this->schoolClass();
+            $instrument = app(InstrumentBuilder::class)->create($class, $this->attributes($class), [
+                ['code' => 'Q1', 'points_possible' => 100],
+            ]);
+            $existing = $instrument->items()->firstOrFail();
+
+            app(InstrumentBuilder::class)->update($instrument, $this->attributes($class, ['total_points' => 150]), [
+                ['ulid' => $existing->ulid, 'code' => 'Q1', 'points_possible' => 100],
+                ['code' => 'Q2', 'points_possible' => 50],
+            ]);
+
+            $instrument->refresh();
+            $this->assertSame(2, $instrument->items()->count());
+            $this->assertSame($existing->id, $instrument->items()->where('code', 'Q1')->firstOrFail()->id);
+        });
+    }
+
+    #[Test]
+    public function updating_an_instrument_edits_an_existing_items_points(): void
+    {
+        $this->inTenant(function (): void {
+            $class = $this->schoolClass();
+            $instrument = app(InstrumentBuilder::class)->create($class, $this->attributes($class), [
+                ['code' => 'Q1', 'points_possible' => 100],
+            ]);
+            $existing = $instrument->items()->firstOrFail();
+
+            app(InstrumentBuilder::class)->update($instrument, $this->attributes($class), [
+                ['ulid' => $existing->ulid, 'code' => 'Q1', 'points_possible' => 80],
+                ['code' => 'Q2', 'points_possible' => 20],
+            ]);
+
+            $this->assertSame('80.0000', $existing->fresh()->points_possible);
+        });
+    }
+
+    #[Test]
+    public function removing_an_unscored_item_succeeds(): void
+    {
+        $this->inTenant(function (): void {
+            $class = $this->schoolClass();
+            $instrument = app(InstrumentBuilder::class)->create($class, $this->attributes($class), [
+                ['code' => 'Q1', 'points_possible' => 60],
+                ['code' => 'Q2', 'points_possible' => 40],
+            ]);
+            $q2 = $instrument->items()->where('code', 'Q2')->firstOrFail();
+
+            app(InstrumentBuilder::class)->update(
+                $instrument,
+                $this->attributes($class, ['total_points' => 60]),
+                [['ulid' => $instrument->items()->where('code', 'Q1')->firstOrFail()->ulid, 'code' => 'Q1', 'points_possible' => 60]],
+            );
+
+            $this->assertSame(1, $instrument->items()->count());
+            $this->assertNull(InstrumentItem::find($q2->id));
+        });
+    }
+
+    #[Test]
+    public function removing_a_scored_item_is_rejected_and_nothing_is_deleted(): void
+    {
+        $this->inTenant(function (): void {
+            $class = $this->schoolClass();
+            $instrument = app(InstrumentBuilder::class)->create($class, $this->attributes($class), [
+                ['code' => 'Q1', 'points_possible' => 60],
+                ['code' => 'Q2', 'points_possible' => 40],
+            ]);
+            $q2 = $instrument->items()->where('code', 'Q2')->firstOrFail();
+            $enrollment = Enrollment::factory()->recycle($this->organization)->create(['class_id' => $class->id]);
+            StudentItemScore::factory()->recycle($this->organization)->create([
+                'instrument_id' => $instrument->id,
+                'instrument_item_id' => $q2->id,
+                'enrollment_id' => $enrollment->id,
+                'result_state' => 'assessed',
+                'points_earned' => 30,
+            ]);
+
+            $this->expectException(InstrumentValidationException::class);
+
+            try {
+                app(InstrumentBuilder::class)->update(
+                    $instrument,
+                    $this->attributes($class, ['total_points' => 60]),
+                    [['ulid' => $instrument->items()->where('code', 'Q1')->firstOrFail()->ulid, 'code' => 'Q1', 'points_possible' => 60]],
+                );
+            } finally {
+                $this->assertSame(2, $instrument->items()->count(), 'Nothing should have been deleted.');
+                $this->assertNotNull(InstrumentItem::find($q2->id));
+            }
+        });
+    }
+
+    #[Test]
+    public function lowering_points_possible_below_an_existing_score_is_rejected(): void
+    {
+        $this->inTenant(function (): void {
+            $class = $this->schoolClass();
+            $instrument = app(InstrumentBuilder::class)->create($class, $this->attributes($class), [
+                ['code' => 'Q1', 'points_possible' => 100],
+            ]);
+            $q1 = $instrument->items()->firstOrFail();
+            $enrollment = Enrollment::factory()->recycle($this->organization)->create(['class_id' => $class->id]);
+            StudentItemScore::factory()->recycle($this->organization)->create([
+                'instrument_id' => $instrument->id,
+                'instrument_item_id' => $q1->id,
+                'enrollment_id' => $enrollment->id,
+                'result_state' => 'assessed',
+                'points_earned' => 80,
+            ]);
+
+            $this->expectException(InstrumentValidationException::class);
+
+            app(InstrumentBuilder::class)->update($instrument, $this->attributes($class, ['total_points' => 50]), [
+                ['ulid' => $q1->ulid, 'code' => 'Q1', 'points_possible' => 50], // below the 80 already recorded
+            ]);
+        });
+    }
+
+    #[Test]
+    public function raising_points_possible_on_a_scored_item_is_allowed(): void
+    {
+        $this->inTenant(function (): void {
+            $class = $this->schoolClass();
+            $instrument = app(InstrumentBuilder::class)->create($class, $this->attributes($class), [
+                ['code' => 'Q1', 'points_possible' => 100],
+            ]);
+            $q1 = $instrument->items()->firstOrFail();
+            $enrollment = Enrollment::factory()->recycle($this->organization)->create(['class_id' => $class->id]);
+            StudentItemScore::factory()->recycle($this->organization)->create([
+                'instrument_id' => $instrument->id,
+                'instrument_item_id' => $q1->id,
+                'enrollment_id' => $enrollment->id,
+                'result_state' => 'assessed',
+                'points_earned' => 80,
+            ]);
+
+            app(InstrumentBuilder::class)->update($instrument, $this->attributes($class, ['total_points' => 120]), [
+                ['ulid' => $q1->ulid, 'code' => 'Q1', 'points_possible' => 120],
+            ]);
+
+            $this->assertSame('120.0000', $q1->fresh()->points_possible);
+        });
+    }
+
+    #[Test]
+    public function updating_still_enforces_the_domain_allocation_and_points_total_guard(): void
+    {
+        $this->inTenant(function (): void {
+            $class = $this->schoolClass();
+            $instrument = app(InstrumentBuilder::class)->create($class, $this->attributes($class), [
+                ['code' => 'Q1', 'points_possible' => 100],
+            ]);
+            $q1 = $instrument->items()->firstOrFail();
+
+            $this->expectException(InstrumentValidationException::class);
+
+            app(InstrumentBuilder::class)->update($instrument, $this->attributes($class, ['total_points' => 100]), [
+                ['ulid' => $q1->ulid, 'code' => 'Q1', 'points_possible' => 60], // 60, not 100 — guard() still applies
+            ]);
         });
     }
 }

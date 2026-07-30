@@ -38,22 +38,75 @@ class InstrumentBuilder
     }
 
     /**
+     * Edits an instrument and diffs its items against what already exists —
+     * unlike the naive delete-all-and-recreate this replaced, an existing item
+     * is updated in place (its id, and any scores against it, survive). An item
+     * is only ever removed when the client stops sending its `ulid` back, and
+     * only when it has no score recorded — otherwise the whole update is
+     * rejected before anything is written. Lowering a scored item's
+     * points_possible below its highest recorded points_earned is rejected the
+     * same way. Both rejection checks run BEFORE the transaction starts, so a
+     * rejected update never partially applies.
+     *
      * @param  array<string, mixed>  $attributes
-     * @param  list<array<string, mixed>>  $items
+     * @param  list<array{ulid?: ?string, code: string, label?: ?string, points_possible: float, is_bonus?: bool, domains?: list<array{domain_id: int, allocation_percent: float}>}>  $items
      */
     public function update(Instrument $instrument, array $attributes, array $items): Instrument
     {
         $this->guard($attributes, $items);
 
-        return DB::transaction(function () use ($instrument, $attributes, $items): Instrument {
+        $existingItems = $instrument->items()->get()->keyBy('ulid');
+        $submittedUlids = collect($items)->pluck('ulid')->filter()->all();
+        $toRemove = $existingItems->reject(
+            fn (InstrumentItem $item) => in_array($item->ulid, $submittedUlids, true),
+        );
+
+        foreach ($toRemove as $item) {
+            if ($item->scores()->exists()) {
+                throw InstrumentValidationException::cannotRemoveScoredItem($item->code);
+            }
+        }
+
+        foreach ($items as $itemData) {
+            if (! isset($itemData['ulid'])) {
+                continue;
+            }
+
+            $existing = $existingItems->get($itemData['ulid']);
+
+            if ($existing === null) {
+                continue;
+            }
+
+            $highestScore = $existing->scores()->max('points_earned');
+
+            if ($highestScore !== null && (float) $itemData['points_possible'] < (float) $highestScore) {
+                throw InstrumentValidationException::pointsPossibleBelowExistingScore(
+                    $existing->code,
+                    rtrim(rtrim(number_format((float) $highestScore, 4, '.', ''), '0'), '.'),
+                );
+            }
+        }
+
+        return DB::transaction(function () use ($instrument, $attributes, $items, $toRemove, $existingItems): Instrument {
             $instrument->update($attributes);
 
-            // ponytail: replace-all while no scores exist. student_item_scores has
-            // a RESTRICT FK to items, so once the teacher has marked anything this
-            // fails loud instead of quietly deleting marks — which is when this
-            // must become a real diff.
-            $instrument->items()->each(fn (InstrumentItem $item) => $item->delete());
-            $this->syncItems($instrument->refresh(), $items);
+            foreach ($toRemove as $item) {
+                $item->delete();
+            }
+
+            foreach ($items as $index => $itemData) {
+                $existing = isset($itemData['ulid']) ? $existingItems->get($itemData['ulid']) : null;
+
+                if ($existing !== null) {
+                    $existing->update([...$this->itemAttributes($itemData), 'sequence' => $index + 1]);
+                    $existing->domainAllocations()->each(fn ($allocation) => $allocation->delete());
+                    $this->syncAllocations($existing, $itemData['domains'] ?? []);
+                } else {
+                    $created = $instrument->items()->create([...$this->itemAttributes($itemData), 'sequence' => $index + 1]);
+                    $this->syncAllocations($created, $itemData['domains'] ?? []);
+                }
+            }
 
             return $instrument->refresh();
         });
@@ -114,22 +167,41 @@ class InstrumentBuilder
     protected function syncItems(Instrument $instrument, array $items): void
     {
         foreach ($items as $index => $item) {
-            $created = $instrument->items()->create([
-                'code' => $item['code'],
-                'label' => $item['label'] ?? null,
-                'sequence' => $index + 1,
-                'points_possible' => $item['points_possible'],
-                'scoring_mode' => $item['scoring_mode'] ?? 'points',
-                'is_bonus' => $item['is_bonus'] ?? false,
-                'source_group_label' => $item['source_group_label'] ?? null,
-            ]);
+            $created = $instrument->items()->create([...$this->itemAttributes($item), 'sequence' => $index + 1]);
+            $this->syncAllocations($created, $item['domains'] ?? []);
+        }
+    }
 
-            foreach ($item['domains'] ?? [] as $allocation) {
-                $created->domainAllocations()->create([
-                    'domain_id' => $allocation['domain_id'],
-                    'allocation_percent' => $allocation['allocation_percent'],
-                ]);
-            }
+    /**
+     * The plain-column attributes shared by a freshly-created item and an
+     * edited existing one — kept in one place so create() and update() never
+     * drift on which fields an item carries.
+     *
+     * @param  array<string, mixed>  $item
+     * @return array<string, mixed>
+     */
+    protected function itemAttributes(array $item): array
+    {
+        return [
+            'code' => $item['code'],
+            'label' => $item['label'] ?? null,
+            'points_possible' => $item['points_possible'],
+            'scoring_mode' => $item['scoring_mode'] ?? 'points',
+            'is_bonus' => $item['is_bonus'] ?? false,
+            'source_group_label' => $item['source_group_label'] ?? null,
+        ];
+    }
+
+    /**
+     * @param  list<array{domain_id: int, allocation_percent: float}>  $domains
+     */
+    protected function syncAllocations(InstrumentItem $item, array $domains): void
+    {
+        foreach ($domains as $allocation) {
+            $item->domainAllocations()->create([
+                'domain_id' => $allocation['domain_id'],
+                'allocation_percent' => $allocation['allocation_percent'],
+            ]);
         }
     }
 
