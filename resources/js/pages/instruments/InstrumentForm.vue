@@ -6,6 +6,7 @@ import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import InstrumentDomainAllocations from './InstrumentDomainAllocations.vue';
 
 type Option = { id: number; label: string; default_purpose?: string };
 
@@ -112,22 +113,34 @@ function applyImportedTemplate(): void {
     }));
 }
 
-function addAllocation(item: ItemRow): void {
-    item.domains.push({
-        domain_id: props.domains[0]?.id ?? 0,
-        allocation_percent: 100,
+const selectedDomainIds = ref<number[]>(
+    Array.from(
+        new Set(
+            (props.initial?.items ?? []).flatMap((item) => item.domains.map((allocation) => allocation.domain_id)),
+        ),
+    ),
+);
+
+function itemsForDomain(domainId: number): { item: ItemRow; index: number }[] {
+    return form.items
+        .map((item, index) => ({ item, index }))
+        .filter(({ item }) => item.domains.some((allocation) => allocation.domain_id === domainId));
+}
+
+function itemsWithNoDomain(): { item: ItemRow; index: number }[] {
+    return form.items
+        .map((item, index) => ({ item, index }))
+        .filter(({ item }) => item.domains.length === 0);
+}
+
+function addItemToDomain(domainId: number): void {
+    form.items.push({
+        code: `Q${form.items.length + 1}`,
+        label: '',
+        points_possible: 0,
+        is_bonus: false,
+        domains: [{ domain_id: domainId, allocation_percent: 100 }],
     });
-}
-
-function removeAllocation(item: ItemRow, index: number): void {
-    item.domains.splice(index, 1);
-}
-
-function allocationTotal(item: ItemRow): number {
-    return item.domains.reduce(
-        (sum, allocation) => sum + (Number(allocation.allocation_percent) || 0),
-        0,
-    );
 }
 
 const itemsTotal = computed(() =>
@@ -269,27 +282,52 @@ function submit(): void {
         </section>
 
         <section class="space-y-3">
+            <div>
+                <h2 class="text-sm font-semibold">Domínios avaliados</h2>
+                <p class="text-sm text-muted-foreground">
+                    Escolhe os domínios que este instrumento avalia — depois cria as questões dentro de cada um.
+                </p>
+            </div>
+            <div v-if="domains.length" class="flex flex-wrap gap-4">
+                <label
+                    v-for="domain in domains"
+                    :key="domain.id"
+                    class="flex items-center gap-2 text-sm"
+                >
+                    <input
+                        v-model="selectedDomainIds"
+                        type="checkbox"
+                        :value="domain.id"
+                        class="size-4"
+                    />
+                    {{ domain.label }}
+                </label>
+            </div>
+            <p v-else class="text-xs text-muted-foreground">
+                A turma não tem perfil ativo, por isso não há domínios para escolher.
+            </p>
+        </section>
+
+        <section
+            v-for="domainId in selectedDomainIds"
+            :key="domainId"
+            class="space-y-3"
+        >
             <div class="flex items-center justify-between">
-                <div>
-                    <h2 class="text-sm font-semibold">Questões</h2>
-                    <p class="text-sm text-muted-foreground">
-                        A distribuição por domínios de cada questão tem de somar
-                        100% — ou ficar vazia.
-                    </p>
-                </div>
+                <h2 class="text-sm font-semibold">
+                    {{ domains.find((domain) => domain.id === domainId)?.label }}
+                </h2>
                 <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    @click="addItem"
+                    @click="addItemToDomain(domainId)"
                 >
                     <Plus class="size-4" /> Adicionar questão
                 </Button>
             </div>
-            <InputError :message="form.errors.items" />
-
             <div
-                v-for="(item, index) in form.items"
+                v-for="{ item, index } in itemsForDomain(domainId)"
                 :key="item.ulid ?? index"
                 class="space-y-3 rounded-lg border border-border p-3"
             >
@@ -332,92 +370,87 @@ function submit(): void {
                     </Button>
                 </div>
 
-                <div
-                    v-if="domains.length"
-                    class="space-y-2 border-t border-border pt-3"
-                >
-                    <div class="flex items-center justify-between">
-                        <span class="text-xs font-medium text-muted-foreground">
-                            Domínios
-                            <template v-if="item.domains.length"
-                                >— total {{ allocationTotal(item) }}%</template
-                            >
-                        </span>
-                        <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            @click="addAllocation(item)"
-                        >
-                            <Plus class="size-3.5" /> Domínio
-                        </Button>
-                    </div>
-                    <div
-                        v-for="(allocation, allocationIndex) in item.domains"
-                        :key="allocationIndex"
-                        class="flex items-center gap-2"
-                    >
-                        <select
-                            v-model.number="allocation.domain_id"
-                            class="h-8 flex-1 rounded-md border border-input bg-transparent px-2 text-sm"
-                        >
-                            <option
-                                v-for="domain in domains"
-                                :key="domain.id"
-                                :value="domain.id"
-                            >
-                                {{ domain.label }}
-                            </option>
-                        </select>
-                        <Input
-                            v-model.number="allocation.allocation_percent"
-                            type="number"
-                            min="0"
-                            max="100"
-                            class="h-8 w-20"
-                        />
-                        <span class="text-sm text-muted-foreground">%</span>
-                        <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            @click="removeAllocation(item, allocationIndex)"
-                        >
-                            <Trash2 class="size-3.5" />
-                        </Button>
-                    </div>
-                    <p
-                        v-if="
-                            item.domains.length &&
-                            Math.abs(allocationTotal(item) - 100) > 0.0001
-                        "
-                        class="text-xs text-amber-700"
-                    >
-                        Tem de somar 100%.
-                    </p>
-                </div>
-                <p v-else class="text-xs text-muted-foreground">
-                    A turma não tem perfil ativo, por isso não há domínios para
-                    distribuir.
-                </p>
-            </div>
-
-            <div
-                class="flex items-center justify-between rounded-lg border px-4 py-2.5 text-sm"
-                :class="
-                    totalMatches
-                        ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
-                        : 'border-amber-300 bg-amber-50 text-amber-900'
-                "
-            >
-                <span class="font-medium">Soma das cotações</span>
-                <span class="font-semibold tabular-nums">
-                    {{ itemsTotal
-                    }}{{ form.total_points ? ` / ${form.total_points}` : '' }}
-                    {{ totalMatches ? '✓' : '' }}
-                </span>
+                <InstrumentDomainAllocations :item="item" :domains="domains" />
             </div>
         </section>
+
+        <section class="space-y-3">
+            <div class="flex items-center justify-between">
+                <h2 class="text-sm font-semibold">Sem domínio associado</h2>
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    @click="addItem"
+                >
+                    <Plus class="size-4" /> Adicionar questão
+                </Button>
+            </div>
+            <InputError :message="form.errors.items" />
+
+            <div
+                v-for="{ item, index } in itemsWithNoDomain()"
+                :key="item.ulid ?? index"
+                class="space-y-3 rounded-lg border border-border p-3"
+            >
+                <div
+                    class="grid items-end gap-3 sm:grid-cols-[6rem_1fr_7rem_auto]"
+                >
+                    <div class="grid gap-1.5">
+                        <Label class="text-xs">Código</Label>
+                        <Input v-model="item.code" placeholder="Q1" />
+                    </div>
+                    <div class="grid gap-1.5">
+                        <Label class="text-xs">Enunciado (opcional)</Label>
+                        <Input
+                            v-model="item.label"
+                            placeholder="Compreensão do texto"
+                        />
+                    </div>
+                    <div class="grid gap-1.5">
+                        <Label class="text-xs">Cotação</Label>
+                        <Input
+                            v-model.number="item.points_possible"
+                            type="number"
+                            min="0"
+                            step="0.25"
+                        />
+                    </div>
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        :disabled="form.items.length <= 1 || item.has_scores"
+                        :title="
+                            item.has_scores
+                                ? 'Já tem notas lançadas — limpe as notas primeiro para poder remover.'
+                                : undefined
+                        "
+                        @click="removeItem(index)"
+                    >
+                        <Trash2 class="size-4" />
+                    </Button>
+                </div>
+
+                <InstrumentDomainAllocations :item="item" :domains="domains" />
+            </div>
+        </section>
+
+        <div
+            class="flex items-center justify-between rounded-lg border px-4 py-2.5 text-sm"
+            :class="
+                totalMatches
+                    ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
+                    : 'border-amber-300 bg-amber-50 text-amber-900'
+            "
+        >
+            <span class="font-medium">Soma das cotações</span>
+            <span class="font-semibold tabular-nums">
+                {{ itemsTotal
+                }}{{ form.total_points ? ` / ${form.total_points}` : '' }}
+                {{ totalMatches ? '✓' : '' }}
+            </span>
+        </div>
 
         <Button type="submit" :disabled="form.processing">{{
             method === 'post' ? 'Criar instrumento' : 'Guardar alterações'
