@@ -322,13 +322,20 @@ class InstrumentController extends Controller
 
     /**
      * The teacher's own instruments from classes of the SAME subject as
-     * $class — never a colleague's, never a different subject (which would
-     * risk copying domain allocations that don't exist for this subject).
+     * $class — never a colleague's, never a different subject. Same subject
+     * does NOT by itself guarantee domain compatibility: two classes can
+     * share a subject_id while assessing different domains (different grade
+     * levels or academic years under separate profile versions), so domain
+     * allocations are additionally filtered to $class's own valid domain set
+     * (InstrumentBuilder::domainsFor()) — an allocation for a domain the
+     * destination class doesn't track is dropped rather than copied.
      *
      * @return array<int, array<string, mixed>>
      */
     protected function importableInstrumentsFor(SchoolClass $class): array
     {
+        $validDomainIds = $this->builder->domainsFor($class)->pluck('id')->all();
+
         $sources = Instrument::query()
             ->whereHas('schoolClass.teachers', fn ($query) => $query->whereKey($this->user()->getKey()))
             ->whereHas('schoolClass', fn ($query) => $query->where('subject_id', $class->subject_id))
@@ -348,10 +355,13 @@ class InstrumentController extends Controller
                 'label' => $item->label,
                 'points_possible' => (float) $item->points_possible,
                 'is_bonus' => $item->is_bonus,
-                'domains' => array_map(fn ($allocation) => [
-                    'domain_id' => $allocation->domain_id,
-                    'allocation_percent' => (float) $allocation->allocation_percent,
-                ], $item->domainAllocations->all()),
+                'domains' => array_values(array_filter(array_map(
+                    fn ($allocation) => in_array($allocation->domain_id, $validDomainIds, true) ? [
+                        'domain_id' => $allocation->domain_id,
+                        'allocation_percent' => (float) $allocation->allocation_percent,
+                    ] : null,
+                    $item->domainAllocations->all(),
+                ))),
             ], $source->items->all()),
         ], $sources->all());
     }

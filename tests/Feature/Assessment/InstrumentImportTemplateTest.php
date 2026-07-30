@@ -4,6 +4,7 @@ namespace Tests\Feature\Assessment;
 
 use App\Models\AcademicPeriod;
 use App\Models\AcademicYear;
+use App\Models\AssessmentProfileVersion;
 use App\Models\Domain;
 use App\Models\InstrumentType;
 use App\Models\Organization;
@@ -72,7 +73,12 @@ class InstrumentImportTemplateTest extends TestCase
                 ['code' => 'Q2', 'points_possible' => 40],
             ]);
 
+            // The destination class must track the same domain for the
+            // allocation to survive import — give it a profile version that does.
+            $version = AssessmentProfileVersion::factory()->recycle($this->organization)->create();
+            $version->domains()->create(['domain_id' => $domain->id, 'weight_percent' => 100, 'sequence' => 1]);
             $targetClass = $this->makeClass($subject);
+            $targetClass->update(['assessment_profile_version_id' => $version->id]);
 
             $this->actingAs($this->user)
                 ->get("/classes/{$targetClass->ulid}/instruments/create")
@@ -117,6 +123,48 @@ class InstrumentImportTemplateTest extends TestCase
             $this->actingAs($this->user)
                 ->get("/classes/{$targetClass->ulid}/instruments/create")
                 ->assertInertia(fn ($page) => $page->where('importableInstruments', []));
+        });
+    }
+
+    #[Test]
+    public function a_domain_allocation_the_destination_class_does_not_track_is_dropped_on_import(): void
+    {
+        $this->inTenant(function (): void {
+            $subject = Subject::factory()->recycle($this->organization)->create();
+            $sourceDomain = Domain::factory()->recycle($this->organization)->create(['subject_id' => $subject->id]);
+            $destinationDomain = Domain::factory()->recycle($this->organization)->create(['subject_id' => $subject->id]);
+
+            $sourceClass = $this->makeClass($subject);
+            $period = AcademicPeriod::factory()->recycle($this->organization)->for($sourceClass->academicYear)->create();
+
+            app(InstrumentBuilder::class)->create($sourceClass, [
+                'academic_period_id' => $period->id,
+                'instrument_type_id' => InstrumentType::where('code', 'TEST')->firstOrFail()->id,
+                'title' => 'Teste de outro ano',
+                'applied_on' => '2026-10-15',
+                'status' => 'prepared',
+                'counts_toward_classification' => true,
+                'purpose' => 'summative',
+                'total_points' => 100,
+            ], [
+                ['code' => 'Q1', 'points_possible' => 100, 'domains' => [['domain_id' => $sourceDomain->id, 'allocation_percent' => 100]]],
+            ]);
+
+            // Same subject as the source class, but a DIFFERENT profile version
+            // tracking a different domain — same subject_id alone does not
+            // guarantee the two classes assess the same domains (e.g. different
+            // grade levels or academic years under separate profile versions).
+            $destinationVersion = AssessmentProfileVersion::factory()->recycle($this->organization)->create();
+            $destinationVersion->domains()->create(['domain_id' => $destinationDomain->id, 'weight_percent' => 100, 'sequence' => 1]);
+            $targetClass = $this->makeClass($subject);
+            $targetClass->update(['assessment_profile_version_id' => $destinationVersion->id]);
+
+            $this->actingAs($this->user)
+                ->get("/classes/{$targetClass->ulid}/instruments/create")
+                ->assertInertia(fn ($page) => $page
+                    ->has('importableInstruments', 1)
+                    ->where('importableInstruments.0.items.0.code', 'Q1')
+                    ->where('importableInstruments.0.items.0.domains', []));
         });
     }
 
