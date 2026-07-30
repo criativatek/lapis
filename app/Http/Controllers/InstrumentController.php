@@ -57,6 +57,7 @@ class InstrumentController extends Controller
         return Inertia::render('instruments/Create', [
             'schoolClass' => ['ulid' => $class->ulid, 'label' => $class->label],
             ...$this->formOptions($class),
+            'importableInstruments' => $this->importableInstrumentsFor($class),
         ]);
     }
 
@@ -317,6 +318,42 @@ class InstrumentController extends Controller
                 ->map(fn ($domain) => ['id' => $domain->id, 'label' => $domain->name])
                 ->values(),
         ];
+    }
+
+    /**
+     * The teacher's own instruments from classes of the SAME subject as
+     * $class — never a colleague's, never a different subject (which would
+     * risk copying domain allocations that don't exist for this subject).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    protected function importableInstrumentsFor(SchoolClass $class): array
+    {
+        $sources = Instrument::query()
+            ->whereHas('schoolClass.teachers', fn ($query) => $query->whereKey($this->user()->getKey()))
+            ->whereHas('schoolClass', fn ($query) => $query->where('subject_id', $class->subject_id))
+            ->with(['schoolClass', 'items.domainAllocations'])
+            ->orderByDesc('applied_on')
+            ->get();
+
+        return array_map(fn (Instrument $source) => [
+            'ulid' => $source->ulid,
+            'title' => $source->title,
+            'class_label' => $source->schoolClass->label,
+            'applied_on' => $source->applied_on->toDateString(),
+            'total_points' => $source->total_points === null ? null : (float) $source->total_points,
+            'allow_bonus' => $source->allow_bonus,
+            'items' => array_map(fn (InstrumentItem $item) => [
+                'code' => $item->code,
+                'label' => $item->label,
+                'points_possible' => (float) $item->points_possible,
+                'is_bonus' => $item->is_bonus,
+                'domains' => array_map(fn ($allocation) => [
+                    'domain_id' => $allocation->domain_id,
+                    'allocation_percent' => (float) $allocation->allocation_percent,
+                ], $item->domainAllocations->all()),
+            ], $source->items->all()),
+        ], $sources->all());
     }
 
     /**
