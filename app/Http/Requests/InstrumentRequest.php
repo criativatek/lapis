@@ -4,9 +4,13 @@ namespace App\Http\Requests;
 
 use App\Models\AcademicPeriod;
 use App\Models\Domain;
+use App\Models\Instrument;
+use App\Models\InstrumentItem;
 use App\Models\InstrumentType;
+use App\Models\SchoolClass;
 use App\Rules\BelongsToCurrentOrganization;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 
 /**
@@ -16,6 +20,33 @@ use Illuminate\Validation\Rule;
  */
 class InstrumentRequest extends FormRequest
 {
+    /**
+     * Authorization is also checked here, not only in the controller: a
+     * FormRequest's own validation runs on container resolution, before the
+     * controller method body — including its Gate::authorize() call — ever
+     * executes. Without this, a teacher outside the class would get a 422 for
+     * a malformed payload instead of the 403 the route is supposed to give,
+     * because validation always wins the race against the controller. Route
+     * parameters are already bound (SubstituteBindings runs first), so both
+     * store()'s {class} and update()'s {instrument} are available here.
+     */
+    public function authorize(): bool
+    {
+        $instrument = $this->route('instrument');
+
+        if ($instrument instanceof Instrument) {
+            return Gate::allows('update', $instrument->schoolClass);
+        }
+
+        $class = $this->route('class');
+
+        if ($class instanceof SchoolClass) {
+            return Gate::allows('update', $class);
+        }
+
+        return false;
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -37,6 +68,7 @@ class InstrumentRequest extends FormRequest
             'internal_notes' => ['nullable', 'string'],
 
             'items' => ['required', 'array', 'min:1'],
+            'items.*.ulid' => ['nullable', 'string', new BelongsToCurrentOrganization(InstrumentItem::class, 'ulid')],
             'items.*.code' => ['required', 'string', 'max:16'],
             'items.*.label' => ['nullable', 'string', 'max:500'],
             'items.*.points_possible' => ['required', 'numeric', 'min:0'],

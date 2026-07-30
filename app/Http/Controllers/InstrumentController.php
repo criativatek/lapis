@@ -7,6 +7,7 @@ use App\Models\AcademicPeriod;
 use App\Models\Enrollment;
 use App\Models\Instrument;
 use App\Models\InstrumentItem;
+use App\Models\InstrumentStatus;
 use App\Models\InstrumentType;
 use App\Models\ResultState;
 use App\Models\SchoolClass;
@@ -66,6 +67,61 @@ class InstrumentController extends Controller
         try {
             $instrument = $this->builder->create(
                 $class,
+                $request->safe()->except('items'),
+                $request->validated('items'),
+            );
+        } catch (InstrumentValidationException $exception) {
+            return back()->withErrors(['items' => $exception->getMessage()])->withInput();
+        }
+
+        return to_route('instruments.show', $instrument->ulid);
+    }
+
+    public function edit(Instrument $instrument): Response
+    {
+        Gate::authorize('update', $instrument->schoolClass);
+        $this->ensureNotCancelled($instrument);
+
+        $instrument->load(['items.domainAllocations', 'schoolClass']);
+
+        return Inertia::render('instruments/Edit', [
+            'instrument' => [
+                'ulid' => $instrument->ulid,
+                'title' => $instrument->title,
+                'academic_period_id' => $instrument->academic_period_id,
+                'instrument_type_id' => $instrument->instrument_type_id,
+                'applied_on' => $instrument->applied_on->toDateString(),
+                'status' => $instrument->status->value,
+                'purpose' => $instrument->purpose,
+                'counts_toward_classification' => $instrument->counts_toward_classification,
+                'total_points' => $instrument->total_points === null ? null : (float) $instrument->total_points,
+                'allow_bonus' => $instrument->allow_bonus,
+                'items' => $instrument->items->map(fn (InstrumentItem $item) => [
+                    'ulid' => $item->ulid,
+                    'code' => $item->code,
+                    'label' => $item->label ?? '',
+                    'points_possible' => (float) $item->points_possible,
+                    'is_bonus' => $item->is_bonus,
+                    'has_scores' => $item->scores()->exists(),
+                    'domains' => $item->domainAllocations->map(fn ($allocation) => [
+                        'domain_id' => $allocation->domain_id,
+                        'allocation_percent' => (float) $allocation->allocation_percent,
+                    ])->all(),
+                ]),
+            ],
+            'schoolClass' => ['ulid' => $instrument->schoolClass->ulid, 'label' => $instrument->schoolClass->label],
+            ...$this->formOptions($instrument->schoolClass),
+        ]);
+    }
+
+    public function update(InstrumentRequest $request, Instrument $instrument): RedirectResponse
+    {
+        Gate::authorize('update', $instrument->schoolClass);
+        $this->ensureNotCancelled($instrument);
+
+        try {
+            $this->builder->update(
+                $instrument,
                 $request->safe()->except('items'),
                 $request->validated('items'),
             );
@@ -216,6 +272,20 @@ class InstrumentController extends Controller
                 ->map(fn ($domain) => ['id' => $domain->id, 'label' => $domain->name])
                 ->values(),
         ];
+    }
+
+    /**
+     * A cancelled instrument is read-only — no editing, no score entry — until
+     * "Reverter anulação" (Task 4) brings it back. Shared by edit(), update(),
+     * and saveScores().
+     */
+    protected function ensureNotCancelled(Instrument $instrument): void
+    {
+        abort_if(
+            $instrument->status === InstrumentStatus::Cancelled,
+            403,
+            'Este instrumento está anulado — reverta a anulação antes de o editar ou lançar notas.',
+        );
     }
 
     protected function user(): User

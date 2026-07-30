@@ -110,6 +110,8 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::get('classes/{class}/instruments/create', [InstrumentController::class, 'create'])->name('instruments.create');
         Route::post('classes/{class}/instruments', [InstrumentController::class, 'store'])->name('instruments.store');
         Route::get('instruments/{instrument}', [InstrumentController::class, 'show'])->name('instruments.show');
+        Route::get('instruments/{instrument}/edit', [InstrumentController::class, 'edit'])->name('instruments.edit');
+        Route::put('instruments/{instrument}', [InstrumentController::class, 'update'])->name('instruments.update');
         Route::post('instruments/{instrument}/scores', [InstrumentController::class, 'saveScores'])->name('instruments.scores.save');
         Route::delete('instruments/{instrument}', [InstrumentController::class, 'destroy'])->name('instruments.destroy');
     });
