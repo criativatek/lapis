@@ -132,6 +132,48 @@ class InstrumentController extends Controller
         return to_route('instruments.show', $instrument->ulid);
     }
 
+    public function cancel(Request $request, Instrument $instrument): RedirectResponse
+    {
+        Gate::authorize('update', $instrument->schoolClass);
+
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'max:255'],
+        ]);
+
+        if ($instrument->status === InstrumentStatus::Cancelled) {
+            return back()->withErrors(['reason' => 'Este instrumento já está anulado.']);
+        }
+
+        $instrument->update([
+            'status_before_cancellation' => $instrument->status->value,
+            'status' => InstrumentStatus::Cancelled,
+            'cancelled_at' => now(),
+            'cancelled_by' => $this->user()->id,
+            'cancellation_reason' => $data['reason'],
+        ]);
+
+        return back()->with('status', 'Instrumento anulado.');
+    }
+
+    public function revertCancellation(Instrument $instrument): RedirectResponse
+    {
+        Gate::authorize('update', $instrument->schoolClass);
+
+        if ($instrument->status !== InstrumentStatus::Cancelled) {
+            return back()->withErrors(['status' => 'Este instrumento não está anulado.']);
+        }
+
+        $instrument->update([
+            'status' => $instrument->status_before_cancellation,
+            'status_before_cancellation' => null,
+            'cancelled_at' => null,
+            'cancelled_by' => null,
+            'cancellation_reason' => null,
+        ]);
+
+        return back()->with('status', 'Anulação revertida.');
+    }
+
     /**
      * The grading grid: students in rows, items in columns (§12.4).
      */
@@ -177,6 +219,8 @@ class InstrumentController extends Controller
                 'title' => $instrument->title,
                 'applied_on' => $instrument->applied_on->toDateString(),
                 'status_label' => $instrument->status->label(),
+                'status' => $instrument->status->value,
+                'cancellation_reason' => $instrument->cancellation_reason,
                 'total_points' => $instrument->total_points === null ? null : (float) $instrument->total_points,
                 'class_label' => $instrument->schoolClass->label,
                 'class_ulid' => $instrument->schoolClass->ulid,
@@ -218,6 +262,7 @@ class InstrumentController extends Controller
     public function saveScores(Request $request, Instrument $instrument, RecordScores $recordScores): RedirectResponse
     {
         Gate::authorize('update', $instrument->schoolClass);
+        $this->ensureNotCancelled($instrument);
 
         $data = $request->validate([
             'cells' => ['required', 'array'],
