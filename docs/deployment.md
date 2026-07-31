@@ -22,11 +22,17 @@ Não voltar a fazer `git clone`. O `.env`/`APP_KEY` vivem **só no servidor** �
 reescrevê-los invalida sessões, 2FA e a password SMTP cifrada. Enviar só código:
 
 ```bash
-# 1. Empacotar local (Git Bash). Excluir SEMPRE bootstrap/cache e .env:
+# 1. Empacotar local (Git Bash). Excluir SEMPRE bootstrap/cache, .env e
+#    storage/app — este último é conteúdo carregado por utilizadores
+#    (fotos de alunos, ficheiros temporários de importação), específico de
+#    CADA ambiente. Nunca deve viajar num pacote de código: já aconteceu
+#    (2026-07-31) o storage/app local ser enviado para produção e poluir o
+#    armazenamento real com ficheiros de teste locais.
 tar --force-local -czf update.tgz \
   --exclude=.git --exclude=node_modules --exclude=vendor \
   --exclude=.env --exclude=.env.production \
   --exclude='storage/logs/*.log' --exclude='storage/framework/cache/data/*' \
+  --exclude=storage/app \
   --exclude=bootstrap/cache --exclude=.claude -C d:/HERD/LAPIS .
 
 # 2. Extrair + reconstruir no servidor via plink (hostkey pinado, sem prompt):
@@ -41,7 +47,7 @@ plink -ssh -hostkey SHA256:5a6uWUkxyqr3DhZCwveJEviWXDAOVQ72ndMgqDYpjHs -batch \
   < update.tgz
 ```
 
-**Duas armadilhas que já partiram o site:**
+**Armadilhas que já partiram o site (ou o armazenamento):**
 
 1. **Nunca enviar `bootstrap/cache/`.** O cache local lista providers de dev
    (Laravel\Pail) que não existem em produção (`--no-dev`) → `Class ... not found`
@@ -49,6 +55,15 @@ plink -ssh -hostkey SHA256:5a6uWUkxyqr3DhZCwveJEviWXDAOVQ72ndMgqDYpjHs -batch \
    `bootstrap/cache/{packages,services,config}.php` no servidor + `composer install`.
 2. **Correr sempre `composer install`** depois de extrair — regenera o cache de
    providers para o conjunto de produção. Saltar isto foi o que expôs a armadilha 1.
+3. **Nunca enviar `storage/app/`.** Contém conteúdo carregado (fotos de alunos,
+   pastas temporárias de importação) específico de cada ambiente — nunca faz
+   parte do código. Em 2026-07-31 o `storage/app` local (com ficheiros de teste
+   de dias anteriores) foi enviado por engano para produção, poluindo
+   `storage/app/private/student-photos` e `roster-imports` com dezenas de
+   ficheiros irrelevantes. Excluir sempre do tar (acima); se acontecer, os
+   ficheiros a remover no servidor identificam-se pela data de modificação
+   (`stat -c '%y %n' storage/app/private/*/*`) — qualquer coisa mais antiga
+   do que o próprio deploy é suspeita.
 
 O `tar x` usa `--no-same-owner/permissions` porque a pasta é do user `lapis`, não
 do `deploy`; o `|| true` engole o aviso de permissões em `.`.

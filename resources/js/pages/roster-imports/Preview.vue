@@ -333,10 +333,19 @@ function submit(): void {
                 <InputError :message="photosError ?? undefined" />
             </div>
 
+            <p
+                v-if="photosFile"
+                class="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+            >
+                Escolheste um ficheiro de fotos mas ainda não o adicionaste —
+                clica em "Adicionar fotos" acima antes de confirmar, ou os
+                alunos ficam sem foto.
+            </p>
+
             <div class="flex items-center gap-3">
                 <Button
                     type="button"
-                    :disabled="form.processing"
+                    :disabled="form.processing || !!photosFile"
                     @click="submit"
                     >Confirmar importação</Button
                 >
