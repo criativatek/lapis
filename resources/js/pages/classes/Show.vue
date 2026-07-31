@@ -140,6 +140,9 @@ function onPhotosFileChange(event: Event): void {
 function submitPhotos(): void {
     photoForm.post(`/classes/${props.schoolClass.ulid}/photos`, {
         forceFormData: true,
+        onSuccess: () => {
+            photoDialogOpen.value = false;
+        },
     });
 }
 </script>
