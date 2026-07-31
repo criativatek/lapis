@@ -2,6 +2,16 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.25.0] — 2026-08-01
+
+### Alterado
+
+- **Cotação por domínio passa a ser em pontos, não em percentagem.** Ao criar/editar um instrumento, escolhem-se primeiro os domínios avaliados; ao criar cada questão, a cotação de cada domínio insere-se diretamente em pontos (uma questão pode tocar mais do que um domínio). A cotação total da questão é só de leitura, somada automaticamente. Um painel-resumo no final do formulário mostra o total por domínio, atribuindo a cada um só a parte da questão que lhe foi cotada — nunca a questão inteira duplicada nos vários domínios que toca. A base de dados e o motor de cálculo continuam em percentagem por dentro; a conversão é só de apresentação.
+
+### Corrigido
+
+- **O seletor de domínio de cada questão mostrava todos os domínios da turma**, não só os escolhidos no topo do formulário para aquele instrumento.
+
 ## [0.24.0] — 2026-08-01
 
 ### Adicionado

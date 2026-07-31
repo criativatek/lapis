@@ -15,6 +15,23 @@ type Option = { id: number; label: string; default_purpose?: string };
 // InstrumentType from that name instead of an existing one.
 const OTHER_TYPE_ID = 0;
 
+// The shape the server sends/expects: domain shares as percentages of the
+// item's own points_possible.
+type WireAllocation = { domain_id: number; allocation_percent: number };
+type WireItemRow = {
+    ulid?: string;
+    code: string;
+    label: string;
+    points_possible: number;
+    is_bonus: boolean;
+    has_scores?: boolean;
+    domains: WireAllocation[];
+};
+
+// The shape this form edits: the teacher types points per domain directly,
+// never a percentage — allocation_percent is derived only at submit time, so
+// the calculation engine and schema never need to know points were the input.
+type Allocation = { domain_id: number; points: number };
 type ItemRow = {
     ulid?: string;
     code: string;
@@ -22,10 +39,10 @@ type ItemRow = {
     points_possible: number;
     is_bonus: boolean;
     has_scores?: boolean;
-    domains: { domain_id: number; allocation_percent: number }[];
+    domains: Allocation[];
 };
 
-type InstrumentData = {
+type WireInstrumentData = {
     title: string;
     academic_period_id: number | null;
     instrument_type_id: number | null;
@@ -36,8 +53,10 @@ type InstrumentData = {
     counts_toward_classification: boolean;
     total_points: number | string;
     allow_bonus: boolean;
-    items: ItemRow[];
+    items: WireItemRow[];
 };
+
+type InstrumentData = Omit<WireInstrumentData, 'items'> & { items: ItemRow[] };
 
 type ImportableInstrument = {
     ulid: string;
@@ -46,41 +65,62 @@ type ImportableInstrument = {
     applied_on: string;
     total_points: number | null;
     allow_bonus: boolean;
-    items: ItemRow[];
+    items: WireItemRow[];
 };
 
 const props = defineProps<{
     periods: Option[];
     types: Option[];
     domains: Option[];
-    initial?: InstrumentData;
+    initial?: WireInstrumentData;
     submitUrl: string;
     method: 'post' | 'put';
     importableInstruments?: ImportableInstrument[];
 }>();
 
+function pointsFromPercent(pointsPossible: number, allocationPercent: number): number {
+    return Math.round(((Number(pointsPossible) || 0) * (Number(allocationPercent) || 0)) / 100 * 100) / 100;
+}
+
+function wireToUiItem(item: WireItemRow): ItemRow {
+    return {
+        ulid: item.ulid,
+        code: item.code,
+        label: item.label ?? '',
+        points_possible: item.points_possible,
+        is_bonus: item.is_bonus,
+        has_scores: item.has_scores,
+        domains: item.domains.map((allocation) => ({
+            domain_id: allocation.domain_id,
+            points: pointsFromPercent(item.points_possible, allocation.allocation_percent),
+        })),
+    };
+}
+
 const form = useForm<InstrumentData>(
-    props.initial ?? {
-        title: '',
-        academic_period_id: null,
-        instrument_type_id: null,
-        custom_instrument_type_name: '',
-        applied_on: '',
-        status: 'prepared',
-        purpose: 'summative',
-        counts_toward_classification: true,
-        total_points: 100,
-        allow_bonus: false,
-        items: [
-            {
-                code: 'Q1',
-                label: '',
-                points_possible: 100,
-                is_bonus: false,
-                domains: [],
-            },
-        ],
-    },
+    props.initial
+        ? { ...props.initial, items: props.initial.items.map(wireToUiItem) }
+        : {
+              title: '',
+              academic_period_id: null,
+              instrument_type_id: null,
+              custom_instrument_type_name: '',
+              applied_on: '',
+              status: 'prepared',
+              purpose: 'summative',
+              counts_toward_classification: true,
+              total_points: 100,
+              allow_bonus: false,
+              items: [
+                  {
+                      code: 'Q1',
+                      label: '',
+                      points_possible: 100,
+                      is_bonus: false,
+                      domains: [],
+                  },
+              ],
+          },
 );
 
 function addItem(): void {
@@ -111,13 +151,11 @@ function applyImportedTemplate(): void {
     form.title = source.title;
     form.total_points = source.total_points ?? 0;
     form.allow_bonus = source.allow_bonus;
-    form.items = source.items.map((item) => ({
-        code: item.code,
-        label: item.label ?? '',
-        points_possible: item.points_possible,
-        is_bonus: item.is_bonus,
-        domains: item.domains.map((domain) => ({ ...domain })),
-    }));
+    form.items = source.items.map((item) => {
+        const uiItem = wireToUiItem(item);
+
+        return { ...uiItem, ulid: undefined, has_scores: undefined };
+    });
 }
 
 const selectedDomainIds = ref<number[]>(
@@ -157,7 +195,7 @@ function addItemToDomain(domainId: number): void {
         label: '',
         points_possible: 0,
         is_bonus: false,
-        domains: [{ domain_id: domainId, allocation_percent: 100 }],
+        domains: [{ domain_id: domainId, points: 0 }],
     });
 }
 
@@ -175,8 +213,60 @@ const totalMatches = computed(
         Math.abs(itemsTotal.value - Number(form.total_points)) < 0.0001,
 );
 
+// Attributed per allocation row, not per item — a question split across two
+// domains contributes its own partial points to each, never the item's full
+// total to both (an item can't be cleanly filed under a single domain here).
+const domainTotals = computed(() => {
+    const totals = new Map<number, number>();
+
+    for (const domainId of selectedDomainIds.value) {
+        totals.set(domainId, 0);
+    }
+
+    for (const item of form.items) {
+        for (const allocation of item.domains) {
+            if (totals.has(allocation.domain_id)) {
+                totals.set(allocation.domain_id, (totals.get(allocation.domain_id) ?? 0) + (Number(allocation.points) || 0));
+            }
+        }
+    }
+
+    return totals;
+});
+
 function submit(): void {
-    form.submit(props.method, props.submitUrl, { preserveScroll: true });
+    form.transform((data) => ({
+        ...data,
+        items: data.items.map((item) => {
+            if (item.domains.length === 0) {
+                return { ...item, domains: [] };
+            }
+
+            const total = item.domains.reduce((sum, allocation) => sum + (Number(allocation.points) || 0), 0);
+
+            return {
+                ...item,
+                domains: item.domains.map((allocation, index) => {
+                    if (total <= 0) {
+                        return { domain_id: allocation.domain_id, allocation_percent: 0 };
+                    }
+
+                    if (index === item.domains.length - 1) {
+                        const othersPercent = item.domains
+                            .slice(0, -1)
+                            .reduce((sum, other) => sum + ((Number(other.points) || 0) / total) * 100, 0);
+
+                        return { domain_id: allocation.domain_id, allocation_percent: Math.max(0, 100 - othersPercent) };
+                    }
+
+                    return {
+                        domain_id: allocation.domain_id,
+                        allocation_percent: ((Number(allocation.points) || 0) / total) * 100,
+                    };
+                }),
+            };
+        }),
+    })).submit(props.method, props.submitUrl, { preserveScroll: true });
 }
 </script>
 
@@ -371,13 +461,10 @@ function submit(): void {
                         />
                     </div>
                     <div class="grid gap-1.5">
-                        <Label class="text-xs">Cotação</Label>
-                        <Input
-                            v-model.number="item.points_possible"
-                            type="number"
-                            min="0"
-                            step="0.25"
-                        />
+                        <Label class="text-xs">Cotação total</Label>
+                        <p class="flex h-9 items-center text-sm font-semibold tabular-nums">
+                            {{ item.points_possible }} pts
+                        </p>
                     </div>
                     <Button
                         type="button"
@@ -395,7 +482,11 @@ function submit(): void {
                     </Button>
                 </div>
 
-                <InstrumentDomainAllocations :item="item" :domains="domains" />
+                <InstrumentDomainAllocations
+                    :item="item"
+                    :domains="domains"
+                    :selected-domain-ids="selectedDomainIds"
+                />
             </div>
         </section>
 
@@ -457,8 +548,32 @@ function submit(): void {
                     </Button>
                 </div>
 
-                <InstrumentDomainAllocations :item="item" :domains="domains" />
+                <InstrumentDomainAllocations
+                    :item="item"
+                    :domains="domains"
+                    :selected-domain-ids="selectedDomainIds"
+                />
             </div>
+        </section>
+
+        <section
+            v-if="selectedDomainIds.length"
+            class="space-y-2 rounded-lg border border-border p-3"
+        >
+            <h2 class="text-sm font-semibold">Resumo por domínio</h2>
+            <p class="text-xs text-muted-foreground">
+                Uma questão com mais do que um domínio contribui aqui só com a parte que lhe cotaste em cada um.
+            </p>
+            <ul class="space-y-1 text-sm">
+                <li
+                    v-for="domainId in selectedDomainIds"
+                    :key="domainId"
+                    class="flex items-center justify-between"
+                >
+                    <span>{{ domains.find((domain) => domain.id === domainId)?.label }}</span>
+                    <span class="font-medium tabular-nums">{{ domainTotals.get(domainId) ?? 0 }} pts</span>
+                </li>
+            </ul>
         </section>
 
         <div
