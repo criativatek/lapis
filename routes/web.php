@@ -3,6 +3,7 @@
 use App\Http\Controllers\AcademicYearController;
 use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\AssessmentProfileController;
+use App\Http\Controllers\ChangelogController;
 use App\Http\Controllers\ClassController;
 use App\Http\Controllers\ClassificationController;
 use App\Http\Controllers\ClassPhotoImportController;
@@ -22,6 +23,12 @@ use App\Http\Controllers\SubjectController;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'Welcome')->name('home');
+
+// Not tenant data — the changelog is the same for everyone, so it stays
+// outside the 'organization' group (no tenant resolution needed).
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::get('novidades', [ChangelogController::class, 'index'])->name('changelog.index');
+});
 
 // Teacher-facing area. Everything here reads tenant-owned data, so an
 // organization must be resolved before the request reaches a controller.

@@ -39,3 +39,6 @@ yarn-error.log
 # Real, non-anonymized student export samples used only to design the
 # roster-import feature (docs/superpowers/specs/2026-07-28-*) — never commit.
 /Ficheiros avulsos
+
+# Deploy package built locally per docs/deployment.md — never commit.
+/update.tgz
