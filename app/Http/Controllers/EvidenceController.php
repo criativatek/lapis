@@ -56,7 +56,7 @@ class EvidenceController extends Controller
                 'kind' => $record->kind->value,
                 'kind_label' => $record->kind->label(),
                 'description' => $record->description,
-                'student' => $record->enrollment?->student->identity->display_name,
+                'student' => $record->enrollment === null ? null : (optional($record->enrollment->student->identity)->display_name ?? $record->enrollment->student->pseudonym_code),
                 'domain' => $record->domain?->name,
                 'include_in_report' => $record->include_in_report,
                 'occurred_at' => $record->occurred_at->toIso8601String(),
@@ -65,7 +65,7 @@ class EvidenceController extends Controller
         return Inertia::render('records/Show', [
             'schoolClass' => ['ulid' => $class->ulid, 'label' => $class->label, 'subject' => $class->subject->name],
             'enrollments' => $class->enrollments()->with('student.identity')->orderBy('class_number')->get()
-                ->map(fn ($enrollment) => ['id' => $enrollment->id, 'name' => $enrollment->student->identity->display_name]),
+                ->map(fn ($enrollment) => ['id' => $enrollment->id, 'name' => optional($enrollment->student->identity)->display_name ?? $enrollment->student->pseudonym_code]),
             'domains' => Domain::where('subject_id', $class->subject_id)->orderBy('name')->get(['id', 'name']),
             'kinds' => collect(EvidenceKind::cases())->map(fn (EvidenceKind $kind) => ['value' => $kind->value, 'label' => $kind->label()]),
             'records' => $records,

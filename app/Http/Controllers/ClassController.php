@@ -109,13 +109,13 @@ class ClassController extends Controller
             'students' => $class->enrollments()->with('student.identity')->orderBy('class_number')->get()
                 ->map(fn (Enrollment $enrollment) => [
                     'ulid' => $enrollment->ulid,
-                    'name' => $enrollment->student->identity->display_name,
+                    'name' => optional($enrollment->student->identity)->display_name ?? $enrollment->student->pseudonym_code,
                     'pseudonym' => $enrollment->student->pseudonym_code,
                     'class_number' => $enrollment->class_number,
                     'enrolled_on' => $enrollment->enrolled_on->toDateString(),
                     'is_late_entry' => $enrollment->is_late_entry,
                     'status_label' => $enrollment->status->label(),
-                    'photo_url' => $enrollment->student->identity->photo_path !== null
+                    'photo_url' => optional($enrollment->student->identity)->photo_path !== null
                         ? route('students.photo', $enrollment->student->ulid)
                         : null,
                 ]),

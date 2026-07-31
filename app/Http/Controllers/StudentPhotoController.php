@@ -13,7 +13,7 @@ class StudentPhotoController extends Controller
     {
         Gate::authorize('viewPhoto', $student);
 
-        $path = $student->identity->photo_path;
+        $path = optional($student->identity)->photo_path;
 
         abort_if($path === null || ! Storage::disk('local')->exists($path), 404);
 

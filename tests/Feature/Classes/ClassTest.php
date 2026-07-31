@@ -305,4 +305,31 @@ class ClassTest extends TestCase
 
         $this->assertSame(ClassStatus::Preparation, $class->refresh()->status);
     }
+
+    #[Test]
+    public function the_class_page_falls_back_to_the_pseudonym_when_a_student_has_no_identity(): void
+    {
+        $context = $this->context();
+        $this->actingAs($this->user)->post('/classes', [
+            'label' => '7.º A',
+            'academic_year_id' => $context['year'],
+            'subject_id' => $context['subject'],
+        ]);
+        $class = SchoolClass::withoutGlobalScope('organization')->firstOrFail();
+        $this->actingAs($this->user)->post("/classes/{$class->ulid}/students", [
+            'name' => 'Miguel Santos',
+            'enrolled_on' => '2026-09-14',
+        ]);
+
+        // An enrollment must never crash the class page just because its
+        // identity row is missing (e.g. data corruption) — the pseudonym is
+        // the guaranteed fallback since it always lives on the student itself.
+        $student = Student::withoutGlobalScope('organization')->firstOrFail();
+        StudentIdentity::where('student_id', $student->id)->delete();
+
+        $this->actingAs($this->user)
+            ->get("/classes/{$class->ulid}")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->where('students.0.name', $student->pseudonym_code));
+    }
 }

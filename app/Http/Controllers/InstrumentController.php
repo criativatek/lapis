@@ -240,7 +240,7 @@ class InstrumentController extends Controller
             ]),
             'students' => $enrollments->map(fn (Enrollment $enrollment) => [
                 'enrollment_id' => $enrollment->id,
-                'name' => $enrollment->student->identity->display_name,
+                'name' => optional($enrollment->student->identity)->display_name ?? $enrollment->student->pseudonym_code,
                 'class_number' => $enrollment->class_number,
                 // The engine derives applicability from these dates (§11.4); the
                 // grid shows it so the teacher sees why a cell is not applicable.

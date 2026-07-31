@@ -119,7 +119,7 @@ class ReportsController extends Controller
             ->keyBy(fn (Classification $classification) => $classification->enrollment_id.':'.$classification->academic_period_id);
 
         $rows = $enrollments->map(fn (Enrollment $enrollment) => [
-            'name' => $enrollment->student->identity->display_name,
+            'name' => optional($enrollment->student->identity)->display_name ?? $enrollment->student->pseudonym_code,
             'class_number' => $enrollment->class_number,
             'cells' => $periods->map(function (AcademicPeriod $period) use ($decided, $enrollment): array {
                 /** @var Classification|null $classification */

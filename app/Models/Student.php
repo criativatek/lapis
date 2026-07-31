@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property string $ulid
  * @property int $organization_id
  * @property string $pseudonym_code
+ * @property-read StudentIdentity|null $identity
  */
 #[Fillable(['pseudonym_code'])]
 class Student extends Model

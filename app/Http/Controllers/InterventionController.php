@@ -55,7 +55,7 @@ class InterventionController extends Controller
                 'ulid' => $intervention->ulid,
                 'title' => $intervention->title,
                 'description' => $intervention->description,
-                'student' => $intervention->enrollment->student->identity->display_name,
+                'student' => optional($intervention->enrollment->student->identity)->display_name ?? $intervention->enrollment->student->pseudonym_code,
                 'domain' => $intervention->domain?->name,
                 'status' => $intervention->status->value,
                 'status_label' => $intervention->status->label(),
@@ -76,7 +76,7 @@ class InterventionController extends Controller
         return Inertia::render('interventions/Show', [
             'schoolClass' => ['ulid' => $class->ulid, 'label' => $class->label, 'subject' => $class->subject->name],
             'enrollments' => $class->enrollments()->with('student.identity')->orderBy('class_number')->get()
-                ->map(fn ($enrollment) => ['id' => $enrollment->id, 'name' => $enrollment->student->identity->display_name]),
+                ->map(fn ($enrollment) => ['id' => $enrollment->id, 'name' => optional($enrollment->student->identity)->display_name ?? $enrollment->student->pseudonym_code]),
             'domains' => Domain::where('subject_id', $class->subject_id)->orderBy('name')->get(['id', 'name']),
             'effectivenessOptions' => collect(InterventionEffectiveness::cases())
                 ->map(fn (InterventionEffectiveness $option) => ['value' => $option->value, 'label' => $option->label()]),
