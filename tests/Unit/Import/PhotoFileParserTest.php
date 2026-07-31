@@ -97,4 +97,57 @@ class PhotoFileParserTest extends TestCase
             $this->assertSame($entry['imageBytes'], $matches[$index]->imageBytes, "image bytes at index {$index}");
         }
     }
+
+    /**
+     * Confirmed directly against a real file (2026-07-31): a standard
+     * Word-generated table export uses normal inline pictures
+     * (<w:drawing>...<a:blip>) instead of the Intuitivo export's VML shape,
+     * and plain <w:t> text cells instead of <w:altChunk> for captions — the
+     * original extractMatches() finds nothing at all in this shape, so this
+     * exercises the fallback extractor.
+     */
+    #[Test]
+    public function it_falls_back_to_the_table_grid_shape_when_the_intuitivo_shape_finds_nothing(): void
+    {
+        $jpeg = DocxFixtureBuilder::tinyJpeg();
+        $entries = [
+            ['name' => 'Afonso Mordomo', 'imageBytes' => $jpeg.'-1'],
+            ['name' => 'Ana Simão', 'imageBytes' => $jpeg.'-2'],
+            ['name' => 'Ângela Vieira', 'imageBytes' => $jpeg.'-3'],
+            ['name' => 'Bárbara Camilo', 'imageBytes' => $jpeg.'-4'],
+        ];
+        $this->tempPath = DocxFixtureBuilder::buildTableGrid($entries);
+
+        $matches = (new PhotoFileParser)->parse($this->tempPath);
+
+        $this->assertCount(4, $matches);
+
+        foreach ($entries as $index => $entry) {
+            $this->assertSame($entry['name'], $matches[$index]->name, "name at index {$index}");
+            $this->assertSame($entry['imageBytes'], $matches[$index]->imageBytes, "image bytes at index {$index}");
+        }
+    }
+
+    /**
+     * Confirmed directly against real files (2026-07-31): relationship
+     * targets are resolved two different ways depending on the exporting
+     * tool. A leading "/" (the Intuitivo export's own convention, e.g.
+     * "/media/image.jpg") is root-relative; no leading slash (a standard
+     * Word document's convention, e.g. "media/image1.jpg") is relative to
+     * word/ instead — treating both as root-relative silently found zero
+     * bytes for the second shape.
+     */
+    #[Test]
+    public function it_resolves_a_relative_relationship_target_against_the_word_folder(): void
+    {
+        $jpeg = DocxFixtureBuilder::tinyJpeg();
+        $this->tempPath = DocxFixtureBuilder::buildTableGrid([
+            ['name' => 'Maria Teste', 'imageBytes' => $jpeg],
+        ]);
+
+        $matches = (new PhotoFileParser)->parse($this->tempPath);
+
+        $this->assertCount(1, $matches);
+        $this->assertSame($jpeg, $matches[0]->imageBytes);
+    }
 }

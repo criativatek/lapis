@@ -2,6 +2,13 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.22.3] — 2026-07-31
+
+### Corrigido
+
+- **Ficheiros de fotos exportados num formato Word "normal" (imagens inline modernas + nomes em texto simples numa tabela) extraíam sempre 0 fotos, silenciosamente.** `PhotoFileParser` só reconhecia o formato específico do export "Intuitivo" (imagens VML + legendas em `w:altChunk`). Confirmado diretamente com um ficheiro real do utilizador: agora reconhece também o formato de tabela (linha de fotos + linha de nomes separada, imagens via `<w:drawing>`/`<a:blip>`), como alternativa quando o formato original não encontra nada.
+- **A resolução do caminho das imagens dentro do ficheiro assumia sempre um caminho absoluto ("/media/imagem.jpg"), mas um documento Word "normal" usa caminhos relativos à pasta `word/` ("media/imagem.jpg").** Confirmado que isto fazia com que as imagens do segundo formato nunca fossem encontradas mesmo depois de reconhecidas — corrigido para resolver cada convenção corretamente (regra OOXML: `/` no início = raiz do ficheiro; sem `/` = relativo a `word/`).
+
 ## [0.22.2] — 2026-07-31
 
 ### Corrigido

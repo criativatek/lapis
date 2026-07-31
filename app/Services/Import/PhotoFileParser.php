@@ -7,32 +7,33 @@ namespace App\Services\Import;
 use App\Domain\Import\PhotoMatch;
 
 /**
- * Reads the "Intuitivo" photo export. Despite its .doc extension, the file is
- * a zip (OOXML): each photo is a VML image (<v:imagedata r:pict="...">), and
- * its caption is a separate HTML chunk embedded via <w:altChunk r:id="...">
- * ("Alternative Format Import Part") — not a picture-with-caption pair a
- * generic document reader would recognize.
+ * Reads a Word photo export. Two real, unrelated internal formats are known
+ * to occur (confirmed against real files, not assumed):
  *
- * Pairing is done by XML DOCUMENT ORDER (a real structural guarantee, unlike
- * zip-entry byte order): every <v:imagedata> and <w:altChunk> node is walked
- * in the order they appear in document.xml. Images are collected into a FIFO
- * queue (never a single "pending" slot) and each altChunk claims the OLDEST
- * still-unpaired image. This matters because the real Intuitivo export does
- * NOT alternate image/caption/image/caption: it lays out a whole grid ROW of
- * images first, then that row's captions afterward (e.g. 6 images, then 6
- * captions). A single pending slot would discard all but the last image of
- * each row before any caption arrives. A FIFO queue handles both shapes: a
- * strictly alternating document never lets the queue grow past size 1 (so it
- * behaves identically to a single slot), and a grouped document dequeues the
- * Nth enqueued image for the Nth caption seen — correct in both cases because
- * within one row, the Nth image cell corresponds to the Nth caption cell in
- * reading order.
+ * 1. The "Intuitivo" export: each photo is a VML image
+ *    (<v:imagedata r:pict="...">), and its caption is a separate HTML chunk
+ *    embedded via <w:altChunk r:id="..."> ("Alternative Format Import Part").
+ * 2. A modern Word table export: each photo is a normal inline picture
+ *    (<w:drawing>...<a:blip r:embed="...">), laid out one table row of
+ *    photos followed by a separate table row of plain-text names
+ *    (<w:tc>...<w:t>Nome</w:t>...).
+ *
+ * Both share the same underlying shape once you look past the vocabulary:
+ * a whole ROW (or group) of images is laid out first, then that group's
+ * captions afterward — never a strict alternating image/caption/image/caption
+ * pattern. Both extractors below use the same FIFO-queue pairing for this
+ * reason (see extractMatches()'s docblock for why a single "pending" slot
+ * would be wrong). extractTableGridMatches() only runs when the Intuitivo
+ * shape yields nothing, since a real file is always one format or the other,
+ * never both.
  */
 class PhotoFileParser
 {
     protected const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
     protected const NS_V = 'urn:schemas-microsoft-com:vml';
+
+    protected const NS_A = 'http://schemas.openxmlformats.org/drawingml/2006/main';
 
     protected const NS_R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 
@@ -59,6 +60,11 @@ class PhotoFileParser
         }
 
         $matches = $this->extractMatches($documentXml, $relationships, $zip);
+
+        if ($matches === []) {
+            $matches = $this->extractTableGridMatches($documentXml, $relationships, $zip);
+        }
+
         $zip->close();
 
         return $matches;
@@ -90,8 +96,20 @@ class PhotoFileParser
         foreach ($nodes as $node) {
             /** @var \DOMElement $node */
             $id = $node->getAttribute('Id');
-            $target = ltrim($node->getAttribute('Target'), '/');
-            $map[$id] = $target;
+            $target = $node->getAttribute('Target');
+
+            // OOXML package-relationship targets are resolved one of two ways
+            // (OPC §9.3): a leading "/" makes the path absolute from the zip
+            // root; otherwise it's relative to THIS PART's own folder — and
+            // since this file is always word/_rels/document.xml.rels, that
+            // folder is "word/". Confirmed against two real files that use
+            // each convention: the Intuitivo export ("/media/image.jpg",
+            // absolute) and a standard Word-generated table export
+            // ("media/image1.jpeg", relative to word/) — treating every
+            // target as root-relative silently broke the second one.
+            $map[$id] = str_starts_with($target, '/')
+                ? ltrim($target, '/')
+                : 'word/'.$target;
         }
 
         return $map;
@@ -162,6 +180,117 @@ class PhotoFileParser
         }
 
         return $matches;
+    }
+
+    /**
+     * The modern-Word-table fallback shape (see class docblock). Every table
+     * row is walked in document order; a row's <a:blip> pictures are enqueued
+     * FIFO, then that same row's (or a later row's) non-empty table cells
+     * each claim the oldest still-unpaired image. A row's own image cells
+     * never carry text, so scanning a row for both kinds together — images
+     * first, then text cells — never double-counts a cell as both.
+     *
+     * @param  array<string, string>  $relationships
+     * @return list<PhotoMatch>
+     */
+    protected function extractTableGridMatches(string $documentXml, array $relationships, \ZipArchive $zip): array
+    {
+        $dom = new \DOMDocument;
+        $dom->loadXML($documentXml);
+        $xpath = new \DOMXPath($dom);
+        $xpath->registerNamespace('w', self::NS_W);
+        $xpath->registerNamespace('a', self::NS_A);
+        $xpath->registerNamespace('r', self::NS_R);
+
+        $rows = $xpath->query('//w:tr');
+
+        $matches = [];
+
+        if ($rows === false) {
+            return $matches;
+        }
+
+        /** @var list<string|null> $pendingImageTargets FIFO queue, oldest first */
+        $pendingImageTargets = [];
+
+        foreach ($rows as $row) {
+            if (! $row instanceof \DOMElement) {
+                continue;
+            }
+
+            $blips = $xpath->query('.//a:blip', $row);
+
+            if ($blips !== false) {
+                foreach ($blips as $blip) {
+                    /** @var \DOMElement $blip */
+                    $rid = $blip->getAttributeNS(self::NS_R, 'embed');
+                    $pendingImageTargets[] = $relationships[$rid] ?? null;
+                }
+            }
+
+            $cells = $xpath->query('.//w:tc', $row);
+
+            if ($cells === false) {
+                continue;
+            }
+
+            foreach ($cells as $cell) {
+                if (! $cell instanceof \DOMElement) {
+                    continue;
+                }
+
+                $name = $this->extractName($this->cellText($xpath, $cell));
+
+                if ($name === '') {
+                    continue;
+                }
+
+                if ($pendingImageTargets === []) {
+                    continue; // A caption with no preceding image — nothing to pair.
+                }
+
+                $imageTarget = array_shift($pendingImageTargets);
+
+                if ($imageTarget === null) {
+                    continue; // That image's own relationship could not be resolved.
+                }
+
+                $imageBytes = $zip->getFromName($imageTarget);
+
+                if ($imageBytes !== false) {
+                    $matches[] = new PhotoMatch(
+                        name: $name,
+                        imageBytes: $imageBytes,
+                        extension: strtolower(pathinfo($imageTarget, PATHINFO_EXTENSION)) ?: 'jpg',
+                    );
+                }
+            }
+        }
+
+        return $matches;
+    }
+
+    /**
+     * A cell's own plain text, ignoring any purely structural/spacer cell
+     * (no <w:t> runs at all) rather than misreading it as an empty caption.
+     */
+    protected function cellText(\DOMXPath $xpath, \DOMElement $cell): string
+    {
+        $textNodes = $xpath->query('.//w:t', $cell);
+
+        if ($textNodes === false) {
+            return '';
+        }
+
+        $text = '';
+
+        foreach ($textNodes as $textNode) {
+            if ($textNode instanceof \DOMElement) {
+                $text .= $textNode->textContent;
+            }
+        }
+
+        return trim($text);
     }
 
     protected function extractName(string $captionHtml): string

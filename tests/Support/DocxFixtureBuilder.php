@@ -143,6 +143,64 @@ class DocxFixtureBuilder
         return $path;
     }
 
+    /**
+     * Builds a fixture reproducing a standard Word-generated table export
+     * (confirmed against a real file, 2026-07-31): photos are normal inline
+     * pictures (<w:drawing>...<a:blip r:embed="...">), laid out one table row
+     * of photos followed by a separate row of plain-text names
+     * (<w:tc>...<w:t>Nome</w:t>). Deliberately uses a RELATIVE relationship
+     * target ("media/imageN.jpg", no leading slash) — the real file's own
+     * convention, and the one build()/buildGrouped()'s absolute
+     * ("/media/...") targets never exercise.
+     *
+     * @param  list<array{name: string, imageBytes: string}>  $entries
+     */
+    public static function buildTableGrid(array $entries): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'photo_fixture_grid_').'.docx';
+        $zip = new \ZipArchive;
+        $zip->open($path, \ZipArchive::CREATE | \ZipArchive::OVERWRITE);
+
+        $relationships = '';
+        $imageCells = '';
+        $captionCells = '';
+
+        foreach ($entries as $index => $entry) {
+            $n = $index + 1;
+            $imageRid = "rImg{$n}";
+
+            $zip->addFromString("word/media/image{$n}.jpg", $entry['imageBytes']);
+            $relationships .= '<Relationship Id="'.$imageRid.'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image'.$n.'.jpg"/>';
+
+            $imageCells .= '<w:tc><w:p><w:r><w:drawing><a:blip r:embed="'.$imageRid.'"/></w:drawing></w:r></w:p></w:tc>';
+            $captionCells .= '<w:tc><w:p><w:r><w:t>'.htmlspecialchars($entry['name']).'</w:t></w:r></w:p></w:tc>';
+        }
+
+        $documentXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            .'<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+            .'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+            .'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            .'<w:body><w:tbl><w:tr>'.$imageCells.'</w:tr><w:tr>'.$captionCells.'</w:tr></w:tbl></w:body></w:document>';
+
+        $relsXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            .'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            .$relationships.'</Relationships>';
+
+        $contentTypesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            .'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            .'<Default Extension="jpg" ContentType="image/jpeg"/>'
+            .'<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+            .'</Types>';
+
+        $zip->addFromString('[Content_Types].xml', $contentTypesXml);
+        $zip->addFromString('_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>');
+        $zip->addFromString('word/document.xml', $documentXml);
+        $zip->addFromString('word/_rels/document.xml.rels', $relsXml);
+        $zip->close();
+
+        return $path;
+    }
+
     protected static function captionHtml(string $name): string
     {
         return '<html><head><meta charset="utf-8"/></head><body><div>'.htmlspecialchars($name).' </div></body></html>';
