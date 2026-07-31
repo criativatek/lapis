@@ -17,9 +17,11 @@ use App\Services\Assessment\InstrumentBuilder;
 use App\Services\Assessment\RecordScores;
 use App\Support\Assessment\InstrumentValidationException;
 use App\Support\Assessment\ScoreExceedsMaximumException;
+use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -68,7 +70,7 @@ class InstrumentController extends Controller
         try {
             $instrument = $this->builder->create(
                 $class,
-                $request->safe()->except('items'),
+                $this->resolveInstrumentType($request->safe()->except('items')),
                 $request->validated('items'),
             );
         } catch (InstrumentValidationException $exception) {
@@ -123,7 +125,7 @@ class InstrumentController extends Controller
         try {
             $this->builder->update(
                 $instrument,
-                $request->safe()->except('items'),
+                $this->resolveInstrumentType($request->safe()->except('items')),
                 $request->validated('items'),
             );
         } catch (InstrumentValidationException $exception) {
@@ -304,6 +306,49 @@ class InstrumentController extends Controller
         $instrument->delete();
 
         return to_route('instruments.index');
+    }
+
+    /**
+     * The "Outro" sentinel (0, never a real id) resolves into a real
+     * InstrumentType here, created on the fly if the teacher hasn't used this
+     * exact name before — organization-scoped, per InstrumentType's own
+     * "mine or system" design (its docblock already anticipated "a teacher
+     * can add their own"; there was just no UI for it until now). Reusing an
+     * existing custom type by name (rather than creating a duplicate every
+     * time) keeps the unique(organization_id, code) constraint happy and
+     * avoids a growing pile of near-identical types for the same label.
+     *
+     * @param  array<string, mixed>  $attributes
+     * @return array<string, mixed>
+     */
+    protected function resolveInstrumentType(array $attributes): array
+    {
+        if ((int) ($attributes['instrument_type_id'] ?? null) !== 0) {
+            unset($attributes['custom_instrument_type_name']);
+
+            return $attributes;
+        }
+
+        $name = trim((string) ($attributes['custom_instrument_type_name'] ?? ''));
+        // Str::slug() transliterates accents (e.g. "Portfólio" -> "portfolio")
+        // instead of just stripping anything non-ASCII, so two names that
+        // only differ by accent still collapse to the same code — a bare
+        // [^A-Z0-9] regex would instead turn every accented letter into its
+        // own "_", scattering near-identical names across different codes.
+        $code = Str::of($name)->slug('_')->upper()->substr(0, 32)->value();
+        $organizationId = app(CurrentOrganization::class)->id();
+
+        // organization_id is deliberately NOT mass-assigned (it isn't in
+        // InstrumentType's own #[Fillable] list) — the model's own
+        // creating() hook sets it from the resolved tenant instead, exactly
+        // as it already does for every other custom-type creation path.
+        $type = InstrumentType::where('organization_id', $organizationId)->where('code', $code)->first()
+            ?? InstrumentType::create(['name' => $name, 'code' => $code, 'default_purpose' => 'summative', 'is_active' => true]);
+
+        $attributes['instrument_type_id'] = $type->id;
+        unset($attributes['custom_instrument_type_name']);
+
+        return $attributes;
     }
 
     /**

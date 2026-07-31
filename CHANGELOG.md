@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.23.0] — 2026-07-31
+
+### Adicionado
+
+- **Opção "Outro…" no tipo de instrumento, com designação livre.** Ao criar ou editar um instrumento, escolher "Outro…" no campo "Tipo" mostra um campo de texto para o professor escrever a sua própria designação. O `InstrumentType` já estava desenhado para isto (linhas próprias por organização, "o professor pode adicionar as suas") — só faltava a interface. Reutilizar a mesma designação depois não cria um tipo duplicado; volta a usar o mesmo.
+
 ## [0.22.6] — 2026-07-31
 
 ### Corrigido

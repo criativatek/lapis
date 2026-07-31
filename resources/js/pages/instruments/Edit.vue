@@ -39,6 +39,7 @@ const initial = {
     title: props.instrument.title,
     academic_period_id: props.instrument.academic_period_id,
     instrument_type_id: props.instrument.instrument_type_id,
+    custom_instrument_type_name: '',
     applied_on: props.instrument.applied_on,
     status: props.instrument.status,
     purpose: props.instrument.purpose,

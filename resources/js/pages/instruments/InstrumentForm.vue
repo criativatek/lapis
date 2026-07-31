@@ -10,6 +10,11 @@ import InstrumentDomainAllocations from './InstrumentDomainAllocations.vue';
 
 type Option = { id: number; label: string; default_purpose?: string };
 
+// A sentinel, never a real id (those start at 1) — selecting it reveals the
+// custom-name input below, and the server resolves/creates the teacher's own
+// InstrumentType from that name instead of an existing one.
+const OTHER_TYPE_ID = 0;
+
 type ItemRow = {
     ulid?: string;
     code: string;
@@ -24,6 +29,7 @@ type InstrumentData = {
     title: string;
     academic_period_id: number | null;
     instrument_type_id: number | null;
+    custom_instrument_type_name: string;
     applied_on: string;
     status: string;
     purpose: string;
@@ -58,6 +64,7 @@ const form = useForm<InstrumentData>(
         title: '',
         academic_period_id: null,
         instrument_type_id: null,
+        custom_instrument_type_name: '',
         applied_on: '',
         status: 'prepared',
         purpose: 'summative',
@@ -223,8 +230,15 @@ function submit(): void {
                     >
                         {{ type.label }}
                     </option>
+                    <option :value="OTHER_TYPE_ID">Outro…</option>
                 </select>
                 <InputError :message="form.errors.instrument_type_id" />
+                <Input
+                    v-if="form.instrument_type_id === OTHER_TYPE_ID"
+                    v-model="form.custom_instrument_type_name"
+                    placeholder="Designação do tipo"
+                />
+                <InputError :message="form.errors.custom_instrument_type_name" />
             </div>
             <div class="grid gap-2">
                 <Label for="academic_period_id">Período</Label>

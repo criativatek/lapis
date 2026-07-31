@@ -56,8 +56,24 @@ class InstrumentRequest extends FormRequest
             'title' => ['required', 'string', 'max:200'],
             'academic_period_id' => ['required', new BelongsToCurrentOrganization(AcademicPeriod::class)],
             // Instrument types may be system-wide (organization_id NULL); the rule
-            // runs through the model, whose visibility scope allows both.
-            'instrument_type_id' => ['required', new BelongsToCurrentOrganization(InstrumentType::class)],
+            // runs through the model, whose visibility scope allows both. 0 is
+            // never a real id (they start at 1) — it's the "Outro" sentinel, and
+            // InstrumentController resolves it into a real (possibly brand-new)
+            // InstrumentType from custom_instrument_type_name before this reaches
+            // InstrumentBuilder, so it never needs to belong to the organization
+            // itself.
+            'instrument_type_id' => [
+                'required',
+                'integer',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if ((int) $value === 0) {
+                        return;
+                    }
+
+                    (new BelongsToCurrentOrganization(InstrumentType::class))->validate($attribute, $value, $fail);
+                },
+            ],
+            'custom_instrument_type_name' => ['required_if:instrument_type_id,0', 'nullable', 'string', 'max:80'],
             'applied_on' => ['required', 'date'],
             // 'cancelled' is deliberately excluded: only InstrumentController::cancel()
             // may set it (it also records the mandatory reason and the status to
