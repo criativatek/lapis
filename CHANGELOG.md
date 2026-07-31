@@ -2,7 +2,11 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
-## [0.22.4] — 2026-07-31
+## [0.22.5] — 2026-07-31
+
+### Corrigido
+
+- **"Associar fotos" dava erro 500 em produção (`UnableToCreateDirectory`).** Efeito colateral da limpeza dos ficheiros de teste poluídos (0.22.3): as pastas `storage/app/private/roster-imports` e `student-photos`, ao serem geridas pelo user `deploy` por SSH, ficaram sem permissão de escrita para o grupo (`750`), e o site corre como `lapis` — só partilha o grupo com `deploy`, não é dono. Corrigido diretamente no servidor (`chmod g+rwX`) e documentado em `docs/deployment.md` como uma nova armadilha a evitar da próxima vez que se mexer nestas pastas por SSH.
 
 ### Adicionado
 

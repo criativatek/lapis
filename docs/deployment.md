@@ -64,6 +64,17 @@ plink -ssh -hostkey SHA256:5a6uWUkxyqr3DhZCwveJEviWXDAOVQ72ndMgqDYpjHs -batch \
    ficheiros a remover no servidor identificam-se pela data de modificação
    (`stat -c '%y %n' storage/app/private/*/*`) — qualquer coisa mais antiga
    do que o próprio deploy é suspeita.
+4. **Qualquer pasta dentro de `storage/app/private/` tem de ter permissão de
+   escrita para o grupo (`g+w`), não só para o dono.** O site corre como user
+   `lapis`, mas o `deploy` (usado para gerir ficheiros por SSH) só partilha o
+   GRUPO `lapis` com ele — não é dono de nada. Uma pasta criada ou alterada
+   por `deploy` (ex.: ao limpar ficheiros da armadilha 3) fica `750`
+   (`rwxr-x---`): o grupo só lê, não escreve. A app corre como `lapis` e falha
+   com `UnableToCreateDirectory` ao tentar criar uma subpasta lá dentro — foi
+   o que aconteceu em 2026-07-31 logo a seguir à limpeza da armadilha 3.
+   Sempre que se mexer nestas pastas via `deploy`, terminar com
+   `chmod -R g+rwX storage/app/private/roster-imports storage/app/private/student-photos`
+   (ou confirmar que já são `770`) antes de dar como resolvido.
 
 O `tar x` usa `--no-same-owner/permissions` porque a pasta é do user `lapis`, não
 do `deploy`; o `|| true` engole o aviso de permissões em `.`.
