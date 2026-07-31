@@ -23,15 +23,15 @@ enum EvidenceKind: string
     {
         return match ($this) {
             self::Homework => __('Trabalho de casa'),
-            self::Incident => __('Ocorrência'),
-            self::PositiveBehaviour => __('Comportamento positivo'),
+            self::Incident => __('Ocorrência disciplinar'),
+            self::PositiveBehaviour => __('Comportamento meritório (G1)'),
             self::Participation => __('Participação'),
             self::Progress => __('Progresso'),
             self::Difficulty => __('Dificuldade'),
             self::Support => __('Apoio'),
             self::Contact => __('Contacto'),
             self::Activity => __('Atividade'),
-            self::Note => __('Nota'),
+            self::Note => __('Observação'),
         };
     }
 }

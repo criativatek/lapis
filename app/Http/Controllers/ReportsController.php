@@ -10,6 +10,8 @@ use App\Models\Enrollment;
 use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Audit\AuditLog;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
@@ -60,7 +62,41 @@ class ReportsController extends Controller
             ],
             'periods' => $pauta['periods'],
             'rows' => $pauta['rows'],
+            'includeEvidenceInReport' => $class->include_evidence_in_report,
         ]);
+    }
+
+    /**
+     * The class-wide default for whether Evidence records ("Registos") are
+     * included in this class's report. A per-student row can still override
+     * it individually (updateStudentEvidenceSetting()).
+     */
+    public function updateEvidenceSetting(Request $request, SchoolClass $class): RedirectResponse
+    {
+        Gate::authorize('update', $class);
+
+        $data = $request->validate(['include_evidence_in_report' => ['required', 'boolean']]);
+
+        $class->update(['include_evidence_in_report' => $data['include_evidence_in_report']]);
+
+        return back();
+    }
+
+    /**
+     * A single student's override of the class default — null clears the
+     * override, going back to "inherit the class setting" (Enrollment::
+     * includesEvidenceInReport()), rather than a hidden false.
+     */
+    public function updateStudentEvidenceSetting(Request $request, SchoolClass $class, Enrollment $enrollment): RedirectResponse
+    {
+        Gate::authorize('update', $class);
+        abort_if($enrollment->class_id !== $class->id, 404);
+
+        $data = $request->validate(['include_evidence_in_report' => ['nullable', 'boolean']]);
+
+        $enrollment->update(['include_evidence_in_report' => $data['include_evidence_in_report'] ?? null]);
+
+        return back();
     }
 
     public function export(SchoolClass $class): HttpResponse
@@ -100,7 +136,7 @@ class ReportsController extends Controller
     }
 
     /**
-     * @return array{periods: array<int, string>, rows: array<int, array{name: string, class_number: int|null, cells: array<int, array{value: string|null, status: string|null}>}>}
+     * @return array{periods: array<int, string>, rows: array<int, array{enrollment_id: int, name: string, class_number: int|null, include_evidence_in_report: bool|null, cells: array<int, array{value: string|null, status: string|null}>}>}
      */
     protected function pauta(SchoolClass $class): array
     {
@@ -119,8 +155,10 @@ class ReportsController extends Controller
             ->keyBy(fn (Classification $classification) => $classification->enrollment_id.':'.$classification->academic_period_id);
 
         $rows = $enrollments->map(fn (Enrollment $enrollment) => [
+            'enrollment_id' => $enrollment->id,
             'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
             'class_number' => $enrollment->class_number,
+            'include_evidence_in_report' => $enrollment->include_evidence_in_report,
             'cells' => $periods->map(function (AcademicPeriod $period) use ($decided, $enrollment): array {
                 /** @var Classification|null $classification */
                 $classification = $decided->get($enrollment->id.':'.$period->id);

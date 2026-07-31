@@ -1,14 +1,21 @@
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import { Download, Printer } from '@lucide/vue';
 
 type Cell = { value: string | null; status: 'confirmed' | 'published' | null };
-type Row = { name: string; class_number: number | null; cells: Cell[] };
+type Row = {
+    enrollment_id: number;
+    name: string;
+    class_number: number | null;
+    include_evidence_in_report: boolean | null;
+    cells: Cell[];
+};
 
 const props = defineProps<{
     schoolClass: { ulid: string; label: string; subject: string; academic_year: string };
     periods: string[];
     rows: Row[];
+    includeEvidenceInReport: boolean;
 }>();
 
 // "—" for a null (no decided grade), never 0.
@@ -18,6 +25,35 @@ function grade(cell: Cell): string {
 
 function print(): void {
     window.print();
+}
+
+function updateClassDefault(event: Event): void {
+    router.put(
+        `/classes/${props.schoolClass.ulid}/report/evidence-setting`,
+        { include_evidence_in_report: (event.target as HTMLInputElement).checked },
+        { preserveScroll: true },
+    );
+}
+
+// '' (inherit) / '1' (always) / '0' (never) — a plain boolean select can't
+// express "no override", so the DOM value is a string tri-state instead.
+function studentOverrideValue(row: Row): string {
+    if (row.include_evidence_in_report === null) {
+        return '';
+    }
+
+    return row.include_evidence_in_report ? '1' : '0';
+}
+
+function updateStudentOverride(row: Row, event: Event): void {
+    const raw = (event.target as HTMLSelectElement).value;
+    const value = raw === '' ? null : raw === '1';
+
+    router.put(
+        `/classes/${props.schoolClass.ulid}/report/students/${row.enrollment_id}/evidence-setting`,
+        { include_evidence_in_report: value },
+        { preserveScroll: true },
+    );
 }
 </script>
 
@@ -47,6 +83,16 @@ function print(): void {
             </div>
         </div>
 
+        <label class="print-hide flex items-center gap-2 text-sm">
+            <input
+                type="checkbox"
+                :checked="includeEvidenceInReport"
+                class="rounded border-border"
+                @change="updateClassDefault"
+            />
+            Incluir dados que constam nos Registos do professor
+        </label>
+
         <div class="pauta-print space-y-3">
             <div class="hidden print:block">
                 <h1 class="text-lg font-semibold">Pauta de classificações — {{ schoolClass.label }}</h1>
@@ -60,6 +106,7 @@ function print(): void {
                             <th class="px-3 py-2 font-medium">Nº</th>
                             <th class="px-3 py-2 font-medium">Aluno</th>
                             <th v-for="label in periods" :key="label" class="px-3 py-2 text-right font-medium">{{ label }}</th>
+                            <th class="print-hide px-3 py-2 font-medium">Registos</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-border">
@@ -74,6 +121,18 @@ function print(): void {
                                     :class="cell.status === 'published' ? 'bg-emerald-500' : 'bg-amber-500'"
                                     :title="cell.status === 'published' ? 'Publicada' : 'Confirmada'"
                                 ></span>
+                            </td>
+                            <td class="print-hide px-3 py-2">
+                                <select
+                                    :value="studentOverrideValue(row)"
+                                    class="rounded-md border border-border bg-background px-2 py-1 text-xs"
+                                    :title="'Por omissão da turma: ' + (includeEvidenceInReport ? 'incluir' : 'não incluir')"
+                                    @change="updateStudentOverride(row, $event)"
+                                >
+                                    <option value="">Turma</option>
+                                    <option value="1">Incluir</option>
+                                    <option value="0">Não incluir</option>
+                                </select>
                             </td>
                         </tr>
                     </tbody>

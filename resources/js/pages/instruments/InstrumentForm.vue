@@ -128,17 +128,28 @@ const selectedDomainIds = ref<number[]>(
     ),
 );
 
-function itemsForDomain(domainId: number): { item: ItemRow; index: number }[] {
-    return form.items
-        .map((item, index) => ({ item, index }))
-        .filter(({ item }) => item.domains.some((allocation) => allocation.domain_id === domainId));
-}
+// Precomputed (not plain functions called inline in v-for) so typing in one
+// item doesn't re-run a fresh map/filter over the whole list on every
+// keystroke for every domain section on screen.
+const itemsByDomain = computed(() => {
+    const indexed = form.items.map((item, index) => ({ item, index }));
+    const map = new Map<number, { item: ItemRow; index: number }[]>();
 
-function itemsWithNoDomain(): { item: ItemRow; index: number }[] {
-    return form.items
+    for (const domainId of selectedDomainIds.value) {
+        map.set(
+            domainId,
+            indexed.filter(({ item }) => item.domains.some((allocation) => allocation.domain_id === domainId)),
+        );
+    }
+
+    return map;
+});
+
+const itemsWithNoDomain = computed(() =>
+    form.items
         .map((item, index) => ({ item, index }))
-        .filter(({ item }) => item.domains.length === 0);
-}
+        .filter(({ item }) => item.domains.length === 0),
+);
 
 function addItemToDomain(domainId: number): void {
     form.items.push({
@@ -341,7 +352,7 @@ function submit(): void {
                 </Button>
             </div>
             <div
-                v-for="{ item, index } in itemsForDomain(domainId)"
+                v-for="{ item, index } in itemsByDomain.get(domainId) ?? []"
                 :key="item.ulid ?? index"
                 class="space-y-3 rounded-lg border border-border p-3"
             >
@@ -403,7 +414,7 @@ function submit(): void {
             <InputError :message="form.errors.items" />
 
             <div
-                v-for="{ item, index } in itemsWithNoDomain()"
+                v-for="{ item, index } in itemsWithNoDomain"
                 :key="item.ulid ?? index"
                 class="space-y-3 rounded-lg border border-border p-3"
             >

@@ -43,15 +43,56 @@ class EvidenceRecordTest extends TestCase
             'description' => 'Participou de forma sustentada na discussão do texto.',
             'occurred_at' => '2026-10-20',
             'enrollment_id' => (int) $enrollmentId,
-            'include_in_report' => true,
         ])->assertRedirect();
 
         app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () use ($enrollmentId): void {
             $record = EvidenceRecord::firstOrFail();
             $this->assertSame('participation', $record->kind->value);
             $this->assertSame((int) $enrollmentId, $record->enrollment_id);
-            $this->assertTrue($record->include_in_report);
         });
+    }
+
+    #[Test]
+    public function a_disciplinary_occurrence_requires_a_severity_grade(): void
+    {
+        [$classUlid, $enrollmentId] = $this->seedClass();
+        $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+
+        $this->actingAs($teacher)->post("/classes/{$classUlid}/records", [
+            'kind' => 'incident',
+            'description' => 'Perturbou a aula.',
+            'occurred_at' => '2026-10-20',
+            'enrollment_id' => (int) $enrollmentId,
+        ])->assertSessionHasErrors('disciplinary_severity');
+
+        $this->actingAs($teacher)->post("/classes/{$classUlid}/records", [
+            'kind' => 'incident',
+            'disciplinary_severity' => 'g3',
+            'description' => 'Perturbou a aula.',
+            'occurred_at' => '2026-10-20',
+            'enrollment_id' => (int) $enrollmentId,
+        ])->assertRedirect();
+
+        app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function (): void {
+            $record = EvidenceRecord::firstOrFail();
+            $this->assertSame('incident', $record->kind->value);
+            $this->assertSame('g3', $record->disciplinary_severity->value);
+        });
+    }
+
+    #[Test]
+    public function a_severity_grade_is_rejected_for_a_non_disciplinary_kind(): void
+    {
+        [$classUlid, $enrollmentId] = $this->seedClass();
+        $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+
+        $this->actingAs($teacher)->post("/classes/{$classUlid}/records", [
+            'kind' => 'participation',
+            'disciplinary_severity' => 'g3',
+            'description' => 'Participou bem.',
+            'occurred_at' => '2026-10-20',
+            'enrollment_id' => (int) $enrollmentId,
+        ])->assertSessionHasErrors('disciplinary_severity');
     }
 
     #[Test]

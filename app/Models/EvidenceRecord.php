@@ -24,14 +24,14 @@ use Illuminate\Support\Carbon;
  * @property int|null $quick_rating_scale_level_id
  * @property Carbon $occurred_at
  * @property EvidenceKind $kind
+ * @property DisciplinarySeverity|null $disciplinary_severity
  * @property string $description
- * @property bool $include_in_report
  * @property int $created_by
  */
 #[Fillable([
     'class_id', 'enrollment_id', 'academic_period_id', 'domain_id',
-    'quick_rating_scale_level_id', 'occurred_at', 'kind', 'description',
-    'include_in_report', 'created_by',
+    'quick_rating_scale_level_id', 'occurred_at', 'kind', 'disciplinary_severity',
+    'description', 'created_by',
 ])]
 class EvidenceRecord extends Model
 {
@@ -55,7 +55,7 @@ class EvidenceRecord extends Model
         return [
             'occurred_at' => 'datetime',
             'kind' => EvidenceKind::class,
-            'include_in_report' => 'boolean',
+            'disciplinary_severity' => DisciplinarySeverity::class,
         ];
     }
 

@@ -28,8 +28,9 @@ use Illuminate\Support\Carbon;
  * @property bool $is_late_entry
  * @property string|null $late_entry_note
  * @property string|null $import_note
+ * @property bool|null $include_evidence_in_report
  */
-#[Fillable(['class_id', 'student_id', 'class_number', 'enrolled_on', 'left_on', 'status', 'is_late_entry', 'late_entry_note', 'import_note'])]
+#[Fillable(['class_id', 'student_id', 'class_number', 'enrolled_on', 'left_on', 'status', 'is_late_entry', 'late_entry_note', 'import_note', 'include_evidence_in_report'])]
 class Enrollment extends Model
 {
     /** @use HasFactory<EnrollmentFactory> */
@@ -55,6 +56,7 @@ class Enrollment extends Model
             'left_on' => 'date',
             'status' => EnrollmentStatus::class,
             'is_late_entry' => 'boolean',
+            'include_evidence_in_report' => 'boolean',
         ];
     }
 
@@ -72,5 +74,16 @@ class Enrollment extends Model
     public function student(): BelongsTo
     {
         return $this->belongsTo(Student::class);
+    }
+
+    /**
+     * Whether this student's Evidence records show up in their class's
+     * report. NULL means "no per-student override" — falls back to the
+     * class's own default (SchoolClass::$include_evidence_in_report), never
+     * a hidden false.
+     */
+    public function includesEvidenceInReport(): bool
+    {
+        return $this->include_evidence_in_report ?? $this->schoolClass->include_evidence_in_report;
     }
 }

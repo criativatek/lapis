@@ -3,6 +3,7 @@
 namespace Tests\Feature\Assessment;
 
 use App\Models\Classification;
+use App\Models\Enrollment;
 use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Assessment\ConfirmClassification;
@@ -90,5 +91,70 @@ class ReportsTest extends TestCase
         $stranger = User::factory()->create();
         $this->actingAs($stranger)->get("/classes/{$classUlid}/report")->assertNotFound();
         $this->actingAs($stranger)->get("/classes/{$classUlid}/report/export")->assertNotFound();
+    }
+
+    #[Test]
+    public function the_teacher_toggles_the_class_wide_evidence_default(): void
+    {
+        [$classUlid] = $this->seedWithOneConfirmedGrade();
+        $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+
+        $this->actingAs($teacher)
+            ->put("/classes/{$classUlid}/report/evidence-setting", ['include_evidence_in_report' => true])
+            ->assertRedirect();
+
+        app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () use ($classUlid): void {
+            $this->assertTrue(SchoolClass::where('ulid', $classUlid)->firstOrFail()->include_evidence_in_report);
+        });
+    }
+
+    #[Test]
+    public function a_student_override_replaces_the_class_default_and_can_be_cleared(): void
+    {
+        [$classUlid] = $this->seedWithOneConfirmedGrade();
+        $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+
+        [$enrollmentId, $enrollmentUlid] = app(CurrentOrganization::class)->runFor(
+            $teacher->personalOrganization(),
+            function () use ($classUlid) {
+                $enrollment = SchoolClass::where('ulid', $classUlid)->firstOrFail()->enrollments()->firstOrFail();
+
+                return [$enrollment->id, $enrollment->ulid];
+            },
+        );
+
+        $this->actingAs($teacher)
+            ->put("/classes/{$classUlid}/report/students/{$enrollmentUlid}/evidence-setting", ['include_evidence_in_report' => false])
+            ->assertRedirect();
+
+        app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () use ($enrollmentId): void {
+            $enrollment = Enrollment::withoutGlobalScope('organization')->findOrFail($enrollmentId);
+            $this->assertFalse($enrollment->include_evidence_in_report);
+            $this->assertFalse($enrollment->includesEvidenceInReport());
+        });
+
+        // Clearing the override (null) falls back to the class default.
+        $this->actingAs($teacher)
+            ->put("/classes/{$classUlid}/report/evidence-setting", ['include_evidence_in_report' => true]);
+        $this->actingAs($teacher)
+            ->put("/classes/{$classUlid}/report/students/{$enrollmentUlid}/evidence-setting", ['include_evidence_in_report' => null])
+            ->assertRedirect();
+
+        app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () use ($enrollmentId): void {
+            $enrollment = Enrollment::withoutGlobalScope('organization')->findOrFail($enrollmentId);
+            $this->assertNull($enrollment->include_evidence_in_report);
+            $this->assertTrue($enrollment->includesEvidenceInReport());
+        });
+    }
+
+    #[Test]
+    public function a_stranger_cannot_change_another_organizations_evidence_settings(): void
+    {
+        [$classUlid] = $this->seedWithOneConfirmedGrade();
+        $stranger = User::factory()->create();
+
+        $this->actingAs($stranger)
+            ->put("/classes/{$classUlid}/report/evidence-setting", ['include_evidence_in_report' => true])
+            ->assertNotFound();
     }
 }

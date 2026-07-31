@@ -25,8 +25,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $label
  * @property int|null $assessment_profile_version_id
  * @property ClassStatus $status
+ * @property bool $include_evidence_in_report
  */
-#[Fillable(['academic_year_id', 'subject_id', 'grade_level', 'course_code', 'label', 'assessment_profile_version_id', 'status'])]
+#[Fillable(['academic_year_id', 'subject_id', 'grade_level', 'course_code', 'label', 'assessment_profile_version_id', 'status', 'include_evidence_in_report'])]
 class SchoolClass extends Model
 {
     /** @use HasFactory<SchoolClassFactory> */
@@ -51,6 +52,7 @@ class SchoolClass extends Model
     {
         return [
             'status' => ClassStatus::class,
+            'include_evidence_in_report' => 'boolean',
         ];
     }
 

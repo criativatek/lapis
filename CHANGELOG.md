@@ -2,6 +2,21 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.24.0] — 2026-08-01
+
+### Adicionado
+
+- **Grau de gravidade nas ocorrências disciplinares.** Ao escolher "Ocorrência disciplinar" nos Registos, aparece um campo obrigatório antes da Descrição com 5 graus: Advertência/Falta de material (G2), Perturbação ligeira da aula (G3), Indisciplina/Falta de respeito (G4), Infração grave (G5), Infração muito grave (G6).
+- **"Incluir dados que constam nos Registos do professor" passa de Registos para Relatórios.** A checkbox por registo individual nunca teve efeito nenhum (a pauta nunca leu essa flag). Substituída por uma definição ao nível da turma (omissão) com exceção por aluno, ambas geridas na página do relatório da turma.
+
+### Alterado
+
+- **Três designações de tipo de registo:** "Comportamento positivo" → "Comportamento meritório (G1)"; "Nota" → "Observação"; "Ocorrência" → "Ocorrência disciplinar".
+
+### Corrigido
+
+- **Ineficiência no formulário de instrumento**: a lista de questões por domínio recalculava-se a cada tecla premida em qualquer campo, em vez de só quando a lista de questões muda.
+
 ## [0.23.0] — 2026-07-31
 
 ### Adicionado

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\DisciplinarySeverity;
 use App\Models\Domain;
 use App\Models\EvidenceKind;
 use App\Models\EvidenceRecord;
@@ -55,10 +56,10 @@ class EvidenceController extends Controller
                 'ulid' => $record->ulid,
                 'kind' => $record->kind->value,
                 'kind_label' => $record->kind->label(),
+                'disciplinary_severity_label' => $record->disciplinary_severity?->label(),
                 'description' => $record->description,
                 'student' => $record->enrollment === null ? null : (optional($record->enrollment->student->identity)->display_name ?? '(sem identidade)'),
                 'domain' => $record->domain?->name,
-                'include_in_report' => $record->include_in_report,
                 'occurred_at' => $record->occurred_at->toIso8601String(),
             ]);
 
@@ -68,6 +69,7 @@ class EvidenceController extends Controller
                 ->map(fn ($enrollment) => ['id' => $enrollment->id, 'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)']),
             'domains' => Domain::where('subject_id', $class->subject_id)->orderBy('name')->get(['id', 'name']),
             'kinds' => collect(EvidenceKind::cases())->map(fn (EvidenceKind $kind) => ['value' => $kind->value, 'label' => $kind->label()]),
+            'severities' => collect(DisciplinarySeverity::cases())->map(fn (DisciplinarySeverity $severity) => ['value' => $severity->value, 'label' => $severity->label()]),
             'records' => $records,
         ]);
     }
@@ -78,11 +80,18 @@ class EvidenceController extends Controller
 
         $validated = $request->validate([
             'kind' => ['required', Rule::enum(EvidenceKind::class)],
+            // Required exactly for a disciplinary occurrence, never set for
+            // any other kind — G1 ("Comportamento meritório") is its own
+            // EvidenceKind, not a severity of this field.
+            'disciplinary_severity' => [
+                Rule::requiredIf($request->input('kind') === EvidenceKind::Incident->value),
+                Rule::prohibitedIf($request->input('kind') !== EvidenceKind::Incident->value),
+                Rule::enum(DisciplinarySeverity::class),
+            ],
             'description' => ['required', 'string', 'max:1000'],
             'occurred_at' => ['required', 'date'],
             'enrollment_id' => ['nullable', 'integer'],
             'domain_id' => ['nullable', 'integer'],
-            'include_in_report' => ['boolean'],
         ]);
 
         // A targeted entry must point at a student OF THIS class, and a domain OF
@@ -102,8 +111,8 @@ class EvidenceController extends Controller
             'domain_id' => $validated['domain_id'] ?? null,
             'occurred_at' => $validated['occurred_at'],
             'kind' => $validated['kind'],
+            'disciplinary_severity' => $validated['disciplinary_severity'] ?? null,
             'description' => $validated['description'],
-            'include_in_report' => $validated['include_in_report'] ?? false,
             'created_by' => $this->user()->getKey(),
         ]);
 

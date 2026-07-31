@@ -143,6 +143,8 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::get('reports', [ReportsController::class, 'index'])->name('reports.index');
         Route::get('classes/{class}/report', [ReportsController::class, 'show'])->name('reports.show');
         Route::get('classes/{class}/report/export', [ReportsController::class, 'export'])->name('reports.export');
+        Route::put('classes/{class}/report/evidence-setting', [ReportsController::class, 'updateEvidenceSetting'])->name('reports.evidence-setting.update');
+        Route::put('classes/{class}/report/students/{enrollment}/evidence-setting', [ReportsController::class, 'updateStudentEvidenceSetting'])->name('reports.student-evidence-setting.update');
     });
 
     // Records — the teacher's logbook (§14). Qualitative evidence, never a grade.
