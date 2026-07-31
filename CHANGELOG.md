@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.22.6] — 2026-07-31
+
+### Corrigido
+
+- **O dropdown "Tipo" ao criar um instrumento aparecia sem nenhuma opção em produção.** `instrument_types` estava vazio — o deploy inicial (2026-07-27) só correu o `EntitlementsSeeder`, não os outros dois seeders de referência obrigatórios (`SystemScalesSeeder`, `InstrumentTypesSeeder`) que `DatabaseSeeder`/`ReferenceDataSeeder` sempre correm juntos. Corrigido a correr `InstrumentTypesSeeder` diretamente em produção (idempotente); `docs/deployment.md` passa a apontar para `ReferenceDataSeeder` (os três) em vez de só o `EntitlementsSeeder`, para não repetir a lacuna num futuro deploy de raiz.
+
 ## [0.22.5] — 2026-07-31
 
 ### Corrigido

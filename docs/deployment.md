@@ -11,10 +11,11 @@ default do CloudPanel («Hello World :-)»). SSH aberto (porta 22), painel na 84
 ## Estado
 
 **Em produção** desde 2026-07-27: `https://lapis.criativatek.com` serve o LÁPIS,
-migrações + `EntitlementsSeeder` corridos, Cloudflare + HTTPS ativos. Backoffice
-`/admin` no ar. O acesso SSH faz-se pelo **SSH User `deploy`** (criado em CloudPanel
-→ Sites → SSH/FTP), não pelo Site User `lapis` (esse recusa password/chave pelo
-painel). De Windows usa-se **plink** (PuTTY) com o hostkey pinado — ver «Atualizações».
+migrações + os três seeders de referência (`ReferenceDataSeeder` — ver «Passos»
+abaixo) corridos, Cloudflare + HTTPS ativos. Backoffice `/admin` no ar. O acesso
+SSH faz-se pelo **SSH User `deploy`** (criado em CloudPanel → Sites → SSH/FTP),
+não pelo Site User `lapis` (esse recusa password/chave pelo painel). De Windows
+usa-se **plink** (PuTTY) com o hostkey pinado — ver «Atualizações».
 
 ## Atualizações (redeploy de código) — o fluxo que funciona
 
@@ -75,6 +76,13 @@ plink -ssh -hostkey SHA256:5a6uWUkxyqr3DhZCwveJEviWXDAOVQ72ndMgqDYpjHs -batch \
    Sempre que se mexer nestas pastas via `deploy`, terminar com
    `chmod -R g+rwX storage/app/private/roster-imports storage/app/private/student-photos`
    (ou confirmar que já são `770`) antes de dar como resolvido.
+5. **Correr só o `EntitlementsSeeder` no primeiro deploy deixou os outros dois
+   seeders de referência por seedar.** `instrument_types` ficou vazio em
+   produção — o dropdown "Tipo" ao criar um instrumento não tinha nenhuma
+   opção. `SystemScalesSeeder` calhou já ter sido corrido por outra via, mas
+   podia não ter sido. Corrigido a correr `InstrumentTypesSeeder` diretamente
+   (idempotente); os «Passos» abaixo já apontam para `ReferenceDataSeeder`
+   (os três juntos) em vez de só o `EntitlementsSeeder`.
 
 O `tar x` usa `--no-same-owner/permissions` porque a pasta é do user `lapis`, não
 do `deploy`; o `|| true` engole o aviso de permissões em `.`.
@@ -112,7 +120,14 @@ php artisan key:generate
 
 # 5. Base de dados
 php artisan migrate --force
-php artisan db:seed --class=EntitlementsSeeder --force   # reference data, obrigatório
+php artisan db:seed --class=ReferenceDataSeeder --force
+#   ReferenceDataSeeder = EntitlementsSeeder + SystemScalesSeeder + InstrumentTypesSeeder.
+#   Os três são dados de referência obrigatórios (ver DatabaseSeeder::run(), que
+#   os corre juntos por este exato motivo) — sem eles ninguém tem acesso a
+#   módulos, não há escalas para os perfis de avaliação, e o dropdown "Tipo" ao
+#   criar um instrumento fica vazio. Correr só o EntitlementsSeeder (como este
+#   documento dizia antes de 2026-07-31) deixa os outros dois por seedar sem
+#   qualquer aviso — foi exatamente o que aconteceu em produção.
 #   NÃO correr DemoDataSeeder em produção (dados fictícios)
 
 # 6. Caches + storage
@@ -150,6 +165,9 @@ Manter `APP_ENV=production` para o Vite servir os assets compilados, não o dev 
 
 - [ ] `https://lapis.criativatek.com` mostra o LÁPIS (não o «Hello World»).
 - [ ] Registo/login funcionam; 2FA e passkey testados em HTTPS.
-- [ ] `EntitlementsSeeder` correu (sem ele ninguém tem acesso a módulos).
+- [ ] Os três seeders de `ReferenceDataSeeder` correram: `EntitlementsSeeder`
+      (sem ele ninguém tem acesso a módulos), `SystemScalesSeeder` (sem ele não
+      há escalas para os perfis de avaliação), `InstrumentTypesSeeder` (sem
+      ele o dropdown "Tipo" ao criar um instrumento fica vazio).
 - [ ] `APP_DEBUG=false`; sem stack traces expostas.
 - [ ] Backup da base de dados agendado (CloudPanel → Backups).
