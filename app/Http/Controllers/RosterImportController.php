@@ -271,8 +271,9 @@ class RosterImportController extends Controller
                 $created++;
             }
 
-            return to_route('classes.show', $class->ulid)
-                ->with('status', "{$created} aluno(s) inscrito(s).");
+            Inertia::flash('toast', ['type' => 'success', 'message' => "{$created} aluno(s) inscrito(s)."]);
+
+            return to_route('classes.show', $class->ulid);
         } finally {
             $this->tempStorage->delete($token);
         }

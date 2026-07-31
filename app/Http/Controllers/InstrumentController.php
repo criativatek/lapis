@@ -153,7 +153,9 @@ class InstrumentController extends Controller
             'cancellation_reason' => $data['reason'],
         ]);
 
-        return back()->with('status', 'Instrumento anulado.');
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Instrumento anulado.']);
+
+        return back();
     }
 
     public function revertCancellation(Instrument $instrument): RedirectResponse
@@ -172,7 +174,9 @@ class InstrumentController extends Controller
             'cancellation_reason' => null,
         ]);
 
-        return back()->with('status', 'Anulação revertida.');
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Anulação revertida.']);
+
+        return back();
     }
 
     /**

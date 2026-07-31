@@ -11,6 +11,7 @@ use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Inertia\Support\SessionKey;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Support\DocxFixtureBuilder;
 use Tests\TestCase;
@@ -72,7 +73,9 @@ class ClassPhotoImportTest extends TestCase
         $this->actingAs($this->user)
             ->post("/classes/{$class->ulid}/photos", ['photos' => $photos])
             ->assertRedirect(route('classes.show', $class->ulid))
-            ->assertSessionHas('status', '2 foto(s) associada(s).');
+            ->assertSessionHas(SessionKey::FLASH_DATA, [
+                'toast' => ['type' => 'success', 'message' => '2 foto(s) associada(s).'],
+            ]);
 
         $identities = StudentIdentity::query()->orderBy('id')->get();
 

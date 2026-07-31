@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Inertia\Inertia;
 
 class ClassPhotoImportController extends Controller
 {
@@ -55,7 +56,8 @@ class ClassPhotoImportController extends Controller
             $matchedCount++;
         }
 
-        return to_route('classes.show', $class->ulid)
-            ->with('status', "{$matchedCount} foto(s) associada(s).");
+        Inertia::flash('toast', ['type' => 'success', 'message' => "{$matchedCount} foto(s) associada(s)."]);
+
+        return to_route('classes.show', $class->ulid);
     }
 }
