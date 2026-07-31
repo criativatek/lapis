@@ -306,8 +306,8 @@ function submit(): void {
             <div class="space-y-3 rounded-lg border border-dashed border-border p-4">
                 <h2 class="text-sm font-semibold">Adicionar fotos</h2>
                 <p class="text-xs text-muted-foreground">
-                    Ficheiro Word exportado do Intuitivo com as fotos dos
-                    alunos. As fotos são associadas por nome às linhas acima —
+                    Ficheiro Word exportado do Intuitivo (modelo EB019) com as
+                    fotos dos alunos. As fotos são associadas por nome às linhas acima —
                     inclui primeiro quaisquer correções de nome que já tenhas
                     feito. Faz isto antes de confirmar: depois de confirmada a
                     importação já não é possível associar fotos aqui.

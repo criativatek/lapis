@@ -242,6 +242,11 @@ function submitPhotos(): void {
                     </Button>
                 </div>
             </div>
+            <p class="text-xs text-muted-foreground">
+                Ficheiros exportados do Intuitivo (ou compatível): modelo
+                <strong>EB058</strong> para a lista de alunos (Excel) e modelo
+                <strong>EB019</strong> para as fotos (Word).
+            </p>
             <form
                 class="grid items-end gap-3 rounded-lg border border-border p-4 sm:grid-cols-[1fr_6rem_auto_auto]"
                 @submit.prevent="enroll"
@@ -391,9 +396,9 @@ function submitPhotos(): void {
                     <DialogHeader>
                         <DialogTitle>Importar lista de turma</DialogTitle>
                         <DialogDescription
-                            >Ficheiro Excel exportado do Intuitivo. Depois de
-                            reveres a lista, podes associar fotos num passo
-                            separado.</DialogDescription
+                            >Ficheiro Excel exportado do Intuitivo — modelo
+                            EB058. Depois de reveres a lista, podes associar
+                            fotos num passo separado.</DialogDescription
                         >
                     </DialogHeader>
                     <div class="grid gap-4 py-4">
@@ -422,8 +427,9 @@ function submitPhotos(): void {
                     <DialogHeader>
                         <DialogTitle>Adicionar fotos</DialogTitle>
                         <DialogDescription>
-                            Associa as fotos de um ficheiro Word aos alunos já
-                            inscritos, através do nome.
+                            Ficheiro Word exportado do Intuitivo — modelo
+                            EB019. Associa as fotos aos alunos já inscritos,
+                            através do nome.
                         </DialogDescription>
                     </DialogHeader>
                     <div class="grid gap-4 py-4">

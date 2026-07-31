@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.22.4] — 2026-07-31
+
+### Adicionado
+
+- **Nota explicativa sobre os modelos Intuitivo a usar na ficha da turma.** Junto aos botões "Importar lista"/"Adicionar fotos" (e nas descrições dos respetivos diálogos, e no passo de fotos da pré-visualização da importação), indica-se agora qual o modelo esperado: EB058 (Excel) para a lista de alunos, EB019 (Word) para as fotos.
+
 ## [0.22.3] — 2026-07-31
 
 ### Corrigido
