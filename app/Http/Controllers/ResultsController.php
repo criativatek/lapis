@@ -71,7 +71,7 @@ class ResultsController extends Controller
                 ->unique()->values()
                 ->map(fn (int $id) => ['id' => $id, 'name' => $domainNames[$id] ?? '—']),
             'rows' => array_map(fn (array $row) => [
-                'name' => optional($row['enrollment']->student->identity)->display_name ?? $row['enrollment']->student->pseudonym_code,
+                'name' => optional($row['enrollment']->student->identity)->display_name ?? '(sem identidade)',
                 'class_number' => $row['enrollment']->class_number,
                 'overall' => $row['outcome']->normalizedValue,
                 'proposed' => $row['outcome']->proposedValue,

@@ -74,7 +74,7 @@ class ClassificationController extends Controller
                 $classification = $live->get($enrollment->id);
 
                 return [
-                    'name' => optional($enrollment->student->identity)->display_name ?? $enrollment->student->pseudonym_code,
+                    'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
                     'class_number' => $enrollment->class_number,
                     'classification' => $classification === null ? null : [
                         'ulid' => $classification->ulid,

@@ -111,7 +111,7 @@ class MigrateClassProfile
             }
 
             $rows[] = [
-                'name' => optional($enrollment->student->identity)->display_name ?? $enrollment->student->pseudonym_code,
+                'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
                 'class_number' => $enrollment->class_number,
                 'cells' => $cells,
                 'changed' => $enrollmentChanged,

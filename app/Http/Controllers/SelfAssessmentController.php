@@ -77,7 +77,7 @@ class SelfAssessmentController extends Controller
 
                 return [
                     'enrollment_ulid' => $enrollment->ulid,
-                    'name' => optional($enrollment->student->identity)->display_name ?? $enrollment->student->pseudonym_code,
+                    'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
                     'class_number' => $enrollment->class_number,
                     'status' => $selfAssessment?->status->value,
                     'status_label' => $selfAssessment?->status->label(),
@@ -118,7 +118,7 @@ class SelfAssessmentController extends Controller
         return Inertia::render('self-assessments/Edit', [
             'schoolClass' => ['ulid' => $class->ulid, 'label' => $class->label],
             'period' => ['ulid' => $selected->ulid, 'label' => $selected->label],
-            'student' => optional($enrollment->student->identity)->display_name ?? $enrollment->student->pseudonym_code,
+            'student' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
             'enrollmentUlid' => $enrollment->ulid,
             'levels' => $levels,
             'questions' => $template->questions->map(fn ($question) => [

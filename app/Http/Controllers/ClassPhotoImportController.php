@@ -36,7 +36,7 @@ class ClassPhotoImportController extends Controller
 
         $enrollments = $class->enrollments()->with('student.identity')->get();
         $rows = array_values($enrollments
-            ->map(fn (Enrollment $enrollment) => ['name' => optional($enrollment->student->identity)->display_name ?? $enrollment->student->pseudonym_code])
+            ->map(fn (Enrollment $enrollment) => ['name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)'])
             ->all());
         $matchedRows = $this->previewBuilder->matchPhotosToRows($rows, $photoMatches);
         $matchedCount = 0;

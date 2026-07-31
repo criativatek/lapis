@@ -307,7 +307,7 @@ class ClassTest extends TestCase
     }
 
     #[Test]
-    public function the_class_page_falls_back_to_the_pseudonym_when_a_student_has_no_identity(): void
+    public function the_class_page_never_crashes_when_a_student_has_no_identity(): void
     {
         $context = $this->context();
         $this->actingAs($this->user)->post('/classes', [
@@ -322,14 +322,16 @@ class ClassTest extends TestCase
         ]);
 
         // An enrollment must never crash the class page just because its
-        // identity row is missing (e.g. data corruption) — the pseudonym is
-        // the guaranteed fallback since it always lives on the student itself.
+        // identity row is missing (e.g. data corruption). The pseudonym has
+        // its own dedicated column already — showing it again as the "name"
+        // would look like a real name instead of flagging the missing data,
+        // so a distinct placeholder is used instead.
         $student = Student::withoutGlobalScope('organization')->firstOrFail();
         StudentIdentity::where('student_id', $student->id)->delete();
 
         $this->actingAs($this->user)
             ->get("/classes/{$class->ulid}")
             ->assertOk()
-            ->assertInertia(fn ($page) => $page->where('students.0.name', $student->pseudonym_code));
+            ->assertInertia(fn ($page) => $page->where('students.0.name', '(sem identidade)'));
     }
 }

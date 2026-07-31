@@ -109,7 +109,7 @@ class ClassController extends Controller
             'students' => $class->enrollments()->with('student.identity')->orderBy('class_number')->get()
                 ->map(fn (Enrollment $enrollment) => [
                     'ulid' => $enrollment->ulid,
-                    'name' => optional($enrollment->student->identity)->display_name ?? $enrollment->student->pseudonym_code,
+                    'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
                     'pseudonym' => $enrollment->student->pseudonym_code,
                     'class_number' => $enrollment->class_number,
                     'enrolled_on' => $enrollment->enrolled_on->toDateString(),
