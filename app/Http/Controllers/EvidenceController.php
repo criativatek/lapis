@@ -246,31 +246,36 @@ class EvidenceController extends Controller
             'domain_id' => ['nullable', 'integer'],
             // Required exactly for a disciplinary occurrence, never set for
             // any other kind — G1 ("Comportamento meritório") is its own
-            // EvidenceKind, not a severity of this field.
+            // EvidenceKind, not a severity of this field. 'nullable' matters
+            // here: the real form always sends every kind-specific field,
+            // explicit `null` for whichever ones don't belong to the chosen
+            // kind — without it, Rule::enum() rejects that null outright,
+            // instead of prohibitedIf() being the only thing that runs.
             'disciplinary_severity' => [
                 Rule::requiredIf($kind === EvidenceKind::Incident->value),
                 Rule::prohibitedIf($kind !== EvidenceKind::Incident->value),
-                Rule::enum(DisciplinarySeverity::class),
+                'nullable', Rule::enum(DisciplinarySeverity::class),
             ],
             'homework_status' => [
                 Rule::requiredIf($kind === EvidenceKind::Homework->value),
                 Rule::prohibitedIf($kind !== EvidenceKind::Homework->value),
-                Rule::enum(HomeworkStatus::class),
+                'nullable', Rule::enum(HomeworkStatus::class),
             ],
             'participation_level' => [
                 Rule::requiredIf($kind === EvidenceKind::Participation->value),
                 Rule::prohibitedIf($kind !== EvidenceKind::Participation->value),
-                Rule::enum(ParticipationLevel::class),
+                'nullable', Rule::enum(ParticipationLevel::class),
             ],
             'activity_evaluation' => [
                 Rule::requiredIf($kind === EvidenceKind::Activity->value),
                 Rule::prohibitedIf($kind !== EvidenceKind::Activity->value),
+                'nullable',
                 Rule::enum(ActivityEvaluation::class),
             ],
             'activity_include_in_report' => [
                 Rule::requiredIf($kind === EvidenceKind::Activity->value),
                 Rule::prohibitedIf($kind !== EvidenceKind::Activity->value),
-                'boolean',
+                'nullable', 'boolean',
             ],
         ];
     }

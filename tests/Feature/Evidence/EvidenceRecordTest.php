@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -49,13 +50,62 @@ class EvidenceRecordTest extends TestCase
         return [$classUlid, $enrollmentId, $domainId];
     }
 
+    /**
+     * Mirrors exactly what the real form sends (resources/js/pages/records/Show.vue's
+     * useForm): every kind-specific field present in the JSON body, explicit `null`
+     * for whichever ones don't belong to the chosen kind. A plain PHP array with only
+     * the relevant keys omitted (the old shape of these tests) does NOT reproduce
+     * this — Laravel treats an absent key differently from a present, null one, and
+     * that exact gap is what let a real production bug (Rule::enum() rejecting an
+     * explicit null without 'nullable') pass 25 "green" tests undetected.
+     *
+     * @param  array<string, mixed>  $overrides
+     */
+    private function postRecord(string $classUlid, array $overrides): TestResponse
+    {
+        $payload = array_merge([
+            'kind' => null,
+            'disciplinary_severity' => null,
+            'homework_status' => null,
+            'participation_level' => null,
+            'activity_evaluation' => null,
+            'activity_include_in_report' => null,
+            'description' => null,
+            'occurred_at' => null,
+            'enrollment_ids' => [],
+            'domain_id' => null,
+        ], $overrides);
+
+        return $this->postJson("/classes/{$classUlid}/records", $payload);
+    }
+
+    /** @param  array<string, mixed>  $overrides */
+    private function putRecord(string $ulid, array $overrides): TestResponse
+    {
+        $payload = array_merge([
+            'kind' => null,
+            'disciplinary_severity' => null,
+            'homework_status' => null,
+            'participation_level' => null,
+            'activity_evaluation' => null,
+            'activity_include_in_report' => null,
+            'description' => null,
+            'occurred_at' => null,
+            'enrollment_id' => null,
+            'domain_id' => null,
+        ], $overrides);
+
+        return $this->putJson("/records/{$ulid}", $payload);
+    }
+
     #[Test]
     public function a_teacher_records_an_entry_for_a_student(): void
     {
         [$classUlid, $enrollmentId] = $this->seedClass();
         $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
 
-        $this->actingAs($teacher)->post("/classes/{$classUlid}/records", [
+        $this->actingAs($teacher);
+        $this->postRecord($classUlid, [
             'kind' => 'participation',
             'participation_level' => 'positive',
             'description' => 'Participou de forma sustentada na discussão do texto.',
@@ -75,15 +125,16 @@ class EvidenceRecordTest extends TestCase
     {
         [$classUlid, $enrollmentId] = $this->seedClass();
         $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+        $this->actingAs($teacher);
 
-        $this->actingAs($teacher)->post("/classes/{$classUlid}/records", [
+        $this->postRecord($classUlid, [
             'kind' => 'incident',
             'description' => 'Perturbou a aula.',
             'occurred_at' => '2026-10-20',
             'enrollment_ids' => [(int) $enrollmentId],
-        ])->assertSessionHasErrors('disciplinary_severity');
+        ])->assertJsonValidationErrors('disciplinary_severity');
 
-        $this->actingAs($teacher)->post("/classes/{$classUlid}/records", [
+        $this->postRecord($classUlid, [
             'kind' => 'incident',
             'disciplinary_severity' => 'g3',
             'description' => 'Perturbou a aula.',
@@ -103,14 +154,16 @@ class EvidenceRecordTest extends TestCase
     {
         [$classUlid, $enrollmentId] = $this->seedClass();
         $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+        $this->actingAs($teacher);
 
-        $this->actingAs($teacher)->post("/classes/{$classUlid}/records", [
+        $this->postRecord($classUlid, [
             'kind' => 'participation',
+            'participation_level' => 'positive',
             'disciplinary_severity' => 'g3',
             'description' => 'Participou bem.',
             'occurred_at' => '2026-10-20',
             'enrollment_ids' => [(int) $enrollmentId],
-        ])->assertSessionHasErrors('disciplinary_severity');
+        ])->assertJsonValidationErrors('disciplinary_severity');
     }
 
     #[Test]
@@ -118,12 +171,12 @@ class EvidenceRecordTest extends TestCase
     {
         [$classUlid] = $this->seedClass();
         $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+        $this->actingAs($teacher);
 
-        $this->actingAs($teacher)->post("/classes/{$classUlid}/records", [
+        $this->postRecord($classUlid, [
             'kind' => 'note',
             'description' => 'Visita de estudo à biblioteca municipal marcada para a turma.',
             'occurred_at' => '2026-11-05',
-            'enrollment_ids' => [],
         ])->assertRedirect();
 
         app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function (): void {
@@ -137,14 +190,15 @@ class EvidenceRecordTest extends TestCase
     {
         [$classUlid] = $this->seedClass();
         $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+        $this->actingAs($teacher);
 
         // Enrollment id 999999 does not belong to this class.
-        $this->actingAs($teacher)->post("/classes/{$classUlid}/records", [
+        $this->postRecord($classUlid, [
             'kind' => 'note',
             'description' => 'Tentativa inválida.',
             'occurred_at' => '2026-10-20',
             'enrollment_ids' => [999999],
-        ])->assertSessionHasErrors('enrollment_ids');
+        ])->assertJsonValidationErrors('enrollment_ids');
 
         app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function (): void {
             $this->assertSame(0, EvidenceRecord::count());
@@ -163,7 +217,8 @@ class EvidenceRecordTest extends TestCase
             return $class->enrollments()->orderBy('class_number')->limit(3)->pluck('id')->all();
         });
 
-        $this->actingAs($teacher)->post("/classes/{$classUlid}/records", [
+        $this->actingAs($teacher);
+        $this->postRecord($classUlid, [
             'kind' => 'homework',
             'homework_status' => 'not_done',
             'occurred_at' => '2026-10-20',
@@ -186,15 +241,15 @@ class EvidenceRecordTest extends TestCase
     {
         [$classUlid, $enrollmentId] = $this->seedClass();
         $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+        $this->actingAs($teacher);
 
-        $this->actingAs($teacher)->post("/classes/{$classUlid}/records", [
+        $this->postRecord($classUlid, [
             'kind' => 'note', 'description' => 'A remover.', 'occurred_at' => '2026-10-20',
-            'enrollment_ids' => [],
         ])->assertRedirect();
 
         $ulid = app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), fn () => EvidenceRecord::firstOrFail()->ulid);
 
-        $this->actingAs($teacher)->delete("/records/{$ulid}")->assertRedirect();
+        $this->delete("/records/{$ulid}")->assertRedirect();
 
         app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function (): void {
             $this->assertSame(0, EvidenceRecord::count());
@@ -216,14 +271,15 @@ class EvidenceRecordTest extends TestCase
     {
         [$classUlid, $enrollmentId] = $this->seedClass();
         $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+        $this->actingAs($teacher);
 
-        $this->actingAs($teacher)->post("/classes/{$classUlid}/records", [
+        $this->postRecord($classUlid, [
             'kind' => 'homework',
             'occurred_at' => '2026-10-20',
             'enrollment_ids' => [(int) $enrollmentId],
-        ])->assertSessionHasErrors('homework_status');
+        ])->assertJsonValidationErrors('homework_status');
 
-        $this->actingAs($teacher)->post("/classes/{$classUlid}/records", [
+        $this->postRecord($classUlid, [
             'kind' => 'homework',
             'homework_status' => 'not_done',
             'occurred_at' => '2026-10-20',
@@ -242,12 +298,13 @@ class EvidenceRecordTest extends TestCase
     {
         [$classUlid, $enrollmentId] = $this->seedClass();
         $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+        $this->actingAs($teacher);
 
-        $this->actingAs($teacher)->post("/classes/{$classUlid}/records", [
+        $this->postRecord($classUlid, [
             'kind' => 'participation',
             'occurred_at' => '2026-10-20',
             'enrollment_ids' => [(int) $enrollmentId],
-        ])->assertSessionHasErrors('participation_level');
+        ])->assertJsonValidationErrors('participation_level');
     }
 
     #[Test]
@@ -255,8 +312,9 @@ class EvidenceRecordTest extends TestCase
     {
         [$classUlid, $enrollmentId] = $this->seedClass();
         $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+        $this->actingAs($teacher);
 
-        $this->actingAs($teacher)->post("/classes/{$classUlid}/records", [
+        $this->postRecord($classUlid, [
             'kind' => 'participation',
             'participation_level' => 'adequate',
             'occurred_at' => '2026-10-20',
@@ -275,8 +333,9 @@ class EvidenceRecordTest extends TestCase
     {
         [$classUlid, $enrollmentId] = $this->seedClass();
         $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+        $this->actingAs($teacher);
 
-        $this->actingAs($teacher)->post("/classes/{$classUlid}/records", [
+        $this->postRecord($classUlid, [
             'kind' => 'incident',
             'disciplinary_severity' => 'g2',
             'occurred_at' => '2026-10-20',
@@ -293,20 +352,19 @@ class EvidenceRecordTest extends TestCase
     {
         [$classUlid] = $this->seedClass();
         $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+        $this->actingAs($teacher);
 
-        $this->actingAs($teacher)->post("/classes/{$classUlid}/records", [
+        $this->postRecord($classUlid, [
             'kind' => 'activity',
             'occurred_at' => '2026-11-05',
-            'enrollment_ids' => [],
-        ])->assertSessionHasErrors(['description', 'activity_evaluation', 'activity_include_in_report']);
+        ])->assertJsonValidationErrors(['description', 'activity_evaluation', 'activity_include_in_report']);
 
-        $this->actingAs($teacher)->post("/classes/{$classUlid}/records", [
+        $this->postRecord($classUlid, [
             'kind' => 'activity',
             'description' => 'Visionamento da peça Leandro, Rei da Helíria.',
             'activity_evaluation' => 'very_positive',
             'activity_include_in_report' => true,
             'occurred_at' => '2026-11-05',
-            'enrollment_ids' => [],
         ])->assertRedirect();
 
         app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function (): void {
@@ -321,21 +379,22 @@ class EvidenceRecordTest extends TestCase
     {
         [$classUlid, $enrollmentId, $domainId] = $this->seedClassWithDomain();
         $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+        $this->actingAs($teacher);
 
-        $this->actingAs($teacher)->post("/classes/{$classUlid}/records", [
+        $this->postRecord($classUlid, [
             'kind' => 'progress',
             'occurred_at' => '2026-10-20',
             'enrollment_ids' => [(int) $enrollmentId],
-        ])->assertSessionHasErrors('description');
+        ])->assertJsonValidationErrors('description');
 
-        $this->actingAs($teacher)->post("/classes/{$classUlid}/records", [
+        $this->postRecord($classUlid, [
             'kind' => 'progress',
             'description' => 'Demonstrou maior autonomia na produção escrita.',
             'occurred_at' => '2026-10-20',
             'enrollment_ids' => [(int) $enrollmentId],
         ])->assertRedirect();
 
-        $this->actingAs($teacher)->post("/classes/{$classUlid}/records", [
+        $this->postRecord($classUlid, [
             'kind' => 'progress',
             'description' => 'Progrediu na leitura em voz alta.',
             'domain_id' => (int) $domainId,
@@ -355,14 +414,15 @@ class EvidenceRecordTest extends TestCase
     {
         [$classUlid, $enrollmentId] = $this->seedClass();
         $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+        $this->actingAs($teacher);
 
-        $this->actingAs($teacher)->post("/classes/{$classUlid}/records", [
+        $this->postRecord($classUlid, [
             'kind' => 'difficulty',
             'occurred_at' => '2026-10-20',
             'enrollment_ids' => [(int) $enrollmentId],
-        ])->assertSessionHasErrors('description');
+        ])->assertJsonValidationErrors('description');
 
-        $this->actingAs($teacher)->post("/classes/{$classUlid}/records", [
+        $this->postRecord($classUlid, [
             'kind' => 'difficulty',
             'description' => 'Revela dificuldade na organização das ideias.',
             'occurred_at' => '2026-10-20',
@@ -379,8 +439,9 @@ class EvidenceRecordTest extends TestCase
     {
         [$classUlid, $enrollmentId] = $this->seedClass();
         $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+        $this->actingAs($teacher);
 
-        $this->actingAs($teacher)->post("/classes/{$classUlid}/records", [
+        $this->postRecord($classUlid, [
             'kind' => 'note',
             'description' => 'Observação inicial.',
             'occurred_at' => '2026-10-20',
@@ -389,7 +450,7 @@ class EvidenceRecordTest extends TestCase
 
         $ulid = app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), fn () => EvidenceRecord::firstOrFail()->ulid);
 
-        $this->actingAs($teacher)->put("/records/{$ulid}", [
+        $this->putRecord($ulid, [
             'kind' => 'homework',
             'homework_status' => 'done',
             'occurred_at' => '2026-10-21',
@@ -409,8 +470,9 @@ class EvidenceRecordTest extends TestCase
     {
         [$classUlid, $enrollmentId] = $this->seedClass();
         $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+        $this->actingAs($teacher);
 
-        $this->actingAs($teacher)->post("/classes/{$classUlid}/records", [
+        $this->postRecord($classUlid, [
             'kind' => 'note',
             'description' => 'Observação.',
             'occurred_at' => '2026-10-20',
@@ -420,7 +482,8 @@ class EvidenceRecordTest extends TestCase
         $ulid = app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), fn () => EvidenceRecord::firstOrFail()->ulid);
 
         $stranger = User::factory()->create();
-        $this->actingAs($stranger)->put("/records/{$ulid}", [
+        $this->actingAs($stranger);
+        $this->putRecord($ulid, [
             'kind' => 'note',
             'description' => 'Tentativa de outra organização.',
             'occurred_at' => '2026-10-21',
@@ -432,18 +495,17 @@ class EvidenceRecordTest extends TestCase
     {
         [$classUlid, $enrollmentId] = $this->seedClass();
         $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+        $this->actingAs($teacher);
 
-        $this->actingAs($teacher)->post("/classes/{$classUlid}/records", [
+        $this->postRecord($classUlid, [
             'kind' => 'homework', 'homework_status' => 'done',
             'occurred_at' => '2026-10-20', 'enrollment_ids' => [(int) $enrollmentId],
         ])->assertRedirect();
-        $this->actingAs($teacher)->post("/classes/{$classUlid}/records", [
+        $this->postRecord($classUlid, [
             'kind' => 'note', 'description' => 'Nota de turma.', 'occurred_at' => '2026-11-01',
-            'enrollment_ids' => [],
         ])->assertRedirect();
-        $this->actingAs($teacher)->post("/classes/{$classUlid}/records", [
+        $this->postRecord($classUlid, [
             'kind' => 'note', 'description' => 'Nota do 2.º semestre.', 'occurred_at' => '2027-03-01',
-            'enrollment_ids' => [],
         ])->assertRedirect();
 
         $periodId = app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () use ($classUlid) {
@@ -452,13 +514,13 @@ class EvidenceRecordTest extends TestCase
             return AcademicPeriod::where('academic_year_id', $class->academic_year_id)->where('sequence', 1)->firstOrFail()->id;
         });
 
-        $this->actingAs($teacher)->get("/classes/{$classUlid}/records?kind=homework")
+        $this->get("/classes/{$classUlid}/records?kind=homework")
             ->assertInertia(fn ($page) => $page->component('records/Show')->has('records', 1));
 
-        $this->actingAs($teacher)->get("/classes/{$classUlid}/records?enrollment_id={$enrollmentId}")
+        $this->get("/classes/{$classUlid}/records?enrollment_id={$enrollmentId}")
             ->assertInertia(fn ($page) => $page->component('records/Show')->has('records', 1));
 
-        $this->actingAs($teacher)->get("/classes/{$classUlid}/records?period_id={$periodId}")
+        $this->get("/classes/{$classUlid}/records?period_id={$periodId}")
             ->assertInertia(fn ($page) => $page->component('records/Show')->has('records', 2));
     }
 }
