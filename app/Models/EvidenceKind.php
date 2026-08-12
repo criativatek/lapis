@@ -24,7 +24,7 @@ enum EvidenceKind: string
         return match ($this) {
             self::Homework => __('Trabalho de casa'),
             self::Incident => __('Ocorrência disciplinar'),
-            self::PositiveBehaviour => __('Comportamento meritório (G1)'),
+            self::PositiveBehaviour => __('Comportamento meritório'),
             self::Participation => __('Participação'),
             self::Progress => __('Progresso'),
             self::Difficulty => __('Dificuldade'),
@@ -32,6 +32,21 @@ enum EvidenceKind: string
             self::Contact => __('Contacto'),
             self::Activity => __('Atividade'),
             self::Note => __('Observação'),
+        };
+    }
+
+    /**
+     * The internal category the teacher never picks directly — always
+     * derived from the kind, never stored (EvidenceInternalGroup). No
+     * `default` arm: a new case added here without a group below throws
+     * immediately, in tests before it ever reaches production.
+     */
+    public function group(): EvidenceInternalGroup
+    {
+        return match ($this) {
+            self::Homework, self::Participation, self::Progress, self::Difficulty => EvidenceInternalGroup::Learning,
+            self::Incident, self::PositiveBehaviour => EvidenceInternalGroup::BehaviorAttitudes,
+            self::Support, self::Contact, self::Activity, self::Note => EvidenceInternalGroup::FollowUp,
         };
     }
 }

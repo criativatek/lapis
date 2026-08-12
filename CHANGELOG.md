@@ -2,6 +2,20 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.26.0] — 2026-08-12
+
+### Adicionado
+
+- **Módulo Registos concluído.** Os 10 tipos de registo (Trabalho de casa, Participação, Progresso, Dificuldade, Ocorrência disciplinar, Comportamento meritório, Apoio, Contacto, Atividade, Observação) passam a ter campos condicionais próprios — Situação, Participação observada, Domínio relacionado (opcional, só Progresso/Dificuldade), Gravidade, Avaliação global + Incluir no relatório — com dicas curtas e placeholders por tipo. O agrupamento em Aprendizagem/Comportamento e atitudes/Acompanhamento é sempre calculado a partir do tipo (`EvidenceKind::group()`), nunca escolhido pelo professor nem gravado em coluna própria. Editar e eliminar (com confirmação) ficam disponíveis na listagem, com filtros por aluno, tipo e período. Um aviso discreto lembra que os registos não alteram a classificação; uma síntese neutra por tipo resume o que está listado, sem juízos de valor.
+- **Registar vários alunos de uma vez.** Ao criar um registo, o campo Aluno passa a alternar entre "Turma inteira" e uma grelha de checkboxes com "Selecionar todos"/"Limpar seleção" — sem ter de percorrer um dropdown aluno a aluno. Cada aluno selecionado fica com o seu próprio registo independente (editável e eliminável à parte), não um registo partilhado.
+- **Preparação de dados para relatórios (interface por fazer).** Um registo de Atividade pode ser marcado "Incluir no relatório" — sinalização por registo, distinta de `classes.include_evidence_in_report`/`enrollments.include_evidence_in_report` (essas continuam a decidir se o livro de registos aparece no relatório). Ficam prontos os scopes reutilizáveis (`forClass`, `forEnrollmentOrWholeClass`, `inPeriod`, `inGroup`, `autoSelectableForReport`) que uma futura interface de Relatórios vai usar — esta entrega não altera `ReportsController` nem `resources/js/pages/reports/*`.
+
+### Corrigido
+
+- **Dois testes de Registos davam falso positivo.** Ficaram desatualizados quando `participation_level`/`activity_evaluation` passaram a obrigatórios nos respetivos tipos: o pedido falhava a validação e voltava para trás, e `assertRedirect()` não distinguia isso de um sucesso — o registo nunca chegava a ser criado.
+- **Descrição opcional (Trabalho de casa/Participação/Ocorrência disciplinar) podia rebentar a inserção.** A coluna `description` é `NOT NULL` na base de dados; omitir o campo enviava `NULL` para a queda. Passa a gravar `''` quando não preenchida.
+- **Erro de tipos no formulário de Registos.** Um tipo local `Record` (a forma de um registo na listagem) tapava o genérico nativo `Record<K, V>` do TypeScript, usado no dicionário de metadados por tipo — `vue-tsc` nunca tinha corrido sobre este ficheiro. Renomeado para `EvidenceRecordRow`.
+
 ## [0.25.0] — 2026-08-01
 
 ### Alterado

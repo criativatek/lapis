@@ -152,6 +152,7 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::get('records', [EvidenceController::class, 'index'])->name('records.index');
         Route::get('classes/{class}/records', [EvidenceController::class, 'show'])->name('records.show');
         Route::post('classes/{class}/records', [EvidenceController::class, 'store'])->name('records.store');
+        Route::put('records/{record}', [EvidenceController::class, 'update'])->name('records.update');
         Route::delete('records/{record}', [EvidenceController::class, 'destroy'])->name('records.destroy');
     });
 
