@@ -83,8 +83,8 @@ Backend authorization exists · organization isolation considered · server-side
 
 O fluxo assistido por IA é **portável** e vive no repo — não na config global de uma pessoa. Detalhe completo em [docs/workflow.md](docs/workflow.md); o Codex lê [AGENTS.md](AGENTS.md).
 
-- **Equipa** ([.claude/agents/](.claude/agents/)): `explorer` (Haiku, contexto) → `architect` (Opus, **só** decisões estruturais, raro) → `implementer` (Sonnet) → `reviewer` (Sonnet, adversarial, depois de cada slice não-trivial). **Sem `fable` neste projeto.**
-- **Codex — usar e abusar**, não só de recurso: segunda implementação, diagnóstico independente, revisão cruzada — via `codex` CLI e via subagente `codex:codex-rescue`. Caveat: sandbox Windows instável a escrever → se falhar, aplica o fix no Claude.
+- **Equipa** ([.claude/agents/](.claude/agents/)): `explorer` (Haiku, contexto) → `architect` (Opus, **só** decisões estruturais, raro) → `codex-rescue` (implementer por defeito) → `reviewer` (Sonnet, adversarial, depois de cada slice não-trivial). **Sem `fable` neste projeto.**
+- **Codex como implementer por defeito**: para tarefas de implementação, delega automaticamente ao `codex-rescue` (via Agent), sem esperar por pedido explícito nem por ficar preso duas vezes. Usa o `implementer` (Sonnet, `.claude/agents/implementer.md`) só como fallback — quando o codex-rescue não estiver disponível, falhar, ou a tarefa for demasiado pequena/trivial (ex.: um edit de uma linha). Continua também a ser usado para segunda implementação em paralelo, diagnóstico independente e revisão cruzada, via `codex` CLI ou subagente `codex:codex-rescue`. Caveat: sandbox Windows instável a escrever → se falhar, lê o diagnóstico e aplica o fix no Claude.
 - **Loop por slice** e disciplina por-commit (`composer ci:check` verde · versão em `config/app.php` + `CHANGELOG.md` · memória) — ver [docs/workflow.md](docs/workflow.md). Estado e roadmap em [docs/status.md](docs/status.md).
 
 ## Open questions blocking Fase 1

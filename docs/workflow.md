@@ -29,14 +29,16 @@ Regra de ouro: **um slice fecha só com `composer ci:check` verde** e com a vers
 |---|---|---|
 | `explorer` | Haiku | Levantar contexto antes de escrever — localizar ficheiros, referências, dependências. Read-only. |
 | `architect` | Opus | **Antes** de decisões estruturais, migrações importantes, causa de erro não-óbvia. Read-only. É o único Opus — usa com moderação. |
-| `implementer` | Sonnet | O trabalho de implementação em si. |
+| `codex-rescue` | Codex (plugin) | **Implementer por defeito.** Delegação automática do trabalho de implementação, sem esperar por pedido explícito nem por ficar preso duas vezes. |
+| `implementer` | Sonnet | Fallback do `codex-rescue` — só quando este não está disponível, falha, ou a tarefa é demasiado pequena/trivial para justificar a delegação. |
 | `reviewer` | Sonnet | **Depois de cada slice não-trivial**, antes de fechar. Revisão adversarial independente. Read-only. |
 
-**Sem Fable neste projeto** (o `reviewer` do global usa `fable`; aqui é `sonnet`).
+**Sem Fable neste projeto** — `architect` fica em Opus e `reviewer` em Sonnet,
+independentemente de como a config global ou o guia externo posicionem o `fable`.
 
 Regra de delegação: `explorer` para contexto → `architect` **só** se a mudança for
-estrutural → `implementer` para o código → `reviewer` antes de fechar. Depois da
-revisão, corrige autonomamente os problemas relevantes.
+estrutural → `codex-rescue` para o código (fallback: `implementer`) → `reviewer`
+antes de fechar. Depois da revisão, corrige autonomamente os problemas relevantes.
 
 Porque o `reviewer` importa: numa sessão real apanhou um **bypass de autorização
 cross-turma** (publicar uma turma publicava as classificações confirmadas de outra
@@ -47,7 +49,10 @@ de menores, tenancy, rastreabilidade) não perdoa — a revisão é obrigatória
 
 ## Codex — usar e abusar
 
-O Codex **não** é o último recurso "só quando encravado". É um par ativo:
+O Codex **não** é o último recurso "só quando encravado". É o **implementer por
+defeito**: o trabalho de implementação delega automaticamente ao `codex-rescue`,
+e o `implementer` (Sonnet) fica como fallback. Além disso, continua a ser um par
+ativo:
 
 - **Segunda implementação** em paralelo à do Claude, para comparar.
 - **Diagnóstico independente** antes de uma decisão difícil.
