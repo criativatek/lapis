@@ -137,7 +137,7 @@ class SelfAssessmentController extends Controller
         $expiresAt = now()->addDays(self::LINK_LIFETIME_DAYS);
 
         return Inertia::render('self-assessments/Links', [
-            'schoolClass' => ['ulid' => $class->ulid, 'label' => $class->label],
+            'schoolClass' => ['ulid' => $class->ulid, 'label' => $class->label, 'subject' => $class->subject->name],
             'period' => ['ulid' => $selected->ulid, 'label' => $selected->label],
             'expiresAt' => $expiresAt->toIso8601String(),
             'rows' => $enrollments->map(function (Enrollment $enrollment) use ($filled, $class, $selected, $expiresAt) {
