@@ -52,14 +52,30 @@ class InstrumentController extends Controller
         return Inertia::render('instruments/Index', ['instruments' => $instruments]);
     }
 
-    public function create(SchoolClass $class): Response
+    /**
+     * The optional ?period=<id> query param lets a caller that already knows
+     * the period (Avaliações' class picker, carrying its own active period
+     * filter) skip re-asking the teacher — reused, not duplicated, by
+     * InstrumentForm's defaultAcademicPeriodId prop. Silently ignored rather
+     * than rejected when absent, malformed, or naming a period outside this
+     * class's own academic year: it is a convenience default, not a
+     * requirement, and the dropdown still works normally either way.
+     */
+    public function create(Request $request, SchoolClass $class): Response
     {
         Gate::authorize('update', $class);
+
+        $requestedPeriodId = $request->query('period') !== null ? (int) $request->query('period') : null;
+        $defaultAcademicPeriodId = $requestedPeriodId !== null
+            && AcademicPeriod::where('academic_year_id', $class->academic_year_id)->whereKey($requestedPeriodId)->exists()
+                ? $requestedPeriodId
+                : null;
 
         return Inertia::render('instruments/Create', [
             'schoolClass' => ['ulid' => $class->ulid, 'label' => $class->label],
             ...$this->formOptions($class),
             'importableInstruments' => $this->importableInstrumentsFor($class),
+            'defaultAcademicPeriodId' => $defaultAcademicPeriodId,
         ]);
     }
 
@@ -207,6 +223,11 @@ class InstrumentController extends Controller
                 'state_reason' => $score->state_reason,
             ]);
 
+        // sequence and is_negative travel alongside label/band_min/band_max so
+        // the grid can colour a band by its structural position in the scale
+        // (§ qualitative tone) rather than by matching its label text — a
+        // custom or translated scale must not lose its colour coding just
+        // because "Muito Bom" isn't the string on screen.
         $scaleBands = $instrument->schoolClass->profileVersion?->scale
             ?->levels()
             ->whereNotNull('band_min_normalized')
@@ -217,6 +238,8 @@ class InstrumentController extends Controller
                 'label' => $level->label,
                 'band_min' => (string) $level->band_min_normalized,
                 'band_max' => (string) $level->band_max_normalized,
+                'sequence' => $level->sequence,
+                'is_negative' => $level->is_negative,
             ])
             ->all() ?? [];
 
@@ -240,6 +263,7 @@ class InstrumentController extends Controller
                 'points_possible' => (float) $item->points_possible,
                 'is_bonus' => $item->is_bonus,
                 'domains' => $item->domainAllocations->map(fn ($allocation) => [
+                    'domain_id' => (int) $allocation->domain_id,
                     'name' => $allocation->domain->name,
                     'percent' => (float) $allocation->allocation_percent,
                 ]),

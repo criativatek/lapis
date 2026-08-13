@@ -213,6 +213,83 @@ class InstrumentBuilderTest extends TestCase
     }
 
     #[Test]
+    public function a_diagnostic_instrument_defaults_to_not_counting_when_the_field_is_not_provided(): void
+    {
+        $this->inTenant(function (): void {
+            $class = $this->schoolClass();
+            $attributes = $this->attributes($class, ['purpose' => 'diagnostic']);
+            unset($attributes['counts_toward_classification']);
+
+            $instrument = app(InstrumentBuilder::class)->create($class, $attributes, [
+                ['code' => 'Q1', 'points_possible' => 100],
+            ]);
+
+            $this->assertFalse($instrument->counts_toward_classification);
+        });
+    }
+
+    #[Test]
+    public function a_diagnostic_instrument_stays_false_when_explicitly_set_false(): void
+    {
+        $this->inTenant(function (): void {
+            $class = $this->schoolClass();
+
+            $instrument = app(InstrumentBuilder::class)->create(
+                $class,
+                $this->attributes($class, ['purpose' => 'diagnostic', 'counts_toward_classification' => false]),
+                [['code' => 'Q1', 'points_possible' => 100]],
+            );
+
+            $this->assertFalse($instrument->counts_toward_classification);
+        });
+    }
+
+    #[Test]
+    public function a_non_diagnostic_instrument_is_unaffected_by_the_diagnostic_default_even_when_the_field_is_absent(): void
+    {
+        $this->inTenant(function (): void {
+            $class = $this->schoolClass();
+            $attributes = $this->attributes($class, ['purpose' => 'summative']);
+            unset($attributes['counts_toward_classification']);
+
+            // No InstrumentBuilder default applies here — this falls through to
+            // the instruments table's own column default (true). Eloquent's
+            // in-memory model never learns of a DB-applied default on its own,
+            // so this reads back the persisted row rather than the object
+            // create() returned.
+            $instrument = app(InstrumentBuilder::class)->create($class, $attributes, [
+                ['code' => 'Q1', 'points_possible' => 100],
+            ]);
+
+            $this->assertTrue($instrument->fresh()->counts_toward_classification);
+        });
+    }
+
+    #[Test]
+    public function updating_to_diagnostic_purpose_never_silently_changes_an_already_persisted_counts_value(): void
+    {
+        $this->inTenant(function (): void {
+            $class = $this->schoolClass();
+            $instrument = app(InstrumentBuilder::class)->create(
+                $class,
+                $this->attributes($class, ['purpose' => 'summative', 'counts_toward_classification' => true]),
+                [['code' => 'Q1', 'points_possible' => 100]],
+            );
+            $existing = $instrument->items()->firstOrFail();
+
+            // The diagnostic default (create() only) must never reach here —
+            // update() always respects exactly what it is given.
+            app(InstrumentBuilder::class)->update(
+                $instrument,
+                $this->attributes($class, ['purpose' => 'diagnostic', 'counts_toward_classification' => true]),
+                [['ulid' => $existing->ulid, 'code' => 'Q1', 'points_possible' => 100]],
+            );
+
+            $this->assertTrue($instrument->fresh()->counts_toward_classification);
+        });
+    }
+
+    #[Test]
     public function a_draft_or_cancelled_instrument_never_enters_the_calculation(): void
     {
         $this->inTenant(function (): void {

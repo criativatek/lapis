@@ -76,6 +76,10 @@ const props = defineProps<{
     submitUrl: string;
     method: 'post' | 'put';
     importableInstruments?: ImportableInstrument[];
+    // Only consulted when creating (no `initial`) — a known-valid period id a
+    // caller can pass so the teacher does not have to re-pick it. Ignored
+    // once editing an existing instrument, whose own period always wins.
+    defaultAcademicPeriodId?: number | null;
 }>();
 
 function pointsFromPercent(pointsPossible: number, allocationPercent: number): number {
@@ -102,7 +106,7 @@ const form = useForm<InstrumentData>(
         ? { ...props.initial, items: props.initial.items.map(wireToUiItem) }
         : {
               title: '',
-              academic_period_id: null,
+              academic_period_id: props.defaultAcademicPeriodId ?? null,
               instrument_type_id: null,
               custom_instrument_type_name: '',
               applied_on: '',
@@ -122,6 +126,31 @@ const form = useForm<InstrumentData>(
               ],
           },
 );
+
+// Tracks an explicit professor decision on "Contabiliza para classificação",
+// separately from whatever value the checkbox currently shows — the checkbox
+// alone can't tell a suggested default apart from a deliberate choice, since
+// both are just a boolean. Only ever set true by the checkbox's own @change
+// (a real click), never by the purpose-driven suggestion below, and never
+// reset back to false once true — "explicit, once, forever" for this form's
+// lifetime, matching the create/edit split already given by `props.initial`.
+const countsToggledByUser = ref(false);
+
+// Suggests "Não" the moment the teacher picks "Diagnóstica" on a NEW
+// instrument — never on edit (props.initial), and never once the teacher has
+// explicitly set the checkbox themselves. One-directional on purpose: picking
+// a different purpose afterwards does not try to re-suggest anything, so a
+// professor who already saw and accepted (or overrode) the diagnostic
+// default never gets silently overwritten again.
+function onPurposeChange(): void {
+    if (props.initial || countsToggledByUser.value) {
+        return;
+    }
+
+    if (form.purpose === 'diagnostic') {
+        form.counts_toward_classification = false;
+    }
+}
 
 function addItem(): void {
     form.items.push({
@@ -360,6 +389,21 @@ function submit(): void {
                 <InputError :message="form.errors.academic_period_id" />
             </div>
             <div class="grid gap-2">
+                <Label for="purpose">Finalidade</Label>
+                <select
+                    id="purpose"
+                    v-model="form.purpose"
+                    class="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+                    @change="onPurposeChange"
+                >
+                    <option value="diagnostic">Diagnóstica</option>
+                    <option value="formative">Formativa</option>
+                    <option value="summative">Sumativa</option>
+                    <option value="other">Outra</option>
+                </select>
+                <InputError :message="form.errors.purpose" />
+            </div>
+            <div class="grid gap-2">
                 <Label for="applied_on">Data</Label>
                 <Input id="applied_on" v-model="form.applied_on" type="date" />
                 <InputError :message="form.errors.applied_on" />
@@ -380,6 +424,7 @@ function submit(): void {
                     v-model="form.counts_toward_classification"
                     type="checkbox"
                     class="size-4"
+                    @change="countsToggledByUser = true"
                 />
                 Conta para a classificação
                 <span class="text-xs text-muted-foreground"

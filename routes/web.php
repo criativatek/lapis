@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AcademicYearController;
 use App\Http\Controllers\ActivityController;
+use App\Http\Controllers\AssessmentController;
 use App\Http\Controllers\AssessmentProfileController;
 use App\Http\Controllers\ChangelogController;
 use App\Http\Controllers\ClassController;
@@ -137,6 +138,14 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::post('instruments/{instrument}/revert-cancellation', [InstrumentController::class, 'revertCancellation'])->name('instruments.revert-cancellation');
         Route::post('instruments/{instrument}/scores', [InstrumentController::class, 'saveScores'])->name('instruments.scores.save');
         Route::delete('instruments/{instrument}', [InstrumentController::class, 'destroy'])->name('instruments.destroy');
+    });
+
+    // Avaliações — a read-only view of instruments-as-applications. Creating
+    // and correcting hand off to the existing instruments routes above;
+    // nothing here writes an Instrument.
+    Route::middleware('module:assessments')->group(function () {
+        Route::get('assessments', [AssessmentController::class, 'index'])->name('assessments.index');
+        Route::get('assessments/{instrument}', [AssessmentController::class, 'show'])->name('assessments.show');
     });
 
     // Results — the calculation engine's output for a class, per period.

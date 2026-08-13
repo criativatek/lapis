@@ -2,6 +2,24 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.28.0] — 2026-08-13
+
+### Avaliações
+
+- **Novo módulo Avaliações.** Vista orientada ao fluxo do professor sobre os instrumentos já criados — "o que está a acontecer", não "o que construí". Lista com filtros por Estado, Finalidade e Período, estado derivado por avaliação e progresso sempre contado por alunos, nunca por células (ex.: "12/20", nunca uma contagem de células do tipo "117/200").
+- **Página operacional da avaliação.** Resumo com alunos aplicáveis, concluídos, por corrigir, faltas e em revisão; estado individual por aluno (Corrigida, Por corrigir, Faltou, Em revisão, Situação especial, entre outros). Alunos fora do período de matrícula ficam sempre destacados à parte, nunca misturados com os restantes nem a contar para o progresso.
+- **Reutilização total da grelha de correção e do fluxo de Instrumentos.** Corrigir a partir de Avaliações abre a mesma grelha já existente — sem nova rota de notas, sem novo sistema de correção. Navegação Avaliações → correção → "Voltar a Avaliações" quando a origem é o novo módulo; o fluxo antigo mantém "Voltar à turma".
+- **Criar avaliação reutiliza o fluxo existente de Instrumentos.** "Nova avaliação" pede a turma (não há turma ambiente numa lista que cruza turmas) e abre o formulário de Instrumentos já existente, sem segundo formulário. O período vem pré-preenchido quando o filtro ativo pertence ao ano letivo da turma escolhida; caso contrário, o professor escolhe normalmente.
+- **Campo "Finalidade" no formulário de instrumento.** Diagnóstica / Formativa / Sumativa / Outra — antes só existia como valor interno, sem forma de o professor o escolher.
+- **Avaliações diagnósticas com "Contabiliza para classificação" a Não por defeito.** Só quando o professor não decide explicitamente o contrário — uma escolha explícita, em qualquer sentido, é sempre respeitada e nunca sobreposta automaticamente, incluindo ao editar uma avaliação diagnóstica já existente.
+
+### Grelha de correção
+
+- **Apreciação qualitativa por domínio.** Junto ao total já existente, cada domínio do instrumento passa a mostrar pontos, percentagem e menção qualitativa própria — agregada a partir da contribuição de cada questão alocada ao domínio, nunca a pontuação isolada de uma única questão.
+- **Badges cromáticos consistentes por banda qualitativa**, reutilizáveis fora da grelha — a cor deriva da posição estrutural da banda na escala, nunca do texto do rótulo, para não se perder com escalas personalizadas ou traduzidas.
+- **Resultados parciais claramente distintos dos definitivos.** Um domínio com questões ainda por corrigir nunca mostra uma menção qualitativa como se fosse a palavra final.
+- **Mesma escala e mesma lógica qualitativa em todo o lado.** Nenhum limiar novo — a apreciação por domínio usa exatamente as mesmas scale bands e a mesma função que já geravam a apreciação global.
+
 ## [0.27.0] — 2026-08-13
 
 ### Adicionado

@@ -82,7 +82,15 @@ class InstrumentRequest extends FormRequest
             // instrument with none of that bookkeeping, which then crashes revert.
             'status' => ['required', Rule::in(['draft', 'prepared', 'in_correction', 'completed', 'published', 'archived'])],
             'purpose' => ['required', Rule::in(['diagnostic', 'formative', 'summative', 'other'])],
-            'counts_toward_classification' => ['required', 'boolean'],
+            // Required on update — an existing instrument's own value must
+            // always be explicit. Optional on create only: leaving it out of
+            // the request entirely (as opposed to sending an explicit
+            // `false`) is what lets InstrumentBuilder::create() tell
+            // "the teacher never touched this" apart from "the teacher chose
+            // false", and apply its diagnostic-purpose default only to the
+            // former. 'sometimes' means "validate as boolean if present, skip
+            // silently if absent" — never coerces a missing key into false.
+            'counts_toward_classification' => [$this->route('instrument') instanceof Instrument ? 'required' : 'sometimes', 'boolean'],
             'total_points' => ['nullable', 'numeric', 'min:0'],
             'weight' => ['nullable', 'numeric', 'min:0'],
             'allow_bonus' => ['required', 'boolean'],

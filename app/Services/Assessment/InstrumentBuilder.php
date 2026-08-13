@@ -28,6 +28,8 @@ class InstrumentBuilder
     {
         $this->guard($attributes, $items);
 
+        $attributes = $this->applyDiagnosticDefault($attributes);
+
         return DB::transaction(function () use ($class, $attributes, $items): Instrument {
             $instrument = $class->instruments()->create($attributes);
 
@@ -35,6 +37,30 @@ class InstrumentBuilder
 
             return $instrument;
         });
+    }
+
+    /**
+     * A diagnostic instrument the teacher never made an explicit choice for
+     * defaults to not counting toward the classification — never a persisted
+     * zero, never applied to formative/summative. array_key_exists(), not a
+     * falsy check: `counts_toward_classification` genuinely absent from the
+     * request is what "never made a choice" means here, and is exactly what
+     * InstrumentRequest's 'sometimes' rule leaves out of validated() —
+     * indistinguishable from an explicit `false`, which this must respect
+     * exactly rather than overwrite. create() only: an existing instrument's
+     * purpose changing on update never silently rewrites its own
+     * already-persisted counts_toward_classification.
+     *
+     * @param  array<string, mixed>  $attributes
+     * @return array<string, mixed>
+     */
+    protected function applyDiagnosticDefault(array $attributes): array
+    {
+        if (($attributes['purpose'] ?? null) === 'diagnostic' && ! array_key_exists('counts_toward_classification', $attributes)) {
+            $attributes['counts_toward_classification'] = false;
+        }
+
+        return $attributes;
     }
 
     /**

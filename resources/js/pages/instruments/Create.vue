@@ -31,6 +31,7 @@ defineProps<{
     types: Option[];
     domains: Option[];
     importableInstruments: ImportableInstrument[];
+    defaultAcademicPeriodId: number | null;
 }>();
 </script>
 
@@ -47,6 +48,7 @@ defineProps<{
             :types="types"
             :domains="domains"
             :importable-instruments="importableInstruments"
+            :default-academic-period-id="defaultAcademicPeriodId"
             :submit-url="`/classes/${schoolClass.ulid}/instruments`"
             method="post"
         />
