@@ -4,18 +4,15 @@ namespace App\Http\Controllers;
 
 use App\Models\AcademicPeriod;
 use App\Models\Enrollment;
-use App\Models\Scale;
 use App\Models\SchoolClass;
 use App\Models\SelfAssessment;
 use App\Models\SelfAssessmentFilledBy;
-use App\Models\SelfAssessmentStatus;
 use App\Models\User;
-use App\Services\Assessment\ClassResultsCalculator;
-use App\Services\Assessment\SelfAssessmentTemplateProvider;
+use App\Services\Assessment\SelfAssessmentRecorder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\URL;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -26,10 +23,11 @@ use Inertia\Response;
  */
 class SelfAssessmentController extends Controller
 {
-    public function __construct(
-        protected SelfAssessmentTemplateProvider $templates,
-        protected ClassResultsCalculator $calculator,
-    ) {}
+    /** How long a self-fill link stays usable once generated — long enough to
+     *  cover a homework-style task shared via Teams, short enough not to linger. */
+    protected const LINK_LIFETIME_DAYS = 7;
+
+    public function __construct(protected SelfAssessmentRecorder $recorder) {}
 
     public function index(): Response
     {
@@ -93,43 +91,7 @@ class SelfAssessmentController extends Controller
         $selected = AcademicPeriod::where('academic_year_id', $class->academic_year_id)
             ->where('ulid', $period)->firstOrFail();
 
-        $template = $this->templates->forClass($class);
-        $levels = Scale::where('name', 'Escala 1 a 5')->first()?->levels()->orderBy('sequence')->get(['id', 'code', 'label']) ?? collect();
-
-        $existing = SelfAssessment::query()
-            ->where('enrollment_id', $enrollment->id)
-            ->where('academic_period_id', $selected->id)
-            ->where('self_assessment_template_id', $template->id)
-            ->with('responses')
-            ->first();
-
-        $answers = $existing === null
-            ? collect()
-            : $existing->responses->pluck('scale_level_id', 'self_assessment_question_id');
-
-        // The calculated domain result for this student — shown beside the self
-        // rating for comparison (§15), never merged into it.
-        $calculated = collect($this->calculator->forPeriod($class, $selected))
-            ->firstWhere(fn ($row) => $row['enrollment']->id === $enrollment->id);
-        $domainResults = $calculated === null
-            ? collect()
-            : collect($calculated['outcome']->domains)->pluck('normalizedValue', 'domainId');
-
-        return Inertia::render('self-assessments/Edit', [
-            'schoolClass' => ['ulid' => $class->ulid, 'label' => $class->label],
-            'period' => ['ulid' => $selected->ulid, 'label' => $selected->label],
-            'student' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
-            'enrollmentUlid' => $enrollment->ulid,
-            'levels' => $levels,
-            'questions' => $template->questions->map(fn ($question) => [
-                'id' => $question->id,
-                'prompt' => $question->prompt,
-                'answer_level_id' => $answers->get($question->id),
-                'calculated' => $question->domain_id === null ? null : $domainResults->get($question->domain_id),
-            ]),
-            'reflection' => $existing?->reflection,
-            'status' => $existing?->status->value,
-        ]);
+        return Inertia::render('self-assessments/Edit', $this->recorder->formProps($class, $selected, $enrollment));
     }
 
     public function store(Request $request, SchoolClass $class, string $period, Enrollment $enrollment): RedirectResponse
@@ -139,48 +101,60 @@ class SelfAssessmentController extends Controller
         $selected = AcademicPeriod::where('academic_year_id', $class->academic_year_id)
             ->where('ulid', $period)->firstOrFail();
 
-        $template = $this->templates->forClass($class);
-        $questionIds = $template->questions->pluck('id');
-        $levelIds = Scale::where('name', 'Escala 1 a 5')->first()?->levels()->pluck('id') ?? collect();
-
         $validated = $request->validate([
             'reflection' => ['nullable', 'string', 'max:5000'],
             'answers' => ['array'],
             'answers.*' => ['nullable', 'integer'],
         ]);
 
-        DB::transaction(function () use ($validated, $selected, $enrollment, $template, $questionIds, $levelIds): void {
-            $selfAssessment = SelfAssessment::updateOrCreate(
-                [
-                    'enrollment_id' => $enrollment->id,
-                    'academic_period_id' => $selected->id,
-                    'self_assessment_template_id' => $template->id,
-                ],
-                [
-                    'status' => SelfAssessmentStatus::Submitted,
-                    'filled_by' => SelfAssessmentFilledBy::TeacherInterview,
-                    'reflection' => $validated['reflection'] ?? null,
-                    'submitted_at' => now(),
-                ],
-            );
-
-            foreach ($validated['answers'] ?? [] as $questionId => $levelId) {
-                // Only real questions of this template, and only levels of the
-                // referenced scale — never an arbitrary id.
-                if (! $questionIds->contains((int) $questionId) || ($levelId !== null && ! $levelIds->contains((int) $levelId))) {
-                    continue;
-                }
-
-                $selfAssessment->responses()->updateOrCreate(
-                    ['self_assessment_question_id' => (int) $questionId],
-                    ['scale_level_id' => $levelId === null ? null : (int) $levelId],
-                );
-            }
-        });
+        $this->recorder->save($class, $selected, $enrollment, $validated, SelfAssessmentFilledBy::TeacherInterview);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Autoavaliação guardada.')]);
 
         return redirect()->route('self-assessments.show', ['class' => $class->ulid, 'period' => $selected->ulid]);
+    }
+
+    /**
+     * A page meant to be projected or copied into a chat — one signed, no-login
+     * link per student, so each can fill in their own self-assessment on their
+     * own device without the teacher handing over theirs (§15). The signature
+     * is the only access control: no password, no student account created.
+     */
+    public function links(SchoolClass $class, string $period): Response
+    {
+        Gate::authorize('view', $class);
+
+        $selected = AcademicPeriod::where('academic_year_id', $class->academic_year_id)
+            ->where('ulid', $period)->firstOrFail();
+
+        $enrollments = $class->enrollments()->with('student.identity')->orderBy('class_number')->get();
+
+        $filled = SelfAssessment::query()
+            ->where('academic_period_id', $selected->id)
+            ->whereIn('enrollment_id', $enrollments->pluck('id'))
+            ->get()->keyBy('enrollment_id');
+
+        $expiresAt = now()->addDays(self::LINK_LIFETIME_DAYS);
+
+        return Inertia::render('self-assessments/Links', [
+            'schoolClass' => ['ulid' => $class->ulid, 'label' => $class->label],
+            'period' => ['ulid' => $selected->ulid, 'label' => $selected->label],
+            'expiresAt' => $expiresAt->toIso8601String(),
+            'rows' => $enrollments->map(function (Enrollment $enrollment) use ($filled, $class, $selected, $expiresAt) {
+                /** @var SelfAssessment|null $selfAssessment */
+                $selfAssessment = $filled->get($enrollment->id);
+
+                return [
+                    'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
+                    'status_label' => $selfAssessment?->status->label(),
+                    'link' => URL::temporarySignedRoute('self-assessments.public.edit', $expiresAt, [
+                        'classUlid' => $class->ulid,
+                        'periodUlid' => $selected->ulid,
+                        'enrollmentUlid' => $enrollment->ulid,
+                    ]),
+                ];
+            }),
+        ]);
     }
 
     protected function user(): User

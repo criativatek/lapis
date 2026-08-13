@@ -13,6 +13,7 @@ use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\EvidenceController;
 use App\Http\Controllers\InstrumentController;
 use App\Http\Controllers\InterventionController;
+use App\Http\Controllers\PublicSelfAssessmentController;
 use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\ResultsController;
 use App\Http\Controllers\RosterImportController;
@@ -28,6 +29,19 @@ Route::inertia('/', 'Welcome')->name('home');
 // outside the 'organization' group (no tenant resolution needed).
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('novidades', [ChangelogController::class, 'index'])->name('changelog.index');
+});
+
+// The student's no-login entry into a self-assessment (§15): no 'auth', no
+// 'organization' — the signed URL itself is the only access control, and the
+// controller resolves the tenant by hand from the class in the URL. GET and
+// POST share the exact same path on purpose: a signed URL's signature covers
+// the path + query string, not the HTTP verb, so the same link a student
+// opens is also what the form posts back to.
+Route::middleware(['signed', 'throttle:120,1'])->group(function () {
+    Route::get('auto/{classUlid}/{periodUlid}/{enrollmentUlid}', [PublicSelfAssessmentController::class, 'edit'])
+        ->name('self-assessments.public.edit');
+    Route::post('auto/{classUlid}/{periodUlid}/{enrollmentUlid}', [PublicSelfAssessmentController::class, 'store'])
+        ->name('self-assessments.public.store');
 });
 
 // Teacher-facing area. Everything here reads tenant-owned data, so an
@@ -160,6 +174,13 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     Route::middleware('module:self_assessments')->group(function () {
         Route::get('self-assessments', [SelfAssessmentController::class, 'index'])->name('self-assessments.index');
         Route::get('classes/{class}/self-assessments/{period?}', [SelfAssessmentController::class, 'show'])->name('self-assessments.show');
+        // Must come before the {enrollment} wildcard route below, or "links"
+        // would itself be swallowed as an (invalid) enrollment ulid. Gated by
+        // its own module — the base plan keeps self_assessments (the teacher
+        // fills it in an interview) but not the student's no-login link.
+        Route::get('classes/{class}/self-assessments/{period}/links', [SelfAssessmentController::class, 'links'])
+            ->middleware('module:self_assessment_links')
+            ->name('self-assessments.links');
         Route::get('classes/{class}/self-assessments/{period}/{enrollment}', [SelfAssessmentController::class, 'edit'])->name('self-assessments.edit');
         Route::post('classes/{class}/self-assessments/{period}/{enrollment}', [SelfAssessmentController::class, 'store'])->name('self-assessments.store');
     });

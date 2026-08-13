@@ -44,6 +44,7 @@ class EntitlementsSeeder extends Seeder
         'ai_assistance' => 'Apoio de IA',
         'advanced_analytics' => 'Análises Avançadas',
         'template_sharing' => 'Partilha de Modelos',
+        'self_assessment_links' => 'Ligações de Autoavaliação',
 
         // Institucional.
         'institution_admin' => 'Administração Institucional',
@@ -62,6 +63,7 @@ class EntitlementsSeeder extends Seeder
     protected const PRO_MODULES = [
         ...self::BASE_MODULES,
         'calendar', 'lessons', 'ai_assistance', 'advanced_analytics', 'template_sharing',
+        'self_assessment_links',
     ];
 
     protected const INSTITUTIONAL_MODULES = [

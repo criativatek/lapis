@@ -25,9 +25,11 @@ function selectPeriod(ulid: string): void {
 
 function open(row: Row): void {
     const period = selectedPeriod();
+
     if (period === null) {
         return;
     }
+
     router.get(`/classes/${props.schoolClass.ulid}/self-assessments/${period.ulid}/${row.enrollment_ulid}`);
 }
 </script>
@@ -41,17 +43,26 @@ function open(row: Row): void {
                 <Heading :title="`Autoavaliações — ${schoolClass.label}`" :description="schoolClass.subject" />
                 <Link href="/self-assessments" class="text-sm text-muted-foreground hover:underline">← Todas as turmas</Link>
             </div>
-            <div v-if="periods.length" class="flex gap-1">
-                <button
-                    v-for="period in periods"
-                    :key="period.ulid"
-                    type="button"
-                    class="rounded-md border px-3 py-1.5 text-sm"
-                    :class="period.selected ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:bg-muted/40'"
-                    @click="selectPeriod(period.ulid)"
+            <div class="flex flex-wrap items-center gap-2">
+                <div v-if="periods.length" class="flex gap-1">
+                    <button
+                        v-for="period in periods"
+                        :key="period.ulid"
+                        type="button"
+                        class="rounded-md border px-3 py-1.5 text-sm"
+                        :class="period.selected ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:bg-muted/40'"
+                        @click="selectPeriod(period.ulid)"
+                    >
+                        {{ period.label }}
+                    </button>
+                </div>
+                <Link
+                    v-if="selectedPeriod()"
+                    :href="`/classes/${schoolClass.ulid}/self-assessments/${selectedPeriod()?.ulid}/links`"
+                    class="rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted/40"
                 >
-                    {{ period.label }}
-                </button>
+                    Ligações para os alunos
+                </Link>
             </div>
         </div>
 

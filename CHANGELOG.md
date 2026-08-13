@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.27.0] — 2026-08-13
+
+### Adicionado
+
+- **Ligação de autoavaliação por aluno, sem login.** Em Autoavaliações → turma → período, "Ligações para os alunos" gera uma ligação assinada e temporária (7 dias) por aluno — sem conta nem password — para o aluno preencher a sua própria autoavaliação no próprio dispositivo. Fica registado como preenchido pelo aluno, distinto de quando o professor preenche em entrevista. Disponível apenas nos planos Pro e Institucional (módulo novo `self_assessment_links`), não no plano Base.
+
 ## [0.26.0] — 2026-08-12
 
 ### Adicionado
