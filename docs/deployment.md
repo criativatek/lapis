@@ -15,7 +15,18 @@ migrações + os três seeders de referência (`ReferenceDataSeeder` — ver «P
 abaixo) corridos, Cloudflare + HTTPS ativos. Backoffice `/admin` no ar. O acesso
 SSH faz-se pelo **SSH User `deploy`** (criado em CloudPanel → Sites → SSH/FTP),
 não pelo Site User `lapis` (esse recusa password/chave pelo painel). De Windows
-usa-se **plink** (PuTTY) com o hostkey pinado — ver «Atualizações».
+usa-se **plink** (PuTTY) com o hostkey pinado — ver «Atualizações». Em alternativa,
+o OpenSSH do Git Bash com uma entrada em `~/.ssh/config` (`Host lapis-prod` →
+`HostName 161.97.80.63`, `User deploy`, `IdentityFile`, `IdentitiesOnly yes`)
+funciona igualmente e permite canalizar o tar por `stdin` — **desde que a chave
+esteja mesmo autorizada em disco: ver armadilha 6**.
+
+**Versão em produção: 0.28.0** desde 2026-08-13. Esse deploy apanhou três
+versões de uma vez (0.26.0 Registos, 0.27.0 ligações de autoavaliação, 0.28.0
+Avaliações) porque a produção tinha ficado na 0.25.0 — **confirmar sempre a
+versão real no servidor (`grep version config/app.php`) antes de assumir de
+onde parte o deploy**, já que o servidor não tem `.git` e nada indica de fora
+qual o commit que lá está.
 
 ## Atualizações (redeploy de código) — o fluxo que funciona
 
@@ -83,6 +94,39 @@ plink -ssh -hostkey SHA256:5a6uWUkxyqr3DhZCwveJEviWXDAOVQ72ndMgqDYpjHs -batch \
    podia não ter sido. Corrigido a correr `InstrumentTypesSeeder` diretamente
    (idempotente); os «Passos» abaixo já apontam para `ReferenceDataSeeder`
    (os três juntos) em vez de só o `EntitlementsSeeder`.
+6. **O SSH user `deploy` não é exclusivo do LAPIS — a sua `authorized_keys` é
+   reescrita e a nossa chave desaparece.** Este VPS aloja mais sites (há crons
+   de `criativatek-track2lab` e `xapp`), e `deploy` é um nome genérico
+   partilhado: `/home/deploy/.ssh/authorized_keys` acabou a conter três chaves
+   de outra equipa (`vladyslavkotyk`, `micael`, `fabio`) que **nunca** foram
+   as que o painel do LAPIS mostrava para este mesmo utilizador. Ou seja, o
+   painel de um site e o ficheiro em disco estavam a descrever conjuntos
+   disjuntos de chaves.
+   Consequências observadas em 2026-08-13, ao longo de horas: a chave colada
+   no CloudPanel (`lapis.criativatek.com` → SSH/FTP → `deploy` → SSH Keys)
+   aparecia guardada na interface, sobrevivia a recarregamentos da página, mas
+   **nunca chegava ao disco**; adicionada à mão como `root` funcionava, e era
+   apagada minutos depois. Diagnosticar isto pela permissão do ficheiro é
+   perder tempo — `namei -l` e `sshd -T` mostravam tudo correto (dono `deploy`,
+   grupo `lapis`, `700`/`600`, `pubkeyauthentication yes`). O sinal fiável é
+   o **tamanho** de `authorized_keys`: ~90 bytes por chave ed25519, portanto
+   271 bytes = 3 chaves = a nossa já lá não está.
+   **Solução:** criar no CloudPanel um SSH user com nome **único** para este
+   site (ex.: `lapis-deploy`, com a sua própria home), em vez de reutilizar o
+   `deploy` partilhado, e registar a chave aí. Enquanto isso não for feito, o
+   único fluxo que resulta é a janela curta: acrescentar a chave à mão como
+   `root` e correr o deploy **imediatamente** a seguir, num único comando.
+7. **Tentativas repetidas de SSH fazem o `fail2ban` banir o IP de origem.**
+   Ainda em 2026-08-13, depois de várias falhas de autenticação seguidas
+   (consequência da armadilha 6), o IP passou de `Permission denied` a
+   `Connection timed out` — sintoma diferente, causa diferente. Confirmar com
+   `fail2ban-client status sshd` (o IP aparece em «Banned IP list») e resolver
+   com `fail2ban-client set sshd unbanip <ip>`; para não voltar a acontecer
+   durante uma sessão de trabalho, `fail2ban-client set sshd addignoreip <ip>`.
+   O `sshd` deste servidor tem também `MaxAuthTries 3`
+   (`/etc/ssh/sshd_config.d/99-hardening.conf`): não redirecionar um ficheiro
+   para o `stdin` do `ssh` sem a chave a funcionar, senão o cliente tenta usar
+   os bytes do ficheiro como password e esgota as tentativas.
 
 O `tar x` usa `--no-same-owner/permissions` porque a pasta é do user `lapis`, não
 do `deploy`; o `|| true` engole o aviso de permissões em `.`.

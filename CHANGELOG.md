@@ -2,6 +2,13 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.28.1] — 2026-08-13
+
+### Documentação
+
+- **Duas armadilhas novas no deploy, apanhadas durante o deploy da 0.28.0.** O SSH user `deploy` não é exclusivo deste site — é um nome genérico partilhado com outros sites do VPS, e a sua `authorized_keys` é reescrita por fora, apagando a chave que o painel do LAPIS diz ter guardado. Fica documentado o sintoma enganador (permissões e `sshd -T` aparecem corretos), o sinal fiável (o tamanho do ficheiro: ~90 bytes por chave) e a solução (criar um SSH user com nome único em vez de reutilizar o `deploy`). A segunda: tentativas repetidas fazem o `fail2ban` banir o IP, e `Connection timed out` significa ban — não chave recusada.
+- **Estado de produção atualizado.** A produção estava na 0.25.0, não na 0.27.0 — o deploy da 0.28.0 apanhou três versões de uma vez. Fica o aviso para confirmar sempre a versão real no servidor antes de assumir de onde parte um deploy, já que o servidor não tem `.git` e nada indica de fora que commit lá está.
+
 ## [0.28.0] — 2026-08-13
 
 ### Avaliações
