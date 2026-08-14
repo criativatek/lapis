@@ -2,6 +2,15 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.29.1] — 2026-08-14
+
+### Documentação
+
+- **A solução registada para a armadilha 6 estava errada, e o deploy da 0.29.0 provou-o.** Criar um SSH user dedicado (`lapis-deploy`) não impede o CloudPanel de reescrever a `authorized_keys`: fê-lo na mesma, com as mesmas três chaves de terceiros, 24 segundos depois de a nossa chave ter funcionado. O nome partilhado nunca foi a causa. A solução que resulta é `~/.ssh/authorized_keys2`, que o `sshd` lê e o painel não gere. Fica também registado que continua por esclarecer porque é que chaves de terceiros são injetadas num utilizador deste site — pertencem ao grupo `lapis`, logo leem o `.env`.
+- **Armadilha nova: o utilizador de deploy tem de ser dono do código.** Os diretórios pertenciam ao antigo user `deploy` a `750`, e o `lapis-deploy` — no grupo, mas não dono — não conseguiu escrever: 845 ficheiros recusados, `config/app.php` na versão anterior, e o script a dar a extração por concluída na mesma. Fica documentado o `chown` correto (código para quem faz deploy, `storage` e `bootstrap/cache` para o utilizador web com escrita de grupo) e a razão de nunca se usar `chmod 777` — o problema é de propriedade, e `777` mascara-o dando escrita a outras equipas do VPS.
+- **Verificar a extração por checksum, não pela versão.** O `tar` falha ficheiro a ficheiro e o `|| true` engole o erro; comparar `config/app.php`, `composer.lock` e `manifest.json` entre local e servidor é o que distingue um deploy real de um que não escreveu nada. Acrescentado à checklist, com o teste de propriedade e escrita a correr **antes** de entrar em manutenção.
+- **`.agents` e `.superpowers` acrescentados às exclusões do pacote.** Estão no `.gitignore`, mas o `tar` não o lê — foi assim que 6 MB de skills e fontes TTF foram parar a produção. Documentado também que o servidor tem Node 12, demasiado antigo para o Vite: os assets são sempre compilados localmente.
+
 ## [0.29.0] — 2026-08-14
 
 ### Intervenções

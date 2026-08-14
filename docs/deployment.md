@@ -12,21 +12,34 @@ default do CloudPanel («Hello World :-)»). SSH aberto (porta 22), painel na 84
 
 **Em produção** desde 2026-07-27: `https://lapis.criativatek.com` serve o LÁPIS,
 migrações + os três seeders de referência (`ReferenceDataSeeder` — ver «Passos»
-abaixo) corridos, Cloudflare + HTTPS ativos. Backoffice `/admin` no ar. O acesso
-SSH faz-se pelo **SSH User `deploy`** (criado em CloudPanel → Sites → SSH/FTP),
-não pelo Site User `lapis` (esse recusa password/chave pelo painel). De Windows
-usa-se **plink** (PuTTY) com o hostkey pinado — ver «Atualizações». Em alternativa,
-o OpenSSH do Git Bash com uma entrada em `~/.ssh/config` (`Host lapis-prod` →
-`HostName 161.97.80.63`, `User deploy`, `IdentityFile`, `IdentitiesOnly yes`)
-funciona igualmente e permite canalizar o tar por `stdin` — **desde que a chave
-esteja mesmo autorizada em disco: ver armadilha 6**.
+abaixo) corridos, Cloudflare + HTTPS ativos. Backoffice `/admin` no ar.
 
-**Versão em produção: 0.28.0** desde 2026-08-13. Esse deploy apanhou três
-versões de uma vez (0.26.0 Registos, 0.27.0 ligações de autoavaliação, 0.28.0
-Avaliações) porque a produção tinha ficado na 0.25.0 — **confirmar sempre a
-versão real no servidor (`grep version config/app.php`) antes de assumir de
-onde parte o deploy**, já que o servidor não tem `.git` e nada indica de fora
-qual o commit que lá está.
+O acesso SSH faz-se pelo **SSH User `lapis-deploy`** — um utilizador dedicado a
+este site, criado em CloudPanel → Sites → SSH/FTP com home própria
+(`/home/lapis-deploy`). **Não** usar o Site User `lapis` (recusa password/chave
+pelo painel) nem o antigo `deploy`, que é um nome genérico partilhado com outros
+sites deste VPS e cuja `authorized_keys` pertence a outra equipa (armadilha 6).
+Entrada em `~/.ssh/config`:
+
+```
+Host lapis-prod
+    HostName 161.97.80.63
+    User lapis-deploy
+    IdentityFile ~/.ssh/lapis_deploy
+    IdentitiesOnly yes
+```
+
+Duas condições têm de estar satisfeitas para um deploy correr, e **as duas já
+falharam em produção**: a chave tem de estar em `authorized_keys2` (armadilha 6)
+e o `lapis-deploy` tem de ser **dono** dos ficheiros da aplicação (armadilha 8).
+
+**Versão em produção: 0.29.0** desde 2026-08-14 (Intervenções + preparação
+multijurisdição; duas migrations aditivas). Antes disso, 0.28.0 desde 2026-08-13
+— esse deploy apanhou três versões de uma vez (0.26.0 Registos, 0.27.0 ligações
+de autoavaliação, 0.28.0 Avaliações) porque a produção tinha ficado na 0.25.0.
+**Confirmar sempre a versão real no servidor (`grep version config/app.php`)
+antes de assumir de onde parte o deploy**, já que o servidor não tem `.git` e
+nada indica de fora qual o commit que lá está.
 
 ## Atualizações (redeploy de código) — o fluxo que funciona
 
@@ -34,29 +47,70 @@ Não voltar a fazer `git clone`. O `.env`/`APP_KEY` vivem **só no servidor** �
 reescrevê-los invalida sessões, 2FA e a password SMTP cifrada. Enviar só código:
 
 ```bash
+# 0. Assets: o servidor tem Node 12, demasiado antigo para o build. Compilar
+#    SEMPRE localmente antes de empacotar.
+npm run build
+
 # 1. Empacotar local (Git Bash). Excluir SEMPRE bootstrap/cache, .env e
 #    storage/app — este último é conteúdo carregado por utilizadores
 #    (fotos de alunos, ficheiros temporários de importação), específico de
 #    CADA ambiente. Nunca deve viajar num pacote de código: já aconteceu
 #    (2026-07-31) o storage/app local ser enviado para produção e poluir o
 #    armazenamento real com ficheiros de teste locais.
+#    As pastas de ferramentas de IA (.claude, .agents, .superpowers) estão no
+#    .gitignore mas o tar não lê o .gitignore: sem estas exclusões vão para
+#    produção — foi assim que 6 MB de skills e fontes TTF lá foram parar.
 tar --force-local -czf update.tgz \
   --exclude=.git --exclude=node_modules --exclude=vendor \
   --exclude=.env --exclude=.env.production \
   --exclude='storage/logs/*.log' --exclude='storage/framework/cache/data/*' \
   --exclude=storage/app \
-  --exclude=bootstrap/cache --exclude=.claude -C d:/HERD/LAPIS .
+  --exclude=bootstrap/cache \
+  --exclude=.claude --exclude=.agents --exclude=.superpowers \
+  -C d:/HERD/LAPIS .
 
-# 2. Extrair + reconstruir no servidor via plink (hostkey pinado, sem prompt):
-plink -ssh -hostkey SHA256:5a6uWUkxyqr3DhZCwveJEviWXDAOVQ72ndMgqDYpjHs -batch \
-  -pw '<pw-do-deploy>' deploy@161.97.80.63 \
-  'cd /home/lapis/htdocs/lapis.criativatek.com &&
-   tar xzf - --no-overwrite-dir --no-same-permissions --no-same-owner || true &&
-   test -f artisan &&
-   composer install --no-dev --optimize-autoloader --no-interaction &&
-   php artisan migrate --force &&
-   php artisan config:cache && php artisan route:cache && php artisan view:cache' \
-  < update.tgz
+# 2. Verificar o pacote ANTES de o enviar — versão certa e migrations dentro:
+tar -xzOf update.tgz ./config/app.php | grep "'version'"
+tar -tzf update.tgz | grep migrations/ | tail -3
+
+# 3. Testar propriedade e escrita ANTES de entrar em manutenção (armadilha 8).
+#    Um tar que não consegue escrever falha ficheiro a ficheiro e o script
+#    segue em frente: mais vale descobrir isto com o site no ar.
+ssh lapis-prod 'cd /home/lapis/htdocs/lapis.criativatek.com &&
+  stat -c "%U:%G %a %n" app config database public resources routes &&
+  for d in . app config database public resources routes storage bootstrap/cache; do
+    touch "$d/.wtest" 2>/dev/null && rm -f "$d/.wtest" && echo "OK $d" || echo "FALHA $d"
+  done'
+#    Todos têm de dar OK e pertencer a lapis-deploy:lapis. Se não, ver armadilha 8.
+
+# 4. Enviar o pacote (ainda sem manutenção — encurta a indisponibilidade):
+scp update.tgz lapis-prod:/home/lapis-deploy/update.tgz
+
+# 5. Manutenção, extração e reconstrução:
+ssh lapis-prod 'bash -s' <<'EOF'
+cd /home/lapis/htdocs/lapis.criativatek.com || exit 1
+php artisan down --retry=60 || exit 1
+tar xzf /home/lapis-deploy/update.tgz --no-overwrite-dir --no-same-permissions --no-same-owner || true
+test -f artisan || { echo "artisan ausente"; exit 1; }
+grep "'version'" config/app.php          # TEM de mostrar já a versão nova
+rm -f bootstrap/cache/{config,packages,services,routes-v7}.php   # armadilha 1
+composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction || exit 1
+php artisan migrate:status | grep Pending    # confirmar ANTES de migrar
+php artisan migrate --force || exit 1
+php artisan config:cache && php artisan route:cache && php artisan view:cache
+php artisan up
+EOF
+```
+
+**Confirmar sempre que a extração escreveu mesmo.** O `tar` devolve estado de
+erro global mas o script continua, e `grep version` sozinho não prova que os
+outros 1300 ficheiros foram substituídos. A verificação decisiva é comparar
+checksums entre local e servidor:
+
+```bash
+md5sum config/app.php composer.lock public/build/manifest.json
+ssh lapis-prod 'cd /home/lapis/htdocs/lapis.criativatek.com &&
+  md5sum config/app.php composer.lock public/build/manifest.json'
 ```
 
 **Armadilhas que já partiram o site (ou o armazenamento):**
@@ -111,11 +165,27 @@ plink -ssh -hostkey SHA256:5a6uWUkxyqr3DhZCwveJEviWXDAOVQ72ndMgqDYpjHs -batch \
    grupo `lapis`, `700`/`600`, `pubkeyauthentication yes`). O sinal fiável é
    o **tamanho** de `authorized_keys`: ~90 bytes por chave ed25519, portanto
    271 bytes = 3 chaves = a nossa já lá não está.
-   **Solução:** criar no CloudPanel um SSH user com nome **único** para este
-   site (ex.: `lapis-deploy`, com a sua própria home), em vez de reutilizar o
-   `deploy` partilhado, e registar a chave aí. Enquanto isso não for feito, o
-   único fluxo que resulta é a janela curta: acrescentar a chave à mão como
-   `root` e correr o deploy **imediatamente** a seguir, num único comando.
+   **Criar um SSH user dedicado não chega.** Foi o que se fez primeiro
+   (`lapis-deploy`, com home própria) e a 2026-08-14 o painel reescreveu-lhe a
+   `authorized_keys` **na mesma**, com as mesmas três chaves de terceiros — 24
+   segundos depois de a nossa chave ter funcionado. O nome partilhado não era a
+   causa; o painel gere aquele ficheiro em qualquer utilizador SSH que conheça.
+   **Solução que resulta: `~/.ssh/authorized_keys2`.** O `sshd` lê os dois
+   ficheiros (`AuthorizedKeysFile .ssh/authorized_keys .ssh/authorized_keys2`),
+   e o CloudPanel só gere o primeiro. Pôr lá a chave de deploy, com `600` e dono
+   correto, e o acesso deixa de desaparecer:
+   ```bash
+   # como root, uma vez:
+   install -o lapis-deploy -g lapis -m 700 -d /home/lapis-deploy/.ssh
+   printf '%s\n' 'ssh-ed25519 AAAA... deploy@lapis' > /home/lapis-deploy/.ssh/authorized_keys2
+   chown lapis-deploy:lapis /home/lapis-deploy/.ssh/authorized_keys2
+   chmod 600 /home/lapis-deploy/.ssh/authorized_keys2
+   ```
+   Continua por esclarecer, e é uma questão de proteção de dados e não de
+   comodidade, **porque é que as chaves de `vladyslavkotyk`, `micael` e `fabio`
+   são injetadas num utilizador deste site**: pertencem ao grupo `lapis`, logo
+   leem o `.env` — credenciais da base de dados e `APP_KEY` — e por aí os dados
+   dos alunos.
 7. **Tentativas repetidas de SSH fazem o `fail2ban` banir o IP de origem.**
    Ainda em 2026-08-13, depois de várias falhas de autenticação seguidas
    (consequência da armadilha 6), o IP passou de `Permission denied` a
@@ -127,17 +197,48 @@ plink -ssh -hostkey SHA256:5a6uWUkxyqr3DhZCwveJEviWXDAOVQ72ndMgqDYpjHs -batch \
    (`/etc/ssh/sshd_config.d/99-hardening.conf`): não redirecionar um ficheiro
    para o `stdin` do `ssh` sem a chave a funcionar, senão o cliente tenta usar
    os bytes do ficheiro como password e esgota as tentativas.
+8. **O utilizador de deploy tem de ser DONO do código, senão o `tar` extrai
+   zero ficheiros e o deploy segue em frente a mentir.** A 2026-08-14, no deploy
+   da 0.29.0, os diretórios (`app`, `config`, `database`, `public`, …) ainda
+   pertenciam ao antigo user `deploy` com modo `750`: o grupo `lapis` lê e
+   atravessa, **não escreve**. O `lapis-deploy` está no grupo mas não é dono de
+   nada, portanto não pode substituir nem criar ficheiros lá dentro. Resultado:
+   845 ficheiros recusados com `Cannot open: File exists` e `Permission denied`,
+   `tests/Unit/Interventions/` nem chegou a ser criada, e `config/app.php`
+   continuou na versão anterior — com o site em manutenção e o script a dar a
+   extração por concluída. Não há `sudo` para o `lapis-deploy`; **corrigir como
+   `root`, uma vez**:
+   ```bash
+   cd /home/lapis/htdocs/lapis.criativatek.com
+   chown -R lapis-deploy:lapis .                    # código: dono é quem faz deploy
+   chown -R lapis:lapis storage bootstrap/cache     # devolver ao user do site
+   chmod -R g+rwX storage bootstrap/cache           # app E deploy escrevem aqui
+   ```
+   O código fica do `lapis-deploy` (que o substitui a cada deploy) com grupo
+   `lapis` (que o web lê); `storage` e `bootstrap/cache` ficam do `lapis` — o
+   utilizador do processo web — com escrita para o grupo, porque **ambos** lá
+   escrevem: a aplicação em runtime e o deploy no `config:cache`/`view:cache`.
+   O `umask` do `lapis-deploy` é `0007`, logo os ficheiros novos saem `640`/`660`
+   com grupo `lapis` — o web lê sem se mexer em mais nada.
+   **Nunca `chmod 777`, nem `chmod -R 777`, nem sequer «só para desbloquear»:**
+   dá escrita a qualquer utilizador do VPS — e este VPS aloja outros sites, com
+   outras equipas. O problema aqui nunca é o modo ser restritivo de mais, é a
+   *propriedade* estar errada; `777` mascara isso e deixa o código da aplicação
+   gravável por terceiros. A permissão mais aberta legítima neste servidor é
+   `770` (`storage`, `bootstrap/cache`), sempre com grupo `lapis`.
 
-O `tar x` usa `--no-same-owner/permissions` porque a pasta é do user `lapis`, não
-do `deploy`; o `|| true` engole o aviso de permissões em `.`.
+O `tar x` usa `--no-same-owner/permissions` para não tentar impor donos e modos
+do ambiente local; o `|| true` engole o aviso de `chmod` na própria pasta `.`.
+Esse `|| true` é também o que torna a armadilha 8 silenciosa — daí a verificação
+por checksum acima.
 
 ## Pré-requisitos no servidor (confirmar no CloudPanel)
 
 - **PHP 8.4** selecionado para o site (CloudPanel → Site → Settings → PHP Version).
 - **MySQL**: criar base de dados + utilizador (CloudPanel → Databases). Guardar as
   credenciais para o `.env`.
-- **Node** (para `npm run build`). Se o servidor não tiver Node, **buildar os assets
-  localmente** e enviar `public/build` — ver nota no fim.
+- **Node**: o servidor tem **v12.22.9**, demasiado antigo para o Vite. Os assets
+  são **sempre** compilados localmente e enviados em `public/build` — ver nota no fim.
 - **Document root** do site = `.../htdocs/lapis.criativatek.com/public` (Laravel serve
   a partir de `public/`, não da raiz).
 
@@ -214,4 +315,16 @@ Manter `APP_ENV=production` para o Vite servir os assets compilados, não o dev 
       há escalas para os perfis de avaliação), `InstrumentTypesSeeder` (sem
       ele o dropdown "Tipo" ao criar um instrumento fica vazio).
 - [ ] `APP_DEBUG=false`; sem stack traces expostas.
+- [ ] **A extração escreveu mesmo**: checksums iguais entre local e servidor
+      (`config/app.php`, `composer.lock`, `public/build/manifest.json`) — ver
+      armadilha 8. Confirmar a versão sozinha não chega.
+- [ ] **Assets novos servidos**: o `app-*.js` referido no HTML devolve 200 e o
+      tamanho bate certo com o do `npm run build`. Se o nginx servir o bundle
+      antigo, a página carrega mas o comportamento é o da versão anterior.
+- [ ] **Permissões**: `storage`, `bootstrap/cache` e `storage/app/private/*` a
+      `770` com grupo `lapis`; código a `750`/`640` do `lapis-deploy`. Nenhum `777`.
+- [ ] Nada sensível servido pela web: `/.env`, `/composer.json`,
+      `/storage/logs/laravel.log` e `/.git/config` devolvem 403/404.
+- [ ] `storage/logs/laravel.log` sem entradas novas de `ERROR`, `SQLSTATE`,
+      `Permission denied` ou `Vite manifest` depois do deploy.
 - [ ] Backup da base de dados agendado (CloudPanel → Backups).
