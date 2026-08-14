@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $ulid
  * @property int $organization_id
  * @property int $instrument_id
+ * @property int $instrument_group_id
  * @property string $code
  * @property string|null $label
  * @property int $sequence
@@ -29,7 +30,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $source_group_label
  */
 #[Fillable([
-    'instrument_id', 'code', 'label', 'sequence', 'points_possible',
+    'instrument_id', 'instrument_group_id', 'code', 'label', 'sequence', 'points_possible',
     'scoring_mode', 'scale_id', 'is_bonus', 'source_group_label',
 ])]
 class InstrumentItem extends Model
@@ -60,6 +61,20 @@ class InstrumentItem extends Model
     public function instrument(): BelongsTo
     {
         return $this->belongsTo(Instrument::class);
+    }
+
+    /**
+     * The section of the instrument this question sits in. Kept alongside
+     * instrument_id rather than replacing it: every reader of an instrument's
+     * items (the correction grid, the engine, the results) fetches them by
+     * instrument, and going through groups would add a join to each of them for
+     * no gain. The two are kept consistent by InstrumentBuilder.
+     *
+     * @return BelongsTo<InstrumentGroup, $this>
+     */
+    public function group(): BelongsTo
+    {
+        return $this->belongsTo(InstrumentGroup::class, 'instrument_group_id');
     }
 
     /**

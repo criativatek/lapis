@@ -4,6 +4,7 @@ namespace App\Services\Assessment;
 
 use App\Models\Domain;
 use App\Models\Instrument;
+use App\Models\InstrumentGroup;
 use App\Models\InstrumentItem;
 use App\Models\SchoolClass;
 use App\Support\Assessment\InstrumentValidationException;
@@ -23,17 +24,18 @@ class InstrumentBuilder
     /**
      * @param  array<string, mixed>  $attributes
      * @param  list<array{code: string, label?: ?string, points_possible: float, domains?: list<array{domain_id: int, allocation_percent: float}>, is_bonus?: bool}>  $items
+     * @param  list<array<string, mixed>>  $groups
      */
-    public function create(SchoolClass $class, array $attributes, array $items): Instrument
+    public function create(SchoolClass $class, array $attributes, array $items, array $groups = []): Instrument
     {
-        $this->guard($attributes, $items);
+        $this->guard($attributes, $items, $groups);
 
         $attributes = $this->applyDiagnosticDefault($attributes);
 
-        return DB::transaction(function () use ($class, $attributes, $items): Instrument {
+        return DB::transaction(function () use ($class, $attributes, $items, $groups): Instrument {
             $instrument = $class->instruments()->create($attributes);
 
-            $this->syncItems($instrument, $items);
+            $this->syncItems($instrument, $items, $this->syncGroups($instrument, $groups));
 
             return $instrument;
         });
@@ -76,10 +78,11 @@ class InstrumentBuilder
      *
      * @param  array<string, mixed>  $attributes
      * @param  list<array{ulid?: ?string, code: string, label?: ?string, points_possible: float, is_bonus?: bool, domains?: list<array{domain_id: int, allocation_percent: float}>}>  $items
+     * @param  list<array<string, mixed>>  $groups
      */
-    public function update(Instrument $instrument, array $attributes, array $items): Instrument
+    public function update(Instrument $instrument, array $attributes, array $items, array $groups = []): Instrument
     {
-        $this->guard($attributes, $items);
+        $this->guard($attributes, $items, $groups);
 
         $existingItems = $instrument->items()->get()->keyBy('ulid');
         $submittedUlids = collect($items)->pluck('ulid')->filter()->all();
@@ -114,12 +117,16 @@ class InstrumentBuilder
             }
         }
 
-        return DB::transaction(function () use ($instrument, $attributes, $items, $toRemove, $existingItems): Instrument {
+        return DB::transaction(function () use ($instrument, $attributes, $items, $groups, $toRemove, $existingItems): Instrument {
             $instrument->update($attributes);
 
+            // Items leave before groups are reconciled, so a group emptied in
+            // this same edit can be removed rather than reported as occupied.
             foreach ($toRemove as $item) {
                 $item->delete();
             }
+
+            $groupsByIndex = $this->syncGroups($instrument, $groups);
 
             // Two kept/edited items can swap codes in the same update (A -> B,
             // B -> A). MySQL has no deferred unique constraints, so writing
@@ -145,11 +152,19 @@ class InstrumentBuilder
                 $existing = isset($itemData['ulid']) ? $existingItems->get($itemData['ulid']) : null;
 
                 if ($existing !== null) {
-                    $existing->update([...$this->itemAttributes($itemData), 'sequence' => $index + 1]);
+                    $existing->update([
+                        ...$this->itemAttributes($itemData),
+                        'instrument_group_id' => $this->groupIdFor($itemData, $groupsByIndex),
+                        'sequence' => $index + 1,
+                    ]);
                     $existing->domainAllocations()->each(fn ($allocation) => $allocation->delete());
                     $this->syncAllocations($existing, $itemData['domains'] ?? []);
                 } else {
-                    $created = $instrument->items()->create([...$this->itemAttributes($itemData), 'sequence' => $index + 1]);
+                    $created = $instrument->items()->create([
+                        ...$this->itemAttributes($itemData),
+                        'instrument_group_id' => $this->groupIdFor($itemData, $groupsByIndex),
+                        'sequence' => $index + 1,
+                    ]);
                     $this->syncAllocations($created, $itemData['domains'] ?? []);
                 }
             }
@@ -161,11 +176,39 @@ class InstrumentBuilder
     /**
      * @param  array<string, mixed>  $attributes
      * @param  list<array<string, mixed>>  $items
+     * @param  list<array<string, mixed>>  $groups
      */
-    protected function guard(array $attributes, array $items): void
+    protected function guard(array $attributes, array $items, array $groups = []): void
     {
         if ($items === []) {
             throw InstrumentValidationException::noItems();
+        }
+
+        // A code identifies a question WITHIN ITS GROUP, so Oralidade/Q2 and
+        // Gramática/Q2 are two different questions and both are legitimate.
+        // Two Q2 in the same group are not. UNIQUE(instrument_group_id, code)
+        // enforces it in the database; catching it here makes it a message
+        // instead of a 500, and covers every caller, not just the Form Request.
+        // Case-insensitively, matching the column's collation.
+        $seenPerGroup = [];
+
+        foreach ($items as $item) {
+            $code = mb_strtolower(trim((string) ($item['code'] ?? '')));
+
+            if ($code === '') {
+                continue;
+            }
+
+            $groupIndex = (int) ($item['group_index'] ?? 0);
+
+            if (isset($seenPerGroup[$groupIndex][$code])) {
+                throw InstrumentValidationException::duplicateItemCodeInGroup(
+                    trim((string) $item['code']),
+                    $groups[$groupIndex]['label'] ?? null,
+                );
+            }
+
+            $seenPerGroup[$groupIndex][$code] = true;
         }
 
         foreach ($items as $index => $item) {
@@ -209,13 +252,127 @@ class InstrumentBuilder
 
     /**
      * @param  list<array<string, mixed>>  $items
+     * @param  non-empty-array<int, InstrumentGroup>  $groupsByIndex
      */
-    protected function syncItems(Instrument $instrument, array $items): void
+    protected function syncItems(Instrument $instrument, array $items, array $groupsByIndex): void
     {
         foreach ($items as $index => $item) {
-            $created = $instrument->items()->create([...$this->itemAttributes($item), 'sequence' => $index + 1]);
+            $created = $instrument->items()->create([
+                ...$this->itemAttributes($item),
+                'instrument_group_id' => $this->groupIdFor($item, $groupsByIndex),
+                'sequence' => $index + 1,
+            ]);
             $this->syncAllocations($created, $item['domains'] ?? []);
         }
+    }
+
+    /**
+     * Brings an instrument's groups in line with what was submitted, and
+     * returns them keyed by the index items refer to.
+     *
+     * An instrument with no groups submitted still gets one — the implicit,
+     * unnamed group. That is what lets a simple instrument stay simple: the
+     * teacher never creates a group, never sees one, and the structure exists
+     * only so a question always has somewhere to belong.
+     *
+     * @param  list<array<string, mixed>>  $groups
+     * @return non-empty-array<int, InstrumentGroup>
+     */
+    protected function syncGroups(Instrument $instrument, array $groups): array
+    {
+        $existing = $instrument->groups()->get()->keyBy('ulid');
+
+        if ($groups === []) {
+            // Reuse the instrument's own first group rather than creating a
+            // second one on every save.
+            $implicit = $instrument->groups()->orderBy('sequence')->first()
+                ?? $instrument->groups()->create(['label' => null, 'sequence' => 1]);
+
+            return [0 => $implicit];
+        }
+
+        // A ulid that is not this instrument's is ignored rather than adopted:
+        // the group is then treated as new. The controller already strips
+        // foreign ulids; this is the same rule enforced for every caller.
+        $kept = [];
+
+        foreach ($groups as $index => $group) {
+            $ulid = $group['ulid'] ?? null;
+            $current = $ulid === null ? null : $existing->get($ulid);
+
+            if ($current !== null) {
+                $kept[$index] = $current;
+            }
+        }
+
+        // Groups the client stopped sending go FIRST, so a sequence they were
+        // occupying is free before anything tries to claim it — and never with
+        // questions still inside (§21). The FK is RESTRICT; this is the
+        // readable error rather than a database one.
+        foreach ($existing as $group) {
+            if (in_array($group->getKey(), array_map(fn ($g) => $g->getKey(), $kept), true)) {
+                continue;
+            }
+
+            if ($group->items()->exists()) {
+                throw InstrumentValidationException::cannotRemoveGroupWithItems($group->label ?? '');
+            }
+
+            $group->delete();
+        }
+
+        // Reordering two groups (A:1,B:2 → B:1,A:2) would otherwise write A's
+        // new sequence 2 while B still holds it, and UNIQUE(instrument_id,
+        // sequence) refuses. MySQL has no deferred constraints, so every kept
+        // group is first parked on a sequence far above any real one, and only
+        // then given its final position — no intermediate state can collide.
+        // Same two-phase trick already used for item codes below.
+        $parkingOffset = 10000;
+
+        foreach ($kept as $index => $group) {
+            $group->update(['sequence' => $parkingOffset + $index]);
+        }
+
+        $resolved = [];
+
+        foreach ($groups as $index => $group) {
+            $current = $kept[$index] ?? null;
+
+            if ($current !== null) {
+                // Renaming a group changes its label and nothing else — its id
+                // and ulid are the identity, so every question stays put.
+                $current->update(['label' => $group['label'] ?? null, 'sequence' => $index + 1]);
+                $resolved[$index] = $current;
+
+                continue;
+            }
+
+            $resolved[$index] = $instrument->groups()->create([
+                'label' => $group['label'] ?? null,
+                'sequence' => $index + 1,
+            ]);
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     * @param  non-empty-array<int, InstrumentGroup>  $groupsByIndex
+     */
+    protected function groupIdFor(array $item, array $groupsByIndex): int
+    {
+        $index = (int) ($item['group_index'] ?? 0);
+
+        if (isset($groupsByIndex[$index])) {
+            return $groupsByIndex[$index]->id;
+        }
+
+        // An item pointing at a group that was not submitted falls back to the
+        // first one, which for a simple instrument is the implicit group.
+        // syncGroups() always returns at least that group, so this is never
+        // an empty array.
+        return array_values($groupsByIndex)[0]->id;
     }
 
     /**
@@ -223,19 +380,32 @@ class InstrumentBuilder
      * edited existing one — kept in one place so create() and update() never
      * drift on which fields an item carries.
      *
+     * source_group_label is deliberately absent: it records where an imported
+     * question came from, and the edit form neither shows nor sends it. Listing
+     * it here with a `?? null` default meant every manual edit silently wiped
+     * the provenance of an imported instrument. It is written only on create,
+     * by the caller that actually knows it.
+     *
      * @param  array<string, mixed>  $item
      * @return array<string, mixed>
      */
     protected function itemAttributes(array $item): array
     {
-        return [
+        $attributes = [
             'code' => $item['code'],
             'label' => $item['label'] ?? null,
             'points_possible' => $item['points_possible'],
             'scoring_mode' => $item['scoring_mode'] ?? 'points',
             'is_bonus' => $item['is_bonus'] ?? false,
-            'source_group_label' => $item['source_group_label'] ?? null,
         ];
+
+        // Only when the caller says something about it — absent means "leave
+        // whatever is already there", not "clear it".
+        if (array_key_exists('source_group_label', $item)) {
+            $attributes['source_group_label'] = $item['source_group_label'];
+        }
+
+        return $attributes;
     }
 
     /**

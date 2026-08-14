@@ -459,6 +459,44 @@ Registo explícito da migração de uma turma entre versões (§10.2, A4). Sem e
 >
 > **Exclusões do cálculo.** O motor ignora o instrumento quando `counts_toward_classification = FALSE` ou quando o estado é `draft` ou `cancelled`. Um instrumento `in_correction` **entra**, com os resultados que já tiver — é o que permite acompanhar a evolução a meio da correção. Os alunos ainda por corrigir ficam `pending` e não contam (nem como zero).
 
+### 4.1.1 `instrument_groups`
+Secção estrutural do instrumento — «Grupo I», «Oralidade», «Parte B».
+
+| Coluna | Tipo | Null | Notas |
+|---|---|---|---|
+| `id`, `ulid` | | não | |
+| `organization_id` | `BIGINT UNSIGNED` | não | Desnormalizado para Policy sem `JOIN` |
+| `instrument_id` | `BIGINT UNSIGNED` | não | FK · **`ON DELETE CASCADE`** |
+| `label` | `VARCHAR(120)` | sim | **NULL = grupo implícito**, que a UI não mostra |
+| `sequence` | `SMALLINT UNSIGNED` | não | Ordem no instrumento |
+
+`UNIQUE(instrument_id, sequence)` · `INDEX(organization_id, instrument_id)`
+
+> **Grupo ≠ Domínio.** O grupo é **como o instrumento está organizado fisicamente**;
+> o domínio é **o que cada questão avalia**. São eixos independentes: uma questão
+> pertence a **exactamente um** grupo e pode repartir-se por **vários** domínios
+> (`item_domain_allocations`). «GRUPO II — Produção escrita, Q1: Escrita 70% /
+> Gramática 30%» é uma única questão, num só grupo, em dois domínios.
+>
+> Foi por se ter confundido os dois que a UI, ao apresentar secções por domínio,
+> levou a criar duas «Q2» no mesmo instrumento e a violar `UNIQUE(instrument_id, code)`.
+>
+> **O rótulo não é identidade.** Dois grupos podem chamar-se igual; renomear um
+> não altera mais nada, porque as questões são endereçadas pelo `id`/`ulid`.
+>
+> **Grupo implícito.** Todo o instrumento tem pelo menos um grupo. Um instrumento
+> simples tem um só, sem rótulo, que o professor nunca vê — a estrutura só se
+> torna visível quando ele criar grupos seus. Isto evita obrigar a «criar Grupo 1»
+> antes de poder criar a Q1.
+>
+> **`source_group_label` é outra coisa.** Vive no item, guarda **de onde veio** uma
+> linha importada, e nunca é identidade nem estrutura. Um importador pode
+> *sugerir* um `InstrumentGroup` a partir dele, mas são dados distintos.
+>
+> **Eliminação.** A FK de `instrument_items.instrument_group_id` é `RESTRICT`: um
+> grupo com questões não é removido, e nenhuma questão desaparece por o grupo ter
+> sido apagado na UI.
+
 ### 4.2 `instrument_items`
 Questão, item ou critério. **O item é a única unidade de pontuação do sistema.**
 
@@ -467,7 +505,8 @@ Questão, item ou critério. **O item é a única unidade de pontuação do sist
 | `id`, `ulid` | | não | |
 | `organization_id` | `BIGINT UNSIGNED` | não | Desnormalizado para Policy sem `JOIN` |
 | `instrument_id` | `BIGINT UNSIGNED` | não | FK · **`ON DELETE CASCADE`** |
-| `code` | `VARCHAR(16)` | não | «Q1» |
+| `instrument_group_id` | `BIGINT UNSIGNED` | não | FK · **`ON DELETE RESTRICT`** — a secção onde a questão está |
+| `code` | `VARCHAR(16)` | não | «Q1» — único **dentro do grupo**, não do instrumento |
 | `label` | `VARCHAR(500)` | sim | Enunciado breve |
 | `sequence` | `SMALLINT UNSIGNED` | não | |
 | `points_possible` | `DECIMAL(8,4)` | não | `10.0000` — cotação |
@@ -477,7 +516,19 @@ Questão, item ou critério. **O item é a única unidade de pontuação do sist
 | `is_bonus` | `BOOLEAN` | não | `DEFAULT FALSE` — não entra no denominador |
 | `source_group_label` | `VARCHAR(120)` | sim | **«Grupo de Questões» do Intuitivo** (§12.6, A9) |
 
-`UNIQUE(instrument_id, code)` · `INDEX(organization_id, instrument_id, sequence)`
+`UNIQUE(instrument_group_id, code)` · `INDEX(organization_id, instrument_id, sequence)`
+
+> **A unicidade é por grupo, não por instrumento.** `Oralidade/Q2` e
+> `Gramática/Q2` são duas questões diferentes e ambas legítimas; duas «Q2» no
+> mesmo grupo não. A chave era `UNIQUE(instrument_id, code)` e passou a
+> `UNIQUE(instrument_group_id, code)`. `InstrumentBuilder::guard()` aplica a
+> mesma regra antes de qualquer SQL, para que um duplicado seja uma mensagem e
+> nunca um 500.
+>
+> **`instrument_id` mantém-se** ao lado de `instrument_group_id`: todos os
+> leitores de um instrumento (grelha de correção, motor, resultados) procuram os
+> itens pelo instrumento, e passar por grupos acrescentaria um `JOIN` a cada um
+> sem ganho. Os dois são mantidos coerentes pelo `InstrumentBuilder`.
 
 > **Uma só unidade de pontuação, um só caminho de código.** §12.3 admite avaliar por questão, critério, rubrica, domínio ou combinação. Modelar cada modo com a sua tabela daria quatro caminhos no motor e quatro baterias de testes.
 >
@@ -1014,6 +1065,76 @@ Mas a garantia mais forte não vem do resolver: os valores **decididos** (`suppo
 - **`import_row_errors`** — `import_job_id` (FK `ON DELETE CASCADE`), `row_number INT UNSIGNED`, `severity VARCHAR(8)` CHECK (error, warning), `column_name VARCHAR(64) NULL`, `message VARCHAR(500)`, `raw_row JSON`. «Relatório de erros por linha» (§11.5).
 
 > O ficheiro carregado **não é retido indefinidamente** (§12.6 ponto 9): guarda-se hash, mapeamento e resumo; o ficheiro é eliminado após aplicação, conforme política de retenção.
+
+### 10.4.1 Importação futura de grelhas de correção — arquitetura pretendida
+
+> **Ainda não implementada.** Esta secção fixa a arquitetura para que o modelo de
+> domínio não a inviabilize. **Não existem hoje** adaptadores de Excel/CSV,
+> Intuitivo, Google Forms ou Plickers, nem qualquer integração externa.
+
+Importar uma grelha é sobretudo importar **resultados dos alunos** — `Aluno | Q1 | Q2 | …`
+ou `Aluno | Grupo | Questão | Pontos`. O caminho é sempre o mesmo, seja qual for a origem:
+
+```
+Excel/CSV · Intuitivo · Google Forms · Plickers · outra
+        ↓
+   adaptador/parser específico da origem
+        ↓
+   grelha canónica (independente da plataforma)
+        ↓
+   pré-visualização + mapeamento (alunos, grupos, questões)
+        ↓
+   validação
+        ↓
+   persistência normal do LÁPIS
+```
+
+**O adaptador nunca cria modelos do LÁPIS.** `Instrument`, `InstrumentGroup`,
+`InstrumentItem` e `StudentItemScore` são escritos só depois da confirmação do
+professor. `InstrumentBuilder` e `CalculationEngine` não conhecem — e não devem
+conhecer — nenhuma plataforma de origem.
+
+**Dois fluxos, ambos suportados pelo modelo:**
+
+1. **Associar a um instrumento existente** — o professor já o criou; a grelha traz
+   alunos, questões e pontuações, e o assistente mapeia para os
+   `InstrumentGroup`/`InstrumentItem` que existem.
+2. **Criar um instrumento a partir da grelha** — o professor não o criou. De
+   `Aluno | Oralidade Q1 | Oralidade Q2 | Gramática Q1 | Gramática Q2` o LÁPIS
+   pode **propor** um instrumento com dois grupos e duas questões cada, e importar
+   os resultados depois de confirmado.
+
+Por isso **a grelha canónica não exige `instrument_id` à entrada**: representa uma
+grelha ainda não associada a nada, e a referência interna só é necessária depois de o
+professor escolher entre associar e criar. A criação, quando implementada, tem de ser
+uma operação lógica consistente — nunca um instrumento criado com resultados
+importados a meio.
+
+**Nunca inventar o que falta.** Se a origem não indicar grupos, domínios, cotação
+máxima ou tipo de instrumento, a pré-visualização **pergunta** — com operações em
+lote para não tornar o processo pesado. Não há valores por defeito silenciosos.
+
+**`code` sozinho nunca é identidade.** Com grupos, `Oralidade/Q1` e `Gramática/Q1`
+coexistem: uma origem que diga apenas «Q1 = 5 pontos» é **ambígua** e tem de ser
+marcada como tal («Questão ambígua — selecionar destino»), nunca resolvida por
+adivinhação. É a consequência directa de permitir códigos repetidos entre grupos.
+
+**O nome do aluno também não é chave.** As origens podem trazer nome, número,
+email institucional ou um identificador externo. O mapeamento pode *sugerir* uma
+correspondência inequívoca, mas **nunca** atribuir uma classificação por
+correspondência aproximada silenciosa: na dúvida, decide o professor.
+
+Conflitos a resolver na pré-visualização: aluno não encontrado · dois alunos com o
+mesmo nome · questão ambígua entre grupos · questão inexistente no instrumento ·
+valor acima da cotação · aluno com resultado já lançado nesse item.
+
+Uma futura estrutura canónica — nomes meramente conceptuais — seria da ordem de
+`CorrectionGridImport` (origem, referência opcional a instrumento, linhas) →
+`CorrectionGridRow` (identificador externo do aluno, nome quando disponível,
+valores) → `CorrectionGridValue` (grupo, código da questão, pontuação, e
+opcionalmente cotação máxima e estado). `import_jobs`/`import_row_errors` (10.4)
+já oferecem o esqueleto de proveniência e erros por linha, e devem ser reutilizados
+em vez de se criar um subsistema paralelo.
 
 ### 10.5 Auditoria
 - **`audit_events`** — `organization_id`, `user_id NULL` (FK RESTRICT), `event VARCHAR(64)`, `auditable_type VARCHAR(64)`, `auditable_id BIGINT UNSIGNED`, `context JSON` (metadados, **nunca** conteúdo sensível duplicado, §22.4), `ip_address VARBINARY(16)`, `occurred_at DATETIME`.

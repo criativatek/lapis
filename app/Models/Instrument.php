@@ -83,6 +83,18 @@ class Instrument extends Model
     }
 
     /**
+     * The instrument's sections. Every instrument has at least one — an
+     * unnamed, implicit group — so a simple test needs no structure from the
+     * teacher and shows none.
+     *
+     * @return HasMany<InstrumentGroup, $this>
+     */
+    public function groups(): HasMany
+    {
+        return $this->hasMany(InstrumentGroup::class)->orderBy('sequence');
+    }
+
+    /**
      * @return BelongsTo<SchoolClass, $this>
      */
     public function schoolClass(): BelongsTo

@@ -7,6 +7,8 @@ type Option = { id: number; label: string; default_purpose?: string };
 
 type ItemRow = {
     ulid: string;
+    // Which section the question sits in, by position in `groups`.
+    group_index: number;
     code: string;
     label: string;
     points_possible: number;
@@ -14,6 +16,12 @@ type ItemRow = {
     has_scores: boolean;
     domains: { domain_id: number; allocation_percent: number }[];
 };
+
+// A group's identity is its ulid, and it has to survive the round trip. Leaving
+// it out of `initial` made the form send a group with no ulid, which the server
+// then read as a brand-new one and tried to insert at sequence 1 — colliding
+// with the group already there.
+type GroupRow = { ulid: string; label: string | null };
 
 const props = defineProps<{
     instrument: {
@@ -27,6 +35,7 @@ const props = defineProps<{
         counts_toward_classification: boolean;
         total_points: number | null;
         allow_bonus: boolean;
+        groups: GroupRow[];
         items: ItemRow[];
     };
     schoolClass: { ulid: string; label: string };
@@ -46,6 +55,7 @@ const initial = {
     counts_toward_classification: props.instrument.counts_toward_classification,
     total_points: props.instrument.total_points ?? '',
     allow_bonus: props.instrument.allow_bonus,
+    groups: props.instrument.groups,
     items: props.instrument.items,
 };
 </script>

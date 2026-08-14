@@ -6,6 +6,7 @@ use App\Http\Requests\InstrumentRequest;
 use App\Models\AcademicPeriod;
 use App\Models\Enrollment;
 use App\Models\Instrument;
+use App\Models\InstrumentGroup;
 use App\Models\InstrumentItem;
 use App\Models\InstrumentStatus;
 use App\Models\InstrumentType;
@@ -86,8 +87,9 @@ class InstrumentController extends Controller
         try {
             $instrument = $this->builder->create(
                 $class,
-                $this->resolveInstrumentType($request->safe()->except('items')),
+                $this->resolveInstrumentType($request->safe()->except(['items', 'groups'])),
                 $request->validated('items'),
+                $request->validated('groups') ?? [],
             );
         } catch (InstrumentValidationException $exception) {
             return back()->withErrors(['items' => $exception->getMessage()])->withInput();
@@ -101,7 +103,14 @@ class InstrumentController extends Controller
         Gate::authorize('update', $instrument->schoolClass);
         $this->ensureNotCancelled($instrument);
 
-        $instrument->load(['items.domainAllocations', 'schoolClass']);
+        $instrument->load(['items.domainAllocations', 'groups', 'schoolClass']);
+
+        // Items address their group by position in this list, so the two travel
+        // together and the client never has to know database ids.
+        $groups = $instrument->groups->values();
+        $groupIndexById = $groups->mapWithKeys(
+            fn (InstrumentGroup $group, int $index) => [$group->id => $index],
+        )->all();
 
         return Inertia::render('instruments/Edit', [
             'instrument' => [
@@ -115,8 +124,13 @@ class InstrumentController extends Controller
                 'counts_toward_classification' => $instrument->counts_toward_classification,
                 'total_points' => $instrument->total_points === null ? null : (float) $instrument->total_points,
                 'allow_bonus' => $instrument->allow_bonus,
+                'groups' => $groups->map(fn (InstrumentGroup $group) => [
+                    'ulid' => $group->ulid,
+                    'label' => $group->label,
+                ])->all(),
                 'items' => $instrument->items->map(fn (InstrumentItem $item) => [
                     'ulid' => $item->ulid,
+                    'group_index' => $groupIndexById[$item->instrument_group_id] ?? 0,
                     'code' => $item->code,
                     'label' => $item->label ?? '',
                     'points_possible' => (float) $item->points_possible,
@@ -141,14 +155,41 @@ class InstrumentController extends Controller
         try {
             $this->builder->update(
                 $instrument,
-                $this->resolveInstrumentType($request->safe()->except('items')),
+                $this->resolveInstrumentType($request->safe()->except(['items', 'groups'])),
                 $request->validated('items'),
+                // A group ulid belonging to a different instrument is dropped
+                // here: the request rule only proves it is this organization's,
+                // and only the controller knows which instrument is being
+                // edited. syncGroups then treats it as a new group.
+                $this->groupsOfThisInstrument($instrument, $request->validated('groups') ?? []),
             );
         } catch (InstrumentValidationException $exception) {
             return back()->withErrors(['items' => $exception->getMessage()])->withInput();
         }
 
         return to_route('instruments.show', $instrument->ulid);
+    }
+
+    /**
+     * Strips any group ulid that is not this instrument's own — an IDOR guard
+     * the Form Request cannot make, since it validates the field in isolation.
+     * A foreign ulid becomes a new group rather than silently stealing another
+     * instrument's section.
+     *
+     * @param  list<array<string, mixed>>  $groups
+     * @return list<array<string, mixed>>
+     */
+    protected function groupsOfThisInstrument(Instrument $instrument, array $groups): array
+    {
+        $own = $instrument->groups()->pluck('ulid')->all();
+
+        return array_map(function (array $group) use ($own): array {
+            if (isset($group['ulid']) && ! in_array($group['ulid'], $own, true)) {
+                $group['ulid'] = null;
+            }
+
+            return $group;
+        }, $groups);
     }
 
     public function cancel(Request $request, Instrument $instrument): RedirectResponse

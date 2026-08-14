@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Plus, Trash2 } from '@lucide/vue';
-import { watch } from 'vue';
+import { computed, watch } from 'vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -12,6 +12,30 @@ const props = defineProps<{
     domains: Domain[];
     selectedDomainIds: number[];
 }>();
+
+// Many instruments assess a single domain — a "Ficha de Gramática" is all
+// Gramática. There is no other distribution possible there, so asking the
+// teacher to pick the same domain and type 100% on every question would be
+// twenty pointless edits. When exactly one domain is selected, the allocation
+// is stated rather than configured.
+//
+// Presentation only: keeping the single allocation in step with the question's
+// points is the parent's job, since form.items is its own state and mutating a
+// prop from here would be the wrong way round. The allocation is persisted
+// exactly as before, and the calculation engine sees no difference.
+const soleDomain = computed(() =>
+    props.selectedDomainIds.length === 1
+        ? (props.domains.find((domain) => domain.id === props.selectedDomainIds[0]) ?? null)
+        : null,
+);
+
+const isSingleDomain = computed(
+    () =>
+        soleDomain.value !== null &&
+        props.item.domains.length <= 1 &&
+        (props.item.domains.length === 0 ||
+            props.item.domains[0].domain_id === soleDomain.value.id),
+);
 
 // A domain that was unselected after a question was already allocated to it
 // stays choosable for THAT row (falling back to the full list) so the select
@@ -32,10 +56,16 @@ function removeAllocation(index: number): void {
 }
 
 // The question's total is never typed directly — it's the sum of what's
-// entered per domain below, kept in sync here as those points change.
+// entered per domain below, kept in sync here as those points change. Skipped
+// for a single-domain instrument, where the parent drives the points the other
+// way round and this would fight it.
 watch(
     () => props.item.domains,
     () => {
+        if (isSingleDomain.value) {
+            return;
+        }
+
         if (props.item.domains.length > 0) {
             props.item.points_possible = props.item.domains.reduce(
                 (sum, allocation) => sum + (Number(allocation.points) || 0),
@@ -48,7 +78,22 @@ watch(
 </script>
 
 <template>
-    <div v-if="domains.length" class="space-y-1.5 border-t border-border pt-3">
+    <!--
+        Single-domain instrument: nothing to distribute, so the domain is stated
+        rather than configured. The teacher still sees which domain the question
+        counts toward — they just never have to type 100% again.
+    -->
+    <div
+        v-if="domains.length && isSingleDomain && soleDomain"
+        class="border-t border-border pt-2 text-xs text-muted-foreground"
+    >
+        Domínio: <span class="text-foreground">{{ soleDomain.label }}</span>
+    </div>
+
+    <div
+        v-else-if="domains.length"
+        class="space-y-1.5 border-t border-border pt-3"
+    >
         <div class="flex items-center justify-between">
             <span class="text-xs text-muted-foreground">Cotação por domínio</span>
             <Button type="button" variant="ghost" size="sm" @click="addAllocation">

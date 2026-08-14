@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use App\Models\AcademicPeriod;
 use App\Models\Domain;
 use App\Models\Instrument;
+use App\Models\InstrumentGroup;
 use App\Models\InstrumentItem;
 use App\Models\InstrumentType;
 use App\Models\SchoolClass;
@@ -96,8 +97,21 @@ class InstrumentRequest extends FormRequest
             'allow_bonus' => ['required', 'boolean'],
             'internal_notes' => ['nullable', 'string'],
 
+            // Optional: an instrument with no groups submitted gets the implicit
+            // one, so a simple test never has to declare structure. Labels are
+            // not unique — two groups may share a name, since identity is the
+            // ulid. Cross-instrument tampering is caught in the controller,
+            // which knows which instrument is being edited.
+            'groups' => ['sometimes', 'array'],
+            'groups.*.ulid' => ['nullable', 'string', new BelongsToCurrentOrganization(InstrumentGroup::class, 'ulid')],
+            'groups.*.label' => ['nullable', 'string', 'max:120'],
+
             'items' => ['required', 'array', 'min:1'],
             'items.*.ulid' => ['nullable', 'string', new BelongsToCurrentOrganization(InstrumentItem::class, 'ulid')],
+            // Which submitted group the question sits in. A code is unique
+            // within its group, not across the instrument — that rule spans
+            // rows, so it lives in InstrumentBuilder::guard().
+            'items.*.group_index' => ['nullable', 'integer', 'min:0'],
             'items.*.code' => ['required', 'string', 'max:16'],
             'items.*.label' => ['nullable', 'string', 'max:500'],
             'items.*.points_possible' => ['required', 'numeric', 'min:0'],

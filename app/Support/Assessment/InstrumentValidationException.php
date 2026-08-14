@@ -15,6 +15,37 @@ class InstrumentValidationException extends RuntimeException
         return new self(__('O instrumento precisa de pelo menos uma questão ou critério.'));
     }
 
+    /**
+     * A code identifies a question inside its group, not across the whole
+     * instrument — Oralidade/Q2 and Gramática/Q2 are two different questions.
+     */
+    public static function duplicateItemCodeInGroup(string $itemCode, ?string $groupLabel): self
+    {
+        if ($groupLabel === null || trim($groupLabel) === '') {
+            return new self(__(
+                'Já existe uma questão com o código :code neste instrumento.',
+                ['code' => $itemCode],
+            ));
+        }
+
+        return new self(__(
+            'Já existe uma questão com o código :code no grupo :group.',
+            ['code' => $itemCode, 'group' => $groupLabel],
+        ));
+    }
+
+    public static function cannotRemoveGroupWithItems(string $groupLabel): self
+    {
+        if (trim($groupLabel) === '') {
+            return new self(__('Não é possível remover um grupo que ainda tem questões. Mova ou elimine as questões primeiro.'));
+        }
+
+        return new self(__(
+            'Não é possível remover o grupo :group porque ainda tem questões. Mova ou elimine as questões primeiro.',
+            ['group' => $groupLabel],
+        ));
+    }
+
     public static function allocationsMustTotal100(string $itemCode, string $actual): self
     {
         return new self(__(
