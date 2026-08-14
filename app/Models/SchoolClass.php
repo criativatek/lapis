@@ -114,4 +114,12 @@ class SchoolClass extends Model
     {
         return $this->hasMany(EvidenceRecord::class, 'class_id');
     }
+
+    /**
+     * @return HasMany<Intervention, $this>
+     */
+    public function interventions(): HasMany
+    {
+        return $this->hasMany(Intervention::class, 'class_id');
+    }
 }

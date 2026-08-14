@@ -2,6 +2,29 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.29.0] — 2026-08-14
+
+### Intervenções
+
+- **Módulo reconcebido.** Deixou de ser «uma medida de apoio, para um aluno, com duração» e passou a «uma ação pedagógica intencional», que pode ser pontual ou continuada. O registo rápido é o essencial: escolher quem, escolher o tipo, guardar — sem título obrigatório, sem descrição obrigatória (salvo no tipo «Outro»), sem estado nem duração a preencher.
+- **Aluno, grupo ou turma.** Uma intervenção pode dirigir-se a um aluno, a um grupo de dois ou mais, ou à turma inteira. Uma intervenção de turma não nomeia alunos de propósito — a turma é o destinatário — mas continua a aparecer ao filtrar por qualquer aluno dela.
+- **Catálogo de 29 tipos**, agrupados por contexto (aprendizagem, avaliação, métodos de estudo e autonomia, atenção e autorregulação, comportamento, integração). O contexto é sempre deduzido do tipo, nunca escolhido pelo professor.
+- **Domínio disciplinar opcional**, com três leituras distintas: sem domínio específico, um domínio, ou todos os domínios. Só domínios reais da disciplina — «avaliação» ou «comportamento» são contextos, não domínios.
+- **Enquadramento pedagógico/legal opcional**, recolhido por defeito. A maioria das intervenções é prática corrente e não precisa dele. Quando o tipo corresponde inequivocamente a uma medida formal, o enquadramento é preenchido e pode ser alterado ou removido; quando apenas se aproxima de uma, é **sugerido** e só fica registado se o professor confirmar — uma sugestão por confirmar não é guardada de todo.
+- **Medidas de suporte e adaptações no processo de avaliação são coisas distintas.** Dar tempo suplementar a um aluno regista a adaptação e deixa o nível da medida por especificar: usar uma adaptação nunca significa, por si só, que o aluno está abrangido por medidas universais, seletivas ou adicionais. As duas podem coexistir quando o professor assim o decidir.
+- **Monitorização preservada.** Estado, data de fim prevista, conclusão e as apreciações periódicas de eficácia continuam exatamente como estavam, como ações separadas do registo.
+- **«Disponível para relatórios»**, ativo por defeito: marca elegibilidade para uso futuro pelo módulo de Relatórios, que não é alterado nesta versão — nada é copiado nem gerado automaticamente.
+- **Listagem com filtros** por aluno, tipo, contexto, domínio, período, disponibilidade para relatórios e nível de medida.
+
+### Preparação multijurisdição
+
+- **A intervenção é pedagógica e global; o enquadramento legal é jurisdicional.** «Apoio à organização da escrita» significa o mesmo em qualquer país; o que varia é se alguma legislação o enquadra. O catálogo de tipos deixou de conter qualquer conhecimento jurídico.
+- **Portugal passou a ser uma implementação isolada**, com toda a sua terminologia — níveis de medida, medidas e adaptações — fechada no seu próprio enquadramento jurídico.
+- **Jurisdição por organização**, com um fallback de compatibilidade para Portugal enquanto uma organização não tiver a sua definida. Uma jurisdição indicada explicitamente para a qual não exista enquadramento **não** herda o português: fica simplesmente sem enquadramento legal.
+- **Funciona plenamente sem enquadramento legal.** Uma escola numa jurisdição ainda não suportada regista intervenções normalmente, com tipos, destinatários, domínios, datas, estado, eficácia e filtros — apenas sem a camada jurídica, e sem lhe ser mostrada a taxonomia de outro país.
+- **A língua da interface nunca decide qual a lei aplicável.** Uma escola portuguesa pode trabalhar em inglês, e uma escola estrangeira em português.
+- **Alterações legislativas futuras não reclassificam o passado.** O enquadramento é resolvido pela data da própria intervenção, e o que ficou decidido é guardado no momento e nunca recalculado — abrir ou editar uma intervenção antiga não a reinterpreta à luz de legislação posterior.
+
 ## [0.28.1] — 2026-08-13
 
 ### Documentação

@@ -3,7 +3,7 @@ import { Head, Link } from '@inertiajs/vue3';
 import { ChevronRight, HeartHandshake } from '@lucide/vue';
 import Heading from '@/components/Heading.vue';
 
-type ClassRow = { ulid: string; label: string; subject: string; academic_year: string };
+type ClassRow = { ulid: string; label: string; subject: string; academic_year: string; interventions_count: number };
 
 defineProps<{ classes: ClassRow[] }>();
 </script>
@@ -12,7 +12,7 @@ defineProps<{ classes: ClassRow[] }>();
     <Head title="Intervenções" />
 
     <div class="mx-auto w-full max-w-3xl space-y-6 p-4">
-        <Heading title="Intervenções" description="Medidas de apoio por aluno — estado e apreciação da eficácia." />
+        <Heading title="Intervenções" description="Medidas de apoio e acompanhamento pedagógico, por turma." />
 
         <div v-if="classes.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
             <HeartHandshake class="mx-auto mb-3 size-8 text-muted-foreground" />
@@ -26,7 +26,10 @@ defineProps<{ classes: ClassRow[] }>();
                         <span class="font-medium">{{ schoolClass.label }}</span>
                         <span class="ml-2 text-sm text-muted-foreground">{{ schoolClass.subject }} · {{ schoolClass.academic_year }}</span>
                     </span>
-                    <ChevronRight class="size-4 text-muted-foreground" />
+                    <span class="flex items-center gap-3">
+                        <span class="text-xs text-muted-foreground">{{ schoolClass.interventions_count }} intervenções</span>
+                        <ChevronRight class="size-4 text-muted-foreground" />
+                    </span>
                 </Link>
             </li>
         </ul>

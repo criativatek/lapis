@@ -22,10 +22,11 @@ use Illuminate\Support\Carbon;
  * @property int $owner_id
  * @property string $timezone
  * @property string $locale
+ * @property string|null $jurisdiction ISO 3166-1 alpha-2; NULL = never stated, not "Portugal"
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['name', 'type', 'owner_id', 'timezone', 'locale'])]
+#[Fillable(['name', 'type', 'owner_id', 'timezone', 'locale', 'jurisdiction'])]
 class Organization extends Model
 {
     /** @use HasFactory<OrganizationFactory> */

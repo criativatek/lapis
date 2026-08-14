@@ -844,25 +844,91 @@ erDiagram
 ### 10.1 Intervenções
 Módulo completo do menu lateral (§11 dos menus), **ausente do §21 do prompt-base**. Modelado aqui.
 
+**Uma intervenção é o que o professor FEZ**, intencionalmente, em resposta a uma necessidade, dificuldade, objetivo ou contexto. É isso que a separa de um `evidence_record` (§10.2), que é o que o professor **OBSERVOU**. Um contacto com o encarregado de educação é um registo, não uma intervenção — vive em `EvidenceKind::Contact` e não é duplicado aqui.
+
+**2026-08-14 — módulo alargado.** Deixou de ser «uma medida de apoio, para um aluno, com duração» e passou a «uma ação pedagógica que pode ser pontual ou continuada, para um aluno, um grupo ou uma turma, opcionalmente enquadrada e opcionalmente apreciada». A ampliação é aditiva: nada do modelo anterior foi removido.
+
 #### `interventions`
 
 | Coluna | Tipo | Null | Notas |
 |---|---|---|---|
 | `id`, `ulid`, `organization_id` | | não | |
-| `enrollment_id` | `BIGINT UNSIGNED` | não | FK · `ON DELETE RESTRICT`. Ligada à inscrição, não ao aluno: uma intervenção pertence a um contexto turma/ano. |
+| `class_id` | `BIGINT UNSIGNED` | não | FK · `ON DELETE RESTRICT`. Toda a intervenção pertence a uma turma, mesmo quando não nomeia alunos. |
+| `enrollment_id` | `BIGINT UNSIGNED` | **sim** | FK · `ON DELETE RESTRICT`. **Legado**, mantida e preenchida só no caso `target_type = student`. A fonte canónica dos participantes é `intervention_enrollment`. |
 | `academic_period_id` | `BIGINT UNSIGNED` | sim | FK · `ON DELETE RESTRICT` |
-| `domain_id` | `BIGINT UNSIGNED` | sim | FK · `ON DELETE RESTRICT` — intervenção dirigida a um domínio |
-| `title` | `VARCHAR(200)` | não | |
-| `description` | `TEXT` | sim | Medida ou ação aplicada |
-| `status` | `VARCHAR(16)` | não | CHECK: new, in_progress, concluded, cancelled — «nova / em curso / concluída» |
-| `started_on` | `DATE` | não | |
-| `expected_end_on` | `DATE` | sim | |
-| `concluded_on` | `DATE` | sim | |
-| `include_in_report` | `BOOLEAN` | não | `DEFAULT FALSE` |
+| `domain_id` | `BIGINT UNSIGNED` | sim | FK · `ON DELETE RESTRICT`. Só preenchida quando `domain_relation = specific`. |
+| `target_type` | `VARCHAR(16)` | não | CHECK: student, group, class · `DEFAULT 'student'` |
+| `intervention_type` | `VARCHAR(64)` | sim | Código estável de `InterventionType`. Nulo apenas nas linhas anteriores ao catálogo, que têm `title` livre. |
+| `domain_relation` | `VARCHAR(16)` | não | CHECK: none, specific, all · `DEFAULT 'none'` |
+| `title` | `VARCHAR(200)` | não | Preenchido com o label do tipo — o professor nunca escreve um título (§3.1). |
+| `description` | `TEXT` | sim | Detalhe opcional; obrigatório só no tipo «Outro». |
+| `description_source` | `VARCHAR(16)` | não | CHECK: manual, template, ai · `DEFAULT 'manual'`. Hoje escreve-se sempre `manual`. |
+| `status` | `VARCHAR(16)` | não | CHECK: new, in_progress, concluded, cancelled. **Opcional no registo rápido** — uma intervenção pontual fica em `new` e nunca mais é tocada. |
+| `started_on` | `DATE` | não | A data da intervenção. Apresentada na UI apenas como «Data». |
+| `expected_end_on` | `DATE` | sim | Só faz sentido numa intervenção continuada. |
+| `concluded_on` | `DATE` | sim | Carimbada ao concluir. |
+| `include_in_report` | `BOOLEAN` | não | **Legado/deprecated.** Mantida e escrita em espelho de `available_for_reports` para não partir leitores antigos. Não usar em código novo; remover só depois de validação em produção. |
+| `available_for_reports` | `BOOLEAN` | não | `DEFAULT TRUE`. **Elegibilidade**, não inclusão: nada copia texto para um relatório. |
+| `support_measure_level` | `VARCHAR(16)` | sim | CHECK: universal, selective, additional |
+| `support_measure_code` | `VARCHAR(64)` | sim | Medida concreta; o seu nível deriva de `SupportMeasureCode::level()` e nunca discorda da coluna acima. |
+| `evaluation_adaptation_code` | `VARCHAR(64)` | sim | Adaptação ao processo de avaliação. **Nunca acompanhada de um nível de medida.** |
+| `legal_mapping_source` | `VARCHAR(32)` | sim | CHECK: system_direct, system_suggested_confirmed, manual. **Não nulo ⇒ houve decisão.** |
 | `created_by` | `BIGINT UNSIGNED` | não | FK `users` · `ON DELETE RESTRICT` |
 | `deleted_at` | `DATETIME` | sim | |
 
-`INDEX(organization_id, enrollment_id, status)` · `INDEX(organization_id, status, started_on)`
+`INDEX(organization_id, enrollment_id, status)` · `INDEX(organization_id, status, started_on)` · `INDEX(organization_id, class_id, started_on)`
+
+#### `intervention_enrollment`
+Pivot puro — a organização alcança-se pela intervenção, por isso sem `organization_id` (mesma convenção de `class_teachers`). É a **fonte canónica dos participantes**.
+
+| Coluna | Tipo | Null | Notas |
+|---|---|---|---|
+| `id` | | não | |
+| `intervention_id` | `BIGINT UNSIGNED` | não | FK · **`ON DELETE CASCADE`** |
+| `enrollment_id` | `BIGINT UNSIGNED` | não | FK · `ON DELETE RESTRICT` |
+
+`UNIQUE(intervention_id, enrollment_id)`
+
+Cardinalidade imposta em `InterventionTargetType::acceptsParticipantCount()`: `student` → exatamente 1 · `group` → 2 ou mais · `class` → **0**. Uma intervenção de turma não lista os alunos de propósito: a turma é o alvo, e nomear cada inscrição envelheceria mal assim que um aluno entrasse ou saísse. O scope `forEnrollment()` compensa isso, devolvendo também as intervenções de turma ao filtrar por um aluno.
+
+#### Catálogo, contexto e enquadramento
+
+`InterventionType` é a **única fonte de verdade** do módulo: label, contexto e enquadramento legal saem todos de lá.
+
+- **O contexto não é persistido.** Deriva de `InterventionType::context()`, tal como `EvidenceKind::group()` deriva o agrupamento dos Registos. O que a base de dados guarda é o **código do tipo**, que é estável: mudar um label é seguro, mudar ou reutilizar um código reescreve o significado de todas as intervenções já registadas.
+- Nenhum `match()` do catálogo tem `default`. Acrescentar um tipo sem decidir contexto e enquadramento **falha nos testes** em vez de cair silenciosamente em «aprendizagem» ou «sem enquadramento».
+- **Contexto ≠ domínio.** Domínio é pedagógico e da disciplina (Leitura, Escrita…); contexto é transversal (avaliação, comportamento…). Não existem domínios falsos como «Transversal» ou «Comportamento».
+
+Quatro modos de mapeamento (`LegalMappingMode`):
+
+| Modo | O que a app faz | Origem gravada |
+|---|---|---|
+| `direct` | Preenche sozinha — o tipo **é** a medida | `system_direct` |
+| `contextual` | **Sugere**; só grava se o professor confirmar | `system_suggested_confirmed` |
+| `evaluation_only` | Grava a adaptação, **sem nível de medida** | `system_direct` |
+| `none` | Nada | `null` (ou `manual`, se o professor definir) |
+
+> **Uma sugestão por confirmar não é gravada de todo.** Não há estado «sugerido mas pendente»: ou o professor confirmou e existe uma decisão, ou não existe nada. Isto garante que nenhuma query futura possa ler uma sugestão como se fosse uma decisão legal.
+
+**Estratégia corrente ≠ medida formal.** O catálogo distingue deliberadamente as duas coisas, mesmo quando o nome corrente se parece com o da medida:
+
+| Estratégia pedagógica corrente (`none`) | Medida formal correspondente (`direct`) |
+|---|---|
+| Apoio individualizado | Apoio psicopedagógico · Apoio tutorial (seletivas) |
+| Promoção da autonomia | Desenvolvimento de competências de autonomia pessoal e social (adicional) |
+
+As primeiras são prática de todos os dias e não propõem enquadramento nenhum — o seu sentido corrente é muito mais largo do que qualquer medida do DL 54/2018, e equipará-las automaticamente seria pôr palavras na boca do professor. As segundas existem como tipos próprios, escolhidos deliberadamente, e essas sim trazem enquadramento direto. Nenhuma substitui a outra: coexistem no catálogo.
+
+O mesmo cuidado separa apoio pedagógico de adaptação na avaliação, onde a língua corrente os aproxima: **«Apoio à interpretação de enunciados»** é ensino (contexto `learning`, sem enquadramento), enquanto **«Leitura de enunciados em situação de avaliação»** é uma adaptação (contexto `evaluation`, `evaluation_only`). O rótulo do segundo é deliberadamente explícito; o seu código continua `statement_reading`, porque a história está ancorada ao código e nunca à redação.
+
+#### `EvaluationAdaptationCode`
+Dez adaptações **operacionais**. Nenhuma implica medida universal, seletiva ou adicional — `support_measure_level` permanece nulo salvo escolha manual do professor.
+
+`statement_reading` · `test_reading` · `instruction_comprehension_support` · `simplified_wording` · `response_format_adaptation` · `instrument_adaptation` · `extra_time` · `separate_room` · `direct_answer_questions` · `other`
+
+Acrescentar códigos aqui **não exige migration**: a coluna é `VARCHAR(64)` sem CHECK constraint, deliberadamente, porque este catálogo é operacional e cresce com a prática — ao contrário de `support_measure_level` e `legal_mapping_source`, que são fechados e têm CHECK.
+
+> **Enquadrar a ação ≠ classificar o aluno.** Registar uma intervenção que se enquadra numa medida seletiva **não** significa que o aluno está formalmente abrangido por medidas seletivas. A app pode automatizar a primeira leitura; a segunda é um facto administrativo que nunca infere. Do mesmo modo, dar tempo suplementar a um aluno não diz nada sobre o seu estatuto — por isso `evaluation_adaptation_code` nunca vem acompanhado de `support_measure_level`.
 
 #### `intervention_reviews`
 «Avaliação da intervenção — apreciação da evolução ou eficácia». Tabela-filha porque uma intervenção longa é apreciada várias vezes; uma coluna só guardaria a última.
@@ -879,6 +945,49 @@ Módulo completo do menu lateral (§11 dos menus), **ausente do §21 do prompt-b
 `INDEX(organization_id, intervention_id, reviewed_on)`
 
 > **As intervenções não entram no cálculo.** Não têm peso, não têm normalização, não tocam em `student_domain_results`. §14.3: «Não mistures automaticamente comportamento com classificação académica». Se um dia uma intervenção tiver de influenciar a avaliação, o caminho é um instrumento com `counts_toward_classification`, explícito e ponderado — não um efeito lateral.
+
+#### Arquitetura multijurisdição e evolução normativa
+
+> **A intervenção é pedagógica e global. O enquadramento legal é jurisdicional e versionável.**
+
+`InterventionType` e `InterventionContext` **não pertencem a nenhuma legislação**. «Apoio à organização da escrita» significa o mesmo em Lisboa e em Lyon; o que varia é se alguma jurisdição enquadra juridicamente esse ato. Por isso não existe — nem deve existir — `InterventionTypePortugal` nem `InterventionType2027`: uma alteração legislativa é um **framework novo**, nunca um fork do catálogo pedagógico.
+
+| Peça | Papel |
+|---|---|
+| `InterventionLegalFramework` | interface: como uma jurisdição, num período da sua história, lê o catálogo |
+| `PortugalInclusiveEducationFramework` | **uma implementação**, não o núcleo. Contém toda a taxonomia portuguesa |
+| `NullLegalFramework` | ausência de enquadramento — um estado **válido**, não degradado |
+| `LegalFrameworkRegistry` | os frameworks que o LÁPIS sabe aplicar. Um só, hoje |
+| `LegalFrameworkResolver` | escolhe o framework a partir de **jurisdição + data** |
+
+**Resolução.** `organizations.jurisdiction` (ISO 3166-1 alpha-2, nullable) → se nula, `config('lapis.default_jurisdiction')` → se o registry não cobrir essa jurisdição nessa data, `NullLegalFramework`.
+
+O *fallback* aplica-se ao **nível da jurisdição**, não ao do framework. É a distinção que impede o erro grave:
+
+| Organização | Resolve para |
+|---|---|
+| `jurisdiction = NULL` (todas hoje) | Portugal — via default de compatibilidade |
+| `jurisdiction = 'PT'` | Portugal |
+| `jurisdiction = 'ES'` | **Null** — nunca Portugal |
+
+Uma jurisdição explicitamente indicada e não suportada significa «sem framework disponível», **não** «Portugal». Aplicar em silêncio a lei de um país à escola de outro seria pior do que não aplicar nenhuma.
+
+> `LAPIS_DEFAULT_JURISDICTION=PT` é uma **ponte de compatibilidade legada**, não o modelo definitivo de internacionalização. Existe para que as instalações anteriores à coluna mantenham exatamente o comportamento que já tinham. Quando existir onboarding institucional, a jurisdição passa a ser definida explicitamente por organização e o *default* pode ser desligado (`null`) em instalações novas.
+
+**Idioma ≠ jurisdição.** `locale` e `jurisdiction` são independentes e nunca um deriva do outro: `locale = en` + `jurisdiction = PT` é válido (escola portuguesa a trabalhar em inglês), tal como `locale = pt_PT` + `jurisdiction = ES`. A jurisdição também nunca é inferida de `timezone`, domínio ou língua.
+
+**A data é sempre `started_on`, nunca hoje.** Uma intervenção registada em 2026 e editada em 2027 continua a ser lida sob o regime em vigor quando aconteceu. Usar a data atual reinterpretaria o histórico no dia em que a lei mudasse.
+
+Mas a garantia mais forte não vem do resolver: os valores **decididos** (`support_measure_level`, `support_measure_code`, `evaluation_adaptation_code`, `legal_mapping_source`) são escritos no momento e **nunca recalculados**. O framework só produz *sugestões*. Por isso não existe hoje coluna de *snapshot* de jurisdição/versão: com um só framework guardaria o mesmo valor em todas as linhas — custo real, zero informação. Revisitar quando existir uma segunda versão, altura em que o backfill a partir de `started_on` é determinístico.
+
+**Regime português de 2027.** Aprovado politicamente em 2026, com efeitos anunciados para 2027. **Não está codificado.** Será um segundo framework, com as suas datas de vigência, quando existir texto final — escrevê-lo a partir de um projeto preliminar poria legislação especulativa à frente de professores. Nenhuma regra transitória (RTP→PDI, PEI→PDI, regime híbrido) está implementada; a arquitetura apenas consegue suportá-las.
+
+**Mudança de `started_on`** entre datas cobertas por frameworks diferentes poderá vir a exigir recalcular a sugestão, manter o enquadramento manual ou pedir confirmação. Não implementado: só existe um framework ativo.
+
+**Fora de âmbito, deliberadamente:** PDI, ELAI, Gestor de Apoio à Inclusão, SNAI, CCAI, barreiras à aprendizagem, aprovação formal do encarregado de educação. São conceitos do futuro enquadramento português/institucional e não pertencem ao núcleo global de `Intervention`. Um PDI futuro seria um plano que agrega intervenções — a cardinalidade fica por decidir.
+
+#### Preparação para Relatórios
+`available_for_reports` marca **elegibilidade**, não inclusão. Esta entrega não toca no módulo Relatórios; deixa apenas scopes reutilizáveis em `Intervention` para o futuro motor os consumir sem conhecer o formulário: `forClass()`, `forEnrollment()`, `inPeriod()`, `byContext()`, `byDomain()`, `availableForReports()`, `bySupportMeasureLevel()`. O último exige `legal_mapping_source` não nulo, para que uma sugestão nunca apareça num relatório como enquadramento legal.
 
 ### 10.2 Evidências e registos
 - **`evidence_records`** — `organization_id`, `class_id` (FK RESTRICT), `enrollment_id NULL` (evidência de turma), `academic_period_id NULL`, `domain_id NULL`, `criterion_id NULL`, `instrument_id NULL`, `lesson_id NULL` (todas `ON DELETE RESTRICT`, ou `SET NULL` nas ligações acessórias), `occurred_at DATETIME`, `kind VARCHAR(32)` CHECK (homework, incident, positive_behaviour, participation, progress, difficulty, support, contact, activity, note) — rótulos pt-PT: "Trabalho de casa", "Ocorrência disciplinar", "Comportamento meritório", "Participação", "Progresso", "Dificuldade", "Apoio", "Contacto", "Atividade", "Observação" —, `disciplinary_severity VARCHAR(16)` CHECK (g2, g3, g4, g5, g6), nullable, obrigatório apenas quando `kind = incident` (2026-08-01: grau de gravidade de uma ocorrência disciplinar — G1 é o seu próprio `kind`, não um grau aqui), `description VARCHAR(1000)` (NOT NULL na BD — quando o tipo não a exige, a aplicação grava `''`, nunca `NULL`), `quick_rating_scale_level_id NULL` («avaliação global» por escala visual, §14.2), `created_by`, `deleted_at`.

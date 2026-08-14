@@ -194,12 +194,16 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::post('classes/{class}/self-assessments/{period}/{enrollment}', [SelfAssessmentController::class, 'store'])->name('self-assessments.store');
     });
 
-    // Interventions (§14): support measures with a lifecycle and reviews.
+    // Interventions (§14): what the teacher did, for a student, a group or the
+    // whole class — never part of the calculation. PATCH stays the light
+    // status-only action so the quick "Concluir" button does not have to
+    // resend the whole record; PUT is the full edit.
     Route::middleware('module:interventions')->group(function () {
         Route::get('interventions', [InterventionController::class, 'index'])->name('interventions.index');
         Route::get('classes/{class}/interventions', [InterventionController::class, 'show'])->name('interventions.show');
         Route::post('classes/{class}/interventions', [InterventionController::class, 'store'])->name('interventions.store');
-        Route::patch('interventions/{intervention}', [InterventionController::class, 'update'])->name('interventions.update');
+        Route::put('interventions/{intervention}', [InterventionController::class, 'update'])->name('interventions.update');
+        Route::patch('interventions/{intervention}', [InterventionController::class, 'updateStatus'])->name('interventions.status.update');
         Route::post('interventions/{intervention}/reviews', [InterventionController::class, 'addReview'])->name('interventions.reviews.store');
         Route::delete('interventions/{intervention}', [InterventionController::class, 'destroy'])->name('interventions.destroy');
     });
