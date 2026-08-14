@@ -2,11 +2,13 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { CircleAlert } from '@lucide/vue';
 import Heading from '@/components/Heading.vue';
+import StudentAvatar from '@/components/StudentAvatar.vue';
 
 type DomainCol = { id: number; name: string };
 type DomainValue = { domain_id: number; value: string | null; warning: boolean };
 type Row = {
     name: string;
+    photo_url: string | null;
     class_number: number | null;
     overall: string | null;
     proposed: string | null;
@@ -88,8 +90,11 @@ function selectPeriod(ulid: string): void {
                 <tbody class="divide-y divide-border">
                     <tr v-for="row in rows" :key="row.name" class="hover:bg-muted/20">
                         <td class="sticky left-0 z-10 bg-background px-3 py-2 whitespace-nowrap">
-                            <span class="text-muted-foreground">{{ row.class_number ?? '—' }}</span>
-                            <span class="ml-2 font-medium">{{ row.name }}</span>
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-muted-foreground">{{ row.class_number ?? '—' }}</span>
+                                <StudentAvatar :photo-url="row.photo_url" size="xs" />
+                                <span class="font-medium">{{ row.name }}</span>
+                            </div>
                         </td>
                         <td v-for="domain in domains" :key="domain.id" class="px-3 py-2 text-center tabular-nums">
                             <span :class="{ 'text-muted-foreground': domainValue(row, domain.id)?.value === null }">

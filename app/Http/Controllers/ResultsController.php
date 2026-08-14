@@ -72,6 +72,7 @@ class ResultsController extends Controller
                 ->map(fn (int $id) => ['id' => $id, 'name' => $domainNames[$id] ?? '—']),
             'rows' => array_map(fn (array $row) => [
                 'name' => optional($row['enrollment']->student->identity)->display_name ?? '(sem identidade)',
+                'photo_url' => $row['enrollment']->student->photoUrl(),
                 'class_number' => $row['enrollment']->class_number,
                 'overall' => $row['outcome']->normalizedValue,
                 'proposed' => $row['outcome']->proposedValue,

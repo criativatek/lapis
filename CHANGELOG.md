@@ -2,6 +2,29 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.30.0] — 2026-08-14
+
+### Alunos
+
+- **Os dados de um aluno já inscrito passam a ser editáveis.** Nome, número e data de entrada corrigem-se no lugar, a partir da própria turma. Até aqui um simples erro de escrita obrigava a eliminar o aluno e voltar a criá-lo — com tudo o que isso arrastava atrás. A ação «Editar» aparece na coluna Ações, antes de «Eliminar».
+- **Um aluno «(sem identidade)» passa a poder receber nome.** Ao guardá-lo, a identidade cifrada é criada e a listagem passa imediatamente a mostrar o nome real. O campo abre vazio, nunca pré-preenchido com o texto marcador.
+- **Corrigir a data de entrada corrige também o «ingresso tardio»**, nos dois sentidos: adiar a entrada marca-o, antecipá-la limpa-o. Não fica um aviso desatualizado a dizer o contrário do que a data diz.
+- **A correção é sempre uma edição, nunca uma recriação.** O pseudónimo, o `Student` e o `Enrollment` mantêm-se — e com eles ficam intactos instrumentos, resultados, avaliações, registos, intervenções, autoavaliações, relatórios e fotografias. É a garantia de que corrigir um nome não desliga o histórico pedagógico do aluno a quem pertence.
+
+### Fotografias
+
+- **Gestão individual da fotografia**: adicionar, substituir e remover, aluno a aluno, a partir do mesmo diálogo de edição — sem outro ícone na tabela. Até aqui a única via era a importação em lote do ficheiro do Inovar.
+- **O aluno que entra a meio do ano deixa de ficar sem fotografia.** Inscreve-se à mão, edita-se, associa-se a fotografia — sem gerar nem importar de novo o ficheiro completo da turma.
+- **Uma só implementação de armazenamento**, em `StudentPhotoService`: a importação em lote e a gestão individual passaram a partilhar o mesmo disco privado, o mesmo esquema de nomes e a mesma limpeza. A importação do Inovar continua a funcionar exatamente como antes.
+- **Substituir uma fotografia deixa de acumular ficheiros órfãos**, e uma falha a meio deixa de os criar: se a nova referência não chegar a ser gravada, o ficheiro acabado de escrever é removido e a fotografia anterior fica intacta; se uma inscrição falhar durante a importação, a fotografia já escrita para essa linha é limpa. Ao remover, a referência é apagada primeiro — uma limpeza física falhada regista um aviso e nunca faz a aplicação voltar a apontar para um ficheiro que o professor mandou remover.
+- **A fotografia continua opcional e continua privada.** Nada é bloqueado por não existir; o ficheiro nunca sai do armazenamento privado, é servido apenas pela rota autorizada, e a validação lê o conteúdo do ficheiro em vez de confiar na extensão.
+
+### Miniaturas
+
+- **Uma miniatura do aluno junto ao nome**, para o professor ligar depressa nome a rosto — sobretudo no início do ano ou numa turma nova: na lista da turma, na grelha de correção, nas classificações, nos resultados e no resumo de avaliação. É ajuda visual e nada mais: não entra em relatórios, registos, intervenções nem em qualquer conteúdo que atravesse a fronteira da IA.
+- **Quem não tem fotografia mostra um marcador do mesmo tamanho**, para que a ausência nunca desalinhe as colunas — e uma imagem que falhe a carregar cai para esse mesmo marcador, em vez de deixar uma imagem partida.
+- **A fotografia adapta-se à densidade da grelha, não o contrário**: 34 px na lista da turma, 24 px nas grelhas, sem aumentar o espaçamento vertical das linhas. Na grelha de correção, onde a coluna do aluno compete com as colunas de lançamento, a miniatura recolhe em ecrãs estreitos. O nome nunca é escondido em favor da fotografia.
+
 ## [0.29.1] — 2026-08-14
 
 ### Documentação

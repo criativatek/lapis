@@ -51,6 +51,52 @@ class StudentEnrollmentService
         });
     }
 
+    /**
+     * Corrects the basic data of a student already enrolled: the name (which
+     * lives in the encrypted identity) and the number and entry date (which
+     * live in the enrollment).
+     *
+     * Nothing is recreated. The Student row — and with it pseudonym_code, the
+     * stable technical identity every result, instrument, record and
+     * intervention hangs off — is never touched. A student who was imported
+     * without an identity gets one created here, which is what turns
+     * "(sem identidade)" into a real name (§11.2).
+     *
+     * @param  array{name: string, class_number?: int|null, enrolled_on?: string|null}  $data
+     */
+    public function updateExisting(Enrollment $enrollment, array $data): Enrollment
+    {
+        return DB::transaction(function () use ($enrollment, $data): Enrollment {
+            $student = $enrollment->student;
+
+            // Only display_name is editable here: school_number, birth_date and
+            // photo_path belong to other flows and must survive this edit.
+            if ($student->identity === null) {
+                $student->identity()->create([
+                    'organization_id' => $this->currentOrganization->id(),
+                    'display_name' => $data['name'],
+                ]);
+                $student->unsetRelation('identity');
+            } else {
+                // The blind index follows display_name on save (StudentIdentity::booted).
+                $student->identity->update(['display_name' => $data['name']]);
+            }
+
+            $enrolledOn = $data['enrolled_on'] ?? $enrollment->enrolled_on->toDateString();
+
+            $enrollment->update([
+                'class_number' => $data['class_number'] ?? null,
+                'enrolled_on' => $enrolledOn,
+                // Recomputed, never carried over: correcting the entry date has
+                // to correct the late-entry marker with it.
+                'is_late_entry' => Carbon::parse($enrolledOn)
+                    ->greaterThan($enrollment->schoolClass->academicYear->starts_on),
+            ]);
+
+            return $enrollment;
+        });
+    }
+
     protected function uniquePseudonym(): string
     {
         do {

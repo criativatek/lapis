@@ -12,6 +12,7 @@ use App\Services\Import\RosterFileParseException;
 use App\Services\Import\RosterFileParser;
 use App\Services\Import\RosterImportPreviewBuilder;
 use App\Services\StudentEnrollmentService;
+use App\Services\StudentPhotoService;
 use App\Support\Import\RosterImportTempStorage;
 use App\Support\Privacy\BlindIndex;
 use App\Support\Tenancy\CurrentOrganization;
@@ -20,8 +21,8 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 use Inertia\Inertia;
+use Throwable;
 
 class RosterImportController extends Controller
 {
@@ -31,6 +32,7 @@ class RosterImportController extends Controller
         protected RosterImportPreviewBuilder $previewBuilder,
         protected RosterImportTempStorage $tempStorage,
         protected StudentEnrollmentService $enrollmentService,
+        protected StudentPhotoService $photoService,
         protected CurrentOrganization $currentOrganization,
     ) {}
 
@@ -258,15 +260,27 @@ class RosterImportController extends Controller
                     $photoPath = $this->movePhotoToPermanentStorage($photoTempPath);
                 }
 
-                $this->enrollmentService->enrollNew($class, [
-                    'name' => $row['name'],
-                    'class_number' => $row['class_number'] ?? null,
-                    'birth_date' => $row['birth_date'] ?? null,
-                    'import_note' => $row['note'] ?? null,
-                    'school_number' => $row['process_number'] ?? null,
-                    'photo_path' => $photoPath,
-                    'status' => $this->mapSituation($row['situation_code']),
-                ]);
+                try {
+                    $this->enrollmentService->enrollNew($class, [
+                        'name' => $row['name'],
+                        'class_number' => $row['class_number'] ?? null,
+                        'birth_date' => $row['birth_date'] ?? null,
+                        'import_note' => $row['note'] ?? null,
+                        'school_number' => $row['process_number'] ?? null,
+                        'photo_path' => $photoPath,
+                        'status' => $this->mapSituation($row['situation_code']),
+                    ]);
+                } catch (Throwable $exception) {
+                    // enrollNew() rolls its own transaction back, so nothing in
+                    // the database points at the photo we just wrote for this
+                    // row. Compensate for it here — the temp folder cleanup
+                    // below only covers the staging area, not permanent storage.
+                    if ($photoPath !== null) {
+                        Storage::disk(StudentPhotoService::DISK)->delete($photoPath);
+                    }
+
+                    throw $exception;
+                }
 
                 $created++;
             }
@@ -287,11 +301,12 @@ class RosterImportController extends Controller
             return null;
         }
 
-        $extension = pathinfo($tempRelativePath, PATHINFO_EXTENSION) ?: 'jpg';
-        $permanentPath = 'student-photos/'.Str::uuid().'.'.$extension;
-        Storage::disk('local')->put($permanentPath, $bytes);
-
-        return $permanentPath;
+        // One writer decides the disk and the naming, here and in the manual
+        // single-student path alike.
+        return $this->photoService->putBytes(
+            $bytes,
+            pathinfo($tempRelativePath, PATHINFO_EXTENSION) ?: 'jpg',
+        );
     }
 
     protected function mapSituation(string $code): string

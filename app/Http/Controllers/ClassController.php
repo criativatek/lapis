@@ -110,14 +110,15 @@ class ClassController extends Controller
                 ->map(fn (Enrollment $enrollment) => [
                     'ulid' => $enrollment->ulid,
                     'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
+                    // So the edit dialog opens on an empty field instead of
+                    // offering "(sem identidade)" as if it were a real name.
+                    'has_identity' => $enrollment->student->identity !== null,
                     'pseudonym' => $enrollment->student->pseudonym_code,
                     'class_number' => $enrollment->class_number,
                     'enrolled_on' => $enrollment->enrolled_on->toDateString(),
                     'is_late_entry' => $enrollment->is_late_entry,
                     'status_label' => $enrollment->status->label(),
-                    'photo_url' => optional($enrollment->student->identity)->photo_path !== null
-                        ? route('students.photo', $enrollment->student->ulid)
-                        : null,
+                    'photo_url' => $enrollment->student->photoUrl(),
                 ]),
         ]);
     }

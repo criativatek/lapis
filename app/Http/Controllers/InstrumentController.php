@@ -271,6 +271,9 @@ class InstrumentController extends Controller
             'students' => $enrollments->map(fn (Enrollment $enrollment) => [
                 'enrollment_id' => $enrollment->id,
                 'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
+                // A thumbnail to put a face to the name while correcting; the
+                // identity is already eager-loaded, so this adds no query.
+                'photo_url' => $enrollment->student->photoUrl(),
                 'class_number' => $enrollment->class_number,
                 // The engine derives applicability from these dates (§11.4); the
                 // grid shows it so the teacher sees why a cell is not applicable.

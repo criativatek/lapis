@@ -105,7 +105,12 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::post('classes/{class}/profile-migration', [ClassProfileMigrationController::class, 'store'])->name('classes.profile-migration.store');
 
         Route::post('classes/{class}/students', [EnrollmentController::class, 'store'])->name('classes.students.store');
+        Route::put('classes/{class}/students/{enrollment}', [EnrollmentController::class, 'update'])->name('classes.students.update');
         Route::delete('classes/{class}/students/{enrollment}', [EnrollmentController::class, 'destroy'])->name('classes.students.destroy');
+        // The photo is its own request: an upload and a data edit fail
+        // differently, and one must not discard the other.
+        Route::post('classes/{class}/students/{enrollment}/photo', [StudentPhotoController::class, 'update'])->name('classes.students.photo.update');
+        Route::delete('classes/{class}/students/{enrollment}/photo', [StudentPhotoController::class, 'destroy'])->name('classes.students.photo.destroy');
 
         Route::post('classes/{class}/roster-imports', [RosterImportController::class, 'store'])->name('classes.roster-imports.store');
         Route::post('classes/{class}/photos', [ClassPhotoImportController::class, 'store'])->name('classes.photos.store');

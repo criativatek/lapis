@@ -56,4 +56,25 @@ class Student extends Model
     {
         return $this->hasMany(Enrollment::class);
     }
+
+    /**
+     * The authorized route to this student's photo, or null when there is none.
+     *
+     * A URL, never the image itself: the bytes stay on the private disk and
+     * only StudentPhotoController serves them, after its Policy check. The
+     * ?v= stamp is the identity's updated_at, so a replaced photo is not
+     * served from the browser's cache under the same address.
+     *
+     * Callers must eager-load `identity` — this touches no database of its own.
+     */
+    public function photoUrl(): ?string
+    {
+        $identity = $this->identity;
+
+        if ($identity === null || $identity->photo_path === null) {
+            return null;
+        }
+
+        return route('students.photo', $this->ulid).'?v='.$identity->updated_at->timestamp;
+    }
 }

@@ -421,6 +421,47 @@ class RosterImportTest extends TestCase
     }
 
     #[Test]
+    public function an_enrollment_that_fails_after_its_photo_was_written_leaves_no_orphan_file(): void
+    {
+        $class = $this->createClass();
+        $storage = app(RosterImportTempStorage::class);
+        $token = $storage->newToken();
+        $storage->storePhoto($token, 0, 'fake-photo-bytes', 'jpg');
+
+        // A real failure inside enrollNew(), raised where a database error
+        // would surface. Its own transaction rolls the rows back, so nothing
+        // ends up pointing at the photo already written to permanent storage.
+        StudentIdentity::creating(function (): void {
+            throw new RuntimeException('database unavailable');
+        });
+
+        try {
+            $this->actingAs($this->user)->post("/classes/{$class->ulid}/roster-imports/{$token}/confirm", [
+                'rows' => [[
+                    'name' => 'Maria Teste',
+                    'class_number' => 1,
+                    'birth_date' => null,
+                    'situation_code' => 'X',
+                    'note' => null,
+                    'photo_index' => 0,
+                    'photo_extension' => 'jpg',
+                    'include' => true,
+                ]],
+            ]);
+        } catch (RuntimeException) {
+            // The failure propagates so the teacher sees it — that is intended.
+        }
+
+        // Nothing was enrolled...
+        $this->assertSame(0, Enrollment::withoutGlobalScopes()->count());
+        $this->assertSame(0, StudentIdentity::withoutGlobalScopes()->count());
+
+        // ...and the permanent photo written for that row was compensated away
+        // rather than left behind for nobody.
+        $this->assertSame([], Storage::disk('local')->files('student-photos'));
+    }
+
+    #[Test]
     public function a_validation_error_on_confirm_does_not_delete_the_temp_photos(): void
     {
         $class = $this->createClass();

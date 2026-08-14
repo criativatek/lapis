@@ -7,11 +7,10 @@ use App\Models\SchoolClass;
 use App\Services\Import\PhotoFileParser;
 use App\Services\Import\RosterFileParseException;
 use App\Services\Import\RosterImportPreviewBuilder;
+use App\Services\StudentPhotoService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 use Inertia\Inertia;
 
 class ClassPhotoImportController extends Controller
@@ -19,6 +18,7 @@ class ClassPhotoImportController extends Controller
     public function __construct(
         protected PhotoFileParser $photoParser,
         protected RosterImportPreviewBuilder $previewBuilder,
+        protected StudentPhotoService $photoService,
     ) {}
 
     public function store(Request $request, SchoolClass $class): RedirectResponse
@@ -50,9 +50,13 @@ class ClassPhotoImportController extends Controller
                 continue;
             }
 
-            $permanentPath = 'student-photos/'.Str::uuid().'.'.$photoExtension;
-            Storage::disk('local')->put($permanentPath, $photoMatches[$photoIndex]->imageBytes);
-            $enrollment->student->identity->update(['photo_path' => $permanentPath]);
+            // Same writer as the manual, one-student path: one naming scheme,
+            // one disk, and the previous file cleaned up either way.
+            $this->photoService->storeBytes(
+                $enrollment->student->identity,
+                $photoMatches[$photoIndex]->imageBytes,
+                $photoExtension,
+            );
             $matchedCount++;
         }
 

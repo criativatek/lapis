@@ -4,6 +4,7 @@ import { CircleAlert, Save } from '@lucide/vue';
 import { computed, nextTick, reactive, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
+import StudentAvatar from '@/components/StudentAvatar.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -40,6 +41,7 @@ type Item = {
 type Student = {
     enrollment_id: number;
     name: string;
+    photo_url: string | null;
     class_number: number | null;
     enrolled_on: string;
     is_late_entry: boolean;
@@ -455,13 +457,19 @@ function revertCancellation(): void {
                 <tbody class="divide-y divide-border">
                     <tr v-for="(student, rowIndex) in students" :key="student.enrollment_id" class="hover:bg-muted/20">
                         <td class="sticky left-0 z-10 bg-background px-3 py-1.5 whitespace-nowrap">
-                            <span class="text-muted-foreground">{{ student.class_number ?? '—' }}</span>
-                            <span class="ml-2 font-medium">{{ student.name }}</span>
-                            <span
-                                v-if="student.joined_after_instrument"
-                                class="ml-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-900"
-                                title="Entrou depois desta avaliação — não é penalizado por ela."
-                            >entrou depois</span>
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-muted-foreground">{{ student.class_number ?? '—' }}</span>
+                                <!-- Hidden on narrow viewports only here: this column is
+                                     sticky and competes directly with the question columns
+                                     the teacher is typing into. The name never hides. -->
+                                <StudentAvatar :photo-url="student.photo_url" size="xs" class="hidden sm:inline-flex" />
+                                <span class="font-medium">{{ student.name }}</span>
+                                <span
+                                    v-if="student.joined_after_instrument"
+                                    class="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-900"
+                                    title="Entrou depois desta avaliação — não é penalizado por ela."
+                                >entrou depois</span>
+                            </div>
                         </td>
 
                         <td v-for="(item, columnIndex) in items" :key="item.id" class="px-1 py-1 text-center">

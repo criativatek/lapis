@@ -97,11 +97,14 @@ class AssessmentSummaryQuery
 
         foreach ($enrollments as $enrollment) {
             $name = optional($enrollment->student->identity)->display_name ?? '(sem identidade)';
+            // The identity is eager-loaded above, so this costs no extra query.
+            $photoUrl = $enrollment->student->photoUrl();
 
             if (! self::isApplicable($enrollment, $instrument->applied_on)) {
                 $nonApplicableStudents[] = [
                     'enrollment_id' => $enrollment->id,
                     'name' => $name,
+                    'photo_url' => $photoUrl,
                     'class_number' => $enrollment->class_number,
                 ];
 
@@ -124,6 +127,7 @@ class AssessmentSummaryQuery
             $applicableStudents[] = [
                 'enrollment_id' => $enrollment->id,
                 'name' => $name,
+                'photo_url' => $photoUrl,
                 'class_number' => $enrollment->class_number,
                 'state_key' => $state['key'],
                 'state_label' => $state['label'],

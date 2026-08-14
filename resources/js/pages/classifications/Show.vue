@@ -3,6 +3,7 @@ import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { CircleAlert, PencilLine, RefreshCw, Send } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
+import StudentAvatar from '@/components/StudentAvatar.vue';
 
 type Classification = {
     ulid: string;
@@ -15,7 +16,7 @@ type Classification = {
     override_reason: string | null;
     can_confirm: boolean;
 };
-type Row = { name: string; class_number: number | null; classification: Classification | null };
+type Row = { name: string; photo_url: string | null; class_number: number | null; classification: Classification | null };
 
 const props = defineProps<{
     schoolClass: { ulid: string; label: string; subject: string; has_profile: boolean };
@@ -231,8 +232,11 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                         <template v-for="row in rows" :key="row.name">
                             <tr class="hover:bg-muted/20">
                                 <td class="px-3 py-2 whitespace-nowrap">
-                                    <span class="text-muted-foreground">{{ row.class_number ?? '—' }}</span>
-                                    <span class="ml-2 font-medium">{{ row.name }}</span>
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="text-muted-foreground">{{ row.class_number ?? '—' }}</span>
+                                        <StudentAvatar :photo-url="row.photo_url" size="xs" />
+                                        <span class="font-medium">{{ row.name }}</span>
+                                    </div>
                                 </td>
                                 <td class="px-3 py-2 text-center">
                                     <span

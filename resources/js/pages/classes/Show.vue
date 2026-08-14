@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { ClipboardPlus, FileUp, Trash2, UserPlus } from '@lucide/vue';
-import { ref } from 'vue';
+import { ClipboardPlus, FileUp, Pencil, Trash2, UserPlus } from '@lucide/vue';
+import { computed, ref } from 'vue';
 import FileInput from '@/components/FileInput.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
+import StudentAvatar from '@/components/StudentAvatar.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -21,6 +22,7 @@ import { Label } from '@/components/ui/label';
 type Student = {
     ulid: string;
     name: string;
+    has_identity: boolean;
     pseudonym: string;
     class_number: number | null;
     enrolled_on: string;
@@ -90,6 +92,103 @@ function enroll(): void {
         preserveScroll: true,
         onSuccess: () => form.reset(),
     });
+}
+
+// Correcting a student already enrolled. Kept separate from the enrollment
+// form above so an open correction never clobbers a half-typed new student.
+const editDialogOpen = ref(false);
+const editingUlid = ref<string | null>(null);
+
+// Derived from the props rather than held as a copy: managing the photo
+// reloads the page data, and the open dialog has to show the new photo.
+const editingStudent = computed<Student | null>(
+    () => props.students.find((s) => s.ulid === editingUlid.value) ?? null,
+);
+
+const editForm = useForm<{
+    name: string;
+    class_number: number | string;
+    enrolled_on: string;
+}>({
+    name: '',
+    class_number: '',
+    enrolled_on: '',
+});
+
+function openEdit(student: Student): void {
+    editingUlid.value = student.ulid;
+    editForm.clearErrors();
+    // A student imported without an identity has no name to offer — the field
+    // starts empty rather than pre-filled with the "(sem identidade)" marker.
+    editForm.name = student.has_identity ? student.name : '';
+    editForm.class_number = student.class_number ?? '';
+    editForm.enrolled_on = student.enrolled_on;
+    editDialogOpen.value = true;
+}
+
+function submitEdit(): void {
+    if (editingUlid.value === null) {
+        return;
+    }
+
+    editForm.put(
+        `/classes/${props.schoolClass.ulid}/students/${editingUlid.value}`,
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                editDialogOpen.value = false;
+                editingUlid.value = null;
+            },
+        },
+    );
+}
+
+// The photo is its own request, sent as soon as a file is chosen: an upload and
+// a data edit fail in different ways, and a rejected image must not throw away
+// a name the teacher has just corrected.
+const photoInput = ref<HTMLInputElement | null>(null);
+const studentPhotoForm = useForm<{ photo: File | null }>({ photo: null });
+
+function onStudentPhotoChange(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+
+    if (file === null || editingUlid.value === null) {
+        return;
+    }
+
+    studentPhotoForm.photo = file;
+    studentPhotoForm.post(
+        `/classes/${props.schoolClass.ulid}/students/${editingUlid.value}/photo`,
+        {
+            forceFormData: true,
+            preserveScroll: true,
+            // Always clear the file input, so picking the same file again after
+            // a rejection still fires a change event.
+            onFinish: () => {
+                studentPhotoForm.photo = null;
+
+                if (photoInput.value) {
+                    photoInput.value.value = '';
+                }
+            },
+        },
+    );
+}
+
+function removeStudentPhoto(): void {
+    if (editingUlid.value === null) {
+        return;
+    }
+
+    if (!confirm('Remover a fotografia deste aluno?')) {
+        return;
+    }
+
+    router.delete(
+        `/classes/${props.schoolClass.ulid}/students/${editingUlid.value}/photo`,
+        { preserveScroll: true },
+    );
 }
 
 function remove(student: Student): void {
@@ -353,12 +452,7 @@ function submitPhotos(): void {
                         </td>
                         <td class="px-4 py-3 font-medium">
                             <div class="flex items-center gap-2">
-                                <img
-                                    v-if="student.photo_url"
-                                    :src="student.photo_url"
-                                    :alt="student.name"
-                                    class="size-6 rounded-full object-cover"
-                                />
+                                <StudentAvatar :photo-url="student.photo_url" />
                                 <span>{{ student.name }}</span>
                                 <Badge
                                     v-if="student.is_late_entry"
@@ -376,19 +470,155 @@ function submitPhotos(): void {
                             {{ student.enrolled_on }}
                         </td>
                         <td class="px-4 py-3 text-right">
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                aria-label="Remover"
-                                @click="remove(student)"
-                            >
-                                <Trash2 class="size-4" />
-                            </Button>
+                            <div class="flex justify-end gap-1">
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    :aria-label="`Editar dados de ${student.name}`"
+                                    title="Editar"
+                                    @click="openEdit(student)"
+                                >
+                                    <Pencil class="size-4" />
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    :aria-label="`Remover ${student.name} da turma`"
+                                    title="Remover"
+                                    @click="remove(student)"
+                                >
+                                    <Trash2 class="size-4" />
+                                </Button>
+                            </div>
                         </td>
                     </tr>
                 </tbody>
             </table>
         </section>
+
+        <Dialog v-model:open="editDialogOpen">
+            <DialogContent>
+                <form @submit.prevent="submitEdit">
+                    <DialogHeader>
+                        <DialogTitle>Editar dados do aluno</DialogTitle>
+                        <DialogDescription>
+                            Corrige o nome, o número ou a data de entrada. O
+                            pseudónimo
+                            <span class="font-mono">{{
+                                editingStudent?.pseudonym
+                            }}</span>
+                            não muda, e todos os registos, avaliações e
+                            intervenções continuam associados a este aluno.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div class="grid gap-4 py-4">
+                        <div class="grid gap-2">
+                            <Label>Fotografia</Label>
+                            <div class="flex items-center gap-4">
+                                <img
+                                    v-if="editingStudent?.photo_url"
+                                    :src="editingStudent.photo_url"
+                                    alt=""
+                                    class="size-20 rounded-md border border-border object-cover"
+                                />
+                                <div
+                                    v-else
+                                    class="flex size-20 items-center justify-center rounded-md border border-dashed border-border text-center text-xs text-muted-foreground"
+                                >
+                                    Sem fotografia
+                                </div>
+                                <div class="grid gap-2">
+                                    <input
+                                        ref="photoInput"
+                                        type="file"
+                                        accept="image/jpeg,image/png,image/webp"
+                                        class="text-sm file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:text-sm file:font-medium"
+                                        :disabled="
+                                            !editingStudent?.has_identity ||
+                                            studentPhotoForm.processing
+                                        "
+                                        @change="onStudentPhotoChange"
+                                    />
+                                    <Button
+                                        v-if="editingStudent?.photo_url"
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        class="justify-self-start text-destructive"
+                                        @click="removeStudentPhoto"
+                                    >
+                                        Remover fotografia
+                                    </Button>
+                                </div>
+                            </div>
+                            <p
+                                v-if="!editingStudent?.has_identity"
+                                class="text-xs text-muted-foreground"
+                            >
+                                Guarda primeiro o nome do aluno para poderes
+                                associar uma fotografia.
+                            </p>
+                            <p v-else class="text-xs text-muted-foreground">
+                                JPG, PNG ou WEBP, até 5 MB. A fotografia é
+                                opcional e guardada em armazenamento privado.
+                            </p>
+                            <InputError
+                                :message="studentPhotoForm.errors.photo"
+                            />
+                        </div>
+                        <div class="grid gap-2">
+                            <Label for="edit-student-name">Nome</Label>
+                            <Input
+                                id="edit-student-name"
+                                v-model="editForm.name"
+                                autocomplete="off"
+                                required
+                            />
+                            <InputError :message="editForm.errors.name" />
+                        </div>
+                        <div class="grid gap-2">
+                            <Label for="edit-student-number">N.º</Label>
+                            <Input
+                                id="edit-student-number"
+                                v-model="editForm.class_number"
+                                type="number"
+                                min="1"
+                                max="65535"
+                            />
+                            <InputError
+                                :message="editForm.errors.class_number"
+                            />
+                        </div>
+                        <div class="grid gap-2">
+                            <Label for="edit-student-enrolled-on"
+                                >Data de entrada</Label
+                            >
+                            <Input
+                                id="edit-student-enrolled-on"
+                                v-model="editForm.enrolled_on"
+                                type="date"
+                                required
+                            />
+                            <InputError
+                                :message="editForm.errors.enrolled_on"
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            @click="editDialogOpen = false"
+                        >
+                            Cancelar
+                        </Button>
+                        <Button type="submit" :disabled="editForm.processing">
+                            Guardar alterações
+                        </Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
 
         <Dialog v-model:open="importDialogOpen">
             <DialogContent>
@@ -427,9 +657,9 @@ function submitPhotos(): void {
                     <DialogHeader>
                         <DialogTitle>Adicionar fotos</DialogTitle>
                         <DialogDescription>
-                            Ficheiro Word exportado do Intuitivo — modelo
-                            EB019. Associa as fotos aos alunos já inscritos,
-                            através do nome.
+                            Ficheiro Word exportado do Intuitivo — modelo EB019.
+                            Associa as fotos aos alunos já inscritos, através do
+                            nome.
                         </DialogDescription>
                     </DialogHeader>
                     <div class="grid gap-4 py-4">
