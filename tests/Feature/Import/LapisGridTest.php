@@ -5,6 +5,7 @@ namespace Tests\Feature\Import;
 use App\Domain\Import\Correction\CorrectionGridSource;
 use App\Domain\Import\Correction\ImportMapping;
 use App\Domain\Import\Correction\LapisGridContract;
+use App\Domain\Import\Tabular\TabularColumn;
 use App\Models\CorrectionImport;
 use App\Models\Domain;
 use App\Models\Enrollment;
@@ -669,6 +670,92 @@ class LapisGridTest extends CorrectionImportHttpTest
             // Carla was in the file with no marks; she stays unassessed.
             $this->assertNull($mark(0, 'Carla Fictícia'));
         });
+    }
+
+    /**
+     * Builds an instrument of an arbitrary shape, for the dynamism test.
+     *
+     * @param  list<array{code: string, label: string, points: float, bonus: bool, domain: string}>  $rows
+     */
+    protected function instrumentShaped(array $rows): Instrument
+    {
+        return app(CurrentOrganization::class)->runFor($this->organization, function () use ($rows): Instrument {
+            $instrument = Instrument::factory()->recycle($this->organization)->create([
+                'class_id' => $this->class->id,
+                'academic_period_id' => $this->period->id,
+                'status' => InstrumentStatus::InCorrection->value,
+                'allow_bonus' => true,
+            ]);
+
+            foreach ($rows as $index => $row) {
+                $item = InstrumentItem::factory()->recycle($this->organization)->create([
+                    'instrument_id' => $instrument->id,
+                    'code' => $row['code'],
+                    'label' => $row['label'],
+                    'sequence' => $index + 1,
+                    'points_possible' => $row['points'],
+                    'is_bonus' => $row['bonus'],
+                ]);
+
+                ItemDomainAllocation::create([
+                    'instrument_item_id' => $item->id,
+                    'domain_id' => Domain::factory()->recycle($this->organization)->create(['name' => $row['domain']])->id,
+                    'allocation_percent' => 100,
+                ]);
+            }
+
+            return $instrument->fresh();
+        });
+    }
+
+    #[Test]
+    public function the_grid_takes_its_shape_from_the_instrument_and_from_nothing_else(): void
+    {
+        // Three instruments, three shapes. Nothing about a subject, a number of
+        // domains, a number of questions or a deduction is written into the
+        // generator: every column exists because an item exists.
+        $shapes = [
+            // One domain, four items.
+            4 => [
+                ['code' => 'A1', 'label' => 'Um', 'points' => 5.0, 'bonus' => false, 'domain' => 'Alfa'],
+                ['code' => 'A2', 'label' => 'Dois', 'points' => 5.0, 'bonus' => false, 'domain' => 'Alfa'],
+                ['code' => 'A3', 'label' => 'Três', 'points' => 5.0, 'bonus' => false, 'domain' => 'Alfa'],
+                ['code' => 'A4', 'label' => 'Quatro', 'points' => 5.0, 'bonus' => false, 'domain' => 'Alfa'],
+            ],
+            // Three domains, six items, no deduction anywhere.
+            6 => [
+                ['code' => 'B1', 'label' => 'B um', 'points' => 10.0, 'bonus' => false, 'domain' => 'Beta'],
+                ['code' => 'B2', 'label' => 'B dois', 'points' => 10.0, 'bonus' => false, 'domain' => 'Beta'],
+                ['code' => 'C1', 'label' => 'C um', 'points' => 10.0, 'bonus' => false, 'domain' => 'Gama'],
+                ['code' => 'C2', 'label' => 'C dois', 'points' => 10.0, 'bonus' => false, 'domain' => 'Gama'],
+                ['code' => 'D1', 'label' => 'D um', 'points' => 10.0, 'bonus' => false, 'domain' => 'Delta'],
+                ['code' => 'D2', 'label' => 'D dois', 'points' => 10.0, 'bonus' => false, 'domain' => 'Delta'],
+            ],
+        ];
+
+        foreach ($shapes as $expected => $rows) {
+            $sheet = ($spreadsheet = $this->workbook($this->download($this->instrumentShaped($rows))))->getActiveSheet();
+
+            $headings = [];
+            $column = LapisGridContract::FIRST_ITEM_COLUMN;
+
+            while (($heading = $sheet->getCell($column.'1')->getValue()) !== null) {
+                $headings[] = (string) $heading;
+                $column = TabularColumn::letter(
+                    TabularColumn::index($column) + 1,
+                );
+            }
+
+            $this->assertCount($expected, $headings, "{$expected} itens têm de dar {$expected} colunas");
+
+            // The labels are the items' own, in the items' own order.
+            $this->assertSame(
+                array_column($rows, 'label'),
+                array_map(fn (string $heading): string => (string) preg_replace('/\s*\(máx\.[^)]*\)$/u', '', $heading), $headings),
+            );
+
+            $spreadsheet->disconnectWorksheets();
+        }
     }
 
     #[Test]
