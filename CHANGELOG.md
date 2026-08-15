@@ -2,6 +2,38 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.31.0] — 2026-08-15
+
+### Instrumentos — grupos e secções
+
+- **Um instrumento pode agora ter secções.** Um teste organiza-se em «Grupo I», «Grupo II», «Parte A» — e a grelha passa a mostrá-lo assim, em vez de uma lista contínua de questões. A estrutura é independente dos domínios: uma secção pode alimentar vários domínios e um domínio pode ser avaliado em várias secções.
+- **A numeração das questões passa a ser por secção.** Um mesmo instrumento pode ter «1, 2, 3» no Grupo I e «1, 2, 3» no Grupo II, como acontece num enunciado real. Até aqui o código tinha de ser único em todo o instrumento, o que obrigava a numerações artificiais.
+- **Um instrumento simples continua sem estrutura nenhuma.** Quem não precisa de secções não vê nenhuma: o grupo implícito não aparece no ecrã nem obriga a decidir nada.
+- **Corrigida a edição estrutural.** Reordenar secções ou renumerar questões deixa de poder colidir com a numeração antiga a meio da gravação, e a edição do cabeçalho (título, data, tipo, peso) passa a estar coberta por testes de regressão.
+
+### Resultados — proposta na escala do perfil
+
+- **A Proposta deixa de ser a percentagem repetida.** Passa a ser o resultado lido na escala que a versão do perfil congelou — um 4, um 16, um 80%, um «Bom». O Resultado continua a ser o valor normalizado em percentagem: são duas colunas com dois significados.
+- **As três famílias de escala têm tratamento próprio.** Escalas por níveis usam as bandas configuradas; escalas numéricas usam o intervalo da própria escala (`min + (normalizado/100) × (max − min)`), arredondado pela regra do perfil — genérico para 0–20, 1–20, 0–10 ou qualquer outro; escalas percentuais só são arredondadas. Nenhuma escala está escrita no código.
+- **Uma escala sem bandas aprovadas diz que está por configurar**, em vez de mostrar um vazio silencioso. O LÁPIS não infere limiares: o nível é atribuído pelo professor.
+
+### Correção — concluir e reabrir
+
+- **Uma correção pode agora ser dada por concluída.** Até aqui um instrumento entrava em «Em correção» na primeira nota e ficava lá para sempre: uma correção terminada era indistinguível de uma abandonada, e a grelha continuava editável por descuido.
+- **«Concluir correção» é recusada enquanto faltar decidir alguma célula aplicável**, e a recusa diz quantas faltam. Contam como decididas a ausência, a dispensa, o «não aplicável» e a anulação — são decisões que o professor já tomou. Só «por avaliar» e «em revisão» mantêm a correção aberta.
+- **A barra de progresso e o botão não podem discordar.** Quem vê 6/6 consegue sempre concluir; quem vê 4/5 é sempre recusado — a regra passou a viver num único sítio, usado pelos dois.
+- **Uma correção concluída fica em modo de consulta** e a gravação é recusada no servidor, não apenas escondida no ecrã. Fica registado quem concluiu e quando.
+- **«Reabrir correção» volta atrás** e devolve as células a editáveis. Nem concluir nem reabrir mexem numa única classificação: concluir é uma afirmação sobre o trabalho do professor, não sobre os resultados dos alunos.
+
+### Resultados — cobertura parcial
+
+- **O aviso ⚠ passa a explicar-se.** Ao passar o rato — ou o foco do teclado — indica o instrumento e o dia: «Teste de Compreensão Leitora · 15/10/2026 — Ausência: 3 questões sem classificação.»
+- **«Cobertura insuficiente» passou a «Cobertura parcial».** Se a cobertura fosse mesmo insuficiente, o LÁPIS não devia produzir resultado nenhum. O que acontece é que há resultado e ele assenta em parte dos elementos aplicáveis.
+- **Quando não há resultado, o aviso diz outra coisa: «Sem elementos avaliados».** São dois fenómenos diferentes e deixam de partilhar a mesma frase.
+- **Uma entrada tardia nunca é descrita como falta.** O aluno que entrou depois de o instrumento ter sido aplicado é excluído do cálculo pela mesma regra, mas não faltou a nada — e o aviso não o pode dizer.
+- **As ocorrências são agrupadas por instrumento**, não por célula: quem faltou a um teste de três questões faltou a um teste. Uma questão repartida por dois domínios conta uma só vez no resultado global.
+- O cálculo não mudou. Nenhum valor, arredondamento ou classificação é afetado por esta alteração.
+
 ## [0.30.0] — 2026-08-14
 
 ### Alunos
