@@ -466,8 +466,15 @@ class TabularCanonicaliser
         ?TabularSheet $sheet,
         int $resultColumns,
     ): array {
+        // `defined_names` is how the reader hands the LÁPIS contract to the
+        // parser. It is scratch data for one request, not a fact about the
+        // import worth keeping, and provenance is not a place to put things
+        // just because they were in reach.
+        $container = $snapshot->metadata;
+        unset($container['defined_names']);
+
         return [
-            ...$snapshot->metadata,
+            ...$container,
             'sheet' => $table->sheet,
             'header_row' => $table->headerRow,
             // `??` applies isset() semantics to the whole expression, so a null

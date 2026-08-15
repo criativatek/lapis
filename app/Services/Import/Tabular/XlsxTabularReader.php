@@ -2,6 +2,7 @@
 
 namespace App\Services\Import\Tabular;
 
+use App\Domain\Import\Correction\LapisGridContract;
 use App\Domain\Import\Tabular\TabularCell;
 use App\Domain\Import\Tabular\TabularColumn;
 use App\Domain\Import\Tabular\TabularNumber;
@@ -11,6 +12,7 @@ use App\Support\Import\SpreadsheetZipSafety;
 use PhpOffice\PhpSpreadsheet\Cell\Cell;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use Throwable;
 
@@ -111,6 +113,7 @@ class XlsxTabularReader implements TabularReader
                 metadata: [
                     'kind' => 'xlsx',
                     'sheets' => count($sheets),
+                    'defined_names' => $this->lapisDefinedNames($spreadsheet),
                 ],
             );
         } finally {
@@ -120,6 +123,40 @@ class XlsxTabularReader implements TabularReader
             // this was found while building the Intuitivo reader.
             $spreadsheet->disconnectWorksheets();
         }
+    }
+
+    /**
+     * The workbook's defined names, filtered to the ones LÁPIS writes.
+     *
+     * A NARROW read, and deliberately so. Defined names are the only part of a
+     * workbook's structure this reader looks at beyond the cells, and it looks
+     * at exactly the names carrying our own contract — anything a teacher or
+     * another application defined is skipped without being examined (§6).
+     *
+     * Nothing is evaluated: a constant defined name is stored as the text of a
+     * string literal, and unwrapping `="x"` to `x` is string handling.
+     *
+     * @return array<string, string>
+     */
+    protected function lapisDefinedNames(Spreadsheet $spreadsheet): array
+    {
+        $names = [];
+
+        foreach ($spreadsheet->getDefinedNames() as $definedName) {
+            $name = strtoupper($definedName->getName());
+
+            if (! str_starts_with($name, 'LAPIS_')) {
+                continue;
+            }
+
+            $value = LapisGridContract::unwrap($definedName->getValue());
+
+            if ($value !== null) {
+                $names[$name] = $value;
+            }
+        }
+
+        return $names;
     }
 
     protected function sheet(Worksheet $worksheet): TabularSheet

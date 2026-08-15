@@ -51,10 +51,20 @@ class RecanonicaliseImport
             return false;
         }
 
+        $mapping = ImportMapping::fromArray($import->mapping_snapshot);
+
+        // Only a sheet the teacher DESCRIBED is re-read from its description.
+        // A file that explained itself — a LÁPIS grid — was canonicalised once,
+        // at upload, against a contract no later answer changes; re-parsing it
+        // here would also throw away a refusal already recorded against it.
+        if (! $mapping->describesATable()) {
+            return false;
+        }
+
         $grid = $parser->parseWith(
             $this->storage->absolutePath($path),
             (string) $import->original_filename,
-            ImportMapping::fromArray($import->mapping_snapshot),
+            $mapping,
         );
 
         // The snapshot is the whole sheet — names, marks, everything. A failure

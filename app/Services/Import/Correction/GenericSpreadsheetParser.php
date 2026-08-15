@@ -4,11 +4,16 @@ namespace App\Services\Import\Correction;
 
 use App\Domain\Import\Correction\CanonicalCorrectionGrid;
 use App\Domain\Import\Correction\CanonicalInstrument;
+use App\Domain\Import\Correction\CanonicalItem;
+use App\Domain\Import\Correction\CanonicalResult;
+use App\Domain\Import\Correction\CanonicalStudent;
 use App\Domain\Import\Correction\CorrectionGridSource;
 use App\Domain\Import\Correction\ImportIssue;
 use App\Domain\Import\Correction\ImportMapping;
 use App\Domain\Import\Correction\IssueCode;
 use App\Domain\Import\Correction\IssueSeverity;
+use App\Domain\Import\Correction\LapisGridContract;
+use App\Domain\Import\Correction\LapisGridDeclaration;
 use App\Domain\Import\Correction\TabularMapping;
 use App\Domain\Import\Tabular\TabularColumn;
 use App\Domain\Import\Tabular\TabularSheet;
@@ -127,11 +132,181 @@ class GenericSpreadsheetParser implements MappedCorrectionGridParser
             return $this->refuse($originalFilename, __('O ficheiro não tem nenhuma folha com dados.'));
         }
 
+        // A workbook LÁPIS produced says so, formally, and then there is nothing
+        // to ask: the structure is a contract this build wrote and can read
+        // back. Everything else falls through to the ordinary path (§16).
+        //
+        // Unless the teacher has since described the sheet by hand, which is
+        // exactly what they are offered when a grid no longer matches its own
+        // contract. An explicit description always wins over a declaration —
+        // otherwise the way out of a broken grid would loop back into it (§14).
+        $declaration = $this->declarationIn($snapshot);
+
+        if ($declaration !== null && ! $mapping->table->describesTheSheet()) {
+            return $this->fromLapisGrid($snapshot, $declaration, $originalFilename);
+        }
+
         return $this->canonicaliser->canonicalise(
             $snapshot,
             $this->settled($snapshot, $mapping->table),
             $mapping,
             $this->titleFrom($originalFilename),
+        );
+    }
+
+    /**
+     * What the workbook declares itself to be, or null when it declares nothing.
+     */
+    public function declarationIn(TabularSourceSnapshot $snapshot): ?LapisGridDeclaration
+    {
+        $names = $snapshot->metadata['defined_names'] ?? [];
+
+        return is_array($names) ? LapisGridDeclaration::from($names) : null;
+    }
+
+    /**
+     * A grid this application wrote, read back.
+     *
+     * Only IDENTITY is taken from the file — which item is in which column,
+     * which enrolment is on which row. The cotações, the domains and the
+     * permissions are read from the database afterwards, by ResolveLapisGrid,
+     * because a workbook is a claim and never an authorisation (§6).
+     *
+     * Fail-closed throughout: a column that is not there, a row somebody
+     * inserted, a version this build does not know. Each of those is a file
+     * that no longer matches the contract, and interpreting it anyway is how a
+     * mark lands on the wrong question (§14).
+     */
+    protected function fromLapisGrid(
+        TabularSourceSnapshot $snapshot,
+        LapisGridDeclaration $declaration,
+        string $originalFilename,
+    ): CanonicalCorrectionGrid {
+        if (! $declaration->isUsable()) {
+            return $this->refuseGrid($originalFilename, $declaration->reason());
+        }
+
+        $sheet = $snapshot->onlyOccupiedSheet() ?? $snapshot->sheet(LapisGridContract::SHEET);
+
+        if ($sheet === null) {
+            return $this->refuseGrid($originalFilename, $declaration->reason());
+        }
+
+        $items = [];
+        $sequence = 0;
+
+        foreach ($declaration->itemsByColumn as $column => $itemUlid) {
+            $heading = $sheet->cellAt(LapisGridContract::HEADER_ROW, $column)->text;
+
+            // The heading is what proves the column is still there.
+            //
+            // Not the column count: deleting a column in Excel shifts the ones
+            // after it left, and the cells this grid creates for its own input
+            // validation keep the old width reported for a while afterwards. The
+            // heading is written for every item and for no other column, so a
+            // declared column with an empty heading is a column that was removed
+            // or emptied — either way the file no longer matches its own
+            // contract, and reading it would put marks on the wrong item (§14).
+            if ($heading === null || TabularColumn::index($column) > $sheet->columnCount) {
+                return $this->refuseGrid($originalFilename, $declaration->reason());
+            }
+
+            $items[] = new CanonicalItem(
+                sourceKey: TabularCanonicaliser::ITEM_PREFIX.$column,
+                sequence: ++$sequence,
+                externalId: $itemUlid,
+                label: $heading,
+                metadata: ['column' => $column],
+            );
+        }
+
+        $students = [];
+        $results = [];
+
+        foreach ($sheet->occupiedRows() as $rowNumber) {
+            if ($rowNumber < LapisGridContract::FIRST_DATA_ROW) {
+                continue;
+            }
+
+            $identity = $sheet->cellAt($rowNumber, LapisGridContract::COLUMN_ENROLLMENT)->text;
+            $name = $sheet->cellAt($rowNumber, LapisGridContract::COLUMN_NAME)->text;
+
+            if ($identity === null) {
+                // A row with content and no identity is a row somebody added.
+                return $this->refuseGrid($originalFilename, $declaration->reason());
+            }
+
+            $studentKey = TabularCanonicaliser::STUDENT_PREFIX.$rowNumber;
+            $number = $sheet->cellAt($rowNumber, LapisGridContract::COLUMN_NUMBER)->number;
+
+            $students[] = new CanonicalStudent(
+                sourceKey: $studentKey,
+                externalId: $identity,
+                classNumber: $number === null ? null : (int) $number,
+                displayName: $name,
+            );
+
+            foreach ($declaration->itemsByColumn as $column => $itemUlid) {
+                $cell = $sheet->cellAt($rowNumber, $column);
+
+                if ($cell->isFormula) {
+                    return $this->refuseGrid(
+                        $originalFilename,
+                        __('Esta grelha LÁPIS tem fórmulas onde deviam estar os resultados. Substitua-as pelos valores antes de importar.'),
+                    );
+                }
+
+                // A blank stays blank. Not a zero, not an absence (§10).
+                if ($cell->isBlank() || ! $cell->isNumeric()) {
+                    continue;
+                }
+
+                $results[] = new CanonicalResult(
+                    studentSourceKey: $studentKey,
+                    itemSourceKey: TabularCanonicaliser::ITEM_PREFIX.$column,
+                    pointsEarned: $cell->number,
+                    sourceValue: $cell->text,
+                );
+            }
+        }
+
+        if ($students === []) {
+            return $this->refuseGrid($originalFilename, __('Esta grelha LÁPIS não tem alunos.'));
+        }
+
+        return new CanonicalCorrectionGrid(
+            source: CorrectionGridSource::Generic,
+            instrument: new CanonicalInstrument(
+                title: $this->titleFrom($originalFilename),
+                externalId: $declaration->instrumentUlid,
+            ),
+            items: $items,
+            students: $students,
+            results: $results,
+            // Identity of the instrument, and counts. Never a student (§17).
+            sourceMetadata: [...$declaration->metadata(), 'kind' => 'xlsx'],
+        );
+    }
+
+    /**
+     * A grid that no longer matches its own contract.
+     *
+     * Refused with the way out named: the generic path can still read it, and a
+     * teacher who has just filled in thirty marks should not have to start over
+     * because a column moved (§14).
+     */
+    protected function refuseGrid(string $originalFilename, string $message): CanonicalCorrectionGrid
+    {
+        return new CanonicalCorrectionGrid(
+            source: CorrectionGridSource::Generic,
+            instrument: new CanonicalInstrument(title: $this->titleFrom($originalFilename)),
+            issues: [ImportIssue::make(
+                IssueCode::UnsupportedStructure,
+                $message.' '.__('Pode importá-la como outra folha de cálculo, indicando onde estão os resultados.'),
+                context: ['lapis_grid' => 'structure'],
+                severity: IssueSeverity::Error,
+            )],
+            sourceMetadata: ['kind' => 'xlsx', 'lapis_grid' => false],
         );
     }
 
@@ -146,11 +321,25 @@ class GenericSpreadsheetParser implements MappedCorrectionGridParser
             return ['readable' => false, 'message' => $exception->getMessage()];
         }
 
+        $declaration = $this->declarationIn($snapshot);
+
+        if ($declaration !== null) {
+            // A grid this application wrote needs no describing, so none of the
+            // questions below travel to the browser at all (§13).
+            return [
+                'readable' => true,
+                'lapis_grid' => $declaration->isUsable(),
+                'lapis_grid_refusal' => $declaration->isUsable() ? null : $declaration->reason(),
+                'kind' => $snapshot->metadata['kind'] ?? null,
+            ];
+        }
+
         $table = $this->settled($snapshot, $mapping->table);
         $sheet = $snapshot->sheet($table->sheet);
 
         return [
             'readable' => true,
+            'lapis_grid' => false,
             'kind' => $snapshot->metadata['kind'] ?? null,
             'metadata' => $snapshot->metadata,
             'sheets' => array_map(fn (TabularSheet $each): array => [

@@ -140,6 +140,9 @@ type TabularDescription = {
         result_columns?: string[];
     };
     table?: TableState;
+    /** True when the workbook carries the LÁPIS grid contract. */
+    lapis_grid?: boolean;
+    lapis_grid_refusal?: string | null;
 };
 
 const props = defineProps<{
@@ -385,6 +388,16 @@ const hasGroups = computed(() => props.preview.groups.length > 0);
  */
 const isTabular = computed(() => props.tabular !== null);
 const tabularReadable = computed(() => props.tabular?.readable === true);
+
+/**
+ * A workbook LÁPIS produced, recognised by its own contract.
+ *
+ * Everything the mapping panel below asks about — which sheet, which column
+ * holds the names, what the numbers are out of, which domain each one counts
+ * toward — is already known, because this application wrote the file. Asking
+ * any of it would be asking the teacher to describe something we made (§13).
+ */
+const isLapisGrid = computed(() => props.tabular?.lapis_grid === true);
 
 /**
  * Vocabulary that belongs to the source, taken from the source.
@@ -1081,6 +1094,37 @@ const typeName = computed(
               pre-answered, because a teacher should be explaining what their
               data MEANS and not the structure of a worksheet (§17).
             -->
+            <!--
+              A grid this application wrote. Nothing to ask, so nothing is
+              asked: the questions below exist for a file nobody here has seen
+              before, and putting them in front of a teacher holding OUR file
+              would be asking them to describe our own work (§13).
+            -->
+            <div
+                v-else-if="isLapisGrid"
+                class="rounded-md border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"
+            >
+                <p class="font-semibold">Grelha LÁPIS reconhecida</p>
+                <p class="mt-1">
+                    {{ preview.counts.students_in_file }}
+                    {{
+                        preview.counts.students_in_file === 1
+                            ? 'aluno'
+                            : 'alunos'
+                    }}
+                    ·
+                    {{ preview.items.length }}
+                    {{ preview.items.length === 1 ? 'item' : 'itens' }}
+                    <template v-if="chosenInstrument">
+                        · {{ chosenInstrument.title }}
+                    </template>
+                </p>
+                <p class="mt-1 text-xs">
+                    As cotações e os domínios vêm da avaliação e não do ficheiro.
+                    Confirme a correspondência dos alunos e continue.
+                </p>
+            </div>
+
             <section
                 v-else-if="isTabular"
                 class="rounded-md border border-border bg-card"

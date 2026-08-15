@@ -17,6 +17,7 @@ use App\Services\Import\Correction\CorrectionGridParserRegistry;
 use App\Services\Import\Correction\ImportCorrectionGrid;
 use App\Services\Import\Correction\MappedCorrectionGridParser;
 use App\Services\Import\Correction\RecanonicaliseImport;
+use App\Services\Import\Correction\ResolveLapisGrid;
 use App\Support\Import\CorrectionImportException;
 use App\Support\Import\CorrectionImportTempStorage;
 use App\Support\Import\WithoutLeakingTheGrid;
@@ -46,6 +47,7 @@ class CorrectionImportController extends Controller
         protected BuildImportPreview $preview,
         protected ImportCorrectionGrid $importer,
         protected RecanonicaliseImport $recanonicalise,
+        protected ResolveLapisGrid $lapisGrid,
     ) {}
 
     /**
@@ -143,7 +145,13 @@ class CorrectionImportController extends Controller
             'mapping_snapshot' => (new ImportMapping(resultMode: $source->defaultResultMode()))->toArray(),
         ]), 'ao guardar a análise do ficheiro');
 
-        return to_route('correction-imports.edit', $import);
+        // A grid LÁPIS produced arrives already answered: which evaluation,
+        // which question in which column, which student on which row. Checked
+        // against the database here — never taken on the file's word — and if
+        // any of it fails the import stays open on the ordinary questions (§6).
+        $this->lapisGrid->for($import);
+
+        return to_route('correction-imports.edit', $import->fresh());
     }
 
     /**
