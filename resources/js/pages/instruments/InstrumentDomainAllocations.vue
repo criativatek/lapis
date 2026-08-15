@@ -46,12 +46,22 @@ function optionsFor(allocation: { domain_id: number }): Domain[] {
     );
 }
 
+// The three mutations below edit `props.item` in place, which is the design:
+// the parent hands this component one entry of its own `form.items` and this is
+// where that entry is edited. Rewiring it through emits would change the
+// component's contract and the parent's, on the instrument editing screen — a
+// refactor, not a lint fix, and it is scheduled separately rather than done in
+// passing. The rule is right about the smell; it is suppressed here knowingly,
+// line by line, so it keeps firing anywhere else.
+
 function addAllocation(): void {
     const firstSelectable = props.domains.find((domain) => props.selectedDomainIds.includes(domain.id));
+    // eslint-disable-next-line vue/no-mutating-props -- intentional: see note above
     props.item.domains.push({ domain_id: firstSelectable?.id ?? props.domains[0]?.id ?? 0, points: 0 });
 }
 
 function removeAllocation(index: number): void {
+    // eslint-disable-next-line vue/no-mutating-props -- intentional: see note above
     props.item.domains.splice(index, 1);
 }
 
@@ -67,6 +77,7 @@ watch(
         }
 
         if (props.item.domains.length > 0) {
+            // eslint-disable-next-line vue/no-mutating-props -- intentional: see note above
             props.item.points_possible = props.item.domains.reduce(
                 (sum, allocation) => sum + (Number(allocation.points) || 0),
                 0,

@@ -23,6 +23,36 @@ Exemplo real (Intervenções, §14): `create_interventions_tables` →
 Regra de ouro: **um slice fecha só com `composer ci:check` verde** e com a versão
 (`config/app.php`) + `CHANGELOG.md` incrementados.
 
+### Porque é que o `ci:check` não corre o Prettier
+
+`npm run format:check` esteve na cadeia desde o início e **nunca passou uma
+única vez**. O `.prettierrc` veio do scaffold no primeiro commit (`ff50d32`,
+`printWidth: 80`) e nunca foi revisto; nenhum ficheiro deste projeto foi alguma
+vez escrito pelo Prettier. Ficheiros criados num só commit e nunca mais tocados
+continuam a falhar, o que mostra que não é deriva — é que a ferramenta nunca
+correu.
+
+Medido a 2026-08-15, sobre `resources/`:
+
+| `printWidth` | ficheiros que falham | churn se formatasse |
+|---|---|---|
+| 80 (declarado) | 46 | +4075 / −926 |
+| 120 (estilo real) | 88 | +1988 / −2282 |
+
+**Nenhuma largura resolve**, porque o Prettier reimprime a partir da AST: código
+escrito à mão praticamente nunca coincide com o que ele produziria, seja a que
+largura for. A 120 fica pior do que a 80, porque passa a juntar linhas que hoje
+estão partidas.
+
+Decisão: o gate sai da cadeia. O estilo continua a ser verificado — o
+`eslint.config.js` mantém as regras `@stylistic` (chavetas, linhas em branco
+entre instruções) e o `eslint-config-prettier` continua a desligar o que
+colidiria com o Prettier caso alguém o volte a adotar. `npm run format` e
+`npm run format:check` continuam a existir para quem os quiser correr à mão.
+
+Adotar o Prettier a sério continua a ser uma opção legítima: custa um commit
+isolado de ~46 ficheiros e passa a ser enforçado. Não é o que está feito.
+
 ## A equipa (`.claude/agents/`)
 
 | Agente | Modelo | Quando |

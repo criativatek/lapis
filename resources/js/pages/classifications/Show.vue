@@ -38,6 +38,7 @@ const confirmedCount = computed(() => props.rows.filter((row) => row.classificat
 
 function basePath(periodUlid?: string): string {
     const period = periodUlid ?? selectedPeriod.value?.ulid ?? '';
+
     return `/classes/${props.schoolClass.ulid}/classifications/${period}`;
 }
 
@@ -71,6 +72,7 @@ function propose(): void {
     if (selectedPeriod.value === null) {
         return;
     }
+
     router.post(
         `${basePath()}/propose`,
         { scope: props.scope },
@@ -86,6 +88,7 @@ function publish(): void {
     if (selectedPeriod.value === null || confirmedCount.value === 0) {
         return;
     }
+
     router.post(
         `${basePath()}/publish`,
         { scope: props.scope },
@@ -108,6 +111,7 @@ function accept(row: Row): void {
     if (row.classification === null) {
         return;
     }
+
     confirmForm.transform(() => ({ final_value: null, override_reason: '' }));
     confirmForm.post(`/classifications/${row.classification.ulid}/confirm`, { preserveScroll: true });
 }
@@ -116,6 +120,7 @@ function openOverride(row: Row): void {
     if (row.classification === null) {
         return;
     }
+
     openUlid.value = row.classification.ulid;
     confirmForm.clearErrors();
     confirmForm.final_value = row.classification.proposed_value;
@@ -126,6 +131,7 @@ function submitOverride(row: Row): void {
     if (row.classification === null) {
         return;
     }
+
     confirmForm.transform((data) => ({ ...data }));
     confirmForm.post(`/classifications/${row.classification.ulid}/confirm`, {
         preserveScroll: true,

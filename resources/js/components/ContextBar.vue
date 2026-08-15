@@ -7,8 +7,8 @@ import {
     Layers,
     Users,
 } from '@lucide/vue';
-import { computed } from 'vue';
 import type { LucideIcon } from '@lucide/vue';
+import { computed } from 'vue';
 
 /**
  * The header scope selectors — academic year, subject, grade level, class,

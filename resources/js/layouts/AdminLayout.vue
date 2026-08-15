@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { Toaster } from '@/components/ui/sonner';
 import { Link, router, usePage } from '@inertiajs/vue3';
 import { LogOut, Mail, ShieldCheck, UserPlus, Users } from '@lucide/vue';
 import { computed } from 'vue';
+import { Toaster } from '@/components/ui/sonner';
 
 const page = usePage();
 const userName = computed(() => (page.props.auth as { user?: { name?: string } } | undefined)?.user?.name ?? '');

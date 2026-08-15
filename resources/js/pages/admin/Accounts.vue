@@ -95,14 +95,20 @@ const statusClasses: Record<string, string> = {
 
         <div v-if="organizations.links.length > 3" class="flex flex-wrap gap-1">
             <template v-for="(link, index) in organizations.links" :key="index">
+                <!-- The label is the paginator's own («&laquo; Anterior», «1»),
+                     so it carries entities and has to be rendered as HTML. On a
+                     native element rather than on the component: v-html on a
+                     component replaces whatever that component renders, which
+                     for <Link> is the anchor itself. -->
                 <Link
                     v-if="link.url"
                     :href="link.url"
                     class="rounded-md border border-border px-3 py-1.5 text-sm"
                     :class="link.active ? 'bg-primary text-primary-foreground' : 'hover:bg-muted/40'"
                     preserve-scroll
-                    v-html="link.label"
-                />
+                >
+                    <span v-html="link.label" />
+                </Link>
                 <span v-else class="rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground opacity-50" v-html="link.label" />
             </template>
         </div>

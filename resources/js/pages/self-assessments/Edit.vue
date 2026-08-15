@@ -18,6 +18,7 @@ const props = defineProps<{
 
 // answers: question id → chosen scale level id (or null).
 const initialAnswers: Record<number, number | null> = {};
+
 for (const question of props.questions) {
     initialAnswers[question.id] = question.answer_level_id;
 }
