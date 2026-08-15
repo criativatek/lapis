@@ -13,12 +13,12 @@ use App\Domain\Import\Correction\CorrectionGridSource;
 use App\Domain\Import\Correction\ImportIssue;
 use App\Domain\Import\Correction\IssueCode;
 use App\Domain\Import\Correction\IssueSeverity;
+use App\Support\Import\SpreadsheetZipSafety;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use Throwable;
-use ZipArchive;
 
 /**
  * Reads the Intuitivo «Notas» export.
@@ -64,23 +64,19 @@ class IntuitivoXlsxParser implements CorrectionGridParser
     protected const HEADER_TOTAL = 'total';
 
     /**
-     * Ceilings, all of them defensive rather than functional.
-     *
-     * An XLSX is a zip, so a small upload can expand into a large document. The
-     * ratio and the uncompressed size are checked before PhpSpreadsheet is given
-     * the file, because by the time the reader has it the memory is already
-     * spent. The real export is 9.7 KB expanding to 24.5 KB — a ratio of 2.5 —
-     * so these leave three orders of magnitude of room.
+     * Ceilings on the SHEET. The ceilings on the package — uncompressed size,
+     * compression ratio, entry count, active content — live in
+     * SpreadsheetZipSafety, which the generic reader needs word for word.
      */
-    protected const MAX_UNCOMPRESSED_BYTES = 40 * 1024 * 1024;
-
-    protected const MAX_COMPRESSION_RATIO = 200;
-
-    protected const MAX_ENTRIES = 200;
-
     protected const MAX_COLUMNS = 200;
 
     protected const MAX_ROWS = 2000;
+
+    // Defaulted rather than required: the safety check is stateless, and a
+    // parser that still answers to `new IntuitivoXlsxParser` is one the tests
+    // can build without a container — which is the point they make about it
+    // needing nothing at all to run.
+    public function __construct(protected SpreadsheetZipSafety $zipSafety = new SpreadsheetZipSafety) {}
 
     public function source(): CorrectionGridSource
     {
@@ -120,34 +116,16 @@ class IntuitivoXlsxParser implements CorrectionGridParser
             return false;
         }
 
-        $zip = new ZipArchive;
+        // Package checks and the refusal of active content both happen inside
+        // workbookXml(), which returns null rather than let a caller read from a
+        // package it rejected.
+        $workbook = $this->zipSafety->workbookXml($absolutePath);
 
-        if ($zip->open($absolutePath) !== true) {
+        if ($workbook === null) {
             return false;
         }
 
-        try {
-            if (! $this->zipLooksSafe($zip)) {
-                return false;
-            }
-
-            $workbook = $zip->getFromName('xl/workbook.xml');
-
-            if (! is_string($workbook) || $workbook === '') {
-                return false;
-            }
-
-            // Active content is refused at the door rather than ignored later.
-            foreach (['xl/vbaProject.bin', 'xl/externalLinks/externalLink1.xml'] as $forbidden) {
-                if ($zip->locateName($forbidden) !== false) {
-                    return false;
-                }
-            }
-
-            return str_contains($workbook, 'name="'.self::SHEET.'"');
-        } finally {
-            $zip->close();
-        }
+        return str_contains($workbook, 'name="'.self::SHEET.'"');
     }
 
     public function parse(string $absolutePath, string $originalFilename): CanonicalCorrectionGrid
@@ -185,16 +163,7 @@ class IntuitivoXlsxParser implements CorrectionGridParser
      */
     protected function open(string $absolutePath): ?Spreadsheet
     {
-        $zip = new ZipArchive;
-
-        if ($zip->open($absolutePath) !== true) {
-            return null;
-        }
-
-        $safe = $this->zipLooksSafe($zip);
-        $zip->close();
-
-        if (! $safe) {
+        if (! $this->zipSafety->isSafe($absolutePath)) {
             return null;
         }
 
@@ -219,38 +188,6 @@ class IntuitivoXlsxParser implements CorrectionGridParser
         } catch (Throwable) {
             return null;
         }
-    }
-
-    /**
-     * The zip's own shape, before any XML is parsed. A file that expands beyond
-     * all proportion, or that carries hundreds of entries, is not the export
-     * this parser reads.
-     */
-    protected function zipLooksSafe(ZipArchive $zip): bool
-    {
-        if ($zip->numFiles > self::MAX_ENTRIES) {
-            return false;
-        }
-
-        $compressed = 0;
-        $uncompressed = 0;
-
-        for ($index = 0; $index < $zip->numFiles; $index++) {
-            $entry = $zip->statIndex($index);
-
-            if ($entry === false) {
-                return false;
-            }
-
-            $compressed += (int) $entry['comp_size'];
-            $uncompressed += (int) $entry['size'];
-
-            if ($uncompressed > self::MAX_UNCOMPRESSED_BYTES) {
-                return false;
-            }
-        }
-
-        return $compressed === 0 || $uncompressed / max($compressed, 1) <= self::MAX_COMPRESSION_RATIO;
     }
 
     /**
