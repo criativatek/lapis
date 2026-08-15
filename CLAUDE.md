@@ -91,7 +91,14 @@ O fluxo assistido por IA é **portável** e vive no repo — não na config glob
 
 `docs/domain-model.md` §13 lists these in full. They are **pedagogical rules and must not be invented** (§1):
 
-1. **Scale bands** — resolved for the system «Escala 1 a 5»; any new scale without explicitly approved bands remains open and must not infer thresholds.
+1. **Scale bands** — applies to `Scale.kind = level`, where a result is placed by
+   the bands configured on `ScaleLevel`: resolved for the system «Escala 1 a 5»;
+   any new level scale without explicitly approved bands remains open and must
+   not infer thresholds. **`kind = numeric` does not use bands at all** — an
+   approved product rule places the result on the scale's own interval,
+   `min + (normalized/100) × (max − min)`, rounded by the profile version's rule
+   (`ScaleProposalResolver`). That is configuration, not inference. `kind = percentage`
+   is already expressed on its own scale and only gets rounded.
 2. **Absences** — count as zero, exclude, or configurable? §13.3 says "configurável e não assumida".
 3. **Rounding** — rule and stage.
 4. **"Resultado acumulado"** — "todas as aprendizagens do ano letivo" admits three readings with materially different numbers.

@@ -6,19 +6,24 @@ import StudentAvatar from '@/components/StudentAvatar.vue';
 
 type DomainCol = { id: number; name: string };
 type DomainValue = { domain_id: number; value: string | null; warning: boolean };
+type Proposal = {
+    value: string | null;
+    state: 'resolved' | 'unconfigured' | 'no_result';
+    is_percentage: boolean;
+};
 type Row = {
     name: string;
     photo_url: string | null;
     class_number: number | null;
     overall: string | null;
-    proposed: string | null;
+    proposal: Proposal;
     has_value: boolean;
     coverage_warning: boolean;
     domains: DomainValue[];
 };
 
 const props = defineProps<{
-    schoolClass: { ulid: string; label: string; subject: string; has_profile: boolean };
+    schoolClass: { ulid: string; label: string; subject: string; has_profile: boolean; scale_name: string | null };
     periods: { ulid: string; label: string; selected: boolean }[];
     domains: DomainCol[];
     rows: Row[];
@@ -110,7 +115,14 @@ function selectPeriod(ulid: string): void {
                             <CircleAlert v-if="row.coverage_warning" class="ml-0.5 inline size-3 text-amber-500" title="Cobertura insuficiente — faltam elementos." />
                         </td>
                         <td class="px-3 py-2 text-right tabular-nums">
-                            <span v-if="row.proposed !== null" class="rounded bg-muted px-2 py-0.5">{{ row.proposed }}%</span>
+                            <span v-if="row.proposal.value !== null" class="rounded bg-muted px-2 py-0.5">
+                                {{ row.proposal.value }}<template v-if="row.proposal.is_percentage">%</template>
+                            </span>
+                            <span
+                                v-else-if="row.proposal.state === 'unconfigured'"
+                                class="text-muted-foreground"
+                                title="Escala de classificação por configurar — o nível é atribuído pelo professor."
+                            >—</span>
                             <span v-else class="text-muted-foreground">—</span>
                         </td>
                     </tr>
@@ -120,9 +132,15 @@ function selectPeriod(ulid: string): void {
 
         <p class="flex items-start gap-2 text-xs text-muted-foreground">
             <CircleAlert class="mt-0.5 size-3.5 shrink-0" />
-            A proposta é o valor calculado, arredondado. O nível (Muito Bom, etc.) não é atribuído automaticamente —
-            depende das bandas de escala, ainda por definir. "—" significa sem elementos, nunca zero. O
-            <CircleAlert class="inline size-3 text-amber-500" /> assinala cobertura insuficiente.
+            <span>
+                O <strong>Resultado</strong> é o valor normalizado, em percentagem. A
+                <strong>Proposta</strong> traduz esse resultado para a escala de classificação
+                definida no perfil de avaliação<template v-if="schoolClass.scale_name">
+                ({{ schoolClass.scale_name }})</template>. Quando a escala ainda não tem bandas
+                definidas, a proposta fica por atribuir — o LÁPIS não infere limiares.
+                "—" significa sem elementos, nunca zero. O
+                <CircleAlert class="inline size-3 text-amber-500" /> assinala cobertura insuficiente.
+            </span>
         </p>
     </div>
 </template>

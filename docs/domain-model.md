@@ -1226,7 +1226,20 @@ O professor continua a escolher explicitamente a escala do perfil. Para a escala
 | 4 | Bom | 70–89 | `69.500000` | `89.499999` |
 | 5 | Muito Bom | 90–100 | `89.500000` | `100.000000` |
 
-Assim, 69,5% pertence ao nível 4 («Bom»). As restantes escalas de sistema (0–20 e Percentagem) e as escalas personalizadas continuam deliberadamente sem bandas: apresentam o valor numérico e não propõem um nível qualitativo. Uma escala futura só terá conversão automática quando as suas próprias bandas forem aprovadas e configuradas.
+Assim, 69,5% pertence ao nível 4 («Bom»).
+
+**As bandas dizem respeito a `kind = level`.** Uma escala por níveis sem bandas
+aprovadas continua sem conversão automática — inventar um limiar continua
+proibido. Mas as outras duas famílias não dependem de bandas para funcionar, e
+isso é regra de produto aprovada, não inferência:
+
+| `kind` | Como a proposta é obtida |
+|---|---|
+| `level` | pelas bandas de `ScaleLevel`; sem bandas → sem proposta |
+| `numeric` | pelo intervalo da própria escala: `min + (normalizado/100) × (max − min)`, arredondado pelo `rounding_mode`/`rounding_scale` da versão do perfil. Genérico para 0–20, 1–20, 0–10 ou qualquer outro intervalo. Se a escala tiver bandas, estas prevalecem. |
+| `percentage` | a escala já é percentual; só se aplica o arredondamento |
+
+A tradução vive num único sítio — `ScaleProposalResolver`.
 
 ### Q2 — Ausências no denominador (BLOQUEADOR)
 §13.3: «ausências seguem regra configurável e não assumida». Quatro opções, todas suportadas por `absence_mode`:

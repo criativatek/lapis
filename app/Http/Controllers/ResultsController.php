@@ -7,13 +7,17 @@ use App\Models\Domain;
 use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Assessment\ClassResultsCalculator;
+use App\Services\Assessment\ScaleProposalResolver;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class ResultsController extends Controller
 {
-    public function __construct(protected ClassResultsCalculator $calculator) {}
+    public function __construct(
+        protected ClassResultsCalculator $calculator,
+        protected ScaleProposalResolver $proposals,
+    ) {}
 
     public function index(): Response
     {
@@ -54,12 +58,22 @@ class ResultsController extends Controller
             collect($results)->flatMap(fn ($row) => collect($row['outcome']->domains)->pluck('domainId'))->unique()->values(),
         )->pluck('name', 'id');
 
+        // The scale the profile version in force actually uses — with its levels,
+        // so resolving each row's proposal costs no further query. The rounding
+        // travels with it: a numeric scale's proposal obeys the same rule the
+        // teacher configured for the result.
+        $version = $class->profileVersion;
+        $scale = $version?->scale()->with('levels')->first();
+        $roundingMode = $version->rounding_mode ?? 'half_up';
+        $roundingScale = $version->rounding_scale ?? 0;
+
         return Inertia::render('results/Show', [
             'schoolClass' => [
                 'ulid' => $class->ulid,
                 'label' => $class->label,
                 'subject' => $class->subject->name,
                 'has_profile' => $class->assessment_profile_version_id !== null,
+                'scale_name' => $scale?->name,
             ],
             'periods' => $periods->map(fn (AcademicPeriod $academicPeriod) => [
                 'ulid' => $academicPeriod->ulid,
@@ -75,7 +89,16 @@ class ResultsController extends Controller
                 'photo_url' => $row['enrollment']->student->photoUrl(),
                 'class_number' => $row['enrollment']->class_number,
                 'overall' => $row['outcome']->normalizedValue,
-                'proposed' => $row['outcome']->proposedValue,
+                // The result stays a percentage; the proposal is that result read
+                // on the profile's own scale — a 4, a 16, an 80%, a "Bom".
+                'proposal' => $this->proposals->resolve(
+                    $scale,
+                    $row['outcome']->scaleLevelId,
+                    $row['outcome']->normalizedValue,
+                    $row['outcome']->proposedValue,
+                    $roundingMode,
+                    $roundingScale,
+                )->toPayload(),
                 'has_value' => $row['outcome']->hasValue(),
                 'coverage_warning' => $row['outcome']->coverageWarning,
                 'domains' => array_map(fn ($domain) => [

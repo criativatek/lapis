@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\Assessment\ConfirmClassification;
 use App\Services\Assessment\ProposeClassifications;
 use App\Services\Assessment\PublishClassifications;
+use App\Services\Assessment\ScaleProposalResolver;
 use App\Support\Assessment\ClassificationDecisionException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -29,6 +30,7 @@ class ClassificationController extends Controller
         protected ProposeClassifications $proposer,
         protected ConfirmClassification $confirmer,
         protected PublishClassifications $publisher,
+        protected ScaleProposalResolver $proposals,
     ) {}
 
     public function show(Request $request, SchoolClass $class, ?string $period = null): Response
@@ -56,12 +58,21 @@ class ClassificationController extends Controller
                 ->keyBy('enrollment_id')
             : collect();
 
+        // Same scale and same rounding the Results page reads, so the proposal a
+        // teacher sees here is the one they saw there — never 4 in one place and
+        // 80% in the other.
+        $version = $class->profileVersion;
+        $scale = $version?->scale()->with('levels')->first();
+        $roundingMode = $version->rounding_mode ?? 'half_up';
+        $roundingScale = $version->rounding_scale ?? 0;
+
         return Inertia::render('classifications/Show', [
             'schoolClass' => [
                 'ulid' => $class->ulid,
                 'label' => $class->label,
                 'subject' => $class->subject->name,
                 'has_profile' => $class->assessment_profile_version_id !== null,
+                'scale_name' => $scale?->name,
             ],
             'scope' => $scope->value,
             'periods' => $periods->map(fn (AcademicPeriod $academicPeriod) => [
@@ -69,7 +80,7 @@ class ClassificationController extends Controller
                 'label' => $academicPeriod->label,
                 'selected' => $selected !== null && $academicPeriod->id === $selected->id,
             ]),
-            'rows' => $enrollments->map(function ($enrollment) use ($live) {
+            'rows' => $enrollments->map(function ($enrollment) use ($live, $scale, $roundingMode, $roundingScale) {
                 /** @var Classification|null $classification */
                 $classification = $live->get($enrollment->id);
 
@@ -81,6 +92,17 @@ class ClassificationController extends Controller
                         'ulid' => $classification->ulid,
                         'status' => $classification->status->value,
                         'status_label' => $classification->status->label(),
+                        // The proposal read on the profile's scale. The level was
+                        // already stored when the proposal was made — this only
+                        // reads it, and changes nothing that gets confirmed.
+                        'proposal' => $this->proposals->resolve(
+                            $scale,
+                            $classification->proposed_scale_level_id,
+                            $classification->proposed_normalized_value,
+                            $classification->proposed_value,
+                            $roundingMode,
+                            $roundingScale,
+                        )->toPayload(),
                         'proposed_value' => $classification->proposed_value,
                         'final_value' => $classification->final_value,
                         'effective_value' => $classification->effectiveValue(),

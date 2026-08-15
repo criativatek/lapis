@@ -5,10 +5,16 @@ import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import StudentAvatar from '@/components/StudentAvatar.vue';
 
+type Proposal = {
+    value: string | null;
+    state: 'resolved' | 'unconfigured' | 'no_result';
+    is_percentage: boolean;
+};
 type Classification = {
     ulid: string;
     status: string;
     status_label: string;
+    proposal: Proposal;
     proposed_value: string | null;
     final_value: string | null;
     effective_value: string | null;
@@ -42,6 +48,16 @@ function selectScope(scope: 'period' | 'accumulated'): void {
 // Value a teacher reads. "—" for a null (no computable result), never 0.
 function grade(value: string | null): string {
     return value === null ? '—' : Number(value).toFixed(1);
+}
+
+// The proposal already comes translated to the profile's scale — a 4, a "Bom",
+// an 80%. The "%" is only appended when the scale is itself a percentage.
+function proposalLabel(proposal: Proposal): string {
+    if (proposal.value === null) {
+        return '—';
+    }
+
+    return proposal.is_percentage ? `${proposal.value}%` : proposal.value;
 }
 
 function selectPeriod(ulid: string): void {
@@ -250,8 +266,8 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                                     <span v-else class="text-xs text-muted-foreground">Sem proposta</span>
                                 </td>
                                 <td class="px-3 py-2 text-right tabular-nums">
-                                    <span v-if="row.classification" :class="{ 'text-muted-foreground': row.classification.proposed_value === null }">
-                                        {{ grade(row.classification.proposed_value) }}
+                                    <span v-if="row.classification" :class="{ 'text-muted-foreground': row.classification.proposal.value === null }">
+                                        {{ proposalLabel(row.classification.proposal) }}
                                     </span>
                                     <span v-else class="text-muted-foreground">—</span>
                                 </td>
