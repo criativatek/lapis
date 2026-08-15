@@ -2,6 +2,39 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.33.0] — 2026-08-15
+
+### Importar resultados de outra plataforma — Intuitivo
+
+- **As exportações do Intuitivo passam a poder ser lidas pelo LÁPIS.** A mesma entrada de Avaliações — «Importar resultados de outra plataforma» — aceita agora o ficheiro `.xlsx` do Intuitivo além da exportação do Plickers, com o mesmo percurso de quatro passos e a mesma regra de fundo: o LÁPIS mostra o que encontrou e só escreve quando o professor confirma. Disponível nos planos Pro e Institucional, como já estava.
+- **Um teste com vários grupos é um instrumento, não vários.** Um enunciado dividido em GRUPO I a GRUPO IV continua a ser um único teste, com uma data e uma cotação. Criar quatro instrumentos separados seria descrever mal aquilo que o aluno fez.
+- **Cada grupo pode contar para um domínio diferente.** É o que torna esta importação útil: o mesmo teste pode avaliar Leitura, Educação Literária, Gramática e Escrita, e cada bloco vai para o domínio a que pertence, em vez de o teste inteiro ir para um só.
+- **O grupo do ficheiro não é o domínio.** O LÁPIS não deduz o domínio do nome do grupo — «GRUPO II» não diz nada sobre o que foi avaliado, e adivinhar a partir de um número romano seria inventar pedagogia. Nenhum domínio vem pré-selecionado, e quando a avaliação conta para a classificação cada grupo participante precisa de um escolhido pelo professor.
+
+### Três níveis de detalhe
+
+- **Por grupos** é o caminho normal do Intuitivo, e o que vem escolhido de origem: cada grupo dá um resultado, com a cotação que o próprio ficheiro declara.
+- **Resultado global** importa apenas a classificação do teste. Continua a ser o caminho normal do Plickers, que não mudou.
+- **Detalhe por pergunta** conserva a correção questão a questão. «Item 1» pode repetir-se em cada grupo sem se confundir: uma pergunta é identificada pelo grupo a que pertence, e não pelo número que tem dentro dele.
+- **O detalhe de origem fica guardado mesmo quando não é importado como avaliação.** Importar por grupos escreve os resultados dos grupos, mas as perguntas e as suas pontuações continuam registadas na importação — servem para conferir contas, diagnosticar e auditar, sem passarem a avaliações que ninguém pediu.
+
+### Contas que têm de bater certo
+
+- **O que o ficheiro soma e o que o LÁPIS calcula são comparados e mostrados.** A soma das perguntas confere com a cotação do grupo, a soma dos grupos com o total do teste, e a soma das pontuações de cada aluno com o total que o ficheiro lhe atribui.
+- **O total do ficheiro é conferência, nunca substituição.** Havendo divergência, o LÁPIS avisa em vez de corrigir por sua conta. Diferenças de arredondamento próprias do formato são toleradas; um ficheiro estruturalmente incompatível é recusado.
+- **Um grupo só tem resultado quando é inteiramente conhecido.** Faltando a pontuação de uma pergunta desse grupo, o grupo fica sem resultado — somar as restantes daria um número mais baixo com aspeto de nota.
+
+### O que os vazios continuam a não ser
+
+- **Uma célula vazia não é um zero.** Também não é falta, falta justificada, dispensa nem «não aplicável». O que um vazio significa no Intuitivo ainda não está demonstrado, e atribuir-lhe um significado por conveniência seria decidir sobre a avaliação de um aluno sem fundamento. Fica por avaliar, à espera do professor.
+
+### Ficheiros de origem — segurança e privacidade
+
+- **Só é aceite o formato que foi efetivamente verificado.** Um ficheiro que não seja inequivocamente compatível é recusado com uma mensagem clara, em vez de ser interpretado por aproximação. Formatos com macros não são suportados.
+- **O ficheiro é validado antes de ser aberto.** Tamanho, número de componentes internos e dimensão depois de descomprimido são verificados primeiro, o que impede que um ficheiro pequeno e malicioso se expanda até esgotar o servidor.
+- **Nada dentro do ficheiro é executado.** Fórmulas não são calculadas, ligações a outros documentos não são seguidas e macros não são lidas. O que é importado é o que está escrito nas células.
+- **As propriedades pessoais do documento não entram no LÁPIS.** O nome de quem criou ou modificou o ficheiro, e os caminhos da máquina onde foi gravado, não são guardados nem registados; da folha conserva-se apenas o necessário à importação.
+
 ## [0.32.1] — 2026-08-15
 
 ### Subscrições — uma de cada vez
