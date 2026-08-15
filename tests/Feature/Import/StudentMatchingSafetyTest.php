@@ -271,6 +271,32 @@ class StudentMatchingSafetyTest extends TestCase
         $this->assertSame('already_taken', $rows[0]['reason']);
     }
 
+    #[Test]
+    public function a_collision_between_two_automatic_matches_is_seen_at_once(): void
+    {
+        $ana = $this->enrol('Ana Exemplo', 1);
+
+        // Neither row was decided by hand. Both names normalise to Ana, so
+        // without accumulating claims both were shown as «Correspondência» —
+        // and the refusal only arrived at confirmation, after the teacher had
+        // been told everything was in order.
+        $rows = $this->match([
+            $this->sourceStudent('student:1', 'Ana Exemplo', card: '1'),
+            $this->sourceStudent('student:2', 'ana  exemplo ', card: '2'),
+        ]);
+
+        $this->assertSame($ana->id, $rows[0]['enrollment_id'], 'a primeira linha do ficheiro fica com a aluna');
+        $this->assertSame(MatchSourceStudents::STATUS_MATCHED, $rows[0]['status']);
+
+        $this->assertNull($rows[1]['enrollment_id']);
+        $this->assertSame(MatchSourceStudents::STATUS_AMBIGUOUS, $rows[1]['status']);
+        $this->assertSame('already_taken', $rows[1]['reason']);
+
+        // And the teacher is offered the student anyway, because the right
+        // answer may well be that this second row is somebody else entirely.
+        $this->assertNotEmpty($rows[1]['candidates']);
+    }
+
     // ------------------------------------------------------------ the interface
 
     #[Test]

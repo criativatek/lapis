@@ -63,10 +63,32 @@ class MatchSourceStudents
         // conservative matcher would be correct and useless at the same time.
         $everyone = array_map(fn (array $row): array => ['id' => $row['id'], 'label' => $row['label']], $enrollments);
 
-        return array_map(
-            fn (CanonicalStudent $student): array => $this->row($student, $alreadyDecided, $byNumber, $byName, $byNormalised, $taken, $everyone),
-            $grid->students,
-        );
+        // Claims accumulate as the file is walked, and not only from decisions
+        // already taken.
+        //
+        // Without this, two rows whose names normalise to the same student were
+        // BOTH shown as matched, and the collision surfaced two screens later:
+        // saving keeps whichever row claimed them first and returns the other to
+        // undecided, so a teacher who had just been told everything was matched
+        // pressed confirm and was refused. The «already_taken» answer existed
+        // and was simply never reachable except by an explicit decision.
+        //
+        // Same rule as the save, and in the same order — first row in the file
+        // keeps the student — so the preview and the door now agree, which is
+        // the one thing this class exists to guarantee.
+        $rows = [];
+
+        foreach ($grid->students as $student) {
+            $row = $this->row($student, $alreadyDecided, $byNumber, $byName, $byNormalised, $taken, $everyone);
+
+            if ($row['enrollment_id'] !== null) {
+                $taken[] = $row['enrollment_id'];
+            }
+
+            $rows[] = $row;
+        }
+
+        return $rows;
     }
 
     /**
