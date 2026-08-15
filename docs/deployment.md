@@ -92,6 +92,10 @@ rm -f bootstrap/cache/{config,packages,services,routes-v7}.php   # armadilha 1
 composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction || exit 1
 php artisan migrate:status | grep Pending    # confirmar ANTES de migrar
 php artisan migrate --force || exit 1
+# Dados de referência, em TODOS os deploys e não só no primeiro (armadilha 9).
+# Idempotente: updateOrCreate + sync. Não toca em subscrições nem em dados
+# académicos.
+php artisan db:seed --class=ReferenceDataSeeder --force || exit 1
 php artisan config:cache && php artisan route:cache && php artisan view:cache
 php artisan up
 EOF
@@ -266,6 +270,22 @@ lição sobre `composer install` (armadilha 2) continua a valer.
    *propriedade* estar errada; `777` mascara isso e deixa o código da aplicação
    gravável por terceiros. A permissão mais aberta legítima neste servidor é
    `770` (`storage`, `bootstrap/cache`), sempre com grupo `lapis`.
+9. **Os seeders de referência têm de correr em TODOS os deploys, não só no
+   primeiro.** Um módulo novo (`modules` + `module_plan`) é **dados de
+   referência**, não schema: alterar o `EntitlementsSeeder` sem o executar deixa
+   os planos existentes sem a nova capability, e a funcionalidade fica invisível
+   para toda a gente — incluindo para quem paga Pro. Nada falha, nada avisa; o
+   botão simplesmente não aparece.
+   Aconteceu a 2026-08-15 em desenvolvimento com `correction_grid_import`: o
+   seeder tinha a capability em Pro e Institucional, a base tinha 25 módulos em
+   vez de 26, e as três organizações Pro/Institucional resolviam `false`. Os
+   testes não o apanham — usam SQLite em memória e semeiam-se a si próprios, por
+   isso passam todos enquanto a base real fica para trás.
+   O passo `db:seed --class=ReferenceDataSeeder --force` no fluxo acima resolve
+   isto: é idempotente (`updateOrCreate` + `sync`), não toca em subscrições nem
+   em dados académicos, e custa menos de um segundo. Correr **sempre**, mesmo
+   quando a release "não mexeu em planos" — quem diz isso é a mesma pessoa que
+   não se lembra de ter acrescentado um módulo há três semanas.
 
 O `tar x` usa `--no-same-owner/permissions` para não tentar impor donos e modos
 do ambiente local; o `|| true` engole o aviso de `chmod` na própria pasta `.`.
@@ -368,6 +388,9 @@ Manter `APP_ENV=production` para o Vite servir os assets compilados, não o dev 
 - [ ] `storage/logs/laravel.log` sem entradas novas de `ERROR`, `SQLSTATE`,
       `Permission denied` ou `Vite manifest` depois do deploy.
 - [ ] Backup da base de dados agendado (CloudPanel → Backups).
+- [ ] **`db:seed --class=ReferenceDataSeeder --force` correu neste deploy**
+      (armadilha 9). Uma capability nova só existe depois disto; sem ela, a
+      funcionalidade fica invisível mesmo para quem tem plano para a usar.
 - [ ] **`lapis:release-check --expect-version=… --expect-commit=…` passou** (passo 6).
       Enquanto não passar, não se sabe o que está em produção — sabe-se o que se
       quis enviar, que não é a mesma coisa.

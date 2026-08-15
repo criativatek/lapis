@@ -2,6 +2,42 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.32.0] — 2026-08-15
+
+### Importar resultados de outra plataforma — Plickers
+
+- **Os resultados de um teste aplicado noutra plataforma podem agora entrar no LÁPIS sem ser copiados à mão.** A partir de Avaliações, «Importar resultados de outra plataforma» lê a exportação, mostra o que encontrou e só escreve quando o professor confirma. Disponível nos planos Pro e Institucional.
+- **O caminho normal importa a classificação que a plataforma já calculou.** O Plickers dá um resultado por aluno — 55%, 85% — e é esse que é importado. Reconstruir as cotações de vinte perguntas para obter um número que já existe era trabalho sem produto, e produzia um número *diferente* assim que uma pergunta valesse mais do que outra.
+- **O detalhe pergunta a pergunta é opcional**, numa caixa que ninguém tem de tocar. Só quem quiser conservar a correção questão a questão no LÁPIS é que define cotações, chaves de resposta e domínios por questão.
+- **O professor escolhe o domínio avaliado.** O LÁPIS não o infere pelo texto das perguntas. Quando a avaliação conta para a classificação, o domínio é obrigatório — um resultado que conta para domínio nenhum é um resultado que não conta para nada, em silêncio.
+- **O período é determinado pela data de aplicação** e continua visível e alterável. Uma data que não caia inequivocamente num período não inventa nenhum: pede que o professor escolha.
+- **A correspondência entre os alunos do ficheiro e os da turma é conservadora por decisão.** Nome exato e nome normalizado associam; tudo o resto fica «Por associar» à espera do professor. Não há aproximação silenciosa, o número do cartão do Plickers nunca é lido como número de aluno, e o mesmo aluno não pode receber duas linhas do ficheiro. Trinta alunos por associar é preferível a um resultado no aluno errado.
+- **Uma importação pode ser cancelada em qualquer passo.** Descarta o ficheiro temporário e a análise, e não toca em nada já avaliado.
+- **Cada análise é uma importação nova**, com identificador, resumo e conteúdo próprios. Dois ficheiros com o mesmo nome e conteúdos diferentes deixam de se confundir — a identidade de uma importação vem do que o ficheiro diz, nunca de como se chama.
+
+### O que os vazios continuam a não ser
+
+- **Um aluno sem resultado na plataforma fica por avaliar.** Não recebe zero, não recebe falta, não recebe falta justificada e não recebe dispensa. «Não participou nesta aplicação» é um facto sobre a plataforma de origem, e uma ausência é um acontecimento que só o professor regista.
+- **Um zero obtido continua a ser um zero.** A distinção entre «não tem resultado» e «teve zero» é a razão de ser de todo este fluxo.
+- **O resultado original fica guardado.** «Resultado na plataforma: 85%» continua a poder ser consultado depois de o ficheiro ser eliminado.
+
+### Correção — dizer o que falta
+
+- **A grelha passa a dizer quem falta resolver, pelo nome**, em vez de recusar a conclusão com um botão cinzento. «Falta resolver 1 resultado antes de concluir a correção. Por avaliar: Marta Tomás.»
+- **Uma célula por decidir identifica-se como «Por avaliar»**, na própria linha e no seletor de estado, em vez de um travessão que se confunde com uma célula vazia qualquer.
+- **Guardar passa a confirmar que guardou.** Era a única ação da página que gravava sem dizer nada, o que era indistinguível de um botão que não funciona. Sem alterações pendentes, a página di-lo em vez de deixar o botão mudo.
+- **Concluir a correção continua a ser um ato explícito do professor.** Guardar persiste trabalho; concluir declara-o terminado, e nada o faz automaticamente.
+
+### Proteção de dados
+
+- **Uma falha de gravação deixa de poder levar a exportação para os registos de erro.** A mensagem de uma exceção de base de dados interpola os valores gravados, e o valor aqui é o ficheiro inteiro — nomes e respostas de trinta alunos. O conteúdo é retirado no ponto da falha; o código de erro é preservado.
+- **O ficheiro carregado vive em armazenamento privado e por pouco tempo**: apagado ao importar, apagado ao cancelar, e as sessões abandonadas são encerradas pelo comando de limpeza.
+- **A proveniência guardada é minimizada.** Depois da importação, os nomes da plataforma de origem são descartados — a correspondência já diz quem é quem.
+
+### Operação
+
+- **Os dados de referência passam a ser sincronizados em todos os deploys**, não apenas no primeiro. Uma nova capacidade é dado de referência: alterar o seeder sem o executar deixa os planos existentes sem ela, que foi exatamente o que aconteceu com esta funcionalidade.
+
 ## [0.31.0] — 2026-08-15
 
 ### Instrumentos — grupos e secções
