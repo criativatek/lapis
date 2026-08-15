@@ -4,10 +4,12 @@ namespace App\Providers;
 
 use App\Models\PlatformSetting;
 use App\Support\Entitlements\Entitlements;
+use App\Support\Release\BuildStamp;
 use App\Support\Tenancy\CurrentOrganization;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Console\AboutCommand;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -32,6 +34,20 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureDefaults();
         $this->applyPlatformMailSettings();
+        $this->describeRelease();
+    }
+
+    /**
+     * Put the running version and commit into `php artisan about`, so the
+     * standard Laravel question gets the answer without anyone having to know
+     * that `lapis:release-check` exists. Same single source as the check itself.
+     */
+    protected function describeRelease(): void
+    {
+        AboutCommand::add('LÁPIS', fn (): array => [
+            'Version' => config('app.version'),
+            'Commit' => BuildStamp::read()?->shortCommit() ?? '(sem carimbo de build)',
+        ]);
     }
 
     /**

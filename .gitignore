@@ -42,3 +42,7 @@ yarn-error.log
 
 # Deploy package built locally per docs/deployment.md — never commit.
 /update.tgz
+# Written by `php artisan lapis:build-stamp` just before packaging, and read back
+# in production by `lapis:release-check`. Committing it would pin a commit hash
+# that describes the state before itself, so it is always generated, never stored.
+/build.json

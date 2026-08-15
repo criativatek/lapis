@@ -46,31 +46,26 @@ nada indica de fora qual o commit que lá está.
 Não voltar a fazer `git clone`. O `.env`/`APP_KEY` vivem **só no servidor** —
 reescrevê-los invalida sessões, 2FA e a password SMTP cifrada. Enviar só código:
 
+> **O pacote é construído a partir dos ficheiros versionados no Git, não a
+> partir da working directory.** Nada entra por estar em disco. Entram os
+> ficheiros que o `git ls-files` conhece, mais dois artefactos gerados e
+> nomeados de propósito — `build.json` e `public/build/` —, e mais nada.
+
 ```bash
 # 0. Assets: o servidor tem Node 12, demasiado antigo para o build. Compilar
 #    SEMPRE localmente antes de empacotar.
 npm run build
 
-# 1. Empacotar local (Git Bash). Excluir SEMPRE bootstrap/cache, .env e
-#    storage/app — este último é conteúdo carregado por utilizadores
-#    (fotos de alunos, ficheiros temporários de importação), específico de
-#    CADA ambiente. Nunca deve viajar num pacote de código: já aconteceu
-#    (2026-07-31) o storage/app local ser enviado para produção e poluir o
-#    armazenamento real com ficheiros de teste locais.
-#    As pastas de ferramentas de IA (.claude, .agents, .superpowers) estão no
-#    .gitignore mas o tar não lê o .gitignore: sem estas exclusões vão para
-#    produção — foi assim que 6 MB de skills e fontes TTF lá foram parar.
-tar --force-local -czf update.tgz \
-  --exclude=.git --exclude=node_modules --exclude=vendor \
-  --exclude=.env --exclude=.env.production \
-  --exclude='storage/logs/*.log' --exclude='storage/framework/cache/data/*' \
-  --exclude=storage/app \
-  --exclude=bootstrap/cache \
-  --exclude=.claude --exclude=.agents --exclude=.superpowers \
-  -C d:/HERD/LAPIS .
+# 1. Carimbar e empacotar, num só comando. NÃO voltar a construir o tar à mão —
+#    ver «Porquê a allowlist» abaixo. Recusa se o repositório não corresponder
+#    ao HEAD (working tree OU staging), verifica o pacote depois de o criar, e
+#    falha em vez de produzir um pacote suspeito.
+php artisan lapis:build-package
 
-# 2. Verificar o pacote ANTES de o enviar — versão certa e migrations dentro:
-tar -xzOf update.tgz ./config/app.php | grep "'version'"
+# 2. O comando já verificou o pacote. Isto é só o que se quer ver com os olhos
+#    antes de enviar — versão, carimbo e as migrations desta release:
+tar -xzOf update.tgz config/app.php | grep "'version'"
+tar -xzOf update.tgz build.json
 tar -tzf update.tgz | grep migrations/ | tail -3
 
 # 3. Testar propriedade e escrita ANTES de entrar em manutenção (armadilha 8).
@@ -100,7 +95,25 @@ php artisan migrate --force || exit 1
 php artisan config:cache && php artisan route:cache && php artisan view:cache
 php artisan up
 EOF
+
+# 6. O deploy SÓ está concluído depois disto. Substituir pela versão e commit
+#    que se pretendia enviar (`git rev-parse --short HEAD` local). Sai != 0 e
+#    diz o que difere se a aplicação estiver a correr outra coisa.
+ssh lapis-prod 'cd /home/lapis/htdocs/lapis.criativatek.com &&
+  php artisan lapis:release-check --expect-version=0.31.0 --expect-commit=f39c084'
 ```
+
+**Um deploy sem o passo 6 não está confirmado, está suposto.** Foi assim que a
+0.29.1 ficou por instalar sem ninguém dar por isso: a versão subiu no git, o
+deploy nunca aconteceu, e durante um mês a única forma de saber o que estava lá
+era lembrar-se. O `--expect-version` apanha o caso em que a aplicação continua
+na versão antiga (incluindo com o `config:cache` velho, porque a versão é lida
+da configuração carregada e não do ficheiro); o `--expect-commit` apanha o caso
+mais traiçoeiro, em que o número da versão bate certo mas o código é de outro
+commit. Sem carimbo no pacote, o comando falha em vez de encolher os ombros.
+
+Para saber o que lá está sem comparar nada — `php artisan lapis:release-check`
+sozinho, ou o `php artisan about`, que traz a mesma informação na secção LÁPIS.
 
 **Confirmar sempre que a extração escreveu mesmo.** O `tar` devolve estado de
 erro global mas o script continua, e `grep version` sozinho não prova que os
@@ -113,11 +126,38 @@ ssh lapis-prod 'cd /home/lapis/htdocs/lapis.criativatek.com &&
   md5sum config/app.php composer.lock public/build/manifest.json'
 ```
 
+## Porquê a allowlist (e porque não voltar ao `tar --exclude`)
+
+Até 2026-08-15 o pacote era um `tar` da working directory com uma lista de
+`--exclude`. **O `tar` não lê o `.gitignore`** — está escrito na armadilha 1
+desde o início —, por isso entrava tudo o que ninguém se tivesse lembrado de
+nomear. Um teste com uma sonda untracked confirmou-o: um ficheiro arbitrário na
+raiz viajava para produção.
+
+Não era hipotético. Foram assim para produção 6 MB de ferramentas de IA, um
+`storage/app` local que poluiu as fotografias reais dos alunos, e — descoberto
+a 2026-08-15, lá desde 31 de julho — quatro **exportações reais não
+anonimizadas** de alunos, na pasta `Ficheiros avulsos/` que o `.gitignore`
+marca como «never commit». Todos eram ficheiros que ninguém pôs na lista, que é
+precisamente aquilo contra o que uma denylist não protege.
+
+A regra é agora ao contrário: **nada entra a não ser que o git o conheça**, mais
+`build.json` e `public/build/`. Um ficheiro local novo não chega a produção por
+ter sido esquecido, porque ser esquecido passou a ser o estado seguro. O
+`lapis:build-package` monta a lista, cria o tar e depois **lê o pacote de volta**
+para confirmar que nada proibido entrou e nada essencial faltou.
+
+Isto resolve estruturalmente as armadilhas 1 e 3 abaixo: os ficheiros de
+`bootstrap/cache/` e o conteúdo de `storage/app/` são gitignorados, logo já não
+são sequer alcançáveis. Ficam registadas porque explicam o porquê — e porque a
+lição sobre `composer install` (armadilha 2) continua a valer.
+
 **Armadilhas que já partiram o site (ou o armazenamento):**
 
 1. **Nunca enviar `bootstrap/cache/`.** O cache local lista providers de dev
    (Laravel\Pail) que não existem em produção (`--no-dev`) → `Class ... not found`
-   no `config:cache`. Excluir do tar (acima). Se acontecer: apagar
+   no `config:cache`. Hoje impossível: é gitignorado e a allowlist não lhe toca
+   (só o `.gitignore` que define a pasta viaja). Se alguma vez acontecer: apagar
    `bootstrap/cache/{packages,services,config}.php` no servidor + `composer install`.
 2. **Correr sempre `composer install`** depois de extrair — regenera o cache de
    providers para o conjunto de produção. Saltar isto foi o que expôs a armadilha 1.
@@ -126,10 +166,10 @@ ssh lapis-prod 'cd /home/lapis/htdocs/lapis.criativatek.com &&
    parte do código. Em 2026-07-31 o `storage/app` local (com ficheiros de teste
    de dias anteriores) foi enviado por engano para produção, poluindo
    `storage/app/private/student-photos` e `roster-imports` com dezenas de
-   ficheiros irrelevantes. Excluir sempre do tar (acima); se acontecer, os
-   ficheiros a remover no servidor identificam-se pela data de modificação
-   (`stat -c '%y %n' storage/app/private/*/*`) — qualquer coisa mais antiga
-   do que o próprio deploy é suspeita.
+   ficheiros irrelevantes. Hoje impossível pela mesma razão: é gitignorado. Se
+   alguma vez acontecer, os ficheiros a remover no servidor identificam-se pela
+   data de modificação (`stat -c '%y %n' storage/app/private/*/*`) — qualquer
+   coisa mais antiga do que o próprio deploy é suspeita.
 4. **Qualquer pasta dentro de `storage/app/private/` tem de ter permissão de
    escrita para o grupo (`g+w`), não só para o dono.** O site corre como user
    `lapis`, mas o `deploy` (usado para gerir ficheiros por SSH) só partilha o
@@ -328,3 +368,6 @@ Manter `APP_ENV=production` para o Vite servir os assets compilados, não o dev 
 - [ ] `storage/logs/laravel.log` sem entradas novas de `ERROR`, `SQLSTATE`,
       `Permission denied` ou `Vite manifest` depois do deploy.
 - [ ] Backup da base de dados agendado (CloudPanel → Backups).
+- [ ] **`lapis:release-check --expect-version=… --expect-commit=…` passou** (passo 6).
+      Enquanto não passar, não se sabe o que está em produção — sabe-se o que se
+      quis enviar, que não é a mesma coisa.
