@@ -7,14 +7,13 @@ use App\Http\Controllers\Controller;
 use App\Models\Organization;
 use App\Models\OrganizationSubscription;
 use App\Models\Plan;
-use App\Models\SubscriptionStatus;
 use App\Models\User;
 use App\Services\Audit\AuditLog;
+use App\Services\Organizations\ChangeOrganizationPlan;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -33,6 +32,11 @@ class AdminAccountController extends Controller
         protected Entitlements $entitlements,
         protected AuditLog $audit,
         protected CurrentOrganization $currentOrganization,
+        // Every subscription transition goes through here. The controller
+        // validates, authorises and reports; the lifecycle rule — at most one
+        // subscription in force at a time — lives in one place and is not
+        // restated at each call site.
+        protected ChangeOrganizationPlan $planChange,
     ) {}
 
     public function index(Request $request): Response
@@ -95,18 +99,16 @@ class AdminAccountController extends Controller
         ]);
         $user->forceFill(['email_verified_at' => now()])->save();
 
-        $organization = app(CreatePersonalOrganization::class)->create($user);
+        // The organization is created ON the chosen plan. It used to be created
+        // on Base and then have the chosen plan laid on top in the same request,
+        // which is how two Active, open-ended subscriptions ended up on accounts
+        // that were one second old (§6).
+        $organization = app(CreatePersonalOrganization::class)->create(
+            $user,
+            Plan::where('key', $validated['plan_key'])->firstOrFail(),
+        );
 
-        if ($validated['plan_key'] !== 'base') {
-            $plan = Plan::where('key', $validated['plan_key'])->firstOrFail();
-            OrganizationSubscription::query()->withoutGlobalScope('organization')->create([
-                'organization_id' => $organization->id,
-                'plan_id' => $plan->id,
-                'status' => SubscriptionStatus::Active,
-                'starts_at' => Carbon::now(),
-            ]);
-            $this->entitlements->flush();
-        }
+        $this->entitlements->flush();
 
         $this->log($organization, 'admin.account_created', "Conta criada: {$user->email} ({$validated['plan_key']}).");
 
@@ -161,27 +163,36 @@ class AdminAccountController extends Controller
 
         $plan = Plan::where('key', $validated['plan_key'])->firstOrFail();
 
-        OrganizationSubscription::query()->withoutGlobalScope('organization')->create([
-            'organization_id' => $organization->id,
-            'plan_id' => $plan->id,
-            'status' => SubscriptionStatus::Active,
-            'starts_at' => Carbon::now(),
-        ]);
-        $this->entitlements->flush();
+        $this->planChange->to($organization, $plan);
 
         $this->log($organization, 'admin.plan_changed', "Plano alterado para {$plan->name}.", ['plan_key' => $plan->key]);
 
         return back();
     }
 
+    /**
+     * Takes access away — all of it. The service suspends every subscription in
+     * force, not merely the newest, so no older plan underneath can quietly
+     * become effective and turn «suspended» into «downgraded to Base».
+     */
     public function suspend(Organization $organization): RedirectResponse
     {
-        return $this->setStatus($organization, SubscriptionStatus::Suspended, 'admin.subscription_suspended', 'Subscrição suspensa.');
+        $suspended = $this->planChange->suspend($organization);
+
+        if ($suspended > 0) {
+            $this->log($organization, 'admin.subscription_suspended', 'Subscrição suspensa.');
+        }
+
+        return back();
     }
 
     public function reactivate(Organization $organization): RedirectResponse
     {
-        return $this->setStatus($organization, SubscriptionStatus::Active, 'admin.subscription_reactivated', 'Subscrição reativada.');
+        if ($this->planChange->reactivate($organization) !== null) {
+            $this->log($organization, 'admin.subscription_reactivated', 'Subscrição reativada.');
+        }
+
+        return back();
     }
 
     public function toggleAdmin(Organization $organization): RedirectResponse
@@ -192,24 +203,6 @@ class AdminAccountController extends Controller
             $owner->forceFill(['is_platform_admin' => $grant])->save();
             $this->log($organization, $grant ? 'admin.admin_granted' : 'admin.admin_revoked',
                 ($grant ? 'Concedido' : 'Revogado')." acesso de administrador a {$owner->email}.");
-        }
-
-        return back();
-    }
-
-    protected function setStatus(Organization $organization, SubscriptionStatus $status, string $event, string $summary): RedirectResponse
-    {
-        $subscription = OrganizationSubscription::query()
-            ->withoutGlobalScope('organization')
-            ->where('organization_id', $organization->id)
-            ->latest('starts_at')
-            ->latest('id')
-            ->first();
-
-        if ($subscription !== null) {
-            $subscription->update(['status' => $status]);
-            $this->entitlements->flush();
-            $this->log($organization, $event, $summary);
         }
 
         return back();
