@@ -3,11 +3,14 @@
 namespace App\Providers;
 
 use App\Models\PlatformSetting;
+use App\Services\Import\Correction\CorrectionGridParserRegistry;
+use App\Services\Import\Correction\PlickersCsvParser;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Release\BuildStamp;
 use App\Support\Tenancy\CurrentOrganization;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Encryption\DecryptException;
+use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Console\AboutCommand;
 use Illuminate\Support\Facades\Crypt;
@@ -25,6 +28,14 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->singleton(CurrentOrganization::class);
         $this->app->singleton(Entitlements::class);
+
+        // Which correction-grid formats LÁPIS can read is decided in exactly one
+        // place. A new parser is registered here and the interface, the upload
+        // rules and the source list all widen together — nothing else branches
+        // on a source (§11).
+        $this->app->singleton(CorrectionGridParserRegistry::class, fn (Application $app): CorrectionGridParserRegistry => new CorrectionGridParserRegistry([
+            $app->make(PlickersCsvParser::class),
+        ]));
     }
 
     /**

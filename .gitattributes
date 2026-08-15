@@ -6,6 +6,12 @@
 *.md diff=markdown
 *.php diff=php
 
+# Import fixtures are exact byte-for-byte reproductions of what other platforms
+# export: a BOM, CRLF line endings, quoted fields. `text=auto eol=lf` above would
+# normalise exactly the things the parser tests exist to prove it survives, so
+# the tests would still pass while no longer testing anything.
+tests/Fixtures/Import/** -text
+
 CHANGELOG.md export-ignore
 README.md export-ignore
 .github/workflows/browser-tests.yml export-ignore

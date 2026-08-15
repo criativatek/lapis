@@ -1,0 +1,9 @@
+"Teste de Exemplo - 7X (25/26) "
+
+"Card Number","First name","Last Name","Score","Correct","Answered","A. Qual é a capital de um país fictício?","B. Quantos lados tem um triângulo?","C. Escolhe a opção certa, incluindo vírgulas, aqui"
+
+,,,,,,https://exemplo.invalido/q/aaa111,https://exemplo.invalido/q/bbb222,https://exemplo.invalido/q/ccc333
+,,,,,,A,B,C
+1,Ana,Exemplo,100%,3,3,A,B,C
+2,Bruno,Exemplo,33%,1,3,A,C,B
+3,Carla,Exemplo,-,0,0,-,-,-

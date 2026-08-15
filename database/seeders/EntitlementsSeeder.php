@@ -45,6 +45,11 @@ class EntitlementsSeeder extends Seeder
         'advanced_analytics' => 'Análises Avançadas',
         'template_sharing' => 'Partilha de Modelos',
         'self_assessment_links' => 'Ligações de Autoavaliação',
+        // One capability for every source, deliberately. Plickers and Intuitivo
+        // are file formats this reads, not products sold separately, and gating
+        // them one by one would make the commercial offer depend on which
+        // parsers happen to exist (§3).
+        'correction_grid_import' => 'Importação de Grelhas de Correção',
 
         // Institucional.
         'institution_admin' => 'Administração Institucional',
@@ -63,7 +68,7 @@ class EntitlementsSeeder extends Seeder
     protected const PRO_MODULES = [
         ...self::BASE_MODULES,
         'calendar', 'lessons', 'ai_assistance', 'advanced_analytics', 'template_sharing',
-        'self_assessment_links',
+        'self_assessment_links', 'correction_grid_import',
     ];
 
     protected const INSTITUTIONAL_MODULES = [
