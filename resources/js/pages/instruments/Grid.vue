@@ -547,6 +547,16 @@ function revertCancellation(): void {
             <div class="flex items-center gap-3">
                 <Badge variant="secondary">{{ instrument.status_label }}</Badge>
                 <template v-if="!isCancelled">
+                    <!--
+                      A real anchor, not an Inertia Link: this returns a file,
+                      and a client-side navigation would try to render it.
+                    -->
+                    <a
+                        :href="`/instruments/${instrument.ulid}/grelha`"
+                        class="text-sm text-muted-foreground hover:underline"
+                    >
+                        Descarregar grelha
+                    </a>
                     <Link :href="`/instruments/${instrument.ulid}/edit`" class="text-sm text-muted-foreground hover:underline">
                         Editar instrumento
                     </Link>

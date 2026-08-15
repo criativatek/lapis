@@ -138,6 +138,10 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::get('classes/{class}/instruments/create', [InstrumentController::class, 'create'])->name('instruments.create');
         Route::post('classes/{class}/instruments', [InstrumentController::class, 'store'])->name('instruments.store');
         Route::get('instruments/{instrument}', [InstrumentController::class, 'show'])->name('instruments.show');
+        // The grid a teacher fills in offline and brings back. Deliberately on
+        // the instrument: it is generated FROM one, and there is nothing to ask
+        // when the answer is the evaluation already on screen (§11).
+        Route::get('instruments/{instrument}/grelha', [InstrumentController::class, 'downloadGrid'])->name('instruments.grid');
         Route::get('instruments/{instrument}/edit', [InstrumentController::class, 'edit'])->name('instruments.edit');
         Route::put('instruments/{instrument}', [InstrumentController::class, 'update'])->name('instruments.update');
         Route::post('instruments/{instrument}/cancel', [InstrumentController::class, 'cancel'])->name('instruments.cancel');

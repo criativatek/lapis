@@ -18,6 +18,7 @@ use App\Services\Assessment\CompleteCorrection;
 use App\Services\Assessment\InstrumentBuilder;
 use App\Services\Assessment\InstrumentCompleteness;
 use App\Services\Assessment\RecordScores;
+use App\Services\Import\Correction\WriteLapisGrid;
 use App\Support\Assessment\CorrectionWorkflowException;
 use App\Support\Assessment\InstrumentValidationException;
 use App\Support\Assessment\ScoreExceedsMaximumException;
@@ -28,6 +29,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class InstrumentController extends Controller
 {
@@ -99,6 +101,26 @@ class InstrumentController extends Controller
         }
 
         return to_route('instruments.show', $instrument->ulid);
+    }
+
+    /**
+     * The correction grid, as a spreadsheet the teacher fills in offline.
+     *
+     * Generated from THIS instrument and THIS class, so it already carries the
+     * students and the questions and needs no configuring when it comes back.
+     * The same authorisation as viewing the grid on screen, because it contains
+     * exactly what that screen contains.
+     */
+    public function downloadGrid(Instrument $instrument, WriteLapisGrid $writer): BinaryFileResponse
+    {
+        Gate::authorize('view', $instrument->schoolClass);
+
+        $path = (string) tempnam(sys_get_temp_dir(), 'lapis-grid-');
+        $writer->write($instrument, $path);
+
+        // Removed as soon as it has been sent: it holds the class's names, and
+        // a temporary directory is not where those live.
+        return response()->download($path, $writer->filename($instrument))->deleteFileAfterSend(true);
     }
 
     public function edit(Instrument $instrument): Response
