@@ -57,35 +57,6 @@ const fileDetail = computed(() => {
 });
 
 /**
- * The accepted formats, in words a teacher recognises.
- *
- * Built from what the chosen parser actually accepts, so it widens exactly when
- * a reader is added and never says «Excel» about a source that cannot read one.
- */
-const FORMAT_NAMES: Record<string, string> = {
-    csv: 'CSV (.csv)',
-    xlsx: 'Excel (.xlsx)',
-};
-
-const acceptedFormats = computed(() =>
-    (chosenSource.value?.extensions ?? []).map(
-        (extension) => FORMAT_NAMES[extension] ?? `.${extension}`,
-    ),
-);
-
-const acceptedFormatsSentence = computed(() => {
-    const names = acceptedFormats.value;
-
-    if (names.length === 0) {
-        return '';
-    }
-
-    return names.length === 1
-        ? names[0]
-        : `${names.slice(0, -1).join(', ')} e ${names[names.length - 1]}`;
-});
-
-/**
  * «Selecionar ficheiro CSV» is helpful when there is only one kind of file to
  * pick and simply wrong when there are two — a spreadsheet source that tells the
  * teacher to choose a CSV is telling them their .xlsx will not do. Named only
@@ -206,8 +177,11 @@ function submit(): void {
             </fieldset>
 
             <div class="space-y-1.5">
+                <!-- Just «Ficheiro». The previous label assumed the file had
+                     come out of somewhere, and a teacher's own spreadsheet was
+                     never exported from anything — they built it. -->
                 <span id="import-file-label" class="block text-sm font-medium"
-                    >Ficheiro exportado</span
+                    >Ficheiro</span
                 >
 
                 <!--
@@ -254,14 +228,12 @@ function submit(): void {
                     {{ fileDetail }}
                 </p>
 
+                <!-- The formats are stated once, by the source the teacher just
+                     chose. What is left here is the one thing that screen does
+                     not say and they cannot infer: what happens to the file. -->
                 <p id="import-file-hint" class="text-xs text-muted-foreground">
-                    {{
-                        acceptedFormats.length === 1
-                            ? 'Formato aceite'
-                            : 'Formatos aceites'
-                    }}: {{ acceptedFormatsSentence }}. O ficheiro é guardado
-                    temporariamente em privado e eliminado após a importação ou
-                    cancelamento.
+                    O ficheiro é guardado temporariamente em privado e eliminado
+                    após a importação ou cancelamento.
                 </p>
                 <p
                     v-if="form.errors.file"

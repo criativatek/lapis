@@ -123,14 +123,36 @@ class GenericSpreadsheetWizardTest extends CorrectionImportHttpTest
     #[Test]
     public function the_spreadsheet_source_describes_itself_without_naming_a_shape(): void
     {
+        $this->assertSame('Folha de cálculo', CorrectionGridSource::Generic->label());
+
         $hint = CorrectionGridSource::Generic->hint();
 
-        $this->assertSame('Importe resultados a partir de uma folha Excel ou de um ficheiro CSV.', $hint);
+        // The formats are stated HERE, once, and not in the name and again
+        // under the file button as they were.
+        $this->assertSame('Importe um ficheiro Excel (.xlsx) ou CSV (.csv).', $hint);
 
         // It imports a global result, results per domain OR question by
         // question. Naming any one of them sends the teacher for the wrong file.
         $this->assertStringNotContainsString('por questão', $hint);
         $this->assertStringNotContainsString('por aluno e por', $hint);
+    }
+
+    #[Test]
+    public function the_file_field_does_not_claim_the_file_was_exported(): void
+    {
+        $create = $this->create();
+
+        // A teacher's own spreadsheet was never exported from anything (§1).
+        $this->assertStringContainsString('>Ficheiro</span', $create);
+        $this->assertStringNotContainsString('Ficheiro exportado', $create);
+
+        // And the formats are not repeated under the button.
+        $this->assertStringNotContainsString('Formatos aceites', $create);
+        $this->assertStringNotContainsString('Formato aceite', $create);
+        $this->assertStringContainsString(
+            'O ficheiro é guardado temporariamente em privado',
+            $create,
+        );
     }
 
     #[Test]
@@ -145,8 +167,9 @@ class GenericSpreadsheetWizardTest extends CorrectionImportHttpTest
         $this->assertStringContainsString('extensions.length === 1', $create);
         $this->assertStringContainsString(": 'Selecionar ficheiro'", $create);
 
-        $this->assertStringContainsString("csv: 'CSV (.csv)'", $create);
-        $this->assertStringContainsString("xlsx: 'Excel (.xlsx)'", $create);
+        // Both formats are named where the teacher chooses the source.
+        $this->assertStringContainsString('Excel (.xlsx)', CorrectionGridSource::Generic->hint());
+        $this->assertStringContainsString('CSV (.csv)', CorrectionGridSource::Generic->hint());
     }
 
     #[Test]
@@ -221,11 +244,73 @@ class GenericSpreadsheetWizardTest extends CorrectionImportHttpTest
         $this->assertTrue($props['preview']['source_needs_describing']);
         $this->assertSame([], $props['preview']['students']);
 
-        $this->assertStringContainsString('v-if="countsAreMeaningful"', $this->wizard());
         $this->assertStringContainsString(
             '!props.preview.source_needs_describing || props.preview.students.length > 0',
             $this->wizard(),
         );
+    }
+
+    #[Test]
+    public function nothing_downstream_of_the_reading_is_shown_before_it_happens(): void
+    {
+        $wizard = $this->collapsed($this->wizard());
+
+        // An empty table with four headings does not read as «nothing yet» — it
+        // reads as «we looked and found nobody», which is a different and
+        // alarming claim. Same for a «Guardar e continuar» on a step that has
+        // not done its job (§8).
+        $this->assertStringContainsString(
+            'v-if="resultsAreRead" class="overflow-x-auto rounded-lg border border-border"',
+            $wizard,
+        );
+        $this->assertStringContainsString(
+            'v-if="resultsAreRead" class="flex flex-wrap items-center gap-3"',
+            $wizard,
+        );
+        $this->assertStringContainsString(
+            'v-if="resultsAreRead" class="rounded-md border border-border bg-muted/30',
+            $wizard,
+        );
+    }
+
+    #[Test]
+    public function the_step_is_named_for_what_it_does_before_it_has_done_it(): void
+    {
+        $wizard = $this->collapsed($this->wizard());
+
+        // «Alunos e resultados» promised both before either existed (§6).
+        $this->assertStringContainsString(
+            "STEPS = [ 'Origem e ficheiro', 'Ler resultados', 'Configurar avaliação', 'Rever e importar',",
+            $wizard,
+        );
+
+        // The students keep their own heading, once they are there.
+        $this->assertStringContainsString(
+            "resultsAreRead ? 'Alunos e resultados' : 'Ler resultados'",
+            $wizard,
+        );
+    }
+
+    #[Test]
+    public function once_the_sheet_is_read_the_class_appears_as_usual(): void
+    {
+        $import = $this->uploadSheet(GenericSpreadsheetBuilder::multiDomain());
+
+        $this->actingAs($this->teacher)->patch("/imports/correction/{$import->ulid}", [
+            'mode' => ImportMapping::MODE_CREATE,
+            'result_mode' => ImportMapping::RESULT_PER_GROUP,
+            'table' => [
+                'sheet' => 'Folha 1',
+                'header_row' => 1,
+                'student_column' => 'A',
+                'result_columns' => ['B', 'C', 'D'],
+            ],
+        ]);
+
+        $preview = $this->props($import)['preview'];
+
+        $this->assertCount(4, $preview['students']);
+        $this->assertSame(4, $preview['counts']['students_in_file']);
     }
 
     #[Test]
@@ -279,15 +364,42 @@ class GenericSpreadsheetWizardTest extends CorrectionImportHttpTest
     }
 
     #[Test]
-    public function the_tab_question_is_asked_in_words_a_teacher_uses(): void
+    public function the_sheet_question_is_asked_in_words_a_teacher_uses(): void
     {
         $wizard = $this->wizard();
 
-        $this->assertStringContainsString('Em que separador estão os resultados?', $wizard);
+        // «Separador» is what the file format calls it; «folha do Excel» is what
+        // the teacher is looking at (§3).
         $this->assertStringContainsString(
-            'Encontrámos vários separadores neste ficheiro. Escolha aquele onde estão os resultados dos alunos.',
+            'Em que folha do Excel estão os resultados dos alunos?',
             $wizard,
         );
+        $this->assertStringContainsString(
+            'Este ficheiro contém várias folhas. Escolha aquela que contém a tabela com os nomes dos alunos e os respetivos resultados.',
+            $wizard,
+        );
+        $this->assertStringContainsString(
+            'Escolha primeiro a folha do Excel que contém os resultados.',
+            $wizard,
+        );
+
+        // The word does not appear anywhere the teacher can read it.
+        $this->assertStringNotContainsString('separador', $wizard);
+    }
+
+    #[Test]
+    public function a_csv_is_never_asked_which_sheet_it_is_on(): void
+    {
+        $tabular = $this->props($this->uploadSheet(GenericSpreadsheetBuilder::multiDomain()))['tabular'];
+
+        // A CSV has exactly one sheet by construction, so the question has no
+        // second answer and is never put (§4).
+        $this->assertCount(1, $tabular['sheets']);
+        $this->assertFalse($tabular['needs_sheet_choice']);
+        $this->assertNotNull($tabular['selected_sheet']);
+
+        // And the panel only renders the question when there is a choice.
+        $this->assertStringContainsString('v-if="sheetChoices.length > 1"', $this->wizard());
     }
 
     // ------------------------------------------- 5. the action and what it needs
@@ -303,7 +415,7 @@ class GenericSpreadsheetWizardTest extends CorrectionImportHttpTest
 
         // Each missing answer names itself, in the order the panel asks (§11).
         foreach ([
-            'Escolha primeiro o separador que contém os resultados.',
+            'Escolha primeiro a folha do Excel que contém os resultados.',
             'Falta indicar a coluna com o nome dos alunos.',
             'Falta escolher a coluna com a classificação.',
             'Falta escolher pelo menos uma coluna com resultados.',
@@ -407,13 +519,16 @@ class GenericSpreadsheetWizardTest extends CorrectionImportHttpTest
     {
         $wizard = $this->wizard();
 
-        // It was in the heading, in the file box, and again as the suggested
-        // title derived from it — the same string three times (§5).
-        $this->assertSame(
-            1,
-            substr_count($wizard, 'correctionImport.originalFilename ?? \'(sem nome)\''),
+        // It was in the page heading, again in a box of its own, and a third
+        // time as the suggested title derived from it. Only the heading is left,
+        // which is the most discreet of the three and the one already on screen
+        // before the teacher scrolls (§2).
+        $this->assertStringContainsString(
+            "correctionImport.originalFilename ? ' · ' + correctionImport.originalFilename",
+            $wizard,
         );
 
+        $this->assertStringNotContainsString('Ficheiro:</span', $this->collapsed($wizard));
         $this->assertStringNotContainsString('Título no ficheiro:', $wizard);
     }
 

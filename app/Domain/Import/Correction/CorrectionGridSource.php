@@ -25,7 +25,9 @@ enum CorrectionGridSource: string
         return match ($this) {
             self::Plickers => 'Plickers',
             self::Intuitivo => 'Intuitivo',
-            self::Generic => __('Folha de cálculo (Excel/CSV)'),
+            // The formats belong in the description, once. Carrying them in the
+            // name as well meant «Excel/CSV» appeared three times on one screen.
+            self::Generic => __('Folha de cálculo'),
         };
     }
 
@@ -103,12 +105,16 @@ enum CorrectionGridSource: string
     public function hint(): string
     {
         return match ($this) {
+            // Each of these names its own format, because this is the ONE place
+            // the screen states it. Repeating it under the file button — where
+            // it used to live as well — said «Excel/CSV» twice to somebody who
+            // had already chosen.
             self::Plickers => __('O ficheiro CSV exportado do Plickers, com as respostas dos alunos.'),
-            self::Intuitivo => __('A folha de notas exportada do Intuitivo.'),
-            // Deliberately silent about the shape. This source imports a global
+            self::Intuitivo => __('A folha de notas exportada do Intuitivo (.xlsx).'),
+            // Deliberately silent about the SHAPE. This source imports a global
             // result, results per domain OR question by question, and naming any
             // one of them here would send the teacher looking for the wrong file.
-            self::Generic => __('Importe resultados a partir de uma folha Excel ou de um ficheiro CSV.'),
+            self::Generic => __('Importe um ficheiro Excel (.xlsx) ou CSV (.csv).'),
         };
     }
 }

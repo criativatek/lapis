@@ -196,9 +196,13 @@ const props = defineProps<{
 // ordinary case they never configure it at all.
 const step = ref(2);
 
+// «Alunos e resultados» promised both before either existed: for a spreadsheet,
+// this step may still be working out which sheet the data is even on. «Ler
+// resultados» is true from the moment the step opens, for every source, and the
+// students keep their own heading inside it once they are there (§6).
 const STEPS = [
     'Origem e ficheiro',
-    'Alunos e resultados',
+    'Ler resultados',
     'Configurar avaliação',
     'Rever e importar',
 ];
@@ -396,14 +400,15 @@ const statesParticipation = computed(
 const sourceResultLabel = computed(() => props.preview.source_result_label);
 
 /**
- * Whether there is anything worth counting yet.
+ * Whether the file has actually been read yet.
  *
- * A file that explains itself has real numbers the moment it is read. A sheet
- * nobody has described yet has none — and «0 alunos · 0 perguntas», on a file
- * with thirty students in it, is not a neutral placeholder: it reads as a
- * finding, and the finding is wrong.
+ * A source that explains itself is read the moment it is uploaded. A sheet
+ * nobody has described is not read at all — and everything downstream of the
+ * reading (the counts, the class, the note about blanks, the button that moves
+ * on) is a statement about results that do not exist yet. Shown together,
+ * because they become true together (§8).
  */
-const countsAreMeaningful = computed(
+const resultsAreRead = computed(
     () =>
         !props.preview.source_needs_describing ||
         props.preview.students.length > 0,
@@ -482,7 +487,7 @@ const importedRows = computed(() => props.preview.students.length);
  */
 const whatIsStillMissing = computed(() => {
     if (mustChooseSheet.value) {
-        return 'Escolha primeiro o separador que contém os resultados.';
+        return 'Escolha primeiro a folha do Excel que contém os resultados.';
     }
 
     if (form.table.student_column === null) {
@@ -1030,11 +1035,25 @@ const typeName = computed(
 
         <!-- ============================ PASSO 2 — ALUNOS E RESULTADOS ============ -->
         <section v-if="step === 2" class="space-y-4">
+            <!--
+              The heading follows the state of the step rather than its name:
+              «Confirme os resultados encontrados» is a instruction about
+              results, and on a sheet nobody has read yet there are none to
+              confirm (§8).
+            -->
             <div>
-                <h2 class="text-base font-semibold">Alunos e resultados</h2>
+                <h2 class="text-base font-semibold">
+                    {{ resultsAreRead ? 'Alunos e resultados' : 'Ler resultados' }}
+                </h2>
                 <p class="text-sm text-muted-foreground">
-                    Confirme os resultados encontrados no ficheiro e a
-                    correspondência com os alunos da turma.
+                    <template v-if="resultsAreRead">
+                        Confirme os resultados encontrados no ficheiro e a
+                        correspondência com os alunos da turma.
+                    </template>
+                    <template v-else>
+                        Diga ao LÁPIS onde estão os resultados nesta folha de
+                        cálculo.
+                    </template>
                 </p>
             </div>
 
@@ -1092,12 +1111,17 @@ const typeName = computed(
                       this importer refuses to make (§7).
                     -->
                     <div v-if="sheetChoices.length > 1" class="grid gap-1.5">
+                        <!-- «Separador» is what the format calls it. A teacher
+                             calls it a folha, which is also what Excel prints
+                             on the tab they are looking at (§3). -->
                         <label for="table-sheet" class="text-sm font-medium"
-                            >Em que separador estão os resultados?</label
+                            >Em que folha do Excel estão os resultados dos
+                            alunos?</label
                         >
                         <p class="text-xs text-muted-foreground">
-                            Encontrámos vários separadores neste ficheiro.
-                            Escolha aquele onde estão os resultados dos alunos.
+                            Este ficheiro contém várias folhas. Escolha aquela
+                            que contém a tabela com os nomes dos alunos e os
+                            respetivos resultados.
                         </p>
                         <select
                             id="table-sheet"
@@ -1463,33 +1487,20 @@ const typeName = computed(
             </section>
 
             <!--
-              Which file this is, named ONCE. A wizard that shows a class without
-              saying where it came from leaves the teacher to trust that the
-              right file was read — and that trust is worth nothing after they
-              have seen it be wrong once (§7). But the name was appearing in the
-              page heading, here, and again as the suggested title, which turns a
-              useful reassurance into noise (§5).
+              What was read, and only once there is something to say about it.
+              A sheet nobody has described yet has no students and no questions;
+              «0 alunos» about it reads as a finding rather than as a silence.
 
-              The suggested title is gone from this line for the same reason: it
-              is derived from the filename, so it was the filename a third time,
-              and it is editable on step 3 where it actually matters.
+              The filename is deliberately NOT repeated here. It is already in
+              the page heading, two lines above, and it was appearing a third
+              time as the suggested title derived from it — three copies of one
+              string turn a useful reassurance into noise (§2).
             -->
             <div
+                v-if="resultsAreRead"
                 class="rounded-md border border-border bg-muted/30 px-4 py-3 text-sm"
             >
                 <p>
-                    <span class="text-muted-foreground">Ficheiro:</span>
-                    <strong>{{
-                        correctionImport.originalFilename ?? '(sem nome)'
-                    }}</strong>
-                </p>
-                <!--
-                  Counts, but only once there is something to count, and only the
-                  ones this source can actually state. A sheet nobody has
-                  described yet has no students and no questions; saying «0» about
-                  it reads as a finding rather than as a silence (§6).
-                -->
-                <p v-if="countsAreMeaningful" class="mt-1">
                     <strong>{{ preview.counts.students_in_file }}</strong>
                     {{
                         preview.counts.students_in_file === 1
@@ -1514,7 +1525,19 @@ const typeName = computed(
                 </p>
             </div>
 
-            <div class="overflow-x-auto rounded-lg border border-border">
+            <!--
+              The class, once there is a class to show.
+
+              An empty table with four headings, on a sheet whose tab has not
+              been chosen yet, does not read as «nothing here yet» — it reads as
+              «we looked and found nobody», which is a different and alarming
+              claim. Until the sheet has been read there is only one thing on
+              this screen: the panel that reads it (§8).
+            -->
+            <div
+                v-if="resultsAreRead"
+                class="overflow-x-auto rounded-lg border border-border"
+            >
                 <table class="w-full text-sm">
                     <thead class="bg-muted/50 text-left">
                         <tr>
@@ -1676,13 +1699,19 @@ const typeName = computed(
                 </table>
             </div>
 
-            <p class="text-xs text-muted-foreground">
+            <p v-if="resultsAreRead" class="text-xs text-muted-foreground">
                 Alunos da turma que não constem do ficheiro ficam por avaliar —
                 não recebem zero nem falta. Uma resposta em branco também não é
                 uma resposta errada.
             </p>
 
-            <div class="flex flex-wrap items-center gap-3">
+            <!--
+              Offering «Guardar e continuar» before the sheet has been read
+              presents an unfinished step as a finished one. There is nothing to
+              save yet, and pressing it would take the teacher forward from a
+              screen that has not done its job (§8).
+            -->
+            <div v-if="resultsAreRead" class="flex flex-wrap items-center gap-3">
                 <button
                     type="button"
                     class="rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-50"

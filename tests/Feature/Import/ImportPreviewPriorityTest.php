@@ -85,10 +85,16 @@ class ImportPreviewPriorityTest extends CorrectionImportHttpTest
         // Step 2 is where the wizard lands after analysing, and step 2 is the
         // students.
         $this->assertMatchesRegularExpression('/const step = ref\(2\)/', $wizard);
+
+        // Step 2 was «Alunos e resultados», which promised both before either
+        // existed: a spreadsheet may still be working out which sheet the data
+        // is on. The students keep that heading INSIDE the step, once they are
+        // there — which is what this test is really about.
         $this->assertMatchesRegularExpression(
-            "/STEPS = \[\s*'Origem e ficheiro',\s*'Alunos e resultados',\s*'Configurar avaliação',\s*'Rever e importar'/u",
+            "/STEPS = \[\s*'Origem e ficheiro',\s*'Ler resultados',\s*'Configurar avaliação',\s*'Rever e importar'/u",
             $wizard,
         );
+        $this->assertStringContainsString('Alunos e resultados', $wizard);
     }
 
     #[Test]
