@@ -2,6 +2,21 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.32.1] — 2026-08-15
+
+### Subscrições — uma de cada vez
+
+- **Suspender uma conta passa a retirar mesmo o acesso.** Era o efeito visível do problema: uma organização podia ter mais do que uma subscrição em vigor ao mesmo tempo, e suspender a mais recente deixava a anterior voltar silenciosamente a vigorar. Na prática, «suspensa» podia significar «despromovida para o plano Base», enquanto o ecrã dizia que estava suspensa. A suspensão passa a abranger todas as subscrições em vigor.
+- **Uma organização passa a ter, no máximo, uma subscrição em vigor num dado instante.** A regra vive num único sítio, por onde passam todas as mudanças de plano: a subscrição anterior é encerrada no mesmo instante em que a nova começa, sem intervalo e sem sobreposição.
+- **Uma conta criada com plano Pro ou Institucional nasce já nesse plano.** Antes nascia em Base e recebia o plano escolhido por cima, no mesmo pedido — que era a origem do problema. Deixa de ser escrita uma subscrição para ser encerrada um instante depois.
+- **O histórico é preservado.** Cada mudança de plano deixa a subscrição anterior no registo, com o plano, as datas e o estado que teve. Nenhuma linha é eliminada: o que passa a ser impossível é a sobreposição, não a existência de histórico.
+- **Reativar retoma a mesma subscrição** que a suspensão pôs em pausa, e nunca uma que já tinha terminado.
+- **Pedir o plano que já está em vigor não faz nada**, em vez de acumular subscrições idênticas.
+
+### Reparação de dados
+
+- **Um comando de operação repara as sobreposições que já existiam**, sem apagar nada: encerra as subscrições que tinham sido substituídas sem nunca terem sido encerradas, e mantém aquela que já era a efetiva — por isso a reparação não altera o plano de ninguém. Corre primeiro em simulação, e recusa-se a agir sobre qualquer caso que não reconheça, deixando-o intacto para decisão humana.
+
 ## [0.32.0] — 2026-08-15
 
 ### Importar resultados de outra plataforma — Plickers
