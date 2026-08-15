@@ -73,6 +73,12 @@ class BuildImportPreview
         return [
             'source' => $grid->source->value,
             'source_label' => $grid->source->label(),
+            // What this source is entitled to say about itself, so no screen has
+            // to branch on a provider name to know whether «não participou» is a
+            // fact or an invention (§6).
+            'source_states_participation' => $grid->source->statesParticipation(),
+            'source_result_label' => $grid->source->resultLabel(),
+            'source_needs_describing' => $grid->source->needsToBeDescribed(),
             'suggested_title' => $grid->instrument->title,
             'mode' => $mapping->mode,
             'result_mode' => $mapping->resultMode,

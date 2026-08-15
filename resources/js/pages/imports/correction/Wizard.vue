@@ -154,6 +154,12 @@ const props = defineProps<{
     preview: {
         source: string;
         source_label: string;
+        // What this source is entitled to say about itself. Stated on the server
+        // beside the source, so no screen here decides that «não participou» is
+        // meaningful by comparing against a provider name (§6).
+        source_states_participation: boolean;
+        source_result_label: string;
+        source_needs_describing: boolean;
         suggested_title: string | null;
         mode: string;
         result_mode: string;
@@ -376,6 +382,33 @@ const hasGroups = computed(() => props.preview.groups.length > 0);
 const isTabular = computed(() => props.tabular !== null);
 const tabularReadable = computed(() => props.tabular?.readable === true);
 
+/**
+ * Vocabulary that belongs to the source, taken from the source.
+ *
+ * «Não participou nesta aplicação» is a true sentence about a Plickers export,
+ * which reports how many questions each student answered. About a spreadsheet
+ * somebody typed it is an invention — and an invention about attendance is one a
+ * teacher could act on (§6).
+ */
+const statesParticipation = computed(
+    () => props.preview.source_states_participation,
+);
+const sourceResultLabel = computed(() => props.preview.source_result_label);
+
+/**
+ * Whether there is anything worth counting yet.
+ *
+ * A file that explains itself has real numbers the moment it is read. A sheet
+ * nobody has described yet has none — and «0 alunos · 0 perguntas», on a file
+ * with thirty students in it, is not a neutral placeholder: it reads as a
+ * finding, and the finding is wrong.
+ */
+const countsAreMeaningful = computed(
+    () =>
+        !props.preview.source_needs_describing ||
+        props.preview.students.length > 0,
+);
+
 const sheetChoices = computed(() =>
     (props.tabular?.sheets ?? []).filter((sheet) => !sheet.empty),
 );
@@ -405,11 +438,69 @@ const sheetIsDescribed = computed(
         form.table.result_columns.length > 0,
 );
 
-function columnLabel(letter: string): string {
+/**
+ * What to call a column on screen.
+ *
+ * The heading the teacher wrote, because that is what they will look for. Two
+ * columns headed «Item 1» are a real and ordinary thing, so those are told apart
+ * by the letter the spreadsheet itself puts at the top of the column — «Item 1
+ * (coluna B)» — which the teacher can verify by glancing at their own file. That
+ * letter is the spreadsheet's own vocabulary, not the importer's — the internal
+ * source key for a column is a different string entirely, and it never reaches
+ * the screen (§12).
+ */
+function columnName(letter: string): string {
     const column = sheetColumns.value.find((each) => each.letter === letter);
+    const heading = column?.heading ?? null;
 
-    return column?.heading ? `${letter} — ${column.heading}` : `Coluna ${letter}`;
+    if (heading === null) {
+        return `Coluna ${letter}`;
+    }
+
+    const sharing = sheetColumns.value.filter(
+        (each) => each.heading === heading,
+    );
+
+    return sharing.length > 1 ? `${heading} (coluna ${letter})` : heading;
 }
+
+const studentColumnName = computed(() =>
+    form.table.student_column === null
+        ? null
+        : columnName(form.table.student_column),
+);
+
+/** How many students the sheet yielded with the answers given so far. */
+const importedRows = computed(() => props.preview.students.length);
+
+/**
+ * The next answer required, in a sentence.
+ *
+ * A disabled button with no explanation sends a teacher hunting for the reason,
+ * which is exactly the state the smoke found: the action offered, and refusing,
+ * on a workbook whose tab had not been chosen yet (§11).
+ */
+const whatIsStillMissing = computed(() => {
+    if (mustChooseSheet.value) {
+        return 'Escolha primeiro o separador que contém os resultados.';
+    }
+
+    if (form.table.student_column === null) {
+        return 'Falta indicar a coluna com o nome dos alunos.';
+    }
+
+    if (form.table.result_columns.length === 0) {
+        return simple.value
+            ? 'Falta escolher a coluna com a classificação.'
+            : 'Falta escolher pelo menos uma coluna com resultados.';
+    }
+
+    if (form.table.header_row === null) {
+        return 'Falta indicar a linha com os títulos, em «Alterar interpretação da folha».';
+    }
+
+    return 'Pode alterar estas respostas a qualquer momento — a folha é lida outra vez.';
+});
 
 function toggleResultColumn(letter: string): void {
     form.table.result_columns = form.table.result_columns.includes(letter)
@@ -428,20 +519,36 @@ function readSheetAgain(): void {
     save();
 }
 
+/**
+ * The three granularities, named for what the teacher is looking at.
+ *
+ * The middle one is deliberately NOT called the same thing for every source. An
+ * Intuitivo export states «GRUPO I» — a section of the paper, which the teacher
+ * then points at a domain — and calling that mode «resultados por domínio» would
+ * merge the two ideas the whole design keeps apart. A column the teacher chose
+ * in their own spreadsheet has no section to speak of: they pick a column and
+ * they pick a domain for it, so «por domínio» is exactly what it is.
+ *
+ * Same three values, same arithmetic, same persistence. Only the sentence
+ * changes, and it changes because the two files are saying different things.
+ */
 const GRANULARITIES = [
     {
         value: 'overall',
-        label: 'Resultado global',
+        label: 'Uma classificação global por aluno',
+        forDescribedSheet: 'Uma classificação global por aluno',
         hint: 'Um único resultado por aluno, para um domínio.',
     },
     {
         value: 'per_group',
         label: 'Resultados por grupos',
+        forDescribedSheet: 'Resultados por domínio',
         hint: 'Um resultado por grupo do teste, cada um para o seu domínio.',
     },
     {
         value: 'per_question',
         label: 'Detalhe por perguntas',
+        forDescribedSheet: 'Resultados por questão',
         hint: 'Cada pergunta com a sua cotação e o seu domínio.',
     },
 ];
@@ -454,7 +561,17 @@ const granularities = computed(() =>
         // makes a multi-domain import possible could never be reached.
         (option) =>
             option.value !== 'per_group' || hasGroups.value || isTabular.value,
-    ),
+    ).map((option) => ({
+        value: option.value,
+        label: isTabular.value ? option.forDescribedSheet : option.label,
+        hint: option.hint,
+    })),
+);
+
+const granularityLabel = computed(
+    () =>
+        granularities.value.find((option) => option.value === form.result_mode)
+            ?.label ?? '',
 );
 
 /** One domain for the global result, held in the allocation shape the model uses. */
@@ -819,12 +936,12 @@ const typeName = computed(
 </script>
 
 <template>
-    <Head title="Importar resultados de outra plataforma" />
+    <Head title="Importar resultados" />
 
     <div class="mx-auto w-full max-w-6xl space-y-6 p-4">
         <div>
             <Heading
-                title="Importar resultados de outra plataforma"
+                title="Importar resultados"
                 :description="`${preview.source_label} · ${correctionImport.class.label}${correctionImport.originalFilename ? ' · ' + correctionImport.originalFilename : ''}`"
             />
             <div class="flex flex-wrap items-center gap-3 text-sm">
@@ -936,34 +1053,52 @@ const typeName = computed(
                 {{ tabular?.message ?? 'Não foi possível ler esta folha.' }}
             </div>
 
-            <details
+            <!--
+              ============ A FOLHA DO PROFESSOR ============
+
+              The order is the teacher's, not the file format's: which tab, what
+              it looks like, who the students are, what to import. The mechanics
+              of a spreadsheet — which row holds the headings — sit underneath,
+              pre-answered, because a teacher should be explaining what their
+              data MEANS and not the structure of a worksheet (§17).
+            -->
+            <section
                 v-else-if="isTabular"
                 class="rounded-md border border-border bg-card"
-                :open="!sheetIsDescribed || preview.students.length === 0"
             >
-                <summary
-                    class="cursor-pointer px-4 py-3 text-sm font-semibold select-none"
-                >
-                    Como está organizada a sua folha?
-                    <span
-                        v-if="sheetIsDescribed"
-                        class="ml-1 font-normal text-muted-foreground"
-                    >
-                        · linha {{ form.table.header_row }}, aluno na coluna
-                        {{ form.table.student_column }},
-                        {{ form.table.result_columns.length }} coluna(s) de
-                        resultados
-                    </span>
-                </summary>
+                <div class="px-4 py-3">
+                    <h3 class="text-sm font-semibold">
+                        Como devemos ler esta folha?
+                    </h3>
+                    <p class="mt-0.5 text-xs text-muted-foreground">
+                        <template v-if="sheetIsDescribed && importedRows > 0">
+                            A ler {{ importedRows }}
+                            {{ importedRows === 1 ? 'aluno' : 'alunos' }} a
+                            partir da coluna
+                            {{ studentColumnName }}.
+                        </template>
+                        <template v-else>
+                            Responda a estas perguntas e o LÁPIS lê os
+                            resultados.
+                        </template>
+                    </p>
+                </div>
 
-                <div class="space-y-4 border-t border-border px-4 py-4">
-                    <!-- Only a question when there is more than one answer. -->
-                    <div v-if="sheetChoices.length > 1" class="grid gap-1">
-                        <label
-                            for="table-sheet"
-                            class="text-sm font-medium"
-                            >Folha a importar</label
+                <div class="space-y-5 border-t border-border px-4 py-4">
+                    <!--
+                      A. Which tab. Only a question when there is more than one
+                      answer — choosing between one option is not a choice, and
+                      picking the first because it is first is the silent guess
+                      this importer refuses to make (§7).
+                    -->
+                    <div v-if="sheetChoices.length > 1" class="grid gap-1.5">
+                        <label for="table-sheet" class="text-sm font-medium"
+                            >Em que separador estão os resultados?</label
                         >
+                        <p class="text-xs text-muted-foreground">
+                            Encontrámos vários separadores neste ficheiro.
+                            Escolha aquele onde estão os resultados dos alunos.
+                        </p>
                         <select
                             id="table-sheet"
                             v-model="form.table.sheet"
@@ -975,212 +1110,40 @@ const typeName = computed(
                                 :key="sheet.name"
                                 :value="sheet.name"
                             >
-                                {{ sheet.name }} ({{ sheet.rows }} linhas)
+                                {{ sheet.name }} ({{ sheet.rows }}
+                                {{ sheet.rows === 1 ? 'linha' : 'linhas' }})
                             </option>
                         </select>
-                        <p class="text-xs text-muted-foreground">
-                            O ficheiro tem várias folhas com dados. Nenhuma é
-                            escolhida automaticamente.
-                        </p>
-                    </div>
-
-                    <div v-if="!mustChooseSheet" class="grid gap-4 sm:grid-cols-2">
-                        <div class="grid gap-1">
-                            <label
-                                for="table-header-row"
-                                class="text-sm font-medium"
-                                >Linha dos títulos das colunas</label
-                            >
-                            <select
-                                id="table-header-row"
-                                v-model.number="form.table.header_row"
-                                class="h-9 rounded-md border border-input bg-background px-3 text-sm"
-                            >
-                                <option :value="null">— Por escolher —</option>
-                                <option
-                                    v-for="row in headerRowChoices"
-                                    :key="row"
-                                    :value="row"
-                                >
-                                    Linha {{ row }}
-                                </option>
-                            </select>
-                            <p class="text-xs text-muted-foreground">
-                                Os alunos são lidos a partir da linha seguinte.
-                            </p>
-                        </div>
-
-                        <div class="grid gap-1">
-                            <label
-                                for="table-student-column"
-                                class="text-sm font-medium"
-                                >Coluna que identifica o aluno</label
-                            >
-                            <select
-                                id="table-student-column"
-                                v-model="form.table.student_column"
-                                class="h-9 rounded-md border border-input bg-background px-3 text-sm"
-                            >
-                                <option :value="null">— Por escolher —</option>
-                                <option
-                                    v-for="column in sheetColumns"
-                                    :key="column.letter"
-                                    :value="column.letter"
-                                >
-                                    {{ columnLabel(column.letter) }}
-                                </option>
-                            </select>
-                            <p class="text-xs text-muted-foreground">
-                                O nome é comparado exatamente com os alunos da
-                                turma.
-                            </p>
-                        </div>
                     </div>
 
                     <!--
-                      Which columns carry marks. Checkboxes rather than a
-                      multi-select: a teacher has to be able to see every column
-                      of their own sheet at once, and «has_formula» is worth
-                      showing here because choosing that column will refuse.
+                      B. The sheet itself. Shown BEFORE the questions about it,
+                      because every one of those questions is easier to answer
+                      while looking at the thing (§9). Only a few rows: a whole
+                      class list in the page is a page nobody can use (§10).
                     -->
-                    <fieldset v-if="!mustChooseSheet" class="grid gap-2">
-                        <legend class="text-sm font-medium">
-                            Colunas com resultados
-                        </legend>
-                        <div class="flex flex-wrap gap-2">
-                            <label
-                                v-for="column in resultColumnChoices"
-                                :key="column.letter"
-                                class="inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm"
-                                :class="
-                                    form.table.result_columns.includes(
-                                        column.letter,
-                                    )
-                                        ? 'bg-primary/10 border-primary/40'
-                                        : 'bg-background'
-                                "
-                            >
-                                <input
-                                    type="checkbox"
-                                    :checked="
-                                        form.table.result_columns.includes(
-                                            column.letter,
-                                        )
-                                    "
-                                    @change="toggleResultColumn(column.letter)"
-                                />
-                                <span>{{ columnLabel(column.letter) }}</span>
-                                <span
-                                    v-if="column.has_formula"
-                                    class="text-xs text-amber-700"
-                                    >· fórmulas</span
-                                >
-                            </label>
-                        </div>
-                        <p
-                            v-if="simple"
-                            class="text-xs text-muted-foreground"
-                        >
-                            Um resultado global vem de uma só coluna.
-                        </p>
-                    </fieldset>
-
-                    <!--
-                      Points or percentage, and the maximum. Asked only for the
-                      global result, and asked rather than inferred: 14 is not
-                      14 em 20 until somebody says so (§16, §23).
-                    -->
-                    <div
-                        v-if="simple && !mustChooseSheet"
-                        class="grid gap-4 sm:grid-cols-2"
-                    >
-                        <div class="grid gap-1">
-                            <label
-                                for="table-value-kind"
-                                class="text-sm font-medium"
-                                >Os valores desta coluna são</label
-                            >
-                            <select
-                                id="table-value-kind"
-                                v-model="form.table.value_kind"
-                                class="h-9 rounded-md border border-input bg-background px-3 text-sm"
-                            >
-                                <option value="points">Pontos</option>
-                                <option value="percentage">Percentagem</option>
-                            </select>
-                        </div>
-
-                        <div
-                            v-if="form.table.value_kind === 'points'"
-                            class="grid gap-1"
-                        >
-                            <label
-                                for="table-maximum"
-                                class="text-sm font-medium"
-                                >Cotação máxima</label
-                            >
-                            <input
-                                id="table-maximum"
-                                v-model="form.table.overall_maximum"
-                                inputmode="decimal"
-                                placeholder="20"
-                                class="h-9 rounded-md border border-input bg-background px-3 text-sm"
-                            />
-                            <p class="text-xs text-muted-foreground">
-                                O LÁPIS não deduz o máximo a partir da melhor
-                                nota da turma.
-                            </p>
-                        </div>
-                    </div>
-
-                    <!-- Optional, and never guessed: a column called «Total»
-                         might be a section called Total (§31). -->
-                    <div
-                        v-if="!simple && !mustChooseSheet"
-                        class="grid gap-1"
-                    >
-                        <label
-                            for="table-total-column"
-                            class="text-sm font-medium"
-                            >Coluna com o total da origem (opcional)</label
-                        >
-                        <select
-                            id="table-total-column"
-                            v-model="form.table.total_column"
-                            class="h-9 w-full max-w-sm rounded-md border border-input bg-background px-3 text-sm"
-                        >
-                            <option :value="null">— Nenhuma —</option>
-                            <option
-                                v-for="column in resultColumnChoices"
-                                :key="column.letter"
-                                :value="column.letter"
-                            >
-                                {{ columnLabel(column.letter) }}
-                            </option>
-                        </select>
-                        <p class="text-xs text-muted-foreground">
-                            Serve para conferir contas. Nunca substitui o cálculo
-                            do LÁPIS.
-                        </p>
-                    </div>
-
-                    <!--
-                      The sheet itself, as read. A teacher describing a file has
-                      to be able to see it while they do — and only a sample of
-                      it, because a whole class list in the page is a page
-                      nobody can use (§10).
-                    -->
-                    <div v-if="sampleRows.length > 0" class="grid gap-1">
+                    <div v-if="sampleRows.length > 0" class="grid gap-1.5">
                         <p class="text-sm font-medium">
-                            Primeiras linhas do ficheiro
+                            As primeiras linhas do seu ficheiro
                         </p>
-                        <div class="overflow-x-auto rounded-md border border-border">
+                        <div
+                            class="overflow-x-auto rounded-md border border-border"
+                        >
                             <table class="w-full text-xs">
                                 <thead class="bg-muted/50">
                                     <tr>
-                                        <th class="px-2 py-1 text-left font-medium">
-                                            #
+                                        <th
+                                            class="px-2 py-1 text-left font-medium text-muted-foreground"
+                                        >
+                                            Linha
                                         </th>
+                                        <!--
+                                          Named by what the teacher wrote, and by
+                                          position when two columns share a
+                                          heading. Never the internal key — a
+                                          source key on screen is the importer
+                                          explaining its own bookkeeping (§12).
+                                        -->
                                         <th
                                             v-for="column in sheetColumns"
                                             :key="column.letter"
@@ -1192,7 +1155,7 @@ const typeName = computed(
                                                     : ''
                                             "
                                         >
-                                            {{ column.letter }}
+                                            {{ columnName(column.letter) }}
                                         </th>
                                     </tr>
                                 </thead>
@@ -1211,11 +1174,25 @@ const typeName = computed(
                                             class="px-2 py-1 text-muted-foreground"
                                         >
                                             {{ row.row }}
+                                            <span
+                                                v-if="
+                                                    row.row ===
+                                                    form.table.header_row
+                                                "
+                                                class="text-[10px]"
+                                                >· títulos</span
+                                            >
                                         </td>
                                         <td
                                             v-for="(cell, index) in row.cells"
                                             :key="index"
                                             class="px-2 py-1"
+                                            :class="
+                                                sheetColumns[index]?.letter ===
+                                                form.table.student_column
+                                                    ? 'text-primary'
+                                                    : ''
+                                            "
                                         >
                                             <span
                                                 v-if="cell.is_formula"
@@ -1232,27 +1209,270 @@ const typeName = computed(
                         </div>
                     </div>
 
-                    <div class="flex items-center gap-3">
+                    <template v-if="!mustChooseSheet">
+                        <!-- C. Who the students are. -->
+                        <div class="grid gap-1.5">
+                            <label
+                                for="table-student-column"
+                                class="text-sm font-medium"
+                                >Qual coluna tem o nome dos alunos?</label
+                            >
+                            <select
+                                id="table-student-column"
+                                v-model="form.table.student_column"
+                                class="h-9 w-full max-w-sm rounded-md border border-input bg-background px-3 text-sm"
+                            >
+                                <option :value="null">— Por escolher —</option>
+                                <option
+                                    v-for="column in sheetColumns"
+                                    :key="column.letter"
+                                    :value="column.letter"
+                                >
+                                    {{ columnName(column.letter) }}
+                                </option>
+                            </select>
+                            <p class="text-xs text-muted-foreground">
+                                O nome é comparado exatamente com os alunos da
+                                turma. Nada é associado por aproximação.
+                            </p>
+                        </div>
+
+                        <!--
+                          D. What to import. Asked here rather than two steps
+                          later, because the answer decides which columns the
+                          teacher is about to pick (§9).
+                        -->
+                        <fieldset class="grid gap-2">
+                            <legend class="text-sm font-medium">
+                                Que tipo de resultados quer importar?
+                            </legend>
+                            <label
+                                v-for="option in granularities"
+                                :key="option.value"
+                                class="flex items-start gap-2 text-sm"
+                            >
+                                <input
+                                    v-model="form.result_mode"
+                                    type="radio"
+                                    :value="option.value"
+                                    class="mt-0.5"
+                                />
+                                <span>{{ option.label }}</span>
+                            </label>
+                        </fieldset>
+
+                        <!-- E. Which columns carry the marks. -->
+                        <fieldset class="grid gap-2">
+                            <legend class="text-sm font-medium">
+                                {{
+                                    simple
+                                        ? 'Em que coluna está a classificação?'
+                                        : 'Que colunas têm resultados?'
+                                }}
+                            </legend>
+                            <div class="flex flex-wrap gap-2">
+                                <label
+                                    v-for="column in resultColumnChoices"
+                                    :key="column.letter"
+                                    class="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm"
+                                    :class="
+                                        form.table.result_columns.includes(
+                                            column.letter,
+                                        )
+                                            ? 'border-primary/40 bg-primary/10'
+                                            : 'border-border bg-background'
+                                    "
+                                >
+                                    <input
+                                        :type="simple ? 'radio' : 'checkbox'"
+                                        :checked="
+                                            form.table.result_columns.includes(
+                                                column.letter,
+                                            )
+                                        "
+                                        @change="
+                                            simple
+                                                ? (form.table.result_columns = [
+                                                      column.letter,
+                                                  ])
+                                                : toggleResultColumn(
+                                                      column.letter,
+                                                  )
+                                        "
+                                    />
+                                    <span>{{ columnName(column.letter) }}</span>
+                                    <span
+                                        v-if="column.has_formula"
+                                        class="text-xs text-amber-700"
+                                        >· fórmulas</span
+                                    >
+                                </label>
+                            </div>
+                        </fieldset>
+
+                        <!--
+                          F. Points or percentage, and out of what. Asked, never
+                          inferred: 14 is not 14 em 20 until somebody says so,
+                          and the best mark in the class is not the cotação
+                          (§14).
+                        -->
+                        <div v-if="simple" class="grid gap-4 sm:grid-cols-2">
+                            <div class="grid gap-1.5">
+                                <label
+                                    for="table-value-kind"
+                                    class="text-sm font-medium"
+                                    >Os valores dessa coluna são</label
+                                >
+                                <select
+                                    id="table-value-kind"
+                                    v-model="form.table.value_kind"
+                                    class="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                                >
+                                    <option value="points">
+                                        Pontos (ex.: 14 em 20)
+                                    </option>
+                                    <option value="percentage">
+                                        Percentagem (ex.: 70%)
+                                    </option>
+                                </select>
+                            </div>
+
+                            <div
+                                v-if="form.table.value_kind === 'points'"
+                                class="grid gap-1.5"
+                            >
+                                <label
+                                    for="table-maximum"
+                                    class="text-sm font-medium"
+                                    >Cotação máxima</label
+                                >
+                                <input
+                                    id="table-maximum"
+                                    v-model="form.table.overall_maximum"
+                                    inputmode="decimal"
+                                    placeholder="20"
+                                    class="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                                />
+                                <p class="text-xs text-muted-foreground">
+                                    O LÁPIS não deduz o máximo a partir da melhor
+                                    nota da turma.
+                                </p>
+                            </div>
+                        </div>
+
+                        <!--
+                          Everything the system already answered safely, out of
+                          the way but never hidden: the heading row comes with a
+                          suggestion, and a teacher whose file is unusual has to
+                          be able to correct it (§10).
+                        -->
+                        <details class="rounded-md border border-border">
+                            <summary
+                                class="cursor-pointer px-3 py-2 text-xs font-medium text-muted-foreground select-none"
+                            >
+                                Alterar interpretação da folha
+                            </summary>
+                            <div
+                                class="grid gap-4 border-t border-border px-3 py-3 sm:grid-cols-2"
+                            >
+                                <div class="grid gap-1.5">
+                                    <label
+                                        for="table-header-row"
+                                        class="text-sm font-medium"
+                                        >Linha com os títulos das colunas</label
+                                    >
+                                    <select
+                                        id="table-header-row"
+                                        v-model.number="form.table.header_row"
+                                        class="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                                    >
+                                        <option :value="null">
+                                            — Por escolher —
+                                        </option>
+                                        <option
+                                            v-for="row in headerRowChoices"
+                                            :key="row"
+                                            :value="row"
+                                        >
+                                            Linha {{ row }}
+                                        </option>
+                                    </select>
+                                    <p class="text-xs text-muted-foreground">
+                                        Os alunos são lidos a partir da linha
+                                        seguinte.
+                                    </p>
+                                </div>
+
+                                <div v-if="!simple" class="grid gap-1.5">
+                                    <label
+                                        for="table-total-column"
+                                        class="text-sm font-medium"
+                                        >Coluna com o total do ficheiro</label
+                                    >
+                                    <select
+                                        id="table-total-column"
+                                        v-model="form.table.total_column"
+                                        class="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                                    >
+                                        <option :value="null">
+                                            — Nenhuma —
+                                        </option>
+                                        <option
+                                            v-for="column in resultColumnChoices"
+                                            :key="column.letter"
+                                            :value="column.letter"
+                                        >
+                                            {{ columnName(column.letter) }}
+                                        </option>
+                                    </select>
+                                    <p class="text-xs text-muted-foreground">
+                                        Serve para conferir contas. Nunca
+                                        substitui o cálculo do LÁPIS.
+                                    </p>
+                                </div>
+                            </div>
+                        </details>
+                    </template>
+
+                    <!--
+                      The action, and what is still missing before it can be
+                      taken. A button that is merely disabled leaves the teacher
+                      hunting for the reason; the sentence beside it names the
+                      next answer required (§11).
+                    -->
+                    <div class="flex flex-wrap items-center gap-3 border-t border-border pt-4">
                         <Button
                             type="button"
                             :disabled="!sheetIsDescribed || form.processing"
                             @click="readSheetAgain"
                         >
-                            Ler a folha assim
+                            Ler resultados
                         </Button>
-                        <p class="text-xs text-muted-foreground">
-                            Pode alterar estas respostas a qualquer momento — a
-                            folha é lida outra vez.
+                        <p
+                            class="text-xs"
+                            :class="
+                                sheetIsDescribed
+                                    ? 'text-muted-foreground'
+                                    : 'text-amber-700'
+                            "
+                        >
+                            {{ whatIsStillMissing }}
                         </p>
                     </div>
                 </div>
-            </details>
+            </section>
 
             <!--
-              Which file this is, named on the screen. A wizard that shows a
-              class without saying where it came from leaves the teacher to
-              trust that the right file was read — and that trust is exactly
-              what is worth nothing after they have seen it be wrong once (§7).
+              Which file this is, named ONCE. A wizard that shows a class without
+              saying where it came from leaves the teacher to trust that the
+              right file was read — and that trust is worth nothing after they
+              have seen it be wrong once (§7). But the name was appearing in the
+              page heading, here, and again as the suggested title, which turns a
+              useful reassurance into noise (§5).
+
+              The suggested title is gone from this line for the same reason: it
+              is derived from the filename, so it was the filename a third time,
+              and it is editable on step 3 where it actually matters.
             -->
             <div
                 class="rounded-md border border-border bg-muted/30 px-4 py-3 text-sm"
@@ -1262,24 +1482,35 @@ const typeName = computed(
                     <strong>{{
                         correctionImport.originalFilename ?? '(sem nome)'
                     }}</strong>
-                    <template v-if="preview.suggested_title">
-                        <span class="text-muted-foreground">
-                            · Título no ficheiro:</span
-                        >
-                        <strong>{{ preview.suggested_title }}</strong>
-                    </template>
                 </p>
-                <p class="mt-1">
+                <!--
+                  Counts, but only once there is something to count, and only the
+                  ones this source can actually state. A sheet nobody has
+                  described yet has no students and no questions; saying «0» about
+                  it reads as a finding rather than as a silence (§6).
+                -->
+                <p v-if="countsAreMeaningful" class="mt-1">
                     <strong>{{ preview.counts.students_in_file }}</strong>
-                    alunos no ficheiro ·
-                    <strong>{{
-                        preview.counts.students_in_file -
-                        preview.counts.non_participants
-                    }}</strong>
-                    participaram ·
-                    <strong>{{ preview.counts.non_participants }}</strong> não
-                    participaram ·
-                    <strong>{{ preview.counts.questions }}</strong> perguntas
+                    {{
+                        preview.counts.students_in_file === 1
+                            ? 'aluno no ficheiro'
+                            : 'alunos no ficheiro'
+                    }}
+                    <template v-if="statesParticipation">
+                        ·
+                        <strong>{{
+                            preview.counts.students_in_file -
+                            preview.counts.non_participants
+                        }}</strong>
+                        participaram ·
+                        <strong>{{ preview.counts.non_participants }}</strong>
+                        não participaram
+                    </template>
+                    <template v-if="!simple && preview.counts.questions > 0">
+                        ·
+                        <strong>{{ preview.counts.questions }}</strong>
+                        {{ isTabular ? 'colunas de resultados' : 'perguntas' }}
+                    </template>
                 </p>
             </div>
 
@@ -1294,9 +1525,22 @@ const typeName = computed(
                                 Aluno no LÁPIS
                             </th>
                             <th class="px-3 py-2 text-right font-medium">
-                                Resultado na plataforma
+                                {{ sourceResultLabel }}
                             </th>
-                            <th class="px-3 py-2 font-medium">Respostas</th>
+                            <!--
+                              «Respostas» is a Plickers idea: it counts how many
+                              questions each student answered. Elsewhere this
+                              column holds the per-item breakdown, and in the
+                              global mode of a source that counts nothing it
+                              would hold «0 certas · 0 respondidas» — a sentence
+                              about a file that never said either thing (§6).
+                            -->
+                            <th
+                                v-if="statesParticipation || !simple"
+                                class="px-3 py-2 font-medium"
+                            >
+                                {{ statesParticipation ? 'Respostas' : 'Resultados' }}
+                            </th>
                             <th class="px-3 py-2 font-medium">Estado</th>
                         </tr>
                     </thead>
@@ -1377,6 +1621,7 @@ const typeName = computed(
                                 </span>
                             </td>
                             <td
+                                v-if="statesParticipation || !simple"
                                 class="px-3 py-2 whitespace-nowrap text-muted-foreground"
                             >
                                 <!-- The sections, when the file states them:
@@ -1400,9 +1645,10 @@ const typeName = computed(
                                         >/{{ result.possible }}
                                     </span>
                                 </template>
-                                <template v-else>{{
+                                <template v-else-if="statesParticipation">{{
                                     attempts(student)
                                 }}</template>
+                                <template v-else>—</template>
                             </td>
                             <!--
                               Two independent facts in one cell, and they must
@@ -1413,7 +1659,7 @@ const typeName = computed(
                             -->
                             <td class="px-3 py-2 whitespace-nowrap">
                                 <span
-                                    v-if="!student.participated"
+                                    v-if="statesParticipation && !student.participated"
                                     class="block text-xs text-amber-700"
                                 >
                                     Não participou nesta aplicação
@@ -1700,9 +1946,15 @@ const typeName = computed(
             <!--
               How much of the file becomes assessment. Three granularities, one
               of which is offered only when the file states sections at all.
+
+              Asked here for a source that explains itself, and NOT for a sheet
+              the teacher describes — that one answered it on step 2, while
+              choosing which columns to read, because there the two questions are
+              the same question (§9). Asking twice would let the two answers
+              disagree on screen while being one field underneath.
             -->
             <div class="space-y-3 rounded-md border border-border p-4">
-                <fieldset class="space-y-2">
+                <fieldset v-if="!isTabular" class="space-y-2">
                     <legend class="text-sm font-medium">
                         O que importar deste ficheiro
                     </legend>
@@ -1727,6 +1979,19 @@ const typeName = computed(
                         </span>
                     </label>
                 </fieldset>
+
+                <!--
+                  For a sheet the teacher described, the choice was made on step
+                  2. Said back to them here rather than silently omitted, so the
+                  box does not open on a domain table with no stated reason.
+                -->
+                <p v-else class="text-sm">
+                    <span class="text-muted-foreground">A importar:</span>
+                    <strong>{{ granularityLabel }}</strong>
+                    <span class="block text-xs text-muted-foreground">
+                        Para mudar, volte a «Alunos e resultados».
+                    </span>
+                </p>
 
                 <!--
                   Group to domain, one row each. The group is where a question
@@ -2132,10 +2397,12 @@ const typeName = computed(
                     </dd>
                 </div>
                 <div v-if="!simple">
-                    <dt class="inline text-muted-foreground">Perguntas:</dt>
+                    <dt class="inline text-muted-foreground">
+                        {{ isTabular ? 'Colunas:' : 'Perguntas:' }}
+                    </dt>
                     <dd class="inline">{{ preview.counts.questions }}</dd>
                 </div>
-                <div>
+                <div v-if="statesParticipation">
                     <dt class="inline text-muted-foreground">
                         Não participaram:
                     </dt>
@@ -2152,7 +2419,7 @@ const typeName = computed(
                     <dd class="inline">{{ conflicts.length }}</dd>
                 </div>
                 <div>
-                    <dt class="inline text-muted-foreground">Plataforma:</dt>
+                    <dt class="inline text-muted-foreground">Origem:</dt>
                     <dd class="inline">{{ preview.source_label }}</dd>
                 </div>
             </dl>
@@ -2163,11 +2430,7 @@ const typeName = computed(
                         <tr>
                             <th class="px-3 py-2 font-medium">Aluno</th>
                             <th class="px-3 py-2 text-right font-medium">
-                                {{
-                                    simple
-                                        ? 'Resultado'
-                                        : 'Resultado na plataforma'
-                                }}
+                                {{ simple ? 'Resultado' : sourceResultLabel }}
                             </th>
                             <th
                                 v-if="!simple"
@@ -2213,7 +2476,7 @@ const typeName = computed(
                             </td>
                             <td class="px-3 py-2 whitespace-nowrap">
                                 <span
-                                    v-if="!student.participated"
+                                    v-if="statesParticipation && !student.participated"
                                     class="text-amber-700"
                                     >Não participou nesta aplicação</span
                                 >

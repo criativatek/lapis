@@ -113,7 +113,7 @@ function hasNoApplicableStudents(assessment: Assessment): boolean {
                 href="/imports/correction/create"
                 class="flex h-9 items-center rounded-md border border-border px-3 text-sm hover:bg-muted/40"
             >
-                Importar resultados de outra plataforma
+                Importar resultados
             </Link>
             <p v-else class="max-w-xs text-xs text-muted-foreground">
                 A importação de resultados de outras plataformas de aplicação de testes está disponível no

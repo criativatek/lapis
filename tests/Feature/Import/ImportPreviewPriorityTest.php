@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Import;
 
+use App\Domain\Import\Correction\CorrectionGridSource;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
@@ -95,9 +96,17 @@ class ImportPreviewPriorityTest extends CorrectionImportHttpTest
     {
         $wizard = $this->wizard();
 
-        foreach (['Aluno no ficheiro', 'Aluno no LÁPIS', 'Resultado na plataforma', 'Respostas', 'Estado'] as $column) {
+        foreach (['Aluno no ficheiro', 'Aluno no LÁPIS', 'Respostas', 'Estado'] as $column) {
             $this->assertStringContainsString($column, $wizard);
         }
+
+        // The result column is named by the SOURCE, because «Resultado na
+        // plataforma» is right for an export from a platform and wrong for the
+        // teacher's own spreadsheet, which came from no platform at all. The
+        // template renders whatever the source says.
+        $this->assertStringContainsString('sourceResultLabel', $wizard);
+        $this->assertSame('Resultado na plataforma', CorrectionGridSource::Plickers->resultLabel());
+        $this->assertSame('Resultado no ficheiro', CorrectionGridSource::Generic->resultLabel());
 
         // The mapping is corrected in the same table, not on a page of its own.
         $this->assertStringContainsString('Ignorar esta linha', $wizard);
@@ -126,9 +135,16 @@ class ImportPreviewPriorityTest extends CorrectionImportHttpTest
         $wizard = $this->wizard();
 
         // Two different numbers, two different names. A source score is not a
-        // classification and must never be dressed as one.
-        $this->assertStringContainsString('Resultado na plataforma', $wizard);
+        // classification and must never be dressed as one. The source's own
+        // number is named by the source — «Resultado na plataforma» for a
+        // platform, «Resultado no ficheiro» for a spreadsheet — and the LÁPIS
+        // one is named here, always and only, as the LÁPIS one.
+        $this->assertStringContainsString('sourceResultLabel', $wizard);
         $this->assertStringContainsString('Resultado LÁPIS', $wizard);
+
+        foreach (CorrectionGridSource::cases() as $source) {
+            $this->assertStringNotContainsString('LÁPIS', $source->resultLabel());
+        }
         // A short fragment on purpose: the sentence is wrapped across lines in
         // the template, and asserting the whole of it would break on reflow
         // rather than on meaning.

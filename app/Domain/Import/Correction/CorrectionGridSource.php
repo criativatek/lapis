@@ -30,6 +30,52 @@ enum CorrectionGridSource: string
     }
 
     /**
+     * Whether the source states, for each student, that they took part at all.
+     *
+     * Plickers does: it reports how many questions were answered, so «zero
+     * answered» is a fact the file carries and «não participou nesta aplicação»
+     * is a true sentence about it. Intuitivo reports marks and no attendance;
+     * a spreadsheet a teacher typed reports whatever they typed. For those two
+     * the phrase would be an invention, and an invention about attendance is
+     * one a teacher could act on.
+     *
+     * A property of the FORMAT, stated once here, so no screen has to ask which
+     * provider it is looking at (§6).
+     */
+    public function statesParticipation(): bool
+    {
+        return $this === self::Plickers;
+    }
+
+    /**
+     * What to call the number the source itself arrived with.
+     *
+     * «Resultado na plataforma» is right for an export from a platform and wrong
+     * for the teacher's own file, which came from no platform at all.
+     */
+    public function resultLabel(): string
+    {
+        return match ($this) {
+            self::Plickers, self::Intuitivo => __('Resultado na plataforma'),
+            self::Generic => __('Resultado no ficheiro'),
+        };
+    }
+
+    /**
+     * Whether the file explains its own structure, or the teacher has to.
+     *
+     * Asked by the interface to decide how much of the file it may describe
+     * before anything has been mapped: a source that explains itself has real
+     * counts the moment it is read, and one that does not has none yet — and
+     * «0 alunos · 0 perguntas» on a file with thirty students in it is worse
+     * than saying nothing (§6).
+     */
+    public function needsToBeDescribed(): bool
+    {
+        return $this === self::Generic;
+    }
+
+    /**
      * The granularity the wizard OPENS on for this source — nothing more.
      *
      * The modes themselves are provider-neutral: any source can be imported at
@@ -59,7 +105,10 @@ enum CorrectionGridSource: string
         return match ($this) {
             self::Plickers => __('O ficheiro CSV exportado do Plickers, com as respostas dos alunos.'),
             self::Intuitivo => __('A folha de notas exportada do Intuitivo.'),
-            self::Generic => __('Uma folha de cálculo com os resultados por aluno e por questão.'),
+            // Deliberately silent about the shape. This source imports a global
+            // result, results per domain OR question by question, and naming any
+            // one of them here would send the teacher looking for the wrong file.
+            self::Generic => __('Importe resultados a partir de uma folha Excel ou de um ficheiro CSV.'),
         };
     }
 }
