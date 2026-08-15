@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { PenLine } from '@lucide/vue';
+import { computed } from 'vue';
 import Heading from '@/components/Heading.vue';
 import { Badge } from '@/components/ui/badge';
 
@@ -33,6 +34,11 @@ const props = defineProps<{
     periodOptions: PeriodOption[];
     classOptions: ClassOption[];
 }>();
+
+// The entitlement decides whether the entry point exists at all. Hiding it is
+// presentation only — the routes themselves are gated by `module:` on the
+// server, so this is convenience rather than access control.
+const canImportGrids = computed(() => usePage().props.modules.includes('correction_grid_import'));
 
 const hasActiveFilters = () => props.filters.status !== null || props.filters.purpose !== null || props.filters.period !== null;
 
@@ -102,6 +108,17 @@ function hasNoApplicableStudents(assessment: Assessment): boolean {
                     {{ classOption.label }}
                 </option>
             </select>
+            <Link
+                v-if="canImportGrids"
+                href="/imports/correction/create"
+                class="flex h-9 items-center rounded-md border border-border px-3 text-sm hover:bg-muted/40"
+            >
+                Importar grelha
+            </Link>
+            <p v-else class="max-w-xs text-xs text-muted-foreground">
+                A importação de resultados de outras plataformas de aplicação de testes está disponível no
+                LÁPIS&nbsp;Pro.
+            </p>
         </div>
 
         <div class="flex flex-wrap gap-2">

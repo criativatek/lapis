@@ -9,6 +9,7 @@ use App\Http\Controllers\ClassController;
 use App\Http\Controllers\ClassificationController;
 use App\Http\Controllers\ClassPhotoImportController;
 use App\Http\Controllers\ClassProfileMigrationController;
+use App\Http\Controllers\CorrectionImportController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\EvidenceController;
@@ -155,6 +156,20 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     Route::middleware('module:assessments')->group(function () {
         Route::get('assessments', [AssessmentController::class, 'index'])->name('assessments.index');
         Route::get('assessments/{instrument}', [AssessmentController::class, 'show'])->name('assessments.show');
+    });
+
+    // Importing correction grids exported from other assessment platforms
+    // (Plickers today, others later). A Pro/Institucional capability: the
+    // middleware is the access control, and a Base organization cannot reach any
+    // of these by typing a URL. Every route also runs the policy, because the
+    // plan says "may your organization", not "is this yours".
+    Route::middleware('module:correction_grid_import')->group(function () {
+        Route::get('imports/correction/create', [CorrectionImportController::class, 'create'])->name('correction-imports.create');
+        Route::post('imports/correction', [CorrectionImportController::class, 'store'])->name('correction-imports.store');
+        Route::get('imports/correction/{import}', [CorrectionImportController::class, 'edit'])->name('correction-imports.edit');
+        Route::patch('imports/correction/{import}', [CorrectionImportController::class, 'update'])->name('correction-imports.update');
+        Route::post('imports/correction/{import}/confirm', [CorrectionImportController::class, 'confirm'])->name('correction-imports.confirm');
+        Route::delete('imports/correction/{import}', [CorrectionImportController::class, 'destroy'])->name('correction-imports.destroy');
     });
 
     // Results — the calculation engine's output for a class, per period.
