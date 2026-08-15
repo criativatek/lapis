@@ -142,6 +142,10 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::post('instruments/{instrument}/cancel', [InstrumentController::class, 'cancel'])->name('instruments.cancel');
         Route::post('instruments/{instrument}/revert-cancellation', [InstrumentController::class, 'revertCancellation'])->name('instruments.revert-cancellation');
         Route::post('instruments/{instrument}/scores', [InstrumentController::class, 'saveScores'])->name('instruments.scores.save');
+        // Saving and finishing are different acts: the grid's "Guardar" never
+        // closes a correction, and closing one is its own explicit decision.
+        Route::post('instruments/{instrument}/complete', [InstrumentController::class, 'completeCorrection'])->name('instruments.complete');
+        Route::post('instruments/{instrument}/reopen', [InstrumentController::class, 'reopenCorrection'])->name('instruments.reopen');
         Route::delete('instruments/{instrument}', [InstrumentController::class, 'destroy'])->name('instruments.destroy');
     });
 

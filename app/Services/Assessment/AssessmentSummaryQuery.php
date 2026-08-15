@@ -214,74 +214,10 @@ class AssessmentSummaryQuery
      */
     protected function progressFor(EloquentCollection $instruments): Collection
     {
-        if ($instruments->isEmpty()) {
-            return collect();
-        }
-
-        $instruments->load('items:id,instrument_id');
-
-        $enrollmentsByClass = Enrollment::query()
-            ->whereIn('class_id', $instruments->pluck('class_id')->unique())
-            ->get(['id', 'class_id', 'enrolled_on', 'left_on'])
-            ->groupBy('class_id');
-
-        $scoresByInstrument = StudentItemScore::query()
-            ->whereIn('instrument_id', $instruments->pluck('id'))
-            ->get(['instrument_id', 'instrument_item_id', 'enrollment_id', 'result_state'])
-            ->groupBy('instrument_id');
-
-        $resolvedStates = [
-            ResultState::Assessed, ResultState::Absent, ResultState::AbsentJustified,
-            ResultState::Exempt, ResultState::NotApplicable, ResultState::Annulled,
-        ];
-
-        return $instruments->mapWithKeys(function (Instrument $instrument) use ($enrollmentsByClass, $scoresByInstrument, $resolvedStates) {
-            $applicableEnrollments = $enrollmentsByClass->get($instrument->class_id, collect())
-                ->filter(fn (Enrollment $enrollment) => self::isApplicable($enrollment, $instrument->applied_on));
-
-            $itemIds = $instrument->items->pluck('id');
-            $applicable = $applicableEnrollments->count();
-
-            if ($itemIds->isEmpty() || $applicable === 0) {
-                return [$instrument->id => ['applicable' => $applicable, 'completed' => 0, 'under_review' => 0, 'complete' => false]];
-            }
-
-            $scores = $scoresByInstrument->get($instrument->id, collect())
-                ->keyBy(fn (StudentItemScore $score) => $score->enrollment_id.':'.$score->instrument_item_id);
-
-            $completed = 0;
-            $underReview = 0;
-
-            foreach ($applicableEnrollments as $enrollment) {
-                $hasUnderReview = false;
-                $allResolved = true;
-
-                foreach ($itemIds as $itemId) {
-                    $state = $scores->get($enrollment->id.':'.$itemId)?->result_state;
-
-                    if ($state === ResultState::UnderReview) {
-                        $hasUnderReview = true;
-                    }
-
-                    if (! in_array($state, $resolvedStates, true)) {
-                        $allResolved = false;
-                    }
-                }
-
-                if ($hasUnderReview) {
-                    $underReview++;
-                } elseif ($allResolved) {
-                    $completed++;
-                }
-            }
-
-            return [$instrument->id => [
-                'applicable' => $applicable,
-                'completed' => $completed,
-                'under_review' => $underReview,
-                'complete' => $completed === $applicable,
-            ]];
-        });
+        // One rule, one place. "Concluir correção" asks this same service the
+        // same question, so what the page shows and what the action allows can
+        // never drift apart.
+        return app(InstrumentCompleteness::class)->forMany($instruments);
     }
 
     /**

@@ -3,9 +3,11 @@
 namespace App\Services\Assessment;
 
 use App\Models\Instrument;
+use App\Models\InstrumentStatus;
 use App\Models\ResultState;
 use App\Models\StudentItemScore;
 use App\Models\User;
+use App\Support\Assessment\CorrectionWorkflowException;
 use App\Support\Assessment\ScoreExceedsMaximumException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -26,6 +28,13 @@ class RecordScores
      */
     public function save(Instrument $instrument, array $cells, User $actor): int
     {
+        // A closed correction is read-only, and that is enforced here rather
+        // than only in the grid: hiding the inputs is presentation, not access
+        // control. Reopening is the explicit way back.
+        if ($instrument->status === InstrumentStatus::Completed) {
+            throw CorrectionWorkflowException::correctionIsClosed();
+        }
+
         // Validated before the transaction opens, not inside it: a rejected
         // batch must write nothing at all, matching how other multi-row
         // rules in this app are enforced (e.g. InstrumentBuilder::guard()).

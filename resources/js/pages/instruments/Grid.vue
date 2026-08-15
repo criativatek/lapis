@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { CircleAlert, Save } from '@lucide/vue';
+import { CheckCircle2, CircleAlert, Save } from '@lucide/vue';
 import { computed, nextTick, reactive, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
@@ -64,6 +64,14 @@ const props = defineProps<{
         title: string;
         applied_on: string;
         status_label: string;
+        // Correction workflow: whether it is closed, whether it may be closed,
+        // and how many students still lack a decision if it may not.
+        is_completed: boolean;
+        can_complete: boolean;
+        pending_count: number;
+        applicable_count: number;
+        completed_count: number;
+        completed_at: string | null;
         status: string;
         cancellation_reason: string | null;
         total_points: number | null;
@@ -359,6 +367,10 @@ const nonAssessedStates = computed(() => props.states.filter((state) => !state.c
 
 const isCancelled = computed(() => props.instrument.status === 'cancelled');
 
+// A closed correction is consulted, not edited. Enforced in RecordScores as
+// well — disabling inputs is presentation, never access control.
+const isReadOnly = computed(() => isCancelled.value || props.instrument.is_completed);
+
 const cancelDialogOpen = ref(false);
 const cancelForm = useForm<{ reason: string }>({ reason: '' });
 
@@ -373,6 +385,52 @@ function submitCancel(): void {
         preserveScroll: true,
         onSuccess: () => {
             cancelDialogOpen.value = false;
+        },
+    });
+}
+
+// ------------------------------------------------- correction workflow
+
+const completeDialogOpen = ref(false);
+const reopenDialogOpen = ref(false);
+const workflowBusy = ref(false);
+
+// A disabled button that says nothing is worse than no button: the reason is
+// always available on hover.
+const completeHint = computed(() => {
+    if (props.instrument.can_complete && dirtyCount.value === 0) {
+        return 'Declarar a correção concluída.';
+    }
+
+    if (dirtyCount.value > 0) {
+        return 'Guarda as alterações antes de concluir a correção.';
+    }
+
+    if (props.instrument.pending_count === 1) {
+        return 'Ainda existe 1 classificação por registar.';
+    }
+
+    return `Ainda existem ${props.instrument.pending_count} classificações por registar.`;
+});
+
+function completeCorrection(): void {
+    router.post(`/instruments/${props.instrument.ulid}/complete`, {}, {
+        preserveScroll: true,
+        onStart: () => (workflowBusy.value = true),
+        onFinish: () => {
+            workflowBusy.value = false;
+            completeDialogOpen.value = false;
+        },
+    });
+}
+
+function reopenCorrection(): void {
+    router.post(`/instruments/${props.instrument.ulid}/reopen`, {}, {
+        preserveScroll: true,
+        onStart: () => (workflowBusy.value = true),
+        onFinish: () => {
+            workflowBusy.value = false;
+            reopenDialogOpen.value = false;
         },
     });
 }
@@ -406,18 +464,42 @@ function revertCancellation(): void {
                     <Link :href="`/instruments/${instrument.ulid}/edit`" class="text-sm text-muted-foreground hover:underline">
                         Editar instrumento
                     </Link>
-                    <Button type="button" variant="outline" size="sm" @click="openCancelDialog">
+                    <Button v-if="!instrument.is_completed" type="button" variant="outline" size="sm" @click="openCancelDialog">
                         Anular instrumento
                     </Button>
-                    <span v-if="dirtyCount" class="text-sm text-amber-700">
-                        {{ dirtyCount }} alteraç{{ dirtyCount === 1 ? 'ão' : 'ões' }} por guardar
-                    </span>
-                    <span v-if="hasOverMaxCell" class="text-sm text-destructive">
-                        Há notas acima da cotação máxima
-                    </span>
-                    <Button :disabled="dirtyCount === 0 || saving || hasOverMaxCell" @click="save">
-                        <Save class="size-4" /> Guardar
-                    </Button>
+
+                    <!-- A closed correction is consulted, not edited. -->
+                    <template v-if="instrument.is_completed">
+                        <span class="text-sm text-muted-foreground">
+                            Correção concluída — em modo de consulta.
+                        </span>
+                        <Button type="button" variant="outline" size="sm" @click="reopenDialogOpen = true">
+                            Reabrir correção
+                        </Button>
+                    </template>
+
+                    <template v-else>
+                        <span v-if="dirtyCount" class="text-sm text-amber-700">
+                            {{ dirtyCount }} alteraç{{ dirtyCount === 1 ? 'ão' : 'ões' }} por guardar
+                        </span>
+                        <span v-if="hasOverMaxCell" class="text-sm text-destructive">
+                            Há notas acima da cotação máxima
+                        </span>
+                        <Button :disabled="dirtyCount === 0 || saving || hasOverMaxCell" @click="save">
+                            <Save class="size-4" /> Guardar
+                        </Button>
+                        <!-- Deliberately separate from Guardar: saving persists
+                             work, completing declares it over. -->
+                        <Button
+                            type="button"
+                            variant="secondary"
+                            :disabled="!instrument.can_complete || dirtyCount > 0"
+                            :title="completeHint"
+                            @click="completeDialogOpen = true"
+                        >
+                            <CheckCircle2 class="size-4" /> Concluir correção
+                        </Button>
+                    </template>
                 </template>
             </div>
         </div>
@@ -481,7 +563,7 @@ function revertCancellation(): void {
                                     min="0"
                                     :max="item.points_possible"
                                     :value="cell(student.enrollment_id, item.id).state === 'assessed' ? cell(student.enrollment_id, item.id).points : ''"
-                                    :disabled="isCancelled || (cell(student.enrollment_id, item.id).state !== 'assessed' && cell(student.enrollment_id, item.id).state !== 'pending')"
+                                    :disabled="isReadOnly || (cell(student.enrollment_id, item.id).state !== 'assessed' && cell(student.enrollment_id, item.id).state !== 'pending')"
                                     :class="[
                                         'h-8 w-16 rounded border bg-transparent px-1.5 text-center tabular-nums disabled:opacity-40',
                                         isOverMax(student, item) ? 'border-destructive text-destructive' : 'border-input',
@@ -492,7 +574,7 @@ function revertCancellation(): void {
                                 />
                                 <select
                                     :value="cell(student.enrollment_id, item.id).state"
-                                    :disabled="isCancelled"
+                                    :disabled="isReadOnly"
                                     class="h-8 w-14 cursor-pointer rounded border border-input bg-transparent text-xs"
                                     :title="states.find((s) => s.value === cell(student.enrollment_id, item.id).state)?.label"
                                     @change="onStateChange(student, item, ($event.target as HTMLSelectElement).value)"
@@ -550,6 +632,45 @@ function revertCancellation(): void {
             dispensa, use o seletor de estado ao lado da caixa. Um zero só é guardado se o
             introduzir como classificação.
         </p>
+
+        <Dialog v-model:open="completeDialogOpen">
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Concluir a correção deste instrumento?</DialogTitle>
+                    <DialogDescription>
+                        Depois de concluída, a correção fica em modo de consulta. Para
+                        voltar a alterá-la, será necessário reabrir a correção.
+                    </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                    <Button type="button" variant="outline" @click="completeDialogOpen = false">
+                        Cancelar
+                    </Button>
+                    <Button type="button" :disabled="workflowBusy" @click="completeCorrection">
+                        Concluir correção
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
+        <Dialog v-model:open="reopenDialogOpen">
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Reabrir a correção deste instrumento?</DialogTitle>
+                    <DialogDescription>
+                        Voltará a ser possível alterar as classificações.
+                    </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                    <Button type="button" variant="outline" @click="reopenDialogOpen = false">
+                        Cancelar
+                    </Button>
+                    <Button type="button" :disabled="workflowBusy" @click="reopenCorrection">
+                        Reabrir correção
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
 
         <Dialog v-model:open="cancelDialogOpen">
             <DialogContent>

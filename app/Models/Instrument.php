@@ -36,12 +36,15 @@ use Illuminate\Support\Carbon;
  * @property string|null $total_points
  * @property string|null $weight
  * @property bool $allow_bonus
+ * @property Carbon|null $completed_at
+ * @property int|null $completed_by
  */
 #[Fillable([
     'class_id', 'academic_period_id', 'instrument_type_id', 'title', 'applied_on',
     'status', 'counts_toward_classification', 'purpose', 'total_points', 'scale_id',
     'weight', 'allow_bonus', 'internal_notes', 'status_before_cancellation',
     'cancelled_at', 'cancelled_by', 'cancellation_reason',
+    'completed_at', 'completed_by',
 ])]
 class Instrument extends Model
 {
@@ -71,6 +74,7 @@ class Instrument extends Model
             'weight' => 'decimal:4',
             'allow_bonus' => 'boolean',
             'cancelled_at' => 'datetime',
+            'completed_at' => 'datetime',
         ];
     }
 

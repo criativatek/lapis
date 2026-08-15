@@ -14,8 +14,11 @@ use App\Models\ResultState;
 use App\Models\SchoolClass;
 use App\Models\StudentItemScore;
 use App\Models\User;
+use App\Services\Assessment\CompleteCorrection;
 use App\Services\Assessment\InstrumentBuilder;
+use App\Services\Assessment\InstrumentCompleteness;
 use App\Services\Assessment\RecordScores;
+use App\Support\Assessment\CorrectionWorkflowException;
 use App\Support\Assessment\InstrumentValidationException;
 use App\Support\Assessment\ScoreExceedsMaximumException;
 use App\Support\Tenancy\CurrentOrganization;
@@ -217,6 +220,64 @@ class InstrumentController extends Controller
         return back();
     }
 
+    /**
+     * What the grid needs to know about the correction workflow: whether it is
+     * closed (so the cells are read-only), whether it may be closed, and — when
+     * it may not — why, so the disabled button can say so instead of sitting
+     * there grey and mute.
+     *
+     * @return array<string, mixed>
+     */
+    protected function correctionWorkflowState(Instrument $instrument): array
+    {
+        $progress = app(InstrumentCompleteness::class)->for($instrument);
+        $pending = max(0, $progress['applicable'] - $progress['completed']);
+
+        return [
+            'is_completed' => $instrument->status === InstrumentStatus::Completed,
+            'can_complete' => $instrument->status === InstrumentStatus::InCorrection && $progress['complete'],
+            'pending_count' => $pending,
+            'applicable_count' => $progress['applicable'],
+            'completed_count' => $progress['completed'],
+            'completed_at' => $instrument->completed_at?->toDateTimeString(),
+        ];
+    }
+
+    /**
+     * The teacher declaring the correction finished. Saving never does this on
+     * its own — a partially corrected instrument must be able to be saved and
+     * come back to later.
+     */
+    public function completeCorrection(Instrument $instrument, CompleteCorrection $workflow): RedirectResponse
+    {
+        Gate::authorize('update', $instrument->schoolClass);
+
+        try {
+            $workflow->complete($instrument, $this->user());
+        } catch (CorrectionWorkflowException $exception) {
+            return back()->withErrors(['status' => $exception->getMessage()]);
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Correção concluída.']);
+
+        return back();
+    }
+
+    public function reopenCorrection(Instrument $instrument, CompleteCorrection $workflow): RedirectResponse
+    {
+        Gate::authorize('update', $instrument->schoolClass);
+
+        try {
+            $workflow->reopen($instrument, $this->user());
+        } catch (CorrectionWorkflowException $exception) {
+            return back()->withErrors(['status' => $exception->getMessage()]);
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Correção reaberta.']);
+
+        return back();
+    }
+
     public function revertCancellation(Instrument $instrument): RedirectResponse
     {
         Gate::authorize('update', $instrument->schoolClass);
@@ -296,6 +357,9 @@ class InstrumentController extends Controller
                 'class_label' => $instrument->schoolClass->label,
                 'class_ulid' => $instrument->schoolClass->ulid,
                 'period' => $instrument->academicPeriod->label,
+                // The same completeness rule the Avaliações page reads, so the
+                // button and the progress column can never disagree.
+                ...$this->correctionWorkflowState($instrument),
             ],
             'items' => $instrument->items->map(fn (InstrumentItem $item) => [
                 'id' => $item->id,
@@ -361,6 +425,10 @@ class InstrumentController extends Controller
         try {
             $recordScores->save($instrument, $data['cells'], $this->user());
         } catch (ScoreExceedsMaximumException $exception) {
+            return back()->withErrors(['cells' => $exception->getMessage()]);
+        } catch (CorrectionWorkflowException $exception) {
+            // A closed correction refuses the write with a message rather than
+            // a 500 — the teacher is told to reopen it.
             return back()->withErrors(['cells' => $exception->getMessage()]);
         }
 
