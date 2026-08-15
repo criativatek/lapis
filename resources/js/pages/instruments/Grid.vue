@@ -404,6 +404,109 @@ function save(): void {
 
 const nonAssessedStates = computed(() => props.states.filter((state) => !state.carries_value));
 
+/**
+ * ===================== O ESTADO DE UM ALUNO NO INSTRUMENTO =====================
+ *
+ * A student who missed the test missed all seventeen questions of it, and
+ * choosing «AusJ» seventeen times is not a thing anybody does twice. This is a
+ * SHORTCUT and nothing more: it writes the same per-item states the teacher
+ * would have chosen by hand, through the same save, into the same cells. The
+ * item remains the only source of truth, and an exception on one question is
+ * still made on that question (§5).
+ *
+ * Which states may be applied to a whole instrument is not a list kept here —
+ * it is «every state that does not carry a value». A state that carries one
+ * needs a number per question, and a bulk action has no number to give (§3).
+ */
+const MIXED = '__mixed__';
+
+const rowStates = computed(() => nonAssessedStates.value);
+
+/**
+ * What the whole row is, in one word.
+ *
+ * `MIXED` when the questions disagree, and it is shown as «Vários» rather than
+ * resolved to whichever state happens to be commonest: a row with eight marks
+ * and nine absences is not an absent row, and saying so would invite the
+ * teacher to flatten it by accident (§6).
+ */
+function rowStateOf(student: Student): string {
+    if (props.items.length === 0) {
+        return 'pending';
+    }
+
+    const first = cell(student.enrollment_id, props.items[0].id).state;
+
+    return props.items.every(
+        (item) => cell(student.enrollment_id, item.id).state === first,
+    )
+        ? first
+        : MIXED;
+}
+
+/** How many of this student's questions currently hold a mark. */
+function markedCount(student: Student): number {
+    return props.items.filter((item) => {
+        const current = cell(student.enrollment_id, item.id);
+
+        return current.state === 'assessed' && current.points !== null;
+    }).length;
+}
+
+const pendingBulk = ref<{ student: Student; state: string; marked: number } | null>(null);
+
+function onRowStateChange(student: Student, state: string): void {
+    if (state === MIXED) {
+        return;
+    }
+
+    const marked = markedCount(student);
+
+    // Applying a state to a question that holds a mark REMOVES the mark: only an
+    // assessed cell may carry a number, here and in RecordScores alike. Doing
+    // that to eight questions at once, silently, is not a shortcut — it is a
+    // loss. So it is asked about, and only when there is something to lose (§8).
+    if (marked > 0 && state !== 'pending') {
+        pendingBulk.value = { student, state, marked };
+
+        return;
+    }
+
+    applyRowState(student, state);
+}
+
+function applyRowState(student: Student, state: string): void {
+    for (const item of props.items) {
+        const current = cell(student.enrollment_id, item.id);
+
+        // «Sem estado» clears what was never a classification and leaves alone
+        // what was. A question the teacher marked 14 stays marked 14 — clearing
+        // a row is undoing an absence, not undoing the correction (§7).
+        if (state === 'pending' && current.state === 'assessed') {
+            continue;
+        }
+
+        if (current.state === state) {
+            continue;
+        }
+
+        current.state = state;
+
+        if (state !== 'assessed') {
+            current.points = null;
+        }
+
+        markDirty(student.enrollment_id, item.id);
+    }
+}
+
+function confirmBulk(): void {
+    if (pendingBulk.value !== null) {
+        applyRowState(pendingBulk.value.student, pendingBulk.value.state);
+        pendingBulk.value = null;
+    }
+}
+
 const isCancelled = computed(() => props.instrument.status === 'cancelled');
 
 // A closed correction is consulted, not edited. Enforced in RecordScores as
@@ -661,7 +764,7 @@ function revertCancellation(): void {
                 </thead>
                 <tbody class="divide-y divide-border">
                     <tr v-for="(student, rowIndex) in students" :key="student.enrollment_id" class="hover:bg-muted/20">
-                        <td class="sticky left-0 z-10 bg-background px-3 py-1.5 whitespace-nowrap">
+                        <td class="sticky left-0 z-10 bg-background px-3 py-0.5 whitespace-nowrap">
                             <div class="flex items-center gap-1.5">
                                 <span class="text-muted-foreground">{{ student.class_number ?? '—' }}</span>
                                 <!-- Hidden on narrow viewports only here: this column is
@@ -682,10 +785,43 @@ function revertCancellation(): void {
                                     class="rounded border border-amber-300 px-1.5 py-0.5 text-[10px] text-amber-800"
                                     title="Ainda sem classificação nem estado — não é zero nem falta."
                                 >Por avaliar</span>
+
+                                <!--
+                                  Beside the name rather than in a column of its
+                                  own: the table is already very wide, and a
+                                  seventeenth column of chrome would push the
+                                  questions further off screen (§9).
+                                -->
+                                <select
+                                    v-if="!isReadOnly && items.length > 1"
+                                    :value="rowStateOf(student)"
+                                    class="ml-1 h-6 cursor-pointer rounded border border-input bg-transparent text-[11px] text-muted-foreground"
+                                    :aria-label="`Estado de ${student.name} em toda a avaliação`"
+                                    title="Aplica o mesmo estado a todas as perguntas deste aluno."
+                                    @change="onRowStateChange(student, ($event.target as HTMLSelectElement).value)"
+                                >
+                                    <!-- Shown, never chosen: the row disagrees
+                                         with itself and saying otherwise would
+                                         invite flattening it by accident (§6). -->
+                                    <option v-if="rowStateOf(student) === MIXED" :value="MIXED" disabled>
+                                        Vários
+                                    </option>
+                                    <option v-if="rowStateOf(student) === 'assessed'" value="assessed" disabled>
+                                        Classificado
+                                    </option>
+                                    <option value="pending">Sem estado</option>
+                                    <option
+                                        v-for="state in rowStates.filter((s) => s.value !== 'pending')"
+                                        :key="state.value"
+                                        :value="state.value"
+                                    >
+                                        {{ state.label }}
+                                    </option>
+                                </select>
                             </div>
                         </td>
 
-                        <td v-for="(item, columnIndex) in items" :key="item.id" class="px-1 py-1 text-center">
+                        <td v-for="(item, columnIndex) in items" :key="item.id" class="px-1 py-0.5 text-center">
                             <div class="flex items-center justify-center gap-1">
                                 <input
                                     :data-cell="`${rowIndex}-${columnIndex}`"
@@ -696,7 +832,7 @@ function revertCancellation(): void {
                                     :value="cell(student.enrollment_id, item.id).state === 'assessed' ? cell(student.enrollment_id, item.id).points : ''"
                                     :disabled="isReadOnly || (cell(student.enrollment_id, item.id).state !== 'assessed' && cell(student.enrollment_id, item.id).state !== 'pending')"
                                     :class="[
-                                        'h-8 w-16 rounded border bg-transparent px-1.5 text-center tabular-nums disabled:opacity-40',
+                                        'h-7 w-16 rounded border bg-transparent px-1.5 text-center tabular-nums disabled:opacity-40',
                                         isOverMax(student, item) ? 'border-destructive text-destructive' : 'border-input',
                                     ]"
                                     :title="isOverMax(student, item) ? `Excede a cotação máxima (${item.points_possible} pts).` : undefined"
@@ -707,7 +843,7 @@ function revertCancellation(): void {
                                     :value="cell(student.enrollment_id, item.id).state"
                                     :disabled="isReadOnly"
                                     :class="[
-                                        'h-8 cursor-pointer rounded border bg-transparent text-xs',
+                                        'h-7 cursor-pointer rounded border bg-transparent text-xs',
                                         // Wider and dashed only while undecided: the word has to
                                         // fit, and a cell nobody has ruled on should not look settled.
                                         isPendingCell(student, item) && !isReadOnly
@@ -727,7 +863,7 @@ function revertCancellation(): void {
                             </div>
                         </td>
 
-                        <td class="px-3 py-1.5 text-right font-semibold tabular-nums">
+                        <td class="px-3 py-0.5 text-right font-semibold tabular-nums">
                             <template v-if="totalFor(student) === null">
                                 <span class="text-muted-foreground" title="Sem classificações registadas — não é zero.">—</span>
                             </template>
@@ -737,7 +873,7 @@ function revertCancellation(): void {
                                 <span v-if="isPartial(student)" class="ml-1 text-xs font-normal text-amber-600" title="Ainda há questões por avaliar.">parcial</span>
                             </template>
                         </td>
-                        <td class="px-3 py-1.5 text-left">
+                        <td class="px-3 py-0.5 text-left">
                             <div class="flex flex-col gap-1">
                                 <div class="flex flex-wrap items-center gap-1.5 border-b border-border/40 pb-1">
                                     <span class="w-16 shrink-0 text-xs font-medium text-muted-foreground">Global</span>
@@ -787,6 +923,36 @@ function revertCancellation(): void {
                     </Button>
                     <Button type="button" :disabled="workflowBusy" @click="completeCorrection">
                         Concluir correção
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
+        <!--
+          Asked only when there is something to lose. Applying a state to a
+          question that holds a mark removes the mark — that is the model's rule
+          and not this screen's — so doing it to eight questions at once without
+          saying so would be a loss dressed as a shortcut (§8).
+        -->
+        <Dialog :open="pendingBulk !== null" @update:open="(open: boolean) => { if (!open) pendingBulk = null }">
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Aplicar a toda a avaliação?</DialogTitle>
+                    <DialogDescription v-if="pendingBulk">
+                        {{ pendingBulk.student.name }} já tem
+                        {{ pendingBulk.marked }}
+                        {{ pendingBulk.marked === 1 ? 'classificação registada' : 'classificações registadas' }}.
+                        Aplicar «{{ states.find((s) => s.value === pendingBulk!.state)?.label }}»
+                        a todas as perguntas substitui
+                        {{ pendingBulk.marked === 1 ? 'essa classificação' : 'essas classificações' }}.
+                    </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                    <Button type="button" variant="outline" @click="pendingBulk = null">
+                        Cancelar
+                    </Button>
+                    <Button type="button" @click="confirmBulk">
+                        Aplicar a todas
                     </Button>
                 </DialogFooter>
             </DialogContent>
