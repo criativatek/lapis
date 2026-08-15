@@ -40,6 +40,11 @@ yarn-error.log
 # roster-import feature (docs/superpowers/specs/2026-07-28-*) — never commit.
 /Ficheiros avulsos
 
+# The teacher's own Plickers exports, used to design and smoke the correction
+# import. Real classes, real children — never commit. The fictitious fixtures
+# the tests run against live in tests/Fixtures/Import/ and are versioned.
+/Grelhas de correção
+
 # Deploy package built locally per docs/deployment.md — never commit.
 /update.tgz
 # Written by `php artisan lapis:build-stamp` just before packaging, and read back

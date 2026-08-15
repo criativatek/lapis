@@ -6,6 +6,7 @@ use App\Domain\Assessment\Bc;
 use App\Domain\Import\Correction\CanonicalCorrectionGrid;
 use App\Domain\Import\Correction\CanonicalItem;
 use App\Domain\Import\Correction\ImportMapping;
+use App\Domain\Import\Correction\OverallResultItem;
 use App\Models\CorrectionImport;
 use App\Models\CorrectionImportStatus;
 use App\Models\Instrument;
@@ -18,6 +19,7 @@ use App\Services\Assessment\RecordScores;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Import\CorrectionImportException;
 use App\Support\Import\CorrectionImportTempStorage;
+use App\Support\Import\WithoutLeakingTheGrid;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -30,6 +32,14 @@ use Illuminate\Support\Facades\DB;
  * marks. There is deliberately no second set of rules for imported data: an
  * import that could write a mark the grid would have refused is an import that
  * has quietly forked the assessment model.
+ *
+ * It writes one of two shapes, and never a blend of them (§8). In the ordinary
+ * mode it takes the classification the platform already produced and records it
+ * as a single result — the shape §4.2 of the domain model reserves for anything
+ * assessed directly rather than question by question. In the detailed mode it
+ * records the correction question by question, against cotações the teacher
+ * decided here. Which one applies is a decision stored in the mapping, not a
+ * guess made at write time.
  *
  * Four refusals are load-bearing:
  *
@@ -96,7 +106,9 @@ class ImportCorrectionGrid
                 $this->recordScores->save($instrument, $cells, $teacher);
             }
 
-            $locked->forceFill([
+            // The provenance still carries every response; a failure here must
+            // not put it in the log with the exception message.
+            WithoutLeakingTheGrid::run(fn () => $locked->forceFill([
                 'instrument_id' => $instrument->getKey(),
                 'status' => CorrectionImportStatus::Imported,
                 'confirmed_by' => $teacher->getKey(),
@@ -105,7 +117,7 @@ class ImportCorrectionGrid
                 'canonical_snapshot' => $this->provenance($grid, $mapping),
                 'stored_path' => null,
                 'summary' => $this->summary($grid, $mapping, $cells),
-            ])->save();
+            ])->save(), 'ao confirmar a importação');
 
             // Outside nothing: the file is deleted only once the write that
             // makes it redundant has been decided. If the transaction rolls
@@ -160,6 +172,12 @@ class ImportCorrectionGrid
             throw CorrectionImportException::studentsNotDecided($undecided);
         }
 
+        if ($mapping->importsOverallResult()) {
+            $this->guardOverall($grid, $mapping);
+
+            return;
+        }
+
         if ($mapping->createsInstrument()) {
             $withoutPoints = 0;
 
@@ -190,6 +208,46 @@ class ImportCorrectionGrid
     }
 
     /**
+     * What the simple path needs, which is deliberately almost nothing.
+     *
+     * No cotação, no answer key, no question structure: the platform already
+     * decided all of that when it produced the score. What remains is where the
+     * result counts, and — when writing onto an instrument that already exists —
+     * which of its questions receives it (§13).
+     */
+    protected function guardOverall(CanonicalCorrectionGrid $grid, ImportMapping $mapping): void
+    {
+        // Not one student in the file has a classification. Importing would
+        // create an instrument with a column nobody is in.
+        $withResult = false;
+
+        foreach ($grid->students as $student) {
+            if ($student->scorePercent() !== null && ! $student->answeredNothing()) {
+                $withResult = true;
+
+                break;
+            }
+        }
+
+        if (! $withResult) {
+            throw CorrectionImportException::noOverallResults();
+        }
+
+        if (! $mapping->createsInstrument()) {
+            if ($mapping->overallItemId === null) {
+                throw CorrectionImportException::overallTargetNotChosen();
+            }
+
+            return;
+        }
+
+        if ((bool) ($mapping->instrumentAttributes['counts_toward_classification'] ?? false)
+            && ! $mapping->overallDomainIsDecided()) {
+            throw CorrectionImportException::overallDomainNotChosen();
+        }
+    }
+
+    /**
      * The teacher's cotação, or the source's own if it ever states one. Never a
      * default: a question with no declared worth has not been decided, and the
      * guard above refuses rather than assuming a value (§3).
@@ -215,6 +273,58 @@ class ImportCorrectionGrid
     {
         $attributes = $mapping->instrumentAttributes;
 
+        $items = $mapping->importsOverallResult()
+            ? $this->overallItem($mapping)
+            : $this->perQuestionItems($grid, $mapping);
+
+        return $this->builder->create($import->schoolClass, [
+            'academic_period_id' => (int) ($attributes['academic_period_id'] ?? 0),
+            'instrument_type_id' => (int) ($attributes['instrument_type_id'] ?? 0),
+            'title' => (string) ($attributes['title'] ?? ''),
+            'applied_on' => (string) ($attributes['applied_on'] ?? ''),
+            // Marks arrive with it, so it starts where a half-marked instrument
+            // belongs — and never at Completed (§29).
+            'status' => InstrumentStatus::InCorrection->value,
+            'counts_toward_classification' => (bool) ($attributes['counts_toward_classification'] ?? false),
+            'purpose' => (string) ($attributes['purpose'] ?? 'formative'),
+            // A global result is a result out of a hundred, and the total says
+            // so rather than being left for the teacher to reconcile.
+            'total_points' => $mapping->importsOverallResult()
+                ? OverallResultItem::POINTS_POSSIBLE
+                : ($attributes['total_points'] ?? null),
+        ], $items);
+    }
+
+    /**
+     * The whole structure of a simple import: one item, worth a hundred, in the
+     * domain the teacher chose. Exactly the shape §4.2 of the domain model
+     * already prescribes for anything assessed directly rather than question by
+     * question.
+     *
+     * @return list<array{code: string, label: string, points_possible: float, group_index: int, domains: list<array{domain_id: int, allocation_percent: float}>}>
+     */
+    protected function overallItem(ImportMapping $mapping): array
+    {
+        return [[
+            'code' => OverallResultItem::CODE,
+            'label' => OverallResultItem::LABEL,
+            'points_possible' => (float) OverallResultItem::POINTS_POSSIBLE,
+            'group_index' => 0,
+            'domains' => array_map(
+                fn (array $allocation): array => [
+                    'domain_id' => (int) $allocation['domain_id'],
+                    'allocation_percent' => (float) $allocation['allocation_percent'],
+                ],
+                $mapping->overallDomains,
+            ),
+        ]];
+    }
+
+    /**
+     * @return list<array{code: string, label: string|null, points_possible: float, group_index: int, domains: list<array{domain_id: int, allocation_percent: float}>}>
+     */
+    protected function perQuestionItems(CanonicalCorrectionGrid $grid, ImportMapping $mapping): array
+    {
         $items = [];
 
         foreach ($grid->items as $item) {
@@ -235,18 +345,7 @@ class ImportCorrectionGrid
             ];
         }
 
-        return $this->builder->create($import->schoolClass, [
-            'academic_period_id' => (int) ($attributes['academic_period_id'] ?? 0),
-            'instrument_type_id' => (int) ($attributes['instrument_type_id'] ?? 0),
-            'title' => (string) ($attributes['title'] ?? ''),
-            'applied_on' => (string) ($attributes['applied_on'] ?? ''),
-            // Marks arrive with it, so it starts where a half-marked instrument
-            // belongs — and never at Completed (§29).
-            'status' => InstrumentStatus::InCorrection->value,
-            'counts_toward_classification' => (bool) ($attributes['counts_toward_classification'] ?? false),
-            'purpose' => (string) ($attributes['purpose'] ?? 'formative'),
-            'total_points' => $attributes['total_points'] ?? null,
-        ], $items);
+        return $items;
     }
 
     /**
@@ -287,6 +386,10 @@ class ImportCorrectionGrid
      */
     protected function cells(CanonicalCorrectionGrid $grid, ImportMapping $mapping, Instrument $instrument): array
     {
+        if ($mapping->importsOverallResult()) {
+            return $this->overallCells($grid, $mapping, $instrument);
+        }
+
         $itemIds = $this->itemIds($grid, $mapping, $instrument);
         $existing = $this->existingScores($instrument);
 
@@ -338,6 +441,94 @@ class ImportCorrectionGrid
         }
 
         return $cells;
+    }
+
+    /**
+     * One mark per student: the classification the platform already worked out.
+     *
+     * The questions are not consulted at all. That is the point of §8 — a
+     * teacher who chose «importar a classificação global» asked for the number
+     * on the export, and recomputing it from twenty answers and twenty cotações
+     * would produce a different number for reasons they never asked about.
+     *
+     * Two rows produce nothing, and both matter:
+     *  - the platform reported no score («-»): there is no classification, and
+     *    an absent classification is not a zero;
+     *  - the student answered nothing: their 0% is arithmetic over an empty set,
+     *    not a mark they earned (§3).
+     *
+     * @return list<array{enrollment_id: int, instrument_item_id: int, result_state: string, points_earned: float|null}>
+     */
+    protected function overallCells(CanonicalCorrectionGrid $grid, ImportMapping $mapping, Instrument $instrument): array
+    {
+        $target = $this->overallTarget($mapping, $instrument);
+
+        if ($target === null) {
+            return [];
+        }
+
+        [$itemId, $pointsPossible] = $target;
+
+        $existing = $this->existingScores($instrument);
+        $cells = [];
+
+        foreach ($grid->students as $student) {
+            $enrollmentId = $mapping->enrollmentFor($student->sourceKey);
+
+            if ($enrollmentId === null) {
+                continue; // Row the teacher chose to leave out.
+            }
+
+            $percent = $student->scorePercent();
+
+            if ($percent === null || $student->answeredNothing()) {
+                continue;
+            }
+
+            $earned = OverallResultItem::earned($percent, $pointsPossible);
+            $current = $existing[$enrollmentId.':'.$itemId] ?? null;
+
+            if ($current !== null && $this->sameMark($current, $earned)) {
+                continue;
+            }
+
+            if ($current !== null && $mapping->conflictChoice($enrollmentId, $itemId) !== ImportMapping::CONFLICT_IMPORT) {
+                continue; // A different mark is already there and nobody said to replace it.
+            }
+
+            $cells[] = [
+                'enrollment_id' => $enrollmentId,
+                'instrument_item_id' => $itemId,
+                'result_state' => ResultState::Assessed->value,
+                'points_earned' => (float) $earned,
+            ];
+        }
+
+        return $cells;
+    }
+
+    /**
+     * The item the global result lands on, and what it is worth there.
+     *
+     * Creating: the single item just built. Associating: the one the teacher
+     * picked, at the cotação the instrument already declares — so a 20-point
+     * question receives 85% as 17, and nothing the teacher configured is
+     * rewritten on the way past (§24).
+     *
+     * @return array{0: int, 1: string}|null
+     */
+    protected function overallTarget(ImportMapping $mapping, Instrument $instrument): ?array
+    {
+        if ($mapping->createsInstrument()) {
+            $instrument->load('items');
+            $item = $instrument->items->sortBy('sequence')->first();
+
+            return $item === null ? null : [(int) $item->id, (string) $item->points_possible];
+        }
+
+        $item = $instrument->items->firstWhere('id', $mapping->overallItemId);
+
+        return $item === null ? null : [(int) $item->id, (string) $item->points_possible];
     }
 
     /**
@@ -453,13 +644,45 @@ class ImportCorrectionGrid
 
         return [
             'source' => $grid->source->value,
+            'result_mode' => $mapping->resultMode,
             'instrument' => $grid->instrument->toArray(),
             'items' => $items,
             'results' => $results,
+            // What the platform itself said each student scored. Kept whichever
+            // mode was used, because «Resultado na plataforma: 85%» has to stay
+            // answerable long after the file is gone — and in the simple mode it
+            // is the very number the mark was derived from (§5).
+            'student_results' => $this->sourceResults($grid, $mapping),
             'source_metadata' => $grid->sourceMetadata,
             // Names removed on purpose; the mapping already says who is who.
             'students_minimised' => true,
         ];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    protected function sourceResults(CanonicalCorrectionGrid $grid, ImportMapping $mapping): array
+    {
+        $rows = [];
+
+        foreach ($grid->students as $student) {
+            $enrollmentId = $mapping->enrollmentFor($student->sourceKey);
+
+            if ($enrollmentId === null) {
+                continue;
+            }
+
+            $rows[] = [
+                'enrollment_id' => $enrollmentId,
+                'source_score' => $student->sourceScore,
+                'source_percent' => $student->scorePercent(),
+                'source_correct' => $student->sourceCorrect,
+                'source_answered' => $student->sourceAnswered,
+            ];
+        }
+
+        return $rows;
     }
 
     /**

@@ -1,0 +1,36 @@
+"Turma Trinta - 8T (25/26) "
+
+"Card Number","First name","Last Name","Score","Correct","Answered","1. Pergunta 1 do ficheiro de trinta?","2. Pergunta 2 do ficheiro de trinta?","3. Pergunta 3 do ficheiro de trinta?","4. Pergunta 4 do ficheiro de trinta?"
+
+,,,,,,https://exemplo.invalido/q/trinta001,https://exemplo.invalido/q/trinta002,https://exemplo.invalido/q/trinta003,https://exemplo.invalido/q/trinta004
+,,,,,,B,A,C,D
+1,Adriana,Trinta,0%,0,4,A,B,A,A
+2,Bento,Trinta,25%,1,4,B,B,A,A
+3,Clara,Trinta,50%,2,4,B,A,A,A
+4,Duarte,Trinta,75%,3,4,B,A,C,A
+5,Elsa,Trinta,100%,4,4,B,A,C,D
+6,Fabio,Trinta,0%,0,4,A,B,A,A
+7,Gabriela,Trinta,25%,1,4,B,B,A,A
+8,Hugo,Trinta,50%,2,4,B,A,A,A
+9,Ines,Trinta,75%,3,4,B,A,C,A
+10,Joao,Trinta,100%,4,4,B,A,C,D
+11,Katia,Trinta,0%,0,4,A,B,A,A
+12,Luis,Trinta,25%,1,4,B,B,A,A
+13,Marta,Trinta,-,0,0,-,-,-,-
+14,Nuno,Trinta,75%,3,4,B,A,C,A
+15,Olga,Trinta,100%,4,4,B,A,C,D
+16,Paulo,Trinta,0%,0,4,A,B,A,A
+17,Quiteria,Trinta,25%,1,4,B,B,A,A
+18,Rui,Trinta,50%,2,4,B,A,A,A
+19,Sofia,Trinta,75%,3,4,B,A,C,A
+20,Tiago,Trinta,100%,4,4,B,A,C,D
+21,Ursula,Trinta,0%,0,4,A,B,A,A
+22,Vasco,Trinta,25%,1,4,B,B,A,A
+23,Wanda,Trinta,50%,2,4,B,A,A,A
+24,Xavier,Trinta,75%,3,4,B,A,C,A
+25,Yara,Trinta,100%,4,4,B,A,C,D
+26,Zeca,Trinta,0%,0,4,A,B,A,A
+27,Alice,Trinta,25%,1,4,B,B,A,A
+28,Bruno,Trinta,50%,2,4,B,A,A,A
+29,Celia,Trinta,75%,3,4,B,A,C,A
+30,David,Trinta,100%,4,4,B,A,C,D

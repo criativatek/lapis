@@ -16,6 +16,7 @@ use App\Services\Import\Correction\CorrectionGridParserRegistry;
 use App\Services\Import\Correction\ImportCorrectionGrid;
 use App\Support\Import\CorrectionImportException;
 use App\Support\Import\CorrectionImportTempStorage;
+use App\Support\Import\WithoutLeakingTheGrid;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -116,7 +117,10 @@ class CorrectionImportController extends Controller
         $grid = $parser->parse($upload->getRealPath(), $originalName);
         $storedPath = $this->storage->store($upload->getRealPath(), $originalName);
 
-        $import = CorrectionImport::create([
+        // The snapshot is the whole file — names, answers, everything. If this
+        // write fails, the payload must not travel into the log with the
+        // exception message (WithoutLeakingTheGrid).
+        $import = WithoutLeakingTheGrid::run(fn (): CorrectionImport => CorrectionImport::create([
             'class_id' => $class->getKey(),
             'source' => $source->value,
             'status' => CorrectionImportStatus::Parsed->value,
@@ -127,8 +131,12 @@ class CorrectionImportController extends Controller
             'uploaded_by' => $this->user()->getKey(),
             'canonical_snapshot' => $grid->toArray(),
             'source_metadata' => $grid->sourceMetadata,
-            'mapping_snapshot' => (new ImportMapping)->toArray(),
-        ]);
+            // A new import opens on the simple path: record the classification
+            // the platform already produced. Stated here, once, because it is a
+            // product decision rather than a property of the value object — and
+            // because the interface must not be the place that decides it (§1).
+            'mapping_snapshot' => (new ImportMapping(resultMode: ImportMapping::RESULT_OVERALL))->toArray(),
+        ]), 'ao guardar a análise do ficheiro');
 
         return to_route('correction-imports.edit', $import);
     }
@@ -137,9 +145,22 @@ class CorrectionImportController extends Controller
      * Steps 2 to 4, all reading from the same preview so the teacher never sees
      * one screen say ready and another say otherwise.
      */
-    public function edit(CorrectionImport $import): Response
+    public function edit(CorrectionImport $import): Response|RedirectResponse
     {
         Gate::authorize('view', $import);
+
+        // A session that has ended is not a wizard any more. A confirmed one
+        // belongs to its instrument, and the grid is what the teacher actually
+        // wanted; a cancelled one has no file and no future, so it goes back to
+        // step 1 rather than rendering a preview of something discarded.
+        if ($import->status === CorrectionImportStatus::Imported && $import->instrument_id !== null) {
+            return to_route('instruments.show', $import->instrument);
+        }
+
+        if ($import->status->isFinal()) {
+            return to_route('correction-imports.create')
+                ->with('success', __('Essa importação já não está ativa.'));
+        }
 
         // camelCase keys, like every other page: Vue matches prop names exactly,
         // and `import` in particular cannot be one — it is a reserved word in a
@@ -155,7 +176,7 @@ class CorrectionImportController extends Controller
             'preview' => $this->preview->for($import),
             'conflicts' => $this->preview->conflicts($import),
             'duplicateOfEarlierImport' => $this->seenBefore($import),
-            'catalogue' => $this->catalogue(),
+            'catalogue' => $this->catalogue($import),
         ]);
     }
 
@@ -170,14 +191,19 @@ class CorrectionImportController extends Controller
 
         $data = $request->validate([
             'mode' => ['required', 'string', 'in:'.ImportMapping::MODE_CREATE.','.ImportMapping::MODE_ASSOCIATE],
+            'result_mode' => ['sometimes', 'string', 'in:'.ImportMapping::RESULT_OVERALL.','.ImportMapping::RESULT_PER_QUESTION],
             'instrument_id' => ['nullable', 'integer'],
             'students' => ['array'],
             'items' => ['array'],
             'points' => ['array'],
             'domains' => ['array'],
+            'overall_domains' => ['array'],
+            'overall_item_id' => ['nullable', 'integer'],
             'conflicts' => ['array'],
             'instrument' => ['array'],
         ]);
+
+        $stored = ImportMapping::fromArray($import->mapping_snapshot);
 
         $mapping = new ImportMapping(
             mode: $data['mode'],
@@ -188,6 +214,13 @@ class CorrectionImportController extends Controller
             domains: $this->sanitiseDomains($data['domains'] ?? []),
             conflicts: array_map(fn ($value): string => (string) $value, $data['conflicts'] ?? []),
             instrumentAttributes: $data['instrument'] ?? [],
+            // A request that says nothing about the result mode is not asking to
+            // change it. Whatever this import already decided stands — which is
+            // also what keeps a mapping stored before the simple mode existed
+            // from silently becoming a different kind of import.
+            resultMode: $data['result_mode'] ?? $stored->resultMode,
+            overallDomains: $this->sanitiseAllocations($data['overall_domains'] ?? []),
+            overallItemId: $this->sanitiseOverallItem($data['overall_item_id'] ?? null, $import),
         );
 
         $import->forceFill([
@@ -223,6 +256,19 @@ class CorrectionImportController extends Controller
             ->with('success', __('Importação concluída. Reveja a correção antes de a concluir.'));
     }
 
+    /**
+     * Discards a session the teacher decided against.
+     *
+     * Only the conversation goes: the uploaded file is deleted and the session
+     * is marked cancelled. Nothing academic is touched, because a session that
+     * was never confirmed produced nothing academic — and the policy refuses
+     * this entirely once the import has been written, where the instrument's own
+     * rules take over (§6).
+     *
+     * Straight back to step 1, not to Avaliações: a teacher cancelling an import
+     * is almost always about to try another file, and sending them to a list
+     * they did not ask for makes them find their way back.
+     */
     public function destroy(CorrectionImport $import): RedirectResponse
     {
         Gate::authorize('delete', $import);
@@ -234,7 +280,8 @@ class CorrectionImportController extends Controller
             'stored_path' => null,
         ])->save();
 
-        return to_route('assessments.index')->with('success', __('Importação cancelada.'));
+        return to_route('correction-imports.create')
+            ->with('success', __('Importação cancelada. Os dados analisados foram descartados.'));
     }
 
     /**
@@ -250,6 +297,7 @@ class CorrectionImportController extends Controller
         $allowed = $import->schoolClass->enrollments()->pluck('id')->flip();
 
         $clean = [];
+        $used = [];
 
         foreach ($students as $sourceKey => $enrollmentId) {
             if ($enrollmentId === null || $enrollmentId === '') {
@@ -260,9 +308,24 @@ class CorrectionImportController extends Controller
                 continue;
             }
 
-            if ($allowed->has((int) $enrollmentId)) {
-                $clean[(string) $sourceKey] = (int) $enrollmentId;
+            $enrollmentId = (int) $enrollmentId;
+
+            if (! $allowed->has($enrollmentId)) {
+                continue;
             }
+
+            // One student cannot be two rows of the same file. Whichever row
+            // claimed them first keeps them; the second is dropped back to
+            // undecided rather than silently overwriting — two source rows
+            // pointing at one student means one of them is somebody else, and
+            // the teacher has to say which (§7). Enforced here and not only in
+            // the interface, because a request is not to be trusted about it.
+            if (isset($used[$enrollmentId])) {
+                continue;
+            }
+
+            $used[$enrollmentId] = true;
+            $clean[(string) $sourceKey] = $enrollmentId;
         }
 
         return $clean;
@@ -297,8 +360,6 @@ class CorrectionImportController extends Controller
      */
     protected function sanitiseDomains(array $domains): array
     {
-        $allowed = Domain::query()->pluck('id')->flip();
-
         $clean = [];
 
         foreach ($domains as $sourceKey => $allocations) {
@@ -306,18 +367,7 @@ class CorrectionImportController extends Controller
                 continue;
             }
 
-            $rows = [];
-
-            foreach ($allocations as $allocation) {
-                $domainId = (int) ($allocation['domain_id'] ?? 0);
-
-                if ($allowed->has($domainId)) {
-                    $rows[] = [
-                        'domain_id' => $domainId,
-                        'allocation_percent' => (string) ($allocation['allocation_percent'] ?? '100'),
-                    ];
-                }
-            }
+            $rows = $this->sanitiseAllocations($allocations);
 
             if ($rows !== []) {
                 $clean[(string) $sourceKey] = $rows;
@@ -325,6 +375,56 @@ class CorrectionImportController extends Controller
         }
 
         return $clean;
+    }
+
+    /**
+     * Domain allocations, with anything that is not a real domain dropped.
+     *
+     * @param  array<int|string, mixed>  $allocations
+     * @return list<array{domain_id: int, allocation_percent: string}>
+     */
+    protected function sanitiseAllocations(array $allocations): array
+    {
+        $allowed = Domain::query()->pluck('id')->flip();
+
+        $rows = [];
+
+        foreach ($allocations as $allocation) {
+            if (! is_array($allocation)) {
+                continue;
+            }
+
+            $domainId = (int) ($allocation['domain_id'] ?? 0);
+
+            if ($allowed->has($domainId)) {
+                $rows[] = [
+                    'domain_id' => $domainId,
+                    'allocation_percent' => (string) ($allocation['allocation_percent'] ?? '100'),
+                ];
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * The question a global result is aimed at has to be one of this class's
+     * own. Same rule as every other id in this controller: a request is not a
+     * source of truth about what belongs to whom.
+     */
+    protected function sanitiseOverallItem(mixed $itemId, CorrectionImport $import): ?int
+    {
+        if ($itemId === null || $itemId === '') {
+            return null;
+        }
+
+        $allowed = $import->schoolClass->instruments()
+            ->with('items:id,instrument_id')
+            ->get()
+            ->flatMap(fn ($instrument) => $instrument->items->pluck('id'))
+            ->flip();
+
+        return $allowed->has((int) $itemId) ? (int) $itemId : null;
     }
 
     /**
@@ -347,14 +447,45 @@ class CorrectionImportController extends Controller
     /**
      * @return array<string, mixed>
      */
-    protected function catalogue(): array
+    protected function catalogue(CorrectionImport $import): array
     {
         return [
             // The same catalogues the manual instrument form uses. Duplicating
             // them here would be a second place for them to drift.
             'instrument_types' => InstrumentType::query()->orderBy('name')->get(['id', 'code', 'name']),
             'domains' => Domain::query()->orderBy('name')->get(['id', 'name']),
+            // The periods of THIS import's class, with their dates.
+            //
+            // They were missing entirely, and their absence is the whole reason
+            // the «Guardar e continuar» button could not be pressed: the
+            // instrument needs an academic_period_id, the wizard offered no way
+            // to state one, and the readiness rule quite correctly refused. The
+            // dates travel too, so the interface can work the period out from
+            // the date of application instead of asking a question the teacher
+            // has already answered.
+            'periods' => $this->periods($import),
         ];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    protected function periods(CorrectionImport $import): array
+    {
+        $periods = $import->schoolClass->academicYear->periods()->orderBy('sequence')->get();
+
+        $rows = [];
+
+        foreach ($periods as $period) {
+            $rows[] = [
+                'id' => (int) $period->getKey(),
+                'label' => $period->label,
+                'starts_on' => $period->starts_on->toDateString(),
+                'ends_on' => $period->ends_on->toDateString(),
+            ];
+        }
+
+        return $rows;
     }
 
     /**

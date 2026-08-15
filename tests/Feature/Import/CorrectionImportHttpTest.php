@@ -118,6 +118,25 @@ class CorrectionImportHttpTest extends TestCase
         return new UploadedFile(base_path('tests/Fixtures/Import/'.$name), $name, 'text/csv', null, true);
     }
 
+    /**
+     * A component's source with every run of whitespace collapsed to one space.
+     *
+     * Several assertions below are about what an interface offers — a control,
+     * a sentence, a disabled condition — and none of them is about where
+     * Prettier chose to break the line. Matched against raw source they fail the
+     * first time the formatter reflows a template, which is a false alarm, and
+     * false alarms teach people to loosen assertions instead of reading them.
+     */
+    protected function componentSource(string $relativePath): string
+    {
+        return $this->collapsed((string) file_get_contents(base_path($relativePath)));
+    }
+
+    protected function collapsed(string $text): string
+    {
+        return (string) preg_replace('/\s+/u', ' ', $text);
+    }
+
     // ------------------------------------------------------------------ access
 
     #[Test]
@@ -261,6 +280,9 @@ class CorrectionImportHttpTest extends TestCase
 
             return [
                 'mode' => ImportMapping::MODE_CREATE,
+                // Explicit: the default is now the simple mode, and every test
+                // below this line is about the detailed one (§8).
+                'result_mode' => ImportMapping::RESULT_PER_QUESTION,
                 'students' => [
                     'student:1' => $enrollments[0],
                     'student:2' => $enrollments[1],
@@ -275,6 +297,41 @@ class CorrectionImportHttpTest extends TestCase
                 'instrument' => [
                     'title' => 'Grelha importada',
                     'instrument_type_id' => InstrumentType::where('code', 'TEST')->firstOrFail()->id,
+                    'applied_on' => now()->subDays(2)->toDateString(),
+                    'academic_period_id' => $this->period->id,
+                    'purpose' => 'formative',
+                    'counts_toward_classification' => true,
+                ],
+            ];
+        });
+    }
+
+    /**
+     * The simple path, in full: who each row is, where the result counts, and
+     * the six fields of the evaluation. No cotações, no answer keys, no question
+     * structure — the platform already decided all of that (§2, §13).
+     *
+     * @return array<string, mixed>
+     */
+    protected function overallMapping(): array
+    {
+        return app(CurrentOrganization::class)->runFor($this->organization, function (): array {
+            $enrollments = Enrollment::where('class_id', $this->class->id)->orderBy('class_number')->pluck('id')->all();
+
+            return [
+                'mode' => ImportMapping::MODE_CREATE,
+                'result_mode' => ImportMapping::RESULT_OVERALL,
+                'students' => [
+                    'student:1' => $enrollments[0],
+                    'student:2' => $enrollments[1],
+                    'student:3' => $enrollments[2],
+                ],
+                'overall_domains' => [
+                    ['domain_id' => Domain::query()->firstOrFail()->id, 'allocation_percent' => '100'],
+                ],
+                'instrument' => [
+                    'title' => 'Leitura — Plickers',
+                    'instrument_type_id' => InstrumentType::where('code', 'QUESTION_CLASS')->firstOrFail()->id,
                     'applied_on' => now()->subDays(2)->toDateString(),
                     'academic_period_id' => $this->period->id,
                     'purpose' => 'formative',

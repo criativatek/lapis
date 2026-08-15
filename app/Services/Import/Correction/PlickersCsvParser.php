@@ -372,7 +372,12 @@ class PlickersCsvParser implements CorrectionGridParser
                 sourceKey: $sourceKey,
                 externalId: $card,
                 cardNumber: $card,
-                displayName: $this->name($row),
+                displayName: $this->name($row, $card),
+                // NEVER set from the card. A Plickers card is a piece of
+                // cardboard; the number on it is whatever the teacher happened
+                // to hand out, and reading it as a roll number would put one
+                // student's marks on another (§3).
+                classNumber: null,
                 sourceScore: $score,
                 sourceCorrect: $this->integerOrNull($row[4] ?? ''),
                 sourceAnswered: $this->integerOrNull($row[5] ?? ''),
@@ -438,13 +443,39 @@ class PlickersCsvParser implements CorrectionGridParser
     }
 
     /**
+     * The student's name, with the card number taken back off it.
+     *
+     * Teachers routinely type the card number into the Plickers name field so
+     * they can hand the right card to the right student — a real export reads
+     * «1 Afonso Pito Mordomo», not «Afonso Pito Mordomo». Left in, that prefix
+     * makes the name match nothing at all, and the teacher is sent to map thirty
+     * students by hand for want of a leading digit.
+     *
+     * Only stripped when it is demonstrably THIS row's card number followed by a
+     * separator. A student genuinely called «2Pac» keeps their name, and a card
+     * number that is not at the front is left exactly where it is.
+     *
      * @param  list<string>  $row
      */
-    protected function name(array $row): ?string
+    protected function name(array $row, ?string $card = null): ?string
     {
         $name = trim(($row[1] ?? '').' '.($row[2] ?? ''));
 
-        return $name === '' ? null : $name;
+        if ($name === '') {
+            return null;
+        }
+
+        if ($card !== null && $card !== '') {
+            $stripped = preg_replace('/^'.preg_quote($card, '/').'\s*[.\-–—)]?\s+/u', '', $name, 1);
+
+            // Never strip it away entirely: a name that IS the number is a name
+            // we do not understand, and leaving it whole keeps that visible.
+            if (is_string($stripped) && trim($stripped) !== '') {
+                $name = trim($stripped);
+            }
+        }
+
+        return $name;
     }
 
     protected function nullIfDash(string $value): ?string

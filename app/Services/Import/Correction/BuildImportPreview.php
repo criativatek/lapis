@@ -9,6 +9,7 @@ use App\Domain\Import\Correction\ImportIssue;
 use App\Domain\Import\Correction\ImportMapping;
 use App\Domain\Import\Correction\IssueCode;
 use App\Domain\Import\Correction\IssueSeverity;
+use App\Domain\Import\Correction\OverallResultItem;
 use App\Models\CorrectionImport;
 use App\Models\Instrument;
 use App\Models\InstrumentStatus;
@@ -47,6 +48,11 @@ class BuildImportPreview
         $instrument = $mapping->instrumentId === null ? null : Instrument::find($mapping->instrumentId);
 
         $items = $this->items($grid, $mapping, $instrument);
+
+        $students = $mapping->importsOverallResult()
+            ? $this->withOverallResult($students, $grid, $mapping, $instrument)
+            : $this->withLapisResult($students, $grid, $items);
+
         $issues = $this->issues($grid, $mapping, $students, $items, $class, $instrument);
         $blocking = array_values(array_filter($issues, fn (array $issue): bool => $issue['severity'] === 'error'));
 
@@ -55,8 +61,11 @@ class BuildImportPreview
             'source_label' => $grid->source->label(),
             'suggested_title' => $grid->instrument->title,
             'mode' => $mapping->mode,
+            'result_mode' => $mapping->resultMode,
             'instrument_id' => $mapping->instrumentId,
             'instrument_attributes' => $mapping->instrumentAttributes,
+            'overall_domains' => $mapping->overallDomains,
+            'overall_item_id' => $mapping->overallItemId,
             'groups' => array_map(fn ($group): array => $group->toArray(), $grid->groups),
             'items' => $items,
             'students' => $students,
@@ -104,6 +113,113 @@ class BuildImportPreview
                 'domains' => $mapping->domains[$item->sourceKey] ?? [],
             ];
         }, $grid->items);
+    }
+
+    /**
+     * What the questions would be worth once the teacher's cotação is applied —
+     * shown beside the platform's own score so the two can be compared.
+     *
+     * They are different things and the interface says so. Plickers weights
+     * every question equally; the moment a teacher gives one question three
+     * points and another one, the two numbers legitimately part ways. That is
+     * not an error and is never presented as one (§14).
+     *
+     * The denominator counts only questions this student was actually judged on.
+     * An unanswered question is not a zero, so it does not silently drag the
+     * percentage down — the same rule the engine keeps everywhere else.
+     *
+     * @param  list<array<string, mixed>>  $students
+     * @param  list<array<string, mixed>>  $items
+     * @return list<array<string, mixed>>
+     */
+    protected function withLapisResult(array $students, CanonicalCorrectionGrid $grid, array $items): array
+    {
+        $points = [];
+
+        foreach ($items as $item) {
+            $value = $item['points'];
+
+            if (is_string($value) && $value !== '' && is_numeric($value)) {
+                $points[$item['source_key']] = $value;
+            }
+        }
+
+        return array_map(function (array $student) use ($grid, $points): array {
+            $earned = '0';
+            $possible = '0';
+            $judged = 0;
+
+            foreach ($grid->resultsForStudent($student['source_key']) as $result) {
+                $worth = $points[$result->itemSourceKey] ?? null;
+
+                if ($worth === null || $result->isCorrect === null) {
+                    continue;
+                }
+
+                $judged++;
+                $possible = Bc::add($possible, Bc::of($worth));
+                $earned = Bc::add($earned, Bc::of($result->resolvedAgainst($worth)->pointsEarned ?? '0'));
+            }
+
+            // No cotação decided yet, or nothing judged: no LÁPIS result to show.
+            // Deliberately null rather than 0 — the distinction the whole feature
+            // is built on.
+            $student['lapis_percentage'] = ($judged === 0 || Bc::isZero($possible))
+                ? null
+                : Bc::round(Bc::mul(Bc::div($earned, $possible), '100'), 1, 'half_up');
+
+            return $student;
+        }, $students);
+    }
+
+    /**
+     * The same number, in the simple mode: what the platform said.
+     *
+     * There is no arithmetic to disagree about here — the classification was
+     * decided on the platform and LÁPIS records it, so the two columns of the
+     * review screen agree by construction. It is still computed rather than
+     * copied, because on an existing instrument the result lands on an item with
+     * its own cotação, and this is where that would show if it ever failed to
+     * round-trip.
+     *
+     * Null stays null the whole way down: no score, or no participation, means
+     * no result — never a zero (§3).
+     *
+     * @param  list<array<string, mixed>>  $students
+     * @return list<array<string, mixed>>
+     */
+    protected function withOverallResult(array $students, CanonicalCorrectionGrid $grid, ImportMapping $mapping, ?Instrument $instrument): array
+    {
+        $possible = OverallResultItem::POINTS_POSSIBLE;
+
+        if (! $mapping->createsInstrument()) {
+            $target = $instrument?->items->firstWhere('id', $mapping->overallItemId);
+            $possible = $target === null ? null : (string) $target->points_possible;
+        }
+
+        $fromSource = [];
+
+        foreach ($grid->students as $student) {
+            $fromSource[$student->sourceKey] = [$student->scorePercent(), $student->answeredNothing()];
+        }
+
+        return array_map(function (array $student) use ($fromSource, $possible): array {
+            [$percent, $answeredNothing] = $fromSource[$student['source_key']] ?? [null, false];
+
+            if ($percent === null || $answeredNothing || $possible === null || Bc::isZero(Bc::of($possible))) {
+                $student['lapis_percentage'] = null;
+
+                return $student;
+            }
+
+            $student['lapis_percentage'] = Bc::round(
+                Bc::mul(Bc::div(Bc::of(OverallResultItem::earned($percent, $possible)), Bc::of($possible)), '100'),
+                1,
+                'half_up',
+            );
+
+            return $student;
+        }, $students);
     }
 
     /**
@@ -165,39 +281,8 @@ class BuildImportPreview
             )->toArray();
         }
 
-        $withoutPoints = count(array_filter($items, fn (array $item): bool => $item['points'] === null || $item['points'] === ''));
-
-        if ($withoutPoints > 0) {
-            $issues[] = ImportIssue::make(
-                IssueCode::MissingPoints,
-                'Falta definir a cotação das perguntas. O Plickers não a fornece.',
-                ['questions' => $withoutPoints],
-            )->toArray();
-        }
-
-        if ($mapping->createsInstrument()) {
-            foreach (['title' => 'o título', 'applied_on' => 'a data de aplicação', 'academic_period_id' => 'o período', 'instrument_type_id' => 'o tipo'] as $key => $label) {
-                if (($mapping->instrumentAttributes[$key] ?? null) === null || $mapping->instrumentAttributes[$key] === '') {
-                    $issues[] = ImportIssue::make(
-                        IssueCode::UnsupportedStructure,
-                        "Falta indicar {$label} do novo instrumento.",
-                        ['field' => $key],
-                    )->toArray();
-                }
-            }
-        } else {
-            $unmapped = count(array_filter($items, fn (array $item): bool => $item['instrument_item_id'] === null));
-
-            if ($instrument === null) {
-                $issues[] = ImportIssue::make(IssueCode::UnsupportedStructure, 'Escolha o instrumento a que os resultados se destinam.')->toArray();
-            } elseif ($unmapped > 0) {
-                $issues[] = ImportIssue::make(
-                    IssueCode::UnmappedItem,
-                    'Há perguntas do ficheiro por associar às perguntas do instrumento.',
-                    ['questions' => $unmapped],
-                    IssueSeverity::Error,
-                )->toArray();
-            }
+        foreach ($this->configurationIssues($grid, $mapping, $items, $instrument) as $issue) {
+            $issues[] = $issue;
         }
 
         foreach ($this->applicabilityIssues($grid, $mapping, $class, $instrument) as $issue) {
@@ -209,6 +294,146 @@ class BuildImportPreview
         }
 
         return $issues;
+    }
+
+    /**
+     * What is still missing, named field by field.
+     *
+     * A single «falta preencher a configuração» tells a teacher that something
+     * is wrong and nothing about what, which is how they end up staring at a
+     * grey button with every visible field filled in. Each message here points
+     * at one control (§11).
+     *
+     * Nothing about cotações or question structure is ever asked for in the
+     * simple mode. The platform already produced the classification; demanding
+     * twenty cotações before LÁPIS will accept a number it is not going to use
+     * would be the whole problem this rewrite exists to remove.
+     *
+     * @param  list<array<string, mixed>>  $items
+     * @return list<array<string, mixed>>
+     */
+    protected function configurationIssues(CanonicalCorrectionGrid $grid, ImportMapping $mapping, array $items, ?Instrument $instrument): array
+    {
+        $issues = [];
+        $overall = $mapping->importsOverallResult();
+
+        // A property of the file, not of the teacher's decisions, so it is worth
+        // saying at once rather than at the last step: this export carries no
+        // classification for anybody, and the simple mode has nothing to import.
+        if ($overall && ! $this->carriesOverallResults($grid)) {
+            $issues[] = ImportIssue::make(
+                IssueCode::UnsupportedStructure,
+                'Este ficheiro não traz uma classificação por aluno. Ative «Importar também o detalhe das perguntas» para importar a correção pergunta a pergunta.',
+                ['field' => 'result_mode'],
+            )->toArray();
+
+            return $issues;
+        }
+
+        if ($mapping->createsInstrument()) {
+            $fields = [
+                'title' => 'Indique a designação da avaliação.',
+                'applied_on' => 'Indique a data de aplicação.',
+                'instrument_type_id' => 'Selecione o tipo de avaliação.',
+                'academic_period_id' => 'Selecione o período a que esta avaliação pertence.',
+            ];
+
+            foreach ($fields as $key => $message) {
+                $value = $mapping->instrumentAttributes[$key] ?? null;
+
+                if ($value === null || $value === '') {
+                    $issues[] = ImportIssue::make(IssueCode::UnsupportedStructure, $message, ['field' => $key])->toArray();
+                }
+            }
+
+            if ($overall) {
+                // Only when it counts. An item with no allocation enters no
+                // domain, which the model allows (§4.3) and which is harmless
+                // for an instrument that does not enter the calculation at all.
+                $counts = (bool) ($mapping->instrumentAttributes['counts_toward_classification'] ?? false);
+
+                if ($counts && ! $mapping->overallDomainIsDecided()) {
+                    $issues[] = ImportIssue::make(
+                        IssueCode::UnsupportedStructure,
+                        'Selecione o domínio avaliado. É ele que diz para onde conta este resultado.',
+                        ['field' => 'overall_domains'],
+                    )->toArray();
+                }
+
+                return $issues;
+            }
+        } else {
+            if ($instrument === null) {
+                $issues[] = ImportIssue::make(
+                    IssueCode::UnsupportedStructure,
+                    'Escolha a avaliação a que os resultados se destinam.',
+                    ['field' => 'instrument_id'],
+                )->toArray();
+
+                return $issues;
+            }
+
+            if ($overall) {
+                if ($mapping->overallItemId === null) {
+                    $issues[] = ImportIssue::make(
+                        IssueCode::UnsupportedStructure,
+                        'Indique qual a pergunta da avaliação que recebe o resultado global.',
+                        ['field' => 'overall_item_id'],
+                    )->toArray();
+                }
+
+                return $issues;
+            }
+
+            $unmapped = count(array_filter($items, fn (array $item): bool => $item['instrument_item_id'] === null));
+
+            if ($unmapped > 0) {
+                $issues[] = ImportIssue::make(
+                    IssueCode::UnmappedItem,
+                    trans_choice(
+                        '{1}Há 1 pergunta do ficheiro por associar a uma pergunta da avaliação.|[2,*]Há :count perguntas do ficheiro por associar às perguntas da avaliação.',
+                        $unmapped,
+                        ['count' => $unmapped],
+                    ),
+                    ['questions' => $unmapped],
+                    IssueSeverity::Error,
+                )->toArray();
+            }
+        }
+
+        // Detailed mode only, both ways in: the cotação is what turns an answer
+        // into a mark, and nothing here invents one.
+        $withoutPoints = count(array_filter($items, fn (array $item): bool => $item['points'] === null || $item['points'] === ''));
+
+        if ($withoutPoints > 0) {
+            $issues[] = ImportIssue::make(
+                IssueCode::MissingPoints,
+                trans_choice(
+                    '{1}Existe 1 pergunta sem cotação.|[2,*]Existem :count perguntas sem cotação.',
+                    $withoutPoints,
+                    ['count' => $withoutPoints],
+                ),
+                ['questions' => $withoutPoints],
+            )->toArray();
+        }
+
+        return $issues;
+    }
+
+    /**
+     * Whether the export states a classification for anybody at all. One is
+     * enough — a class where only two students sat the test is an ordinary
+     * class, not a broken file.
+     */
+    protected function carriesOverallResults(CanonicalCorrectionGrid $grid): bool
+    {
+        foreach ($grid->students as $student) {
+            if ($student->scorePercent() !== null && ! $student->answeredNothing()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

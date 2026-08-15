@@ -58,8 +58,13 @@ class MatchSourceStudents
 
         $taken = array_values(array_filter($alreadyDecided, fn (?int $id): bool => $id !== null));
 
+        // The whole class travels with every row. Without it a teacher facing an
+        // unmatched student has an empty dropdown and nothing to choose — the
+        // conservative matcher would be correct and useless at the same time.
+        $everyone = array_map(fn (array $row): array => ['id' => $row['id'], 'label' => $row['label']], $enrollments);
+
         return array_map(
-            fn (CanonicalStudent $student): array => $this->row($student, $alreadyDecided, $byNumber, $byName, $byNormalised, $taken),
+            fn (CanonicalStudent $student): array => $this->row($student, $alreadyDecided, $byNumber, $byName, $byNormalised, $taken, $everyone),
             $grid->students,
         );
     }
@@ -70,15 +75,20 @@ class MatchSourceStudents
      * @param  array<string, list<array<string, mixed>>>  $byName
      * @param  array<string, list<array<string, mixed>>>  $byNormalised
      * @param  list<int>  $taken
+     * @param  list<array<string, mixed>>  $everyone  the whole class, so a manual choice is always possible
      * @return array<string, mixed>
      */
-    protected function row(CanonicalStudent $student, array $alreadyDecided, array $byNumber, array $byName, array $byNormalised, array $taken): array
+    protected function row(CanonicalStudent $student, array $alreadyDecided, array $byNumber, array $byName, array $byNormalised, array $taken, array $everyone = []): array
     {
         $base = [
             'source_key' => $student->sourceKey,
             'card_number' => $student->cardNumber,
             'display_name' => $student->displayName,
             'source_score' => $student->sourceScore,
+            // Correct and answered travel together: «11 de 20 certas, 20
+            // respondidas» is what a teacher recognises from the platform, and
+            // it is also what distinguishes a poor result from an absent one.
+            'source_correct' => $student->sourceCorrect,
             'source_answered' => $student->sourceAnswered,
             // A source fact, and only that: the file says this student answered
             // nothing. What that MEANS pedagogically is the teacher's to decide
@@ -87,7 +97,9 @@ class MatchSourceStudents
             'enrollment_id' => null,
             'status' => self::STATUS_UNMATCHED,
             'reason' => null,
-            'candidates' => [],
+            // Every row can be resolved by hand, whatever the automatic answer.
+            'candidates' => $everyone,
+            'suggestions' => [],
         ];
 
         // A decision already taken always wins, including the decision to leave
@@ -115,7 +127,9 @@ class MatchSourceStudents
                     ...$base,
                     'status' => self::STATUS_AMBIGUOUS,
                     'reason' => $reason,
-                    'candidates' => array_map(fn (array $row): array => ['id' => $row['id'], 'label' => $row['label']], $candidates),
+                    // The plausible ones, named — but the full class stays
+                    // selectable, because the right answer may be neither.
+                    'suggestions' => array_map(fn (array $row): array => ['id' => $row['id'], 'label' => $row['label']], $candidates),
                 ];
             }
 
@@ -128,7 +142,7 @@ class MatchSourceStudents
                     ...$base,
                     'status' => self::STATUS_AMBIGUOUS,
                     'reason' => 'already_taken',
-                    'candidates' => [['id' => $candidate['id'], 'label' => $candidate['label']]],
+                    'suggestions' => [['id' => $candidate['id'], 'label' => $candidate['label']]],
                 ];
             }
 

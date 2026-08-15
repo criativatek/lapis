@@ -28,12 +28,27 @@ final readonly class ImportMapping
     public const CONFLICT_IMPORT = 'import';
 
     /**
+     * Import the one result the platform already worked out for each student.
+     * The default, and what a teacher wants almost every time (§1).
+     */
+    public const RESULT_OVERALL = 'overall';
+
+    /**
+     * Import the correction question by question, with cotações decided in
+     * LÁPIS. Everything the source says about totals is then ignored — the two
+     * modes are separate arithmetic and are never blended (§8).
+     */
+    public const RESULT_PER_QUESTION = 'per_question';
+
+    /**
      * @param  array<string, int|null>  $students  source key => enrollment id, or null for "ignore this row"
      * @param  array<string, int>  $items  source key => instrument_item id (associate mode only)
      * @param  array<string, string>  $points  source key => points_possible, as a decimal string
      * @param  array<string, list<array{domain_id: int, allocation_percent: string}>>  $domains  source key => allocations
      * @param  array<string, string>  $conflicts  "enrollmentId:itemId" => CONFLICT_KEEP|CONFLICT_IMPORT
      * @param  array<string, mixed>  $instrumentAttributes  what the teacher filled in for a new instrument
+     * @param  list<array{domain_id: int, allocation_percent: string}>  $overallDomains  where the global result counts
+     * @param  int|null  $overallItemId  which existing item receives it, in associate mode
      */
     public function __construct(
         public string $mode = self::MODE_CREATE,
@@ -44,6 +59,14 @@ final readonly class ImportMapping
         public array $domains = [],
         public array $conflicts = [],
         public array $instrumentAttributes = [],
+        // Deliberately NOT the product default. Which mode a fresh import opens
+        // in is a product decision and is stated where a fresh import is
+        // created, in plain sight; a value object that quietly reinterpreted
+        // every mapping built without this argument would change what stored
+        // decisions mean.
+        public string $resultMode = self::RESULT_PER_QUESTION,
+        public array $overallDomains = [],
+        public ?int $overallItemId = null,
     ) {}
 
     /**
@@ -62,7 +85,46 @@ final readonly class ImportMapping
             domains: (array) ($snapshot['domains'] ?? []),
             conflicts: (array) ($snapshot['conflicts'] ?? []),
             instrumentAttributes: (array) ($snapshot['instrument'] ?? []),
+            // An import stored before this field existed was a per-question one,
+            // and re-reading it as an overall import would change what its own
+            // snapshot means. Absence is answered by the old behaviour, never by
+            // the new default.
+            resultMode: is_string($snapshot['result_mode'] ?? null) ? $snapshot['result_mode'] : self::RESULT_PER_QUESTION,
+            overallDomains: self::allocationsFrom($snapshot['overall_domains'] ?? []),
+            overallItemId: isset($snapshot['overall_item_id']) ? (int) $snapshot['overall_item_id'] : null,
         );
+    }
+
+    /**
+     * Rebuilds allocations from a snapshot that has been through JSON and back.
+     *
+     * A stored mapping is data, not a promise: it was written by an earlier
+     * version of this class, possibly before a field existed. Anything that is
+     * not a usable allocation is dropped here rather than carried forward to
+     * fail somewhere that has no idea what it is looking at.
+     *
+     * @return list<array{domain_id: int, allocation_percent: string}>
+     */
+    protected static function allocationsFrom(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $rows = [];
+
+        foreach ($value as $allocation) {
+            if (! is_array($allocation) || ! isset($allocation['domain_id'])) {
+                continue;
+            }
+
+            $rows[] = [
+                'domain_id' => (int) $allocation['domain_id'],
+                'allocation_percent' => (string) ($allocation['allocation_percent'] ?? '100'),
+            ];
+        }
+
+        return $rows;
     }
 
     /**
@@ -79,12 +141,38 @@ final readonly class ImportMapping
             'domains' => $this->domains,
             'conflicts' => $this->conflicts,
             'instrument' => $this->instrumentAttributes,
+            'result_mode' => $this->resultMode,
+            'overall_domains' => $this->overallDomains,
+            'overall_item_id' => $this->overallItemId,
         ];
     }
 
     public function createsInstrument(): bool
     {
         return $this->mode === self::MODE_CREATE;
+    }
+
+    /**
+     * Whether this import carries one result per student rather than one per
+     * answer. Asked in several places and computed in none of them.
+     */
+    public function importsOverallResult(): bool
+    {
+        return $this->resultMode === self::RESULT_OVERALL;
+    }
+
+    /**
+     * Whether the global result has been told which domain it is evidence for.
+     *
+     * Only ever required when the instrument actually counts: an item with no
+     * allocation is legitimate in the model (§4.3) and enters no domain, so
+     * demanding one from an instrument that does not enter the calculation would
+     * be paperwork. Demanding one from an instrument that does is the difference
+     * between a result that counts and a result that silently counts for nothing.
+     */
+    public function overallDomainIsDecided(): bool
+    {
+        return $this->overallDomains !== [];
     }
 
     /**

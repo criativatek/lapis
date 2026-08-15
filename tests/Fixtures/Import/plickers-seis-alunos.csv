@@ -1,0 +1,12 @@
+"Outro Teste - 9Z (25/26) "
+
+"Card Number","First name","Last Name","Score","Correct","Answered","A. Primeira pergunta do segundo ficheiro?","B. Segunda pergunta do segundo ficheiro?"
+
+,,,,,,https://exemplo.invalido/q/zzz001,https://exemplo.invalido/q/zzz002
+,,,,,,B,A
+1,Diogo,Segundo,100%,2,2,B,A
+2,Eva,Segundo,50%,1,2,B,B
+3,Filipa,Segundo,50%,1,2,C,A
+4,Gonçalo,Segundo,0%,0,2,A,B
+5,Helena,Segundo,-,0,0,-,-
+6,Ivo,Segundo,100%,2,2,B,A

@@ -56,7 +56,7 @@ type Score = {
     state_reason: string | null;
 };
 
-type StateOption = { value: string; label: string; carries_value: boolean };
+type StateOption = { value: string; label: string; carries_value: boolean; resolves: boolean };
 
 const props = defineProps<{
     instrument: {
@@ -72,6 +72,7 @@ const props = defineProps<{
         applicable_count: number;
         completed_count: number;
         completed_at: string | null;
+        pending_students: string[];
         status: string;
         cancellation_reason: string | null;
         total_points: number | null;
@@ -320,9 +321,16 @@ function isPartial(student: Student): boolean {
     return marked > 0 && marked < props.items.length;
 }
 
-/** Compact labels so the state selector stays narrow in a wide grid. */
+/**
+ * Compact labels so the state selector stays narrow in a wide grid.
+ *
+ * `pending` is the exception and stays spelled out. A dash reads as «nothing
+ * here», which is precisely the reading that let one unresolved student hide
+ * among five corrected ones — and «por avaliar» is a decision still owed, not
+ * an absence of one. It is also what ResultState::Pending already calls itself.
+ */
 const shortLabels: Record<string, string> = {
-    pending: '—',
+    pending: 'Por avaliar',
     assessed: '✓',
     absent: 'Aus',
     absent_justified: 'AusJ',
@@ -334,6 +342,37 @@ const shortLabels: Record<string, string> = {
 
 const dirtyCount = computed(() => dirty.size);
 const saving = ref(false);
+
+/**
+ * Which states count as «dealt with», straight from the server.
+ *
+ * Not a list written again here: InstrumentCompleteness owns it, and a cell the
+ * grid calls resolved while the completeness rule calls it pending is exactly
+ * the disagreement that produces a green row and a refusal to close.
+ */
+const resolvingStates = computed(
+    () => new Set(props.states.filter((state) => state.resolves).map((state) => state.value)),
+);
+
+/**
+ * A student with at least one cell nobody has decided about.
+ *
+ * Someone who joined after the instrument was applied is left out: the
+ * instrument never applied to them, they do not block the correction, and
+ * marking their row «por avaliar» would be asking for a decision that is not
+ * owed (§11.4).
+ */
+function isUnresolved(student: Student): boolean {
+    if (student.joined_after_instrument) {
+        return false;
+    }
+
+    return props.items.some((item) => !resolvingStates.value.has(cell(student.enrollment_id, item.id).state));
+}
+
+function isPendingCell(student: Student, item: Item): boolean {
+    return cell(student.enrollment_id, item.id).state === 'pending';
+}
 
 function save(): void {
     if (dirty.size === 0) {
@@ -395,22 +434,69 @@ const completeDialogOpen = ref(false);
 const reopenDialogOpen = ref(false);
 const workflowBusy = ref(false);
 
-// A disabled button that says nothing is worse than no button: the reason is
-// always available on hover.
-const completeHint = computed(() => {
-    if (props.instrument.can_complete && dirtyCount.value === 0) {
-        return 'Declarar a correção concluída.';
+/**
+ * Why «Concluir correção» is refused, in a sentence.
+ *
+ * This used to live only in the button's `title`. A `title` on a DISABLED
+ * button is very nearly invisible: browsers suppress pointer events on disabled
+ * form controls, so the native tooltip usually never appears — which left a grey
+ * button, no explanation, and a teacher with no way to find out what was wrong.
+ * It is rendered on the page now, and the `title` is kept only as a bonus.
+ */
+const completeBlockedReason = computed<string | null>(() => {
+    if (props.instrument.is_completed || isCancelled.value) {
+        return null;
     }
 
+    // Saving first, because completeness is about what is persisted — a cell
+    // resolved on screen but not yet sent genuinely does not count yet.
     if (dirtyCount.value > 0) {
-        return 'Guarda as alterações antes de concluir a correção.';
+        return 'Guarde as alterações antes de concluir a correção.';
     }
 
-    if (props.instrument.pending_count === 1) {
-        return 'Ainda existe 1 classificação por registar.';
+    if (props.instrument.can_complete) {
+        return null;
     }
 
-    return `Ainda existem ${props.instrument.pending_count} classificações por registar.`;
+    const count = props.instrument.pending_count;
+
+    return count === 1
+        ? 'Falta resolver 1 resultado antes de concluir a correção.'
+        : `Faltam resolver ${count} resultados antes de concluir a correção.`;
+});
+
+/** «Marta Tomás» · «Marta e Rui» · «A, B, C e mais 2». */
+const pendingNamesText = computed<string | null>(() => {
+    const names = props.instrument.pending_students;
+
+    if (names.length === 0) {
+        return null;
+    }
+
+    if (names.length === 1) {
+        return names[0];
+    }
+
+    if (names.length <= 3) {
+        return `${names.slice(0, -1).join(', ')} e ${names[names.length - 1]}`;
+    }
+
+    return `${names.slice(0, 3).join(', ')} e mais ${names.length - 3}`;
+});
+
+const completeHint = computed(() => completeBlockedReason.value ?? 'Declarar a correção concluída.');
+
+/** The other half of the same problem: a disabled Guardar that explains nothing. */
+const saveHint = computed(() => {
+    if (hasOverMaxCell.value) {
+        return 'Há notas acima da cotação máxima.';
+    }
+
+    if (dirtyCount.value === 0) {
+        return 'Sem alterações por guardar.';
+    }
+
+    return dirtyCount.value === 1 ? 'Guardar 1 alteração.' : `Guardar ${dirtyCount.value} alterações.`;
 });
 
 function completeCorrection(): void {
@@ -482,10 +568,15 @@ function revertCancellation(): void {
                         <span v-if="dirtyCount" class="text-sm text-amber-700">
                             {{ dirtyCount }} alteraç{{ dirtyCount === 1 ? 'ão' : 'ões' }} por guardar
                         </span>
+                        <!-- Said out loud rather than left to a grey button. The
+                             smoke read a disabled Guardar as a broken one. -->
+                        <span v-else-if="!hasOverMaxCell" class="text-sm text-muted-foreground">
+                            Sem alterações por guardar.
+                        </span>
                         <span v-if="hasOverMaxCell" class="text-sm text-destructive">
                             Há notas acima da cotação máxima
                         </span>
-                        <Button :disabled="dirtyCount === 0 || saving || hasOverMaxCell" @click="save">
+                        <Button :disabled="dirtyCount === 0 || saving || hasOverMaxCell" :title="saveHint" @click="save">
                             <Save class="size-4" /> Guardar
                         </Button>
                         <!-- Deliberately separate from Guardar: saving persists
@@ -502,6 +593,28 @@ function revertCancellation(): void {
                     </template>
                 </template>
             </div>
+        </div>
+
+        <!--
+          Why the correction cannot be closed, on the page and by name.
+
+          A count told the teacher that one of six rows was unresolved; finding
+          which one was theirs to do. Naming them turns a refusal into an
+          instruction. It never says «faltou» — an absence is an event the
+          teacher records, and «por avaliar» is only the decision still owed.
+        -->
+        <div
+            v-if="completeBlockedReason"
+            class="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+            role="status"
+        >
+            <p class="font-medium">{{ completeBlockedReason }}</p>
+            <p v-if="pendingNamesText" class="mt-0.5">
+                Por avaliar: <strong>{{ pendingNamesText }}</strong>.
+            </p>
+            <p v-if="pendingNamesText" class="mt-0.5 text-xs">
+                Registe uma classificação ou escolha um estado no seletor da linha.
+            </p>
         </div>
 
         <div v-if="isCancelled" class="flex items-center justify-between rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -551,6 +664,14 @@ function revertCancellation(): void {
                                     class="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-900"
                                     title="Entrou depois desta avaliação — não é penalizado por ela."
                                 >entrou depois</span>
+                                <!-- Findable at a glance in a class of thirty.
+                                     «Por avaliar» is a decision still owed, and
+                                     is never read as an absence. -->
+                                <span
+                                    v-else-if="!isReadOnly && isUnresolved(student)"
+                                    class="rounded border border-amber-300 px-1.5 py-0.5 text-[10px] text-amber-800"
+                                    title="Ainda sem classificação nem estado — não é zero nem falta."
+                                >Por avaliar</span>
                             </div>
                         </td>
 
@@ -575,11 +696,19 @@ function revertCancellation(): void {
                                 <select
                                     :value="cell(student.enrollment_id, item.id).state"
                                     :disabled="isReadOnly"
-                                    class="h-8 w-14 cursor-pointer rounded border border-input bg-transparent text-xs"
+                                    :class="[
+                                        'h-8 cursor-pointer rounded border bg-transparent text-xs',
+                                        // Wider and dashed only while undecided: the word has to
+                                        // fit, and a cell nobody has ruled on should not look settled.
+                                        isPendingCell(student, item) && !isReadOnly
+                                            ? 'w-24 border-dashed border-amber-400 text-amber-800'
+                                            : 'w-14 border-input',
+                                    ]"
+                                    :aria-label="`Estado de ${student.name}${items.length > 1 ? ' em ' + item.code : ''}`"
                                     :title="states.find((s) => s.value === cell(student.enrollment_id, item.id).state)?.label"
                                     @change="onStateChange(student, item, ($event.target as HTMLSelectElement).value)"
                                 >
-                                    <option value="pending">—</option>
+                                    <option value="pending">{{ shortLabels.pending }}</option>
                                     <option value="assessed">✓</option>
                                     <option v-for="state in nonAssessedStates.filter((s) => s.value !== 'pending')" :key="state.value" :value="state.value">
                                         {{ shortLabels[state.value] ?? state.label }}

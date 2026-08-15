@@ -84,4 +84,29 @@ class CorrectionImportException extends RuntimeException
     {
         return new self(__('O instrumento escolhido não pertence a esta turma.'));
     }
+
+    /**
+     * Only ever raised for an instrument that counts. A global result allocated
+     * to no domain would enter no domain's calculation at all — legitimate in
+     * the model, but almost never what a teacher importing a classification
+     * means, and silent if it were allowed through (§6).
+     */
+    public static function overallDomainNotChosen(): self
+    {
+        return new self(__('Selecione o domínio avaliado. É ele que diz para onde conta este resultado.'));
+    }
+
+    public static function overallTargetNotChosen(): self
+    {
+        return new self(__('Indique qual a pergunta da avaliação que recebe o resultado global.'));
+    }
+
+    /**
+     * The teacher asked to import a classification the platform never produced.
+     * Refusing beats importing a column of dashes as a column of zeros.
+     */
+    public static function noOverallResults(): self
+    {
+        return new self(__('Este ficheiro não traz uma classificação por aluno. Importe o detalhe das perguntas.'));
+    }
 }

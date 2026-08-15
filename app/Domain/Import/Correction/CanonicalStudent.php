@@ -44,6 +44,29 @@ final readonly class CanonicalStudent
     }
 
     /**
+     * The platform's own overall result as a plain number out of 100, or null.
+     *
+     * `sourceScore` is whatever the export literally held — «55%», «55,5%», «-».
+     * This is the one place that reading is turned into something arithmetic can
+     * touch, so that no caller has to know that Plickers writes a percent sign
+     * and a dash.
+     *
+     * Null in, null out, and null for anything that does not parse. Never «0»:
+     * a platform that reported no score has not reported a zero, and the whole
+     * import is built on keeping those apart (§3, §5).
+     */
+    public function scorePercent(): ?string
+    {
+        if ($this->sourceScore === null) {
+            return null;
+        }
+
+        $value = str_replace([' ', '%', ','], ['', '', '.'], trim($this->sourceScore));
+
+        return is_numeric($value) ? $value : null;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(): array

@@ -240,7 +240,37 @@ class InstrumentController extends Controller
             'applicable_count' => $progress['applicable'],
             'completed_count' => $progress['completed'],
             'completed_at' => $instrument->completed_at?->toDateTimeString(),
+            // WHO is missing, not merely how many. A count leaves the teacher to
+            // walk thirty rows looking for the one that is empty; the names turn
+            // the refusal into something they can act on directly.
+            'pending_students' => $this->pendingStudentNames($instrument),
         ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function pendingStudentNames(Instrument $instrument): array
+    {
+        $enrollmentIds = app(InstrumentCompleteness::class)->pendingEnrollmentIds($instrument);
+
+        if ($enrollmentIds === []) {
+            return [];
+        }
+
+        $enrollments = Enrollment::query()
+            ->whereIn('id', $enrollmentIds)
+            ->with('student.identity')
+            ->orderBy('class_number')
+            ->get();
+
+        $names = [];
+
+        foreach ($enrollments as $enrollment) {
+            $names[] = optional($enrollment->student->identity)->display_name ?? '(sem identidade)';
+        }
+
+        return $names;
     }
 
     /**
@@ -388,7 +418,17 @@ class InstrumentController extends Controller
             ]),
             'scores' => $scores,
             'states' => array_map(
-                fn (ResultState $state) => ['value' => $state->value, 'label' => $state->label(), 'carries_value' => $state->carriesValue()],
+                fn (ResultState $state) => [
+                    'value' => $state->value,
+                    'label' => $state->label(),
+                    'carries_value' => $state->carriesValue(),
+                    // Whether this state counts as «the teacher has dealt with
+                    // this». Shipped rather than re-listed in the component: the
+                    // row marker and the Concluir button have to mean the same
+                    // thing by «por avaliar», and a second copy of the list in
+                    // TypeScript is a copy that will one day disagree.
+                    'resolves' => in_array($state, InstrumentCompleteness::RESOLVED_STATES, true),
+                ],
                 ResultState::cases(),
             ),
             'scaleBands' => $scaleBands,
@@ -431,6 +471,13 @@ class InstrumentController extends Controller
             // a 500 — the teacher is told to reopen it.
             return back()->withErrors(['cells' => $exception->getMessage()]);
         }
+
+        // Say so. Every other action on this page flashes — completing,
+        // reopening, cancelling, reverting — and saving was the one that did
+        // not, so a successful save looked exactly like a button that does
+        // nothing: the «N alterações por guardar» counter simply vanished and
+        // nothing took its place (§5).
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Alterações guardadas.']);
 
         return back();
     }
