@@ -131,11 +131,12 @@ class CorrectionImportController extends Controller
             'uploaded_by' => $this->user()->getKey(),
             'canonical_snapshot' => $grid->toArray(),
             'source_metadata' => $grid->sourceMetadata,
-            // A new import opens on the simple path: record the classification
-            // the platform already produced. Stated here, once, because it is a
-            // product decision rather than a property of the value object — and
-            // because the interface must not be the place that decides it (§1).
-            'mapping_snapshot' => (new ImportMapping(resultMode: ImportMapping::RESULT_OVERALL))->toArray(),
+            // Which granularity a new import opens on is a property of the
+            // source — Plickers states one score per student, Intuitivo states
+            // the test's sections — and it is stated on the source itself so
+            // nothing else branches on a provider. The teacher changes it in one
+            // click; this only decides where they start (§16).
+            'mapping_snapshot' => (new ImportMapping(resultMode: $source->defaultResultMode()))->toArray(),
         ]), 'ao guardar a análise do ficheiro');
 
         return to_route('correction-imports.edit', $import);
@@ -191,7 +192,7 @@ class CorrectionImportController extends Controller
 
         $data = $request->validate([
             'mode' => ['required', 'string', 'in:'.ImportMapping::MODE_CREATE.','.ImportMapping::MODE_ASSOCIATE],
-            'result_mode' => ['sometimes', 'string', 'in:'.ImportMapping::RESULT_OVERALL.','.ImportMapping::RESULT_PER_QUESTION],
+            'result_mode' => ['sometimes', 'string', 'in:'.implode(',', ImportMapping::resultModes())],
             'instrument_id' => ['nullable', 'integer'],
             'students' => ['array'],
             'items' => ['array'],
@@ -199,6 +200,7 @@ class CorrectionImportController extends Controller
             'domains' => ['array'],
             'overall_domains' => ['array'],
             'overall_item_id' => ['nullable', 'integer'],
+            'group_domains' => ['array'],
             'conflicts' => ['array'],
             'instrument' => ['array'],
         ]);
@@ -221,6 +223,7 @@ class CorrectionImportController extends Controller
             resultMode: $data['result_mode'] ?? $stored->resultMode,
             overallDomains: $this->sanitiseAllocations($data['overall_domains'] ?? []),
             overallItemId: $this->sanitiseOverallItem($data['overall_item_id'] ?? null, $import),
+            groupDomains: $this->sanitiseDomains($data['group_domains'] ?? []),
         );
 
         $import->forceFill([

@@ -4,7 +4,9 @@ namespace App\Services\Import\Correction;
 
 use App\Domain\Assessment\Bc;
 use App\Domain\Import\Correction\CanonicalCorrectionGrid;
+use App\Domain\Import\Correction\CanonicalGroup;
 use App\Domain\Import\Correction\CanonicalItem;
+use App\Domain\Import\Correction\GroupResultItem;
 use App\Domain\Import\Correction\ImportMapping;
 use App\Domain\Import\Correction\OverallResultItem;
 use App\Models\CorrectionImport;
@@ -178,6 +180,12 @@ class ImportCorrectionGrid
             return;
         }
 
+        if ($mapping->importsGroupResults()) {
+            $this->guardGroups($grid, $mapping);
+
+            return;
+        }
+
         if ($mapping->createsInstrument()) {
             $withoutPoints = 0;
 
@@ -248,6 +256,43 @@ class ImportCorrectionGrid
     }
 
     /**
+     * What the grouped path needs: a section of the test cannot be recorded
+     * without knowing what it assesses.
+     *
+     * Only when the instrument counts — an item with no allocation is legitimate
+     * in the model (§4.3) and harmless on an instrument that never enters the
+     * calculation. The same rule the overall path already follows.
+     */
+    protected function guardGroups(CanonicalCorrectionGrid $grid, ImportMapping $mapping): void
+    {
+        if (! $mapping->createsInstrument()) {
+            // Writing grouped results onto an instrument somebody else built
+            // would mean guessing which of its questions each group belongs to.
+            throw CorrectionImportException::groupsNeedANewInstrument();
+        }
+
+        if ($grid->groups === []) {
+            throw CorrectionImportException::noGroupsInSource();
+        }
+
+        if (! (bool) ($mapping->instrumentAttributes['counts_toward_classification'] ?? false)) {
+            return;
+        }
+
+        $withoutDomain = 0;
+
+        foreach ($grid->groups as $group) {
+            if ($mapping->domainsForGroup($group->sourceKey) === []) {
+                $withoutDomain++;
+            }
+        }
+
+        if ($withoutDomain > 0) {
+            throw CorrectionImportException::groupsWithoutDomain($withoutDomain);
+        }
+    }
+
+    /**
      * The teacher's cotação, or the source's own if it ever states one. Never a
      * default: a question with no declared worth has not been decided, and the
      * guard above refuses rather than assuming a value (§3).
@@ -273,9 +318,11 @@ class ImportCorrectionGrid
     {
         $attributes = $mapping->instrumentAttributes;
 
-        $items = $mapping->importsOverallResult()
-            ? $this->overallItem($mapping)
-            : $this->perQuestionItems($grid, $mapping);
+        $items = match (true) {
+            $mapping->importsOverallResult() => $this->overallItem($mapping),
+            $mapping->importsGroupResults() => $this->groupItems($grid, $mapping),
+            default => $this->perQuestionItems($grid, $mapping),
+        };
 
         return $this->builder->create($import->schoolClass, [
             'academic_period_id' => (int) ($attributes['academic_period_id'] ?? 0),
@@ -289,10 +336,86 @@ class ImportCorrectionGrid
             'purpose' => (string) ($attributes['purpose'] ?? 'formative'),
             // A global result is a result out of a hundred, and the total says
             // so rather than being left for the teacher to reconcile.
-            'total_points' => $mapping->importsOverallResult()
-                ? OverallResultItem::POINTS_POSSIBLE
-                : ($attributes['total_points'] ?? null),
-        ], $items);
+            'total_points' => match (true) {
+                $mapping->importsOverallResult() => OverallResultItem::POINTS_POSSIBLE,
+                // The sum of what the sections are worth, so the declared total
+                // and the items cannot disagree.
+                $mapping->importsGroupResults() => $this->sumOf($items),
+                default => $attributes['total_points'] ?? null,
+            },
+        ], $items, $mapping->resultMode === ImportMapping::RESULT_PER_QUESTION
+            ? $this->instrumentGroups($grid)
+            : []);
+    }
+
+    /**
+     * One synthetic item per section of the test.
+     *
+     * «Tudo é um item» (domain model §4.2) is not bent here — a group result IS
+     * an item, worth what its questions add up to, allocated to the domain the
+     * teacher chose. No parallel table of domain scores, and the engine sees the
+     * shape it always sees.
+     *
+     * @return list<array{code: string, label: string, points_possible: float, group_index: int, domains: list<array{domain_id: int, allocation_percent: float}>}>
+     */
+    protected function groupItems(CanonicalCorrectionGrid $grid, ImportMapping $mapping): array
+    {
+        $items = [];
+
+        foreach ($grid->groups as $index => $group) {
+            $items[] = [
+                'code' => GroupResultItem::codeFor($index),
+                // The source's own name for the section, kept as the label so
+                // the teacher recognises the column. It is a name, never a
+                // domain (§4).
+                'label' => $group->label ?? GroupResultItem::codeFor($index),
+                'points_possible' => (float) $this->groupMaximum($grid, $group->sourceKey),
+                // One implicit section: the grouped mode already IS the
+                // structure, and a second layer of grouping would show the
+                // teacher the same thing twice.
+                'group_index' => 0,
+                'domains' => array_map(
+                    fn (array $allocation): array => [
+                        'domain_id' => (int) $allocation['domain_id'],
+                        'allocation_percent' => (float) $allocation['allocation_percent'],
+                    ],
+                    $mapping->domainsForGroup($group->sourceKey),
+                ),
+            ];
+        }
+
+        return $items;
+    }
+
+    /**
+     * What a section is worth: the sum of its questions' cotações, exactly as
+     * the source declares them. Never a share of the total, never inferred.
+     */
+    protected function groupMaximum(CanonicalCorrectionGrid $grid, string $groupSourceKey): string
+    {
+        $total = '0';
+
+        foreach ($grid->items as $item) {
+            if ($item->groupSourceKey === $groupSourceKey && $item->pointsPossible !== null) {
+                $total = Bc::add($total, Bc::of($item->pointsPossible));
+            }
+        }
+
+        return GroupResultItem::points($total);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $items
+     */
+    protected function sumOf(array $items): string
+    {
+        $total = '0';
+
+        foreach ($items as $item) {
+            $total = Bc::add($total, Bc::of((string) $item['points_possible']));
+        }
+
+        return GroupResultItem::points($total);
     }
 
     /**
@@ -325,6 +448,7 @@ class ImportCorrectionGrid
      */
     protected function perQuestionItems(CanonicalCorrectionGrid $grid, ImportMapping $mapping): array
     {
+        $groupIndexes = $this->groupIndexes($grid);
         $items = [];
 
         foreach ($grid->items as $item) {
@@ -332,9 +456,10 @@ class ImportCorrectionGrid
                 'code' => $item->code ?? 'Q'.$item->sequence,
                 'label' => $item->label,
                 'points_possible' => (float) $this->pointsFor($item, $mapping),
-                // One implicit section: Plickers has no structure, and a
-                // «Grupo 1» the teacher never made would be an invention (§13).
-                'group_index' => 0,
+                // The source's own sections, when it has any. A source without
+                // structure (Plickers) yields one implicit group, and a «Grupo 1»
+                // the teacher never made would be an invention (§13).
+                'group_index' => $groupIndexes[$item->groupSourceKey ?? ''] ?? 0,
                 'domains' => array_map(
                     fn (array $allocation): array => [
                         'domain_id' => (int) $allocation['domain_id'],
@@ -346,6 +471,45 @@ class ImportCorrectionGrid
         }
 
         return $items;
+    }
+
+    /**
+     * The sections a detailed import needs as real InstrumentGroups.
+     *
+     * Not decoration: Intuitivo restarts its numbering in every section, so an
+     * export has «Item 1» four times. UNIQUE(instrument_group_id, code) — which
+     * is per GROUP and not per instrument precisely for this (domain model
+     * §4.2) — would refuse them in one section and be right to. Keeping the
+     * source's own sections is both the honest reading of the paper and what
+     * makes the codes legal.
+     *
+     * A source that names no sections produces none, and the builder falls back
+     * to the instrument's implicit group.
+     *
+     * @return list<array{label: string|null}>
+     */
+    protected function instrumentGroups(CanonicalCorrectionGrid $grid): array
+    {
+        $named = array_values(array_filter($grid->groups, fn (CanonicalGroup $group): bool => ! $group->isImplicit()));
+
+        return array_map(fn (CanonicalGroup $group): array => ['label' => $group->label], $named);
+    }
+
+    /**
+     * @return array<string, int> source group key => index into instrumentGroups()
+     */
+    protected function groupIndexes(CanonicalCorrectionGrid $grid): array
+    {
+        $indexes = [];
+        $index = 0;
+
+        foreach ($grid->groups as $group) {
+            if (! $group->isImplicit()) {
+                $indexes[$group->sourceKey] = $index++;
+            }
+        }
+
+        return $indexes;
     }
 
     /**
@@ -390,6 +554,10 @@ class ImportCorrectionGrid
             return $this->overallCells($grid, $mapping, $instrument);
         }
 
+        if ($mapping->importsGroupResults()) {
+            return $this->groupCells($grid, $mapping, $instrument);
+        }
+
         $itemIds = $this->itemIds($grid, $mapping, $instrument);
         $existing = $this->existingScores($instrument);
 
@@ -405,8 +573,13 @@ class ImportCorrectionGrid
 
             $item = $grid->item($result->itemSourceKey);
 
-            if ($item === null || $result->isCorrect === null) {
-                continue; // Nothing was judged here; nothing may be written.
+            // Nothing was judged here; nothing may be written. Two ways a source
+            // can judge: by saying whether the answer was right, which needs the
+            // cotação to become a mark (Plickers), or by stating the mark itself
+            // (Intuitivo grades in points). A cell with neither is a blank, and a
+            // blank is a question about a student rather than an answer.
+            if ($item === null || ($result->isCorrect === null && $result->pointsEarned === null)) {
+                continue;
             }
 
             $points = $this->pointsForPersistence($item, $mapping, $instrument, $itemId);
@@ -502,6 +675,83 @@ class ImportCorrectionGrid
                 'result_state' => ResultState::Assessed->value,
                 'points_earned' => (float) $earned,
             ];
+        }
+
+        return $cells;
+    }
+
+    /**
+     * One mark per student per section.
+     *
+     * The source states marks per question and the section total is their sum —
+     * arithmetic, not inference: every cotação is declared and every mark is
+     * present or explicitly absent. A section where any question has no mark
+     * produces NO cell at all, so a partial sum never masquerades as a complete
+     * one (§14).
+     *
+     * @return list<array{enrollment_id: int, instrument_item_id: int, result_state: string, points_earned: float|null}>
+     */
+    protected function groupCells(CanonicalCorrectionGrid $grid, ImportMapping $mapping, Instrument $instrument): array
+    {
+        $instrument->load('items');
+        $created = $instrument->items->sortBy('sequence')->values();
+
+        // Which questions belong to which section, once.
+        $questionsOf = [];
+
+        foreach ($grid->items as $item) {
+            if ($item->groupSourceKey !== null) {
+                $questionsOf[$item->groupSourceKey][] = $item->sourceKey;
+            }
+        }
+
+        $existing = $this->existingScores($instrument);
+        $cells = [];
+
+        foreach ($grid->students as $student) {
+            $enrollmentId = $mapping->enrollmentFor($student->sourceKey);
+
+            if ($enrollmentId === null) {
+                continue;
+            }
+
+            $marks = [];
+
+            foreach ($grid->resultsForStudent($student->sourceKey) as $result) {
+                $marks[$result->itemSourceKey] = $result->pointsEarned;
+            }
+
+            foreach ($grid->groups as $index => $group) {
+                $item = $created[$index] ?? null;
+
+                if ($item === null) {
+                    continue;
+                }
+
+                $earned = GroupResultItem::sum($marks, $questionsOf[$group->sourceKey] ?? []);
+
+                if ($earned === null) {
+                    continue; // Something in this section is unmarked. Not a zero.
+                }
+
+                $itemId = (int) $item->id;
+                $current = $existing[$enrollmentId.':'.$itemId] ?? null;
+
+                if ($current !== null && $this->sameMark($current, $earned)) {
+                    continue;
+                }
+
+                if ($current !== null && $mapping->conflictChoice($enrollmentId, $itemId) !== ImportMapping::CONFLICT_IMPORT) {
+                    continue;
+                }
+
+                $cells[] = [
+                    'enrollment_id' => $enrollmentId,
+                    'instrument_item_id' => $itemId,
+                    'result_state' => ResultState::Assessed->value,
+                    'points_earned' => (float) $earned,
+                ];
+            }
         }
 
         return $cells;
@@ -646,6 +896,19 @@ class ImportCorrectionGrid
             'source' => $grid->source->value,
             'result_mode' => $mapping->resultMode,
             'instrument' => $grid->instrument->toArray(),
+            // The sections as the source stated them, with what each was worth.
+            // Kept in every mode: in the grouped one it explains where each mark
+            // came from, and in the others it is what the file said (§20).
+            'groups' => array_map(fn (CanonicalGroup $group): array => [
+                'source_key' => $group->sourceKey,
+                'sequence' => $group->sequence,
+                'label' => $group->label,
+                'points_possible' => $this->groupMaximum($grid, $group->sourceKey),
+                'domains' => $mapping->domainsForGroup($group->sourceKey),
+            ], $grid->groups),
+            // Every question, even when only four grouped marks were recorded
+            // academically. Discarding twenty-five questions the file DID state
+            // would throw away the only trail back from a mark to its origin.
             'items' => $items,
             'results' => $results,
             // What the platform itself said each student scored. Kept whichever

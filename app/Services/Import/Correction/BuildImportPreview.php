@@ -5,6 +5,7 @@ namespace App\Services\Import\Correction;
 use App\Domain\Assessment\Bc;
 use App\Domain\Import\Correction\CanonicalCorrectionGrid;
 use App\Domain\Import\Correction\CanonicalItem;
+use App\Domain\Import\Correction\GroupResultItem;
 use App\Domain\Import\Correction\ImportIssue;
 use App\Domain\Import\Correction\ImportMapping;
 use App\Domain\Import\Correction\IssueCode;
@@ -33,6 +34,15 @@ use Illuminate\Support\Carbon;
  */
 class BuildImportPreview
 {
+    /**
+     * How far two totals may differ before it is worth telling the teacher.
+     *
+     * One cent, which is the precision Intuitivo itself writes: a test with
+     * marks of 3.33 and 1.67 produces sums that land a hundredth apart without
+     * anything being wrong. Anything larger is a real disagreement and is shown.
+     */
+    protected const TOLERANCE = '0.01';
+
     public function __construct(protected MatchSourceStudents $matcher) {}
 
     /**
@@ -49,9 +59,13 @@ class BuildImportPreview
 
         $items = $this->items($grid, $mapping, $instrument);
 
-        $students = $mapping->importsOverallResult()
-            ? $this->withOverallResult($students, $grid, $mapping, $instrument)
-            : $this->withLapisResult($students, $grid, $items);
+        $groups = $this->groups($grid, $mapping);
+
+        $students = match (true) {
+            $mapping->importsOverallResult() => $this->withOverallResult($students, $grid, $mapping, $instrument),
+            $mapping->importsGroupResults() => $this->withGroupResults($students, $grid, $groups),
+            default => $this->withLapisResult($students, $grid, $items),
+        };
 
         $issues = $this->issues($grid, $mapping, $students, $items, $class, $instrument);
         $blocking = array_values(array_filter($issues, fn (array $issue): bool => $issue['severity'] === 'error'));
@@ -66,7 +80,8 @@ class BuildImportPreview
             'instrument_attributes' => $mapping->instrumentAttributes,
             'overall_domains' => $mapping->overallDomains,
             'overall_item_id' => $mapping->overallItemId,
-            'groups' => array_map(fn ($group): array => $group->toArray(), $grid->groups),
+            'groups' => $groups,
+            'reconciliation' => $this->reconciliation($grid, $groups),
             'items' => $items,
             'students' => $students,
             'counts' => $this->counts($grid, $students, $items),
@@ -152,7 +167,9 @@ class BuildImportPreview
             foreach ($grid->resultsForStudent($student['source_key']) as $result) {
                 $worth = $points[$result->itemSourceKey] ?? null;
 
-                if ($worth === null || $result->isCorrect === null) {
+                // Judged either way: a right/wrong verdict that the cotação turns
+                // into a mark, or a mark the source stated outright.
+                if ($worth === null || ($result->isCorrect === null && $result->pointsEarned === null)) {
                     continue;
                 }
 
@@ -170,6 +187,201 @@ class BuildImportPreview
 
             return $student;
         }, $students);
+    }
+
+    /**
+     * The sections of the test, with what each is worth and where the teacher
+     * has said it counts.
+     *
+     * The cotação is the sum of the section's own questions, exactly as the
+     * source declares them — never a share of the total, never inferred. The
+     * domain is empty until a person chooses one: a group named «GRUPO III» has
+     * said nothing about curriculum (§4).
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function groups(CanonicalCorrectionGrid $grid, ImportMapping $mapping): array
+    {
+        $rows = [];
+
+        foreach ($grid->groups as $group) {
+            $maximum = '0';
+            $questions = 0;
+
+            foreach ($grid->items as $item) {
+                if ($item->groupSourceKey !== $group->sourceKey) {
+                    continue;
+                }
+
+                $questions++;
+
+                if ($item->pointsPossible !== null) {
+                    $maximum = Bc::add($maximum, Bc::of($item->pointsPossible));
+                }
+            }
+
+            $rows[] = [
+                'source_key' => $group->sourceKey,
+                'sequence' => $group->sequence,
+                'label' => $group->label,
+                'questions' => $questions,
+                'points_possible' => GroupResultItem::points($maximum),
+                'domains' => $mapping->domainsForGroup($group->sourceKey),
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * What each student scored in each section — the number the grouped import
+     * would record, shown before anything is written.
+     *
+     * A section with any unmarked question shows «—» rather than a partial sum,
+     * because a partial sum is a lower score wearing a complete one's clothes.
+     *
+     * @param  list<array<string, mixed>>  $students
+     * @param  list<array<string, mixed>>  $groups
+     * @return list<array<string, mixed>>
+     */
+    protected function withGroupResults(array $students, CanonicalCorrectionGrid $grid, array $groups): array
+    {
+        $questionsOf = [];
+
+        foreach ($grid->items as $item) {
+            if ($item->groupSourceKey !== null) {
+                $questionsOf[$item->groupSourceKey][] = $item->sourceKey;
+            }
+        }
+
+        return array_map(function (array $student) use ($grid, $groups, $questionsOf): array {
+            $marks = [];
+
+            foreach ($grid->resultsForStudent($student['source_key']) as $result) {
+                $marks[$result->itemSourceKey] = $result->pointsEarned;
+            }
+
+            $perGroup = [];
+            $overall = '0';
+            $complete = true;
+
+            foreach ($groups as $group) {
+                $earned = GroupResultItem::sum($marks, $questionsOf[$group['source_key']] ?? []);
+
+                $perGroup[] = [
+                    'source_key' => $group['source_key'],
+                    'label' => $group['label'],
+                    'earned' => $earned,
+                    'possible' => $group['points_possible'],
+                ];
+
+                if ($earned === null) {
+                    $complete = false;
+
+                    continue;
+                }
+
+                $overall = Bc::add($overall, Bc::of($earned));
+            }
+
+            $student['group_results'] = $perGroup;
+            $student['lapis_total'] = $complete ? GroupResultItem::points($overall) : null;
+
+            // The percentage the instrument would produce, for the review
+            // screen. The engine draws its own; this is a preview of it.
+            $possible = '0';
+
+            foreach ($groups as $group) {
+                $possible = Bc::add($possible, Bc::of($group['points_possible']));
+            }
+
+            $student['lapis_percentage'] = ($complete && ! Bc::isZero($possible))
+                ? Bc::round(Bc::mul(Bc::div($overall, $possible), '100'), 1, 'half_up')
+                : null;
+
+            return $student;
+        }, $students);
+    }
+
+    /**
+     * Where LÁPIS and the source disagree, and by how much.
+     *
+     * Two checks the file makes possible: the sections' cotações against the
+     * total the export declares, and each student's marks against the total the
+     * export computed for them. A disagreement is REPORTED and never resolved —
+     * the source total is provenance, and CalculationEngine stays sovereign
+     * (§27, §28).
+     *
+     * A cent of rounding is not a disagreement. Intuitivo itself writes 3.33 and
+     * 1.67, so sums land a hundredth away from each other legitimately; the
+     * tolerance is one cent, which is the precision the file itself uses.
+     *
+     * @param  list<array<string, mixed>>  $groups
+     * @return array<string, mixed>
+     */
+    protected function reconciliation(CanonicalCorrectionGrid $grid, array $groups): array
+    {
+        if ($groups === []) {
+            return ['applicable' => false];
+        }
+
+        $sumOfGroups = '0';
+
+        foreach ($groups as $group) {
+            $sumOfGroups = Bc::add($sumOfGroups, Bc::of($group['points_possible']));
+        }
+
+        $declared = $grid->instrument->sourceTotal;
+        $maximumAgrees = $declared === null
+            || Bc::compare(Bc::round(Bc::sub($sumOfGroups, Bc::of($declared)), 4, 'half_up'), '0') === 0;
+
+        $studentsDisagreeing = 0;
+
+        foreach ($grid->students as $student) {
+            if ($student->sourceScore === null) {
+                continue;
+            }
+
+            $sum = '0';
+            $complete = true;
+
+            foreach ($grid->resultsForStudent($student->sourceKey) as $result) {
+                if ($result->pointsEarned === null) {
+                    $complete = false;
+
+                    break;
+                }
+
+                $sum = Bc::add($sum, Bc::of($result->pointsEarned));
+            }
+
+            if (! $complete) {
+                continue;
+            }
+
+            $difference = Bc::sub(Bc::of($sum), Bc::of($student->sourceScore));
+
+            if (Bc::compare($this->absolute($difference), Bc::of(self::TOLERANCE)) > 0) {
+                $studentsDisagreeing++;
+            }
+        }
+
+        return [
+            'applicable' => true,
+            'groups_total' => GroupResultItem::points($sumOfGroups),
+            'source_total' => $declared,
+            'maximum_agrees' => $maximumAgrees,
+            'students_disagreeing' => $studentsDisagreeing,
+        ];
+    }
+
+    /**
+     * @param  numeric-string  $value
+     * @return numeric-string
+     */
+    protected function absolute(string $value): string
+    {
+        return Bc::compare($value, '0') < 0 ? Bc::sub('0', $value) : $value;
     }
 
     /**
@@ -233,7 +445,7 @@ class BuildImportPreview
         $unresolved = 0;
 
         foreach ($grid->results as $result) {
-            $result->isCorrect === null ? $unresolved++ : $judged++;
+            $result->isCorrect === null && $result->pointsEarned === null ? $unresolved++ : $judged++;
         }
 
         return [
@@ -282,6 +494,10 @@ class BuildImportPreview
         }
 
         foreach ($this->configurationIssues($grid, $mapping, $items, $instrument) as $issue) {
+            $issues[] = $issue;
+        }
+
+        foreach ($this->reconciliationIssues($grid, $mapping) as $issue) {
             $issues[] = $issue;
         }
 
@@ -346,12 +562,12 @@ class BuildImportPreview
                 }
             }
 
-            if ($overall) {
-                // Only when it counts. An item with no allocation enters no
-                // domain, which the model allows (§4.3) and which is harmless
-                // for an instrument that does not enter the calculation at all.
-                $counts = (bool) ($mapping->instrumentAttributes['counts_toward_classification'] ?? false);
+            // Only when it counts. An item with no allocation enters no domain,
+            // which the model allows (§4.3) and which is harmless for an
+            // instrument that does not enter the calculation at all.
+            $counts = (bool) ($mapping->instrumentAttributes['counts_toward_classification'] ?? false);
 
+            if ($overall) {
                 if ($counts && ! $mapping->overallDomainIsDecided()) {
                     $issues[] = ImportIssue::make(
                         IssueCode::UnsupportedStructure,
@@ -362,7 +578,42 @@ class BuildImportPreview
 
                 return $issues;
             }
+
+            if ($mapping->importsGroupResults()) {
+                $withoutDomain = [];
+
+                foreach ($grid->groups as $group) {
+                    if ($mapping->domainsForGroup($group->sourceKey) === []) {
+                        $withoutDomain[] = $group->label ?? $group->sourceKey;
+                    }
+                }
+
+                if ($counts && $withoutDomain !== []) {
+                    $issues[] = ImportIssue::make(
+                        IssueCode::UnsupportedStructure,
+                        count($withoutDomain) === 1
+                            ? 'Indique o domínio avaliado por «'.$withoutDomain[0].'».'
+                            : 'Indique o domínio avaliado por: '.implode(', ', $withoutDomain).'.',
+                        ['field' => 'group_domains', 'groups' => count($withoutDomain)],
+                    )->toArray();
+                }
+
+                return $issues;
+            }
         } else {
+            if ($mapping->importsGroupResults()) {
+                // Grouped results build their own structure; laying them onto
+                // somebody else's instrument would mean guessing which of its
+                // questions each group corresponds to.
+                $issues[] = ImportIssue::make(
+                    IssueCode::UnsupportedStructure,
+                    'Os resultados por grupos só podem criar uma avaliação nova. Para uma avaliação existente, use o resultado global ou o detalhe das perguntas.',
+                    ['field' => 'result_mode'],
+                )->toArray();
+
+                return $issues;
+            }
+
             if ($instrument === null) {
                 $issues[] = ImportIssue::make(
                     IssueCode::UnsupportedStructure,
@@ -414,6 +665,51 @@ class BuildImportPreview
                     ['count' => $withoutPoints],
                 ),
                 ['questions' => $withoutPoints],
+            )->toArray();
+        }
+
+        return $issues;
+    }
+
+    /**
+     * Where LÁPIS and the source disagree, said out loud.
+     *
+     * Never resolved silently and never allowed to change a mark: the source
+     * total is provenance, LÁPIS computes its own, and a source that weights its
+     * questions differently will legitimately disagree (§27, §28). So these are
+     * warnings the teacher accepts knowingly, not errors that block.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function reconciliationIssues(CanonicalCorrectionGrid $grid, ImportMapping $mapping): array
+    {
+        if (! $mapping->importsGroupResults() || $grid->groups === []) {
+            return [];
+        }
+
+        $reconciliation = $this->reconciliation($grid, $this->groups($grid, $mapping));
+        $issues = [];
+
+        if ($reconciliation['maximum_agrees'] === false) {
+            $issues[] = ImportIssue::make(
+                IssueCode::SourceTotalMismatch,
+                'As cotações dos grupos somam '.$reconciliation['groups_total']
+                    .', mas o ficheiro declara um total de '.$reconciliation['source_total']
+                    .'. O LÁPIS usa a soma dos grupos.',
+                ['groups_total' => $reconciliation['groups_total'], 'source_total' => $reconciliation['source_total']],
+            )->toArray();
+        }
+
+        if ($reconciliation['students_disagreeing'] > 0) {
+            $issues[] = ImportIssue::make(
+                IssueCode::SourceTotalMismatch,
+                trans_choice(
+                    '{1}Há 1 aluno cujo total no ficheiro não bate certo com as suas próprias classificações.'
+                        .'|[2,*]Há :count alunos cujo total no ficheiro não bate certo com as suas próprias classificações.',
+                    $reconciliation['students_disagreeing'],
+                    ['count' => $reconciliation['students_disagreeing']],
+                ),
+                ['students' => $reconciliation['students_disagreeing']],
             )->toArray();
         }
 
@@ -599,7 +895,8 @@ class BuildImportPreview
             $itemId = $mapping->items[$result->itemSourceKey] ?? null;
             $item = $grid->item($result->itemSourceKey);
 
-            if ($enrollmentId === null || $itemId === null || $item === null || $result->isCorrect === null) {
+            if ($enrollmentId === null || $itemId === null || $item === null
+                || ($result->isCorrect === null && $result->pointsEarned === null)) {
                 continue;
             }
 

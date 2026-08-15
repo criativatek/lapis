@@ -35,10 +35,34 @@ final readonly class ImportMapping
 
     /**
      * Import the correction question by question, with cotações decided in
-     * LÁPIS. Everything the source says about totals is then ignored — the two
+     * LÁPIS. Everything the source says about totals is then ignored — the
      * modes are separate arithmetic and are never blended (§8).
      */
     public const RESULT_PER_QUESTION = 'per_question';
+
+    /**
+     * One result per section of the test — «Grupo I», «Grupo II» — each counting
+     * toward the domain the teacher assigns to it.
+     *
+     * This is what a multi-domain paper actually is: a single instrument whose
+     * Grupo I assesses Leitura and whose Grupo III assesses Gramática. The
+     * granularity sits between the other two, and for a source that states its
+     * sections and their cotações it is the most faithful of the three — it
+     * neither throws away the structure the file carries nor invents a
+     * question-level precision the teacher did not ask for.
+     *
+     * Provider-neutral on purpose: nothing here says «Intuitivo». A source only
+     * decides which mode the wizard OPENS on.
+     */
+    public const RESULT_PER_GROUP = 'per_group';
+
+    /**
+     * @return list<string>
+     */
+    public static function resultModes(): array
+    {
+        return [self::RESULT_OVERALL, self::RESULT_PER_GROUP, self::RESULT_PER_QUESTION];
+    }
 
     /**
      * @param  array<string, int|null>  $students  source key => enrollment id, or null for "ignore this row"
@@ -49,6 +73,7 @@ final readonly class ImportMapping
      * @param  array<string, mixed>  $instrumentAttributes  what the teacher filled in for a new instrument
      * @param  list<array{domain_id: int, allocation_percent: string}>  $overallDomains  where the global result counts
      * @param  int|null  $overallItemId  which existing item receives it, in associate mode
+     * @param  array<string, list<array{domain_id: int, allocation_percent: string}>>  $groupDomains  source group key => where that section counts
      */
     public function __construct(
         public string $mode = self::MODE_CREATE,
@@ -67,6 +92,11 @@ final readonly class ImportMapping
         public string $resultMode = self::RESULT_PER_QUESTION,
         public array $overallDomains = [],
         public ?int $overallItemId = null,
+        // Source group key => allocations. A group is structure and a domain is
+        // pedagogy, so this is the teacher's decision and never the file's: a
+        // source that names its sections «Leitura» has still said nothing about
+        // curriculum. Several groups may point at the same domain.
+        public array $groupDomains = [],
     ) {}
 
     /**
@@ -92,7 +122,30 @@ final readonly class ImportMapping
             resultMode: is_string($snapshot['result_mode'] ?? null) ? $snapshot['result_mode'] : self::RESULT_PER_QUESTION,
             overallDomains: self::allocationsFrom($snapshot['overall_domains'] ?? []),
             overallItemId: isset($snapshot['overall_item_id']) ? (int) $snapshot['overall_item_id'] : null,
+            groupDomains: self::allocationsPerKeyFrom($snapshot['group_domains'] ?? []),
         );
+    }
+
+    /**
+     * @return array<string, list<array{domain_id: int, allocation_percent: string}>>
+     */
+    protected static function allocationsPerKeyFrom(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $rows = [];
+
+        foreach ($value as $key => $allocations) {
+            $clean = self::allocationsFrom($allocations);
+
+            if ($clean !== []) {
+                $rows[(string) $key] = $clean;
+            }
+        }
+
+        return $rows;
     }
 
     /**
@@ -144,6 +197,7 @@ final readonly class ImportMapping
             'result_mode' => $this->resultMode,
             'overall_domains' => $this->overallDomains,
             'overall_item_id' => $this->overallItemId,
+            'group_domains' => $this->groupDomains,
         ];
     }
 
@@ -173,6 +227,24 @@ final readonly class ImportMapping
     public function overallDomainIsDecided(): bool
     {
         return $this->overallDomains !== [];
+    }
+
+    /**
+     * Whether this import records one result per section of the test.
+     */
+    public function importsGroupResults(): bool
+    {
+        return $this->resultMode === self::RESULT_PER_GROUP;
+    }
+
+    /**
+     * The domain allocations a source group was pointed at, or none.
+     *
+     * @return list<array{domain_id: int, allocation_percent: string}>
+     */
+    public function domainsForGroup(string $groupSourceKey): array
+    {
+        return $this->groupDomains[$groupSourceKey] ?? [];
     }
 
     /**

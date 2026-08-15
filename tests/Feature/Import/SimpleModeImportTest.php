@@ -424,8 +424,12 @@ class SimpleModeImportTest extends CorrectionImportHttpTest
     {
         $wizard = $this->componentSource('resources/js/pages/imports/correction/Wizard.vue');
 
-        $this->assertStringContainsString('Importar também o detalhe das perguntas', $wizard);
-        $this->assertStringContainsString('Use esta opção se pretender conservar no LÁPIS a correção questão a questão.', $wizard);
+        // The checkbox became a three-way choice when the grouped granularity
+        // arrived, but the claim is unchanged: the question-by-question detail
+        // is one of the options and is never where a Plickers import starts.
+        $this->assertStringContainsString('O que importar deste ficheiro', $wizard);
+        $this->assertStringContainsString('Detalhe por perguntas', $wizard);
+        $this->assertStringContainsString('Cada pergunta com a sua cotação e o seu domínio.', $wizard);
 
         $import = $this->upload();
 

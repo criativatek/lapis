@@ -109,4 +109,31 @@ class CorrectionImportException extends RuntimeException
     {
         return new self(__('Este ficheiro não traz uma classificação por aluno. Importe o detalhe das perguntas.'));
     }
+
+    /**
+     * A section of the test that counts but assesses nothing named. Same rule as
+     * the global result, applied group by group (§25).
+     */
+    public static function groupsWithoutDomain(int $count): self
+    {
+        return new self(trans_choice(
+            '{1}Falta indicar o domínio avaliado por 1 grupo.|[2,*]Falta indicar o domínio avaliado por :count grupos.',
+            $count,
+            ['count' => $count],
+        ));
+    }
+
+    public static function noGroupsInSource(): self
+    {
+        return new self(__('Este ficheiro não traz grupos. Importe o resultado global ou o detalhe das perguntas.'));
+    }
+
+    /**
+     * Writing grouped results onto somebody else's instrument would mean
+     * guessing which of its questions each group corresponds to.
+     */
+    public static function groupsNeedANewInstrument(): self
+    {
+        return new self(__('Os resultados por grupos só podem criar uma avaliação nova. Para uma avaliação existente, use o resultado global ou o detalhe das perguntas.'));
+    }
 }

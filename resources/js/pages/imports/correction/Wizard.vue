@@ -26,6 +26,8 @@ type StudentRow = {
     source_correct: number | null;
     source_answered: number | null;
     lapis_percentage: string | null;
+    group_results?: GroupResult[];
+    lapis_total?: string | null;
     participated: boolean;
     enrollment_id: number | null;
     status: 'matched' | 'ambiguous' | 'unmatched' | 'ignored';
@@ -67,6 +69,31 @@ type Conflict = {
 };
 type Allocation = { domain_id: number; allocation_percent: string };
 
+/** A section of the test as the source describes it. Structure, never a domain. */
+type SourceGroup = {
+    source_key: string;
+    sequence: number;
+    label: string | null;
+    questions: number;
+    points_possible: string;
+    domains: Allocation[];
+};
+
+type GroupResult = {
+    source_key: string;
+    label: string | null;
+    earned: string | null;
+    possible: string;
+};
+
+type Reconciliation = {
+    applicable: boolean;
+    groups_total?: string;
+    source_total?: string | null;
+    maximum_agrees?: boolean;
+    students_disagreeing?: number;
+};
+
 const props = defineProps<{
     correctionImport: {
         ulid: string;
@@ -84,6 +111,8 @@ const props = defineProps<{
         instrument_id: number | null;
         instrument_attributes: Record<string, unknown>;
         overall_domains: Allocation[];
+        groups: SourceGroup[];
+        reconciliation: Reconciliation;
         overall_item_id: number | null;
         items: ItemRow[];
         students: StudentRow[];
@@ -139,6 +168,7 @@ type WizardState = {
     domains: Record<string, Allocation[]>;
     overall_domains: Allocation[];
     overall_item_id: number | null;
+    group_domains: Record<string, Allocation[]>;
     conflicts: Record<string, string>;
     instrument: {
         title: string;
@@ -180,6 +210,12 @@ function stateFor(): WizardState {
             props.preview.items.map((item) => [item.source_key, item.domains]),
         ) as Record<string, Allocation[]>,
         overall_domains: props.preview.overall_domains,
+        group_domains: Object.fromEntries(
+            props.preview.groups.map((group) => [
+                group.source_key,
+                group.domains,
+            ]),
+        ) as Record<string, Allocation[]>,
         overall_item_id: props.preview.overall_item_id,
         conflicts: {} as Record<string, string>,
         instrument: {
@@ -231,19 +267,47 @@ const chosenInstrument = computed(() =>
 );
 
 /**
- * The ordinary way in: import the classification the platform already worked
- * out. A teacher who used Plickers to run a quiz wants the 85% it computed, and
- * making them rebuild twenty cotações first to obtain a number that already
- * exists is work that produces nothing (§1).
+ * How much of the file becomes assessment.
+ *
+ * Three granularities, all provider-neutral. The source decides only which one
+ * the wizard opens on — Plickers states one score per student, Intuitivo states
+ * the test's sections — and the teacher changes it in one click.
+ *
+ * The middle one is what makes a multi-domain paper importable: a Português test
+ * whose Grupo I assesses Leitura and whose Grupo III assesses Gramática becomes
+ * ONE evaluation with one result per section, each counting toward its own
+ * domain.
  */
 const simple = computed(() => form.result_mode === 'overall');
+const grouped = computed(() => form.result_mode === 'per_group');
+const detailed = computed(() => form.result_mode === 'per_question');
 
-const wantsDetail = computed<boolean>({
-    get: () => !simple.value,
-    set: (value) => {
-        form.result_mode = value ? 'per_question' : 'overall';
+/** Only offered when the file actually states sections. */
+const hasGroups = computed(() => props.preview.groups.length > 0);
+
+const GRANULARITIES = [
+    {
+        value: 'overall',
+        label: 'Resultado global',
+        hint: 'Um único resultado por aluno, para um domínio.',
     },
-});
+    {
+        value: 'per_group',
+        label: 'Resultados por grupos',
+        hint: 'Um resultado por grupo do teste, cada um para o seu domínio.',
+    },
+    {
+        value: 'per_question',
+        label: 'Detalhe por perguntas',
+        hint: 'Cada pergunta com a sua cotação e o seu domínio.',
+    },
+];
+
+const granularities = computed(() =>
+    GRANULARITIES.filter(
+        (option) => option.value !== 'per_group' || hasGroups.value,
+    ),
+);
 
 /** One domain for the global result, held in the allocation shape the model uses. */
 const overallDomainId = computed<number | null>({
@@ -262,6 +326,32 @@ const overallDomainName = computed(
             (domain) => domain.id === overallDomainId.value,
         )?.name ?? null,
 );
+
+/** The domain a section counts toward, as a select value. */
+function domainOfGroup(sourceKey: string): string {
+    const domainId = (form.group_domains[sourceKey] ?? [])[0]?.domain_id;
+
+    return domainId === undefined ? '' : String(domainId);
+}
+
+function setDomainOfGroup(sourceKey: string, value: string): void {
+    form.group_domains = {
+        ...form.group_domains,
+        [sourceKey]:
+            value === ''
+                ? []
+                : [{ domain_id: Number(value), allocation_percent: '100' }],
+    };
+}
+
+function domainNameOfGroup(sourceKey: string): string | null {
+    const domainId = (form.group_domains[sourceKey] ?? [])[0]?.domain_id;
+
+    return (
+        props.catalogue.domains.find((domain) => domain.id === domainId)
+            ?.name ?? null
+    );
+}
 
 /**
  * A row with no entry at all is one nobody looked at; a row mapped to null is
@@ -311,6 +401,22 @@ const missing = computed<string[]>(() => {
         ) {
             out.push('Selecione o domínio avaliado.');
         }
+
+        if (grouped.value && form.instrument.counts_toward_classification) {
+            const semDominio = props.preview.groups.filter(
+                (group) => !(form.group_domains[group.source_key] ?? []).length,
+            );
+
+            if (semDominio.length) {
+                out.push(
+                    `Indique o domínio avaliado por: ${semDominio.map((group) => group.label ?? group.source_key).join(', ')}.`,
+                );
+            }
+        }
+    } else if (grouped.value) {
+        out.push(
+            'Os resultados por grupos só podem criar uma avaliação nova. Escolha «Criar uma nova avaliação», ou outra granularidade.',
+        );
     } else if (form.instrument_id === null) {
         out.push('Escolha a avaliação a que os resultados se destinam.');
     } else if (simple.value && form.overall_item_id === null) {
@@ -319,7 +425,9 @@ const missing = computed<string[]>(() => {
         );
     }
 
-    if (simple.value) {
+    // Neither of these asks for cotações or question mappings: the file already
+    // states what each question is worth, and the marks land on the sections.
+    if (simple.value || grouped.value) {
         return out;
     }
 
@@ -796,7 +904,30 @@ const typeName = computed(
                             <td
                                 class="px-3 py-2 whitespace-nowrap text-muted-foreground"
                             >
-                                {{ attempts(student) }}
+                                <!-- The sections, when the file states them:
+                                     four numbers a teacher recognises, rather
+                                     than twenty-five they never asked to see
+                                     (§23). -->
+                                <template v-if="student.group_results?.length">
+                                    <span
+                                        v-for="result in student.group_results"
+                                        :key="result.source_key"
+                                        class="mr-2 inline-block text-xs"
+                                    >
+                                        {{ result.label }}:
+                                        <strong
+                                            :class="
+                                                result.earned === null
+                                                    ? 'text-amber-700'
+                                                    : ''
+                                            "
+                                            >{{ result.earned ?? '—' }}</strong
+                                        >/{{ result.possible }}
+                                    </span>
+                                </template>
+                                <template v-else>{{
+                                    attempts(student)
+                                }}</template>
                             </td>
                             <!--
                               Two independent facts in one cell, and they must
@@ -1092,35 +1223,164 @@ const typeName = computed(
             </div>
 
             <!--
-              The escape hatch, off by default. Everything about questions,
-              answer keys and cotações lives behind it, because in the ordinary
-              case none of it is needed to import a classification (§7).
+              How much of the file becomes assessment. Three granularities, one
+              of which is offered only when the file states sections at all.
             -->
             <div class="space-y-3 rounded-md border border-border p-4">
-                <label class="flex items-start gap-2 text-sm font-medium">
-                    <input
-                        v-model="wantsDetail"
-                        type="checkbox"
-                        class="mt-0.5"
-                    />
-                    <span>
-                        Importar também o detalhe das perguntas
-                        <span
-                            class="mt-0.5 block text-xs font-normal text-muted-foreground"
-                        >
-                            Use esta opção se pretender conservar no LÁPIS a
-                            correção questão a questão.
+                <fieldset class="space-y-2">
+                    <legend class="text-sm font-medium">
+                        O que importar deste ficheiro
+                    </legend>
+                    <label
+                        v-for="option in granularities"
+                        :key="option.value"
+                        class="flex items-start gap-2 text-sm"
+                    >
+                        <input
+                            v-model="form.result_mode"
+                            type="radio"
+                            :value="option.value"
+                            class="mt-0.5"
+                        />
+                        <span>
+                            {{ option.label }}
+                            <span
+                                class="mt-0.5 block text-xs text-muted-foreground"
+                            >
+                                {{ option.hint }}
+                            </span>
                         </span>
-                    </span>
-                </label>
+                    </label>
+                </fieldset>
+
+                <!--
+                  Group to domain, one row each. The group is where a question
+                  sits on the page; the domain is what it assesses. A source
+                  that names a section «Leitura» has still said nothing about
+                  curriculum, so nothing is pre-filled (§4).
+                -->
+                <div
+                    v-if="grouped && creating"
+                    class="space-y-2 border-t border-border pt-3"
+                >
+                    <h3 class="text-sm font-medium">Domínio de cada grupo</h3>
+                    <div
+                        class="overflow-x-auto rounded-md border border-border"
+                    >
+                        <table class="w-full text-sm">
+                            <thead class="bg-muted/50 text-left">
+                                <tr>
+                                    <th class="px-3 py-2 font-medium">Grupo</th>
+                                    <th
+                                        class="px-3 py-2 text-right font-medium"
+                                    >
+                                        Cotação
+                                    </th>
+                                    <th class="px-3 py-2 font-medium">
+                                        Domínio avaliado
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-border">
+                                <tr
+                                    v-for="group in preview.groups"
+                                    :key="group.source_key"
+                                >
+                                    <td
+                                        class="px-3 py-1.5 font-medium whitespace-nowrap"
+                                    >
+                                        {{ group.label ?? '—' }}
+                                        <span
+                                            class="block text-xs font-normal text-muted-foreground"
+                                        >
+                                            {{ group.questions }} perguntas
+                                        </span>
+                                    </td>
+                                    <td
+                                        class="px-3 py-1.5 text-right tabular-nums"
+                                    >
+                                        {{ group.points_possible }}
+                                    </td>
+                                    <td class="px-3 py-1.5">
+                                        <select
+                                            :value="
+                                                domainOfGroup(group.source_key)
+                                            "
+                                            :aria-label="`Domínio de ${group.label ?? group.source_key}`"
+                                            class="h-8 w-full min-w-48 rounded-md border border-input bg-transparent px-2 text-sm"
+                                            @change="
+                                                setDomainOfGroup(
+                                                    group.source_key,
+                                                    (
+                                                        $event.target as HTMLSelectElement
+                                                    ).value,
+                                                )
+                                            "
+                                        >
+                                            <option value="">
+                                                — Por escolher —
+                                            </option>
+                                            <option
+                                                v-for="domain in catalogue.domains"
+                                                :key="domain.id"
+                                                :value="domain.id"
+                                            >
+                                                {{ domain.name }}
+                                            </option>
+                                        </select>
+                                    </td>
+                                </tr>
+                            </tbody>
+                            <tfoot class="border-t border-border">
+                                <tr>
+                                    <td
+                                        class="px-3 py-2 text-xs text-muted-foreground"
+                                    >
+                                        Total
+                                    </td>
+                                    <td
+                                        class="px-3 py-2 text-right text-xs font-medium tabular-nums"
+                                    >
+                                        {{
+                                            preview.reconciliation.groups_total
+                                        }}
+                                    </td>
+                                    <td
+                                        class="px-3 py-2 text-xs text-muted-foreground"
+                                    >
+                                        <span
+                                            v-if="
+                                                preview.reconciliation
+                                                    .maximum_agrees
+                                            "
+                                        >
+                                            confere com o total do ficheiro
+                                        </span>
+                                        <span v-else class="text-amber-700">
+                                            o ficheiro declara
+                                            {{
+                                                preview.reconciliation
+                                                    .source_total
+                                            }}
+                                        </span>
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                    <p class="text-xs text-muted-foreground">
+                        Vários grupos podem contar para o mesmo domínio. O grupo
+                        é a estrutura do teste; o domínio é o que ele avalia.
+                    </p>
+                </div>
 
                 <p v-if="simple" class="text-xs text-muted-foreground">
-                    Sem esta opção, é importada a classificação que o
+                    É importada a classificação que o
                     {{ preview.source_label }} já calculou para cada aluno — sem
                     ter de definir cotações.
                 </p>
 
-                <template v-else>
+                <template v-if="detailed">
                     <div class="space-y-3 border-t border-border pt-3">
                         <h3 class="text-sm font-medium">
                             Cotação das perguntas
@@ -1371,6 +1631,21 @@ const typeName = computed(
                     <dt class="inline text-muted-foreground">Domínio:</dt>
                     <dd class="inline">{{ overallDomainName ?? '—' }}</dd>
                 </div>
+                <div v-if="grouped" class="sm:col-span-2">
+                    <dt class="inline text-muted-foreground">Grupos:</dt>
+                    <dd class="inline">
+                        <span
+                            v-for="group in preview.groups"
+                            :key="group.source_key"
+                            class="mr-3 inline-block"
+                        >
+                            {{ group.label }} ({{ group.points_possible }}) →
+                            <strong>{{
+                                domainNameOfGroup(group.source_key) ?? '—'
+                            }}</strong>
+                        </span>
+                    </dd>
+                </div>
                 <div>
                     <dt class="inline text-muted-foreground">Turma:</dt>
                     <dd class="inline">{{ correctionImport.class.label }}</dd>
@@ -1475,6 +1750,33 @@ const typeName = computed(
                     </tbody>
                 </table>
             </div>
+
+            <!-- The two numbers side by side, and what LÁPIS does about it: its
+                 own arithmetic, always. A source total is provenance (§27). -->
+            <p
+                v-if="grouped && preview.reconciliation.applicable"
+                class="text-xs"
+                :class="
+                    preview.reconciliation.maximum_agrees &&
+                    !preview.reconciliation.students_disagreeing
+                        ? 'text-muted-foreground'
+                        : 'text-amber-700'
+                "
+            >
+                Cotação total dos grupos:
+                <strong>{{ preview.reconciliation.groups_total }}</strong
+                >. O ficheiro declara
+                <strong>{{ preview.reconciliation.source_total ?? '—' }}</strong
+                >.
+                <template v-if="preview.reconciliation.students_disagreeing">
+                    Há
+                    {{ preview.reconciliation.students_disagreeing }} aluno(s)
+                    cujo total no ficheiro não coincide com as próprias
+                    classificações.
+                </template>
+                O resultado do LÁPIS resulta sempre das classificações
+                importadas, nunca do total da origem.
+            </p>
 
             <p v-if="simple" class="text-xs text-muted-foreground">
                 É importada a classificação que o

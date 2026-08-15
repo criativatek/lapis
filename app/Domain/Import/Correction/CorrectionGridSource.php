@@ -30,6 +30,28 @@ enum CorrectionGridSource: string
     }
 
     /**
+     * The granularity the wizard OPENS on for this source — nothing more.
+     *
+     * The modes themselves are provider-neutral: any source can be imported at
+     * any of the three, and the teacher changes it in one click. What differs is
+     * which one is right most of the time.
+     *
+     * Plickers states one score per student and usually assesses one thing at a
+     * time, so it opens on the global result. Intuitivo states the test's
+     * sections and what each is worth, and a Português paper routinely assesses
+     * Leitura, Educação Literária, Gramática and Escrita in one sitting — so it
+     * opens on the sections, which is both the most faithful reading of the file
+     * and the least work for the teacher.
+     */
+    public function defaultResultMode(): string
+    {
+        return match ($this) {
+            self::Intuitivo => ImportMapping::RESULT_PER_GROUP,
+            self::Plickers, self::Generic => ImportMapping::RESULT_OVERALL,
+        };
+    }
+
+    /**
      * What the teacher needs to have done before choosing this source.
      */
     public function hint(): string
