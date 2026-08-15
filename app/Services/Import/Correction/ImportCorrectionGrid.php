@@ -140,7 +140,13 @@ class ImportCorrectionGrid
     {
         $snapshot = $import->canonical_snapshot;
 
-        if (! is_array($snapshot) || ($snapshot['items'] ?? []) === []) {
+        // «Nothing was read» used to mean «no questions», which held while every
+        // source stated its own questions. A spreadsheet imported as one result
+        // per student legitimately has none — the global item is synthesised at
+        // write time — and its STUDENTS are what was read. So either one counts
+        // as having read something, and the mode-specific guards below decide
+        // whether it is the right something.
+        if (! is_array($snapshot) || (($snapshot['items'] ?? []) === [] && ($snapshot['students'] ?? []) === [])) {
             throw CorrectionImportException::nothingParsed();
         }
 
@@ -187,6 +193,13 @@ class ImportCorrectionGrid
         }
 
         if ($mapping->createsInstrument()) {
+            // Question by question, with no questions, would build an instrument
+            // with nothing in it. This is the case `grid()` used to refuse for
+            // every mode at once, kept where it is actually true.
+            if ($grid->items === []) {
+                throw CorrectionImportException::nothingParsed();
+            }
+
             $withoutPoints = 0;
 
             foreach ($grid->items as $item) {

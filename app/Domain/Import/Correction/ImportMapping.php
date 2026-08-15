@@ -97,6 +97,11 @@ final readonly class ImportMapping
         // source that names its sections «Leitura» has still said nothing about
         // curriculum. Several groups may point at the same domain.
         public array $groupDomains = [],
+        // What the teacher said their own spreadsheet means — which sheet, which
+        // row holds the headings, which column names the student. Empty for every
+        // source whose file explains itself, and it stays empty: Plickers and
+        // Intuitivo are never put through a mapping screen (§7).
+        public TabularMapping $table = new TabularMapping,
     ) {}
 
     /**
@@ -123,6 +128,7 @@ final readonly class ImportMapping
             overallDomains: self::allocationsFrom($snapshot['overall_domains'] ?? []),
             overallItemId: isset($snapshot['overall_item_id']) ? (int) $snapshot['overall_item_id'] : null,
             groupDomains: self::allocationsPerKeyFrom($snapshot['group_domains'] ?? []),
+            table: TabularMapping::fromArray(is_array($snapshot['table'] ?? null) ? $snapshot['table'] : null),
         );
     }
 
@@ -198,7 +204,17 @@ final readonly class ImportMapping
             'overall_domains' => $this->overallDomains,
             'overall_item_id' => $this->overallItemId,
             'group_domains' => $this->groupDomains,
+            'table' => $this->table->toArray(),
         ];
+    }
+
+    /**
+     * Whether the source's own structure still has to be described by hand.
+     * Asked by the wizard and by the readiness rule, computed in neither.
+     */
+    public function describesATable(): bool
+    {
+        return $this->table->describesTheSheet();
     }
 
     public function createsInstrument(): bool

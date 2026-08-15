@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Domain\Import\Correction\CorrectionGridSource;
 use App\Domain\Import\Correction\ImportMapping;
+use App\Domain\Import\Correction\TabularMapping;
 use App\Models\CorrectionImport;
 use App\Models\CorrectionImportStatus;
 use App\Models\Domain;
@@ -14,6 +15,8 @@ use App\Rules\BelongsToCurrentOrganization;
 use App\Services\Import\Correction\BuildImportPreview;
 use App\Services\Import\Correction\CorrectionGridParserRegistry;
 use App\Services\Import\Correction\ImportCorrectionGrid;
+use App\Services\Import\Correction\MappedCorrectionGridParser;
+use App\Services\Import\Correction\RecanonicaliseImport;
 use App\Support\Import\CorrectionImportException;
 use App\Support\Import\CorrectionImportTempStorage;
 use App\Support\Import\WithoutLeakingTheGrid;
@@ -42,6 +45,7 @@ class CorrectionImportController extends Controller
         protected CorrectionImportTempStorage $storage,
         protected BuildImportPreview $preview,
         protected ImportCorrectionGrid $importer,
+        protected RecanonicaliseImport $recanonicalise,
     ) {}
 
     /**
@@ -178,7 +182,42 @@ class CorrectionImportController extends Controller
             'conflicts' => $this->preview->conflicts($import),
             'duplicateOfEarlierImport' => $this->seenBefore($import),
             'catalogue' => $this->catalogue($import),
+            // Null for every source that explains itself. Present only for a
+            // sheet the teacher has to describe, and never persisted: it carries
+            // their own students' names and is rebuilt per request (§39).
+            'tabular' => $this->tabular($import),
         ]);
+    }
+
+    /**
+     * What the uploaded sheet looks like, for the screen that asks what it means.
+     *
+     * Asks the parser for a capability rather than comparing against a source
+     * name, so a fourth format that also needs describing gets this for free and
+     * the two that do not are never dragged through it (§7).
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function tabular(CorrectionImport $import): ?array
+    {
+        $parser = $this->registry->for($import->source);
+
+        if (! $parser instanceof MappedCorrectionGridParser) {
+            return null;
+        }
+
+        $path = $import->stored_path;
+
+        if ($path === null || ! $this->storage->exists($path)) {
+            // The upload is gone — pruned, or cancelled elsewhere. The grid
+            // already understood stays on screen; only re-describing is closed.
+            return ['readable' => false, 'message' => __('O ficheiro carregado já não está disponível. Recomece a importação para alterar a estrutura da folha.')];
+        }
+
+        return $parser->describe(
+            $this->storage->absolutePath($path),
+            ImportMapping::fromArray($import->mapping_snapshot),
+        );
     }
 
     /**
@@ -203,6 +242,11 @@ class CorrectionImportController extends Controller
             'group_domains' => ['array'],
             'conflicts' => ['array'],
             'instrument' => ['array'],
+            // What the teacher said their own sheet means. Shape-checked here
+            // and value-checked in TabularMapping, which drops anything that is
+            // not a column letter or a row number rather than carrying it
+            // forward to fail somewhere with no idea what it is looking at.
+            'table' => ['array'],
         ]);
 
         $stored = ImportMapping::fromArray($import->mapping_snapshot);
@@ -224,12 +268,18 @@ class CorrectionImportController extends Controller
             overallDomains: $this->sanitiseAllocations($data['overall_domains'] ?? []),
             overallItemId: $this->sanitiseOverallItem($data['overall_item_id'] ?? null, $import),
             groupDomains: $this->sanitiseDomains($data['group_domains'] ?? []),
+            table: TabularMapping::fromArray(is_array($data['table'] ?? null) ? $data['table'] : $stored->table->toArray()),
         );
 
         $import->forceFill([
             'mapping_snapshot' => $mapping->toArray(),
             'instrument_id' => $mapping->createsInstrument() ? null : $mapping->instrumentId,
         ])->save();
+
+        // A sheet whose meaning is the teacher's to state is re-read here, so
+        // that the grid the preview describes is the grid these decisions imply.
+        // Does nothing for a source that explained itself.
+        $this->recanonicalise->for($import);
 
         // Readiness is the preview's answer, never the interface's — the button
         // and the door have to agree.

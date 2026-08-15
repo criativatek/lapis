@@ -94,7 +94,56 @@ type Reconciliation = {
     students_disagreeing?: number;
 };
 
+/**
+ * The teacher's own spreadsheet, as read — and only as read.
+ *
+ * Present only for a source whose file does not explain itself. Plickers and
+ * Intuitivo send null here and never see any of the screen below, because a
+ * mapping form for a file LÁPIS already understands is a form asking somebody to
+ * type in what is already known.
+ */
+type TabularCellView = {
+    text: string | null;
+    number: string | null;
+    is_percentage: boolean;
+    is_formula: boolean;
+};
+
+type TableState = {
+    sheet: string | null;
+    header_row: number | null;
+    student_column: string | null;
+    result_columns: string[];
+    value_kind: string;
+    overall_maximum: string | null;
+    total_column: string | null;
+};
+
+type TabularDescription = {
+    readable: boolean;
+    message?: string;
+    kind?: string | null;
+    sheets?: { name: string; rows: number; columns: number; empty: boolean }[];
+    needs_sheet_choice?: boolean;
+    selected_sheet?: string | null;
+    row_numbers?: number[];
+    columns?: {
+        letter: string;
+        heading: string | null;
+        numeric_share: number;
+        has_formula: boolean;
+    }[];
+    sample?: { row: number; cells: TabularCellView[] }[];
+    suggestions?: {
+        header_row?: number;
+        student_column?: string | null;
+        result_columns?: string[];
+    };
+    table?: TableState;
+};
+
 const props = defineProps<{
+    tabular: TabularDescription | null;
     correctionImport: {
         ulid: string;
         status: string;
@@ -169,6 +218,7 @@ type WizardState = {
     overall_domains: Allocation[];
     overall_item_id: number | null;
     group_domains: Record<string, Allocation[]>;
+    table: TableState;
     conflicts: Record<string, string>;
     instrument: {
         title: string;
@@ -180,6 +230,32 @@ type WizardState = {
         total_points: number | null;
     };
 };
+
+/**
+ * What the teacher has said about their sheet, with the structural suggestions
+ * filled in where they have said nothing yet.
+ *
+ * A stored answer always wins over a suggestion, including a stored answer that
+ * happens to equal one: re-suggesting over a decision would quietly undo a
+ * correction the teacher made on purpose.
+ */
+function tableStateFor(): TableState {
+    const stored = props.tabular?.table;
+    const suggested = props.tabular?.suggestions ?? {};
+
+    return {
+        sheet: stored?.sheet ?? null,
+        header_row: stored?.header_row ?? suggested.header_row ?? null,
+        student_column: stored?.student_column ?? suggested.student_column ?? null,
+        result_columns:
+            stored?.result_columns && stored.result_columns.length > 0
+                ? [...stored.result_columns]
+                : [...(suggested.result_columns ?? [])],
+        value_kind: stored?.value_kind ?? 'points',
+        overall_maximum: stored?.overall_maximum ?? null,
+        total_column: stored?.total_column ?? null,
+    };
+}
 
 function stateFor(): WizardState {
     return {
@@ -217,6 +293,11 @@ function stateFor(): WizardState {
             ]),
         ) as Record<string, Allocation[]>,
         overall_item_id: props.preview.overall_item_id,
+        // Suggestions are PRE-FILLED, never applied. What arrives here is a form
+        // the teacher submits; until they do, nothing about the sheet has been
+        // decided and the import says so. That is the whole difference between
+        // helping and guessing (§14).
+        table: tableStateFor(),
         conflicts: {} as Record<string, string>,
         instrument: {
             title:
@@ -285,6 +366,68 @@ const detailed = computed(() => form.result_mode === 'per_question');
 /** Only offered when the file actually states sections. */
 const hasGroups = computed(() => props.preview.groups.length > 0);
 
+/**
+ * Whether this source needs the teacher to say what the file means.
+ *
+ * Asked of the payload, never of the source name: a fourth format that also
+ * needs describing gets this screen without a line changing here, and the two
+ * that explain themselves never see it.
+ */
+const isTabular = computed(() => props.tabular !== null);
+const tabularReadable = computed(() => props.tabular?.readable === true);
+
+const sheetChoices = computed(() =>
+    (props.tabular?.sheets ?? []).filter((sheet) => !sheet.empty),
+);
+const mustChooseSheet = computed(
+    () => sheetChoices.value.length > 1 && form.table.sheet === null,
+);
+
+const sheetColumns = computed(() => props.tabular?.columns ?? []);
+const sampleRows = computed(() => props.tabular?.sample ?? []);
+const headerRowChoices = computed(() =>
+    (props.tabular?.row_numbers ?? []).slice(0, 30),
+);
+
+/** Every column except the one naming the student — that one is not a result. */
+const resultColumnChoices = computed(() =>
+    sheetColumns.value.filter(
+        (column) => column.letter !== form.table.student_column,
+    ),
+);
+
+/** The teacher has answered enough for the sheet to be read at all. */
+const sheetIsDescribed = computed(
+    () =>
+        form.table.sheet !== null &&
+        form.table.header_row !== null &&
+        form.table.student_column !== null &&
+        form.table.result_columns.length > 0,
+);
+
+function columnLabel(letter: string): string {
+    const column = sheetColumns.value.find((each) => each.letter === letter);
+
+    return column?.heading ? `${letter} — ${column.heading}` : `Coluna ${letter}`;
+}
+
+function toggleResultColumn(letter: string): void {
+    form.table.result_columns = form.table.result_columns.includes(letter)
+        ? form.table.result_columns.filter((each) => each !== letter)
+        : [...form.table.result_columns, letter].sort();
+}
+
+/**
+ * Re-reads the sheet with the answers given so far, and stays where it is.
+ *
+ * Saving is what makes the file mean something: the grid is rebuilt on the
+ * server from the upload plus these answers, so the students appearing below is
+ * the confirmation that the description was right.
+ */
+function readSheetAgain(): void {
+    save();
+}
+
 const GRANULARITIES = [
     {
         value: 'overall',
@@ -305,7 +448,12 @@ const GRANULARITIES = [
 
 const granularities = computed(() =>
     GRANULARITIES.filter(
-        (option) => option.value !== 'per_group' || hasGroups.value,
+        // Sections exist for a known export the moment it is read. For a sheet
+        // the teacher describes, they exist only AFTER they choose this mode and
+        // pick the columns — so offering it has to come first, or the mode that
+        // makes a multi-domain import possible could never be reached.
+        (option) =>
+            option.value !== 'per_group' || hasGroups.value || isTabular.value,
     ),
 );
 
@@ -772,6 +920,333 @@ const typeName = computed(
                     correspondência com os alunos da turma.
                 </p>
             </div>
+
+            <!--
+              ============ A FOLHA DO PROFESSOR ============
+
+              Only for a source that does not explain itself. The questions are
+              asked in the spreadsheet's own words — «linha dos títulos», «coluna
+              que identifica o aluno» — and never in the importer's: nothing on
+              this screen says canonical, source key or column index (§34).
+            -->
+            <div
+                v-if="isTabular && !tabularReadable"
+                class="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+            >
+                {{ tabular?.message ?? 'Não foi possível ler esta folha.' }}
+            </div>
+
+            <details
+                v-else-if="isTabular"
+                class="rounded-md border border-border bg-card"
+                :open="!sheetIsDescribed || preview.students.length === 0"
+            >
+                <summary
+                    class="cursor-pointer px-4 py-3 text-sm font-semibold select-none"
+                >
+                    Como está organizada a sua folha?
+                    <span
+                        v-if="sheetIsDescribed"
+                        class="ml-1 font-normal text-muted-foreground"
+                    >
+                        · linha {{ form.table.header_row }}, aluno na coluna
+                        {{ form.table.student_column }},
+                        {{ form.table.result_columns.length }} coluna(s) de
+                        resultados
+                    </span>
+                </summary>
+
+                <div class="space-y-4 border-t border-border px-4 py-4">
+                    <!-- Only a question when there is more than one answer. -->
+                    <div v-if="sheetChoices.length > 1" class="grid gap-1">
+                        <label
+                            for="table-sheet"
+                            class="text-sm font-medium"
+                            >Folha a importar</label
+                        >
+                        <select
+                            id="table-sheet"
+                            v-model="form.table.sheet"
+                            class="h-9 w-full max-w-sm rounded-md border border-input bg-background px-3 text-sm"
+                        >
+                            <option :value="null">— Por escolher —</option>
+                            <option
+                                v-for="sheet in sheetChoices"
+                                :key="sheet.name"
+                                :value="sheet.name"
+                            >
+                                {{ sheet.name }} ({{ sheet.rows }} linhas)
+                            </option>
+                        </select>
+                        <p class="text-xs text-muted-foreground">
+                            O ficheiro tem várias folhas com dados. Nenhuma é
+                            escolhida automaticamente.
+                        </p>
+                    </div>
+
+                    <div v-if="!mustChooseSheet" class="grid gap-4 sm:grid-cols-2">
+                        <div class="grid gap-1">
+                            <label
+                                for="table-header-row"
+                                class="text-sm font-medium"
+                                >Linha dos títulos das colunas</label
+                            >
+                            <select
+                                id="table-header-row"
+                                v-model.number="form.table.header_row"
+                                class="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                            >
+                                <option :value="null">— Por escolher —</option>
+                                <option
+                                    v-for="row in headerRowChoices"
+                                    :key="row"
+                                    :value="row"
+                                >
+                                    Linha {{ row }}
+                                </option>
+                            </select>
+                            <p class="text-xs text-muted-foreground">
+                                Os alunos são lidos a partir da linha seguinte.
+                            </p>
+                        </div>
+
+                        <div class="grid gap-1">
+                            <label
+                                for="table-student-column"
+                                class="text-sm font-medium"
+                                >Coluna que identifica o aluno</label
+                            >
+                            <select
+                                id="table-student-column"
+                                v-model="form.table.student_column"
+                                class="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                            >
+                                <option :value="null">— Por escolher —</option>
+                                <option
+                                    v-for="column in sheetColumns"
+                                    :key="column.letter"
+                                    :value="column.letter"
+                                >
+                                    {{ columnLabel(column.letter) }}
+                                </option>
+                            </select>
+                            <p class="text-xs text-muted-foreground">
+                                O nome é comparado exatamente com os alunos da
+                                turma.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!--
+                      Which columns carry marks. Checkboxes rather than a
+                      multi-select: a teacher has to be able to see every column
+                      of their own sheet at once, and «has_formula» is worth
+                      showing here because choosing that column will refuse.
+                    -->
+                    <fieldset v-if="!mustChooseSheet" class="grid gap-2">
+                        <legend class="text-sm font-medium">
+                            Colunas com resultados
+                        </legend>
+                        <div class="flex flex-wrap gap-2">
+                            <label
+                                v-for="column in resultColumnChoices"
+                                :key="column.letter"
+                                class="inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm"
+                                :class="
+                                    form.table.result_columns.includes(
+                                        column.letter,
+                                    )
+                                        ? 'bg-primary/10 border-primary/40'
+                                        : 'bg-background'
+                                "
+                            >
+                                <input
+                                    type="checkbox"
+                                    :checked="
+                                        form.table.result_columns.includes(
+                                            column.letter,
+                                        )
+                                    "
+                                    @change="toggleResultColumn(column.letter)"
+                                />
+                                <span>{{ columnLabel(column.letter) }}</span>
+                                <span
+                                    v-if="column.has_formula"
+                                    class="text-xs text-amber-700"
+                                    >· fórmulas</span
+                                >
+                            </label>
+                        </div>
+                        <p
+                            v-if="simple"
+                            class="text-xs text-muted-foreground"
+                        >
+                            Um resultado global vem de uma só coluna.
+                        </p>
+                    </fieldset>
+
+                    <!--
+                      Points or percentage, and the maximum. Asked only for the
+                      global result, and asked rather than inferred: 14 is not
+                      14 em 20 until somebody says so (§16, §23).
+                    -->
+                    <div
+                        v-if="simple && !mustChooseSheet"
+                        class="grid gap-4 sm:grid-cols-2"
+                    >
+                        <div class="grid gap-1">
+                            <label
+                                for="table-value-kind"
+                                class="text-sm font-medium"
+                                >Os valores desta coluna são</label
+                            >
+                            <select
+                                id="table-value-kind"
+                                v-model="form.table.value_kind"
+                                class="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                            >
+                                <option value="points">Pontos</option>
+                                <option value="percentage">Percentagem</option>
+                            </select>
+                        </div>
+
+                        <div
+                            v-if="form.table.value_kind === 'points'"
+                            class="grid gap-1"
+                        >
+                            <label
+                                for="table-maximum"
+                                class="text-sm font-medium"
+                                >Cotação máxima</label
+                            >
+                            <input
+                                id="table-maximum"
+                                v-model="form.table.overall_maximum"
+                                inputmode="decimal"
+                                placeholder="20"
+                                class="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                            />
+                            <p class="text-xs text-muted-foreground">
+                                O LÁPIS não deduz o máximo a partir da melhor
+                                nota da turma.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Optional, and never guessed: a column called «Total»
+                         might be a section called Total (§31). -->
+                    <div
+                        v-if="!simple && !mustChooseSheet"
+                        class="grid gap-1"
+                    >
+                        <label
+                            for="table-total-column"
+                            class="text-sm font-medium"
+                            >Coluna com o total da origem (opcional)</label
+                        >
+                        <select
+                            id="table-total-column"
+                            v-model="form.table.total_column"
+                            class="h-9 w-full max-w-sm rounded-md border border-input bg-background px-3 text-sm"
+                        >
+                            <option :value="null">— Nenhuma —</option>
+                            <option
+                                v-for="column in resultColumnChoices"
+                                :key="column.letter"
+                                :value="column.letter"
+                            >
+                                {{ columnLabel(column.letter) }}
+                            </option>
+                        </select>
+                        <p class="text-xs text-muted-foreground">
+                            Serve para conferir contas. Nunca substitui o cálculo
+                            do LÁPIS.
+                        </p>
+                    </div>
+
+                    <!--
+                      The sheet itself, as read. A teacher describing a file has
+                      to be able to see it while they do — and only a sample of
+                      it, because a whole class list in the page is a page
+                      nobody can use (§10).
+                    -->
+                    <div v-if="sampleRows.length > 0" class="grid gap-1">
+                        <p class="text-sm font-medium">
+                            Primeiras linhas do ficheiro
+                        </p>
+                        <div class="overflow-x-auto rounded-md border border-border">
+                            <table class="w-full text-xs">
+                                <thead class="bg-muted/50">
+                                    <tr>
+                                        <th class="px-2 py-1 text-left font-medium">
+                                            #
+                                        </th>
+                                        <th
+                                            v-for="column in sheetColumns"
+                                            :key="column.letter"
+                                            class="px-2 py-1 text-left font-medium"
+                                            :class="
+                                                column.letter ===
+                                                form.table.student_column
+                                                    ? 'text-primary'
+                                                    : ''
+                                            "
+                                        >
+                                            {{ column.letter }}
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr
+                                        v-for="row in sampleRows"
+                                        :key="row.row"
+                                        class="border-t border-border"
+                                        :class="
+                                            row.row === form.table.header_row
+                                                ? 'bg-primary/5 font-medium'
+                                                : ''
+                                        "
+                                    >
+                                        <td
+                                            class="px-2 py-1 text-muted-foreground"
+                                        >
+                                            {{ row.row }}
+                                        </td>
+                                        <td
+                                            v-for="(cell, index) in row.cells"
+                                            :key="index"
+                                            class="px-2 py-1"
+                                        >
+                                            <span
+                                                v-if="cell.is_formula"
+                                                class="text-amber-700"
+                                                >fórmula</span
+                                            >
+                                            <span v-else>{{
+                                                cell.text ?? ''
+                                            }}</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-3">
+                        <Button
+                            type="button"
+                            :disabled="!sheetIsDescribed || form.processing"
+                            @click="readSheetAgain"
+                        >
+                            Ler a folha assim
+                        </Button>
+                        <p class="text-xs text-muted-foreground">
+                            Pode alterar estas respostas a qualquer momento — a
+                            folha é lida outra vez.
+                        </p>
+                    </div>
+                </div>
+            </details>
 
             <!--
               Which file this is, named on the screen. A wizard that shows a

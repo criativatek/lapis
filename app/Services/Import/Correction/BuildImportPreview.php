@@ -536,7 +536,13 @@ class BuildImportPreview
         // A property of the file, not of the teacher's decisions, so it is worth
         // saying at once rather than at the last step: this export carries no
         // classification for anybody, and the simple mode has nothing to import.
-        if ($overall && ! $this->carriesOverallResults($grid)) {
+        //
+        // Unless the parser already said something more specific. A spreadsheet
+        // whose result column has not been given a maximum has no percentages
+        // YET, which is not the same as carrying none — telling the teacher
+        // their file has no classifications when it plainly does would send them
+        // looking for the wrong problem.
+        if ($overall && ! $this->carriesOverallResults($grid) && $grid->errors() === []) {
             $issues[] = ImportIssue::make(
                 IssueCode::UnsupportedStructure,
                 'Este ficheiro não traz uma classificação por aluno. Ative «Importar também o detalhe das perguntas» para importar a correção pergunta a pergunta.',

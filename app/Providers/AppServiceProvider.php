@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Models\PlatformSetting;
 use App\Services\Import\Correction\CorrectionGridParserRegistry;
+use App\Services\Import\Correction\GenericSpreadsheetParser;
 use App\Services\Import\Correction\IntuitivoXlsxParser;
 use App\Services\Import\Correction\PlickersCsvParser;
 use App\Support\Entitlements\Entitlements;
@@ -37,6 +38,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(CorrectionGridParserRegistry::class, fn (Application $app): CorrectionGridParserRegistry => new CorrectionGridParserRegistry([
             $app->make(PlickersCsvParser::class),
             $app->make(IntuitivoXlsxParser::class),
+            // Last on purpose: it is the fallback for a sheet nobody wrote an
+            // adapter for, and a file that IS a known export should be read by
+            // the parser that understands it rather than mapped by hand.
+            $app->make(GenericSpreadsheetParser::class),
         ]));
     }
 
