@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
 import { CircleAlert } from '@lucide/vue';
+import CoverageWarning from '@/components/CoverageWarning.vue';
 import Heading from '@/components/Heading.vue';
 import StudentAvatar from '@/components/StudentAvatar.vue';
+import type { Coverage } from '@/types';
 
 type DomainCol = { id: number; name: string };
-type DomainValue = { domain_id: number; value: string | null; warning: boolean };
+type DomainValue = { domain_id: number; value: string | null; warning: boolean; coverage: Coverage };
 type Proposal = {
     value: string | null;
     state: 'resolved' | 'unconfigured' | 'no_result';
@@ -19,8 +21,12 @@ type Row = {
     proposal: Proposal;
     has_value: boolean;
     coverage_warning: boolean;
+    coverage: Coverage;
     domains: DomainValue[];
 };
+
+// A row whose warning has no detail still gets a tooltip, not a blank one.
+const NO_COVERAGE: Coverage = { absences: [], no_elements: false, excluded_domain_ids: [] };
 
 const props = defineProps<{
     schoolClass: { ulid: string; label: string; subject: string; has_profile: boolean; scale_name: string | null };
@@ -41,6 +47,10 @@ function pct(value: string | null): string {
 
 function domainValue(row: Row, domainId: number): DomainValue | undefined {
     return row.domains.find((domain) => domain.domain_id === domainId);
+}
+
+function domainCoverage(row: Row, domainId: number): Coverage {
+    return domainValue(row, domainId)?.coverage ?? NO_COVERAGE;
 }
 
 function selectPeriod(ulid: string): void {
@@ -105,14 +115,22 @@ function selectPeriod(ulid: string): void {
                             <span :class="{ 'text-muted-foreground': domainValue(row, domain.id)?.value === null }">
                                 {{ pct(domainValue(row, domain.id)?.value ?? null) }}
                             </span>
-                            <CircleAlert
+                            <CoverageWarning
                                 v-if="domainValue(row, domain.id)?.warning"
-                                class="ml-0.5 inline size-3 text-amber-500"
+                                :coverage="domainCoverage(row, domain.id)"
+                                :has-value="(domainValue(row, domain.id)?.value ?? null) !== null"
+                                :domains="domains"
                             />
                         </td>
                         <td class="px-3 py-2 text-right font-semibold tabular-nums">
                             <span :class="{ 'text-muted-foreground': !row.has_value }">{{ pct(row.overall) }}</span>
-                            <CircleAlert v-if="row.coverage_warning" class="ml-0.5 inline size-3 text-amber-500" title="Cobertura insuficiente — faltam elementos." />
+                            <CoverageWarning
+                                v-if="row.coverage_warning"
+                                :coverage="row.coverage"
+                                :has-value="row.has_value"
+                                :domains="domains"
+                                scope="overall"
+                            />
                         </td>
                         <td class="px-3 py-2 text-right tabular-nums">
                             <span v-if="row.proposal.value !== null" class="rounded bg-muted px-2 py-0.5">
@@ -139,7 +157,10 @@ function selectPeriod(ulid: string): void {
                 ({{ schoolClass.scale_name }})</template>. Quando a escala ainda não tem bandas
                 definidas, a proposta fica por atribuir — o LÁPIS não infere limiares.
                 "—" significa sem elementos, nunca zero. O
-                <CircleAlert class="inline size-3 text-amber-500" /> assinala cobertura insuficiente.
+                <CircleAlert class="inline size-3 text-amber-500" /> assinala
+                <strong>cobertura parcial</strong> — há resultado, mas assenta apenas em parte dos
+                elementos aplicáveis — ou a ausência de elementos avaliados. Passa o rato ou o foco
+                por cima para ver o detalhe.
             </span>
         </p>
     </div>

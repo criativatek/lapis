@@ -36,9 +36,10 @@ class CalculationEngineTest extends TestCase
         bool $eligible = true,
         bool $isBonus = false,
         string $item = 'Q1',
+        int $instrument = 1,
     ): ScoreInput {
         return new ScoreInput(
-            instrumentId: 1,
+            instrumentId: $instrument,
             itemCode: $item,
             pointsPossible: $possible,
             state: $state,
@@ -341,6 +342,73 @@ class CalculationEngineTest extends TestCase
         $this->assertSame('not_applicable', $domain['excluded'][0]['reason']);
         $this->assertSame('half_up', $outcome->explanation['rounding']['mode']);
         $this->assertNull($outcome->explanation['scale_level']);
+    }
+
+    #[Test]
+    public function an_exclusion_records_the_instrument_it_came_from(): void
+    {
+        // Without this, the explanation can say "Q2 was left out" but never which
+        // test Q2 belonged to — and a teacher reads tests, not item codes.
+        $outcome = $this->engine->calculate(
+            [
+                $this->score('10', ResultState::Assessed, '8', [['domain_id' => 1, 'allocation_percent' => '100']], item: 'Q1', instrument: 7),
+                $this->score('10', ResultState::Absent, null, [['domain_id' => 1, 'allocation_percent' => '100']], item: 'Q2', instrument: 9),
+            ],
+            [1 => '100'],
+            $this->rule(),
+        );
+
+        $excluded = $outcome->explanation['domains'][0]['excluded'];
+        $this->assertSame(9, $excluded[0]['instrument_id']);
+    }
+
+    #[Test]
+    public function only_the_exclusion_that_raised_the_warning_is_marked_as_such(): void
+    {
+        // Three elements leave the fraction; exactly one of them is the reason for
+        // the ⚠. Anything downstream that explained the flag by listing every
+        // exclusion would blame a pending cell and a late entry for an absence.
+        $outcome = $this->engine->calculate(
+            [
+                $this->score('10', ResultState::Assessed, '8', [['domain_id' => 1, 'allocation_percent' => '100']], item: 'Q1'),
+                $this->score('10', ResultState::Absent, null, [['domain_id' => 1, 'allocation_percent' => '100']], item: 'Q2'),
+                $this->score('10', ResultState::Pending, null, [['domain_id' => 1, 'allocation_percent' => '100']], item: 'Q3'),
+                $this->score('10', ResultState::Assessed, '5', [['domain_id' => 1, 'allocation_percent' => '100']], eligible: false, item: 'Q4'),
+            ],
+            [1 => '100'],
+            $this->rule('exclude_all_warn'),
+        );
+
+        $raising = array_values(array_filter(
+            $outcome->explanation['domains'][0]['excluded'],
+            fn (array $exclusion): bool => $exclusion['raises_coverage_warning'] === true,
+        ));
+
+        $this->assertTrue($outcome->coverageWarning);
+        $this->assertCount(1, $raising);
+        $this->assertSame('Q2', $raising[0]['item']);
+        $this->assertSame('absent', $raising[0]['reason']);
+    }
+
+    #[Test]
+    public function an_absence_under_a_silent_rule_is_excluded_without_being_marked(): void
+    {
+        // `exclude_all` drops the absence and says nothing. The flag it never
+        // raised must not be attributed to it either.
+        $outcome = $this->engine->calculate(
+            [
+                $this->score('10', ResultState::Assessed, '8', [['domain_id' => 1, 'allocation_percent' => '100']], item: 'Q1'),
+                $this->score('10', ResultState::Absent, null, [['domain_id' => 1, 'allocation_percent' => '100']], item: 'Q2'),
+            ],
+            [1 => '100'],
+            $this->rule('exclude_all'),
+        );
+
+        $excluded = $outcome->explanation['domains'][0]['excluded'];
+
+        $this->assertFalse($outcome->coverageWarning);
+        $this->assertSame('Q2', $excluded[0]['item']);
+        $this->assertFalse($excluded[0]['raises_coverage_warning']);
     }
 
     #[Test]

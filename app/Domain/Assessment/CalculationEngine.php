@@ -62,7 +62,12 @@ class CalculationEngine
             }
 
             if (! $score->eligible) {
-                $excluded[] = ['item' => $score->itemCode, 'reason' => 'not_applicable_to_enrollment'];
+                $excluded[] = [
+                    'item' => $score->itemCode,
+                    'instrument_id' => $score->instrumentId,
+                    'reason' => 'not_applicable_to_enrollment',
+                    'raises_coverage_warning' => false,
+                ];
 
                 continue;
             }
@@ -73,10 +78,22 @@ class CalculationEngine
             $treatment = $this->treatmentFor($score->state, $rule->absenceMode);
 
             if ($treatment === 'exclude') {
-                if ($this->raisesCoverageWarning($score->state, $rule->absenceMode)) {
+                // Whether this exclusion is the REASON for the warning is decided
+                // here and recorded, never re-derived downstream: the page that
+                // explains the ⚠ to the teacher must not carry its own copy of the
+                // absence rule and drift from the engine that raised it.
+                $raisesWarning = $this->raisesCoverageWarning($score->state, $rule->absenceMode);
+
+                if ($raisesWarning) {
                     $coverageWarning = true;
                 }
-                $excluded[] = ['item' => $score->itemCode, 'reason' => $score->state->value];
+
+                $excluded[] = [
+                    'item' => $score->itemCode,
+                    'instrument_id' => $score->instrumentId,
+                    'reason' => $score->state->value,
+                    'raises_coverage_warning' => $raisesWarning,
+                ];
 
                 continue;
             }

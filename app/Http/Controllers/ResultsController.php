@@ -7,6 +7,7 @@ use App\Models\Domain;
 use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Assessment\ClassResultsCalculator;
+use App\Services\Assessment\CoverageExplanation;
 use App\Services\Assessment\ScaleProposalResolver;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
@@ -17,6 +18,7 @@ class ResultsController extends Controller
     public function __construct(
         protected ClassResultsCalculator $calculator,
         protected ScaleProposalResolver $proposals,
+        protected CoverageExplanation $coverage,
     ) {}
 
     public function index(): Response
@@ -67,6 +69,12 @@ class ResultsController extends Controller
         $roundingMode = $version->rounding_mode ?? 'half_up';
         $roundingScale = $version->rounding_scale ?? 0;
 
+        // Why each ⚠ was raised, resolved once for the whole page. The engine
+        // already recorded the state; this only names the instrument behind it so
+        // the teacher reads "Teste de Compreensão Leitora · 15/10/2026" instead of
+        // guessing which elements the note refers to.
+        $coverageNotes = $this->coverage->forResults($results);
+
         return Inertia::render('results/Show', [
             'schoolClass' => [
                 'ulid' => $class->ulid,
@@ -101,10 +109,12 @@ class ResultsController extends Controller
                 )->toPayload(),
                 'has_value' => $row['outcome']->hasValue(),
                 'coverage_warning' => $row['outcome']->coverageWarning,
+                'coverage' => $coverageNotes[$row['enrollment']->getKey()]['overall'] ?? CoverageExplanation::none(),
                 'domains' => array_map(fn ($domain) => [
                     'domain_id' => $domain->domainId,
                     'value' => $domain->normalizedValue,
                     'warning' => $domain->coverageWarning,
+                    'coverage' => $coverageNotes[$row['enrollment']->getKey()]['domains'][$domain->domainId] ?? CoverageExplanation::none(),
                 ], $row['outcome']->domains),
             ], $results),
         ]);
