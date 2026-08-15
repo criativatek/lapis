@@ -174,9 +174,12 @@ class CorrectionImportHttpTest extends TestCase
             ->assertInertia(function (AssertableInertia $page): void {
                 $sources = collect($page->toArray()['props']['sources'])->pluck('key')->all();
 
-                // Intuitivo has no parser yet, so it is not offered at all —
-                // no dead entries teasing something that does not work (§35).
-                $this->assertSame(['plickers'], $sources);
+                // The list is built from the parsers actually registered, so it
+                // widens exactly when one is added. The generic spreadsheet has
+                // no reader yet and is therefore not offered at all — no dead
+                // entries teasing something that does not work (§35).
+                $this->assertSame(['plickers', 'intuitivo'], $sources);
+                $this->assertNotContains('generic', $sources);
             });
     }
 

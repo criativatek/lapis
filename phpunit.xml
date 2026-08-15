@@ -18,6 +18,16 @@
         </include>
     </source>
     <php>
+        <!--
+          PHP's 128M default is not enough to run the whole suite in one process
+          now that some of it reads and writes XLSX. PhpSpreadsheet holds an
+          entire workbook in memory and does not give all of it back, so the
+          Intuitivo tests exhausted the limit somewhere past the eight hundredth
+          test — not because any single test is heavy, but because they arrive
+          last. Raised for the test process only; nothing about production
+          changes, and Larastan already runs at 1G for the same kind of reason.
+        -->
+        <ini name="memory_limit" value="512M"/>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>

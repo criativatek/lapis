@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Models\PlatformSetting;
 use App\Services\Import\Correction\CorrectionGridParserRegistry;
+use App\Services\Import\Correction\IntuitivoXlsxParser;
 use App\Services\Import\Correction\PlickersCsvParser;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Release\BuildStamp;
@@ -35,6 +36,7 @@ class AppServiceProvider extends ServiceProvider
         // on a source (§11).
         $this->app->singleton(CorrectionGridParserRegistry::class, fn (Application $app): CorrectionGridParserRegistry => new CorrectionGridParserRegistry([
             $app->make(PlickersCsvParser::class),
+            $app->make(IntuitivoXlsxParser::class),
         ]));
     }
 
