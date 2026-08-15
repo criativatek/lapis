@@ -20,6 +20,7 @@ use App\Models\StudentItemScore;
 use App\Models\Subject;
 use App\Models\SubscriptionStatus;
 use App\Models\User;
+use App\Services\Import\Correction\CorrectionGridParserRegistry;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\EntitlementsSeeder;
@@ -175,11 +176,19 @@ class CorrectionImportHttpTest extends TestCase
                 $sources = collect($page->toArray()['props']['sources'])->pluck('key')->all();
 
                 // The list is built from the parsers actually registered, so it
-                // widens exactly when one is added. The generic spreadsheet has
-                // no reader yet and is therefore not offered at all — no dead
-                // entries teasing something that does not work (§35).
-                $this->assertSame(['plickers', 'intuitivo'], $sources);
-                $this->assertNotContains('generic', $sources);
+                // widens exactly when one is added and never before — no dead
+                // entries teasing something that does not work (§35). It read
+                // ['plickers', 'intuitivo'] until the generic reader existed;
+                // this line moving is the intended way to add a source.
+                $this->assertSame(['plickers', 'intuitivo', 'generic'], $sources);
+
+                // Whatever is offered has a parser behind it. That is the claim,
+                // and it survives the next source being added.
+                $registry = app(CorrectionGridParserRegistry::class);
+
+                foreach ($sources as $key) {
+                    $this->assertTrue($registry->has(CorrectionGridSource::from($key)));
+                }
             });
     }
 
