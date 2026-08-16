@@ -16,6 +16,9 @@
 .env
 .env.backup
 .env.production
+# The local testing environment: its own APP_KEY and its own database
+# credentials. The shape that is safe to share lives in .env.testing.example.
+.env.testing
 .phpactor.json
 .phpunit.result.cache
 Homestead.json

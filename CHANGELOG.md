@@ -2,6 +2,55 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.34.0] — 2026-08-16
+
+### O ano inteiro numa página — Quadro Síntese
+
+- **Uma turma lê-se ao longo do ano, não um período de cada vez.** O Quadro Síntese põe os períodos lado a lado, com os domínios em linha, para se ver o percurso de cada aluno de uma vez em vez de abrir três ecrãs e comparar de cabeça.
+- **A evolução entre períodos aparece assinalada.** Subiu, manteve-se, desceu — indicado junto ao valor, sem transformar a tabela num semáforo.
+- **Média Ponderada e resultado acumulado com nome próprio.** Cada número diz o que é. Uma média do período e um acumulado do ano são coisas diferentes e deixam de aparecer como se fossem a mesma.
+- **Cada domínio tem a sua menção qualitativa.** Ao lado do valor, a menção que lhe corresponde na escala do perfil — sem limiares fixos escritos no código: quem os define é a escala da turma.
+- **Domínios visualmente separados.** Cabeçalho discreto, corpo neutro e um separador ténue, para a tabela se ler por blocos em vez de ser uma parede de números.
+
+### Classificações — a decisão é do professor
+
+- **O Nível ou a Classificação atribuída edita-se onde o aluno se vê.** Em Resultados, sem navegar para outro sítio e sem perder o contexto de quem se está a avaliar.
+- **Já não é preciso uma proposta prévia para decidir.** Um professor pode atribuir a classificação mesmo quando o sistema não tinha proposto nada — o sistema propõe, nunca decide.
+- **Uma classificação confirmada continua editável até ser publicada.** Confirmar é decidir, não fechar. Depois de publicada fica bloqueada, e o LÁPIS explica porquê em vez de falhar em silêncio.
+- **A decisão é registada na escala em que foi tomada**, e não na percentagem que a originou.
+
+### Autoavaliação — o aluno na primeira pessoa
+
+- **O formulário está organizado em três blocos:** «O meu desempenho», «A minha reflexão» e «Sobre o trabalho realizado».
+- **Tudo é escrito na primeira pessoa.** É o aluno que fala sobre o seu trabalho, e o texto passou a soar assim.
+- **«Nível» ou «Classificação», conforme a escala da turma** — a palavra vem da escala do perfil e não de um pressuposto sobre o ano de escolaridade.
+- **A pergunta sobre o que melhorar sabe em que momento do ano está.** Fala do próximo período, do próximo semestre ou do fim do ano letivo consoante o calendário real da turma, em vez de assumir trimestres.
+- **O aluno deixou de ver o valor calculado enquanto se autoavalia.** A autoavaliação é a leitura dele, não uma confirmação da do sistema.
+
+### Turmas — Relação de Turma e dados administrativos
+
+- **A importação da Relação de Turma (EB058e) guarda também o N.º de processo e a data de nascimento.** Reimportar preenche o que falta sem apagar o que já lá estava.
+- **Nova secção «Dados administrativos» na página da turma**, para corrigir ou preencher à mão o N.º de processo de um aluno.
+
+### Exportar para INOVAR
+
+- **A grelha que o INOVAR dá é a grelha que o LÁPIS devolve.** O ficheiro `.xls` da escola é carregado, preenchido e devolvido — nada é gerado de raiz e mais nada no ficheiro é alterado.
+- **Os alunos são identificados pelo N.º de processo, nunca pelo nome.** Dois alunos podem partilhar um nome, e uma nota escrita na pessoa errada não é um erro que alguém apanhe a ler.
+- **As menções são escritas como F, I, S, B e MB**, a partir da correspondência declarada em cada nível da escala de sistema.
+- **Uma pré-validação antes de gerar seja o que for:** que alunos e domínios foram correspondidos, quantas menções ficam prontas, e o que está a impedir o resto.
+- **Uma célula sem menção fica por preencher.** Nunca é preenchida com a menção mais baixa.
+- **Os resultados calculados com informação parcial são explicados por nome:** que aluno, que domínio, que elemento de avaliação, em que data, e o que ficou registado nesse elemento. Um vazio continua a não ser uma falta.
+- **Disponível nos planos Pro e Institucional.** A funcionalidade é opcional: quem não a usa não passa a precisar de N.º de processo em lado nenhum.
+- **A grelha carregada é apagada do servidor assim que o ficheiro preenchido é entregue**, e uma limpeza periódica remove o que ficar para trás.
+
+### Correções
+
+- Botão «Gerar ficheiro INOVAR» passou a descarregar mesmo o ficheiro.
+- O seletor de ficheiro da grelha deixou de ser praticamente invisível.
+- Concordância de singular e plural nos avisos de cobertura parcial.
+- O sombreado de evolução no Quadro Síntese ficou circunscrito à célula.
+- Os seeders de dados de referência deixaram de poder apagar níveis de escala que não criaram — uma instalação em uso pode correr as migrações e o seeder sem perder nada, e as escalas criadas por cada escola ficam intactas.
+
 ## [0.33.0] — 2026-08-15
 
 ### Importar resultados de outra plataforma — Intuitivo
