@@ -1,0 +1,369 @@
+<?php
+
+namespace App\Services\Export;
+
+use App\Domain\Export\InovarTemplate;
+use App\Models\AcademicPeriod;
+use App\Models\Domain;
+use App\Models\Enrollment;
+use App\Models\Scale;
+use App\Models\ScaleLevel;
+use App\Models\SchoolClass;
+use App\Services\Assessment\BuildResultsProgression;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
+
+/**
+ * What would be written, and everything standing in the way of writing it.
+ *
+ * NOTHING IS CALCULATED HERE. The mentions come from BuildResultsProgression —
+ * the same read model the Quadro Síntese shows — so what a school uploads to
+ * INOVAR is what the teacher already read on screen, and there is no second
+ * opinion about anybody's marks.
+ *
+ * The teacher sees this before anything is filled in, which is the point: a
+ * grid that came back subtly wrong would be uploaded, and nobody would find out
+ * until the marks were.
+ */
+class InovarExportPreviewBuilder
+{
+    public function __construct(
+        protected BuildResultsProgression $progression,
+        protected InovarCodeResolver $codes,
+    ) {}
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function build(SchoolClass $class, AcademicPeriod $period, InovarTemplate $template): array
+    {
+        $scale = $class->profileVersion?->scale()->with('levels')->first();
+
+        $enrollments = $this->enrollments($class);
+
+        $domains = $this->domainRows($class, $template);
+        $students = $this->studentRows($enrollments, $template);
+        $values = $this->valueRows($class, $period, $students, $domains);
+
+        $blocking = $this->blockingErrors($students, $domains, $scale, $this->withoutProcessNumber($enrollments));
+        $warnings = $this->warnings($students, $values);
+
+        return [
+            'students' => $students,
+            'domains' => $domains,
+            'values' => $values,
+            'summary' => [
+                'matched_students' => count(array_filter($students, fn (array $row): bool => $row['matched'])),
+                'unmatched_students' => count(array_filter($students, fn (array $row): bool => ! $row['matched'])),
+                'mapped_domains' => count(array_filter($domains, fn (array $row): bool => $row['mapped'])),
+                'unmapped_domains' => count(array_filter($domains, fn (array $row): bool => ! $row['mapped'])),
+                'ready_cells' => count(array_filter($values, fn (array $row): bool => $row['writable'])),
+                'warnings' => $warnings,
+                'blocking_errors' => $blocking,
+            ],
+        ];
+    }
+
+    /**
+     * The grid's columns matched to the profile's domains, by their names.
+     *
+     * EXACT, after squishing and lowercasing — never fuzzy. Both sides are
+     * written by the same school about the same subject, and a column filled
+     * with another domain's marks is the failure this whole flow exists to
+     * avoid.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function domainRows(SchoolClass $class, InovarTemplate $template): array
+    {
+        $version = $class->profileVersion;
+        $domainIds = $version === null ? collect() : $version->domains()->pluck('domain_id');
+
+        $byName = [];
+
+        foreach (Domain::whereIn('id', $domainIds)->orderBy('name')->get() as $domain) {
+            $byName[$this->normalize($domain->name)] = $domain;
+        }
+
+        $rows = [];
+
+        foreach ($template->domainColumns as $column => $header) {
+            $domain = $byName[$this->normalize($header)] ?? null;
+
+            $rows[] = [
+                'inovar_column' => $column,
+                'inovar_header' => $header,
+                'lapis_domain' => $domain?->name,
+                'lapis_domain_id' => $domain?->id,
+                'mapped' => $domain !== null,
+                'issues' => $domain === null
+                    ? ["A coluna «{$header}» não corresponde a nenhum domínio do perfil desta turma."]
+                    : [],
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * The grid's lines matched to this class's students, by N.º DE PROCESSO and
+     * by nothing else.
+     *
+     * Never the name: two students share one often enough, and a mark written
+     * against the wrong person is not a mistake anybody catches by reading. The
+     * name travels only so the teacher recognises the line.
+     *
+     * @param  Collection<int, Enrollment>  $enrollments
+     * @return list<array<string, mixed>>
+     */
+    protected function studentRows(Collection $enrollments, InovarTemplate $template): array
+    {
+        $byProcessNumber = [];
+
+        foreach ($enrollments as $enrollment) {
+            $number = $enrollment->student->processNumber();
+
+            if ($number === null || trim($number) === '') {
+                continue;
+            }
+
+            $byProcessNumber[$this->normalizeNumber($number)][] = $enrollment;
+        }
+
+        $seenInTemplate = [];
+        $rows = [];
+
+        foreach ($template->students as $line) {
+            $key = $line->processNumber === null ? null : $this->normalizeNumber($line->processNumber);
+            $issues = [];
+
+            if ($key === null) {
+                $issues[] = 'Esta linha da grelha não tem N.º de processo.';
+            } elseif (isset($seenInTemplate[$key])) {
+                $issues[] = "O N.º de processo {$line->processNumber} aparece mais do que uma vez nesta grelha.";
+            }
+
+            $candidates = $key === null ? [] : ($byProcessNumber[$key] ?? []);
+
+            if ($key !== null && count($candidates) > 1) {
+                $issues[] = "Há mais do que um aluno desta turma com o N.º de processo {$line->processNumber}.";
+            }
+
+            if ($key !== null && $candidates === []) {
+                $issues[] = 'Não há nesta turma nenhum aluno com este N.º de processo.';
+            }
+
+            if ($key !== null) {
+                $seenInTemplate[$key] = true;
+            }
+
+            $matched = $issues === [] && count($candidates) === 1;
+
+            $rows[] = [
+                'row' => $line->row,
+                'process_number' => $line->processNumber,
+                'display_name' => $line->name,
+                'enrollment_id' => $matched ? $candidates[0]->id : null,
+                'matched' => $matched,
+                'issues' => $issues,
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * The students of this class the export cannot address at all.
+     *
+     * A N.º de processo is needed the day somebody exports to INOVAR, and not
+     * before — a class typed in by hand has none, and everything else about it
+     * works. So this is reported here, where it matters, and nowhere else.
+     *
+     * @param  Collection<int, Enrollment>  $enrollments
+     * @return list<string>
+     */
+    protected function withoutProcessNumber(Collection $enrollments): array
+    {
+        $names = [];
+
+        foreach ($enrollments as $enrollment) {
+            $number = $enrollment->student->processNumber();
+
+            if ($number === null || trim($number) === '') {
+                $names[] = optional($enrollment->student->identity)->display_name ?? '(sem identidade)';
+            }
+        }
+
+        return $names;
+    }
+
+    /**
+     * One row per (matched student × mapped domain): the band, its INOVAR code,
+     * and whether the cell can be written.
+     *
+     * @param  list<array<string, mixed>>  $students
+     * @param  list<array<string, mixed>>  $domains
+     * @return list<array<string, mixed>>
+     */
+    protected function valueRows(SchoolClass $class, AcademicPeriod $period, array $students, array $domains): array
+    {
+        $byEnrollment = $this->mentionsByEnrollment($class, $period);
+        $rows = [];
+
+        foreach ($students as $student) {
+            if (! $student['matched']) {
+                continue;
+            }
+
+            foreach ($domains as $domain) {
+                if (! $domain['mapped']) {
+                    continue;
+                }
+
+                $cell = $byEnrollment[$student['enrollment_id']][$domain['lapis_domain_id']] ?? null;
+                $mention = $cell['mention'] ?? null;
+                $code = $this->codes->forLevel($mention === null ? null : $this->levelOf($class, $mention));
+
+                $rows[] = [
+                    'row' => $student['row'],
+                    'column' => $domain['inovar_column'],
+                    'student' => $student['display_name'],
+                    'domain' => $domain['lapis_domain'],
+                    'qualitative_band' => $mention['label'] ?? null,
+                    'inovar_code' => $code,
+                    'coverage_warning' => (bool) ($cell['coverage_warning'] ?? false),
+                    // No mention is no mark. The cell is left exactly as the
+                    // grid had it — never an F, never a zero (§10).
+                    'writable' => $code !== null,
+                ];
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * The accumulated mention of every domain, per enrolment, for this period —
+     * read straight from the model the Quadro Síntese reads.
+     *
+     * @return array<int, array<int, array<string, mixed>>>
+     */
+    protected function mentionsByEnrollment(SchoolClass $class, AcademicPeriod $period): array
+    {
+        $byEnrollment = [];
+
+        foreach ($this->progression->for($class)['students'] as $student) {
+            foreach ($student['periods'] as $row) {
+                if ($row['period_id'] !== $period->id) {
+                    continue;
+                }
+
+                foreach ($row['domains'] as $domain) {
+                    $byEnrollment[$student['enrollment_id']][$domain['domain_id']] = [
+                        'mention' => $domain['mention'],
+                        'coverage_warning' => $domain['coverage_warning'],
+                    ];
+                }
+            }
+        }
+
+        return $byEnrollment;
+    }
+
+    /**
+     * @param  array<string, mixed>  $mention
+     */
+    protected function levelOf(SchoolClass $class, array $mention): ?ScaleLevel
+    {
+        $scale = $class->profileVersion?->scale()->with('levels')->first();
+
+        return $scale?->levels->firstWhere('id', $mention['scale_level_id']);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $students
+     * @param  list<array<string, mixed>>  $domains
+     * @param  list<string>  $withoutNumber
+     * @return list<string>
+     */
+    protected function blockingErrors(array $students, array $domains, ?Scale $scale, array $withoutNumber): array
+    {
+        $errors = [];
+
+        if ($withoutNumber !== []) {
+            $errors[] = 'Existem alunos sem N.º de processo. Complete esta informação para poder exportar para o INOVAR.';
+        }
+
+        foreach ($students as $student) {
+            foreach ($student['issues'] as $issue) {
+                $errors[] = $issue;
+            }
+        }
+
+        foreach ($domains as $domain) {
+            foreach ($domain['issues'] as $issue) {
+                $errors[] = $issue;
+            }
+        }
+
+        if (! $this->codes->covers($scale)) {
+            $missing = $this->codes->missingFrom($scale);
+
+            $errors[] = $missing === []
+                ? 'A escala de classificação desta turma não tem correspondência INOVAR configurada.'
+                : 'Esta escala não tem correspondência INOVAR configurada para todas as menções: '.implode(', ', $missing).'.';
+        }
+
+        return array_values(array_unique($errors));
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $students
+     * @param  list<array<string, mixed>>  $values
+     * @return list<string>
+     */
+    protected function warnings(array $students, array $values): array
+    {
+        $warnings = [];
+
+        $partial = count(array_filter($values, fn (array $row): bool => $row['writable'] && $row['coverage_warning']));
+
+        if ($partial > 0) {
+            $warnings[] = "{$partial} menções resultam de cobertura parcial.";
+        }
+
+        $blank = count(array_filter($values, fn (array $row): bool => ! $row['writable']));
+
+        if ($blank > 0) {
+            $warnings[] = "{$blank} células ficam por preencher por não haver menção — nunca são preenchidas com Fraco.";
+        }
+
+        return $warnings;
+    }
+
+    /**
+     * @return Collection<int, Enrollment>
+     */
+    protected function enrollments(SchoolClass $class): Collection
+    {
+        return Enrollment::query()
+            ->where('class_id', $class->id)
+            ->with('student.identity')
+            ->orderBy('class_number')
+            ->get();
+    }
+
+    protected function normalize(string $value): string
+    {
+        return Str::of($value)->squish()->lower()->value();
+    }
+
+    /**
+     * Trimmed, and nothing else. A leading zero is part of somebody's
+     * identifier, not formatting to be tidied away.
+     */
+    protected function normalizeNumber(string $value): string
+    {
+        return trim($value);
+    }
+}
