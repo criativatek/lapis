@@ -179,6 +179,9 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     // Results — the calculation engine's output for a class, per period.
     Route::middleware('module:results')->group(function () {
         Route::get('results', [ResultsController::class, 'index'])->name('results.index');
+        // Declared BEFORE the {period?} wildcard, which would otherwise swallow
+        // it and go looking for a period called «quadro-sintese».
+        Route::get('classes/{class}/results/quadro-sintese', [ResultsController::class, 'summary'])->name('results.summary');
         Route::get('classes/{class}/results/{period?}', [ResultsController::class, 'show'])->name('results.show');
 
         // The decision layer (§7): propose from the engine, then the teacher confirms.

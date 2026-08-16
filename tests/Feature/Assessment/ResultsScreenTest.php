@@ -34,6 +34,20 @@ class ResultsScreenTest extends TestCase
         return (string) file_get_contents(app_path('Http/Controllers/ResultsController.php'));
     }
 
+    /**
+     * Where the trend rules live now that two screens read them — this one, a
+     * period at a time, and the Quadro Síntese, a year at a time. Two copies is
+     * how one of them ends up calling a fall what the other calls standing still.
+     */
+    protected function trendRules(): string
+    {
+        return (string) preg_replace(
+            '/\s+/u',
+            ' ',
+            (string) file_get_contents(base_path('resources/js/lib/results.ts')),
+        );
+    }
+
     // -------------------------------------------------------- terminology (§4)
 
     #[Test]
@@ -126,39 +140,45 @@ class ResultsScreenTest extends TestCase
     public function the_background_is_trend_and_the_badge_is_performance(): void
     {
         $screen = $this->screen();
+        $trend = $this->trendRules();
 
         // Trend paints the cell…
-        $this->assertStringContainsString('bg-emerald-50 dark:bg-emerald-950/40', $screen);
-        $this->assertStringContainsString('bg-rose-50 dark:bg-rose-950/40', $screen);
-        $this->assertStringContainsString('TENDÊNCIA, and never performance', $screen);
+        $this->assertStringContainsString('bg-emerald-50 dark:bg-emerald-950/40', $trend);
+        $this->assertStringContainsString('bg-rose-50 dark:bg-rose-950/40', $trend);
+        $this->assertStringContainsString('TENDÊNCIA, and never performance', $trend);
 
         // …and performance comes from the canonical resolver, never from a
         // colour chosen here.
         $this->assertStringContainsString('qualitativeToneClasses[qualitativeToneFor(level, props.scaleBands)]', $screen);
         $this->assertStringNotContainsString('text-red-600', $screen);
+
+        // The two never meet: the module that decides trend colours knows
+        // nothing about scale bands.
+        $this->assertStringNotContainsString('qualitativeTone', $trend);
     }
 
     #[Test]
     public function standing_still_and_having_nothing_to_compare_both_stay_neutral(): void
     {
-        $screen = $this->screen();
-
         // No background and no arrow for either — an absence is not a fall, and
         // a flat period is not an event (§10).
         $this->assertStringContainsString(
             "if (evolution === null || evolution.direction === 'flat') { return ''; }",
-            $screen,
+            $this->trendRules(),
         );
     }
 
     #[Test]
     public function the_tooltip_states_points_and_not_per_cent(): void
     {
-        $screen = $this->screen();
+        $trend = $this->trendRules();
 
         // The difference between two percentages is not itself a percentage.
-        $this->assertStringContainsString('p.p.', $screen);
-        $this->assertStringContainsString('Período anterior:', $screen);
-        $this->assertStringContainsString('Média Ponderada Acumulada:', $screen);
+        $this->assertStringContainsString('p.p.', $trend);
+        $this->assertStringContainsString('Período anterior:', $trend);
+        $this->assertStringContainsString('Média Ponderada Acumulada:', $trend);
+
+        // And the screen reads that tooltip rather than writing its own.
+        $this->assertStringContainsString('trendTitle(', $this->screen());
     }
 }

@@ -282,7 +282,7 @@ class ResultsProgressionTest extends TestCase
         $method = new \ReflectionMethod(app(BuildResultsProgression::class), 'classificationRow');
 
         /** @var array<string, mixed> $row */
-        $row = $method->invoke(app(BuildResultsProgression::class), $classification);
+        $row = $method->invoke(app(BuildResultsProgression::class), $classification, null, 'half_up', 0);
 
         // A 4, a 16 — the value the scale calls it. The qualitative mention
         // comes along beside it, for the colour and the tooltip.

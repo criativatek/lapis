@@ -163,6 +163,43 @@ class ResultsController extends Controller
     }
 
     /**
+     * The Quadro Síntese: the whole year, every student, in one table.
+     *
+     * ONE call to the read model and nothing else. Everything this screen shows
+     * — the standalone average of each period, the accumulated one, the movement
+     * between periods, the self-assessments, the proposals and the decisions —
+     * is already assembled there, per student and per domain. Recomputing any of
+     * it here, or in the browser, would be a second opinion about numbers that
+     * already have one (§3, §17).
+     */
+    public function summary(SchoolClass $class): Response
+    {
+        Gate::authorize('view', $class);
+
+        $scale = $class->profileVersion?->scale()->with('levels')->first();
+
+        return Inertia::render('results/Summary', [
+            'schoolClass' => [
+                'ulid' => $class->ulid,
+                'label' => $class->label,
+                'subject' => $class->subject->name,
+                'has_profile' => $class->assessment_profile_version_id !== null,
+                'scale_name' => $scale?->name,
+            ],
+            // The same words and the same colour source the per-period screen
+            // uses, so the two cannot disagree about what a class is graded on.
+            'decision' => DecisionScale::for($scale)->toPayload(),
+            'scaleBands' => $scale === null ? [] : $scale->levels
+                ->map(fn ($level): array => [
+                    'label' => (string) $level->label,
+                    'sequence' => (int) $level->sequence,
+                    'is_negative' => (bool) $level->is_negative,
+                ])->values()->all(),
+            'progression' => $this->progression->for($class),
+        ]);
+    }
+
+    /**
      * The parts of the longitudinal read this period's screen needs, keyed by
      * enrolment.
      *

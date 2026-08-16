@@ -6,20 +6,11 @@ import CoverageWarning from '@/components/CoverageWarning.vue';
 import Heading from '@/components/Heading.vue';
 import StudentAvatar from '@/components/StudentAvatar.vue';
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
+import { pct, trendArrow, trendClasses, trendTitle } from '@/lib/results';
+import type { Evolution } from '@/lib/results';
 import type { Coverage } from '@/types';
 
 type DomainCol = { id: number; name: string };
-
-/**
- * Movement between the STANDALONE average of this period and the one before.
- * Null when either period has nothing comparable — an absence is not a fall.
- */
-type Evolution = {
-    direction: 'up' | 'down' | 'flat';
-    points: string;
-    previous: string;
-    current: string;
-} | null;
 
 /**
  * A band of the profile's own scale, for the canonical colour resolver.
@@ -95,55 +86,6 @@ const props = defineProps<{
 }>();
 
 /**
- * TENDÊNCIA, and never performance.
- *
- * The background says whether the student moved; the badge's colour says how
- * they are doing. A student who went 25% to 40% improved and is still failing,
- * and one who went 92% to 85% fell back and is still excellent — so the two
- * must never be drawn with the same ink (§9).
- */
-function trendClasses(evolution: Evolution): string {
-    if (evolution === null || evolution.direction === 'flat') {
-        return '';
-    }
-
-    return evolution.direction === 'up'
-        ? 'bg-emerald-50 dark:bg-emerald-950/40'
-        : 'bg-rose-50 dark:bg-rose-950/40';
-}
-
-function trendArrow(evolution: Evolution): string {
-    if (evolution === null || evolution.direction === 'flat') {
-        return '';
-    }
-
-    return evolution.direction === 'up' ? '↑' : '↓';
-}
-
-/** «Período anterior: 55,0% · atual: 75,0% · +20,0 p.p.» */
-function trendTitle(evolution: Evolution, accumulated: string | null): string | undefined {
-    if (evolution === null) {
-        return undefined;
-    }
-
-    const signed = Number(evolution.points) > 0 ? `+${evolution.points}` : evolution.points;
-
-    const lines = [
-        `Período anterior: ${pct(evolution.previous)}`,
-        `Período atual: ${pct(evolution.current)}`,
-        // Percentage POINTS: the difference between two percentages is not
-        // itself a percentage.
-        `Evolução: ${signed.replace('.', ',')} p.p.`,
-    ];
-
-    if (accumulated !== null) {
-        lines.push(`Média Ponderada Acumulada: ${pct(accumulated)}`);
-    }
-
-    return lines.join('\n');
-}
-
-/**
  * DESEMPENHO, from the canonical resolver — never a colour invented here.
  */
 function levelClasses(level: Level): string {
@@ -152,16 +94,6 @@ function levelClasses(level: Level): string {
     }
 
     return qualitativeToneClasses[qualitativeToneFor(level, props.scaleBands)];
-}
-
-// Trim the engine's 6-decimal value to something a teacher reads. "—" for null,
-// never 0, because a missing value is not a zero.
-function pct(value: string | null): string {
-    if (value === null) {
-        return '—';
-    }
-
-    return `${Number(value).toFixed(1)}%`;
 }
 
 function domainValue(row: Row, domainId: number): DomainValue | undefined {
@@ -276,6 +208,14 @@ function post(ulid: string, data: { final_scale_level_id: number | null; final_v
                 >
                     {{ period.label }}
                 </button>
+                <!-- After the real periods, and never one of them: the whole
+                     year read at once, on the same numbers (§2). -->
+                <Link
+                    :href="`/classes/${schoolClass.ulid}/results/quadro-sintese`"
+                    class="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
+                >
+                    Quadro Síntese
+                </Link>
             </div>
         </div>
 

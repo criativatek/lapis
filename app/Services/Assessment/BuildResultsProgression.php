@@ -11,6 +11,7 @@ use App\Models\ClassificationScope;
 use App\Models\ClassificationStatus;
 use App\Models\Domain;
 use App\Models\Enrollment;
+use App\Models\Scale;
 use App\Models\SchoolClass;
 use App\Models\SelfAssessment;
 use App\Models\SelfAssessmentQuestionRole;
@@ -50,6 +51,7 @@ class BuildResultsProgression
 
     public function __construct(
         protected ClassResultsCalculator $calculator,
+        protected ScaleProposalResolver $proposals,
     ) {}
 
     /**
@@ -85,7 +87,7 @@ class BuildResultsProgression
         $domains = $this->domainsIn($standalone, $accumulated);
 
         $selfAssessments = $this->selfAssessments($class, $periods);
-        $classifications = $this->classifications($periods);
+        $classifications = $this->classifications($class, $periods);
 
         $students = [];
 
@@ -141,7 +143,7 @@ class BuildResultsProgression
      * @param  array<int, array<int, array<string, mixed>>>  $accumulated
      * @param  Collection<int, Domain>  $domains
      * @param  array<string, SelfAssessment>  $selfAssessments
-     * @param  array<string, Classification>  $classifications
+     * @param  array<string, array<string, mixed>>  $classifications
      * @return list<array<string, mixed>>
      */
     protected function periodsFor(
@@ -164,7 +166,6 @@ class BuildResultsProgression
                 : ($standalone[$previousPeriodId][$enrollmentId]['outcome'] ?? null);
 
             $selfAssessment = $selfAssessments[$enrollmentId.':'.$period->id] ?? null;
-            $classification = $classifications[$enrollmentId.':'.$period->id] ?? null;
 
             $rows[] = [
                 'period_id' => $period->id,
@@ -178,7 +179,7 @@ class BuildResultsProgression
                 'evolution' => $this->evolution($before?->normalizedValue, $own?->normalizedValue),
                 'domains' => $this->domainRows($domains, $own, $running, $before, $selfAssessment),
                 'self_assessment' => $this->globalSelfAssessment($selfAssessment),
-                'classification' => $this->classificationRow($classification),
+                'classification' => $classifications[$enrollmentId.':'.$period->id] ?? null,
             ];
 
             $previousPeriodId = $period->id;
@@ -332,14 +333,14 @@ class BuildResultsProgression
     /**
      * What LÁPIS proposed and what the teacher decided, kept apart.
      *
-     * @return array<string, mixed>|null
+     * @return array<string, mixed>
      */
-    protected function classificationRow(?Classification $classification): ?array
-    {
-        if ($classification === null) {
-            return null;
-        }
-
+    protected function classificationRow(
+        Classification $classification,
+        ?Scale $scale,
+        string $roundingMode,
+        int $roundingScale,
+    ): array {
         $level = fn ($scaleLevel): ?array => $scaleLevel === null ? null : [
             'code' => $scaleLevel->code,
             'label' => $scaleLevel->label,
@@ -356,6 +357,18 @@ class BuildResultsProgression
             'can_confirm' => $classification->status === ClassificationStatus::Proposed,
             'can_change' => $classification->status->allowsDecision(),
             'is_published' => $classification->status->isPublished(),
+            // The proposal read on the profile's own scale, through the one
+            // service that owns that translation. `proposed` below is the band
+            // it matched, which is null on a scale that has no bands — this is
+            // what a screen shows, on every kind of scale.
+            'proposal' => $this->proposals->resolve(
+                $scale,
+                $classification->proposed_scale_level_id,
+                $classification->proposed_normalized_value,
+                $classification->proposed_value,
+                $roundingMode,
+                $roundingScale,
+            )->toPayload(),
             'proposed' => $level($classification->proposedScaleLevel),
             // The decision. Never filled in from the proposal by this service or
             // by any other: the teacher decides, the system proposes (§3.3).
@@ -461,11 +474,23 @@ class BuildResultsProgression
     }
 
     /**
+     * Every live classification of these periods, already read as a payload.
+     *
+     * The scale and its rounding are resolved ONCE here, not per row: the
+     * proposal on an interval scale is derived from the normalized value, and
+     * asking the profile version for that translation on every student would be
+     * a query per row for an answer that never changes (§17).
+     *
      * @param  Collection<int, AcademicPeriod>  $periods
-     * @return array<string, Classification>
+     * @return array<string, array<string, mixed>>
      */
-    protected function classifications(Collection $periods): array
+    protected function classifications(SchoolClass $class, Collection $periods): array
     {
+        $version = $class->profileVersion;
+        $scale = $version?->scale()->with('levels')->first();
+        $roundingMode = $version->rounding_mode ?? 'half_up';
+        $roundingScale = $version->rounding_scale ?? 0;
+
         $classifications = Classification::query()
             ->whereIn('academic_period_id', $periods->pluck('id'))
             ->where('scope', ClassificationScope::Period)
@@ -476,7 +501,12 @@ class BuildResultsProgression
         $byKey = [];
 
         foreach ($classifications as $classification) {
-            $byKey[$classification->enrollment_id.':'.$classification->academic_period_id] = $classification;
+            $byKey[$classification->enrollment_id.':'.$classification->academic_period_id] = $this->classificationRow(
+                $classification,
+                $scale,
+                $roundingMode,
+                $roundingScale,
+            );
         }
 
         return $byKey;
