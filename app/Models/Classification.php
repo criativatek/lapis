@@ -110,6 +110,27 @@ class Classification extends Model
     }
 
     /**
+     * What LÁPIS proposed. A conclusion the system drew, and never the record.
+     *
+     * @return BelongsTo<ScaleLevel, $this>
+     */
+    public function proposedScaleLevel(): BelongsTo
+    {
+        return $this->belongsTo(ScaleLevel::class, 'proposed_scale_level_id');
+    }
+
+    /**
+     * What the teacher decided. THE record — set only by an explicit act, never
+     * copied here from the proposal by anything that merely reads (§3.3).
+     *
+     * @return BelongsTo<ScaleLevel, $this>
+     */
+    public function finalScaleLevel(): BelongsTo
+    {
+        return $this->belongsTo(ScaleLevel::class, 'final_scale_level_id');
+    }
+
+    /**
      * @return BelongsTo<CalculationSnapshot, $this>
      */
     public function snapshot(): BelongsTo

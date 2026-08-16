@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * One answer within a self-assessment (§15). A scale answer points at a
@@ -24,5 +25,24 @@ class SelfAssessmentResponse extends Model
     protected function casts(): array
     {
         return ['boolean_value' => 'boolean'];
+    }
+
+    /**
+     * @return BelongsTo<SelfAssessmentQuestion, $this>
+     */
+    public function question(): BelongsTo
+    {
+        return $this->belongsTo(SelfAssessmentQuestion::class, 'self_assessment_question_id');
+    }
+
+    /**
+     * The band the student chose, for a scale answer. Null for text and boolean
+     * answers, which carry their value in their own column.
+     *
+     * @return BelongsTo<ScaleLevel, $this>
+     */
+    public function scaleLevel(): BelongsTo
+    {
+        return $this->belongsTo(ScaleLevel::class, 'scale_level_id');
     }
 }
