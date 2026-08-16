@@ -139,8 +139,24 @@ class GlobalSelfAssessmentInResultsTest extends TestCase
         $column = $this->columnFor($student, $period);
 
         $this->assertNotNull($column);
+        // The VALUE the student proposed — a 4. The qualitative mention travels
+        // with it, for the colour and the tooltip, and never in its place (§1).
+        $this->assertSame('4', $column['code']);
         $this->assertSame($level->label, $column['label']);
         $this->assertSame($level->sequence, $column['sequence']);
+    }
+
+    #[Test]
+    public function the_column_shows_the_number_and_not_the_qualitative_mention(): void
+    {
+        $screen = (string) file_get_contents(resource_path('js/pages/results/Show.vue'));
+
+        // The cell's content is the value on the scale…
+        $this->assertStringContainsString('{{ row.self_assessment.code }}', $screen);
+        // …and «Bom» is not what stands in the column.
+        $this->assertStringNotContainsString('>{{ row.self_assessment.label }}<', $screen);
+        // The mention is still there, as support.
+        $this->assertStringContainsString('${row.self_assessment.label}', $screen);
     }
 
     #[Test]

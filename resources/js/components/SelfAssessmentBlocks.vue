@@ -54,7 +54,9 @@ const blocks = computed(() =>
                     class="w-full max-w-xs rounded-md border border-border bg-background px-2 py-1.5"
                 >
                     <option :value="null">—</option>
-                    <option v-for="level in question.levels" :key="level.id" :value="level.id">{{ level.code }} · {{ level.label }}</option>
+                    <!-- The value being proposed is the number. The qualitative
+                         mention rides along as support, never in its place. -->
+                    <option v-for="level in question.levels" :key="level.id" :value="level.id">{{ level.code }} — {{ level.label }}</option>
                 </select>
 
                 <textarea

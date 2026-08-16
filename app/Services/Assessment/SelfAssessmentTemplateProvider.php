@@ -95,7 +95,9 @@ class SelfAssessmentTemplateProvider
         foreach ($domains as $domain) {
             $template->questions()->create([
                 'domain_id' => $domain->id,
-                'prompt' => "Como te avalias em {$domain->name}?",
+                // First person throughout: it is the student's own reading of
+                // the period, and it should read like one.
+                'prompt' => "Como avalio o meu desempenho em {$domain->name}?",
                 'answer_kind' => 'scale',
                 'scale_id' => $scale->id,
                 'sequence' => ++$sequence,
@@ -150,8 +152,8 @@ class SelfAssessmentTemplateProvider
     protected function globalPrompt(Scale $scale): string
     {
         return $scale->kind === 'level'
-            ? 'No conjunto, que nível propões para a tua avaliação neste período?'
-            : 'Que classificação propões para a tua avaliação neste período?';
+            ? 'Nível que proponho para a minha avaliação neste período'
+            : 'Classificação que proponho para a minha avaliação neste período';
     }
 
     /**
@@ -160,14 +162,14 @@ class SelfAssessmentTemplateProvider
     protected function writtenPrompts(?Scale $scale): array
     {
         $rationale = match (true) {
-            $scale === null => 'Porque te avalias assim?',
-            $scale->kind === 'level' => 'Porque propões este nível?',
-            default => 'Porque propões esta classificação?',
+            $scale === null => 'Porque me avalio assim?',
+            $scale->kind === 'level' => 'Porque proponho este nível?',
+            default => 'Porque proponho esta classificação?',
         };
 
         return [
             [SelfAssessmentQuestionRole::Rationale, $rationale],
-            [SelfAssessmentQuestionRole::Improvement, 'O que precisas de melhorar no próximo período?'],
+            [SelfAssessmentQuestionRole::Improvement, 'O que preciso de melhorar no próximo período?'],
             [SelfAssessmentQuestionRole::Liked, 'Atividade de que mais gostei'],
             [SelfAssessmentQuestionRole::Struggled, 'Atividade em que senti mais dificuldades'],
         ];

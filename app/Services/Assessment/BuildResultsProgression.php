@@ -285,6 +285,9 @@ class BuildResultsProgression
             }
 
             return $response->scaleLevel === null ? null : [
+                // The number IS the judgement — a 4, a 16. The qualitative
+                // mention comes along beside it and never in its place.
+                'code' => $response->scaleLevel->code,
                 'label' => $response->scaleLevel->label,
                 'sequence' => $response->scaleLevel->sequence,
                 'is_negative' => (bool) $response->scaleLevel->is_negative,
@@ -315,6 +318,7 @@ class BuildResultsProgression
             }
 
             return [
+                'code' => $response->scaleLevel->code,
                 'label' => $response->scaleLevel->label,
                 'sequence' => $response->scaleLevel->sequence,
                 'is_negative' => (bool) $response->scaleLevel->is_negative,
@@ -336,6 +340,7 @@ class BuildResultsProgression
         }
 
         $level = fn ($scaleLevel): ?array => $scaleLevel === null ? null : [
+            'code' => $scaleLevel->code,
             'label' => $scaleLevel->label,
             'sequence' => $scaleLevel->sequence,
             'is_negative' => (bool) $scaleLevel->is_negative,

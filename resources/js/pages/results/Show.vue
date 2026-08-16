@@ -20,8 +20,13 @@ type Evolution = {
     current: string;
 } | null;
 
-/** A band of the profile's own scale, for the canonical colour resolver. */
-type Level = { label: string; sequence: number; is_negative: boolean } | null;
+/**
+ * A band of the profile's own scale, for the canonical colour resolver.
+ *
+ * `code` is the value itself — a 4, a 16 — and `label` the qualitative mention
+ * that comes with it on the scales that have one.
+ */
+type Level = { code: string; label: string; sequence: number; is_negative: boolean } | null;
 
 type DomainValue = {
     domain_id: number;
@@ -265,12 +270,16 @@ function selectPeriod(ulid: string): void {
                           did not answer it, never a zero and never the average
                           of what they said about each domain (§5).
                         -->
-                        <td class="px-3 py-2 text-right">
+                        <td class="px-3 py-2 text-right tabular-nums">
+                            <!-- What the student proposed is a value on the
+                                 scale — a 4, a 16. The qualitative mention is
+                                 support, and never stands in for it. -->
                             <span
                                 v-if="row.self_assessment"
                                 class="rounded px-2 py-0.5"
                                 :class="levelClasses(row.self_assessment)"
-                            >{{ row.self_assessment.label }}</span>
+                                :title="`Autoavaliação do aluno: ${row.self_assessment.code} — ${row.self_assessment.label}`"
+                            >{{ row.self_assessment.code }}</span>
                             <span
                                 v-else
                                 class="text-muted-foreground"
@@ -317,8 +326,9 @@ function selectPeriod(ulid: string): void {
                 ({{ schoolClass.scale_name }})</template>. Quando a escala ainda não tem bandas
                 definidas, a proposta fica por atribuir — o LÁPIS não infere limiares.
                 O <strong>Nível atribuído</strong> é a decisão do professor e nunca é
-                preenchido pela proposta. A <strong>Autoavaliação</strong> é a resposta
-                global do aluno — nunca a média do que disse sobre cada domínio.
+                preenchido pela proposta. A <strong>Autoavaliação</strong> é o valor que o
+                próprio aluno propôs na escala — a resposta à pergunta global, nunca a média
+                do que disse sobre cada domínio.
                 Um fundo <span class="rounded bg-emerald-50 px-1 dark:bg-emerald-950/40">verde</span>
                 ou <span class="rounded bg-rose-50 px-1 dark:bg-rose-950/40">vermelho</span>
                 indica <strong>tendência</strong> face ao período anterior, comparando

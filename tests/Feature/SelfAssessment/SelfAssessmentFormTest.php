@@ -17,6 +17,7 @@ use Database\Seeders\DemoDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Collection;
 use PHPUnit\Framework\Attributes\Test;
+use ReflectionMethod;
 use Tests\TestCase;
 
 /**
@@ -153,6 +154,65 @@ class SelfAssessmentFormTest extends TestCase
             $this->assertSame('text', $question['answer_kind']);
             $this->assertNotSame('', trim((string) $question['prompt']));
         }
+    }
+
+    // -------------------------------------------------- 1b. a voz do formulário
+
+    #[Test]
+    public function every_generated_prompt_is_written_in_the_students_own_voice(): void
+    {
+        [$classUlid, $periodUlid, $enrollmentUlid] = $this->seedContext();
+
+        $questions = collect($this->formQuestions($classUlid, $periodUlid, $enrollmentUlid));
+        $byRole = $questions->keyBy(fn (array $question): string => (string) ($question['role'] ?? 'domain'));
+
+        foreach ($questions->whereNull('role') as $question) {
+            // Built from the domain the question points at, whatever it is
+            // called — never from a list of subject names.
+            $this->assertSame("Como avalio o meu desempenho em {$question['domain']}?", $question['prompt']);
+        }
+
+        $this->assertSame('Nível que proponho para a minha avaliação neste período', $byRole['global']['prompt']);
+        $this->assertSame('Porque proponho este nível?', $byRole['rationale']['prompt']);
+        $this->assertSame('O que preciso de melhorar no próximo período?', $byRole['improvement']['prompt']);
+
+        // Already the student's voice, and left alone.
+        $this->assertSame('Atividade de que mais gostei', $byRole['liked']['prompt']);
+        $this->assertSame('Atividade em que senti mais dificuldades', $byRole['struggled']['prompt']);
+
+        // Nothing left addressing the student from outside.
+        foreach ($questions as $question) {
+            foreach (['te avalias', 'propões', 'precisas', 'a tua ', 'o teu '] as $secondPerson) {
+                $this->assertStringNotContainsString($secondPerson, (string) $question['prompt']);
+            }
+        }
+    }
+
+    #[Test]
+    public function the_wording_follows_the_scale_and_is_never_fixed_to_levels(): void
+    {
+        $provider = app(SelfAssessmentTemplateProvider::class);
+
+        $global = new ReflectionMethod($provider, 'globalPrompt');
+        $written = new ReflectionMethod($provider, 'writtenPrompts');
+
+        $levels = new Scale(['name' => 'Escala de níveis', 'kind' => 'level', 'min_value' => '1', 'max_value' => '5']);
+        $numeric = new Scale(['name' => 'Escala numérica', 'kind' => 'numeric', 'min_value' => '0', 'max_value' => '20']);
+
+        // Basic education proposes a NÍVEL; a numeric scale a CLASSIFICAÇÃO.
+        $this->assertSame('Nível que proponho para a minha avaliação neste período', $global->invoke($provider, $levels));
+        $this->assertSame('Classificação que proponho para a minha avaliação neste período', $global->invoke($provider, $numeric));
+
+        $rationaleOf = fn (Scale $scale): string => collect($written->invoke($provider, $scale))
+            ->first(fn (array $pair): bool => $pair[0] === SelfAssessmentQuestionRole::Rationale)[1];
+
+        $this->assertSame('Porque proponho este nível?', $rationaleOf($levels));
+        $this->assertSame('Porque proponho esta classificação?', $rationaleOf($numeric));
+
+        // And the scale itself comes from the class, never from a name the
+        // provider knows by heart.
+        $source = (string) file_get_contents(app_path('Services/Assessment/SelfAssessmentTemplateProvider.php'));
+        $this->assertStringNotContainsString('Escala 1 a 5', $source);
     }
 
     // --------------------------------------------------------- 2. o «Calculado»
@@ -370,5 +430,71 @@ class SelfAssessmentFormTest extends TestCase
             $again = app(SelfAssessmentTemplateProvider::class)->forClass($class);
             $this->assertCount($completed->questions->count(), $again->questions);
         });
+    }
+
+    #[Test]
+    public function rewording_the_prompts_leaves_anything_a_teacher_wrote_alone(): void
+    {
+        $teacher = User::factory()->create(['email' => 'ana.martins@lapis.test']);
+        $this->seed(DemoDataSeeder::class);
+
+        [$generated, $edited, $global] = app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () {
+            $class = SchoolClass::where('label', '7.º A')->firstOrFail();
+            $scale = Scale::where('name', 'Escala 1 a 5')->firstOrFail();
+            $domains = Domain::orderBy('id')->take(2)->get();
+
+            $template = SelfAssessmentTemplate::create([
+                'assessment_profile_version_id' => $class->assessment_profile_version_id,
+                'class_id' => $class->id,
+                'name' => 'Autoavaliação anterior',
+                'is_active' => true,
+            ]);
+
+            return [
+                // Exactly what the provider used to write…
+                $template->questions()->create([
+                    'domain_id' => $domains[0]->id,
+                    'prompt' => "Como te avalias em {$domains[0]->name}?",
+                    'answer_kind' => 'scale',
+                    'scale_id' => $scale->id,
+                    'sequence' => 1,
+                ]),
+                // …and something a teacher rewrote for their own class.
+                $template->questions()->create([
+                    'domain_id' => $domains[1]->id,
+                    'prompt' => 'Diz lá, achas que trabalhaste bem a escrita este período?',
+                    'answer_kind' => 'scale',
+                    'scale_id' => $scale->id,
+                    'sequence' => 2,
+                ]),
+                $template->questions()->create([
+                    'role' => SelfAssessmentQuestionRole::Global,
+                    'prompt' => 'No conjunto, que nível propões para a tua avaliação neste período?',
+                    'answer_kind' => 'scale',
+                    'scale_id' => $scale->id,
+                    'sequence' => 3,
+                ]),
+            ];
+        });
+
+        $migration = require database_path('migrations/2026_08_16_000200_reword_generated_self_assessment_prompts.php');
+        $migration->up();
+
+        $domainName = app(CurrentOrganization::class)->runFor(
+            $teacher->personalOrganization(),
+            fn (): string => Domain::orderBy('id')->first()->name,
+        );
+
+        $this->assertSame("Como avalio o meu desempenho em {$domainName}?", $generated->fresh()->prompt);
+        $this->assertSame('Nível que proponho para a minha avaliação neste período', $global->fresh()->prompt);
+
+        // Untouched. The migration only recognises sentences this app wrote.
+        $this->assertSame('Diz lá, achas que trabalhaste bem a escrita este período?', $edited->fresh()->prompt);
+
+        // And it is reversible.
+        $migration->down();
+        $this->assertSame("Como te avalias em {$domainName}?", $generated->fresh()->prompt);
+        $this->assertSame('No conjunto, que nível propões para a tua avaliação neste período?', $global->fresh()->prompt);
+        $this->assertSame('Diz lá, achas que trabalhaste bem a escrita este período?', $edited->fresh()->prompt);
     }
 }
