@@ -9,6 +9,7 @@ use Closure;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Inertia\Inertia;
 
 class EnrollmentController extends Controller
 {
@@ -27,6 +28,50 @@ class EnrollmentController extends Controller
         ]);
 
         $this->service->enrollNew($class, $data);
+
+        return back();
+    }
+
+    /**
+     * The class's N.os de processo, saved together.
+     *
+     * The school's own identifiers for its students, which arrive with a
+     * Relação de Turma when there is one and otherwise have to be typed. Whole
+     * class at once because that is how a teacher has them: a column, in roll
+     * order, in front of them.
+     *
+     * NEVER VALIDATED AS A NUMBER. Leading zeros identify people, and plenty of
+     * schools use letters — «max:64» and «string» is the whole of it. An empty
+     * field means the student has none recorded, which is a real state and the
+     * one every hand-typed class starts in.
+     */
+    public function updateProcessNumbers(Request $request, SchoolClass $class): RedirectResponse
+    {
+        Gate::authorize('update', $class);
+
+        $data = $request->validate([
+            'numbers' => ['array'],
+            'numbers.*.enrollment_ulid' => ['required', 'string'],
+            'numbers.*.process_number' => ['nullable', 'string', 'max:64'],
+        ]);
+
+        $saved = 0;
+
+        foreach ($data['numbers'] ?? [] as $row) {
+            // Resolved THROUGH this class: an ulid from another class — or
+            // another organization, which the tenant scope already hides —
+            // finds nothing and is skipped, never written.
+            $enrollment = $class->enrollments()->where('ulid', $row['enrollment_ulid'])->first();
+
+            if ($enrollment === null) {
+                continue;
+            }
+
+            $this->service->setProcessNumber($enrollment, $row['process_number'] ?? null);
+            $saved++;
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => "N.º de processo guardado para {$saved} aluno(s)."]);
 
         return back();
     }

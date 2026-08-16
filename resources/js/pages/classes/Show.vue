@@ -25,6 +25,8 @@ type Student = {
     has_identity: boolean;
     pseudonym: string;
     class_number: number | null;
+    /** The school's own identifier for this student. Optional, and often absent. */
+    process_number: string | null;
     enrolled_on: string;
     is_late_entry: boolean;
     status_label: string;
@@ -54,6 +56,32 @@ const props = defineProps<{
         status_label: string;
     }[];
 }>();
+
+/**
+ * N.os de processo, by enrolment. Seeded from what is stored, edited in place,
+ * and sent as one column — which is how a teacher has them.
+ */
+const processNumbers = ref<Record<string, string>>(
+    Object.fromEntries(props.students.map((student) => [student.ulid, student.process_number ?? ''])),
+);
+
+const missingProcessNumbers = computed(
+    () => props.students.filter((student) => (student.process_number ?? '') === '').length,
+);
+
+const processNumberForm = useForm({});
+
+function saveProcessNumbers(): void {
+    processNumberForm
+        .transform(() => ({
+            numbers: props.students.map((student) => ({
+                enrollment_ulid: student.ulid,
+                // An empty field is «no number recorded», which is a real state.
+                process_number: processNumbers.value[student.ulid]?.trim() || null,
+            })),
+        }))
+        .put(`/classes/${props.schoolClass.ulid}/process-numbers`, { preserveScroll: true });
+}
 
 const profileForm = useForm<{ assessment_profile_version_id: number | null }>({
     assessment_profile_version_id: null,
@@ -428,6 +456,74 @@ function submitPhotos(): void {
                 </li>
             </ul>
         </section>
+
+        <!--
+          Dados administrativos: the school's own identifiers, kept out of the
+          way. Optional everywhere in LÁPIS — a class typed in by hand works
+          without them — and needed the day somebody exports to INOVAR.
+        -->
+        <details v-if="students.length" class="rounded-lg border border-border">
+            <summary class="cursor-pointer px-4 py-3 text-sm font-medium">
+                Dados administrativos
+                <span class="ml-1 font-normal text-muted-foreground">
+                    · N.º de processo<template v-if="missingProcessNumbers > 0">
+                        — {{ missingProcessNumbers }} por preencher</template
+                    >
+                </span>
+            </summary>
+
+            <div class="space-y-3 border-t border-border p-4">
+                <p class="text-sm text-muted-foreground">
+                    O N.º de processo é o identificador do aluno na escola. Chega
+                    preenchido quando a turma é importada de uma Relação de Turma
+                    (EB058e); de outro modo, pode escrevê-lo aqui. É opcional — só a
+                    exportação para o INOVAR precisa dele.
+                </p>
+
+                <table class="w-full text-sm">
+                    <thead class="text-left text-muted-foreground">
+                        <tr>
+                            <th class="py-1.5 font-medium">Nº</th>
+                            <th class="py-1.5 font-medium">Aluno</th>
+                            <th class="py-1.5 font-medium">N.º de processo</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border">
+                        <tr v-for="student in students" :key="`processo-${student.ulid}`">
+                            <td class="py-1.5 text-muted-foreground tabular-nums">
+                                {{ student.class_number ?? '—' }}
+                            </td>
+                            <td class="py-1.5">{{ student.name }}</td>
+                            <td class="py-1.5">
+                                <!-- Text, never a number input: a leading zero is
+                                     part of an identifier, and some schools use
+                                     letters. -->
+                                <input
+                                    v-model="processNumbers[student.ulid]"
+                                    type="text"
+                                    maxlength="64"
+                                    inputmode="text"
+                                    class="w-40 rounded-md border border-border bg-background px-2 py-1 tabular-nums"
+                                    placeholder="—"
+                                />
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="flex items-center justify-end gap-3">
+                    <p v-if="processNumberForm.recentlySuccessful" class="text-sm text-emerald-600">Guardado.</p>
+                    <button
+                        type="button"
+                        class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                        :disabled="processNumberForm.processing"
+                        @click="saveProcessNumbers"
+                    >
+                        Guardar N.º de processo
+                    </button>
+                </div>
+            </div>
+        </details>
 
         <section
             v-if="students.length"

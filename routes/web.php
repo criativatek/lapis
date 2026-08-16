@@ -108,6 +108,8 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
 
         Route::post('classes/{class}/students', [EnrollmentController::class, 'store'])->name('classes.students.store');
         Route::put('classes/{class}/students/{enrollment}', [EnrollmentController::class, 'update'])->name('classes.students.update');
+        // The school's own identifiers, saved as the teacher has them: a column.
+        Route::put('classes/{class}/process-numbers', [EnrollmentController::class, 'updateProcessNumbers'])->name('classes.process-numbers.update');
         Route::delete('classes/{class}/students/{enrollment}', [EnrollmentController::class, 'destroy'])->name('classes.students.destroy');
         // The photo is its own request: an upload and a data edit fail
         // differently, and one must not discard the other.

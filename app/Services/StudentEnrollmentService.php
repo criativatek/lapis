@@ -149,6 +149,49 @@ class StudentEnrollmentService
         });
     }
 
+    /**
+     * Sets a student's N.º DE PROCESSO — the school's own identifier for them.
+     *
+     * Its own method, deliberately. updateExisting() corrects a name and a
+     * number in the roll, and says in as many words that the school number must
+     * survive that edit; folding this into it would make every name correction
+     * a chance to wipe an identifier nobody was editing.
+     *
+     * ALWAYS A STRING, exactly as typed apart from the surrounding spaces. A
+     * leading zero is part of somebody's identifier and not formatting to tidy
+     * away, and plenty of schools use letters. An empty field is null — a
+     * student who has no process number recorded is a real state, and the one
+     * every hand-typed class starts in.
+     *
+     * A student who never had an identity gets one here, for the same reason
+     * updateExisting() does: that is what turns «(sem identidade)» into a
+     * record (§11.2).
+     */
+    public function setProcessNumber(Enrollment $enrollment, ?string $processNumber): Enrollment
+    {
+        return DB::transaction(function () use ($enrollment, $processNumber): Enrollment {
+            $value = $processNumber === null || trim($processNumber) === '' ? null : trim($processNumber);
+            $student = $enrollment->student;
+
+            if ($student->identity === null) {
+                $student->identity()->create([
+                    'organization_id' => $this->currentOrganization->id(),
+                    'display_name' => '',
+                    'school_number' => $value,
+                ]);
+                $student->unsetRelation('identity');
+
+                return $enrollment;
+            }
+
+            // Only this column. The name, the birth date and the photo belong
+            // to other flows and are not this edit's business.
+            $student->identity->update(['school_number' => $value]);
+
+            return $enrollment;
+        });
+    }
+
     protected function uniquePseudonym(): string
     {
         do {

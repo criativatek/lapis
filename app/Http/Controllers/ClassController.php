@@ -114,6 +114,9 @@ class ClassController extends Controller
                     // offering "(sem identidade)" as if it were a real name.
                     'has_identity' => $enrollment->student->identity !== null,
                     'pseudonym' => $enrollment->student->pseudonym_code,
+                    // The school's own identifier, when there is one. Optional
+                    // everywhere except an export that needs it.
+                    'process_number' => $enrollment->student->processNumber(),
                     'class_number' => $enrollment->class_number,
                     'enrolled_on' => $enrollment->enrolled_on->toDateString(),
                     'is_late_entry' => $enrollment->is_late_entry,
