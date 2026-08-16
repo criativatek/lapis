@@ -66,6 +66,8 @@ const props = defineProps<{
         max_value: string | null;
     };
     scaleBands: { label: string; sequence: number; is_negative: boolean }[];
+    /** Whether this organization's plan includes the INOVAR export. */
+    canExportToInovar: boolean;
     progression: {
         periods: { id: number; ulid: string; label: string; sequence: number }[];
         domains: { id: number; name: string }[];
@@ -155,6 +157,15 @@ function proposalText(proposal: Proposal | undefined): string {
                     <Link :href="`/classes/${schoolClass.ulid}`" class="text-muted-foreground hover:underline">← Voltar à turma</Link>
                     <Link :href="`/classes/${schoolClass.ulid}/classifications`" class="text-primary hover:underline">
                         Gerir classificações →
+                    </Link>
+                    <!-- Only where the capability is there: a school that never
+                         uses INOVAR never meets this. -->
+                    <Link
+                        v-if="canExportToInovar && periods.length"
+                        :href="`/classes/${schoolClass.ulid}/exports/inovar/${periods[periods.length - 1].ulid}`"
+                        class="text-primary hover:underline"
+                    >
+                        Exportar para INOVAR →
                     </Link>
                 </div>
             </div>

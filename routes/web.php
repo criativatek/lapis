@@ -13,6 +13,7 @@ use App\Http\Controllers\CorrectionImportController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\EvidenceController;
+use App\Http\Controllers\InovarExportController;
 use App\Http\Controllers\InstrumentController;
 use App\Http\Controllers\InterventionController;
 use App\Http\Controllers\PublicSelfAssessmentController;
@@ -182,6 +183,15 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // Declared BEFORE the {period?} wildcard, which would otherwise swallow
         // it and go looking for a period called «quadro-sintese».
         Route::get('classes/{class}/results/quadro-sintese', [ResultsController::class, 'summary'])->name('results.summary');
+
+        // Exporting a period's qualitative mentions into the grid INOVAR
+        // produced. Its own capability: the assessment core does not depend on
+        // it, and a school that never uses INOVAR never meets it.
+        Route::middleware('module:inovar_export')->group(function () {
+            Route::get('classes/{class}/exports/inovar/{period}', [InovarExportController::class, 'create'])->name('exports.inovar.create');
+            Route::post('classes/{class}/exports/inovar/{period}', [InovarExportController::class, 'store'])->name('exports.inovar.store');
+            Route::post('classes/{class}/exports/inovar/{period}/{token}', [InovarExportController::class, 'generate'])->name('exports.inovar.generate');
+        });
         Route::get('classes/{class}/results/{period?}', [ResultsController::class, 'show'])->name('results.show');
 
         // The decision layer (§7): propose from the engine, then the teacher confirms.

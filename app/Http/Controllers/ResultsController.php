@@ -11,6 +11,7 @@ use App\Services\Assessment\ClassResultsCalculator;
 use App\Services\Assessment\CoverageExplanation;
 use App\Services\Assessment\ScaleProposalResolver;
 use App\Support\Assessment\DecisionScale;
+use App\Support\Entitlements\Entitlements;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -192,6 +193,9 @@ class ResultsController extends Controller
             // The same words and the same colour source the per-period screen
             // uses, so the two cannot disagree about what a class is graded on.
             'decision' => DecisionScale::for($scale)->toPayload(),
+            // Presentation only: the route is gated by the same capability, and
+            // hiding a link is never what keeps anybody out (§8.2).
+            'canExportToInovar' => app(Entitlements::class)->allows('inovar_export'),
             'scaleBands' => $scale === null ? [] : $scale->levels
                 ->map(fn ($level): array => [
                     'label' => (string) $level->label,
