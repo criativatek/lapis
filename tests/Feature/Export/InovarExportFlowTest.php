@@ -10,6 +10,7 @@ use App\Models\SchoolClass;
 use App\Models\SubscriptionStatus;
 use App\Models\User;
 use App\Support\Entitlements\Entitlements;
+use App\Support\Export\InovarTemplateStorage;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -146,9 +147,7 @@ class InovarExportFlowTest extends TestCase
         $this->assertNotNull($token);
         $this->assertSame([], $page['props']['preview']['summary']['blocking_errors']);
 
-        $download = $this->actingAs($this->teacher)->post(
-            "/classes/{$this->schoolClass()->ulid}/exports/inovar/{$this->periodUlid()}/{$token}",
-        );
+        $download = $this->actingAs($this->teacher)->get("/classes/{$this->schoolClass()->ulid}/exports/inovar/{$this->periodUlid()}/{$token}");
 
         $download->assertOk();
         $this->assertStringContainsString('INOVAR_', $download->headers->get('content-disposition') ?? '');
@@ -194,7 +193,7 @@ class InovarExportFlowTest extends TestCase
         $this->assertNotEmpty($expected);
 
         $download = $this->actingAs($this->teacher)
-            ->post("/classes/{$this->schoolClass()->ulid}/exports/inovar/{$this->periodUlid()}/{$token}");
+            ->get("/classes/{$this->schoolClass()->ulid}/exports/inovar/{$this->periodUlid()}/{$token}");
 
         $path = tempnam(sys_get_temp_dir(), 'inovar_gerado_').'.xls';
         file_put_contents($path, $download->streamedContent());
@@ -205,6 +204,54 @@ class InovarExportFlowTest extends TestCase
         }
 
         @unlink($path);
+    }
+
+    #[Test]
+    public function the_download_is_a_plain_get_the_browser_can_follow(): void
+    {
+        $grid = $this->grid();
+        $page = $this->upload($grid['path'])->viewData('page');
+        $token = $page['props']['token'];
+
+        $download = $this->actingAs($this->teacher)
+            ->get("/classes/{$this->schoolClass()->ulid}/exports/inovar/{$this->periodUlid()}/{$token}");
+
+        // A FILE, with the headers that make a browser save it. A binary
+        // response cannot come back through an Inertia visit — Inertia's client
+        // requires an Inertia response and drops anything else, which is how a
+        // button ends up appearing to do nothing at all.
+        $download->assertOk();
+        $this->assertStringContainsString('excel', strtolower((string) $download->headers->get('content-type')));
+        $this->assertStringStartsWith('attachment;', (string) $download->headers->get('content-disposition'));
+        $this->assertStringContainsString('.xls', (string) $download->headers->get('content-disposition'));
+        $this->assertNotSame('', $download->streamedContent());
+
+        // …and the page it is reached from links to exactly this, rather than
+        // posting through Inertia.
+        $screen = (string) file_get_contents(resource_path('js/pages/exports/Inovar.vue'));
+        $this->assertStringContainsString(':href="downloadUrl"', $screen);
+        $this->assertStringNotContainsString('generate.post', $screen);
+    }
+
+    #[Test]
+    public function the_uploaded_grid_survives_the_preview_and_is_gone_after_the_download(): void
+    {
+        $grid = $this->grid();
+        $page = $this->upload($grid['path'])->viewData('page');
+        $token = $page['props']['token'];
+
+        $storage = app(InovarTemplateStorage::class);
+
+        // It has to still be there: generating reads it again.
+        $this->assertTrue($storage->exists($token));
+
+        $this->actingAs($this->teacher)
+            ->get("/classes/{$this->schoolClass()->ulid}/exports/inovar/{$this->periodUlid()}/{$token}")
+            ->assertOk();
+
+        // And it holds names, process numbers and marks, so it does not linger
+        // once it has been used.
+        $this->assertFalse($storage->exists($token));
     }
 
     // ------------------------------------------------------ 2. fidelidade
@@ -225,7 +272,7 @@ class InovarExportFlowTest extends TestCase
         $before = @IOFactory::load($grid['path'])->getActiveSheet();
 
         $download = $this->actingAs($this->teacher)
-            ->post("/classes/{$this->schoolClass()->ulid}/exports/inovar/{$this->periodUlid()}/{$token}");
+            ->get("/classes/{$this->schoolClass()->ulid}/exports/inovar/{$this->periodUlid()}/{$token}");
 
         $path = tempnam(sys_get_temp_dir(), 'inovar_gerado_').'.xls';
         file_put_contents($path, $download->streamedContent());
@@ -280,7 +327,7 @@ class InovarExportFlowTest extends TestCase
         $page = $this->upload($grid['path'])->viewData('page');
 
         $download = $this->actingAs($this->teacher)
-            ->post("/classes/{$this->schoolClass()->ulid}/exports/inovar/{$this->periodUlid()}/{$page['props']['token']}");
+            ->get("/classes/{$this->schoolClass()->ulid}/exports/inovar/{$this->periodUlid()}/{$page['props']['token']}");
 
         $path = tempnam(sys_get_temp_dir(), 'inovar_gerado_').'.xls';
         file_put_contents($path, $download->streamedContent());
@@ -320,7 +367,7 @@ class InovarExportFlowTest extends TestCase
         $this->assertNotEmpty($page['props']['preview']['summary']['blocking_errors']);
 
         $this->actingAs($this->teacher)
-            ->post("/classes/{$this->schoolClass()->ulid}/exports/inovar/{$this->periodUlid()}/{$token}")
+            ->get("/classes/{$this->schoolClass()->ulid}/exports/inovar/{$this->periodUlid()}/{$token}")
             ->assertRedirect()
             ->assertSessionHasErrors('template');
     }
@@ -329,7 +376,7 @@ class InovarExportFlowTest extends TestCase
     public function a_token_that_no_longer_exists_is_refused(): void
     {
         $this->actingAs($this->teacher)
-            ->post("/classes/{$this->schoolClass()->ulid}/exports/inovar/{$this->periodUlid()}/nao-existe")
+            ->get("/classes/{$this->schoolClass()->ulid}/exports/inovar/{$this->periodUlid()}/nao-existe")
             ->assertRedirect()
             ->assertSessionHasErrors('template');
     }
@@ -387,7 +434,7 @@ class InovarExportFlowTest extends TestCase
         $page = $this->upload($grid['path'])->viewData('page');
 
         $this->actingAs($this->teacher)
-            ->post("/classes/{$this->schoolClass()->ulid}/exports/inovar/{$this->periodUlid()}/{$page['props']['token']}")
+            ->get("/classes/{$this->schoolClass()->ulid}/exports/inovar/{$this->periodUlid()}/{$page['props']['token']}")
             ->assertOk();
 
         $this->asTenant(function (): void {

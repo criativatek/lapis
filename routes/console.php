@@ -17,3 +17,9 @@ Schedule::command('roster-imports:prune')->hourly();
 // reasoning as above and the same promise: the uploaded file is not kept
 // indefinitely. See App\Console\Commands\PruneCorrectionImportTempStorage.
 Schedule::command('correction-imports:prune')->hourly();
+
+// INOVAR grids uploaded, previewed, and never generated. Generating deletes the
+// folder itself, so this only catches the abandoned ones — and an INOVAR grid
+// holds names, process numbers and marks. See
+// App\Console\Commands\PruneInovarExportTempStorage.
+Schedule::command('inovar-exports:prune')->hourly();

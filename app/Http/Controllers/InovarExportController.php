@@ -91,6 +91,15 @@ class InovarExportController extends Controller
      * Everything is decided again here, from the file on disk — never from what
      * the browser sends back. The preview is what the teacher saw; it is not an
      * instruction the client gets to rewrite.
+     *
+     * A GET, because what comes back is a FILE. A binary response cannot travel
+     * through an Inertia visit — Inertia's client requires an Inertia response
+     * and simply drops anything else, which is how a button ends up appearing
+     * to do nothing at all. The instrument grid and the pauta export are
+     * downloaded exactly this way, and this now matches them.
+     *
+     * A refusal redirects back with the reason, which a plain navigation lands
+     * on as the page it came from.
      */
     public function generate(Request $request, SchoolClass $class, string $period, string $token): BinaryFileResponse|RedirectResponse
     {
@@ -119,12 +128,20 @@ class InovarExportController extends Controller
                 }
             }
 
+            // Written OUTSIDE the token folder, so the uploaded grid can be
+            // deleted the moment it has been used. Both are temporary; only
+            // this one still has a job to do.
             $filled = $this->filler->fill(
                 $templatePath,
                 $template->sheet,
                 $cells,
-                dirname($templatePath).'/'.$this->fileName($class, $selected, $templatePath),
+                rtrim(sys_get_temp_dir(), '/\\').DIRECTORY_SEPARATOR.$this->fileName($class, $selected, $templatePath),
             );
+
+            // The grid a teacher uploaded carries names, process numbers and
+            // marks. It has served its purpose here and is not kept a moment
+            // longer; the filled copy goes after it is sent.
+            $this->storage->delete($token);
 
             // Audit (§22.5): who exported what, and how much of it. Never the
             // file, never a name, never a mark.

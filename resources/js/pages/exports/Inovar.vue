@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { CircleAlert, CircleCheck, CircleX, Upload } from '@lucide/vue';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 
 type Summary = {
@@ -27,11 +27,16 @@ const props = defineProps<{
     preview: Preview | null;
 }>();
 
+const page = usePage();
+
+/** Whatever the server flashed back — including a refused download. */
+const pageErrors = computed(() => (page.props.errors ?? {}) as Record<string, string>);
+
 const upload = useForm<{ template: File | null }>({ template: null });
-// Carries no fields of its own — everything is decided server-side from the
-// file already on disk — but it does carry back the refusal when the server
-// says no.
-const generate = useForm<{ template: null }>({ template: null });
+
+const fileInput = ref<HTMLInputElement | null>(null);
+const chosenName = ref<string | null>(null);
+const preparing = ref(false);
 
 const canGenerate = computed(() => props.preview !== null && props.preview.summary.blocking_errors.length === 0);
 
@@ -39,16 +44,44 @@ function base(): string {
     return `/classes/${props.schoolClass.ulid}/exports/inovar/${props.period.ulid}`;
 }
 
-function submitTemplate(): void {
-    upload.post(base(), { forceFormData: true, preserveScroll: true });
+/**
+ * THE DOWNLOAD IS A PLAIN NAVIGATION, not an Inertia visit.
+ *
+ * Inertia's client requires an Inertia response and drops anything else, so a
+ * file coming back through `useForm().post()` never reaches the browser and the
+ * button appears to do nothing at all. This is an ordinary link to a GET route,
+ * exactly like the instrument grid and the pauta export: the browser downloads
+ * the attachment and stays where it is, and a refusal redirects back with the
+ * reason on it.
+ */
+const downloadUrl = computed(() => (props.token === null ? '#' : `${base()}/${props.token}`));
+
+function chooseFile(): void {
+    fileInput.value?.click();
 }
 
-function submitGeneration(): void {
-    if (! canGenerate.value || props.token === null) {
+function onFileChosen(event: Event): void {
+    const file = (event.target as HTMLInputElement).files?.[0] ?? null;
+
+    upload.template = file;
+    chosenName.value = file?.name ?? null;
+}
+
+function submitTemplate(): void {
+    if (upload.template === null) {
         return;
     }
 
-    generate.post(`${base()}/${props.token}`, { preserveScroll: true });
+    upload.post(base(), { forceFormData: true, preserveScroll: true });
+}
+
+/**
+ * Purely a hint that the click landed. The download itself is the browser's,
+ * and the page does not navigate, so this clears itself.
+ */
+function noteDownloadStarted(): void {
+    preparing.value = true;
+    window.setTimeout(() => (preparing.value = false), 2500);
 }
 </script>
 
@@ -74,26 +107,46 @@ function submitGeneration(): void {
                 <strong>o mesmo ficheiro</strong> — nada mais é alterado.
             </p>
 
+            <!-- The native control's own button is unreliable to look at and
+                 all but invisible in some browsers. It stays REAL and focusable
+                 — the label drives it, so the keyboard and a screen reader get
+                 the same control the pointer does. -->
             <div class="flex flex-wrap items-center gap-3">
                 <input
+                    id="inovar-template"
+                    ref="fileInput"
                     type="file"
                     accept=".xls,.xlsx"
-                    class="text-sm"
-                    @change="upload.template = ($event.target as HTMLInputElement).files?.[0] ?? null"
+                    class="sr-only"
+                    @change="onFileChosen"
                 />
+                <label
+                    for="inovar-template"
+                    tabindex="0"
+                    class="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                    @keydown.enter.prevent="chooseFile"
+                    @keydown.space.prevent="chooseFile"
+                >
+                    <Upload class="size-4" />
+                    {{ chosenName === null ? 'Escolher grelha INOVAR' : 'Alterar grelha' }}
+                </label>
+
+                <span v-if="chosenName" class="text-sm text-muted-foreground">{{ chosenName }}</span>
+
                 <button
                     type="button"
                     class="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
                     :disabled="upload.template === null || upload.processing"
                     @click="submitTemplate"
                 >
-                    <Upload class="size-4" />
-                    Validar grelha
+                    {{ upload.processing ? 'Validar grelha…' : 'Validar grelha' }}
                 </button>
             </div>
 
             <p v-if="upload.errors.template" class="text-sm text-red-600">{{ upload.errors.template }}</p>
-            <p v-if="generate.errors.template" class="text-sm text-red-600">{{ generate.errors.template }}</p>
+            <!-- A refusal on the way out of the download lands here, because the
+                 server redirects back with it rather than failing in silence. -->
+            <p v-if="pageErrors.template" class="text-sm text-red-600">{{ pageErrors.template }}</p>
         </section>
 
         <!-- 2. o que foi lido -->
@@ -164,12 +217,17 @@ function submitGeneration(): void {
                 <template v-if="canGenerate">A grelha volta com {{ preview.summary.ready_cells }} menções preenchidas.</template>
                 <template v-else>Resolva os pontos assinalados a vermelho para poder gerar o ficheiro.</template>
             </p>
-            <button
-                type="button"
-                class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                :disabled="!canGenerate || generate.processing"
-                @click="submitGeneration"
+            <!-- An ordinary link, so the browser downloads the file itself and
+                 the page stays where it is. -->
+            <a
+                v-if="canGenerate"
+                :href="downloadUrl"
+                class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+                @click="noteDownloadStarted"
             >
+                {{ preparing ? 'A preparar o ficheiro…' : 'Gerar ficheiro INOVAR' }}
+            </a>
+            <button v-else type="button" class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground opacity-50" disabled>
                 Gerar ficheiro INOVAR
             </button>
         </section>

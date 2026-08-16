@@ -192,7 +192,10 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::middleware('module:inovar_export')->group(function () {
             Route::get('classes/{class}/exports/inovar/{period}', [InovarExportController::class, 'create'])->name('exports.inovar.create');
             Route::post('classes/{class}/exports/inovar/{period}', [InovarExportController::class, 'store'])->name('exports.inovar.store');
-            Route::post('classes/{class}/exports/inovar/{period}/{token}', [InovarExportController::class, 'generate'])->name('exports.inovar.generate');
+            // A DOWNLOAD, so a GET the browser can follow on its own — the same
+            // shape the instrument grid and the pauta export already use. A
+            // binary response cannot come back through an Inertia visit.
+            Route::get('classes/{class}/exports/inovar/{period}/{token}', [InovarExportController::class, 'generate'])->name('exports.inovar.generate');
         });
         Route::get('classes/{class}/results/{period?}', [ResultsController::class, 'show'])->name('results.show');
 
