@@ -532,6 +532,61 @@ class GenericSpreadsheetWizardTest extends CorrectionImportHttpTest
         $this->assertStringNotContainsString('Título no ficheiro:', $wizard);
     }
 
+    // ---------------------------- 7b. registar uma avaliação, não escolher um modo
+
+    #[Test]
+    public function the_normal_path_no_longer_asks_the_teacher_to_choose_a_storage_mode(): void
+    {
+        $wizard = $this->wizard();
+
+        // «Criar uma nova avaliação» versus «Associar a uma avaliação
+        // existente» was a decision about how the application stores things,
+        // put to somebody who wanted to record a test they had marked. The
+        // radio pair is gone; importing results registers an evaluation, and
+        // the other path is a link underneath (§2, §4).
+        $this->assertStringNotContainsString('value="create_new" /> Criar uma nova avaliação', $wizard);
+        $this->assertStringNotContainsString('Associar a uma avaliação existente', $wizard);
+        $this->assertStringNotContainsString('O que fazer com estes resultados', $wizard);
+
+        $this->assertStringContainsString('Vai ser registada uma nova avaliação.', $wizard);
+        $this->assertStringContainsString('Em vez disso, juntar a uma avaliação já registada', $wizard);
+
+        // The capability is kept — it is a link, not a question.
+        $this->assertStringContainsString("form.mode = 'associate_existing'", $wizard);
+    }
+
+    #[Test]
+    public function a_recognised_grid_says_which_evaluation_it_belongs_to_and_when(): void
+    {
+        $wizard = $this->wizard();
+
+        // The grid names its own instrument, and an instrument in this model IS
+        // the concrete evaluation — it carries the class, the date and the
+        // period. There is nothing to choose, so nothing is asked (§3, §8).
+        $this->assertStringContainsString('de onde esta grelha foi descarregada', $wizard);
+        $this->assertStringContainsString('Data da avaliação:', $wizard);
+        $this->assertStringContainsString('Período:', $wizard);
+        $this->assertStringContainsString('lapisGridInstrument', $wizard);
+    }
+
+    #[Test]
+    public function an_evaluation_on_the_same_date_is_a_remark_and_never_a_refusal(): void
+    {
+        $wizard = $this->wizard();
+
+        // Offered only when there is something to offer, and never switched
+        // automatically: the same instrument may be applied twice — a second
+        // sitting, a resit — so a match on the date is a possible
+        // correspondence and not a certainty (§5).
+        $this->assertStringContainsString('v-if="matchingEvaluation"', $wizard);
+        $this->assertStringContainsString('Já existe uma avaliação nesta turma com esta data', $wizard);
+        $this->assertStringContainsString('ou continue para registar uma avaliação nova', $wizard);
+        $this->assertStringContainsString(
+            'candidate.applied_on === form.instrument.applied_on',
+            $wizard,
+        );
+    }
+
     // ------------------------------------------------ 8. intuitivo is untouched
 
     #[Test]

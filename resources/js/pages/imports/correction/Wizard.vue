@@ -402,6 +402,40 @@ const tabularReadable = computed(() => props.tabular?.readable === true);
 const isLapisGrid = computed(() => props.tabular?.lapis_grid === true);
 
 /**
+ * The evaluation a recognised LÁPIS grid came from.
+ *
+ * The grid names its own instrument, and an instrument in this model IS the
+ * concrete evaluation — it carries the class, the date and the period. So there
+ * is no «new or existing» to decide: the file already answered it, and asking
+ * would be asking the teacher to re-choose something they chose when they
+ * downloaded the grid (§3, §8).
+ */
+const lapisGridInstrument = computed(() =>
+    isLapisGrid.value && !creating.value ? chosenInstrument.value : undefined,
+);
+
+/**
+ * An evaluation already registered for this class on the date being entered.
+ *
+ * Offered ONLY when there is something to offer. The same instrument may be
+ * applied more than once — a second sitting, a resit — so a match on the date
+ * is a possible correspondence and never a certainty, and it is surfaced as a
+ * remark the teacher may act on rather than a question they must answer (§5).
+ *
+ * Nothing is switched automatically and nothing is overwritten: choosing it
+ * moves the import onto that evaluation, which is a decision, not a default.
+ */
+const matchingEvaluation = computed(() => {
+    if (!creating.value || !form.instrument.applied_on) {
+        return undefined;
+    }
+
+    return props.preview.eligible_instruments.find(
+        (candidate) => candidate.applied_on === form.instrument.applied_on,
+    );
+});
+
+/**
  * Vocabulary that belongs to the source, taken from the source.
  *
  * «Não participou nesta aplicação» is a true sentence about a Plickers export,
@@ -1792,27 +1826,100 @@ const typeName = computed(
                 </p>
             </div>
 
-            <fieldset class="space-y-2">
-                <legend class="text-sm font-medium">
-                    O que fazer com estes resultados
-                </legend>
-                <label class="flex items-center gap-2 text-sm">
-                    <input
-                        v-model="form.mode"
-                        type="radio"
-                        value="create_new"
-                    />
-                    Criar uma nova avaliação
-                </label>
-                <label class="flex items-center gap-2 text-sm">
-                    <input
-                        v-model="form.mode"
-                        type="radio"
-                        value="associate_existing"
-                    />
-                    Associar a uma avaliação existente
-                </label>
-            </fieldset>
+            <!--
+              ============ ONDE ESTES RESULTADOS ENTRAM ============
+
+              The radio pair that used to stand here — register a new one, or
+              attach to one already stored — was a decision about how the
+              application keeps things, put to somebody who wanted to record a
+              test they had marked. The first is what happens almost every time;
+              the second exists for a case most teachers will never have.
+
+              So importing results now REGISTERS AN EVALUATION, and the other
+              path is a link underneath rather than a question above (§2, §4).
+            -->
+            <div
+                v-if="lapisGridInstrument"
+                class="rounded-md border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"
+            >
+                <p>
+                    Os resultados entram na avaliação
+                    <strong>{{ lapisGridInstrument.title }}</strong
+                    >, de onde esta grelha foi descarregada.
+                </p>
+                <!--
+                  Shown and not asked. The date and the period belong to that
+                  evaluation and the file has no say in either — but the teacher
+                  has to see WHEN what they are about to write will land (§8).
+                -->
+                <p class="mt-1">
+                    <span class="text-emerald-800">Data da avaliação:</span>
+                    <strong>{{ lapisGridInstrument.applied_on }}</strong>
+                    <template v-if="lapisGridInstrument.period">
+                        · <span class="text-emerald-800">Período:</span>
+                        <strong>{{ lapisGridInstrument.period }}</strong>
+                    </template>
+                </p>
+            </div>
+
+            <template v-else>
+                <div
+                    v-if="creating"
+                    class="flex flex-wrap items-baseline justify-between gap-2 text-sm"
+                >
+                    <p class="font-medium">Vai ser registada uma nova avaliação.</p>
+                    <button
+                        v-if="preview.eligible_instruments.length > 0"
+                        type="button"
+                        class="text-xs text-muted-foreground underline hover:text-foreground"
+                        @click="form.mode = 'associate_existing'"
+                    >
+                        Em vez disso, juntar a uma avaliação já registada
+                    </button>
+                </div>
+
+                <!--
+                  Only when there is a real correspondence. The same instrument
+                  may be applied twice — a second sitting, a resit — so this is
+                  a remark, not a refusal, and nothing is switched or
+                  overwritten without the teacher saying so (§5).
+                -->
+                <p
+                    v-if="matchingEvaluation"
+                    class="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+                >
+                    Já existe uma avaliação nesta turma com esta data:
+                    <strong>{{ matchingEvaluation.title }}</strong
+                    >.
+                    <button
+                        type="button"
+                        class="underline"
+                        @click="
+                            form.mode = 'associate_existing';
+                            form.instrument_id = matchingEvaluation!.id;
+                        "
+                    >
+                        Juntar os resultados a essa avaliação
+                    </button>
+                    — ou continue para registar uma avaliação nova.
+                </p>
+
+                <div
+                    v-else
+                    class="flex flex-wrap items-baseline justify-between gap-2 text-sm"
+                >
+                    <p class="font-medium">
+                        Os resultados vão juntar-se a uma avaliação já registada.
+                    </p>
+                    <button
+                        type="button"
+                        class="text-xs text-muted-foreground underline hover:text-foreground"
+                        @click="form.mode = 'create_new'"
+                    >
+                        Registar uma avaliação nova
+                    </button>
+                </div>
+            </template>
 
             <div
                 v-if="creating"
