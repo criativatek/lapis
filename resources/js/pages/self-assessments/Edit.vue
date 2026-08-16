@@ -1,38 +1,36 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import Heading from '@/components/Heading.vue';
-
-type Level = { id: number; code: string; label: string };
-type Question = { id: number; prompt: string; answer_level_id: number | null; calculated: string | null };
+import SelfAssessmentBlocks from '@/components/SelfAssessmentBlocks.vue';
+import type { SelfAssessmentQuestion } from '@/types/self-assessment';
 
 const props = defineProps<{
     schoolClass: { ulid: string; label: string };
     period: { ulid: string; label: string };
     student: string;
     enrollmentUlid: string;
-    levels: Level[];
-    questions: Question[];
-    reflection: string | null;
+    questions: SelfAssessmentQuestion[];
+    earlierReflection: string | null;
     status: string | null;
 }>();
 
-// answers: question id → chosen scale level id (or null).
-const initialAnswers: Record<number, number | null> = {};
+// Two maps by question id: the chosen level for scale questions, the written
+// answer for the rest. Each written answer stays its own — merging them would
+// leave one field answering two questions.
+const answers: Record<number, number | null> = {};
+const texts: Record<number, string> = {};
 
 for (const question of props.questions) {
-    initialAnswers[question.id] = question.answer_level_id;
+    if (question.answer_kind === 'scale') {
+        answers[question.id] = question.answer_level_id;
+
+        continue;
+    }
+
+    texts[question.id] = question.answer_text ?? '';
 }
 
-const form = useForm<{ reflection: string; answers: Record<number, number | null> }>({
-    reflection: props.reflection ?? '',
-    answers: initialAnswers,
-});
-
-// The calculated result is a 0–100 percentage; the self rating is a 1–5 level.
-// Shown side by side (§15), never converted into each other.
-function calculated(value: string | null): string {
-    return value === null ? '—' : `${Number(value).toFixed(0)}%`;
-}
+const form = useForm<{ answers: Record<number, number | null>; texts: Record<number, string> }>({ answers, texts });
 
 function submit(): void {
     form.post(`/classes/${props.schoolClass.ulid}/self-assessments/${props.period.ulid}/${props.enrollmentUlid}`);
@@ -50,45 +48,16 @@ function submit(): void {
             </Link>
         </div>
 
-        <form class="space-y-4" @submit.prevent="submit">
-            <div v-if="questions.length" class="overflow-hidden rounded-lg border border-border">
-                <div class="flex items-center justify-between border-b border-border bg-muted/40 px-4 py-2 text-xs font-medium text-muted-foreground">
-                    <span>Domínio — como se avalia</span>
-                    <span>Calculado</span>
-                </div>
-                <div v-for="question in questions" :key="question.id" class="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 last:border-0">
-                    <label class="min-w-0 flex-1 text-sm">
-                        <span class="mb-1 block">{{ question.prompt }}</span>
-                        <select v-model="form.answers[question.id]" class="w-full max-w-xs rounded-md border border-border bg-background px-2 py-1.5">
-                            <option :value="null">—</option>
-                            <option v-for="level in levels" :key="level.id" :value="level.id">{{ level.code }} · {{ level.label }}</option>
-                        </select>
-                    </label>
-                    <span class="shrink-0 text-sm tabular-nums text-muted-foreground" title="Resultado calculado neste domínio">
-                        {{ calculated(question.calculated) }}
-                    </span>
-                </div>
-            </div>
-
-            <p v-else class="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
-                Esta turma não tem perfil com domínios, por isso a autoavaliação é só reflexão.
-            </p>
-
-            <label class="block text-sm">
-                <span class="mb-1 block font-medium">Reflexão</span>
-                <textarea
-                    v-model="form.reflection"
-                    rows="4"
-                    maxlength="5000"
-                    class="w-full rounded-md border border-border bg-background px-3 py-2"
-                    placeholder="O que correu bem, o que quero melhorar…"
-                ></textarea>
-            </label>
+        <form class="space-y-6" @submit.prevent="submit">
+            <SelfAssessmentBlocks
+                v-model:answers="form.answers"
+                v-model:texts="form.texts"
+                :questions="questions"
+                :earlier-reflection="earlierReflection"
+            />
 
             <div class="flex items-center justify-between gap-3">
-                <p class="text-xs text-muted-foreground">
-                    A autoavaliação é comparada com a avaliação, nunca entra no cálculo (§15).
-                </p>
+                <p class="text-xs text-muted-foreground">A autoavaliação é comparada com a avaliação — nunca entra no cálculo.</p>
                 <button
                     type="submit"
                     class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"

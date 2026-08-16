@@ -43,9 +43,10 @@ class PublicSelfAssessmentController extends Controller
     public function store(Request $request, string $classUlid, string $periodUlid, string $enrollmentUlid): RedirectResponse
     {
         $validated = $request->validate([
-            'reflection' => ['nullable', 'string', 'max:5000'],
             'answers' => ['array'],
             'answers.*' => ['nullable', 'integer'],
+            'texts' => ['array'],
+            'texts.*' => ['nullable', 'string', 'max:5000'],
         ]);
 
         return $this->withResolvedContext($classUlid, $periodUlid, $enrollmentUlid, function ($class, $period, $enrollment) use ($request, $validated) {

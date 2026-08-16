@@ -89,6 +89,21 @@ enum SelfAssessmentQuestionRole: string
     }
 
     /**
+     * Where the question sits inside its block.
+     *
+     * «O meu desempenho» opens with the per-domain questions, which carry no
+     * role and therefore sort before every answer here — the overall judgement
+     * closes the block, after the parts it is a judgement about.
+     */
+    public function positionInBlock(): int
+    {
+        return match ($this) {
+            self::Global, self::Rationale, self::Liked => 1,
+            self::Improvement, self::Struggled => 2,
+        };
+    }
+
+    /**
      * @return list<self>
      */
     public static function required(): array

@@ -17,9 +17,11 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * Self-assessment (§15): the student reflects by domain, in an interview with the
- * teacher, and the answers are shown beside the calculated result — compared,
- * never summed (§15). Nothing here feeds the engine.
+ * Self-assessment (§15): the student reflects by domain, proposes an overall
+ * level of their own and writes about the period — in an interview with the
+ * teacher, or alone through a signed link. The comparison with the calculated
+ * result happens afterwards, in Resultados, so that the two readings are made
+ * independently. Nothing here feeds the engine.
  */
 class SelfAssessmentController extends Controller
 {
@@ -102,9 +104,12 @@ class SelfAssessmentController extends Controller
             ->where('ulid', $period)->firstOrFail();
 
         $validated = $request->validate([
-            'reflection' => ['nullable', 'string', 'max:5000'],
+            // Scale answers by question, written answers by question. Every one
+            // of them optional: an unanswered question stays unanswered (§12).
             'answers' => ['array'],
             'answers.*' => ['nullable', 'integer'],
+            'texts' => ['array'],
+            'texts.*' => ['nullable', 'string', 'max:5000'],
         ]);
 
         $this->recorder->save($class, $selected, $enrollment, $validated, SelfAssessmentFilledBy::TeacherInterview);

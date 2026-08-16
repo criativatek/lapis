@@ -7,9 +7,11 @@ use App\Models\Plan;
 use App\Models\SchoolClass;
 use App\Models\SelfAssessment;
 use App\Models\SelfAssessmentFilledBy;
+use App\Models\SelfAssessmentQuestionRole;
 use App\Models\SelfAssessmentStatus;
 use App\Models\SubscriptionStatus;
 use App\Models\User;
+use App\Services\Assessment\SelfAssessmentTemplateProvider;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
@@ -151,13 +153,23 @@ class PublicSelfAssessmentTest extends TestCase
 
         $url = $this->signedEditUrl($classUlid, $periodUlid, $enrollmentUlid);
 
-        $this->post($url, ['reflection' => 'Acho que fui bem na leitura.', 'answers' => []])->assertRedirect();
+        $rationaleId = app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () use ($classUlid) {
+            $class = SchoolClass::where('ulid', $classUlid)->firstOrFail();
 
-        app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function (): void {
-            $selfAssessment = SelfAssessment::firstOrFail();
+            return app(SelfAssessmentTemplateProvider::class)->forClass($class)
+                ->questions->firstWhere('role', SelfAssessmentQuestionRole::Rationale)->id;
+        });
+
+        $this->post($url, ['answers' => [], 'texts' => [$rationaleId => 'Acho que fui bem na leitura.']])->assertRedirect();
+
+        app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () use ($rationaleId): void {
+            $selfAssessment = SelfAssessment::with('responses')->firstOrFail();
             $this->assertSame(SelfAssessmentFilledBy::Student, $selfAssessment->filled_by);
             $this->assertSame(SelfAssessmentStatus::Submitted, $selfAssessment->status);
-            $this->assertSame('Acho que fui bem na leitura.', $selfAssessment->reflection);
+            $this->assertSame(
+                'Acho que fui bem na leitura.',
+                $selfAssessment->responses->firstWhere('self_assessment_question_id', $rationaleId)->text_value,
+            );
         });
     }
 

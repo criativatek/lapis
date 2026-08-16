@@ -91,7 +91,7 @@ class SelfAssessmentTest extends TestCase
     }
 
     #[Test]
-    public function the_edit_view_shows_the_calculated_result_beside_each_domain(): void
+    public function the_edit_view_never_shows_the_student_a_calculated_result(): void
     {
         [$classUlid, $periodUlid, $enrollmentUlid] = $this->seedContext();
         $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
@@ -99,7 +99,13 @@ class SelfAssessmentTest extends TestCase
         $this->actingAs($teacher)->get("/classes/{$classUlid}/self-assessments/{$periodUlid}/{$enrollmentUlid}")->assertInertia(
             fn ($page) => $page
                 ->component('self-assessments/Edit')
-                ->where('questions', fn ($questions) => count($questions) > 0),
+                ->where('questions', fn ($questions) => count($questions) > 0)
+                // No percentage, no proposal, no assigned level — the page is
+                // collecting a judgement, and a figure beside the question is a
+                // figure to agree with (§3).
+                ->where('questions', fn ($questions) => collect($questions)->every(
+                    fn ($question) => ! array_key_exists('calculated', $question),
+                )),
         );
     }
 
@@ -109,24 +115,33 @@ class SelfAssessmentTest extends TestCase
         [$classUlid, $periodUlid, $enrollmentUlid] = $this->seedContext();
         $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
 
-        $questionId = app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () use ($classUlid) {
+        [$questionId, $rationaleId] = app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () use ($classUlid) {
             $class = SchoolClass::where('ulid', $classUlid)->firstOrFail();
+            $questions = app(SelfAssessmentTemplateProvider::class)->forClass($class)->questions;
 
-            return app(SelfAssessmentTemplateProvider::class)->forClass($class)->questions->first()->id;
+            return [
+                $questions->firstWhere('domain_id', '!=', null)->id,
+                $questions->firstWhere('role', SelfAssessmentQuestionRole::Rationale)->id,
+            ];
         });
         $level = app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), fn () => Scale::where('name', 'Escala 1 a 5')->firstOrFail()->levels()->where('code', '4')->firstOrFail()->id);
 
         $this->actingAs($teacher)->post("/classes/{$classUlid}/self-assessments/{$periodUlid}/{$enrollmentUlid}", [
-            'reflection' => 'Sinto que melhorei na leitura.',
             'answers' => [$questionId => $level],
+            'texts' => [$rationaleId => 'Sinto que melhorei na leitura.'],
         ])->assertRedirect();
 
-        app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () use ($level): void {
+        app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () use ($level, $questionId, $rationaleId): void {
             $selfAssessment = SelfAssessment::with('responses')->firstOrFail();
             $this->assertSame(SelfAssessmentStatus::Submitted, $selfAssessment->status);
             $this->assertSame(SelfAssessmentFilledBy::TeacherInterview, $selfAssessment->filled_by);
-            $this->assertSame('Sinto que melhorei na leitura.', $selfAssessment->reflection);
-            $this->assertSame($level, $selfAssessment->responses->first()->scale_level_id);
+
+            $responses = $selfAssessment->responses->keyBy('self_assessment_question_id');
+            $this->assertSame($level, $responses[$questionId]->scale_level_id);
+            // The written answer against its own question, not merged into a
+            // single field somewhere (§10).
+            $this->assertSame('Sinto que melhorei na leitura.', $responses[$rationaleId]->text_value);
+            $this->assertNull($responses[$rationaleId]->scale_level_id);
         });
     }
 
@@ -136,12 +151,64 @@ class SelfAssessmentTest extends TestCase
         [$classUlid, $periodUlid, $enrollmentUlid] = $this->seedContext();
         $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
 
-        $this->actingAs($teacher)->post("/classes/{$classUlid}/self-assessments/{$periodUlid}/{$enrollmentUlid}", ['reflection' => 'Primeira.']);
-        $this->actingAs($teacher)->post("/classes/{$classUlid}/self-assessments/{$periodUlid}/{$enrollmentUlid}", ['reflection' => 'Segunda.']);
+        $improvementId = app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () use ($classUlid) {
+            $class = SchoolClass::where('ulid', $classUlid)->firstOrFail();
+
+            return app(SelfAssessmentTemplateProvider::class)->forClass($class)
+                ->questions->firstWhere('role', SelfAssessmentQuestionRole::Improvement)->id;
+        });
+
+        $this->actingAs($teacher)->post("/classes/{$classUlid}/self-assessments/{$periodUlid}/{$enrollmentUlid}", ['texts' => [$improvementId => 'Primeira.']]);
+        $this->actingAs($teacher)->post("/classes/{$classUlid}/self-assessments/{$periodUlid}/{$enrollmentUlid}", ['texts' => [$improvementId => 'Segunda.']]);
+
+        app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () use ($improvementId): void {
+            $this->assertSame(1, SelfAssessment::count());
+            $selfAssessment = SelfAssessment::with('responses')->firstOrFail();
+            $this->assertCount(1, $selfAssessment->responses);
+            $this->assertSame('Segunda.', $selfAssessment->responses->firstWhere('self_assessment_question_id', $improvementId)->text_value);
+        });
+    }
+
+    #[Test]
+    public function an_empty_form_is_a_valid_submission(): void
+    {
+        // The two questions about the work are optional by design, and nothing
+        // else is mandatory either: an unanswered question stays unanswered
+        // rather than blocking the student (§12).
+        [$classUlid, $periodUlid, $enrollmentUlid] = $this->seedContext();
+        $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+
+        $questions = app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () use ($classUlid) {
+            $class = SchoolClass::where('ulid', $classUlid)->firstOrFail();
+
+            return app(SelfAssessmentTemplateProvider::class)->forClass($class)->questions;
+        });
+
+        $answers = [];
+        $texts = [];
+
+        foreach ($questions as $question) {
+            if ($question->answer_kind === 'scale') {
+                $answers[$question->id] = null;
+
+                continue;
+            }
+
+            $texts[$question->id] = '';
+        }
+
+        $this->actingAs($teacher)
+            ->post("/classes/{$classUlid}/self-assessments/{$periodUlid}/{$enrollmentUlid}", ['answers' => $answers, 'texts' => $texts])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
 
         app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function (): void {
-            $this->assertSame(1, SelfAssessment::count());
-            $this->assertSame('Segunda.', SelfAssessment::firstOrFail()->reflection);
+            $selfAssessment = SelfAssessment::with('responses')->firstOrFail();
+
+            // Recorded, and empty. Nothing was invented to fill it.
+            $this->assertTrue($selfAssessment->responses->every(
+                fn ($response): bool => $response->scale_level_id === null && $response->text_value === null,
+            ));
         });
     }
 
