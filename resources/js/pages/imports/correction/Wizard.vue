@@ -52,6 +52,8 @@ type EligibleInstrument = {
     id: number;
     title: string;
     applied_on: string;
+    /** The evaluation's own period. Shown on review, never asked for (§18). */
+    period: string | null;
     status_label: string;
     items: {
         id: number;
@@ -2463,6 +2465,30 @@ const typeName = computed(
                     <dt class="inline text-muted-foreground">Turma:</dt>
                     <dd class="inline">{{ correctionImport.class.label }}</dd>
                 </div>
+                <!--
+                  Shown, never asked. Associating with an existing evaluation
+                  means its date and period already exist and are the record;
+                  the file has no say in either. But a teacher confirming an
+                  import has to be able to see WHEN what they are about to write
+                  will land, because everything downstream — results, evolution,
+                  classifications — hangs on it (§18).
+                -->
+                <template v-if="!creating && chosenInstrument">
+                    <div>
+                        <dt class="inline text-muted-foreground">Avaliação:</dt>
+                        <dd class="inline">{{ chosenInstrument.title }}</dd>
+                    </div>
+                    <div>
+                        <dt class="inline text-muted-foreground">
+                            Data da avaliação:
+                        </dt>
+                        <dd class="inline">{{ chosenInstrument.applied_on }}</dd>
+                    </div>
+                    <div v-if="chosenInstrument.period">
+                        <dt class="inline text-muted-foreground">Período:</dt>
+                        <dd class="inline">{{ chosenInstrument.period }}</dd>
+                    </div>
+                </template>
                 <div>
                     <dt class="inline text-muted-foreground">Alunos:</dt>
                     <dd class="inline">

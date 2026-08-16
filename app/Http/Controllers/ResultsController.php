@@ -6,6 +6,7 @@ use App\Models\AcademicPeriod;
 use App\Models\Domain;
 use App\Models\SchoolClass;
 use App\Models\User;
+use App\Services\Assessment\BuildResultsProgression;
 use App\Services\Assessment\ClassResultsCalculator;
 use App\Services\Assessment\CoverageExplanation;
 use App\Services\Assessment\ScaleProposalResolver;
@@ -19,6 +20,7 @@ class ResultsController extends Controller
         protected ClassResultsCalculator $calculator,
         protected ScaleProposalResolver $proposals,
         protected CoverageExplanation $coverage,
+        protected BuildResultsProgression $progression,
     ) {}
 
     public function index(): Response
@@ -75,7 +77,30 @@ class ResultsController extends Controller
         // guessing which elements the note refers to.
         $coverageNotes = $this->coverage->forResults($results);
 
+        // The longitudinal read, once, for the three things this screen cannot
+        // work out on its own: what the student said about themselves, what the
+        // teacher decided, and whether this period is better than the last.
+        //
+        // Keyed by enrolment so the rows below can pick their own entry without
+        // searching, and asked for once rather than per student (§16).
+        $progression = $selected === null ? [] : $this->progressionFor($class, $selected);
+
+        // «Média Ponderada» is this period's own evidence. The screen shows
+        // exactly that — forPeriod, not forAccumulated — so it is never labelled
+        // «Acumulada» for convenience (§4).
+        $isFirstPeriod = $selected !== null && $periods->first()?->id === $selected->id;
+
         return Inertia::render('results/Show', [
+            'weightedAverageLabel' => 'Média Ponderada',
+            'isFirstPeriod' => $isFirstPeriod,
+            // The profile's own bands, for the canonical colour resolver. The
+            // screen never decides what colour a level is (§7).
+            'scaleBands' => $scale === null ? [] : $scale->levels
+                ->map(fn ($level): array => [
+                    'label' => (string) $level->label,
+                    'sequence' => (int) $level->sequence,
+                    'is_negative' => (bool) $level->is_negative,
+                ])->values()->all(),
             'schoolClass' => [
                 'ulid' => $class->ulid,
                 'label' => $class->label,
@@ -115,9 +140,54 @@ class ResultsController extends Controller
                     'value' => $domain->normalizedValue,
                     'warning' => $domain->coverageWarning,
                     'coverage' => $coverageNotes[$row['enrollment']->getKey()]['domains'][$domain->domainId] ?? CoverageExplanation::none(),
+                    // Trend, never performance: whether this domain moved since
+                    // the period before, judged on standalone figures (§8).
+                    'evolution' => $progression[$row['enrollment']->getKey()]['domains'][$domain->domainId] ?? null,
                 ], $row['outcome']->domains),
+                'evolution' => $progression[$row['enrollment']->getKey()]['evolution'] ?? null,
+                'accumulated' => $progression[$row['enrollment']->getKey()]['accumulated'] ?? null,
+                // The student's own overall judgement — the answer to the global
+                // question, never the average of the per-domain ones (§5).
+                'self_assessment' => $progression[$row['enrollment']->getKey()]['self_assessment'] ?? null,
+                // What the teacher decided, beside what LÁPIS proposed (§6).
+                'classification' => $progression[$row['enrollment']->getKey()]['classification'] ?? null,
             ], $results),
         ]);
+    }
+
+    /**
+     * The parts of the longitudinal read this period's screen needs, keyed by
+     * enrolment.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    protected function progressionFor(SchoolClass $class, AcademicPeriod $selected): array
+    {
+        $byEnrollment = [];
+
+        foreach ($this->progression->for($class)['students'] as $student) {
+            foreach ($student['periods'] as $period) {
+                if ($period['period_id'] !== $selected->id) {
+                    continue;
+                }
+
+                $domains = [];
+
+                foreach ($period['domains'] as $domain) {
+                    $domains[$domain['domain_id']] = $domain['evolution'];
+                }
+
+                $byEnrollment[$student['enrollment_id']] = [
+                    'evolution' => $period['evolution'],
+                    'accumulated' => $period['accumulated_average'],
+                    'self_assessment' => $period['self_assessment'],
+                    'classification' => $period['classification'],
+                    'domains' => $domains,
+                ];
+            }
+        }
+
+        return $byEnrollment;
     }
 
     protected function user(): User

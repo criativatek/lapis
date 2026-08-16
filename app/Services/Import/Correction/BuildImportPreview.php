@@ -835,7 +835,7 @@ class BuildImportPreview
     {
         $instruments = $class->instruments()
             ->whereIn('status', [InstrumentStatus::Draft->value, InstrumentStatus::Prepared->value, InstrumentStatus::InCorrection->value])
-            ->with(['items.group'])
+            ->with(['items.group', 'academicPeriod'])
             ->orderByDesc('applied_on')
             ->get();
 
@@ -862,6 +862,10 @@ class BuildImportPreview
                 'ulid' => $instrument->ulid,
                 'title' => $instrument->title,
                 'applied_on' => $instrument->applied_on->toDateString(),
+                // The evaluation's own date and period, so the review step can
+                // SHOW them instead of asking again. They belong to the
+                // instrument and the file never gets a say in either (§18).
+                'period' => $instrument->academicPeriod?->label,
                 'status' => $instrument->status->value,
                 'status_label' => $instrument->status->label(),
                 'items' => $items,
