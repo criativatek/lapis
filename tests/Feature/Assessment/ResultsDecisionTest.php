@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Assessment;
 
+use App\Models\AcademicPeriod;
 use App\Models\AuditEvent;
 use App\Models\Classification;
 use App\Models\ClassificationScope;
@@ -130,8 +131,15 @@ class ResultsDecisionTest extends TestCase
         // The same URL Classificações posts to, and the ONLY write this screen
         // makes. A parallel endpoint would be a second lifecycle to keep in
         // agreement with this one (§3).
-        $this->assertStringContainsString('/classifications/${ulid}/confirm', $screen);
+        $this->assertStringContainsString(
+            '/classes/${props.schoolClass.ulid}/classifications/${selectedPeriod.value.ulid}/${row.enrollment_ulid}/decide',
+            $screen,
+        );
         $this->assertSame(1, substr_count($screen, 'router.post('));
+
+        // Addressed by the student and the period, so a period with no
+        // proposals yet is written exactly like any other.
+        $this->assertStringNotContainsString('classification.ulid', $screen);
     }
 
     // -------------------------------------------------- 2. with no decision
@@ -168,7 +176,7 @@ class ResultsDecisionTest extends TestCase
         $four = $this->levelId($teacher, '4');
 
         $this->actingAs($teacher)
-            ->post("/classifications/{$ulid}/confirm", ['final_scale_level_id' => $four])
+            ->post($this->decideUrl($ulid), ['final_scale_level_id' => $four])
             ->assertSessionHasNoErrors();
 
         $this->asTenant($teacher, function () use ($ulid, $four): void {
@@ -193,7 +201,7 @@ class ResultsDecisionTest extends TestCase
 
         // The same empty post the button sends: no decision of its own, which
         // the service reads as «the proposal is it».
-        $this->actingAs($teacher)->post("/classifications/{$ulid}/confirm", [])->assertSessionHasNoErrors();
+        $this->actingAs($teacher)->post($this->decideUrl($ulid), [])->assertSessionHasNoErrors();
 
         $row = $this->rowOf($this->results($teacher, $classUlid, $periodUlid));
         $this->assertSame($row['proposal']['value'], $row['classification']['final']['code']);
@@ -214,9 +222,9 @@ class ResultsDecisionTest extends TestCase
         $three = $this->levelId($teacher, '3');
         $four = $this->levelId($teacher, '4');
 
-        $this->actingAs($teacher)->post("/classifications/{$ulid}/confirm", ['final_scale_level_id' => $three]);
+        $this->actingAs($teacher)->post($this->decideUrl($ulid), ['final_scale_level_id' => $three]);
         $this->actingAs($teacher)
-            ->post("/classifications/{$ulid}/confirm", ['final_scale_level_id' => $four])
+            ->post($this->decideUrl($ulid), ['final_scale_level_id' => $four])
             ->assertSessionHasNoErrors();
 
         $this->asTenant($teacher, function () use ($ulid, $three, $four): void {
@@ -248,7 +256,7 @@ class ResultsDecisionTest extends TestCase
         $three = $this->levelId($teacher, '3');
         $four = $this->levelId($teacher, '4');
 
-        $this->actingAs($teacher)->post("/classifications/{$ulid}/confirm", ['final_scale_level_id' => $three]);
+        $this->actingAs($teacher)->post($this->decideUrl($ulid), ['final_scale_level_id' => $three]);
 
         $this->asTenant($teacher, function (): void {
             $class = SchoolClass::where('label', '7.º A')->firstOrFail();
@@ -267,7 +275,7 @@ class ResultsDecisionTest extends TestCase
 
         // Refused on the server too, not only hidden in the browser.
         $this->actingAs($teacher)
-            ->post("/classifications/{$ulid}/confirm", ['final_scale_level_id' => $four])
+            ->post($this->decideUrl($ulid), ['final_scale_level_id' => $four])
             ->assertSessionHasErrors('final_value');
 
         $this->asTenant($teacher, function () use ($ulid, $three): void {
@@ -302,13 +310,124 @@ class ResultsDecisionTest extends TestCase
         $this->assertSame('20.000', $props['decision']['max_value']);
 
         $this->actingAs($teacher)
-            ->post("/classifications/{$ulid}/confirm", ['final_value' => '15'])
+            ->post($this->decideUrl($ulid), ['final_value' => '15'])
             ->assertSessionHasNoErrors();
 
         // …and a value the scale does not admit is refused, by the same service.
         $this->actingAs($teacher)
-            ->post("/classifications/{$ulid}/confirm", ['final_value' => '25'])
+            ->post($this->decideUrl($ulid), ['final_value' => '25'])
             ->assertSessionHasErrors('final_value');
+    }
+
+    // ------------------------- 5b. um período sem propostas nenhumas
+
+    /**
+     * The second period of the demo class, where nothing has been proposed.
+     *
+     * @return array{string, string, string, string} class ulid, period ulid, enrolment ulid, student name
+     */
+    private function untouchedSecondPeriod(User $teacher): array
+    {
+        return $this->asTenant($teacher, function () {
+            $class = SchoolClass::where('label', '7.º A')->firstOrFail();
+            $second = $class->academicYear->periods()->where('sequence', 2)->firstOrFail();
+
+            // Nothing proposed here, on purpose: this is the state a teacher
+            // finds a period in before anyone presses «Gerar propostas».
+            $this->assertSame(0, Classification::where('academic_period_id', $second->id)->count());
+
+            $enrollment = $class->enrollments()->orderBy('class_number')->firstOrFail();
+
+            return [$class->ulid, $second->ulid, $enrollment->ulid, $enrollment->student->identity->display_name];
+        });
+    }
+
+    #[Test]
+    public function a_period_with_no_proposals_at_all_is_still_classifiable(): void
+    {
+        $teacher = $this->seedDemo();
+        [$classUlid, $periodUlid, $enrollmentUlid, $name] = $this->untouchedSecondPeriod($teacher);
+        $four = $this->levelId($teacher, '4');
+
+        // The cell offers the editor: what closes it is publication, never the
+        // absence of a proposal.
+        $row = $this->rowOf($this->results($teacher, $classUlid, $periodUlid), $name);
+        $this->assertNull($row['classification']);
+
+        $this->actingAs($teacher)
+            ->post("/classes/{$classUlid}/classifications/{$periodUlid}/{$enrollmentUlid}/decide", ['final_scale_level_id' => $four])
+            ->assertSessionHasNoErrors();
+
+        $this->asTenant($teacher, function () use ($four, $periodUlid): void {
+            $period = AcademicPeriod::where('ulid', $periodUlid)->firstOrFail();
+            $classification = Classification::where('academic_period_id', $period->id)
+                ->where('scope', ClassificationScope::Period)
+                ->firstOrFail();
+
+            // Opened and decided in one act, on the canonical row…
+            $this->assertSame(ClassificationStatus::Confirmed, $classification->status);
+            $this->assertSame($four, $classification->final_scale_level_id);
+            $this->assertSame('4.000', $classification->final_value);
+
+            // …with the proposal columns still empty, because nothing was
+            // proposed, and no snapshot, because there was no proposal to freeze.
+            $this->assertNull($classification->proposed_value);
+            $this->assertNull($classification->proposed_scale_level_id);
+            $this->assertNull($classification->calculation_snapshot_id);
+            // And not recorded as differing from a proposal that never existed.
+            $this->assertFalse($classification->wasOverridden());
+        });
+
+        // It shows on both screens, in the same token.
+        $this->assertSame('4', $this->rowOf($this->results($teacher, $classUlid, $periodUlid), $name)['classification']['final']['code']);
+        $this->assertSame(
+            '4',
+            $this->rowOf($this->classifications($teacher, $classUlid, $periodUlid), $name)['classification']['decision']['code'],
+        );
+    }
+
+    #[Test]
+    public function deciding_without_a_proposal_needs_the_decision_stated(): void
+    {
+        $teacher = $this->seedDemo();
+        [$classUlid, $periodUlid, $enrollmentUlid, $name] = $this->untouchedSecondPeriod($teacher);
+
+        // «Usar proposta» has no proposal to use here, and inventing one would
+        // be the system classifying (§3.3).
+        $this->actingAs($teacher)
+            ->post("/classes/{$classUlid}/classifications/{$periodUlid}/{$enrollmentUlid}/decide", [])
+            ->assertSessionHasErrors('final_value');
+    }
+
+    #[Test]
+    public function proposing_later_finds_the_row_the_teacher_already_opened(): void
+    {
+        $teacher = $this->seedDemo();
+        [$classUlid, $periodUlid, $enrollmentUlid, $name] = $this->untouchedSecondPeriod($teacher);
+        $four = $this->levelId($teacher, '4');
+
+        $this->actingAs($teacher)
+            ->post("/classes/{$classUlid}/classifications/{$periodUlid}/{$enrollmentUlid}/decide", ['final_scale_level_id' => $four]);
+
+        $this->asTenant($teacher, function () use ($periodUlid, $enrollmentUlid): void {
+            $class = SchoolClass::where('label', '7.º A')->firstOrFail();
+            $period = AcademicPeriod::where('ulid', $periodUlid)->firstOrFail();
+
+            app(ProposeClassifications::class)->forPeriod($class, $period);
+
+            // One live row for this student and period — the proposal step found
+            // the one already opened instead of racing it (the one-live unique
+            // index would have refused a second anyway).
+            $enrollment = $class->enrollments()->where('ulid', $enrollmentUlid)->firstOrFail();
+            $rows = Classification::where('academic_period_id', $period->id)
+                ->where('enrollment_id', $enrollment->id)
+                ->where('scope', ClassificationScope::Period)
+                ->get();
+
+            $this->assertCount(1, $rows);
+            // …and the decision the teacher took is untouched by it.
+            $this->assertSame(ClassificationStatus::Confirmed, $rows->first()->status);
+        });
     }
 
     // ------------------------------------------------------ 6. quem pode
@@ -321,7 +440,25 @@ class ResultsDecisionTest extends TestCase
         $four = $this->levelId($teacher, '4');
 
         $this->actingAs(User::factory()->create())
-            ->post("/classifications/{$ulid}/confirm", ['final_scale_level_id' => $four])
+            ->post($this->decideUrl($ulid), ['final_scale_level_id' => $four])
             ->assertNotFound();
+    }
+
+    /**
+     * The one endpoint a decision is written through, addressed by whose
+     * decision it is: this student, this period. Resolved here from a stored
+     * classification only because these tests already have one — the route
+     * itself needs none, which is the point of it.
+     */
+    private function decideUrl(string $classificationUlid): string
+    {
+        $owner = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+
+        return app(CurrentOrganization::class)->runFor($owner->personalOrganization(), function () use ($classificationUlid): string {
+            $classification = Classification::where('ulid', $classificationUlid)->firstOrFail();
+            $class = $classification->enrollment->schoolClass;
+
+            return "/classes/{$class->ulid}/classifications/{$classification->academicPeriod->ulid}/{$classification->enrollment->ulid}/decide";
+        });
     }
 }

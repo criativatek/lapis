@@ -6,10 +6,12 @@ use App\Models\AcademicPeriod;
 use App\Models\Classification;
 use App\Models\ClassificationScope;
 use App\Models\ClassificationStatus;
+use App\Models\Enrollment;
 use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Assessment\BuildResultsProgression;
 use App\Services\Assessment\ConfirmClassification;
+use App\Services\Assessment\OpenClassification;
 use App\Services\Assessment\ProposeClassifications;
 use App\Services\Assessment\PublishClassifications;
 use App\Services\Assessment\ScaleProposalResolver;
@@ -34,6 +36,7 @@ class ClassificationController extends Controller
         protected PublishClassifications $publisher,
         protected ScaleProposalResolver $proposals,
         protected BuildResultsProgression $progression,
+        protected OpenClassification $opener,
     ) {}
 
     public function show(Request $request, SchoolClass $class, ?string $period = null): Response
@@ -104,6 +107,7 @@ class ClassificationController extends Controller
                 $beside = $alongside[$enrollment->id] ?? null;
 
                 return [
+                    'enrollment_ulid' => (string) $enrollment->ulid,
                     'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
                     'photo_url' => $enrollment->student->photoUrl(),
                     'class_number' => $enrollment->class_number,
@@ -248,9 +252,27 @@ class ClassificationController extends Controller
         return back();
     }
 
-    public function confirm(Request $request, Classification $classification): RedirectResponse
+    /**
+     * The teacher's decision, from wherever they took it.
+     *
+     * Keyed by the student and the period rather than by a stored row: the row
+     * is where the decision is written, not what it is. A period whose proposals
+     * were never generated has none yet, and the classification is no less the
+     * teacher's for that — it is opened, then confirmed through the same service
+     * that has always confirmed one.
+     */
+    public function decide(Request $request, SchoolClass $class, string $period, Enrollment $enrollment): RedirectResponse
     {
-        Gate::authorize('update', $classification->enrollment->schoolClass);
+        Gate::authorize('update', $class);
+
+        $selected = AcademicPeriod::where('academic_year_id', $class->academic_year_id)
+            ->where('ulid', $period)->firstOrFail();
+
+        // Looked up THROUGH the class, so a URL cannot mix another class's
+        // student into this one.
+        abort_unless($class->enrollments()->whereKey($enrollment->getKey())->exists(), 404);
+
+        $scope = ClassificationScope::tryFrom((string) $request->input('scope')) ?? ClassificationScope::Period;
 
         $validated = $request->validate([
             // The level assigned on a scale made of levels. Whether it is one of
@@ -271,13 +293,17 @@ class ClassificationController extends Controller
         $value = isset($validated['final_value']) ? (string) $validated['final_value'] : null;
         $observation = $validated['override_reason'] ?? null;
 
-        // A confirmed classification is still the teacher's to revise until it
-        // is published — a different act, on the same row, with its own guards.
-        // Both re-check the status under a row lock, so a publication landing
-        // between this branch and the write is still refused.
-        $changing = $classification->status === ClassificationStatus::Confirmed;
-
         try {
+            // Found, or opened — through the one service that owns that, never
+            // by writing a row from here.
+            $classification = $this->opener->forDecision($class, $selected, $enrollment, $scope);
+
+            // A confirmed classification is still the teacher's to revise until
+            // it is published — a different act, on the same row, with its own
+            // guards. Both re-check the status under a row lock, so a
+            // publication landing between this branch and the write still wins.
+            $changing = $classification->status === ClassificationStatus::Confirmed;
+
             $changing
                 ? $this->confirmer->redecide($classification, $this->user(), $level, $value, $observation)
                 : $this->confirmer->confirm($classification, $this->user(), $level, $value, $observation);

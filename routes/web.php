@@ -188,7 +188,13 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::get('classes/{class}/classifications/{period?}', [ClassificationController::class, 'show'])->name('classifications.show');
         Route::post('classes/{class}/classifications/{period}/propose', [ClassificationController::class, 'propose'])->name('classifications.propose');
         Route::post('classes/{class}/classifications/{period}/publish', [ClassificationController::class, 'publish'])->name('classifications.publish');
-        Route::post('classifications/{classification}/confirm', [ClassificationController::class, 'confirm'])->name('classifications.confirm');
+        // The decision is identified by WHOSE it is — this student, this period,
+        // this scope — and not by the row that happens to store it. A period
+        // whose proposals were never generated has no row yet, and the teacher's
+        // classification must not wait on one; this opens it and confirms
+        // through the same service either way.
+        Route::post('classes/{class}/classifications/{period}/{enrollment}/decide', [ClassificationController::class, 'decide'])
+            ->name('classifications.decide');
     });
 
     // Reports — the classification sheet (pauta) of decided grades, printable and

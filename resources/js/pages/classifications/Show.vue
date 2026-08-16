@@ -31,6 +31,7 @@ type Classification = {
     is_published: boolean;
 };
 type Row = {
+    enrollment_ulid: string;
     name: string;
     photo_url: string | null;
     class_number: number | null;
@@ -148,6 +149,29 @@ function publish(): void {
     );
 }
 
+/**
+ * The one endpoint a decision is written through, from either screen.
+ *
+ * Addressed by the student and the period rather than by a stored row: a period
+ * whose proposals were never generated has none yet, and the teacher's
+ * classification does not wait on one.
+ */
+function decisionUrl(row: Row): string {
+    return `${basePath()}/${row.enrollment_ulid}/decide`;
+}
+
+/**
+ * Whether the teacher may still classify this student here. Not «is there a
+ * proposal» — what closes the door is publication, and only that.
+ */
+function canDecide(row: Row): boolean {
+    if (! props.schoolClass.has_profile || selectedPeriod.value === null) {
+        return false;
+    }
+
+    return row.classification === null || row.classification.can_change;
+}
+
 // One editor at a time — which row's, if any.
 const openUlid = ref<string | null>(null);
 const confirmForm = useForm<{ final_scale_level_id: number | null; final_value: string | null; override_reason: string }>({
@@ -162,36 +186,32 @@ const confirmForm = useForm<{ final_scale_level_id: number | null; final_value: 
  * is ever filled in for the teacher without this click (§6, §11).
  */
 function useProposal(row: Row): void {
-    if (row.classification === null) {
+    if (! row.classification?.can_confirm) {
         return;
     }
 
     confirmForm.transform(() => ({ final_scale_level_id: null, final_value: null, override_reason: '' }));
-    confirmForm.post(`/classifications/${row.classification.ulid}/confirm`, { preserveScroll: true });
+    confirmForm.post(decisionUrl(row), { preserveScroll: true });
 }
 
 function openEditor(row: Row): void {
-    if (row.classification === null) {
+    if (! canDecide(row)) {
         return;
     }
 
-    openUlid.value = row.classification.ulid;
+    openUlid.value = row.enrollment_ulid;
     confirmForm.clearErrors();
     // The editor opens on what the row currently says — the decision already
     // taken, or the proposal while there is none — in plain sight, and still
     // takes a click to become a decision.
-    const decided = row.classification.decision;
+    const decided = row.classification?.decision ?? null;
 
-    confirmForm.final_scale_level_id = decided?.scale_level_id ?? row.classification.proposed_scale_level_id;
-    confirmForm.final_value = decided !== null && decided.scale_level_id === null ? decided.code : row.classification.proposal.value;
-    confirmForm.override_reason = row.classification.observation ?? '';
+    confirmForm.final_scale_level_id = decided?.scale_level_id ?? row.classification?.proposed_scale_level_id ?? null;
+    confirmForm.final_value = decided !== null && decided.scale_level_id === null ? decided.code : (row.classification?.proposal.value ?? null);
+    confirmForm.override_reason = row.classification?.observation ?? '';
 }
 
 function submitDecision(row: Row): void {
-    if (row.classification === null) {
-        return;
-    }
-
     // Only the field this scale is decided in travels — a level id on a scale
     // made of levels, a value on one that is an interval.
     confirmForm.transform((data) => ({
@@ -199,7 +219,7 @@ function submitDecision(row: Row): void {
         final_value: props.schoolClass.classifies_by_level ? null : data.final_value,
         override_reason: data.override_reason,
     }));
-    confirmForm.post(`/classifications/${row.classification.ulid}/confirm`, {
+    confirmForm.post(decisionUrl(row), {
         preserveScroll: true,
         onSuccess: () => {
             openUlid.value = null;
@@ -385,7 +405,7 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                                          still the teacher's to revise; «Usar
                                          proposta» is how a first one is made and
                                          belongs to a proposal alone. -->
-                                    <div v-if="row.classification?.can_change" class="flex justify-end gap-2">
+                                    <div v-if="canDecide(row)" class="flex justify-end gap-2">
                                         <button
                                             type="button"
                                             class="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted/40"
@@ -394,7 +414,7 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                                             <PencilLine class="mr-1 inline size-3" />Alterar
                                         </button>
                                         <button
-                                            v-if="row.classification.can_confirm"
+                                            v-if="row.classification?.can_confirm"
                                             type="button"
                                             class="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
                                             :disabled="confirmForm.processing"
@@ -413,7 +433,7 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                                     <span v-else-if="row.classification" class="text-xs text-muted-foreground">✓</span>
                                 </td>
                             </tr>
-                            <tr v-if="row.classification && openUlid === row.classification.ulid" class="bg-muted/20">
+                            <tr v-if="openUlid === row.enrollment_ulid" class="bg-muted/20">
                                 <td colspan="7" class="px-3 py-3">
                                     <div class="flex flex-wrap items-end gap-3">
                                         <label class="text-sm">

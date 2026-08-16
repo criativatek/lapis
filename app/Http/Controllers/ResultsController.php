@@ -125,6 +125,9 @@ class ResultsController extends Controller
                 ->unique()->values()
                 ->map(fn (int $id) => ['id' => $id, 'name' => $domainNames[$id] ?? '—']),
             'rows' => array_map(fn (array $row) => [
+                // The decision is addressed by whose it is, so the cell can be
+                // written even before a classification row exists.
+                'enrollment_ulid' => (string) $row['enrollment']->ulid,
                 'name' => optional($row['enrollment']->student->identity)->display_name ?? '(sem identidade)',
                 'photo_url' => $row['enrollment']->student->photoUrl(),
                 'class_number' => $row['enrollment']->class_number,

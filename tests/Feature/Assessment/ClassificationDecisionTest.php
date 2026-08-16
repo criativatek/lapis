@@ -142,7 +142,7 @@ class ClassificationDecisionTest extends TestCase
 
         // Nothing is decided until this post happens — a proposal sitting in the
         // table is not a grade (§6).
-        $this->actingAs($teacher)->post("/classifications/{$ulid}/confirm", [])->assertSessionHasNoErrors();
+        $this->actingAs($teacher)->post($this->decideUrl($ulid), [])->assertSessionHasNoErrors();
 
         $this->asTenant($teacher, function () use ($ulid, $proposedLevelId): void {
             $carolina = Classification::where('ulid', $ulid)->firstOrFail();
@@ -170,7 +170,7 @@ class ClassificationDecisionTest extends TestCase
         });
 
         $this->actingAs($teacher)
-            ->post("/classifications/{$ulid}/confirm", ['final_scale_level_id' => $otherLevelId])
+            ->post($this->decideUrl($ulid), ['final_scale_level_id' => $otherLevelId])
             ->assertSessionHasNoErrors();
 
         $this->asTenant($teacher, function () use ($ulid, $otherLevelId): void {
@@ -207,7 +207,7 @@ class ClassificationDecisionTest extends TestCase
         // Confirmed, and still the teacher's to revise: nothing has been
         // communicated yet.
         $this->actingAs($teacher)
-            ->post("/classifications/{$ulid}/confirm", ['final_scale_level_id' => $four])
+            ->post($this->decideUrl($ulid), ['final_scale_level_id' => $four])
             ->assertSessionHasNoErrors();
 
         $this->asTenant($teacher, function () use ($ulid, $three, $four, $firstVersion, $teacher): void {
@@ -257,7 +257,7 @@ class ClassificationDecisionTest extends TestCase
             return [$class->ulid, $period->ulid, $carolina->ulid, $levels->firstWhere('code', '4')->id];
         });
 
-        $this->actingAs($teacher)->post("/classifications/{$ulid}/confirm", ['final_scale_level_id' => $four]);
+        $this->actingAs($teacher)->post($this->decideUrl($ulid), ['final_scale_level_id' => $four]);
 
         $onClassifications = $this->rowFrom($this->actingAs($teacher)->get("/classes/{$classUlid}/classifications/{$periodUlid}"));
         $onResults = $this->rowFrom($this->actingAs($teacher)->get("/classes/{$classUlid}/results/{$periodUlid}"));
@@ -293,7 +293,7 @@ class ClassificationDecisionTest extends TestCase
         // Refused, and told why — never edited quietly behind everyone it was
         // communicated to, and never through a second parallel row.
         $this->actingAs($teacher)
-            ->post("/classifications/{$ulid}/confirm", ['final_scale_level_id' => $four])
+            ->post($this->decideUrl($ulid), ['final_scale_level_id' => $four])
             ->assertSessionHasErrors('final_value');
 
         $this->asTenant($teacher, function () use ($ulid, $four): void {
@@ -329,7 +329,7 @@ class ClassificationDecisionTest extends TestCase
         // «Usar proposta» is how a FIRST decision is made. Revising one means
         // saying what it becomes.
         $this->actingAs($teacher)
-            ->post("/classifications/{$ulid}/confirm", [])
+            ->post($this->decideUrl($ulid), [])
             ->assertSessionHasErrors('final_value');
     }
 
@@ -351,7 +351,7 @@ class ClassificationDecisionTest extends TestCase
         // The tenant scope hides the row entirely — its existence is not even
         // revealed, exactly as when it was still a proposal.
         $this->actingAs(User::factory()->create())
-            ->post("/classifications/{$ulid}/confirm", ['final_scale_level_id' => 1])
+            ->post($this->decideUrl($ulid), ['final_scale_level_id' => 1])
             ->assertNotFound();
     }
 
@@ -415,5 +415,23 @@ class ClassificationDecisionTest extends TestCase
         }
 
         $this->fail('Carolina Nunes não apareceu no ecrã.');
+    }
+
+    /**
+     * The one endpoint a decision is written through, addressed by whose
+     * decision it is: this student, this period. Resolved here from a stored
+     * classification only because these tests already have one — the route
+     * itself needs none, which is the point of it.
+     */
+    private function decideUrl(string $classificationUlid): string
+    {
+        $owner = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+
+        return app(CurrentOrganization::class)->runFor($owner->personalOrganization(), function () use ($classificationUlid): string {
+            $classification = Classification::where('ulid', $classificationUlid)->firstOrFail();
+            $class = $classification->enrollment->schoolClass;
+
+            return "/classes/{$class->ulid}/classifications/{$classification->academicPeriod->ulid}/{$classification->enrollment->ulid}/decide";
+        });
     }
 }

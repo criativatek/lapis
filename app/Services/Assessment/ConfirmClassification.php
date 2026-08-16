@@ -68,46 +68,61 @@ class ConfirmClassification
                 throw ClassificationDecisionException::notProposed();
             }
 
-            // A proposal generated under an old profile version is stale: the
-            // class moved to a new version, so the frozen snapshot would attribute
-            // the result to the wrong rule (§10.2). Force a re-propose.
-            $currentVersionId = $locked->enrollment->schoolClass->assessment_profile_version_id;
-            if ($currentVersionId !== $locked->assessment_profile_version_id) {
-                throw ClassificationDecisionException::stale();
+            // WITHOUT A PROPOSAL there is nothing to be stale against and nothing
+            // to freeze: the row was opened for a teacher who has a
+            // classification to assign where the engine reached none — a period
+            // whose proposals were never generated, a student with no computable
+            // result. The decision must then be stated, because there is no
+            // proposal to adopt.
+            $withoutProposal = $locked->proposed_value === null;
+            $snapshot = null;
+
+            if (! $withoutProposal) {
+                // A proposal generated under an old profile version is stale: the
+                // class moved to a new version, so the frozen snapshot would attribute
+                // the result to the wrong rule (§10.2). Force a re-propose.
+                $currentVersionId = $locked->enrollment->schoolClass->assessment_profile_version_id;
+                if ($currentVersionId !== $locked->assessment_profile_version_id) {
+                    throw ClassificationDecisionException::stale();
+                }
+
+                $outcome = $this->freshOutcomeFor($locked);
+
+                // A proposal confirmed must match the numbers currently on the grid; a
+                // stale proposal is refused, not silently confirmed at an old value.
+                if (! $this->matchesProposal($outcome, $locked)) {
+                    throw ClassificationDecisionException::stale();
+                }
+
+                $payload = $this->payloadFor($locked, $outcome);
+
+                $snapshot = CalculationSnapshot::create([
+                    'enrollment_id' => $locked->enrollment_id,
+                    'academic_period_id' => $locked->academic_period_id,
+                    'scope' => $locked->scope,
+                    'assessment_profile_version_id' => $locked->assessment_profile_version_id,
+                    'trigger' => SnapshotTrigger::ProposalConfirmed,
+                    'engine_version' => CalculationEngine::VERSION,
+                    'payload' => $payload,
+                    'payload_hash' => CalculationSnapshot::hashPayload($payload),
+                    'result_normalized_value' => $outcome->normalizedValue,
+                    'result_value' => $outcome->proposedValue,
+                    'result_scale_level_id' => $outcome->scaleLevelId,
+                    'created_by' => $teacher->id,
+                    'created_at' => now(),
+                ]);
             }
 
-            $outcome = $this->freshOutcomeFor($locked);
-
-            // A proposal confirmed must match the numbers currently on the grid; a
-            // stale proposal is refused, not silently confirmed at an old value.
-            if (! $this->matchesProposal($outcome, $locked)) {
-                throw ClassificationDecisionException::stale();
+            if ($withoutProposal && $finalScaleLevelId === null && ($finalValue === null || trim($finalValue) === '')) {
+                throw ClassificationDecisionException::decisionRequired();
             }
 
             $decision = $this->decide($locked, $finalScaleLevelId, $finalValue);
             $written = $observation === null || trim($observation) === '' ? null : trim($observation);
 
-            $payload = $this->payloadFor($locked, $outcome);
-
-            $snapshot = CalculationSnapshot::create([
-                'enrollment_id' => $locked->enrollment_id,
-                'academic_period_id' => $locked->academic_period_id,
-                'scope' => $locked->scope,
-                'assessment_profile_version_id' => $locked->assessment_profile_version_id,
-                'trigger' => SnapshotTrigger::ProposalConfirmed,
-                'engine_version' => CalculationEngine::VERSION,
-                'payload' => $payload,
-                'payload_hash' => CalculationSnapshot::hashPayload($payload),
-                'result_normalized_value' => $outcome->normalizedValue,
-                'result_value' => $outcome->proposedValue,
-                'result_scale_level_id' => $outcome->scaleLevelId,
-                'created_by' => $teacher->id,
-                'created_at' => now(),
-            ]);
-
             $locked->fill([
                 'status' => ClassificationStatus::Confirmed,
-                'calculation_snapshot_id' => $snapshot->id,
+                'calculation_snapshot_id' => $snapshot?->id,
                 'confirmed_by' => $teacher->id,
                 'confirmed_at' => now(),
                 // Always written explicitly, never left implied — accepting the
@@ -138,7 +153,7 @@ class ConfirmClassification
                     'final_value' => $locked->final_value,
                     'final_scale_level_id' => $locked->final_scale_level_id,
                     'override_reason' => $locked->override_reason,
-                    'snapshot_id' => $snapshot->id,
+                    'snapshot_id' => $snapshot?->id,
                 ],
             );
 
@@ -302,7 +317,10 @@ class ConfirmClassification
             // column and something else in the other. A purely qualitative
             // level has none, and null is then the truthful answer (§10.4).
             'value' => $level->numeric_value === null ? null : (string) $level->numeric_value,
-            'is_override' => $level->id !== $locked->proposed_scale_level_id,
+            // Differing from a proposal that was never made is not differing
+            // from anything.
+            'is_override' => $locked->proposed_scale_level_id !== null
+                && $level->id !== $locked->proposed_scale_level_id,
             'readable' => "{$level->code} — {$level->label}",
         ];
     }
@@ -326,7 +344,8 @@ class ConfirmClassification
         return [
             'scale_level_id' => null,
             'value' => $value,
-            'is_override' => $proposed === null || Bc::compare(Bc::of($value), Bc::of($proposed)) !== 0,
+            // As above: with no proposal there is nothing to differ from.
+            'is_override' => $proposed !== null && Bc::compare(Bc::of($value), Bc::of($proposed)) !== 0,
             'readable' => $value,
         ];
     }

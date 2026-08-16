@@ -395,7 +395,7 @@ class ClassificationTest extends TestCase
         $ulid = $this->seedAndProposeReturningUlid();
 
         $this->actingAs(User::where('email', 'ana.martins@lapis.test')->firstOrFail())
-            ->post("/classifications/{$ulid}/confirm", ['final_value' => '1e2']) // scientific notation
+            ->post($this->decideUrl($ulid), ['final_value' => '1e2']) // scientific notation
             ->assertSessionHasErrors('final_value');
     }
 
@@ -408,7 +408,7 @@ class ClassificationTest extends TestCase
         // so binding it 404s — the classification's existence is not even revealed.
         $stranger = User::factory()->create();
         $this->actingAs($stranger)
-            ->post("/classifications/{$ulid}/confirm", [])
+            ->post($this->decideUrl($ulid), [])
             ->assertNotFound();
     }
 
@@ -438,5 +438,23 @@ class ClassificationTest extends TestCase
             ->where('scope', ClassificationScope::Period)
             ->get()
             ->first(fn (Classification $classification) => $classification->enrollment->student->identity->display_name === $studentName);
+    }
+
+    /**
+     * The one endpoint a decision is written through, addressed by whose
+     * decision it is: this student, this period. Resolved here from a stored
+     * classification only because these tests already have one — the route
+     * itself needs none, which is the point of it.
+     */
+    private function decideUrl(string $classificationUlid): string
+    {
+        $owner = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+
+        return app(CurrentOrganization::class)->runFor($owner->personalOrganization(), function () use ($classificationUlid): string {
+            $classification = Classification::where('ulid', $classificationUlid)->firstOrFail();
+            $class = $classification->enrollment->schoolClass;
+
+            return "/classes/{$class->ulid}/classifications/{$classification->academicPeriod->ulid}/{$classification->enrollment->ulid}/decide";
+        });
     }
 }

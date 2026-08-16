@@ -33,6 +33,7 @@ type Proposal = {
     is_percentage: boolean;
 };
 type Row = {
+    enrollment_ulid: string;
     name: string;
     photo_url: string | null;
     class_number: number | null;
@@ -123,13 +124,31 @@ const chosenLevelId = ref<number | null>(null);
 const chosenValue = ref<string | null>(null);
 
 const decisionError = computed(() => (page.props.errors as Record<string, string>)?.final_value ?? null);
+const selectedPeriod = computed(() => props.periods.find((period) => period.selected) ?? null);
+
+/**
+ * Whether the teacher may still classify this student in this period.
+ *
+ * NOT «is there a proposal». A period whose proposals were never generated, or
+ * a student the engine could reach no value for, are both cases where the
+ * teacher may well have a classification to assign — and the absence of a
+ * proposal was standing in the way of them assigning it. What closes the door
+ * is publication, and only that.
+ */
+function canDecide(row: Row): boolean {
+    if (! props.schoolClass.has_profile || selectedPeriod.value === null) {
+        return false;
+    }
+
+    return row.classification === null || row.classification.can_change;
+}
 
 function openDecision(row: Row): void {
-    if (! row.classification?.can_change) {
+    if (! canDecide(row)) {
         return;
     }
 
-    editingUlid.value = row.classification.ulid;
+    editingUlid.value = row.enrollment_ulid;
     // Opens on what the row already says. Nothing is written until the teacher
     // chooses — a proposal on screen is not a decision (§5).
     chosenLevelId.value = null;
@@ -141,10 +160,6 @@ function closeDecision(): void {
 }
 
 function submitDecision(row: Row): void {
-    if (row.classification === null) {
-        return;
-    }
-
     const chosen = props.decision.classifies_by_level
         ? { final_scale_level_id: chosenLevelId.value, final_value: null }
         : { final_scale_level_id: null, final_value: chosenValue.value };
@@ -153,25 +168,35 @@ function submitDecision(row: Row): void {
         return;
     }
 
-    post(row.classification.ulid, chosen);
+    post(row, chosen);
 }
 
-/** «Usar proposta»: an empty decision, which the service reads as «the proposal is it». */
+/**
+ * «Usar proposta»: an empty decision, which the service reads as «the proposal
+ * is it». Offered only where there IS a proposal — manual assignment is not.
+ */
 function useProposal(row: Row): void {
-    if (row.classification === null) {
+    if (! row.classification?.can_confirm) {
         return;
     }
 
-    post(row.classification.ulid, { final_scale_level_id: null, final_value: null });
+    post(row, { final_scale_level_id: null, final_value: null });
 }
 
-function post(ulid: string, data: { final_scale_level_id: number | null; final_value: string | null }): void {
+function post(row: Row, data: { final_scale_level_id: number | null; final_value: string | null }): void {
+    if (selectedPeriod.value === null) {
+        return;
+    }
+
+    // Addressed by the student and the period, not by a stored row — so a
+    // period with no proposals yet is written exactly like any other, through
+    // the same service.
     router.post(
-        `/classifications/${ulid}/confirm`,
+        `/classes/${props.schoolClass.ulid}/classifications/${selectedPeriod.value.ulid}/${row.enrollment_ulid}/decide`,
         data,
         {
             preserveScroll: true,
-            onStart: () => (savingUlid.value = ulid),
+            onStart: () => (savingUlid.value = row.enrollment_ulid),
             onFinish: () => (savingUlid.value = null),
             // Only on success: a refused write must leave the editor open with
             // the message, never a cell pretending it was saved (§10).
@@ -339,7 +364,7 @@ function post(ulid: string, data: { final_scale_level_id: number | null; final_v
                         <td class="px-3 py-2 text-right tabular-nums">
                             <!-- Being decided: the scale's own bands, or its own
                                  interval. Nothing is preselected. -->
-                            <div v-if="editingUlid && row.classification?.ulid === editingUlid" class="flex items-center justify-end gap-1">
+                            <div v-if="editingUlid === row.enrollment_ulid" class="flex items-center justify-end gap-1">
                                 <select
                                     v-if="decision.classifies_by_level"
                                     v-model="chosenLevelId"
@@ -404,9 +429,10 @@ function post(ulid: string, data: { final_scale_level_id: number | null; final_v
                                 >·</span>
                             </button>
 
-                            <!-- Not decided yet, and there is a proposal to
-                                 decide about: choose, or adopt the proposal. -->
-                            <span v-else-if="row.classification?.can_change" class="inline-flex items-center gap-1">
+                            <!-- Not decided yet. The teacher may classify whether
+                                 or not a proposal exists; «Usar proposta» is the
+                                 only part that needs one. -->
+                            <span v-else-if="canDecide(row)" class="inline-flex items-center gap-1">
                                 <button
                                     type="button"
                                     class="rounded border border-dashed border-border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted/40"
@@ -416,7 +442,7 @@ function post(ulid: string, data: { final_scale_level_id: number | null; final_v
                                     —
                                 </button>
                                 <button
-                                    v-if="row.classification.can_confirm"
+                                    v-if="row.classification?.can_confirm"
                                     type="button"
                                     class="rounded border border-border px-1.5 py-0.5 text-[11px] hover:bg-muted/40 disabled:opacity-50"
                                     :disabled="savingUlid !== null"
@@ -427,11 +453,7 @@ function post(ulid: string, data: { final_scale_level_id: number | null; final_v
                                 </button>
                             </span>
 
-                            <span
-                                v-else
-                                class="text-muted-foreground"
-                                title="Sem proposta gerada para este aluno — gere as propostas em Classificações."
-                            >—</span>
+                            <span v-else class="text-muted-foreground">—</span>
                         </td>
                     </tr>
                 </tbody>
