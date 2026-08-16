@@ -60,6 +60,10 @@ class ConfirmClassification
         return DB::transaction(function () use ($classification, $teacher, $finalScaleLevelId, $finalValue, $observation): Classification {
             $locked = Classification::query()->whereKey($classification->getKey())->lockForUpdate()->firstOrFail();
 
+            if ($locked->status->isPublished()) {
+                throw ClassificationDecisionException::alreadyPublished();
+            }
+
             if ($locked->status !== ClassificationStatus::Proposed) {
                 throw ClassificationDecisionException::notProposed();
             }
@@ -115,6 +119,7 @@ class ConfirmClassification
                 'override_reason' => $written,
                 'overridden_by' => $decision['is_override'] ? $teacher->id : null,
                 'overridden_at' => $decision['is_override'] ? now() : null,
+                'lock_version' => $locked->lock_version + 1,
             ])->save();
 
             // Audit (§22.5): a confirmation, and — when the teacher decided
@@ -139,6 +144,110 @@ class ConfirmClassification
 
             return $locked;
         });
+    }
+
+    /**
+     * Changing a decision that was confirmed but not yet published.
+     *
+     * The same row, rewritten — not a second one. A parallel classification for
+     * the same (enrolment, period, scope) is exactly what the one-live unique
+     * index exists to forbid, and superseding an uncommunicated decision would
+     * fill the history with versions nobody ever saw. What preserves the
+     * previous decision is the audit trail, which carries both values.
+     *
+     * Deliberately WITHOUT the two staleness checks that guard a first
+     * confirmation. Both ask «is the proposal still the one you are accepting?»,
+     * and here the teacher is accepting nothing: they are stating a
+     * classification of their own. Worse, both would refuse forever — the
+     * proposal step skips frozen rows and a profile migration leaves them alone,
+     * so a confirmed row's proposal is never refreshed. The frozen snapshot that
+     * explains the original proposal stays attached, unchanged.
+     */
+    public function redecide(
+        Classification $classification,
+        User $teacher,
+        ?int $finalScaleLevelId = null,
+        ?string $finalValue = null,
+        ?string $observation = null,
+    ): Classification {
+        return DB::transaction(function () use ($classification, $teacher, $finalScaleLevelId, $finalValue, $observation): Classification {
+            $locked = Classification::query()->whereKey($classification->getKey())->lockForUpdate()->firstOrFail();
+
+            // Re-checked on the locked row: a publication that landed between
+            // the click and this write closes the door, and must.
+            if ($locked->status->isPublished()) {
+                throw ClassificationDecisionException::alreadyPublished();
+            }
+
+            if ($locked->status !== ClassificationStatus::Confirmed) {
+                throw ClassificationDecisionException::notChangeable();
+            }
+
+            if ($finalScaleLevelId === null && ($finalValue === null || trim($finalValue) === '')) {
+                throw ClassificationDecisionException::decisionRequired();
+            }
+
+            $decision = $this->decide($locked, $finalScaleLevelId, $finalValue);
+            $written = $observation === null || trim($observation) === '' ? null : trim($observation);
+
+            $previous = [
+                'final_value' => $locked->final_value,
+                'final_scale_level_id' => $locked->final_scale_level_id,
+                'confirmed_by' => $locked->confirmed_by,
+                'confirmed_at' => $locked->confirmed_at?->toIso8601String(),
+                'readable' => $this->decisionReadable($locked),
+            ];
+
+            $locked->fill([
+                // The decision that stands, and who made it: a grade must say
+                // whose judgement it currently is, not whose it first was. The
+                // one before is in the trail below.
+                'final_scale_level_id' => $decision['scale_level_id'],
+                'final_value' => $decision['value'],
+                'override_reason' => $written,
+                'overridden_by' => $decision['is_override'] ? $teacher->id : null,
+                'overridden_at' => $decision['is_override'] ? now() : null,
+                'confirmed_by' => $teacher->id,
+                'confirmed_at' => now(),
+                // The column was declared for this and never used. A row that can
+                // now be written more than once is where a version counter starts
+                // to mean something.
+                'lock_version' => $locked->lock_version + 1,
+            ])->save();
+
+            $this->audit->record(
+                'classification.redecided',
+                $locked,
+                $teacher,
+                "Classificação alterada de {$previous['readable']} para {$decision['readable']}, antes de publicar.",
+                [
+                    'previous_final_value' => $previous['final_value'],
+                    'previous_final_scale_level_id' => $previous['final_scale_level_id'],
+                    'previous_confirmed_by' => $previous['confirmed_by'],
+                    'previous_confirmed_at' => $previous['confirmed_at'],
+                    'proposed_value' => $locked->proposed_value,
+                    'proposed_scale_level_id' => $locked->proposed_scale_level_id,
+                    'final_value' => $locked->final_value,
+                    'final_scale_level_id' => $locked->final_scale_level_id,
+                    'override_reason' => $locked->override_reason,
+                    'lock_version' => $locked->lock_version,
+                ],
+            );
+
+            return $locked;
+        });
+    }
+
+    /** The decision currently on the row, as a teacher reads it. */
+    protected function decisionReadable(Classification $classification): string
+    {
+        $level = $classification->finalScaleLevel;
+
+        if ($level !== null) {
+            return "{$level->code} — {$level->label}";
+        }
+
+        return $classification->final_value ?? '—';
     }
 
     /**

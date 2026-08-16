@@ -3,6 +3,7 @@
 namespace Tests\Feature\Assessment;
 
 use App\Models\AcademicPeriod;
+use App\Models\AuditEvent;
 use App\Models\Classification;
 use App\Models\ClassificationScope;
 use App\Models\ClassificationStatus;
@@ -11,6 +12,7 @@ use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Assessment\ConfirmClassification;
 use App\Services\Assessment\ProposeClassifications;
+use App\Services\Assessment\PublishClassifications;
 use App\Support\Assessment\ClassificationDecisionException;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
@@ -180,7 +182,180 @@ class ClassificationDecisionTest extends TestCase
         });
     }
 
-    // --------------------------------------- 3. the two screens must agree
+    // ------------------------------- 3. confirmed is decided, not closed
+
+    #[Test]
+    public function a_confirmed_classification_can_still_be_changed_before_it_is_published(): void
+    {
+        $teacher = $this->seedDemo();
+
+        [$ulid, $three, $four, $firstVersion] = $this->asTenant($teacher, function () use ($teacher) {
+            $class = SchoolClass::where('label', '7.º A')->firstOrFail();
+            $period = $class->academicYear->periods()->where('sequence', 1)->firstOrFail();
+            app(ProposeClassifications::class)->forPeriod($class, $period);
+
+            $carolina = $this->classificationFor($period, 'Carolina Nunes');
+            $levels = $class->profileVersion->scale->levels()->get();
+            $three = $levels->firstWhere('code', '3');
+            $four = $levels->firstWhere('code', '4');
+
+            app(ConfirmClassification::class)->confirm($carolina, $teacher, $three->id);
+
+            return [$carolina->ulid, $three->id, $four->id, $carolina->refresh()->lock_version];
+        });
+
+        // Confirmed, and still the teacher's to revise: nothing has been
+        // communicated yet.
+        $this->actingAs($teacher)
+            ->post("/classifications/{$ulid}/confirm", ['final_scale_level_id' => $four])
+            ->assertSessionHasNoErrors();
+
+        $this->asTenant($teacher, function () use ($ulid, $three, $four, $firstVersion, $teacher): void {
+            $carolina = Classification::where('ulid', $ulid)->firstOrFail();
+
+            // The SAME row, rewritten — never a second one for the same
+            // (enrolment, period, scope).
+            $this->assertSame(1, Classification::query()
+                ->where('enrollment_id', $carolina->enrollment_id)
+                ->where('academic_period_id', $carolina->academic_period_id)
+                ->where('scope', ClassificationScope::Period)
+                ->count());
+            $this->assertNull($carolina->superseded_by_id);
+
+            $this->assertSame(ClassificationStatus::Confirmed, $carolina->status);
+            $this->assertSame($four, $carolina->final_scale_level_id);
+            $this->assertSame('4.000', $carolina->final_value);
+            $this->assertSame($teacher->id, $carolina->confirmed_by);
+            $this->assertGreaterThan($firstVersion, $carolina->lock_version);
+
+            // The proposal is still untouched, as it has been all along.
+            $this->assertSame('91.000', $carolina->proposed_value);
+
+            // …and the previous decision is preserved where the history lives.
+            $event = AuditEvent::where('event', 'classification.redecided')->latest('id')->firstOrFail();
+            $this->assertSame($three, $event->properties['previous_final_scale_level_id']);
+            $this->assertSame('3.000', $event->properties['previous_final_value']);
+            $this->assertSame($four, $event->properties['final_scale_level_id']);
+            $this->assertSame($teacher->id, $event->causer_id);
+        });
+    }
+
+    #[Test]
+    public function changing_a_confirmed_classification_shows_through_to_results(): void
+    {
+        $teacher = $this->seedDemo();
+
+        [$classUlid, $periodUlid, $ulid, $four] = $this->asTenant($teacher, function () use ($teacher) {
+            $class = SchoolClass::where('label', '7.º A')->firstOrFail();
+            $period = $class->academicYear->periods()->where('sequence', 1)->firstOrFail();
+            app(ProposeClassifications::class)->forPeriod($class, $period);
+
+            $carolina = $this->classificationFor($period, 'Carolina Nunes');
+            $levels = $class->profileVersion->scale->levels()->get();
+            app(ConfirmClassification::class)->confirm($carolina, $teacher, $levels->firstWhere('code', '3')->id);
+
+            return [$class->ulid, $period->ulid, $carolina->ulid, $levels->firstWhere('code', '4')->id];
+        });
+
+        $this->actingAs($teacher)->post("/classifications/{$ulid}/confirm", ['final_scale_level_id' => $four]);
+
+        $onClassifications = $this->rowFrom($this->actingAs($teacher)->get("/classes/{$classUlid}/classifications/{$periodUlid}"));
+        $onResults = $this->rowFrom($this->actingAs($teacher)->get("/classes/{$classUlid}/results/{$periodUlid}"));
+
+        $this->assertSame('4', $onClassifications['classification']['decision']['code']);
+        $this->assertSame('4', $onResults['classification']['final']['code']);
+
+        // And the proposal is untouched by any of it — the same on both screens,
+        // and not the level the teacher ended up assigning.
+        $proposal = $onClassifications['classification']['proposal']['value'];
+        $this->assertSame($onResults['proposal']['value'], $proposal);
+        $this->assertNotSame('4', $proposal);
+    }
+
+    #[Test]
+    public function a_published_classification_is_not_editable_and_says_why(): void
+    {
+        $teacher = $this->seedDemo();
+
+        [$classUlid, $periodUlid, $ulid, $four] = $this->asTenant($teacher, function () use ($teacher) {
+            $class = SchoolClass::where('label', '7.º A')->firstOrFail();
+            $period = $class->academicYear->periods()->where('sequence', 1)->firstOrFail();
+            app(ProposeClassifications::class)->forPeriod($class, $period);
+
+            $carolina = $this->classificationFor($period, 'Carolina Nunes');
+            $levels = $class->profileVersion->scale->levels()->get();
+            app(ConfirmClassification::class)->confirm($carolina, $teacher, $levels->firstWhere('code', '3')->id);
+            app(PublishClassifications::class)->forPeriod($class, $period, ClassificationScope::Period);
+
+            return [$class->ulid, $period->ulid, $carolina->ulid, $levels->firstWhere('code', '4')->id];
+        });
+
+        // Refused, and told why — never edited quietly behind everyone it was
+        // communicated to, and never through a second parallel row.
+        $this->actingAs($teacher)
+            ->post("/classifications/{$ulid}/confirm", ['final_scale_level_id' => $four])
+            ->assertSessionHasErrors('final_value');
+
+        $this->asTenant($teacher, function () use ($ulid, $four): void {
+            $carolina = Classification::where('ulid', $ulid)->firstOrFail();
+
+            $this->assertSame(ClassificationStatus::Published, $carolina->status);
+            $this->assertNotSame($four, $carolina->final_scale_level_id);
+            $this->assertSame('3.000', $carolina->final_value);
+        });
+
+        // …and the screen offers no way in.
+        $row = $this->rowFrom($this->actingAs($teacher)->get("/classes/{$classUlid}/classifications/{$periodUlid}"));
+        $this->assertFalse($row['classification']['can_change']);
+        $this->assertFalse($row['classification']['can_confirm']);
+        $this->assertTrue($row['classification']['is_published']);
+    }
+
+    #[Test]
+    public function changing_a_confirmed_classification_still_needs_a_decision(): void
+    {
+        $teacher = $this->seedDemo();
+
+        $ulid = $this->asTenant($teacher, function () use ($teacher) {
+            $class = SchoolClass::where('label', '7.º A')->firstOrFail();
+            $period = $class->academicYear->periods()->where('sequence', 1)->firstOrFail();
+            app(ProposeClassifications::class)->forPeriod($class, $period);
+            $carolina = $this->classificationFor($period, 'Carolina Nunes');
+            app(ConfirmClassification::class)->confirm($carolina, $teacher);
+
+            return $carolina->ulid;
+        });
+
+        // «Usar proposta» is how a FIRST decision is made. Revising one means
+        // saying what it becomes.
+        $this->actingAs($teacher)
+            ->post("/classifications/{$ulid}/confirm", [])
+            ->assertSessionHasErrors('final_value');
+    }
+
+    #[Test]
+    public function a_teacher_from_another_organization_cannot_change_a_confirmed_classification(): void
+    {
+        $teacher = $this->seedDemo();
+
+        $ulid = $this->asTenant($teacher, function () use ($teacher) {
+            $class = SchoolClass::where('label', '7.º A')->firstOrFail();
+            $period = $class->academicYear->periods()->where('sequence', 1)->firstOrFail();
+            app(ProposeClassifications::class)->forPeriod($class, $period);
+            $carolina = $this->classificationFor($period, 'Carolina Nunes');
+            app(ConfirmClassification::class)->confirm($carolina, $teacher);
+
+            return $carolina->ulid;
+        });
+
+        // The tenant scope hides the row entirely — its existence is not even
+        // revealed, exactly as when it was still a proposal.
+        $this->actingAs(User::factory()->create())
+            ->post("/classifications/{$ulid}/confirm", ['final_scale_level_id' => 1])
+            ->assertNotFound();
+    }
+
+    // --------------------------------------- 4. the two screens must agree
 
     #[Test]
     public function results_and_classifications_show_the_same_decision_for_the_same_student(): void

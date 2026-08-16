@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
-import { CircleAlert, PencilLine, RefreshCw, Send } from '@lucide/vue';
+import { CircleAlert, Lock, PencilLine, RefreshCw, Send } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import StudentAvatar from '@/components/StudentAvatar.vue';
@@ -24,7 +24,11 @@ type Classification = {
     decision: Decision | null;
     overridden: boolean;
     observation: string | null;
+    /** «Usar proposta» — a first decision only. */
     can_confirm: boolean;
+    /** «Alterar» — true until the classification is published. */
+    can_change: boolean;
+    is_published: boolean;
 };
 type Row = {
     name: string;
@@ -173,11 +177,14 @@ function openEditor(row: Row): void {
 
     openUlid.value = row.classification.ulid;
     confirmForm.clearErrors();
-    // The editor opens ON the proposal, in plain sight, and still takes a click
-    // to become a decision.
-    confirmForm.final_scale_level_id = row.classification.proposed_scale_level_id;
-    confirmForm.final_value = row.classification.proposal.value;
-    confirmForm.override_reason = '';
+    // The editor opens on what the row currently says — the decision already
+    // taken, or the proposal while there is none — in plain sight, and still
+    // takes a click to become a decision.
+    const decided = row.classification.decision;
+
+    confirmForm.final_scale_level_id = decided?.scale_level_id ?? row.classification.proposed_scale_level_id;
+    confirmForm.final_value = decided !== null && decided.scale_level_id === null ? decided.code : row.classification.proposal.value;
+    confirmForm.override_reason = row.classification.observation ?? '';
 }
 
 function submitDecision(row: Row): void {
@@ -374,7 +381,11 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                                     <span v-else class="text-muted-foreground">—</span>
                                 </td>
                                 <td class="px-3 py-2 text-right">
-                                    <div v-if="row.classification?.can_confirm" class="flex justify-end gap-2">
+                                    <!-- Until it is published, the decision is
+                                         still the teacher's to revise; «Usar
+                                         proposta» is how a first one is made and
+                                         belongs to a proposal alone. -->
+                                    <div v-if="row.classification?.can_change" class="flex justify-end gap-2">
                                         <button
                                             type="button"
                                             class="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted/40"
@@ -383,6 +394,7 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                                             <PencilLine class="mr-1 inline size-3" />Alterar
                                         </button>
                                         <button
+                                            v-if="row.classification.can_confirm"
                                             type="button"
                                             class="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
                                             :disabled="confirmForm.processing"
@@ -391,6 +403,13 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                                             Usar proposta
                                         </button>
                                     </div>
+                                    <span
+                                        v-else-if="row.classification?.is_published"
+                                        class="inline-flex items-center gap-1 text-xs text-muted-foreground"
+                                        title="Esta classificação já foi publicada. Uma decisão publicada só muda por substituição, e esse mecanismo ainda não existe no LÁPIS."
+                                    >
+                                        <Lock class="size-3" />Publicada
+                                    </span>
                                     <span v-else-if="row.classification" class="text-xs text-muted-foreground">✓</span>
                                 </td>
                             </tr>
@@ -468,9 +487,11 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                 ({{ schoolClass.scale_name }})</template>. O <strong>{{ schoolClass.decision_label }}</strong>
                 é a decisão do professor, dada nessa mesma escala e nunca em percentagem — «Usar proposta» adota
                 a proposta, «Alterar» atribui outra. Atribuir diferente da proposta não exige justificação; a
-                observação é opcional e fica registada, tal como a proposta original, o autor e a data. A
-                confirmação congela um registo de como o valor foi obtido. A <strong>Autoavaliação</strong> é a
-                resposta do aluno e é independente das duas. "—" significa sem elementos, nunca zero.
+                observação é opcional e fica registada, tal como a proposta original, o autor e a data.
+                Uma classificação <strong>confirmada continua a poder ser alterada</strong> até ser publicada;
+                depois de <strong>publicada</strong> fica fechada. A confirmação congela um registo de como o
+                valor foi obtido. A <strong>Autoavaliação</strong> é a resposta do aluno e é independente das
+                duas. "—" significa sem elementos, nunca zero.
             </span>
         </p>
     </div>

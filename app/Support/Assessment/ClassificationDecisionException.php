@@ -25,6 +25,31 @@ class ClassificationDecisionException extends RuntimeException
         return new self(__('Só uma proposta por confirmar pode ser confirmada.'));
     }
 
+    /**
+     * Published is the closing act. Reopening one is a supersession, and that
+     * mechanism does not exist yet — so this says so, instead of editing the
+     * grade behind the back of everyone it was communicated to.
+     */
+    public static function alreadyPublished(): self
+    {
+        return new self(__('Esta classificação já foi publicada. Uma decisão publicada só muda por substituição, e esse mecanismo ainda não existe no LÁPIS.'));
+    }
+
+    public static function notChangeable(): self
+    {
+        return new self(__('Esta classificação já não está em condições de ser alterada.'));
+    }
+
+    /**
+     * Changing a decision means stating the new one. There is no «use the
+     * proposal» here: that is how the first decision is made, not how it is
+     * revised.
+     */
+    public static function decisionRequired(): self
+    {
+        return new self(__('Indique o nível ou a classificação a atribuir.'));
+    }
+
     /** A level id that is not one of this scale's own — including one that does not exist. */
     public static function levelNotOnScale(): self
     {

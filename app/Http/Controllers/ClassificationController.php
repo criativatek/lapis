@@ -135,7 +135,12 @@ class ClassificationController extends Controller
                         'decision' => $this->decisionPayload($classification),
                         'overridden' => $classification->wasOverridden(),
                         'observation' => $classification->override_reason,
+                        // «Usar proposta» is how a FIRST decision is made, so it
+                        // belongs to a proposal alone…
                         'can_confirm' => $classification->status === ClassificationStatus::Proposed,
+                        // …while «Alterar» stays available until publication.
+                        'can_change' => $classification->status->allowsDecision(),
+                        'is_published' => $classification->status->isPublished(),
                     ],
                 ];
             })->values(),
@@ -285,19 +290,27 @@ class ClassificationController extends Controller
             'override_reason' => ['nullable', 'string', 'max:1000'],
         ]);
 
+        $level = isset($validated['final_scale_level_id']) ? (int) $validated['final_scale_level_id'] : null;
+        $value = isset($validated['final_value']) ? (string) $validated['final_value'] : null;
+        $observation = $validated['override_reason'] ?? null;
+
+        // A confirmed classification is still the teacher's to revise until it
+        // is published — a different act, on the same row, with its own guards.
+        // Both re-check the status under a row lock, so a publication landing
+        // between this branch and the write is still refused.
+        $changing = $classification->status === ClassificationStatus::Confirmed;
+
         try {
-            $this->confirmer->confirm(
-                $classification,
-                $this->user(),
-                isset($validated['final_scale_level_id']) ? (int) $validated['final_scale_level_id'] : null,
-                isset($validated['final_value']) ? (string) $validated['final_value'] : null,
-                $validated['override_reason'] ?? null,
-            );
+            $changing
+                ? $this->confirmer->redecide($classification, $this->user(), $level, $value, $observation)
+                : $this->confirmer->confirm($classification, $this->user(), $level, $value, $observation);
         } catch (ClassificationDecisionException $exception) {
             return back()->withErrors(['final_value' => $exception->getMessage()]);
         }
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('Classificação confirmada.')]);
+        Inertia::flash('toast', ['type' => 'success', 'message' => $changing
+            ? __('Classificação alterada.')
+            : __('Classificação confirmada.')]);
 
         return back();
     }

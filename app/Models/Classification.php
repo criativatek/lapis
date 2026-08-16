@@ -60,7 +60,7 @@ use Illuminate\Support\Carbon;
     'calculation_snapshot_id', 'status',
     'proposed_normalized_value', 'proposed_value', 'proposed_scale_level_id',
     'final_value', 'final_scale_level_id', 'override_reason', 'overridden_by', 'overridden_at',
-    'confirmed_by', 'confirmed_at', 'published_at', 'superseded_by_id',
+    'confirmed_by', 'confirmed_at', 'published_at', 'superseded_by_id', 'lock_version',
 ])]
 class Classification extends Model
 {
