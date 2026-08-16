@@ -54,15 +54,19 @@ class BuildPackageCommand extends Command
     ];
 
     /**
-     * Checked against the finished archive. None of these can come from
-     * `git ls-files` — they are gitignored or untracked — so this is not the
-     * defence, it is the proof that the defence worked.
+     * Checked against the finished archive. Almost none of these can come from
+     * `git ls-files` — they are gitignored or untracked — so for those this is
+     * not the defence, it is the proof that the defence worked.
+     *
+     * The exception is the `.env.*.example` templates, which ARE tracked. What
+     * this rule is for is an environment file with real values in it; a template
+     * carries none by definition, and `.env.example` has always travelled.
      *
      * @var array<string, string>
      */
     protected const MUST_NOT_CONTAIN = [
         '#^\.env$#' => '.env',
-        '#^\.env\.(?!example$)#' => '.env.* (exceto .env.example)',
+        '#^\.env\.(?!.*\.example$|example$)#' => '.env.* (exceto os .example)',
         '#^storage/app/(?!.*\.gitignore$)#' => 'conteúdo de storage/app',
         '#^storage/logs/(?!.*\.gitignore$)#' => 'conteúdo de storage/logs',
         '#^\.phpunit\.result\.cache$#' => '.phpunit.result.cache',

@@ -120,7 +120,10 @@ class BuildPackageCommandTest extends TestCase
 
         $forbidden = [
             '#^\.env$#',
-            '#^\.env\.(?!example$)#',
+            // Any environment file with real values in it. The `.example`
+            // templates are tracked and carry none — `.env.example` has always
+            // travelled, and `.env.testing.example` is the same kind of thing.
+            '#^\.env\.(?!.*\.example$|example$)#',
             '#^storage/app/(?!.*\.gitignore$)#',
             '#^storage/logs/(?!.*\.gitignore$)#',
             '#^\.phpunit\.result\.cache$#',
