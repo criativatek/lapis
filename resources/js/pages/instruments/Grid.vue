@@ -119,16 +119,30 @@ function markDirty(enrollmentId: number, itemId: number): void {
     dirty.add(cellKey(enrollmentId, itemId));
 }
 
+/**
+ * A cell holds a number, or it holds nothing. There is no third thing.
+ *
+ * `Number('')` is 0 and `Number('-')` is NaN, and both used to become an
+ * «assessed» cell: the first would have invented a zero, the second sent
+ * `assessed` with a value of NaN, which JSON writes as null — the one pair the
+ * model forbids, and the 500 this fixes. A half-typed «-» in the deduction
+ * column is exactly how that happened.
+ *
+ * Zero survives, deliberately and by test: `Number('0')` is finite, so a
+ * written zero stays an assessed zero. Only «no number at all» is nothing.
+ */
 function onPointsInput(student: Student, item: Item, value: string): void {
     const current = cell(student.enrollment_id, item.id);
+    const parsed = value.trim() === '' ? null : Number(value);
 
-    if (value === '') {
-        // Cleared back to empty: this is "no data", not a zero.
+    if (parsed === null || ! Number.isFinite(parsed)) {
+        // Empty, or not yet a number. Either way this is «no data», never a
+        // zero and never an assessment.
         current.state = 'pending';
         current.points = null;
     } else {
         current.state = 'assessed';
-        current.points = Number(value);
+        current.points = parsed;
     }
 
     markDirty(student.enrollment_id, item.id);
@@ -139,6 +153,28 @@ function onPointsInput(student: Student, item: Item, value: string): void {
  * in RecordScores::guardAgainstScoresAboveMaximum(), so the teacher sees the
  * problem while typing instead of only after a rejected save.
  */
+/**
+ * Whether this question is a deduction: outside the denominator, worth nothing
+ * on its own, and carrying a NEGATIVE mark that lowers the domain it belongs to.
+ *
+ * Derived from the item's own canonical properties, never from its name.
+ */
+function isDeduction(item: Item): boolean {
+    return item.is_bonus && item.points_possible === 0;
+}
+
+/**
+ * The lowest value the box will accept.
+ *
+ * Zero for an ordinary question. Unbounded below for a deduction, because
+ * `min="0"` on the deduction column made the one value it exists to hold
+ * impossible to type — and a teacher starting to write «-2» produced a
+ * half-typed «-» that used to travel as an assessed cell with no number.
+ */
+function minimumFor(item: Item): number | undefined {
+    return isDeduction(item) ? undefined : 0;
+}
+
 function isOverMax(student: Student, item: Item): boolean {
     const current = cell(student.enrollment_id, item.id);
 
@@ -151,6 +187,19 @@ const hasOverMaxCell = computed(() =>
 
 function onStateChange(student: Student, item: Item, state: string): void {
     const current = cell(student.enrollment_id, item.id);
+
+    // «Avaliado» is a claim about a number, so it cannot be chosen where there
+    // is no number: an empty cell marked ✓ used to travel as `assessed` with a
+    // null value, which is the pair the model refuses. It stays «por avaliar»
+    // until somebody writes a mark in it.
+    if (state === 'assessed' && ! Number.isFinite(current.points)) {
+        current.state = 'pending';
+        current.points = null;
+        markDirty(student.enrollment_id, item.id);
+
+        return;
+    }
+
     current.state = state;
 
     // Only an assessed cell keeps a number — switching to absent clears it here
@@ -383,11 +432,21 @@ function save(): void {
         const [enrollmentId, itemId] = key.split(':').map(Number);
         const current = cells[key];
 
+        // The last guard before the wire, and the reason it exists: an
+        // «assessed» cell without a finite number is the one pair the model
+        // refuses, and every path that could produce it is a 500 rather than a
+        // wrong mark. Whatever the cell believes about itself, a cell with no
+        // number leaves here as «por avaliar».
+        //
+        // Number.isFinite and not a truthiness check, because 0 is a mark: a
+        // written zero must survive as an assessed zero.
+        const assessed = current.state === 'assessed' && Number.isFinite(current.points);
+
         return {
             enrollment_id: enrollmentId,
             instrument_item_id: itemId,
-            result_state: current.state,
-            points_earned: current.state === 'assessed' ? current.points : null,
+            result_state: assessed ? 'assessed' : current.state === 'assessed' ? 'pending' : current.state,
+            points_earned: assessed ? current.points : null,
             state_reason: current.reason,
         };
     });
@@ -845,7 +904,7 @@ function revertCancellation(): void {
                                     :data-cell="`${rowIndex}-${columnIndex}`"
                                     type="number"
                                     step="0.25"
-                                    min="0"
+                                    :min="minimumFor(item)"
                                     :max="item.points_possible"
                                     :value="cell(student.enrollment_id, item.id).state === 'assessed' ? cell(student.enrollment_id, item.id).points : ''"
                                     :disabled="isReadOnly || (cell(student.enrollment_id, item.id).state !== 'assessed' && cell(student.enrollment_id, item.id).state !== 'pending')"

@@ -303,6 +303,135 @@ class InstrumentGridRowStateTest extends TestCase
         });
     }
 
+    // ------------------------------- 3c. an empty cell is never «avaliado»
+
+    #[Test]
+    public function a_column_with_one_annulled_row_and_the_rest_empty_saves_without_a_500(): void
+    {
+        [$instrument, $enrollments, $items] = $this->makeInstrument();
+
+        // The deduction column of the smoke instrument, in miniature: every cell
+        // empty, one of them annulled. The empty ones used to travel as
+        // «assessed» with no value, which the model refuses — a 500 rather than
+        // a wrong mark, but a 500 all the same.
+        $column = $items->first();
+
+        $cells = [[
+            'enrollment_id' => $enrollments->first()->id,
+            'instrument_item_id' => $column->id,
+            'result_state' => ResultState::Annulled->value,
+            'points_earned' => null,
+        ]];
+
+        foreach ($enrollments->skip(1) as $enrollment) {
+            $cells[] = [
+                'enrollment_id' => $enrollment->id,
+                'instrument_item_id' => $column->id,
+                // What the corrected payload builder sends for an empty cell.
+                'result_state' => ResultState::Pending->value,
+                'points_earned' => null,
+            ];
+        }
+
+        $this->actingAs($this->teacher)
+            ->post("/instruments/{$instrument->ulid}/scores", ['cells' => $cells])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        app(CurrentOrganization::class)->runFor($this->organization, function () use ($column, $enrollments): void {
+            $annulled = StudentItemScore::where('instrument_item_id', $column->id)
+                ->where('enrollment_id', $enrollments->first()->id)
+                ->firstOrFail();
+
+            $this->assertSame(ResultState::Annulled, $annulled->result_state);
+            $this->assertNull($annulled->points_earned);
+
+            // The empty ones stored nothing at all — «por avaliar» is the
+            // absence of a row, not a stored blank.
+            $this->assertSame(0, StudentItemScore::where('instrument_item_id', $column->id)
+                ->whereIn('enrollment_id', $enrollments->skip(1)->pluck('id'))
+                ->count());
+        });
+    }
+
+    #[Test]
+    public function the_server_still_refuses_an_assessed_cell_with_no_value(): void
+    {
+        [$instrument, $enrollments, $items] = $this->makeInstrument();
+
+        // The guard the interface must never need — and which is NOT weakened.
+        // If anything ever sends this pair again it is refused, loudly.
+        $this->actingAs($this->teacher)
+            ->post("/instruments/{$instrument->ulid}/scores", [
+                'cells' => [[
+                    'enrollment_id' => $enrollments->first()->id,
+                    'instrument_item_id' => $items->first()->id,
+                    'result_state' => ResultState::Assessed->value,
+                    'points_earned' => null,
+                ]],
+            ])
+            ->assertServerError();
+    }
+
+    #[Test]
+    public function a_written_zero_is_still_a_zero_and_not_an_empty_cell(): void
+    {
+        [$instrument, $enrollments, $items] = $this->makeInstrument();
+
+        $this->saveCells($instrument, [[
+            'enrollment_id' => $enrollments->first()->id,
+            'instrument_item_id' => $items->first()->id,
+            'result_state' => ResultState::Assessed->value,
+            'points_earned' => 0,
+        ]]);
+
+        app(CurrentOrganization::class)->runFor($this->organization, function () use ($items, $enrollments): void {
+            $zero = StudentItemScore::where('instrument_item_id', $items->first()->id)
+                ->where('enrollment_id', $enrollments->first()->id)
+                ->firstOrFail();
+
+            $this->assertSame(ResultState::Assessed, $zero->result_state);
+            $this->assertSame('0.0000', (string) $zero->points_earned);
+        });
+    }
+
+    #[Test]
+    public function nothing_in_the_grid_can_send_an_assessed_cell_without_a_number(): void
+    {
+        $grid = $this->collapsed($this->grid());
+
+        // Every path that sets «assessed» now requires a finite number, and the
+        // payload builder refuses the pair one last time before the wire.
+        $this->assertStringContainsString(
+            "const assessed = current.state === 'assessed' && Number.isFinite(current.points);",
+            $grid,
+        );
+        $this->assertStringContainsString(
+            "if (state === 'assessed' && ! Number.isFinite(current.points))",
+            $grid,
+        );
+        $this->assertStringContainsString('if (parsed === null || ! Number.isFinite(parsed))', $grid);
+
+        // Number.isFinite and never truthiness, because 0 is a mark.
+        $this->assertStringNotContainsString('current.points ?', $grid);
+    }
+
+    #[Test]
+    public function the_deduction_column_accepts_the_negative_it_exists_for(): void
+    {
+        $grid = $this->collapsed($this->grid());
+
+        // `min="0"` made the one value a deduction holds impossible to type, and
+        // a half-typed «-» was how the empty cells became «assessed» in the
+        // first place.
+        $this->assertStringContainsString(':min="minimumFor(item)"', $grid);
+        $this->assertStringNotContainsString('type="number" step="0.25" min="0"', $grid);
+        $this->assertStringContainsString(
+            'return item.is_bonus && item.points_possible === 0;',
+            $grid,
+        );
+    }
+
     // ------------------------------------------------------------ 4. security
 
     #[Test]
