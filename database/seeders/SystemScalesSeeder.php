@@ -42,13 +42,21 @@ class SystemScalesSeeder extends Seeder
 
     protected function scaleZeroToTwenty(): void
     {
-        $scale = Scale::withoutGlobalScope('scaleVisibility')->updateOrCreate(
+        // A numeric scale has no qualitative levels OF ITS OWN — this seeder
+        // defines none for it.
+        //
+        // It used to go further and delete any it found, which is the same
+        // mistake syncLevels was fixed for, left standing in the one place the
+        // fix did not reach. A numeric scale CAN legitimately carry bands
+        // (§10.4, and ScaleProposalResolver resolves them), so "seeds none" is
+        // not a licence to remove what an installation already has: the delete
+        // is either refused by a foreign key — stopping the whole seeder on
+        // exactly the installations that have been in use — or it takes rows a
+        // recorded classification points at.
+        Scale::withoutGlobalScope('scaleVisibility')->updateOrCreate(
             ['organization_id' => null, 'name' => 'Escala 0 a 20'],
             ['kind' => 'numeric', 'min_value' => 0, 'max_value' => 20],
         );
-
-        // A numeric scale has no qualitative levels of its own.
-        $scale->levels()->delete();
     }
 
     protected function scalePercentage(): void
