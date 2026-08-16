@@ -7,6 +7,7 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { resultStateLabel } from '@/lib/coverage';
 import type { Coverage } from '@/types';
 
 /**
@@ -47,15 +48,12 @@ const props = withDefaults(
  * reason — describing an occurrence the data does not support would be worse
  * than describing none.
  */
-const OCCURRENCES: Record<string, { label: string; effect: string }> = {
-    absent: { label: 'Ausência', effect: 'sem classificação' },
-    absent_justified: {
-        label: 'Ausência justificada',
-        effect: 'sem classificação',
-    },
-    exempt: { label: 'Dispensa', effect: 'não consideradas' },
-    not_applicable: { label: 'Não aplicável', effect: 'não consideradas' },
-    annulled: { label: 'Anulado', effect: 'não consideradas' },
+const OCCURRENCES: Record<string, { effect: string }> = {
+    absent: { effect: 'sem classificação' },
+    absent_justified: { effect: 'sem classificação' },
+    exempt: { effect: 'não consideradas' },
+    not_applicable: { effect: 'não consideradas' },
+    annulled: { effect: 'não consideradas' },
 };
 
 // Partial coverage is a statement about a value that exists. Without a value
@@ -78,8 +76,9 @@ const entries = computed<Entry[]>(() => {
 
         lines.push({
             heading: `${exclusion.instrument} · ${exclusion.applied_on}`,
+            // The state's own name comes from the one map both screens read.
             detail: occurrence
-                ? `${occurrence.label} — ${questions} ${occurrence.effect}.`
+                ? `${resultStateLabel(exclusion.reason)} — ${questions} ${occurrence.effect}.`
                 : `${questions} fora do cálculo.`,
         });
     }

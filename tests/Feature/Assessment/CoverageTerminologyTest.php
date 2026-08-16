@@ -28,6 +28,17 @@ class CoverageTerminologyTest extends TestCase
         return (string) file_get_contents(resource_path('js/components/CoverageWarning.vue'));
     }
 
+    /**
+     * The state→words map, which two screens now read: the ⚠ on Resultados and
+     * the partial-coverage note on the INOVAR export. It lives on its own so
+     * that «Ausência justificada» cannot become «Falta justificada» on one of
+     * them — which is exactly what a second copy would eventually do.
+     */
+    protected function labelSource(): string
+    {
+        return (string) file_get_contents(resource_path('js/lib/coverage.ts'));
+    }
+
     #[Test]
     public function the_phrase_cobertura_insuficiente_appears_nowhere_in_the_interface(): void
     {
@@ -75,42 +86,70 @@ class CoverageTerminologyTest extends TestCase
     #[Test]
     public function each_recorded_state_is_described_by_its_own_words(): void
     {
-        $component = $this->componentSource();
+        $labels = $this->labelSource();
 
         $expected = [
             'absent' => 'Ausência',
             'absent_justified' => 'Ausência justificada',
             'exempt' => 'Dispensa',
             'not_applicable' => 'Não aplicável',
-            'annulled' => 'Anulado',
+            // Beside an instrument and a date, «Anulado» reads as though the
+            // student was annulled. It has to name what was.
+            'annulled' => 'Elemento anulado',
         ];
 
         foreach ($expected as $state => $label) {
             $this->assertMatchesRegularExpression(
-                "/\b{$state}:\s*\{\s*label:\s*'".preg_quote($label, '/')."'/u",
-                $component,
+                "/\b{$state}:\s*'".preg_quote($label, '/')."'/u",
+                $labels,
                 "O estado {$state} tem de ser descrito como «{$label}».",
             );
         }
     }
 
     #[Test]
+    public function the_words_are_not_copied_into_the_screens_that_use_them(): void
+    {
+        // One map, read by both. A component carrying its own copy is how the
+        // two screens end up describing the same recorded state differently.
+        $this->assertStringContainsString("from '@/lib/coverage'", $this->componentSource());
+        $this->assertStringNotContainsString("label: 'Ausência'", $this->componentSource());
+    }
+
+    #[Test]
     public function an_absence_and_a_structural_exclusion_do_not_share_wording(): void
     {
         $component = $this->componentSource();
+        $labels = $this->labelSource();
 
         // An absence leaves a question WITHOUT a classification that was expected.
         // A dispensation or a non-applicable question was never going to carry one.
         // Collapsing the two would describe a student as having missed something
-        // they were never due to sit.
+        // they were never due to sit. The name of the state and the effect on the
+        // calculation are asserted where each of them lives.
+        $this->assertMatchesRegularExpression("/absent:\s*'Ausência'/u", $labels);
         $this->assertMatchesRegularExpression(
-            "/absent:\s*\{\s*label:\s*'Ausência',\s*effect:\s*'sem classificação'/u",
+            "/absent:\s*\{\s*effect:\s*'sem classificação'/u",
             $component,
         );
+
+        $this->assertMatchesRegularExpression("/not_applicable:\s*'Não aplicável'/u", $labels);
         $this->assertMatchesRegularExpression(
-            "/not_applicable:\s*\{\s*label:\s*'Não aplicável',\s*effect:\s*'não consideradas'/u",
+            "/not_applicable:\s*\{\s*effect:\s*'não consideradas'/u",
             $component,
         );
+    }
+
+    #[Test]
+    public function a_state_the_map_does_not_know_is_never_called_an_absence(): void
+    {
+        $labels = $this->labelSource();
+
+        // `pending` is «not graded yet», which says nothing about whether anybody
+        // was there. In LÁPIS a blank is not a zero and no score is not an
+        // absence — so an unknown state gets a phrase that claims neither.
+        $this->assertStringNotContainsString('pending:', $labels);
+        $this->assertStringContainsString("?? 'Sem registo de avaliação'", $labels);
     }
 
     #[Test]

@@ -10,6 +10,8 @@ use App\Models\Scale;
 use App\Models\ScaleLevel;
 use App\Models\SchoolClass;
 use App\Services\Assessment\BuildResultsProgression;
+use App\Services\Assessment\ClassResultsCalculator;
+use App\Services\Assessment\CoverageExplanation;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
@@ -30,6 +32,8 @@ class InovarExportPreviewBuilder
     public function __construct(
         protected BuildResultsProgression $progression,
         protected InovarCodeResolver $codes,
+        protected ClassResultsCalculator $calculator,
+        protected CoverageExplanation $coverage,
     ) {}
 
     /**
@@ -58,6 +62,7 @@ class InovarExportPreviewBuilder
                 'mapped_domains' => count(array_filter($domains, fn (array $row): bool => $row['mapped'])),
                 'unmapped_domains' => count(array_filter($domains, fn (array $row): bool => ! $row['mapped'])),
                 'ready_cells' => count(array_filter($values, fn (array $row): bool => $row['writable'])),
+                'partial_coverage' => $this->partialCoverage($values),
                 'warnings' => $warnings,
                 'blocking_errors' => $blocking,
             ],
@@ -208,6 +213,12 @@ class InovarExportPreviewBuilder
     protected function valueRows(SchoolClass $class, AcademicPeriod $period, array $students, array $domains): array
     {
         $byEnrollment = $this->mentionsByEnrollment($class, $period);
+
+        // WHY a result is partial, from the service that already answers that
+        // question for the ⚠ on Resultados. Read in the same scope the warning
+        // itself comes from, so the reason and the flag can never disagree.
+        $notes = $this->coverage->forResults($this->calculator->forPeriod($class, $period));
+
         $rows = [];
 
         foreach ($students as $student) {
@@ -232,6 +243,12 @@ class InovarExportPreviewBuilder
                     'qualitative_band' => $mention['label'] ?? null,
                     'inovar_code' => $code,
                     'coverage_warning' => (bool) ($cell['coverage_warning'] ?? false),
+                    // The elements the engine itself named as the reason: their
+                    // instrument, its date and the state that was RECORDED
+                    // against them. Never a state inferred from a missing score
+                    // — a cell nobody has graded yet says nothing about whether
+                    // anybody was there.
+                    'coverage_elements' => $notes[$student['enrollment_id']]['domains'][$domain['lapis_domain_id']]['absences'] ?? [],
                     // No mention is no mark. The cell is left exactly as the
                     // grid had it — never an F, never a zero (§10).
                     'writable' => $code !== null,
@@ -329,16 +346,54 @@ class InovarExportPreviewBuilder
         $partial = count(array_filter($values, fn (array $row): bool => $row['writable'] && $row['coverage_warning']));
 
         if ($partial > 0) {
-            $warnings[] = "{$partial} menções resultam de cobertura parcial.";
+            // «1 resultado foi», «4 resultados foram» — a teacher reading «1
+            // menções» learns that nobody read the sentence.
+            $warnings[] = $partial === 1
+                ? '1 resultado foi calculado com informação parcial.'
+                : "{$partial} resultados foram calculados com informação parcial.";
         }
 
         $blank = count(array_filter($values, fn (array $row): bool => ! $row['writable']));
 
         if ($blank > 0) {
-            $warnings[] = "{$blank} células ficam por preencher por não haver menção — nunca são preenchidas com Fraco.";
+            $warnings[] = $blank === 1
+                ? '1 célula fica por preencher por não haver menção — nunca é preenchida com Fraco.'
+                : "{$blank} células ficam por preencher por não haver menção — nunca são preenchidas com Fraco.";
         }
 
         return $warnings;
+    }
+
+    /**
+     * Which results were partial, whose they are, and what is behind each.
+     *
+     * One entry per (student, domain) that will be written from partial
+     * evidence — a value that exists and rests on less than everything that was
+     * expected. A cell with no mention at all is not here: there is nothing for
+     * the coverage to be partial OF.
+     *
+     * @param  list<array<string, mixed>>  $values
+     * @return list<array<string, mixed>>
+     */
+    protected function partialCoverage(array $values): array
+    {
+        $rows = [];
+
+        foreach ($values as $value) {
+            if (! $value['writable'] || ! $value['coverage_warning']) {
+                continue;
+            }
+
+            $rows[] = [
+                'student' => $value['student'],
+                'domain' => $value['domain'],
+                // Already grouped by instrument and carrying its date: a student
+                // absent from a three-question test is one occurrence, not three.
+                'elements' => $value['coverage_elements'],
+            ];
+        }
+
+        return $rows;
     }
 
     /**

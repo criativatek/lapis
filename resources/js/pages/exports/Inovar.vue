@@ -3,6 +3,12 @@ import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { CircleAlert, CircleCheck, CircleX, Upload } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
+import { coverageElementLine } from '@/lib/coverage';
+
+/** One element the engine itself named as the reason a result is partial. */
+type CoverageElement = { instrument: string; applied_on: string; reason: string; item_count: number };
+
+type PartialCoverage = { student: string; domain: string; elements: CoverageElement[] };
 
 type Summary = {
     matched_students: number;
@@ -10,6 +16,7 @@ type Summary = {
     mapped_domains: number;
     unmapped_domains: number;
     ready_cells: number;
+    partial_coverage: PartialCoverage[];
     warnings: string[];
     blocking_errors: string[];
 };
@@ -39,6 +46,9 @@ const chosenName = ref<string | null>(null);
 const preparing = ref(false);
 
 const canGenerate = computed(() => props.preview !== null && props.preview.summary.blocking_errors.length === 0);
+
+/** Only the results that will be written AND rest on partial evidence. */
+const partial = computed<PartialCoverage[]>(() => props.preview?.summary.partial_coverage ?? []);
 
 function base(): string {
     return `/classes/${props.schoolClass.ulid}/exports/inovar/${props.period.ulid}`;
@@ -173,6 +183,32 @@ function noteDownloadStarted(): void {
                     <CircleAlert class="mt-0.5 size-4 shrink-0" />{{ warning }}
                 </li>
             </ul>
+
+            <!--
+              Which result, whose it is, and what is behind it. One case reads
+              inline; several become a list the teacher opens, so the summary
+              never turns into a wall of text.
+            -->
+            <div v-if="partial.length === 1" class="pl-6 text-sm text-amber-700 dark:text-amber-400">
+                <p class="font-medium">{{ partial[0].student }} — {{ partial[0].domain }}</p>
+                <p v-for="element in partial[0].elements" :key="`${element.instrument}-${element.reason}`">
+                    {{ coverageElementLine(element) }}
+                </p>
+            </div>
+
+            <details v-else-if="partial.length > 1" class="pl-6 text-sm text-amber-700 dark:text-amber-400">
+                <summary class="cursor-pointer">Ver detalhes</summary>
+                <div class="mt-2 space-y-2">
+                    <div v-for="(row, index) in partial" :key="`${row.student}-${row.domain}-${index}`">
+                        <p class="font-medium">{{ row.student }} — {{ row.domain }}</p>
+                        <ul class="list-disc pl-5">
+                            <li v-for="element in row.elements" :key="`${element.instrument}-${element.reason}`">
+                                {{ coverageElementLine(element) }}
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </details>
 
             <!-- Nada é gerado enquanto isto existir. -->
             <ul v-if="preview.summary.blocking_errors.length" class="space-y-1 text-sm text-red-700 dark:text-red-400">
