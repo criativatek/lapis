@@ -9,9 +9,11 @@ use App\Models\SchoolClass;
 use App\Models\SelfAssessment;
 use App\Models\SelfAssessmentFilledBy;
 use App\Models\SelfAssessmentQuestion;
+use App\Models\SelfAssessmentQuestionRole;
 use App\Models\SelfAssessmentResponse;
 use App\Models\SelfAssessmentStatus;
 use App\Models\SelfAssessmentTemplate;
+use App\Support\Assessment\ImprovementPrompt;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -67,7 +69,12 @@ class SelfAssessmentRecorder
             'period' => ['ulid' => $period->ulid, 'label' => $period->label],
             'student' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
             'enrollmentUlid' => $enrollment->ulid,
-            'questions' => $this->questionRows($template, $responses),
+            // The improvement question is worded for the calendar this class
+            // actually has — «no próximo semestre», «no próximo período», or
+            // nothing of the sort in the last moment of the year. Contextualised
+            // here, on the way to the screen: the stored question, its role and
+            // every answer given to it are untouched.
+            'questions' => $this->questionRows($template, $responses, ImprovementPrompt::nextAfter($period)),
             // What an older self-assessment wrote in the single generic box that
             // §15 replaced. Shown as it was, and never edited into a question it
             // was not an answer to.
@@ -159,7 +166,7 @@ class SelfAssessmentRecorder
      * @param  Collection<int, SelfAssessmentResponse>  $responses
      * @return list<array<string, mixed>>
      */
-    protected function questionRows(SelfAssessmentTemplate $template, Collection $responses): array
+    protected function questionRows(SelfAssessmentTemplate $template, Collection $responses, ?AcademicPeriod $nextPeriod = null): array
     {
         $levels = $this->levelsByScale($template);
 
@@ -181,7 +188,9 @@ class SelfAssessmentRecorder
                 // question is identified, and the only one the per-domain
                 // questions use.
                 'domain' => $question->domain?->name,
-                'prompt' => (string) $question->prompt,
+                'prompt' => $question->role === SelfAssessmentQuestionRole::Improvement
+                    ? ImprovementPrompt::forPeriod((string) $question->prompt, $nextPeriod)
+                    : (string) $question->prompt,
                 'answer_kind' => (string) $question->answer_kind,
                 'levels' => $question->answer_kind === 'scale' && $scaleId !== null ? ($levels[$scaleId] ?? []) : [],
                 'answer_level_id' => $response?->scale_level_id,

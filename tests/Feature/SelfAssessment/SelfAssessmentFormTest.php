@@ -174,7 +174,9 @@ class SelfAssessmentFormTest extends TestCase
 
         $this->assertSame('Nível que proponho para a minha avaliação neste período', $byRole['global']['prompt']);
         $this->assertSame('Porque proponho este nível?', $byRole['rationale']['prompt']);
-        $this->assertSame('O que preciso de melhorar no próximo período?', $byRole['improvement']['prompt']);
+        // The demo year runs on semesters, and the first one has a second after
+        // it — so this is what «o próximo» is called here.
+        $this->assertSame('O que preciso de melhorar no próximo semestre?', $byRole['improvement']['prompt']);
 
         // Already the student's voice, and left alone.
         $this->assertSame('Atividade de que mais gostei', $byRole['liked']['prompt']);
