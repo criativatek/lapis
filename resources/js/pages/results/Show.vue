@@ -292,13 +292,18 @@ function selectPeriod(ulid: string): void {
                           because it is the one that is true rather than
                           proposed — and never filled in from the proposal (§6).
                         -->
-                        <td class="px-3 py-2 text-right">
+                        <td class="px-3 py-2 text-right tabular-nums">
+                            <!-- The decision is a value on the scale too — the
+                                 same token the Proposta and the Autoavaliação
+                                 are read in, so the three can be compared at a
+                                 glance. The mention stays as support. -->
                             <span
                                 v-if="row.classification?.final"
                                 class="rounded px-2 py-0.5 font-bold"
                                 :class="levelClasses(row.classification.final)"
+                                :title="`${row.classification.final.code} — ${row.classification.final.label}`"
                             >
-                                {{ row.classification.final.label }}
+                                {{ row.classification.final.code }}
                                 <span
                                     v-if="row.classification.differs_from_proposal"
                                     class="ml-0.5 text-xs font-normal"

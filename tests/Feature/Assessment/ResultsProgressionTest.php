@@ -4,9 +4,12 @@ namespace Tests\Feature\Assessment;
 
 use App\Models\AcademicPeriod;
 use App\Models\AcademicYear;
+use App\Models\Classification;
+use App\Models\ClassificationStatus;
 use App\Models\Domain;
 use App\Models\Enrollment;
 use App\Models\Organization;
+use App\Models\ScaleLevel;
 use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\StudentIdentity;
@@ -262,6 +265,50 @@ class ResultsProgressionTest extends TestCase
         $this->assertStringNotContainsString('->save(', $source);
         $this->assertStringContainsString("'proposed' => \$level(\$classification->proposedScaleLevel)", $source);
         $this->assertStringContainsString("'final' => \$level(\$classification->finalScaleLevel)", $source);
+    }
+
+    #[Test]
+    public function every_judgement_carries_the_value_on_the_scale_and_not_only_its_mention(): void
+    {
+        $level = new ScaleLevel(['code' => '4', 'label' => 'Bom', 'sequence' => 4, 'is_negative' => false]);
+
+        $classification = new Classification(['status' => ClassificationStatus::Confirmed]);
+        $classification->ulid = '01JXXXXXXXXXXXXXXXXXXXXXXX';
+        $classification->proposed_scale_level_id = 7;
+        $classification->final_scale_level_id = 7;
+        $classification->setRelation('proposedScaleLevel', $level);
+        $classification->setRelation('finalScaleLevel', $level);
+
+        $method = new \ReflectionMethod(app(BuildResultsProgression::class), 'classificationRow');
+
+        /** @var array<string, mixed> $row */
+        $row = $method->invoke(app(BuildResultsProgression::class), $classification);
+
+        // A 4, a 16 — the value the scale calls it. The qualitative mention
+        // comes along beside it, for the colour and the tooltip.
+        $this->assertSame('4', $row['proposed']['code']);
+        $this->assertSame('4', $row['final']['code']);
+        $this->assertSame('Bom', $row['final']['label']);
+    }
+
+    #[Test]
+    public function the_three_judgement_columns_are_all_read_in_the_same_token(): void
+    {
+        // Proposta, Autoavaliação and Nível atribuído sit side by side, and a
+        // «4» beside a «Bom» reads as two different kinds of thing when it is
+        // the same judgement written twice.
+        $screen = (string) file_get_contents(resource_path('js/pages/results/Show.vue'));
+
+        $this->assertStringContainsString('{{ row.self_assessment.code }}', $screen);
+        $this->assertStringContainsString('{{ row.classification.final.code }}', $screen);
+
+        // Neither cell is the mention on its own any more…
+        $this->assertStringNotContainsString('{{ row.self_assessment.label }}', $screen);
+        $this->assertStringNotContainsString('{{ row.classification.final.label }}', $screen);
+
+        // …and both keep it as support.
+        $this->assertStringContainsString('${row.self_assessment.label}', $screen);
+        $this->assertStringContainsString('${row.classification.final.label}', $screen);
     }
 
     #[Test]
