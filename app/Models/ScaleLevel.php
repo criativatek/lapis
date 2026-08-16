@@ -17,6 +17,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $scale_id
  * @property string $code
  * @property string $label
+ * @property string|null $inovar_code
  * @property int $sequence
  * @property string|null $numeric_value
  * @property string|null $normalized_value
@@ -24,7 +25,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $band_max_normalized
  * @property bool $is_negative
  */
-#[Fillable(['code', 'label', 'sequence', 'numeric_value', 'normalized_value', 'band_min_normalized', 'band_max_normalized', 'is_negative'])]
+#[Fillable(['code', 'inovar_code', 'label', 'sequence', 'numeric_value', 'normalized_value', 'band_min_normalized', 'band_max_normalized', 'is_negative'])]
 class ScaleLevel extends Model
 {
     protected function casts(): array

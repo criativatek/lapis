@@ -50,6 +50,7 @@ class EntitlementsSeeder extends Seeder
         // them one by one would make the commercial offer depend on which
         // parsers happen to exist (§3).
         'correction_grid_import' => 'Importação de Grelhas de Correção',
+        'inovar_export' => 'Exportação para o INOVAR',
 
         // Institucional.
         'institution_admin' => 'Administração Institucional',
@@ -68,7 +69,7 @@ class EntitlementsSeeder extends Seeder
     protected const PRO_MODULES = [
         ...self::BASE_MODULES,
         'calendar', 'lessons', 'ai_assistance', 'advanced_analytics', 'template_sharing',
-        'self_assessment_links', 'correction_grid_import',
+        'self_assessment_links', 'correction_grid_import', 'inovar_export',
     ];
 
     protected const INSTITUTIONAL_MODULES = [
