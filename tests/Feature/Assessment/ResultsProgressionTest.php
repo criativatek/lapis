@@ -271,7 +271,12 @@ class ResultsProgressionTest extends TestCase
         // from the per-domain answers (§2, §11 of the decision).
         $source = (string) file_get_contents(app_path('Services/Assessment/BuildResultsProgression.php'));
 
-        $this->assertStringContainsString('$this->levelOf($selfAssessment, null)', $source);
+        // By its stated ROLE — not by its wording, which somebody will rephrase
+        // for a younger class, and not by its position, which changes the moment
+        // a question is inserted and would silently reassign what every stored
+        // answer meant.
+        $this->assertStringContainsString('$question?->role !== SelfAssessmentQuestionRole::Global', $source);
+        $this->assertStringNotContainsString('sequence ===', $source, 'nem pela posição');
         $this->assertStringContainsString('$question->domain_id !== $domainId', $source);
         $this->assertStringNotContainsString('prompt', $source, 'a pergunta nunca é encontrada pelo texto');
         $this->assertStringNotContainsString('avg(', $source);

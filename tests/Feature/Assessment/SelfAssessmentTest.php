@@ -6,6 +6,7 @@ use App\Models\Scale;
 use App\Models\SchoolClass;
 use App\Models\SelfAssessment;
 use App\Models\SelfAssessmentFilledBy;
+use App\Models\SelfAssessmentQuestionRole;
 use App\Models\SelfAssessmentStatus;
 use App\Models\User;
 use App\Services\Assessment\SelfAssessmentTemplateProvider;
@@ -48,9 +49,44 @@ class SelfAssessmentTest extends TestCase
             $class = SchoolClass::where('label', '7.º A')->firstOrFail();
             $template = app(SelfAssessmentTemplateProvider::class)->forClass($class);
 
-            // One scale question per domain of the class's profile version.
-            $this->assertSame($class->profileVersion->domains()->count(), $template->questions->count());
-            $this->assertSame('scale', $template->questions->first()->answer_kind);
+            $domains = $class->profileVersion->domains()->count();
+
+            // BLOCO A — one scale question per domain, identified by the domain
+            // and carrying no role, plus the student's own overall judgement.
+            $perDomain = $template->questions->whereNotNull('domain_id');
+            $this->assertCount($domains, $perDomain);
+            $this->assertSame('scale', $perDomain->first()->answer_kind);
+            $this->assertTrue($perDomain->every(fn ($question): bool => $question->role === null));
+
+            // The overall judgement is a question the student ANSWERS, on the
+            // same scale — never the average of the ones above it.
+            $global = $template->questions->firstWhere('role', SelfAssessmentQuestionRole::Global);
+            $this->assertNotNull($global);
+            $this->assertSame('scale', $global->answer_kind);
+            $this->assertNull($global->domain_id);
+
+            // BLOCOS B e C — reflection, then the work itself. Written, and
+            // outside every calculation.
+            foreach ([
+                SelfAssessmentQuestionRole::Rationale,
+                SelfAssessmentQuestionRole::Improvement,
+                SelfAssessmentQuestionRole::Liked,
+                SelfAssessmentQuestionRole::Struggled,
+            ] as $role) {
+                $question = $template->questions->firstWhere('role', $role);
+
+                $this->assertNotNull($question, "falta a pergunta {$role->value}");
+                $this->assertSame('text', $question->answer_kind);
+                $this->assertNull($question->domain_id);
+            }
+
+            $this->assertSame($domains + 5, $template->questions->count());
+
+            // Every question is identified exactly one way: by its domain, or by
+            // its role. Never both, never neither.
+            foreach ($template->questions as $question) {
+                $this->assertTrue($question->isCoherent(), "pergunta incoerente: {$question->prompt}");
+            }
         });
     }
 

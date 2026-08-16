@@ -12,6 +12,7 @@ use App\Models\Domain;
 use App\Models\Enrollment;
 use App\Models\SchoolClass;
 use App\Models\SelfAssessment;
+use App\Models\SelfAssessmentQuestionRole;
 use App\Models\SelfAssessmentStatus;
 use Illuminate\Support\Collection;
 
@@ -268,13 +269,35 @@ class BuildResultsProgression
      */
     protected function globalSelfAssessment(?SelfAssessment $selfAssessment): ?array
     {
-        return $this->levelOf($selfAssessment, null);
+        if ($selfAssessment === null) {
+            return null;
+        }
+
+        foreach ($selfAssessment->responses as $response) {
+            $question = $response->question;
+
+            // Identified by its stated ROLE. Not by its wording, which somebody
+            // will rephrase, and not by its position, which changes the moment a
+            // question is inserted — and would then silently reassign what every
+            // answer already given meant.
+            if ($question?->role !== SelfAssessmentQuestionRole::Global) {
+                continue;
+            }
+
+            return $response->scaleLevel === null ? null : [
+                'label' => $response->scaleLevel->label,
+                'sequence' => $response->scaleLevel->sequence,
+                'is_negative' => (bool) $response->scaleLevel->is_negative,
+            ];
+        }
+
+        return null;
     }
 
     /**
      * @return array<string, mixed>|null
      */
-    protected function levelOf(?SelfAssessment $selfAssessment, ?int $domainId): ?array
+    protected function levelOf(?SelfAssessment $selfAssessment, int $domainId): ?array
     {
         if ($selfAssessment === null) {
             return null;
