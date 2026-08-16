@@ -4,7 +4,7 @@ import { CircleAlert, Lock } from '@lucide/vue';
 import { computed } from 'vue';
 import Heading from '@/components/Heading.vue';
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
-import { pct, trendArrow, trendClasses, trendPoints, trendTitle } from '@/lib/results';
+import { pct, TREND_SHAPE, trendArrow, trendClasses, trendPoints, trendTitle } from '@/lib/results';
 import type { Evolution } from '@/lib/results';
 
 /** A band of the profile's own scale. `code` is the value; `label` the mention. */
@@ -302,13 +302,14 @@ function proposalText(proposal: Proposal | undefined): string {
                                 <td
                                     v-if="index > 0"
                                     class="px-2 py-1.5 text-center text-xs tabular-nums"
-                                    :class="trendClasses(domainCell(period, domain.id)?.evolution ?? null)"
                                     :title="trendTitle(domainCell(period, domain.id)?.evolution ?? null, null)"
                                 >
-                                    <span :class="{ 'text-muted-foreground': (domainCell(period, domain.id)?.evolution ?? null) === null }">
-                                        {{ trendPoints(domainCell(period, domain.id)?.evolution ?? null) }}
+                                    <span :class="[TREND_SHAPE, trendClasses(domainCell(period, domain.id)?.evolution ?? null)]">
+                                        <span :class="{ 'text-muted-foreground': (domainCell(period, domain.id)?.evolution ?? null) === null }">
+                                            {{ trendPoints(domainCell(period, domain.id)?.evolution ?? null) }}
+                                        </span>
+                                        <span>{{ trendArrow(domainCell(period, domain.id)?.evolution ?? null) }}</span>
                                     </span>
-                                    <span class="ml-0.5">{{ trendArrow(domainCell(period, domain.id)?.evolution ?? null) }}</span>
                                 </td>
                             </template>
                             <td class="border-r border-border bg-muted/20 px-2 py-1.5 text-center tabular-nums">
@@ -336,11 +337,12 @@ function proposalText(proposal: Proposal | undefined): string {
                             <td
                                 v-if="index > 0"
                                 class="px-2 py-1.5 text-center text-xs tabular-nums"
-                                :class="trendClasses(period.evolution)"
                                 :title="trendTitle(period.evolution, period.accumulated_average)"
                             >
-                                <span :class="{ 'text-muted-foreground': period.evolution === null }">{{ trendPoints(period.evolution) }}</span>
-                                <span class="ml-0.5">{{ trendArrow(period.evolution) }}</span>
+                                <span :class="[TREND_SHAPE, trendClasses(period.evolution)]">
+                                    <span :class="{ 'text-muted-foreground': period.evolution === null }">{{ trendPoints(period.evolution) }}</span>
+                                    <span>{{ trendArrow(period.evolution) }}</span>
+                                </span>
                             </td>
                             <td class="bg-muted/20 px-2 py-1.5 text-center tabular-nums">
                                 <span :class="{ 'text-muted-foreground': period.accumulated_average === null }">

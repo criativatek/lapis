@@ -6,7 +6,7 @@ import CoverageWarning from '@/components/CoverageWarning.vue';
 import Heading from '@/components/Heading.vue';
 import StudentAvatar from '@/components/StudentAvatar.vue';
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
-import { pct, trendArrow, trendClasses, trendTitle } from '@/lib/results';
+import { pct, TREND_SHAPE, trendArrow, trendClasses, trendTitle } from '@/lib/results';
 import type { Evolution } from '@/lib/results';
 import type { Coverage } from '@/types';
 
@@ -285,19 +285,24 @@ function post(row: Row, data: { final_scale_level_id: number | null; final_value
                                 <span class="font-medium">{{ row.name }}</span>
                             </div>
                         </td>
-                        <!-- The background is TREND and the text is the value.
-                             Never the same ink for both (§9). -->
+                        <!-- The tint is TREND and the text is the value. Never
+                             the same ink for both (§9) — and the tint sits on
+                             the value, not on the cell, so a row of students who
+                             all improved is not one long green stripe. -->
                         <td
                             v-for="domain in domains"
                             :key="domain.id"
-                            class="px-3 py-2 text-center tabular-nums"
-                            :class="trendClasses(domainValue(row, domain.id)?.evolution ?? null)"
+                            class="px-2 py-2 text-center tabular-nums"
                             :title="trendTitle(domainValue(row, domain.id)?.evolution ?? null, null)"
                         >
-                            <span :class="{ 'text-muted-foreground': domainValue(row, domain.id)?.value === null }">
-                                {{ pct(domainValue(row, domain.id)?.value ?? null) }}
+                            <span :class="[TREND_SHAPE, trendClasses(domainValue(row, domain.id)?.evolution ?? null)]">
+                                <span :class="{ 'text-muted-foreground': domainValue(row, domain.id)?.value === null }">
+                                    {{ pct(domainValue(row, domain.id)?.value ?? null) }}
+                                </span>
+                                <span class="text-xs">{{ trendArrow(domainValue(row, domain.id)?.evolution ?? null) }}</span>
                             </span>
-                            <span class="ml-0.5 text-xs">{{ trendArrow(domainValue(row, domain.id)?.evolution ?? null) }}</span>
+                            <!-- Outside the tint, so the two are never read as
+                                 one thing (§7). -->
                             <CoverageWarning
                                 v-if="domainValue(row, domain.id)?.warning"
                                 :coverage="domainCoverage(row, domain.id)"
@@ -305,13 +310,11 @@ function post(row: Row, data: { final_scale_level_id: number | null; final_value
                                 :domains="domains"
                             />
                         </td>
-                        <td
-                            class="px-3 py-2 text-right font-semibold tabular-nums"
-                            :class="trendClasses(row.evolution)"
-                            :title="trendTitle(row.evolution, row.accumulated)"
-                        >
-                            <span :class="{ 'text-muted-foreground': !row.has_value }">{{ pct(row.overall) }}</span>
-                            <span class="ml-0.5 text-xs font-normal">{{ trendArrow(row.evolution) }}</span>
+                        <td class="px-2 py-2 text-right tabular-nums" :title="trendTitle(row.evolution, row.accumulated)">
+                            <span :class="[TREND_SHAPE, 'font-semibold', trendClasses(row.evolution)]">
+                                <span :class="{ 'text-muted-foreground': !row.has_value }">{{ pct(row.overall) }}</span>
+                                <span class="text-xs font-normal">{{ trendArrow(row.evolution) }}</span>
+                            </span>
                             <CoverageWarning
                                 v-if="row.coverage_warning"
                                 :coverage="row.coverage"

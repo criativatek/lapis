@@ -31,12 +31,22 @@ export function pct(value: string | null): string {
 }
 
 /**
+ * The shape the trend tint is painted on.
+ *
+ * It goes on the VALUE, inside the cell's own padding — never on the cell. With
+ * the tint filling each `td`, a row of students who all improved read as one
+ * long green stripe, and a stripe says nothing cell by cell. Small, rounded, and
+ * kept clear of the coverage marker beside it.
+ */
+export const TREND_SHAPE = 'inline-flex items-center gap-0.5 rounded px-1.5 py-0.5';
+
+/**
  * TENDÊNCIA, and never performance.
  *
- * The background says whether the student moved; a badge's colour says how they
- * are doing. A student who went 25% to 40% improved and is still failing, and
- * one who went 92% to 85% fell back and is still excellent — so the two must
- * never be drawn with the same ink (§9).
+ * The tint says whether the student moved; a badge's colour says how they are
+ * doing. A student who went 25% to 40% improved and is still failing, and one
+ * who went 92% to 85% fell back and is still excellent — so the two must never
+ * be drawn with the same ink (§9).
  */
 export function trendClasses(evolution: Evolution): string {
     if (evolution === null || evolution.direction === 'flat') {

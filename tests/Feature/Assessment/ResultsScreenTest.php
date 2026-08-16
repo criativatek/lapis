@@ -142,10 +142,16 @@ class ResultsScreenTest extends TestCase
         $screen = $this->screen();
         $trend = $this->trendRules();
 
-        // Trend paints the cell…
+        // Trend tints the value…
         $this->assertStringContainsString('bg-emerald-50 dark:bg-emerald-950/40', $trend);
         $this->assertStringContainsString('bg-rose-50 dark:bg-rose-950/40', $trend);
         $this->assertStringContainsString('TENDÊNCIA, and never performance', $trend);
+
+        // …on an element INSIDE the cell, so adjacent cells with the same trend
+        // do not run together into one stripe. The `td` keeps no tint of its own.
+        $this->assertStringContainsString('TREND_SHAPE', $trend);
+        $this->assertStringContainsString('[TREND_SHAPE, trendClasses(', $screen);
+        $this->assertStringNotContainsString(':class="trendClasses(', $screen);
 
         // …and performance comes from the canonical resolver, never from a
         // colour chosen here.
