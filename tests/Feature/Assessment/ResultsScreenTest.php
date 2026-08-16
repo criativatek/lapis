@@ -65,9 +65,14 @@ class ResultsScreenTest extends TestCase
     {
         $screen = $this->screen();
 
-        foreach (['Proposta', 'Autoavaliação', 'Nível atribuído'] as $heading) {
+        foreach (['Proposta', 'Autoavaliação'] as $heading) {
             $this->assertStringContainsString("font-medium\">{$heading}</th>", $screen);
         }
+
+        // The third is named by the scale — «Nível atribuído» where the scale is
+        // made of bands, «Classificação atribuída» where it is an interval — so
+        // the heading is the one the server chose, not a word fixed here.
+        $this->assertStringContainsString('font-medium">{{ decision.label }}</th>', $screen);
     }
 
     #[Test]
@@ -76,14 +81,19 @@ class ResultsScreenTest extends TestCase
         $screen = $this->screen();
 
         // Bold, and only this one: it is the judgement that is true rather than
-        // proposed (§7).
+        // proposed (§7). Twice, because the cell renders a decided value in two
+        // states — still open to change, and published.
         $this->assertStringContainsString('py-0.5 font-bold', $screen);
-        $this->assertSame(1, substr_count($screen, 'font-bold'));
+        $this->assertSame(2, substr_count($screen, 'font-bold'));
+
+        // …and all three belong to that one cell: the self-assessment beside it
+        // is read in the same token, at the same weight.
+        $selfAssessment = (int) strpos($screen, '{{ row.self_assessment.code }}');
+        $this->assertStringNotContainsString('font-bold', substr($screen, $selfAssessment - 300, 300));
 
         // Never filled in from the proposal — the screen reads `final` and the
         // read model was already proven not to write it.
         $this->assertStringContainsString('row.classification?.final', $screen);
-        $this->assertStringContainsString('Ainda por atribuir', $screen);
     }
 
     #[Test]
@@ -105,7 +115,7 @@ class ResultsScreenTest extends TestCase
     {
         $screen = $this->screen();
 
-        $this->assertStringContainsString('Nível atribuído diferente da proposta do LÁPIS.', $screen);
+        $this->assertStringContainsString('Diferente da proposta do LÁPIS.', $screen);
         // Neutral: no amber, no alert, no demand for a reason (§7).
         $this->assertStringNotContainsString('differs_from_proposal" class="text-amber', $screen);
     }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { Head, Link, router } from '@inertiajs/vue3';
-import { CircleAlert } from '@lucide/vue';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
+import { Check, CircleAlert, Lock, X } from '@lucide/vue';
+import { computed, ref } from 'vue';
 import CoverageWarning from '@/components/CoverageWarning.vue';
 import Heading from '@/components/Heading.vue';
 import StudentAvatar from '@/components/StudentAvatar.vue';
@@ -56,14 +57,30 @@ type Row = {
     classification: {
         ulid: string;
         status: string;
+        /** «Usar proposta» — how a first decision is made, and only that. */
+        can_confirm: boolean;
+        /** Editable until it is published. */
+        can_change: boolean;
+        is_published: boolean;
         proposed: Level;
         final: Level;
         differs_from_proposal: boolean;
     } | null;
 };
 
+/** The scale's own terms for the decision: what to call it, what to offer. */
+type DecisionScale = {
+    label: string;
+    classifies_by_level: boolean;
+    levels: { id: number; code: string; label: string }[];
+    min_value: string | null;
+    max_value: string | null;
+};
+
 // A row whose warning has no detail still gets a tooltip, not a blank one.
 const NO_COVERAGE: Coverage = { absences: [], no_elements: false, excluded_domain_ids: [] };
+
+const page = usePage();
 
 const props = defineProps<{
     schoolClass: { ulid: string; label: string; subject: string; has_profile: boolean; scale_name: string | null };
@@ -74,6 +91,7 @@ const props = defineProps<{
     weightedAverageLabel: string;
     isFirstPeriod: boolean;
     scaleBands: { label: string; sequence: number; is_negative: boolean }[];
+    decision: DecisionScale;
 }>();
 
 /**
@@ -157,6 +175,78 @@ function domainCoverage(row: Row, domainId: number): Coverage {
 function selectPeriod(ulid: string): void {
     router.get(`/classes/${props.schoolClass.ulid}/results/${ulid}`, {}, { preserveScroll: true });
 }
+
+// ---------------------------------------------------------------- a decisão
+
+/**
+ * The decision is taken HERE, where the student can actually be seen — the
+ * domains, the average, the proposal and what they said about themselves, side
+ * by side. It is written through the very endpoint Classificações posts to, so
+ * there is one service, one validation, one lock and one trail; this screen only
+ * says which classification and what was chosen.
+ */
+const editingUlid = ref<string | null>(null);
+const savingUlid = ref<string | null>(null);
+const chosenLevelId = ref<number | null>(null);
+const chosenValue = ref<string | null>(null);
+
+const decisionError = computed(() => (page.props.errors as Record<string, string>)?.final_value ?? null);
+
+function openDecision(row: Row): void {
+    if (! row.classification?.can_change) {
+        return;
+    }
+
+    editingUlid.value = row.classification.ulid;
+    // Opens on what the row already says. Nothing is written until the teacher
+    // chooses — a proposal on screen is not a decision (§5).
+    chosenLevelId.value = null;
+    chosenValue.value = null;
+}
+
+function closeDecision(): void {
+    editingUlid.value = null;
+}
+
+function submitDecision(row: Row): void {
+    if (row.classification === null) {
+        return;
+    }
+
+    const chosen = props.decision.classifies_by_level
+        ? { final_scale_level_id: chosenLevelId.value, final_value: null }
+        : { final_scale_level_id: null, final_value: chosenValue.value };
+
+    if (chosen.final_scale_level_id === null && (chosen.final_value === null || chosen.final_value === '')) {
+        return;
+    }
+
+    post(row.classification.ulid, chosen);
+}
+
+/** «Usar proposta»: an empty decision, which the service reads as «the proposal is it». */
+function useProposal(row: Row): void {
+    if (row.classification === null) {
+        return;
+    }
+
+    post(row.classification.ulid, { final_scale_level_id: null, final_value: null });
+}
+
+function post(ulid: string, data: { final_scale_level_id: number | null; final_value: string | null }): void {
+    router.post(
+        `/classifications/${ulid}/confirm`,
+        data,
+        {
+            preserveScroll: true,
+            onStart: () => (savingUlid.value = ulid),
+            onFinish: () => (savingUlid.value = null),
+            // Only on success: a refused write must leave the editor open with
+            // the message, never a cell pretending it was saved (§10).
+            onSuccess: () => closeDecision(),
+        },
+    );
+}
 </script>
 
 <template>
@@ -168,7 +258,11 @@ function selectPeriod(ulid: string): void {
                 <Heading :title="`Resultados — ${schoolClass.label}`" :description="schoolClass.subject" />
                 <div class="flex gap-3 text-sm">
                     <Link :href="`/classes/${schoolClass.ulid}`" class="text-muted-foreground hover:underline">← Voltar à turma</Link>
-                    <Link :href="`/classes/${schoolClass.ulid}/classifications`" class="text-primary hover:underline">Classificações →</Link>
+                    <!-- The decision is taken here; that page is where it is
+                         formalised — the pauta, the states, the publication. -->
+                    <Link :href="`/classes/${schoolClass.ulid}/classifications`" class="text-primary hover:underline">
+                        Gerir classificações →
+                    </Link>
                 </div>
             </div>
             <div v-if="periods.length" class="flex gap-1">
@@ -184,6 +278,15 @@ function selectPeriod(ulid: string): void {
                 </button>
             </div>
         </div>
+
+        <!-- A refused decision — published, desatualizada, um valor que a escala
+             não admite — diz-se aqui. A célula nunca finge que gravou (§10). -->
+        <p
+            v-if="decisionError"
+            class="rounded-md border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+        >
+            {{ decisionError }}
+        </p>
 
         <p v-if="!schoolClass.has_profile" class="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             Esta turma não tem perfil de avaliação associado, por isso não há classificações a calcular.
@@ -205,7 +308,7 @@ function selectPeriod(ulid: string): void {
                         <th class="px-3 py-2 text-right font-medium">{{ weightedAverageLabel }}</th>
                         <th class="px-3 py-2 text-right font-medium">Proposta</th>
                         <th class="px-3 py-2 text-right font-medium">Autoavaliação</th>
-                        <th class="px-3 py-2 text-right font-medium">Nível atribuído</th>
+                        <th class="px-3 py-2 text-right font-medium">{{ decision.label }}</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-border">
@@ -288,32 +391,106 @@ function selectPeriod(ulid: string): void {
                         </td>
 
                         <!--
-                          The decision. Bold and the strongest of the three,
-                          because it is the one that is true rather than
-                          proposed — and never filled in from the proposal (§6).
+                          The decision, and where it is taken. Bold and the
+                          strongest of the three, because it is the one that is
+                          true rather than proposed — and never filled in from
+                          the proposal (§6).
                         -->
                         <td class="px-3 py-2 text-right tabular-nums">
-                            <!-- The decision is a value on the scale too — the
-                                 same token the Proposta and the Autoavaliação
-                                 are read in, so the three can be compared at a
-                                 glance. The mention stays as support. -->
+                            <!-- Being decided: the scale's own bands, or its own
+                                 interval. Nothing is preselected. -->
+                            <div v-if="editingUlid && row.classification?.ulid === editingUlid" class="flex items-center justify-end gap-1">
+                                <select
+                                    v-if="decision.classifies_by_level"
+                                    v-model="chosenLevelId"
+                                    class="rounded-md border border-border bg-background px-1.5 py-0.5 text-xs"
+                                    @keyup.esc="closeDecision"
+                                >
+                                    <option :value="null">—</option>
+                                    <option v-for="level in decision.levels" :key="level.id" :value="level.id">
+                                        {{ level.code }} — {{ level.label }}
+                                    </option>
+                                </select>
+                                <input
+                                    v-else
+                                    v-model="chosenValue"
+                                    type="number"
+                                    step="0.001"
+                                    :min="decision.min_value ?? undefined"
+                                    :max="decision.max_value ?? undefined"
+                                    class="w-20 rounded-md border border-border bg-background px-1.5 py-0.5 text-xs tabular-nums"
+                                    @keyup.esc="closeDecision"
+                                />
+                                <button
+                                    type="button"
+                                    class="rounded border border-border p-1 hover:bg-muted/40 disabled:opacity-50"
+                                    :disabled="savingUlid !== null"
+                                    title="Guardar"
+                                    @click="submitDecision(row)"
+                                >
+                                    <Check class="size-3" />
+                                </button>
+                                <button type="button" class="rounded border border-border p-1 hover:bg-muted/40" title="Cancelar" @click="closeDecision">
+                                    <X class="size-3" />
+                                </button>
+                            </div>
+
+                            <!-- Published: the value, and the reason it can no
+                                 longer be touched. -->
                             <span
-                                v-if="row.classification?.final"
-                                class="rounded px-2 py-0.5 font-bold"
+                                v-else-if="row.classification?.is_published && row.classification.final"
+                                class="inline-flex items-center gap-1 rounded px-2 py-0.5 font-bold"
                                 :class="levelClasses(row.classification.final)"
-                                :title="`${row.classification.final.code} — ${row.classification.final.label}`"
+                                :title="`${row.classification.final.code} — ${row.classification.final.label}. Esta classificação já foi publicada.`"
+                            >
+                                {{ row.classification.final.code }}
+                                <Lock class="size-3 font-normal opacity-60" />
+                            </span>
+
+                            <!-- Decided and still open: the value, click to change. -->
+                            <button
+                                v-else-if="row.classification?.final"
+                                type="button"
+                                class="rounded px-2 py-0.5 font-bold hover:ring-1 hover:ring-border"
+                                :class="levelClasses(row.classification.final)"
+                                :title="`${row.classification.final.code} — ${row.classification.final.label}. Clique para alterar.`"
+                                @click="openDecision(row)"
                             >
                                 {{ row.classification.final.code }}
                                 <span
                                     v-if="row.classification.differs_from_proposal"
                                     class="ml-0.5 text-xs font-normal"
-                                    title="Nível atribuído diferente da proposta do LÁPIS."
+                                    title="Diferente da proposta do LÁPIS."
                                 >·</span>
+                            </button>
+
+                            <!-- Not decided yet, and there is a proposal to
+                                 decide about: choose, or adopt the proposal. -->
+                            <span v-else-if="row.classification?.can_change" class="inline-flex items-center gap-1">
+                                <button
+                                    type="button"
+                                    class="rounded border border-dashed border-border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted/40"
+                                    title="Atribuir"
+                                    @click="openDecision(row)"
+                                >
+                                    —
+                                </button>
+                                <button
+                                    v-if="row.classification.can_confirm"
+                                    type="button"
+                                    class="rounded border border-border px-1.5 py-0.5 text-[11px] hover:bg-muted/40 disabled:opacity-50"
+                                    :disabled="savingUlid !== null"
+                                    title="Adotar a proposta do LÁPIS"
+                                    @click="useProposal(row)"
+                                >
+                                    Usar proposta
+                                </button>
                             </span>
+
                             <span
                                 v-else
                                 class="text-muted-foreground"
-                                title="Ainda por atribuir — o LÁPIS propõe, o professor decide."
+                                title="Sem proposta gerada para este aluno — gere as propostas em Classificações."
                             >—</span>
                         </td>
                     </tr>
@@ -330,10 +507,13 @@ function selectPeriod(ulid: string): void {
                 definida no perfil de avaliação<template v-if="schoolClass.scale_name">
                 ({{ schoolClass.scale_name }})</template>. Quando a escala ainda não tem bandas
                 definidas, a proposta fica por atribuir — o LÁPIS não infere limiares.
-                O <strong>Nível atribuído</strong> é a decisão do professor e nunca é
-                preenchido pela proposta. A <strong>Autoavaliação</strong> é o valor que o
-                próprio aluno propôs na escala — a resposta à pergunta global, nunca a média
-                do que disse sobre cada domínio.
+                O <strong>{{ decision.label }}</strong> é a decisão do professor e nunca é
+                preenchido pela proposta: clique na célula para atribuir ou alterar, ou use
+                «Usar proposta» para adotar a do LÁPIS. Depois de <strong>publicada</strong>,
+                a classificação fica fechada — a publicação faz-se em «Gerir classificações».
+                A <strong>Autoavaliação</strong> é o valor que o próprio aluno propôs na
+                escala — a resposta à pergunta global, nunca a média do que disse sobre cada
+                domínio.
                 Um fundo <span class="rounded bg-emerald-50 px-1 dark:bg-emerald-950/40">verde</span>
                 ou <span class="rounded bg-rose-50 px-1 dark:bg-rose-950/40">vermelho</span>
                 indica <strong>tendência</strong> face ao período anterior, comparando

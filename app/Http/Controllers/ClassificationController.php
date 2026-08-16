@@ -6,7 +6,6 @@ use App\Models\AcademicPeriod;
 use App\Models\Classification;
 use App\Models\ClassificationScope;
 use App\Models\ClassificationStatus;
-use App\Models\Scale;
 use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Assessment\BuildResultsProgression;
@@ -15,6 +14,7 @@ use App\Services\Assessment\ProposeClassifications;
 use App\Services\Assessment\PublishClassifications;
 use App\Services\Assessment\ScaleProposalResolver;
 use App\Support\Assessment\ClassificationDecisionException;
+use App\Support\Assessment\DecisionScale;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -74,7 +74,9 @@ class ClassificationController extends Controller
         // recomputed here and nothing is computed in the browser.
         $alongside = $selected === null ? [] : $this->alongsideResults($class, $selected);
 
-        $classifiesByLevel = $scale?->classifiesByLevel() ?? false;
+        // What the teacher is being asked for, said in the terms of the scale
+        // itself. Shared with Resultados, which offers the same decision (§3).
+        $decision = DecisionScale::for($scale);
 
         return Inertia::render('classifications/Show', [
             'schoolClass' => [
@@ -83,13 +85,10 @@ class ClassificationController extends Controller
                 'subject' => $class->subject->name,
                 'has_profile' => $class->assessment_profile_version_id !== null,
                 'scale_name' => $scale?->name,
-                // What the teacher is being asked for, said in the terms of the
-                // scale itself — never derived from a year of schooling, which
-                // is not something this app stores (§3).
-                'decision_label' => $classifiesByLevel ? __('Nível atribuído') : __('Classificação atribuída'),
-                'classifies_by_level' => $classifiesByLevel,
+                'decision_label' => $decision->label(),
+                'classifies_by_level' => $decision->classifiesByLevel(),
                 // The closed list to choose from, or the interval to write in.
-                'levels' => $classifiesByLevel ? $this->levelOptions($scale) : [],
+                'levels' => $decision->levels(),
                 'min_value' => $scale === null ? null : (string) $scale->min_value,
                 'max_value' => $scale === null ? null : (string) $scale->max_value,
             ],
@@ -175,28 +174,6 @@ class ClassificationController extends Controller
             'label' => null,
             'scale_level_id' => null,
         ];
-    }
-
-    /**
-     * @return list<array<string, mixed>>
-     */
-    protected function levelOptions(?Scale $scale): array
-    {
-        if ($scale === null) {
-            return [];
-        }
-
-        $options = [];
-
-        foreach ($scale->levels as $level) {
-            $options[] = [
-                'id' => (int) $level->id,
-                'code' => (string) $level->code,
-                'label' => (string) $level->label,
-            ];
-        }
-
-        return $options;
     }
 
     /**

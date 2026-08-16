@@ -8,6 +8,7 @@ use App\Domain\Assessment\DomainOutcome;
 use App\Models\AcademicPeriod;
 use App\Models\Classification;
 use App\Models\ClassificationScope;
+use App\Models\ClassificationStatus;
 use App\Models\Domain;
 use App\Models\Enrollment;
 use App\Models\SchoolClass;
@@ -349,6 +350,12 @@ class BuildResultsProgression
         return [
             'ulid' => $classification->ulid,
             'status' => $classification->status->value,
+            // Read from the status, so the screen that offers the decision and
+            // the screen that manages it can never disagree about who may still
+            // touch it. Stated here rather than re-derived in each browser.
+            'can_confirm' => $classification->status === ClassificationStatus::Proposed,
+            'can_change' => $classification->status->allowsDecision(),
+            'is_published' => $classification->status->isPublished(),
             'proposed' => $level($classification->proposedScaleLevel),
             // The decision. Never filled in from the proposal by this service or
             // by any other: the teacher decides, the system proposes (§3.3).

@@ -10,6 +10,7 @@ use App\Services\Assessment\BuildResultsProgression;
 use App\Services\Assessment\ClassResultsCalculator;
 use App\Services\Assessment\CoverageExplanation;
 use App\Services\Assessment\ScaleProposalResolver;
+use App\Support\Assessment\DecisionScale;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -108,6 +109,12 @@ class ResultsController extends Controller
                 'has_profile' => $class->assessment_profile_version_id !== null,
                 'scale_name' => $scale?->name,
             ],
+            // This is where the teacher decides, because this is where they can
+            // see the student: the domains, the average, the proposal and what
+            // the student said about themselves, all at once. The decision is
+            // written through the same service Classificações uses — the same
+            // row, the same validation, the same trail.
+            'decision' => DecisionScale::for($scale)->toPayload(),
             'periods' => $periods->map(fn (AcademicPeriod $academicPeriod) => [
                 'ulid' => $academicPeriod->ulid,
                 'label' => $academicPeriod->label,
