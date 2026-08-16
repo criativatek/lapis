@@ -16,6 +16,7 @@ use App\Models\SchoolClass;
 use App\Models\StudentItemScore;
 use App\Models\Subject;
 use App\Models\User;
+use App\Services\Assessment\InstrumentCompleteness;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Collection;
@@ -260,6 +261,45 @@ class InstrumentGridRowStateTest extends TestCase
             $this->assertSame(0, StudentItemScore::where('enrollment_id', $student->id)
                 ->whereIn('instrument_item_id', [$items[1]->id, $items[2]->id])
                 ->count());
+        });
+    }
+
+    // ------------------------------------------- 3b. why completion is refused
+
+    #[Test]
+    public function an_instrument_nobody_was_enrolled_for_says_so_instead_of_counting_to_zero(): void
+    {
+        $collapsed = $this->collapsed($this->grid());
+
+        // «Faltam resolver 0 resultados» was the true count answering the wrong
+        // question: an instrument dated before anybody enrolled applies to
+        // nobody, so there is nothing to resolve AND nothing to conclude. The
+        // refusal now names the date and the way out (§2).
+        $this->assertStringContainsString('props.instrument.applicable_count === 0', $collapsed);
+        $this->assertStringContainsString('nenhum aluno da turma estava inscrito nessa data', $collapsed);
+        $this->assertStringContainsString('Corrija a data da avaliação', $collapsed);
+
+        // And no path can reach a «faltam 0» sentence again.
+        $this->assertStringContainsString('if (count <= 0)', $collapsed);
+    }
+
+    #[Test]
+    public function an_instrument_dated_before_the_class_existed_applies_to_nobody(): void
+    {
+        [$instrument, $enrollments] = $this->makeInstrument();
+
+        app(CurrentOrganization::class)->runFor($this->organization, function () use ($instrument, $enrollments): void {
+            // Dated a year before anybody enrolled — the shape of the smoke
+            // instrument that produced the report.
+            $instrument->update(['applied_on' => $enrollments->first()->enrolled_on->copy()->subYear()->toDateString()]);
+
+            $progress = app(InstrumentCompleteness::class)->for($instrument->fresh());
+
+            $this->assertSame(0, $progress['applicable']);
+            $this->assertFalse($progress['complete'], 'não é concluível…');
+            // …e a contagem é honestamente zero, que é exactly why the message
+            // may not be built from it.
+            $this->assertSame(0, app(InstrumentCompleteness::class)->pendingCount($instrument->fresh()));
         });
     }
 

@@ -561,7 +561,25 @@ const completeBlockedReason = computed<string | null>(() => {
         return null;
     }
 
+    // Nobody the instrument applies to, which is a different refusal entirely
+    // and the one that used to read «Faltam resolver 0 resultados».
+    //
+    // An instrument is applicable to a student who was enrolled by the day it
+    // was applied. Date it before the class existed — an August date on a year
+    // that starts in September — and it applies to nobody, so there is nothing
+    // to resolve and nothing to conclude. The count was telling the truth; it
+    // was answering a question nobody had asked (§2).
+    if (props.instrument.applicable_count === 0) {
+        return `Esta avaliação está datada de ${props.instrument.applied_on} e nenhum aluno da turma estava inscrito nessa data, por isso não se aplica a ninguém. Corrija a data da avaliação em «Editar instrumento».`;
+    }
+
     const count = props.instrument.pending_count;
+
+    // Never «faltam 0»: if the count is zero the refusal is not about counting,
+    // and saying so would send the teacher looking for a row that is not there.
+    if (count <= 0) {
+        return 'Esta avaliação ainda não pode ser concluída. Verifique a data da avaliação e os alunos a que se aplica.';
+    }
 
     return count === 1
         ? 'Falta resolver 1 resultado antes de concluir a correção.'
