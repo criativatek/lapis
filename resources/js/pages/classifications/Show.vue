@@ -10,22 +10,45 @@ type Proposal = {
     state: 'resolved' | 'unconfigured' | 'no_result';
     is_percentage: boolean;
 };
+/** What the teacher decided, on the scale: «4» plus «Bom», or just a number. */
+type Decision = { code: string; label: string | null; scale_level_id: number | null };
+/** The student's own overall judgement, as Resultados shows it. */
+type SelfAssessment = { code: string; label: string; sequence: number; is_negative: boolean } | null;
+type Level = { id: number; code: string; label: string };
 type Classification = {
     ulid: string;
     status: string;
     status_label: string;
     proposal: Proposal;
-    proposed_value: string | null;
-    final_value: string | null;
-    effective_value: string | null;
+    proposed_scale_level_id: number | null;
+    decision: Decision | null;
     overridden: boolean;
-    override_reason: string | null;
+    observation: string | null;
     can_confirm: boolean;
 };
-type Row = { name: string; photo_url: string | null; class_number: number | null; classification: Classification | null };
+type Row = {
+    name: string;
+    photo_url: string | null;
+    class_number: number | null;
+    weighted_average: string | null;
+    self_assessment: SelfAssessment;
+    classification: Classification | null;
+};
 
 const props = defineProps<{
-    schoolClass: { ulid: string; label: string; subject: string; has_profile: boolean };
+    schoolClass: {
+        ulid: string;
+        label: string;
+        subject: string;
+        has_profile: boolean;
+        scale_name: string | null;
+        /** «Nível atribuído» or «Classificação atribuída» — the scale's own terms. */
+        decision_label: string;
+        classifies_by_level: boolean;
+        levels: Level[];
+        min_value: string | null;
+        max_value: string | null;
+    };
     scope: 'period' | 'accumulated';
     periods: { ulid: string; label: string; selected: boolean }[];
     rows: Row[];
@@ -46,9 +69,30 @@ function selectScope(scope: 'period' | 'accumulated'): void {
     router.get(basePath(), { scope }, { preserveScroll: true });
 }
 
-// Value a teacher reads. "—" for a null (no computable result), never 0.
-function grade(value: string | null): string {
-    return value === null ? '—' : Number(value).toFixed(1);
+// The period's own weighted average, as Resultados prints it. "—" for a null (no
+// computable result), never 0.
+function pct(value: string | null): string {
+    return value === null ? '—' : `${Number(value).toFixed(1)}%`;
+}
+
+// «15.000» stored is «15» read; «15.500» stays «15,5». Never string surgery on
+// the zeros — «100.000» would lose its own.
+function onScale(value: string): string {
+    return String(Number(value)).replace('.', ',');
+}
+
+/**
+ * The decision as the cell shows it. A band is named by the scale — which may
+ * be «MB» and not a number at all — so its code is printed as it stands; an
+ * interval scale's decision is a number and is read as one.
+ */
+function decisionText(decision: Decision): string {
+    return decision.scale_level_id === null ? onScale(decision.code) : decision.code;
+}
+
+/** «4 — Bom» when the scale has bands, «15» when it is an interval. */
+function decisionTitle(decision: Decision): string {
+    return decision.label === null ? decisionText(decision) : `${decision.code} — ${decision.label}`;
 }
 
 // The proposal already comes translated to the profile's scale — a 4, a "Bom",
@@ -100,39 +144,54 @@ function publish(): void {
     );
 }
 
-// One override form at a time — which row's editor is open, if any.
+// One editor at a time — which row's, if any.
 const openUlid = ref<string | null>(null);
-const confirmForm = useForm<{ final_value: string | null; override_reason: string }>({
+const confirmForm = useForm<{ final_scale_level_id: number | null; final_value: string | null; override_reason: string }>({
+    final_scale_level_id: null,
     final_value: null,
     override_reason: '',
 });
 
-function accept(row: Row): void {
+/**
+ * «Usar proposta» — confirms with no decision of its own, which the service
+ * reads as «the proposal IS the decision» and writes down explicitly. Nothing
+ * is ever filled in for the teacher without this click (§6, §11).
+ */
+function useProposal(row: Row): void {
     if (row.classification === null) {
         return;
     }
 
-    confirmForm.transform(() => ({ final_value: null, override_reason: '' }));
+    confirmForm.transform(() => ({ final_scale_level_id: null, final_value: null, override_reason: '' }));
     confirmForm.post(`/classifications/${row.classification.ulid}/confirm`, { preserveScroll: true });
 }
 
-function openOverride(row: Row): void {
+function openEditor(row: Row): void {
     if (row.classification === null) {
         return;
     }
 
     openUlid.value = row.classification.ulid;
     confirmForm.clearErrors();
-    confirmForm.final_value = row.classification.proposed_value;
+    // The editor opens ON the proposal, in plain sight, and still takes a click
+    // to become a decision.
+    confirmForm.final_scale_level_id = row.classification.proposed_scale_level_id;
+    confirmForm.final_value = row.classification.proposal.value;
     confirmForm.override_reason = '';
 }
 
-function submitOverride(row: Row): void {
+function submitDecision(row: Row): void {
     if (row.classification === null) {
         return;
     }
 
-    confirmForm.transform((data) => ({ ...data }));
+    // Only the field this scale is decided in travels — a level id on a scale
+    // made of levels, a value on one that is an interval.
+    confirmForm.transform((data) => ({
+        final_scale_level_id: props.schoolClass.classifies_by_level ? data.final_scale_level_id : null,
+        final_value: props.schoolClass.classifies_by_level ? null : data.final_value,
+        override_reason: data.override_reason,
+    }));
     confirmForm.post(`/classifications/${row.classification.ulid}/confirm`, {
         preserveScroll: true,
         onSuccess: () => {
@@ -242,11 +301,18 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
             <div v-else class="overflow-x-auto rounded-lg border border-border">
                 <table class="w-full text-sm">
                     <thead class="bg-muted/50 text-left">
+                        <!-- The same reading order as Resultados: the evidence,
+                             what LÁPIS proposes from it, what the student said,
+                             and then the decision (§10). -->
                         <tr>
                             <th class="px-3 py-2 font-medium">Aluno</th>
                             <th class="px-3 py-2 text-center font-medium">Estado</th>
+                            <th class="px-3 py-2 text-right font-medium">
+                                {{ scope === 'accumulated' ? 'Média Ponderada Acumulada' : 'Média Ponderada' }}
+                            </th>
                             <th class="px-3 py-2 text-right font-medium">Proposta</th>
-                            <th class="px-3 py-2 text-right font-medium">Final</th>
+                            <th class="px-3 py-2 text-right font-medium">Autoavaliação</th>
+                            <th class="px-3 py-2 text-right font-medium">{{ schoolClass.decision_label }}</th>
                             <th class="px-3 py-2 text-right font-medium">Ação</th>
                         </tr>
                     </thead>
@@ -272,18 +338,37 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                                     <span v-else class="text-xs text-muted-foreground">Sem proposta</span>
                                 </td>
                                 <td class="px-3 py-2 text-right tabular-nums">
+                                    <span :class="{ 'text-muted-foreground': row.weighted_average === null }">{{ pct(row.weighted_average) }}</span>
+                                </td>
+                                <td class="px-3 py-2 text-right tabular-nums">
                                     <span v-if="row.classification" :class="{ 'text-muted-foreground': row.classification.proposal.value === null }">
                                         {{ proposalLabel(row.classification.proposal) }}
                                     </span>
                                     <span v-else class="text-muted-foreground">—</span>
                                 </td>
+                                <td class="px-3 py-2 text-right tabular-nums">
+                                    <span
+                                        v-if="row.self_assessment"
+                                        :title="`Autoavaliação do aluno: ${row.self_assessment.code} — ${row.self_assessment.label}`"
+                                    >{{ row.self_assessment.code }}</span>
+                                    <span v-else class="text-muted-foreground" title="O aluno não respondeu à autoavaliação global deste período.">—</span>
+                                </td>
+                                <!-- The decision, on the scale — a 4, a 15. Never
+                                     the normalized percentage, which is a
+                                     different number about a different thing. -->
                                 <td class="px-3 py-2 text-right font-semibold tabular-nums">
-                                    <template v-if="row.classification && row.classification.status !== 'proposed'">
-                                        {{ grade(row.classification.final_value) }}
+                                    <template v-if="row.classification?.decision">
+                                        <span :title="decisionTitle(row.classification.decision)">
+                                            {{ decisionText(row.classification.decision) }}
+                                        </span>
                                         <CircleAlert
                                             v-if="row.classification.overridden"
                                             class="ml-0.5 inline size-3 text-amber-500"
-                                            :title="`Alterado: ${row.classification.override_reason}`"
+                                            :title="
+                                                row.classification.observation
+                                                    ? `Diferente da proposta. ${row.classification.observation}`
+                                                    : 'Diferente da proposta do LÁPIS.'
+                                            "
                                         />
                                     </template>
                                     <span v-else class="text-muted-foreground">—</span>
@@ -293,7 +378,7 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                                         <button
                                             type="button"
                                             class="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted/40"
-                                            @click="openOverride(row)"
+                                            @click="openEditor(row)"
                                         >
                                             <PencilLine class="mr-1 inline size-3" />Alterar
                                         </button>
@@ -301,28 +386,45 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                                             type="button"
                                             class="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
                                             :disabled="confirmForm.processing"
-                                            @click="accept(row)"
+                                            @click="useProposal(row)"
                                         >
-                                            Confirmar
+                                            Usar proposta
                                         </button>
                                     </div>
                                     <span v-else-if="row.classification" class="text-xs text-muted-foreground">✓</span>
                                 </td>
                             </tr>
                             <tr v-if="row.classification && openUlid === row.classification.ulid" class="bg-muted/20">
-                                <td colspan="5" class="px-3 py-3">
+                                <td colspan="7" class="px-3 py-3">
                                     <div class="flex flex-wrap items-end gap-3">
                                         <label class="text-sm">
-                                            <span class="mb-1 block text-xs text-muted-foreground">Valor final</span>
+                                            <span class="mb-1 block text-xs text-muted-foreground">{{ schoolClass.decision_label }}</span>
+                                            <!-- A closed list on a scale made of
+                                                 levels: there is no 3,5 to assign,
+                                                 and a free field would invite one. -->
+                                            <select
+                                                v-if="schoolClass.classifies_by_level"
+                                                v-model="confirmForm.final_scale_level_id"
+                                                class="w-48 rounded-md border border-border bg-background px-2 py-1"
+                                            >
+                                                <option v-for="level in schoolClass.levels" :key="level.id" :value="level.id">
+                                                    {{ level.code }} — {{ level.label }}
+                                                </option>
+                                            </select>
+                                            <!-- An interval: its own limits, taken
+                                                 from the scale and not written here. -->
                                             <input
+                                                v-else
                                                 v-model="confirmForm.final_value"
                                                 type="number"
                                                 step="0.001"
+                                                :min="schoolClass.min_value ?? undefined"
+                                                :max="schoolClass.max_value ?? undefined"
                                                 class="w-28 rounded-md border border-border bg-background px-2 py-1 tabular-nums"
                                             />
                                         </label>
                                         <label class="flex-1 text-sm">
-                                            <span class="mb-1 block text-xs text-muted-foreground">Motivo (obrigatório se alterar a proposta)</span>
+                                            <span class="mb-1 block text-xs text-muted-foreground">Observação (opcional)</span>
                                             <input
                                                 v-model="confirmForm.override_reason"
                                                 type="text"
@@ -343,7 +445,7 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                                                 type="button"
                                                 class="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
                                                 :disabled="confirmForm.processing"
-                                                @click="submitOverride(row)"
+                                                @click="submitDecision(row)"
                                             >
                                                 Confirmar
                                             </button>
@@ -360,9 +462,16 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
 
         <p class="flex items-start gap-2 text-xs text-muted-foreground">
             <CircleAlert class="mt-0.5 size-3.5 shrink-0" />
-            A proposta é o valor determinístico calculado pelo motor. Confirmar aceita-o; alterá-lo exige um motivo,
-            e guarda a proposta original, o valor final, o motivo, o autor e a data. A confirmação congela um registo
-            de como o valor foi obtido. "—" significa sem elementos, nunca zero.
+            <span>
+                A <strong>Média Ponderada</strong> é o resultado deste período em percentagem, e a
+                <strong>Proposta</strong> é esse resultado lido na escala do perfil<template v-if="schoolClass.scale_name">
+                ({{ schoolClass.scale_name }})</template>. O <strong>{{ schoolClass.decision_label }}</strong>
+                é a decisão do professor, dada nessa mesma escala e nunca em percentagem — «Usar proposta» adota
+                a proposta, «Alterar» atribui outra. Atribuir diferente da proposta não exige justificação; a
+                observação é opcional e fica registada, tal como a proposta original, o autor e a data. A
+                confirmação congela um registo de como o valor foi obtido. A <strong>Autoavaliação</strong> é a
+                resposta do aluno e é independente das duas. "—" significa sem elementos, nunca zero.
+            </span>
         </p>
     </div>
 </template>

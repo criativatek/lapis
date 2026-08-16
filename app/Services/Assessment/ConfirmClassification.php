@@ -8,6 +8,8 @@ use App\Domain\Assessment\CalculationOutcome;
 use App\Models\CalculationSnapshot;
 use App\Models\Classification;
 use App\Models\ClassificationStatus;
+use App\Models\Scale;
+use App\Models\ScaleLevel;
 use App\Models\SnapshotTrigger;
 use App\Models\User;
 use App\Services\Audit\AuditLog;
@@ -17,32 +19,45 @@ use Illuminate\Support\Facades\DB;
 /**
  * The moment the system's proposal becomes the teacher's grade (§3.3, §7.1). It
  * freezes a snapshot of exactly how the proposal was reached, then records the
- * decision — the deterministic proposal is kept, the teacher's final value is
- * written beside it, and any change from the proposal carries a mandatory reason
- * (A10). The snapshot is written first so a confirmed grade is never without its
- * explanation.
+ * decision beside the deterministic proposal, which is never overwritten.
+ *
+ * THE DECISION IS TAKEN ON THE CLASSIFICATION SCALE, never in the engine's
+ * normalized percentage. On a 1–5 the teacher assigns a LEVEL and it is stored
+ * in `final_scale_level_id`, with `final_value` carrying that level's own number
+ * so the two can never say different things. On a scale that is an interval —
+ * 0–20, a percentage — there are no bands to choose from and the decision is the
+ * number itself, in `final_value`.
+ *
+ * `proposed_value` is left exactly as the engine wrote it: the rounded
+ * normalized percentage. It is a technical figure, it is what the staleness
+ * check compares, and it is NOT the grade — which is why the decision is never
+ * copied from it.
  */
 class ConfirmClassification
 {
     public function __construct(
         protected ClassResultsCalculator $calculator,
+        protected ScaleProposalResolver $proposals,
         protected AuditLog $audit,
     ) {}
 
     /**
-     * @param  string|null  $finalValue  the teacher's value; null or equal to the proposal means "accept the proposal"
+     * @param  int|null  $finalScaleLevelId  the level the teacher assigned, on a scale made of levels
+     * @param  string|null  $finalValue  the classification the teacher wrote, on a scale that is an interval
+     * @param  string|null  $observation  optional, always — a decision that differs from the proposal needs no defence
      */
     public function confirm(
         Classification $classification,
         User $teacher,
+        ?int $finalScaleLevelId = null,
         ?string $finalValue = null,
-        ?string $overrideReason = null,
+        ?string $observation = null,
     ): Classification {
         // The whole decision runs under a row lock: two teachers confirming the
         // same proposal at once would otherwise let the second write overwrite
-        // the first's override, silently erasing the A10 trail. The re-fetch and
+        // the first's decision, silently erasing the trail. The re-fetch and
         // status re-check happen INSIDE the transaction, on the locked row.
-        return DB::transaction(function () use ($classification, $teacher, $finalValue, $overrideReason): Classification {
+        return DB::transaction(function () use ($classification, $teacher, $finalScaleLevelId, $finalValue, $observation): Classification {
             $locked = Classification::query()->whereKey($classification->getKey())->lockForUpdate()->firstOrFail();
 
             if ($locked->status !== ClassificationStatus::Proposed) {
@@ -65,13 +80,8 @@ class ConfirmClassification
                 throw ClassificationDecisionException::stale();
             }
 
-            $isOverride = $finalValue !== null
-                && $locked->proposed_value !== null
-                && Bc::compare(Bc::of($finalValue), Bc::of($locked->proposed_value)) !== 0;
-
-            if ($isOverride && ($overrideReason === null || trim($overrideReason) === '')) {
-                throw ClassificationDecisionException::missingOverrideReason();
-            }
+            $decision = $this->decide($locked, $finalScaleLevelId, $finalValue);
+            $written = $observation === null || trim($observation) === '' ? null : trim($observation);
 
             $payload = $this->payloadFor($locked, $outcome);
 
@@ -96,28 +106,32 @@ class ConfirmClassification
                 'calculation_snapshot_id' => $snapshot->id,
                 'confirmed_by' => $teacher->id,
                 'confirmed_at' => now(),
-                // The final value is always written explicitly. Accepting the
-                // proposal sets final = proposed (satisfying the CHECK with no
-                // reason); overriding writes a different value and the reason.
-                'final_value' => $isOverride ? $finalValue : $locked->proposed_value,
-                'final_scale_level_id' => $locked->proposed_scale_level_id,
-                'override_reason' => $isOverride ? $overrideReason : null,
-                'overridden_by' => $isOverride ? $teacher->id : null,
-                'overridden_at' => $isOverride ? now() : null,
+                // Always written explicitly, never left implied — accepting the
+                // proposal records the proposal AS the decision (§6).
+                'final_scale_level_id' => $decision['scale_level_id'],
+                'final_value' => $decision['value'],
+                // Kept when given, for the pedagogical record. No longer a
+                // precondition for deciding differently (§7).
+                'override_reason' => $written,
+                'overridden_by' => $decision['is_override'] ? $teacher->id : null,
+                'overridden_at' => $decision['is_override'] ? now() : null,
             ])->save();
 
-            // Audit (§22.5): a confirmation, and — when the teacher changed the
-            // proposal — the override, each carry the values and the reason.
+            // Audit (§22.5): a confirmation, and — when the teacher decided
+            // differently — the change, each carrying what was proposed, what was
+            // decided, and the observation if there was one.
             $this->audit->record(
-                $isOverride ? 'classification.overridden' : 'classification.confirmed',
+                $decision['is_override'] ? 'classification.overridden' : 'classification.confirmed',
                 $locked,
                 $teacher,
-                $isOverride
-                    ? "Classificação alterada de {$locked->proposed_value} para {$finalValue}."
-                    : "Classificação confirmada em {$locked->final_value}.",
+                $decision['is_override']
+                    ? "Classificação alterada de {$this->proposalReadable($locked)} para {$decision['readable']}."
+                    : "Classificação confirmada em {$decision['readable']}.",
                 [
                     'proposed_value' => $locked->proposed_value,
+                    'proposed_scale_level_id' => $locked->proposed_scale_level_id,
                     'final_value' => $locked->final_value,
+                    'final_scale_level_id' => $locked->final_scale_level_id,
                     'override_reason' => $locked->override_reason,
                     'snapshot_id' => $snapshot->id,
                 ],
@@ -125,6 +139,138 @@ class ConfirmClassification
 
             return $locked;
         });
+    }
+
+    /**
+     * What the teacher decided, expressed on the class's own scale.
+     *
+     * @return array{scale_level_id: int|null, value: string|null, is_override: bool, readable: string}
+     */
+    protected function decide(Classification $locked, ?int $finalScaleLevelId, ?string $finalValue): array
+    {
+        $scale = $this->scaleFor($locked);
+        $asked = $finalScaleLevelId !== null || ($finalValue !== null && trim($finalValue) !== '');
+
+        // Nothing chosen means «use the proposal» — an explicit act by the
+        // teacher, arriving here as an explicit confirmation, and written down
+        // rather than inferred later from the proposal columns (§6, §11).
+        if (! $asked) {
+            return [
+                'scale_level_id' => $locked->proposed_scale_level_id,
+                'value' => $this->proposalValue($locked),
+                'is_override' => false,
+                'readable' => $this->proposalReadable($locked),
+            ];
+        }
+
+        if ($scale === null) {
+            throw ClassificationDecisionException::withoutScale();
+        }
+
+        return $scale->classifiesByLevel()
+            ? $this->decideByLevel($scale, $locked, $finalScaleLevelId)
+            : $this->decideByValue($scale, $locked, $finalValue);
+    }
+
+    /**
+     * @return array{scale_level_id: int|null, value: string|null, is_override: bool, readable: string}
+     */
+    protected function decideByLevel(Scale $scale, Classification $locked, ?int $finalScaleLevelId): array
+    {
+        // A level of THIS scale. Another scale's band, or an id that is nothing
+        // at all, is not a classification this class can carry.
+        $level = $finalScaleLevelId === null
+            ? null
+            : ScaleLevel::query()->where('scale_id', $scale->id)->whereKey($finalScaleLevelId)->first();
+
+        if ($level === null) {
+            throw ClassificationDecisionException::levelNotOnScale();
+        }
+
+        return [
+            'scale_level_id' => $level->id,
+            // The level's own number, so the row never says «level 4» in one
+            // column and something else in the other. A purely qualitative
+            // level has none, and null is then the truthful answer (§10.4).
+            'value' => $level->numeric_value === null ? null : (string) $level->numeric_value,
+            'is_override' => $level->id !== $locked->proposed_scale_level_id,
+            'readable' => "{$level->code} — {$level->label}",
+        ];
+    }
+
+    /**
+     * @return array{scale_level_id: int|null, value: string|null, is_override: bool, readable: string}
+     */
+    protected function decideByValue(Scale $scale, Classification $locked, ?string $finalValue): array
+    {
+        $value = trim((string) $finalValue);
+
+        // The scale's own limits decide what is valid on it — never a range
+        // written down here.
+        if (Bc::compare(Bc::of($value), Bc::of((string) $scale->min_value)) < 0
+            || Bc::compare(Bc::of($value), Bc::of((string) $scale->max_value)) > 0) {
+            throw ClassificationDecisionException::outsideScale((string) $scale->min_value, (string) $scale->max_value);
+        }
+
+        $proposed = $this->proposalValue($locked);
+
+        return [
+            'scale_level_id' => null,
+            'value' => $value,
+            'is_override' => $proposed === null || Bc::compare(Bc::of($value), Bc::of($proposed)) !== 0,
+            'readable' => $value,
+        ];
+    }
+
+    /** The proposal as a teacher reads it — «3 — Suficiente», «16», «—». */
+    protected function proposalReadable(Classification $classification): string
+    {
+        $level = $classification->proposedScaleLevel;
+
+        if ($level !== null) {
+            return "{$level->code} — {$level->label}";
+        }
+
+        return $this->proposalValue($classification) ?? '—';
+    }
+
+    /**
+     * The proposal read on the class's scale — a 3, a 16 — and never the
+     * normalized percentage that produced it.
+     */
+    protected function proposalValue(Classification $classification): ?string
+    {
+        $scale = $this->scaleFor($classification);
+
+        if ($scale === null) {
+            return null;
+        }
+
+        if ($scale->classifiesByLevel()) {
+            $level = $classification->proposedScaleLevel;
+
+            return $level?->numeric_value === null ? null : (string) $level->numeric_value;
+        }
+
+        $version = $classification->enrollment->schoolClass->profileVersion;
+
+        $proposal = $this->proposals->resolve(
+            $scale,
+            $classification->proposed_scale_level_id,
+            $classification->proposed_normalized_value,
+            $classification->proposed_value,
+            $version->rounding_mode ?? 'half_up',
+            $version->rounding_scale ?? 0,
+        );
+
+        // A qualitative descriptor is a name, not a value: it cannot go into a
+        // decimal column, and saying so is better than coercing it to zero.
+        return $proposal->isResolved() && is_numeric((string) $proposal->value) ? $proposal->value : null;
+    }
+
+    protected function scaleFor(Classification $classification): ?Scale
+    {
+        return $classification->enrollment->schoolClass->profileVersion?->scale()->with('levels')->first();
     }
 
     protected function freshOutcomeFor(Classification $classification): CalculationOutcome

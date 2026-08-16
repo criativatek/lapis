@@ -8,6 +8,8 @@ use App\Models\ClassificationScope;
 use App\Models\ClassificationStatus;
 use App\Models\Enrollment;
 use App\Models\ResultState;
+use App\Models\Scale;
+use App\Models\ScaleLevel;
 use App\Models\SchoolClass;
 use App\Models\SnapshotTrigger;
 use App\Models\Student;
@@ -79,9 +81,13 @@ class ClassificationTest extends TestCase
             $carolina->refresh();
 
             $this->assertSame(ClassificationStatus::Confirmed, $carolina->status);
-            // Accepting sets final = proposed with no reason — the A10 CHECK holds.
-            $this->assertSame('91.000', $carolina->final_value);
+            // Accepting records the PROPOSAL as the decision, on the scale: the
+            // proposed level, and that level's own number. Never the 91% that
+            // produced it, which is a different fact about a different thing.
+            $this->assertSame($carolina->proposed_scale_level_id, $carolina->final_scale_level_id);
+            $this->assertSame('5.000', $carolina->final_value);
             $this->assertNull($carolina->override_reason);
+            $this->assertNull($carolina->overridden_at);
             $this->assertSame($teacher->id, $carolina->confirmed_by);
             $this->assertNotNull($carolina->confirmed_at);
 
@@ -131,34 +137,85 @@ class ClassificationTest extends TestCase
     }
 
     #[Test]
-    public function overriding_records_the_teachers_value_reason_and_authorship(): void
+    public function deciding_a_different_level_records_the_decision_and_its_authorship(): void
     {
         $this->inDemoClass(function ($class, $period, $teacher): void {
             app(ProposeClassifications::class)->forPeriod($class, $period);
             $carolina = $this->classificationFor($period, 'Carolina Nunes');
+            $chosen = $this->levelWithCode($class, '3');
 
-            app(ConfirmClassification::class)->confirm($carolina, $teacher, '95', 'Participação sustentada não refletida nos instrumentos.');
+            app(ConfirmClassification::class)->confirm(
+                $carolina,
+                $teacher,
+                $chosen->id,
+                null,
+                'Participação sustentada não refletida nos instrumentos.',
+            );
             $carolina->refresh();
 
-            // A10's four elements all preserved: original proposal, final value,
-            // reason, author (+date).
+            // The proposal is never overwritten…
             $this->assertSame('91.000', $carolina->proposed_value);
-            $this->assertSame('95.000', $carolina->final_value);
+            // …and the decision is a LEVEL of the scale, with that level's own
+            // number beside it so the row can never say two different things.
+            $this->assertSame($chosen->id, $carolina->final_scale_level_id);
+            $this->assertSame('3.000', $carolina->final_value);
             $this->assertSame('Participação sustentada não refletida nos instrumentos.', $carolina->override_reason);
             $this->assertSame($teacher->id, $carolina->overridden_by);
             $this->assertNotNull($carolina->overridden_at);
+            $this->assertTrue($carolina->wasOverridden());
         });
     }
 
     #[Test]
-    public function overriding_without_a_reason_is_refused(): void
+    public function deciding_a_different_level_needs_no_justification(): void
+    {
+        $this->inDemoClass(function ($class, $period, $teacher): void {
+            app(ProposeClassifications::class)->forPeriod($class, $period);
+            $carolina = $this->classificationFor($period, 'Carolina Nunes');
+            $chosen = $this->levelWithCode($class, '3');
+
+            // The teacher decides (§3.3). Assigning a level other than the
+            // proposed one is the job, not an exception to be justified before
+            // it is allowed.
+            app(ConfirmClassification::class)->confirm($carolina, $teacher, $chosen->id);
+            $carolina->refresh();
+
+            $this->assertSame(ClassificationStatus::Confirmed, $carolina->status);
+            $this->assertSame($chosen->id, $carolina->final_scale_level_id);
+            $this->assertNull($carolina->override_reason);
+            // …and it is still recorded AS a change, which is what the audit
+            // trail is for.
+            $this->assertNotNull($carolina->overridden_at);
+            $this->assertSame($teacher->id, $carolina->overridden_by);
+        });
+    }
+
+    #[Test]
+    public function a_level_that_is_not_on_this_scale_is_refused(): void
     {
         $this->inDemoClass(function ($class, $period, $teacher): void {
             app(ProposeClassifications::class)->forPeriod($class, $period);
             $carolina = $this->classificationFor($period, 'Carolina Nunes');
 
+            $elsewhere = Scale::create(['name' => 'Escala de outra turma', 'kind' => 'level', 'min_value' => '1', 'max_value' => '3']);
+            $foreign = $elsewhere->levels()->create(['code' => 'X', 'label' => 'De outra escala', 'sequence' => 1]);
+
             $this->expectException(ClassificationDecisionException::class);
-            app(ConfirmClassification::class)->confirm($carolina, $teacher, '95', '   ');
+            app(ConfirmClassification::class)->confirm($carolina, $teacher, $foreign->id);
+        });
+    }
+
+    #[Test]
+    public function a_percentage_cannot_be_assigned_as_a_level(): void
+    {
+        $this->inDemoClass(function ($class, $period, $teacher): void {
+            app(ProposeClassifications::class)->forPeriod($class, $period);
+            $carolina = $this->classificationFor($period, 'Carolina Nunes');
+
+            // «66» is a result, not a level of a 1–5 scale. There is no id 66 on
+            // it, and there is no free field to type it into either.
+            $this->expectException(ClassificationDecisionException::class);
+            app(ConfirmClassification::class)->confirm($carolina, $teacher, 66);
         });
     }
 
@@ -168,14 +225,16 @@ class ClassificationTest extends TestCase
         $this->inDemoClass(function ($class, $period, $teacher): void {
             app(ProposeClassifications::class)->forPeriod($class, $period);
             $carolina = $this->classificationFor($period, 'Carolina Nunes');
-            app(ConfirmClassification::class)->confirm($carolina, $teacher, '95', 'Motivo válido.');
+            $chosen = $this->levelWithCode($class, '3');
+            app(ConfirmClassification::class)->confirm($carolina, $teacher, $chosen->id, null, 'Motivo válido.');
 
             $counts = app(ProposeClassifications::class)->forPeriod($class, $period);
 
             $this->assertGreaterThanOrEqual(1, $counts['skipped_frozen']);
             $carolina->refresh();
             $this->assertSame(ClassificationStatus::Confirmed, $carolina->status);
-            $this->assertSame('95.000', $carolina->final_value);
+            $this->assertSame($chosen->id, $carolina->final_scale_level_id);
+            $this->assertSame('3.000', $carolina->final_value);
         });
     }
 
@@ -206,8 +265,8 @@ class ClassificationTest extends TestCase
             $carolina->refresh();
             $this->assertSame(ClassificationStatus::Published, $carolina->status);
             $this->assertNotNull($carolina->published_at);
-            // Publishing recalculates nothing — the confirmed value is untouched.
-            $this->assertSame('91.000', $carolina->final_value);
+            // Publishing recalculates nothing — the confirmed decision is untouched.
+            $this->assertSame('5.000', $carolina->final_value);
 
             // A still-proposed classification is not published — only confirmed ones.
             $this->assertSame(
@@ -365,6 +424,11 @@ class ClassificationTest extends TestCase
 
             return Classification::whereNotNull('proposed_value')->firstOrFail()->ulid;
         });
+    }
+
+    private function levelWithCode(SchoolClass $class, string $code): ScaleLevel
+    {
+        return $class->profileVersion->scale->levels()->where('code', $code)->firstOrFail();
     }
 
     private function classificationFor($period, string $studentName): ?Classification

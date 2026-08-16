@@ -13,9 +13,24 @@ use Illuminate\Support\Carbon;
  * One decision about one (enrollment, period, scope) — the boundary where the
  * system's proposal becomes the teacher's grade (§3.3, §7.1). The proposed_*
  * columns are the deterministic engine output and are never overwritten; the
- * final_* columns are the teacher's, and may differ only with an override_reason
- * (enforced by DB CHECK on MySQL and by confirm() at the service layer). The
- * calculation_snapshot records HOW the proposal was reached.
+ * final_* columns are the teacher's. The calculation_snapshot records HOW the
+ * proposal was reached.
+ *
+ * THE TWO PAIRS ARE NOT THE SAME KIND OF THING, and this is worth stating
+ * because reading them as if they were is what once put a percentage in a column
+ * headed with the grade:
+ *
+ *  - `proposed_normalized_value` / `proposed_value` — the engine's percentage,
+ *    raw and rounded. A technical figure, and what the staleness check compares.
+ *  - `proposed_scale_level_id` — the same proposal read on the profile's scale.
+ *  - `final_scale_level_id` / `final_value` — the DECISION, always expressed on
+ *    the classification scale: the level on a scale made of levels (with
+ *    `final_value` carrying that level's own number), the value itself on a
+ *    scale that is an interval.
+ *
+ * A decision that differs from the proposal is ordinary and needs no reason;
+ * `override_reason` is a pedagogical note the teacher may leave, and
+ * `overridden_by`/`overridden_at` are what record that a decision differed.
  *
  * @property int $id
  * @property string $ulid
@@ -79,18 +94,16 @@ class Classification extends Model
     }
 
     /**
-     * The value that counts: the teacher's final if set, else the proposal. Read
-     * only — the grade is written through confirm()/override, never assigned here.
+     * True once the teacher decided something other than the proposal.
+     *
+     * Read from the stamp that records exactly that, and no longer from the
+     * presence of a reason: a reason is now an optional note, and one left on a
+     * decision that matched the proposal would have made this say the opposite
+     * of what happened.
      */
-    public function effectiveValue(): ?string
-    {
-        return $this->final_value ?? $this->proposed_value;
-    }
-
-    /** True once the teacher changed the deterministic proposal (A10). */
     public function wasOverridden(): bool
     {
-        return $this->override_reason !== null;
+        return $this->overridden_at !== null;
     }
 
     /**

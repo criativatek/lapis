@@ -56,21 +56,33 @@ class AuditTrailTest extends TestCase
             $event = AuditEvent::where('event', 'classification.confirmed')->latest('id')->firstOrFail();
             $this->assertSame($teacher->id, $event->causer_id);
             $this->assertSame('Classification', $event->subject_type);
-            $this->assertSame('91.000', $event->properties['final_value']);
+            // The decision, on the scale — the proposed level's own number. The
+            // 91% that produced it is kept beside it, as the proposal.
+            $this->assertSame('5.000', $event->properties['final_value']);
+            $this->assertSame('91.000', $event->properties['proposed_value']);
         });
     }
 
     #[Test]
-    public function an_override_records_the_reason_in_the_trail(): void
+    public function a_decision_that_differs_from_the_proposal_is_recorded_as_such(): void
     {
         $this->inDemoClass(function ($class, $period, $teacher): void {
             app(ProposeClassifications::class)->forPeriod($class, $period);
-            app(ConfirmClassification::class)->confirm($this->classificationFor($period, 'Carolina Nunes'), $teacher, '95', 'Participação sustentada.');
+            $level = $class->profileVersion->scale->levels()->where('code', '3')->firstOrFail();
+
+            app(ConfirmClassification::class)->confirm(
+                $this->classificationFor($period, 'Carolina Nunes'),
+                $teacher,
+                $level->id,
+                null,
+                'Participação sustentada.',
+            );
 
             $event = AuditEvent::where('event', 'classification.overridden')->firstOrFail();
             $this->assertSame('Participação sustentada.', $event->properties['override_reason']);
             $this->assertSame('91.000', $event->properties['proposed_value']);
-            $this->assertSame('95.000', $event->properties['final_value']);
+            $this->assertSame('3.000', $event->properties['final_value']);
+            $this->assertSame($level->id, $event->properties['final_scale_level_id']);
         });
     }
 

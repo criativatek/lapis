@@ -92,6 +92,22 @@ class Scale extends Model
         return $this->hasMany(ScaleLevel::class)->orderBy('sequence');
     }
 
+    /**
+     * Whether a classification on this scale is CHOSEN from the scale's bands or
+     * WRITTEN as a number on its interval.
+     *
+     * A 1–5 is a closed list: there is no 3,5 to assign, and offering a free
+     * number invites one. A 0–20 or a percentage is an interval, and its own
+     * limits are the definition of what is valid there.
+     *
+     * Read from the scale's kind, never from a year of schooling: «básico» and
+     * «secundário» are not properties of anything this app stores.
+     */
+    public function classifiesByLevel(): bool
+    {
+        return $this->kind === 'level';
+    }
+
     public function isSystem(): bool
     {
         return $this->organization_id === null;

@@ -54,9 +54,11 @@ class ReportsTest extends TestCase
                 ->component('reports/Pauta')
                 ->where('rows', function ($rows) {
                     $rows = collect($rows);
-                    // Carolina is confirmed → her first-period cell carries a value.
+                    // Carolina is confirmed → her first-period cell carries the
+                    // decision on the scale, which on a 1–5 is a level and not
+                    // the percentage that produced it.
                     $carolina = $rows->firstWhere('name', 'Carolina Nunes');
-                    $this->assertSame('91.000', $carolina['cells'][0]['value']);
+                    $this->assertSame('5.000', $carolina['cells'][0]['value']);
                     $this->assertSame('confirmed', $carolina['cells'][0]['status']);
                     // Diogo has no decided grade → no value, never a zero.
                     $diogo = $rows->firstWhere('name', 'Diogo Ferreira');
@@ -79,7 +81,9 @@ class ReportsTest extends TestCase
         $response->assertHeader('content-type', 'text/csv; charset=UTF-8');
         $body = $response->getContent();
         $this->assertStringContainsString('Carolina Nunes', $body);
-        $this->assertStringContainsString('91.000', $body);
+        $this->assertStringContainsString('5.000', $body);
+        // The pauta carries the grade, not the engine's percentage.
+        $this->assertStringNotContainsString('91.000', $body);
         $this->assertStringContainsString('Nº,Aluno', $body);
     }
 
