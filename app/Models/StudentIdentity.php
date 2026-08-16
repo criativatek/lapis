@@ -56,4 +56,22 @@ class StudentIdentity extends Model
     {
         return $this->belongsTo(Student::class);
     }
+
+    /**
+     * The student's N.º DE PROCESSO — the school's own internal identifier for
+     * them, read from the «N.º PROC.» column of the Relação de Turma.
+     *
+     * Stored as `school_number` because that is what it is: a number the SCHOOL
+     * gives a student, not a number belonging to any one system that consumes
+     * it. A later export to another platform reads it from here, by this name,
+     * and there is deliberately no second field meaning the same thing.
+     *
+     * It lives on the identity, which is per (student, organization): the same
+     * person enrolled in two schools has two of these, and neither is «the»
+     * one. Encrypted at rest like every other identifying field (ADR-0004).
+     */
+    public function processNumber(): ?string
+    {
+        return $this->school_number;
+    }
 }

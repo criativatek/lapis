@@ -26,6 +26,10 @@ type PreviewRow = {
     photo_extension: string | null;
     duplicate_in_file: boolean;
     already_enrolled: boolean;
+    /** The enrolment this row updates, when the student is already on the roll. */
+    enrollment_id: number | null;
+    /** `enrol` · `update` · `skip` — decided server-side, never here. */
+    action: string;
     include: boolean;
 };
 
@@ -285,10 +289,12 @@ function submit(): void {
                                     variant="outline"
                                     >nome duplicado no ficheiro</Badge
                                 >
+                                <!-- Already on the roll: the roster fills in what
+                                     the record is missing and erases nothing. -->
                                 <Badge
                                     v-if="row.already_enrolled"
                                     variant="outline"
-                                    >já inscrito nesta turma</Badge
+                                    >já nesta turma — atualiza os dados em falta</Badge
                                 >
                                 <Badge
                                     v-if="!row.situation_recognized"

@@ -343,7 +343,7 @@ function submitPhotos(): void {
             </div>
             <p class="text-xs text-muted-foreground">
                 Ficheiros exportados do Intuitivo (ou compatível): modelo
-                <strong>EB058</strong> para a lista de alunos (Excel) e modelo
+                <strong>EB058e</strong> para a lista de alunos (Excel) e modelo
                 <strong>EB019</strong> para as fotos (Word).
             </p>
             <form
@@ -627,7 +627,7 @@ function submitPhotos(): void {
                         <DialogTitle>Importar lista de turma</DialogTitle>
                         <DialogDescription
                             >Ficheiro Excel exportado do Intuitivo — modelo
-                            EB058. Depois de reveres a lista, podes associar
+                            EB058e. Depois de reveres a lista, podes associar
                             fotos num passo separado.</DialogDescription
                         >
                     </DialogHeader>

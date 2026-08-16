@@ -16,13 +16,22 @@ class RosterImportPreviewBuilder
 {
     protected const RECOGNIZED_SITUATIONS = ['X', 'TR'];
 
+    /** A student the class does not have yet. */
+    public const ACTION_ENROL = 'enrol';
+
+    /** Already on the roll: the roster fills in what the record is missing, and erases nothing. */
+    public const ACTION_UPDATE = 'update';
+
+    /** The same name twice in one file — not something to guess about. */
+    public const ACTION_SKIP = 'skip';
+
     /**
      * @param  list<RosterRow>  $rosterRows
      * @param  list<PhotoMatch>  $photoMatches
-     * @param  \Closure(string): bool  $isAlreadyEnrolled  Receives the name already normalized (squished, lowercased) — not the raw roster spelling. A real (database-backed) implementation must compare against an equally normalized column/value.
-     * @return list<array{name: string, class_number: ?int, birth_date: ?string, situation_code: string, situation_recognized: bool, process_number: ?string, note: ?string, photo_index: ?int, photo_extension: ?string, duplicate_in_file: bool, already_enrolled: bool, include: bool}>
+     * @param  \Closure(string): ?int  $enrolledAs  Receives the name already normalized (squished, lowercased) — not the raw roster spelling — and answers with the id of the enrollment that student already has in this class, or null. A real (database-backed) implementation must compare against an equally normalized column/value.
+     * @return list<array{name: string, class_number: ?int, birth_date: ?string, situation_code: string, situation_recognized: bool, process_number: ?string, note: ?string, photo_index: ?int, photo_extension: ?string, duplicate_in_file: bool, already_enrolled: bool, enrollment_id: ?int, action: string, include: bool}>
      */
-    public function build(array $rosterRows, array $photoMatches, \Closure $isAlreadyEnrolled): array
+    public function build(array $rosterRows, array $photoMatches, \Closure $enrolledAs): array
     {
         $nameCounts = [];
 
@@ -37,8 +46,17 @@ class RosterImportPreviewBuilder
             $key = $this->normalize($row->name);
 
             $duplicateInFile = $nameCounts[$key] > 1;
-            $alreadyEnrolled = $isAlreadyEnrolled($key);
+            $enrollmentId = $enrolledAs($key);
             $photoIndex = $this->findPhotoIndex($row->name, $photoMatches);
+
+            // A name appearing twice in the same file is not something to guess
+            // about; everyone else is either new here, or already on the roll and
+            // therefore an UPDATE rather than a second enrolment (§8).
+            $action = match (true) {
+                $duplicateInFile => self::ACTION_SKIP,
+                $enrollmentId !== null => self::ACTION_UPDATE,
+                default => self::ACTION_ENROL,
+            };
 
             $preview[] = [
                 'name' => $row->name,
@@ -51,8 +69,10 @@ class RosterImportPreviewBuilder
                 'photo_index' => $photoIndex,
                 'photo_extension' => $photoIndex !== null ? $photoMatches[$photoIndex]->extension : null,
                 'duplicate_in_file' => $duplicateInFile,
-                'already_enrolled' => $alreadyEnrolled,
-                'include' => ! $duplicateInFile && ! $alreadyEnrolled,
+                'already_enrolled' => $enrollmentId !== null,
+                'enrollment_id' => $enrollmentId,
+                'action' => $action,
+                'include' => $action !== self::ACTION_SKIP,
             ];
         }
 

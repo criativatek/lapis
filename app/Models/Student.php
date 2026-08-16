@@ -58,6 +58,21 @@ class Student extends Model
     }
 
     /**
+     * «Qual é o N.º de processo deste aluno nesta organização?» — asked of the
+     * domain, answered from one place.
+     *
+     * The identity is already per (student, organization), so a student's record
+     * in this school answers for this school and no other. Null when the roster
+     * never carried one, which is a real state and not a zero.
+     *
+     * Callers must eager-load `identity`; this touches no database of its own.
+     */
+    public function processNumber(): ?string
+    {
+        return $this->identity?->processNumber();
+    }
+
+    /**
      * The authorized route to this student's photo, or null when there is none.
      *
      * A URL, never the image itself: the bytes stay on the private disk and

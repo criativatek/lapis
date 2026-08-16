@@ -97,6 +97,58 @@ class StudentEnrollmentService
         });
     }
 
+    /**
+     * Fills in what the roster knows and this student's record does not.
+     *
+     * FOR A RE-IMPORT of the same class: the student is already on the roll, so
+     * nothing is created — the Student row, its pseudonym_code and every result
+     * hanging off it stay exactly where they are. Only the fields the file
+     * actually carries are written.
+     *
+     * IT NEVER ERASES. A cell the export left empty says nothing about the
+     * student, and least of all that what a teacher typed in by hand should go:
+     * an absent value leaves the stored one alone (§8). A present value wins,
+     * because the school's own export is the better source for a school's own
+     * data — and the match is by name within this class, which is unambiguous
+     * or the row would have been marked a duplicate.
+     *
+     * @param  array{name?: string, class_number?: int|null, birth_date?: string|null, school_number?: string|null, import_note?: string|null}  $data
+     */
+    public function fillFromRoster(Enrollment $enrollment, array $data): Enrollment
+    {
+        return DB::transaction(function () use ($enrollment, $data): Enrollment {
+            $student = $enrollment->student;
+
+            $identityFields = array_filter([
+                'display_name' => $data['name'] ?? null,
+                'school_number' => $data['school_number'] ?? null,
+                'birth_date' => $data['birth_date'] ?? null,
+            ], fn ($value): bool => $value !== null && $value !== '');
+
+            if ($student->identity === null) {
+                $student->identity()->create([
+                    'organization_id' => $this->currentOrganization->id(),
+                    'display_name' => $data['name'] ?? '',
+                    ...$identityFields,
+                ]);
+                $student->unsetRelation('identity');
+            } elseif ($identityFields !== []) {
+                $student->identity->update($identityFields);
+            }
+
+            $enrollmentFields = array_filter([
+                'class_number' => $data['class_number'] ?? null,
+                'import_note' => $data['import_note'] ?? null,
+            ], fn ($value): bool => $value !== null && $value !== '');
+
+            if ($enrollmentFields !== []) {
+                $enrollment->update($enrollmentFields);
+            }
+
+            return $enrollment;
+        });
+    }
+
     protected function uniquePseudonym(): string
     {
         do {

@@ -60,7 +60,7 @@ class RosterImportController extends Controller
         // null.
         $token = $this->tempStorage->newToken();
 
-        $isAlreadyEnrolled = function (string $name) use ($class): bool {
+        $enrolledAs = function (string $name) use ($class): ?int {
             $index = BlindIndex::of($name);
 
             // StudentIdentity has no BelongsToOrganization scope (by design —
@@ -71,16 +71,22 @@ class RosterImportController extends Controller
             // primary key, never reused across organizations) — never rely
             // on that alone; the explicit organization_id filter below is
             // deliberate defense-in-depth, not redundant belt-and-braces.
-            return StudentIdentity::where('display_name_index', $index)
+            $identity = StudentIdentity::where('display_name_index', $index)
                 ->where('organization_id', $this->currentOrganization->id())
                 ->whereHas('student.enrollments', fn ($query) => $query->where('class_id', $class->id))
-                ->exists();
+                ->first();
+
+            // Which enrolment, not merely whether: a re-import fills that
+            // student's record in rather than skipping past them (§8).
+            return $identity === null
+                ? null
+                : $class->enrollments()->where('student_id', $identity->student_id)->value('id');
         };
 
         // No photos at this step (see the comment above $token) — the
         // preview page always starts with an empty photo pool; attachPhotos()
         // below is the only place that ever populates it.
-        $rows = $this->previewBuilder->build($rosterRows, [], $isAlreadyEnrolled);
+        $rows = $this->previewBuilder->build($rosterRows, [], $enrolledAs);
 
         return Inertia::render('roster-imports/Preview', [
             'schoolClassUlid' => $class->ulid,
@@ -121,6 +127,9 @@ class RosterImportController extends Controller
             'rows.*.photo_index' => ['nullable', 'integer', 'min:0', 'required_with:rows.*.photo_extension'],
             'rows.*.photo_extension' => ['nullable', 'string', 'regex:/^[a-zA-Z0-9]+$/', 'max:10', 'required_with:rows.*.photo_index'],
             'rows.*.include' => ['required', 'boolean'],
+            // Which enrolment this row updates, when the student is already on
+            // the roll. Re-resolved through the class before it is used.
+            'rows.*.enrollment_id' => ['nullable', 'integer'],
         ]);
 
         try {
@@ -225,6 +234,9 @@ class RosterImportController extends Controller
             'rows.*.photo_index' => ['nullable', 'integer', 'min:0', 'required_with:rows.*.photo_extension'],
             'rows.*.photo_extension' => ['nullable', 'string', 'regex:/^[a-zA-Z0-9]+$/', 'max:10', 'required_with:rows.*.photo_index'],
             'rows.*.include' => ['required', 'boolean'],
+            // Which enrolment this row updates, when the student is already on
+            // the roll. Re-resolved through the class before it is used.
+            'rows.*.enrollment_id' => ['nullable', 'integer'],
         ]);
 
         // The temp token folder is ALWAYS cleaned up on the way out of this
@@ -237,6 +249,7 @@ class RosterImportController extends Controller
         // itself still propagates so the teacher sees the failure.
         try {
             $created = 0;
+            $updated = 0;
 
             foreach ($data['rows'] as $row) {
                 if (! $row['include']) {
@@ -260,7 +273,36 @@ class RosterImportController extends Controller
                     $photoPath = $this->movePhotoToPermanentStorage($photoTempPath);
                 }
 
+                // An enrolment id from the client is re-resolved THROUGH this
+                // class, never trusted: a forged id belonging to another class
+                // finds nothing and the row is enrolled as new instead.
+                $existing = isset($row['enrollment_id'])
+                    ? $class->enrollments()->whereKey((int) $row['enrollment_id'])->first()
+                    : null;
+
                 try {
+                    if ($existing !== null) {
+                        // Already on the roll: fill in what the roster knows and
+                        // the record does not. Nothing is created, nothing is
+                        // erased, and the photo just staged is not orphaned —
+                        // it is simply not what this path writes.
+                        $this->enrollmentService->fillFromRoster($existing, [
+                            'name' => $row['name'],
+                            'class_number' => $row['class_number'] ?? null,
+                            'birth_date' => $row['birth_date'] ?? null,
+                            'import_note' => $row['note'] ?? null,
+                            'school_number' => $row['process_number'] ?? null,
+                        ]);
+
+                        if ($photoPath !== null) {
+                            Storage::disk(StudentPhotoService::DISK)->delete($photoPath);
+                        }
+
+                        $updated++;
+
+                        continue;
+                    }
+
                     $this->enrollmentService->enrollNew($class, [
                         'name' => $row['name'],
                         'class_number' => $row['class_number'] ?? null,
@@ -285,7 +327,11 @@ class RosterImportController extends Controller
                 $created++;
             }
 
-            Inertia::flash('toast', ['type' => 'success', 'message' => "{$created} aluno(s) inscrito(s)."]);
+            $message = $updated === 0
+                ? "{$created} aluno(s) inscrito(s)."
+                : "{$created} aluno(s) inscrito(s), {$updated} atualizado(s).";
+
+            Inertia::flash('toast', ['type' => 'success', 'message' => $message]);
 
             return to_route('classes.show', $class->ulid);
         } finally {

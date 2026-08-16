@@ -18,7 +18,7 @@ class RosterImportPreviewBuilderTest extends TestCase
         $rows = [new RosterRow('Maria Teste', 1, '2013-05-04', 'X', '1001', null)];
         $photos = [new PhotoMatch('Maria Teste', 'bytes', 'jpg')];
 
-        $preview = (new RosterImportPreviewBuilder)->build($rows, $photos, fn () => false);
+        $preview = (new RosterImportPreviewBuilder)->build($rows, $photos, fn () => null);
 
         $this->assertSame(0, $preview[0]['photo_index']);
         $this->assertSame('jpg', $preview[0]['photo_extension']);
@@ -29,7 +29,7 @@ class RosterImportPreviewBuilderTest extends TestCase
     {
         $rows = [new RosterRow('Maria Teste', 1, null, 'X', null, null)];
 
-        $preview = (new RosterImportPreviewBuilder)->build($rows, [], fn () => false);
+        $preview = (new RosterImportPreviewBuilder)->build($rows, [], fn () => null);
 
         $this->assertNull($preview[0]['photo_index']);
         $this->assertNull($preview[0]['photo_extension']);
@@ -41,7 +41,7 @@ class RosterImportPreviewBuilderTest extends TestCase
         $rows = [new RosterRow('  Maria   Teste ', 1, null, 'X', null, null)];
         $photos = [new PhotoMatch('maria teste', 'bytes', 'jpg')];
 
-        $preview = (new RosterImportPreviewBuilder)->build($rows, $photos, fn () => false);
+        $preview = (new RosterImportPreviewBuilder)->build($rows, $photos, fn () => null);
 
         $this->assertSame(0, $preview[0]['photo_index']);
     }
@@ -57,7 +57,7 @@ class RosterImportPreviewBuilderTest extends TestCase
         $rows = [new RosterRow('Genivalda Goureth E. Freitas', 1, null, 'X', null, null)];
         $photos = [new PhotoMatch('Genivalda Freitas', 'bytes', 'jpg')];
 
-        $preview = (new RosterImportPreviewBuilder)->build($rows, $photos, fn () => false);
+        $preview = (new RosterImportPreviewBuilder)->build($rows, $photos, fn () => null);
 
         $this->assertSame(0, $preview[0]['photo_index']);
     }
@@ -71,7 +71,7 @@ class RosterImportPreviewBuilderTest extends TestCase
         ];
         $photos = [new PhotoMatch('Ana Simão', 'bytes', 'jpg')];
 
-        $preview = (new RosterImportPreviewBuilder)->build($rows, $photos, fn () => false);
+        $preview = (new RosterImportPreviewBuilder)->build($rows, $photos, fn () => null);
 
         $this->assertSame(0, $preview[0]['photo_index']);
         $this->assertNull($preview[1]['photo_index']);
@@ -85,7 +85,7 @@ class RosterImportPreviewBuilderTest extends TestCase
             new RosterRow('Maria Teste', 2, null, 'X', null, null),
         ];
 
-        $preview = (new RosterImportPreviewBuilder)->build($rows, [], fn () => false);
+        $preview = (new RosterImportPreviewBuilder)->build($rows, [], fn () => null);
 
         $this->assertTrue($preview[0]['duplicate_in_file']);
         $this->assertTrue($preview[1]['duplicate_in_file']);
@@ -94,14 +94,18 @@ class RosterImportPreviewBuilderTest extends TestCase
     }
 
     #[Test]
-    public function a_name_already_enrolled_in_the_class_is_flagged_and_excluded_by_default(): void
+    public function a_name_already_enrolled_in_the_class_is_an_update_and_not_a_second_enrolment(): void
     {
         $rows = [new RosterRow('Maria Teste', 1, null, 'X', null, null)];
 
-        $preview = (new RosterImportPreviewBuilder)->build($rows, [], fn (string $name) => $name === 'maria teste');
+        $preview = (new RosterImportPreviewBuilder)->build($rows, [], fn (string $name) => $name === 'maria teste' ? 77 : null);
 
         $this->assertTrue($preview[0]['already_enrolled']);
-        $this->assertFalse($preview[0]['include']);
+        // Re-importing a class fills in what the record is missing rather than
+        // skipping past the student who is already on it (§8).
+        $this->assertSame(RosterImportPreviewBuilder::ACTION_UPDATE, $preview[0]['action']);
+        $this->assertSame(77, $preview[0]['enrollment_id']);
+        $this->assertTrue($preview[0]['include']);
     }
 
     #[Test]
@@ -109,10 +113,23 @@ class RosterImportPreviewBuilderTest extends TestCase
     {
         $rows = [new RosterRow('  Maria   Teste ', 1, null, 'X', null, null)];
 
-        $preview = (new RosterImportPreviewBuilder)->build($rows, [], fn (string $name) => $name === 'maria teste');
+        $preview = (new RosterImportPreviewBuilder)->build($rows, [], fn (string $name) => $name === 'maria teste' ? 5 : null);
 
         $this->assertTrue($preview[0]['already_enrolled']);
-        $this->assertFalse($preview[0]['include']);
+        $this->assertSame(5, $preview[0]['enrollment_id']);
+    }
+
+    #[Test]
+    public function a_student_the_class_does_not_have_yet_is_a_new_enrolment(): void
+    {
+        $rows = [new RosterRow('Maria Teste', 1, null, 'X', null, null)];
+
+        $preview = (new RosterImportPreviewBuilder)->build($rows, [], fn () => null);
+
+        $this->assertFalse($preview[0]['already_enrolled']);
+        $this->assertNull($preview[0]['enrollment_id']);
+        $this->assertSame(RosterImportPreviewBuilder::ACTION_ENROL, $preview[0]['action']);
+        $this->assertTrue($preview[0]['include']);
     }
 
     #[Test]
@@ -120,7 +137,7 @@ class RosterImportPreviewBuilderTest extends TestCase
     {
         $rows = [new RosterRow('Maria Teste', 1, null, 'MT', null, null)];
 
-        $preview = (new RosterImportPreviewBuilder)->build($rows, [], fn () => false);
+        $preview = (new RosterImportPreviewBuilder)->build($rows, [], fn () => null);
 
         $this->assertFalse($preview[0]['situation_recognized']);
         $this->assertTrue($preview[0]['include']);
@@ -134,7 +151,7 @@ class RosterImportPreviewBuilderTest extends TestCase
             new RosterRow('João Exemplo', 2, null, 'TR', null, null),
         ];
 
-        $preview = (new RosterImportPreviewBuilder)->build($rows, [], fn () => false);
+        $preview = (new RosterImportPreviewBuilder)->build($rows, [], fn () => null);
 
         $this->assertTrue($preview[0]['situation_recognized']);
         $this->assertTrue($preview[1]['situation_recognized']);
