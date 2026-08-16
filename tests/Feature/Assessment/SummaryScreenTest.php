@@ -264,11 +264,12 @@ class SummaryScreenTest extends TestCase
 
         // …and every short label carries the full one, for the pointer and for
         // a screen reader alike (§14).
-        foreach (['Evol.', 'Acum.', 'Prop.', 'Autoav.'] as $abbreviation) {
+        foreach (['Evol.', 'Acum.', 'Menção', 'Prop.', 'Autoav.'] as $abbreviation) {
             $this->assertStringContainsString($abbreviation, $screen);
         }
 
         $this->assertStringContainsString(':aria-label="`Média Ponderada Acumulada — ${domain.name}`"', $screen);
+        $this->assertStringContainsString(':aria-label="`Menção qualitativa acumulada — ${domain.name}`"', $screen);
         $this->assertStringContainsString(':aria-label="`Autoavaliação global do aluno — ${period.label}`"', $screen);
         $this->assertStringContainsString(':aria-label="`${decision.label} — ${period.label}`"', $screen);
     }
@@ -279,12 +280,61 @@ class SummaryScreenTest extends TestCase
         $screen = $this->screen();
 
         // One column per period, an evolution column after each but the first,
-        // and the accumulated closing the block.
-        $this->assertStringContainsString('periods.value.length * 2', $screen);
+        // then the accumulated and the mention closing the block.
+        $this->assertStringContainsString('periods.value.length * 2 + 1', $screen);
         $this->assertStringContainsString('index === 0 ? 5 : 6', $screen);
         // Nothing here knows how many periods a year has.
         $this->assertStringNotContainsString('P1</th>', $screen);
         $this->assertStringNotContainsString('1.º Período', $screen);
+    }
+
+    #[Test]
+    public function each_domain_is_a_block_the_eye_can_find_without_tracing_columns(): void
+    {
+        $screen = $this->screen();
+
+        // A firmer rule where each block begins, in the heading and in every row
+        // alike, so the grouping is read down the table and not only across its
+        // top (§12).
+        $this->assertStringContainsString("const BLOCK_EDGE = 'border-l-2 border-l-border'", $screen);
+        $this->assertStringContainsString(':class="index === 0 ? BLOCK_EDGE : \'\'"', $screen);
+
+        // The domain's name is the most evident thing in the heading, and it
+        // carries the grouping on its own: the tones alternate merely so the eye
+        // finds an edge, and are not what the block depends on (§17).
+        $this->assertStringContainsString('domainTone(domainIndex)', $screen);
+        $this->assertStringContainsString("index % 2 === 0 ? 'bg-muted' : 'bg-muted/60'", $screen);
+    }
+
+    #[Test]
+    public function the_synthesis_is_separated_more_firmly_than_a_domain_is(): void
+    {
+        $screen = $this->screen();
+
+        // A heavier rule where the domains end, and a tone of its own, so the
+        // síntese is never read as one more domain (§13).
+        $this->assertStringContainsString("index === 0 ? 'border-l-4 border-l-border' : BLOCK_EDGE", $screen);
+        $this->assertStringContainsString('bg-primary/10', $screen);
+        $this->assertStringContainsString('Síntese · {{ period.label }}', $screen);
+    }
+
+    #[Test]
+    public function the_organisational_tones_never_reach_a_data_cell(): void
+    {
+        $screen = $this->screen();
+
+        // The trend tint owns the only colour in a data cell (§15): the tones
+        // that merely group the columns live in the headings, and the body keeps
+        // nothing but the accumulated column's own faint cue.
+        $body = explode('<tbody', $screen)[1] ?? '';
+
+        $this->assertStringNotContainsString('bg-muted"', $body);
+        $this->assertStringNotContainsString('bg-muted/60', $body);
+        $this->assertStringNotContainsString('bg-primary/10', $body);
+        $this->assertStringNotContainsString('bg-primary/5', $body);
+
+        // …and the trend is still the green and the red it was.
+        $this->assertStringContainsString('TREND_SHAPE, trendClasses(', $body);
     }
 
     #[Test]

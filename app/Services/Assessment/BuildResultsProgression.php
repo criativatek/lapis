@@ -86,8 +86,17 @@ class BuildResultsProgression
         $enrollments = $this->enrollmentsOf($class);
         $domains = $this->domainsIn($standalone, $accumulated);
 
+        // The scale and its rounding, resolved ONCE for the whole page: both the
+        // proposals and the per-domain mentions are read on it, and asking the
+        // profile version per row would be a query for an answer that never
+        // changes (§17).
+        $version = $class->profileVersion;
+        $scale = $version?->scale()->with('levels')->first();
+        $roundingMode = $version->rounding_mode ?? 'half_up';
+        $roundingScale = $version->rounding_scale ?? 0;
+
         $selfAssessments = $this->selfAssessments($class, $periods);
-        $classifications = $this->classifications($class, $periods);
+        $classifications = $this->classifications($periods, $scale, $roundingMode, $roundingScale);
 
         $students = [];
 
@@ -104,6 +113,7 @@ class BuildResultsProgression
                     $domains,
                     $selfAssessments,
                     $classifications,
+                    $scale,
                 ),
             ];
         }
@@ -154,6 +164,7 @@ class BuildResultsProgression
         Collection $domains,
         array $selfAssessments,
         array $classifications,
+        ?Scale $scale = null,
     ): array {
         $rows = [];
         $previousPeriodId = null;
@@ -177,7 +188,7 @@ class BuildResultsProgression
                 'accumulated_average' => $running?->normalizedValue,
                 'coverage_warning' => $own->coverageWarning ?? false,
                 'evolution' => $this->evolution($before?->normalizedValue, $own?->normalizedValue),
-                'domains' => $this->domainRows($domains, $own, $running, $before, $selfAssessment),
+                'domains' => $this->domainRows($domains, $own, $running, $before, $selfAssessment, $scale),
                 'self_assessment' => $this->globalSelfAssessment($selfAssessment),
                 'classification' => $classifications[$enrollmentId.':'.$period->id] ?? null,
             ];
@@ -198,6 +209,7 @@ class BuildResultsProgression
         ?CalculationOutcome $running,
         ?CalculationOutcome $before,
         ?SelfAssessment $selfAssessment,
+        ?Scale $scale = null,
     ): array {
         $find = fn (?CalculationOutcome $outcome, int $domainId): ?DomainOutcome => $outcome === null
             ? null
@@ -208,11 +220,16 @@ class BuildResultsProgression
         foreach ($domains as $domain) {
             $ownDomain = $find($own, $domain->id);
             $previousDomain = $find($before, $domain->id);
+            $accumulated = $find($running, $domain->id)?->normalizedValue;
 
             $rows[] = [
                 'domain_id' => (int) $domain->id,
                 'weighted_average' => $ownDomain?->normalizedValue,
-                'accumulated_average' => $find($running, $domain->id)?->normalizedValue,
+                'accumulated_average' => $accumulated,
+                // Where the year-to-date figure of THIS domain falls on the
+                // profile's scale. Read through the resolver that owns that
+                // translation, so a later export maps from the same band.
+                'mention' => $this->mentionFor($scale, $accumulated),
                 'coverage_warning' => $ownDomain->coverageWarning ?? false,
                 'evolution' => $this->evolution($previousDomain?->normalizedValue, $ownDomain?->normalizedValue),
                 // What the student said about THIS domain, kept beside what the
@@ -222,6 +239,32 @@ class BuildResultsProgression
         }
 
         return $rows;
+    }
+
+    /**
+     * The qualitative mention of an accumulated figure, named by the scale
+     * itself and never by anything written here.
+     *
+     * Carries the band's own IDENTITY, not only its words: the id, the code and
+     * the rank. A later export to another system maps from those, never from the
+     * label, which is authored text somebody will one day translate or rewrite.
+     *
+     * A scale with no bands configured has no mention to give, and null is the
+     * truthful answer (§10.4).
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function mentionFor(?Scale $scale, ?string $accumulated): ?array
+    {
+        $level = $this->proposals->bandFor($scale, $accumulated);
+
+        return $level === null ? null : [
+            'scale_level_id' => (int) $level->id,
+            'code' => (string) $level->code,
+            'label' => (string) $level->label,
+            'sequence' => (int) $level->sequence,
+            'is_negative' => (bool) $level->is_negative,
+        ];
     }
 
     /**
@@ -484,13 +527,8 @@ class BuildResultsProgression
      * @param  Collection<int, AcademicPeriod>  $periods
      * @return array<string, array<string, mixed>>
      */
-    protected function classifications(SchoolClass $class, Collection $periods): array
+    protected function classifications(Collection $periods, ?Scale $scale, string $roundingMode, int $roundingScale): array
     {
-        $version = $class->profileVersion;
-        $scale = $version?->scale()->with('levels')->first();
-        $roundingMode = $version->rounding_mode ?? 'half_up';
-        $roundingScale = $version->rounding_scale ?? 0;
-
         $classifications = Classification::query()
             ->whereIn('academic_period_id', $periods->pluck('id'))
             ->where('scope', ClassificationScope::Period)

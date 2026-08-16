@@ -20,6 +20,38 @@ use App\Models\ScaleLevel;
 class ScaleProposalResolver
 {
     /**
+     * The band a normalized percentage falls in, on this scale — named by the
+     * scale itself, whatever it calls its bands.
+     *
+     * THE ONE PLACE that answers this outside the engine, and the one a later
+     * export must call. A percentage becomes a mention exactly once: the Quadro
+     * Síntese shows the answer and an INOVAR export will map from the very same
+     * ScaleLevel, by its own identity, never by the words on screen.
+     *
+     * A scale whose bands were never configured places nothing, and saying so is
+     * the correct answer — inventing a threshold is what §10.4 forbids.
+     */
+    public function bandFor(?Scale $scale, ?string $normalizedValue): ?ScaleLevel
+    {
+        if ($scale === null || $normalizedValue === null) {
+            return null;
+        }
+
+        foreach ($scale->levels as $level) {
+            if ($level->band_min_normalized === null || $level->band_max_normalized === null) {
+                continue;
+            }
+
+            if (Bc::compare(Bc::of($normalizedValue), Bc::of((string) $level->band_min_normalized)) >= 0
+                && Bc::compare(Bc::of($normalizedValue), Bc::of((string) $level->band_max_normalized)) <= 0) {
+                return $level;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * @param  int|null  $scaleLevelId  the band the engine matched, if any
      * @param  string|null  $normalizedValue  null when there was nothing to compute
      * @param  string|null  $roundedValue  the engine's rounded percentage

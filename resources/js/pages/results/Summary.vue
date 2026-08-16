@@ -12,6 +12,13 @@ type Level = { code: string; label: string; sequence: number; is_negative: boole
 
 type Proposal = { value: string | null; state: string; is_percentage: boolean };
 
+/**
+ * The band the domain's accumulated figure falls in. Carries the scale's own
+ * identity — id, code, rank — so a later export maps from the band and not from
+ * the words shown here.
+ */
+type Mention = { scale_level_id: number; code: string; label: string; sequence: number; is_negative: boolean } | null;
+
 type DomainCell = {
     domain_id: number;
     weighted_average: string | null;
@@ -19,6 +26,7 @@ type DomainCell = {
     coverage_warning: boolean;
     evolution: Evolution;
     self_assessment: Level;
+    mention: Mention;
 };
 
 type PeriodCell = {
@@ -78,8 +86,30 @@ function shortPeriod(index: number): string {
 }
 
 // Per domain: one column per period, an evolution column after every period but
-// the first, and the accumulated one closing the block.
-const domainColumns = computed(() => periods.value.length * 2);
+// the first, then the accumulated figure and the mention it falls in.
+const domainColumns = computed(() => periods.value.length * 2 + 1);
+
+/**
+ * WHERE ONE DOMAIN ENDS AND THE NEXT BEGINS.
+ *
+ * A slightly firmer rule at each block's first column, in the header and in
+ * every row alike, so the grouping is read down the table and not only across
+ * its heading. Structure, never colour — the domain's name and this separator
+ * both carry it, so the blocks hold without either.
+ */
+const BLOCK_EDGE = 'border-l-2 border-l-border';
+
+/**
+ * Two very soft tones, alternating, on the domain HEADINGS only.
+ *
+ * The body stays neutral on purpose: the trend tint has meaning and must own
+ * the only colour in a data cell (§15). These say nothing pedagogical — they
+ * are there so the eye finds the edge of a block, and are deliberately not the
+ * greens and reds that do mean something.
+ */
+function domainTone(index: number): string {
+    return index % 2 === 0 ? 'bg-muted' : 'bg-muted/60';
+}
 
 // Per period of the síntese: the standalone average, its evolution (except the
 // first), the accumulated, the proposal, the self-assessment and the decision.
@@ -165,20 +195,27 @@ function proposalText(proposal: Proposal | undefined): string {
                         >
                             Aluno
                         </th>
+                        <!-- The domain's name, made the most evident thing in
+                             the heading: the grouping is read from the block,
+                             not by tracing the columns under it (§8, §11). -->
                         <th
-                            v-for="domain in domains"
+                            v-for="(domain, domainIndex) in domains"
                             :key="domain.id"
                             :colspan="domainColumns"
-                            class="sticky top-0 z-20 border-r border-b border-border bg-muted px-3 py-1.5 text-center text-xs font-semibold tracking-wide uppercase"
+                            class="sticky top-0 z-20 border-b border-border px-3 py-1.5 text-center text-xs font-semibold tracking-wide text-foreground uppercase"
+                            :class="[domainTone(domainIndex), BLOCK_EDGE]"
                             scope="colgroup"
                         >
                             {{ domain.name }}
                         </th>
+                        <!-- The síntese is not a domain, and is separated more
+                             firmly than the domains are from each other (§13). -->
                         <th
                             v-for="(period, index) in periods"
                             :key="`sintese-${period.id}`"
                             :colspan="synthesisColumns(index)"
-                            class="sticky top-0 z-20 border-r border-b border-border bg-muted px-3 py-1.5 text-center text-xs font-semibold tracking-wide uppercase"
+                            class="sticky top-0 z-20 border-b border-border bg-primary/10 px-3 py-1.5 text-center text-xs font-semibold tracking-wide uppercase"
+                            :class="index === 0 ? 'border-l-4 border-l-border' : BLOCK_EDGE"
                             scope="colgroup"
                         >
                             Síntese · {{ period.label }}
@@ -188,7 +225,8 @@ function proposalText(proposal: Proposal | undefined): string {
                         <template v-for="domain in domains" :key="`sub-${domain.id}`">
                             <template v-for="(period, index) in periods" :key="`sub-${domain.id}-${period.id}`">
                                 <th
-                                    class="sticky top-[33px] z-20 border-b border-border bg-muted/60 px-2 py-1 text-center text-xs font-medium"
+                                    class="sticky top-[33px] z-20 border-b border-border bg-muted/30 px-2 py-1 text-center text-xs font-medium"
+                                    :class="index === 0 ? BLOCK_EDGE : ''"
                                     :title="`${period.label} — ${domain.name}`"
                                     :aria-label="`${period.label} — ${domain.name}`"
                                     scope="col"
@@ -197,7 +235,7 @@ function proposalText(proposal: Proposal | undefined): string {
                                 </th>
                                 <th
                                     v-if="index > 0"
-                                    class="sticky top-[33px] z-20 border-b border-border bg-muted/60 px-2 py-1 text-center text-xs font-medium"
+                                    class="sticky top-[33px] z-20 border-b border-border bg-muted/30 px-2 py-1 text-center text-xs font-medium"
                                     :title="`Evolução face a ${periods[index - 1].label} — ${domain.name}`"
                                     :aria-label="`Evolução face a ${periods[index - 1].label} — ${domain.name}`"
                                     scope="col"
@@ -206,18 +244,27 @@ function proposalText(proposal: Proposal | undefined): string {
                                 </th>
                             </template>
                             <th
-                                class="sticky top-[33px] z-20 border-r border-b border-border bg-muted/60 px-2 py-1 text-center text-xs font-medium"
+                                class="sticky top-[33px] z-20 border-b border-border bg-muted/30 px-2 py-1 text-center text-xs font-medium"
                                 :title="`Média Ponderada Acumulada — ${domain.name}`"
                                 :aria-label="`Média Ponderada Acumulada — ${domain.name}`"
                                 scope="col"
                             >
                                 Acum.
                             </th>
+                            <th
+                                class="sticky top-[33px] z-20 border-b border-border bg-muted/30 px-2 py-1 text-center text-xs font-medium"
+                                :title="`Menção qualitativa acumulada — ${domain.name}`"
+                                :aria-label="`Menção qualitativa acumulada — ${domain.name}`"
+                                scope="col"
+                            >
+                                Menção
+                            </th>
                         </template>
 
                         <template v-for="(period, index) in periods" :key="`sub-sintese-${period.id}`">
                             <th
-                                class="sticky top-[33px] z-20 border-b border-border bg-muted/60 px-2 py-1 text-center text-xs font-medium"
+                                class="sticky top-[33px] z-20 border-b border-border bg-primary/5 px-2 py-1 text-center text-xs font-medium"
+                                :class="index === 0 ? 'border-l-4 border-l-border' : BLOCK_EDGE"
                                 :title="`Média Ponderada — ${period.label}`"
                                 :aria-label="`Média Ponderada — ${period.label}`"
                                 scope="col"
@@ -226,7 +273,7 @@ function proposalText(proposal: Proposal | undefined): string {
                             </th>
                             <th
                                 v-if="index > 0"
-                                class="sticky top-[33px] z-20 border-b border-border bg-muted/60 px-2 py-1 text-center text-xs font-medium"
+                                class="sticky top-[33px] z-20 border-b border-border bg-primary/5 px-2 py-1 text-center text-xs font-medium"
                                 :title="`Evolução face a ${periods[index - 1].label}`"
                                 :aria-label="`Evolução face a ${periods[index - 1].label}`"
                                 scope="col"
@@ -234,7 +281,7 @@ function proposalText(proposal: Proposal | undefined): string {
                                 Evol.
                             </th>
                             <th
-                                class="sticky top-[33px] z-20 border-b border-border bg-muted/60 px-2 py-1 text-center text-xs font-medium"
+                                class="sticky top-[33px] z-20 border-b border-border bg-primary/5 px-2 py-1 text-center text-xs font-medium"
                                 :title="`Média Ponderada Acumulada — ${period.label}`"
                                 :aria-label="`Média Ponderada Acumulada — ${period.label}`"
                                 scope="col"
@@ -242,7 +289,7 @@ function proposalText(proposal: Proposal | undefined): string {
                                 Acum.
                             </th>
                             <th
-                                class="sticky top-[33px] z-20 border-b border-border bg-muted/60 px-2 py-1 text-center text-xs font-medium"
+                                class="sticky top-[33px] z-20 border-b border-border bg-primary/5 px-2 py-1 text-center text-xs font-medium"
                                 :title="`Proposta do LÁPIS — ${period.label}`"
                                 :aria-label="`Proposta do LÁPIS — ${period.label}`"
                                 scope="col"
@@ -250,7 +297,7 @@ function proposalText(proposal: Proposal | undefined): string {
                                 Prop.
                             </th>
                             <th
-                                class="sticky top-[33px] z-20 border-b border-border bg-muted/60 px-2 py-1 text-center text-xs font-medium"
+                                class="sticky top-[33px] z-20 border-b border-border bg-primary/5 px-2 py-1 text-center text-xs font-medium"
                                 :title="`Autoavaliação global do aluno — ${period.label}`"
                                 :aria-label="`Autoavaliação global do aluno — ${period.label}`"
                                 scope="col"
@@ -258,7 +305,7 @@ function proposalText(proposal: Proposal | undefined): string {
                                 Autoav.
                             </th>
                             <th
-                                class="sticky top-[33px] z-20 border-r border-b border-border bg-muted/60 px-2 py-1 text-center text-xs font-medium"
+                                class="sticky top-[33px] z-20 border-r border-b border-border bg-primary/5 px-2 py-1 text-center text-xs font-medium"
                                 :title="`${decision.label} — ${period.label}`"
                                 :aria-label="`${decision.label} — ${period.label}`"
                                 scope="col"
@@ -281,7 +328,7 @@ function proposalText(proposal: Proposal | undefined): string {
                         <!-- One block per domain of the profile version. -->
                         <template v-for="domain in domains" :key="`${student.enrollment_id}-${domain.id}`">
                             <template v-for="(period, index) in student.periods" :key="`${student.enrollment_id}-${domain.id}-${period.period_id}`">
-                                <td class="px-2 py-1.5 text-center tabular-nums">
+                                <td class="px-2 py-1.5 text-center tabular-nums" :class="index === 0 ? BLOCK_EDGE : ''">
                                     <span :class="{ 'text-muted-foreground': (domainCell(period, domain.id)?.weighted_average ?? null) === null }">
                                         {{ pct(domainCell(period, domain.id)?.weighted_average ?? null) }}
                                     </span>
@@ -312,7 +359,7 @@ function proposalText(proposal: Proposal | undefined): string {
                                     </span>
                                 </td>
                             </template>
-                            <td class="border-r border-border bg-muted/20 px-2 py-1.5 text-center tabular-nums">
+                            <td class="bg-muted/20 px-2 py-1.5 text-center tabular-nums">
                                 <span
                                     :class="{
                                         'text-muted-foreground':
@@ -322,11 +369,26 @@ function proposalText(proposal: Proposal | undefined): string {
                                     {{ pct(domainCell(student.periods[student.periods.length - 1], domain.id)?.accumulated_average ?? null) }}
                                 </span>
                             </td>
+                            <!-- The band that accumulated figure falls in, on the
+                                 profile's own scale. Never a threshold decided
+                                 here, and «—» where the scale has no band for it. -->
+                            <td class="bg-muted/20 px-2 py-1.5 text-center whitespace-nowrap">
+                                <span
+                                    v-if="domainCell(student.periods[student.periods.length - 1], domain.id)?.mention"
+                                    class="rounded px-1.5 py-0.5 text-xs"
+                                    :class="levelClasses(domainCell(student.periods[student.periods.length - 1], domain.id)?.mention ?? null)"
+                                    :title="`Menção qualitativa acumulada — ${domain.name}`"
+                                >{{ domainCell(student.periods[student.periods.length - 1], domain.id)?.mention?.label }}</span>
+                                <span v-else class="text-muted-foreground">—</span>
+                            </td>
                         </template>
 
                         <!-- …then the year read whole, period by period. -->
                         <template v-for="(period, index) in student.periods" :key="`${student.enrollment_id}-sintese-${period.period_id}`">
-                            <td class="px-2 py-1.5 text-center font-medium tabular-nums">
+                            <td
+                                class="px-2 py-1.5 text-center font-medium tabular-nums"
+                                :class="index === 0 ? 'border-l-4 border-l-border' : BLOCK_EDGE"
+                            >
                                 <span :class="{ 'text-muted-foreground': period.weighted_average === null }">{{ pct(period.weighted_average) }}</span>
                                 <CircleAlert
                                     v-if="period.coverage_warning"
@@ -367,7 +429,7 @@ function proposalText(proposal: Proposal | undefined): string {
                             <!-- The decision of THAT period, kept as it was: a
                                  quadro síntese that showed only the latest would
                                  be hiding the year it exists to show (§10). -->
-                            <td class="border-r border-border px-2 py-1.5 text-center tabular-nums">
+                            <td class="px-2 py-1.5 text-center tabular-nums">
                                 <span
                                     v-if="period.classification?.final"
                                     class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 font-bold"
@@ -390,9 +452,11 @@ function proposalText(proposal: Proposal | undefined): string {
             <span>
                 Cada bloco é um domínio do perfil de avaliação: <strong>P1</strong>, <strong>P2</strong>… são a
                 <strong>Média Ponderada</strong> de cada período, <strong>Evol.</strong> compara esse período com o
-                anterior — sempre valores do próprio período, nunca acumulados — e <strong>Acum.</strong> é a
-                <strong>Média Ponderada Acumulada</strong>. O <strong>A</strong> em expoente é a autoavaliação do aluno
-                nesse domínio. No bloco <strong>Síntese</strong> ficam, por período, a Média Ponderada, a evolução, a
+                anterior — sempre valores do próprio período, nunca acumulados —, <strong>Acum.</strong> é a
+                <strong>Média Ponderada Acumulada</strong> e a <strong>Menção</strong> é a banda dessa acumulada na
+                escala do perfil<template v-if="schoolClass.scale_name"> ({{ schoolClass.scale_name }})</template>;
+                fica "—" quando a escala não tem banda definida — o LÁPIS não infere limiares. O <strong>A</strong> em
+                expoente é a autoavaliação do aluno nesse domínio. No bloco <strong>Síntese</strong> ficam, por período, a Média Ponderada, a evolução, a
                 acumulada, a <strong>Proposta</strong>, a <strong>Autoavaliação</strong> global e o
                 <strong>{{ decision.label }}</strong><template v-if="schoolClass.scale_name"> na escala
                 {{ schoolClass.scale_name }}</template>. Um fundo
