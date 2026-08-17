@@ -15,6 +15,7 @@ use App\Models\Instrument;
 use App\Models\ResultState;
 use App\Models\SchoolClass;
 use App\Models\StudentItemScore;
+use App\Support\Assessment\AssessmentCutoff;
 use Illuminate\Support\Collection;
 
 /**
@@ -32,9 +33,9 @@ class ClassResultsCalculator
     /**
      * @return list<array{enrollment: Enrollment, outcome: CalculationOutcome}>
      */
-    public function forPeriod(SchoolClass $class, AcademicPeriod $period): array
+    public function forPeriod(SchoolClass $class, AcademicPeriod $period, ?AssessmentCutoff $cutoff = null): array
     {
-        return $this->forScope($class, $period, ClassificationScope::Period);
+        return $this->forScope($class, $period, ClassificationScope::Period, cutoff: $cutoff);
     }
 
     /**
@@ -45,18 +46,24 @@ class ClassResultsCalculator
      *
      * @return list<array{enrollment: Enrollment, outcome: CalculationOutcome}>
      */
-    public function forAccumulated(SchoolClass $class, AcademicPeriod $period): array
+    public function forAccumulated(SchoolClass $class, AcademicPeriod $period, ?AssessmentCutoff $cutoff = null): array
     {
-        return $this->forScope($class, $period, ClassificationScope::Accumulated);
+        return $this->forScope($class, $period, ClassificationScope::Accumulated, cutoff: $cutoff);
     }
 
     /**
      * @param  AssessmentProfileVersion|null  $versionOverride  compute under this version instead of the class's current one — used to preview a profile migration's impact (A4) without touching the class
      * @return list<array{enrollment: Enrollment, outcome: CalculationOutcome}>
      */
-    public function forScope(SchoolClass $class, AcademicPeriod $period, ClassificationScope $scope, ?AssessmentProfileVersion $versionOverride = null): array
-    {
+    public function forScope(
+        SchoolClass $class,
+        AcademicPeriod $period,
+        ClassificationScope $scope,
+        ?AssessmentProfileVersion $versionOverride = null,
+        ?AssessmentCutoff $cutoff = null,
+    ): array {
         $version = $versionOverride ?? $class->profileVersion;
+        $cutoff ??= AssessmentCutoff::none();
 
         if ($version === null) {
             return [];
@@ -102,10 +109,19 @@ class ClassResultsCalculator
         // Instruments that may count: flagged as counting, in a state the engine
         // reads. A period result sees only its period; an accumulated result sees
         // every contributing period up to it (the union of raw elements, Q4).
-        $instruments = $class->instruments()
+        //
+        // THE ONE PLACE A CUTOFF IS APPLIED. It narrows the evidence before the
+        // engine ever sees it, on `applied_on` — the day the element was given,
+        // which is the only date that says anything about the class. The engine
+        // is untouched and still knows nothing about dates.
+        $instrumentQuery = $class->instruments()
             ->whereIn('academic_period_id', $this->periodIdsFor($class, $period, $scope, $version))
             ->where('counts_toward_classification', true)
-            ->with(['items.domainAllocations'])
+            ->with(['items.domainAllocations']);
+
+        $cutoff->applyTo($instrumentQuery, 'applied_on');
+
+        $instruments = $instrumentQuery
             ->get()
             ->filter(fn (Instrument $instrument) => $instrument->status->entersCalculation());
 

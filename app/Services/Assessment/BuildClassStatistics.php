@@ -7,6 +7,7 @@ use App\Models\AcademicPeriod;
 use App\Models\Scale;
 use App\Models\ScaleLevel;
 use App\Models\SchoolClass;
+use App\Support\Assessment\AssessmentCutoff;
 
 /**
  * The class read as a whole, instead of student by student.
@@ -47,11 +48,12 @@ class BuildClassStatistics
     /**
      * @return array<string, mixed>
      */
-    public function for(SchoolClass $class, ?AcademicPeriod $period = null): array
+    public function for(SchoolClass $class, ?AcademicPeriod $period = null, ?AssessmentCutoff $cutoff = null): array
     {
         // THE ONE CALL. Everything below is arithmetic over its output — no
-        // further queries, whatever the size of the class (§39).
-        $progression = $this->progression->for($class);
+        // further queries, whatever the size of the class (§39). The cutoff, if
+        // there is one, was already applied to the evidence in there.
+        $progression = $this->progression->for($class, $cutoff);
 
         $periods = $progression['periods'];
         $domains = $progression['domains'];

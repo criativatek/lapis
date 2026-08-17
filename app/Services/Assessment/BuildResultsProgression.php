@@ -16,6 +16,7 @@ use App\Models\SchoolClass;
 use App\Models\SelfAssessment;
 use App\Models\SelfAssessmentQuestionRole;
 use App\Models\SelfAssessmentStatus;
+use App\Support\Assessment\AssessmentCutoff;
 use Illuminate\Support\Collection;
 
 /**
@@ -61,8 +62,10 @@ class BuildResultsProgression
      *     students: list<array<string, mixed>>,
      * }
      */
-    public function for(SchoolClass $class): array
+    public function for(SchoolClass $class, ?AssessmentCutoff $cutoff = null): array
     {
+        $cutoff ??= AssessmentCutoff::none();
+
         $periods = AcademicPeriod::query()
             ->where('academic_year_id', $class->academic_year_id)
             ->orderBy('sequence')
@@ -79,8 +82,8 @@ class BuildResultsProgression
         $accumulated = [];
 
         foreach ($periods as $period) {
-            $standalone[$period->id] = $this->byEnrollment($this->calculator->forPeriod($class, $period));
-            $accumulated[$period->id] = $this->byEnrollment($this->calculator->forAccumulated($class, $period));
+            $standalone[$period->id] = $this->byEnrollment($this->calculator->forPeriod($class, $period, $cutoff));
+            $accumulated[$period->id] = $this->byEnrollment($this->calculator->forAccumulated($class, $period, $cutoff));
         }
 
         $enrollments = $this->enrollmentsOf($class);
@@ -95,8 +98,8 @@ class BuildResultsProgression
         $roundingMode = $version->rounding_mode ?? 'half_up';
         $roundingScale = $version->rounding_scale ?? 0;
 
-        $selfAssessments = $this->selfAssessments($class, $periods);
-        $classifications = $this->classifications($periods, $scale, $roundingMode, $roundingScale);
+        $selfAssessments = $this->selfAssessments($class, $periods, $cutoff);
+        $classifications = $this->classifications($periods, $scale, $roundingMode, $roundingScale, $cutoff);
 
         $students = [];
 
@@ -498,14 +501,19 @@ class BuildResultsProgression
      * @param  Collection<int, AcademicPeriod>  $periods
      * @return array<string, SelfAssessment>
      */
-    protected function selfAssessments(SchoolClass $class, Collection $periods): array
+    protected function selfAssessments(SchoolClass $class, Collection $periods, AssessmentCutoff $cutoff): array
     {
-        $assessments = SelfAssessment::query()
+        // `submitted_at` is when the student said it. A cutoff leaves out what
+        // they had not said yet — never what they had not yet been asked.
+        $query = SelfAssessment::query()
             ->whereIn('academic_period_id', $periods->pluck('id'))
-            ->whereHas('enrollment', fn ($query) => $query->where('class_id', $class->id))
+            ->whereHas('enrollment', fn ($inner) => $inner->where('class_id', $class->id))
             ->whereIn('status', [SelfAssessmentStatus::Submitted, SelfAssessmentStatus::Reviewed])
-            ->with(['responses.question', 'responses.scaleLevel'])
-            ->get();
+            ->with(['responses.question', 'responses.scaleLevel']);
+
+        $cutoff->applyTo($query, 'submitted_at');
+
+        $assessments = $query->get();
 
         $byKey = [];
 
@@ -527,14 +535,30 @@ class BuildResultsProgression
      * @param  Collection<int, AcademicPeriod>  $periods
      * @return array<string, array<string, mixed>>
      */
-    protected function classifications(Collection $periods, ?Scale $scale, string $roundingMode, int $roundingScale): array
-    {
-        $classifications = Classification::query()
+    protected function classifications(
+        Collection $periods,
+        ?Scale $scale,
+        string $roundingMode,
+        int $roundingScale,
+        AssessmentCutoff $cutoff,
+    ): array {
+        $query = Classification::query()
             ->whereIn('academic_period_id', $periods->pluck('id'))
             ->where('scope', ClassificationScope::Period)
             ->whereNull('superseded_by_id')
-            ->with(['proposedScaleLevel', 'finalScaleLevel'])
-            ->get();
+            ->with(['proposedScaleLevel', 'finalScaleLevel']);
+
+        // A DECISION EXISTS FROM THE DAY THE TEACHER TOOK IT, which is
+        // `confirmed_at`. Under a cutoff, a classification still merely proposed
+        // back then is not a decision that had been made — so the proposal rows
+        // travel as they are and only confirmed ones are held to the date.
+        if (! $cutoff->isOpen()) {
+            $query->where(fn ($inner) => $inner
+                ->whereNull('confirmed_at')
+                ->orWhere('confirmed_at', '<=', $cutoff->endOfDay()));
+        }
+
+        $classifications = $query->get();
 
         $byKey = [];
 

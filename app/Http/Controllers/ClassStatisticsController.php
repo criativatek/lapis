@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\AcademicPeriod;
 use App\Models\SchoolClass;
 use App\Services\Assessment\BuildClassStatistics;
+use App\Support\Assessment\AssessmentCutoff;
 use App\Support\Assessment\DecisionScale;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -28,11 +30,20 @@ class ClassStatisticsController extends Controller
 {
     public function __construct(protected BuildClassStatistics $statistics) {}
 
-    public function show(SchoolClass $class, ?AcademicPeriod $period = null): Response
+    public function show(Request $request, SchoolClass $class, ?AcademicPeriod $period = null): Response
     {
         Gate::authorize('view', $class);
 
         $scale = $class->profileVersion?->scale()->with('levels')->first();
+
+        // «Dados até». A free query, and deliberately nothing more: choosing a
+        // date changes what this page shows and records nothing. Keeping a
+        // moment is a separate, explicit act (§3).
+        $validated = $request->validate([
+            'ate' => ['nullable', 'date_format:Y-m-d'],
+        ]);
+
+        $cutoff = AssessmentCutoff::on($validated['ate'] ?? null);
 
         return Inertia::render('results/Statistics', [
             'schoolClass' => [
@@ -45,7 +56,15 @@ class ClassStatisticsController extends Controller
             // The same words the other two screens use for what a class is
             // graded on, from the one place that decides them.
             'decision' => DecisionScale::for($scale)->toPayload(),
-            'statistics' => $this->statistics->for($class, $period),
+            // What the reader is looking at: nothing when it is today's picture,
+            // and the date itself when it is not. The page never lets a temporal
+            // cut go unannounced (§4).
+            'cutoff' => [
+                'date' => $cutoff->toIso(),
+                'label' => $cutoff->label(),
+                'is_open' => $cutoff->isOpen(),
+            ],
+            'statistics' => $this->statistics->for($class, $period, $cutoff),
         ]);
     }
 }

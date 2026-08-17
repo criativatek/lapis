@@ -97,8 +97,31 @@ type Statistics = {
 const props = defineProps<{
     schoolClass: { ulid: string; label: string; subject: string; has_profile: boolean; scale_name: string | null };
     decision: { label: string; classifies_by_level: boolean };
+    cutoff: { date: string | null; label: string | null; is_open: boolean };
     statistics: Statistics;
 }>();
+
+// ------------------------------------------------------------- «Dados até»
+
+/**
+ * A free query over a date, and nothing more.
+ *
+ * Choosing a date changes what this page shows and records absolutely nothing —
+ * keeping a moment is a separate, deliberate act. The URL carries it so the view
+ * survives a refresh and can be handed to somebody else.
+ */
+const chosenDate = ref<string>(props.cutoff.date ?? '');
+
+function applyCutoff(date: string): void {
+    const query = date === '' ? {} : { ate: date };
+    const period = props.statistics.selected_period?.ulid;
+
+    router.get(
+        `/classes/${props.schoolClass.ulid}/results/estatistica${period ? `/${period}` : ''}`,
+        query,
+        { preserveScroll: true, preserveState: false },
+    );
+}
 
 /**
  * Chart.js arrives only if a canvas is actually going to be drawn.
@@ -670,6 +693,39 @@ const studentRows = computed(() => {
         </div>
 
         <template v-else>
+            <!-- ========================================== «Dados até» (§3, §4) -->
+            <div
+                class="flex flex-wrap items-center gap-3 rounded-xl px-4 py-3"
+                :class="cutoff.is_open ? 'bg-muted/25' : 'border border-amber-300/70 bg-amber-50/70 dark:border-amber-900/60 dark:bg-amber-950/30'"
+            >
+                <label for="cutoff-date" class="text-sm text-muted-foreground">Dados até:</label>
+                <input
+                    id="cutoff-date"
+                    v-model="chosenDate"
+                    type="date"
+                    class="rounded-md border border-border bg-background px-2.5 py-1 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                    @change="applyCutoff(chosenDate)"
+                />
+
+                <!-- The reader must never forget they are looking at a slice of
+                     time. Said in words, beside a way out of it (§4). -->
+                <template v-if="!cutoff.is_open">
+                    <p class="text-sm font-medium text-amber-900 dark:text-amber-200" role="status">
+                        A visualizar dados até {{ cutoff.label }}
+                    </p>
+                    <button
+                        type="button"
+                        class="ml-auto rounded-md border border-border bg-background px-3 py-1 text-sm transition-colors hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                        @click="chosenDate = ''; applyCutoff('')"
+                    >
+                        Voltar a hoje
+                    </button>
+                </template>
+                <p v-else class="text-sm text-muted-foreground">
+                    A visualizar tudo o que existe hoje.
+                </p>
+            </div>
+
             <!-- =============================================== período -->
             <div v-if="stats.periods.length > 1" class="flex flex-wrap items-center gap-2">
                 <span class="text-sm text-muted-foreground">Período em análise:</span>
