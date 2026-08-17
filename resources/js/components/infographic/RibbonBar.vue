@@ -25,8 +25,19 @@ export type RibbonRow = {
     value: number | null;
     /** Shown at the end of the ribbon, already formatted. */
     display: string;
-    /** The performance tone this row is drawn in. */
+    /**
+     * The DOMAIN's own structural ink — its identity across the whole page, and
+     * deliberately not its performance. How it is doing is the badge below,
+     * drawn in the scale's tone; how it moved is the change beside it, drawn in
+     * the trend inks. Three statements, three languages, never merged (§10).
+     */
     colour: string;
+    /** The qualitative mention, in the scale's own tone. */
+    badge?: string | null;
+    badgeClass?: string;
+    /** Percentage points, already signed and formatted. */
+    change?: string | null;
+    changeDirection?: 'up' | 'down' | 'flat' | null;
     tooltip: TooltipContent;
 };
 
@@ -65,11 +76,33 @@ function isLit(id: number): boolean {
                     @focus="hovered = row.id"
                     @blur="hovered = null"
                 >
-                    <div class="mb-1.5 flex items-baseline justify-between gap-3">
-                        <span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                            {{ row.label }}
+                    <div class="mb-1.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+                        <!-- The domain's own ink, so the name carries the same
+                             identity here as in the slopegraph and the map. -->
+                        <span class="size-2 shrink-0 translate-y-px rounded-full" :style="{ backgroundColor: row.colour }"></span>
+                        <span class="text-xs font-semibold uppercase tracking-wider">{{ row.label }}</span>
+
+                        <span class="ml-auto text-lg font-semibold leading-none tabular-nums tracking-tight">{{ row.display }}</span>
+                    </div>
+
+                    <div class="mb-1.5 flex flex-wrap items-center gap-2">
+                        <!-- Performance, in the SCALE's tone — never the domain's. -->
+                        <span
+                            v-if="row.badge"
+                            class="rounded-md px-1.5 py-0.5 text-[11px] font-medium"
+                            :class="row.badgeClass"
+                        >{{ row.badge }}</span>
+
+                        <!-- Movement, in the TREND inks — never either of the others. -->
+                        <span
+                            v-if="row.change"
+                            class="text-[11px] font-medium tabular-nums"
+                            :class="row.changeDirection === 'up' ? 'text-emerald-600 dark:text-emerald-400'
+                                : row.changeDirection === 'down' ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground'"
+                        >
+                            {{ row.changeDirection === 'up' ? '↑' : row.changeDirection === 'down' ? '↓' : '→' }}
+                            {{ row.change }} p.p.
                         </span>
-                        <span class="text-sm font-semibold tabular-nums tracking-tight">{{ row.display }}</span>
                     </div>
 
                     <!-- The track: where a full ribbon would reach. Faint, so the

@@ -2,18 +2,22 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { CircleAlert, Minus, TrendingDown, TrendingUp, X } from '@lucide/vue';
 import type { ChartConfiguration } from 'chart.js';
-import { computed, ref } from 'vue';
-import StatChart from '@/components/charts/StatChart.vue';
+import { computed, defineAsyncComponent, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
+import BandPlates from '@/components/infographic/BandPlates.vue';
+import type { BandPlate } from '@/components/infographic/BandPlates.vue';
+import FlowRibbons from '@/components/infographic/FlowRibbons.vue';
+import type { Flow } from '@/components/infographic/FlowRibbons.vue';
 import InfographicMetric from '@/components/infographic/InfographicMetric.vue';
 import RibbonBar from '@/components/infographic/RibbonBar.vue';
 import type { RibbonRow } from '@/components/infographic/RibbonBar.vue';
 import SectionHeading from '@/components/infographic/SectionHeading.vue';
+import Slopegraph from '@/components/infographic/Slopegraph.vue';
+import type { Slope } from '@/components/infographic/Slopegraph.vue';
 import {
     areaGradient,
     categoryAxis,
     chromeColours,
-    countAxis,
     domainColours,
     formatPoints,
     formatShare,
@@ -96,6 +100,17 @@ const props = defineProps<{
     statistics: Statistics;
 }>();
 
+/**
+ * Chart.js arrives only if a canvas is actually going to be drawn.
+ *
+ * After this iteration the page's own language covers most of it — plates,
+ * ribbons, arrows and an SVG slopegraph are all plain DOM. The library is left
+ * for the two places that genuinely need axes and series: a year with three or
+ * more periods, and a student's panel. Both are conditional, so most visits
+ * never download it at all.
+ */
+const StatChart = defineAsyncComponent(() => import('@/components/charts/StatChart.vue'));
+
 const stats = computed(() => props.statistics);
 const bands = computed(() => props.statistics.scale?.bands ?? []);
 
@@ -112,7 +127,6 @@ function toneClass(band: Band | Level): string {
 
 const hasAnyResult = computed(() => stats.value.summary.students_with_result > 0);
 const hasComparison = computed(() => stats.value.previous_period !== null);
-const hasSeveralPeriods = computed(() => stats.value.period_series.filter((row) => row.class_average !== null).length > 1);
 
 function goToPeriod(ulid: string): void {
     router.get(`/classes/${props.schoolClass.ulid}/results/estatistica/${ulid}`, {}, { preserveScroll: true });
@@ -162,51 +176,6 @@ const highlightedStudents = computed(() => stats.value.students.filter((student)
 
 // ------------------------------------------------------------------ gráficos
 
-/** 1 · Distribuição pela escala. */
-const distributionChart = computed<ChartConfiguration>(() => {
-    const chrome = chromeColours();
-    const rows = stats.value.distribution;
-
-    return {
-        type: 'bar',
-        data: {
-            labels: rows.map((row) => row.label),
-            datasets: [{
-                data: rows.map((row) => row.count),
-                backgroundColor: rows.map((row) => (selectedLevelId.value === null || selectedLevelId.value === row.scale_level_id
-                    ? TONE_COLOURS[toneOf(row)].fill
-                    : TONE_COLOURS[toneOf(row)].soft)),
-                borderColor: rows.map((row) => (selectedLevelId.value === null || selectedLevelId.value === row.scale_level_id
-                    ? TONE_COLOURS[toneOf(row)].border
-                    : 'transparent')),
-                borderWidth: 1.5,
-                borderRadius: 8,
-                maxBarThickness: 64,
-                hoverBackgroundColor: rows.map((row) => TONE_COLOURS[toneOf(row)].border),
-            }],
-        },
-        options: {
-            scales: { x: categoryAxis(chrome, true), y: countAxis(chrome) },
-        },
-    } as ChartConfiguration;
-});
-
-const distributionTooltip = (index: number): TooltipContent | null => {
-    const row = stats.value.distribution[index];
-
-    if (row === undefined) {
-        return null;
-    }
-
-    return {
-        title: `${row.code} — ${row.label}`,
-        rows: [
-            { label: 'Alunos', value: String(row.count), strong: true },
-            { label: 'Da turma com menção', value: formatShare(row.percentage) },
-        ],
-        footer: row.count === 0 ? 'Nenhum aluno nesta menção.' : 'Clique para realçar estes alunos.',
-    };
-};
 
 /**
  * 2 · Médias por domínio, drawn as ribbons rather than as bars.
@@ -215,18 +184,132 @@ const distributionTooltip = (index: number): TooltipContent | null => {
  * rather than added to it, so the furthest point of each ribbon sits exactly
  * where a plain bar would have ended.
  */
-const domainRibbons = computed<RibbonRow[]>(() => stats.value.domain_statistics.map((row) => {
-    const tone = row.qualitative_band === null ? TONE_COLOURS.neutral : TONE_COLOURS[toneOf(row.qualitative_band)];
+const domainRibbons = computed<RibbonRow[]>(() => stats.value.domain_statistics.map((row) => ({
+    id: row.domain_id,
+    label: row.label,
+    value: row.period_average === null ? null : Number(row.period_average),
+    display: pct(row.period_average),
+    // THE DOMAIN'S OWN INK, not its performance. Colouring the ribbon by the
+    // mention made five ribbons share three colours and told the reader nothing
+    // about which domain they were looking at; the mention is the badge below,
+    // in the scale's tone, and the movement is beside it in the trend inks.
+    colour: inks.value[row.domain_id],
+    badge: row.qualitative_band?.label ?? null,
+    badgeClass: toneClass(row.qualitative_band),
+    change: row.evolution_average === null ? null : formatPoints(row.evolution_average),
+    changeDirection: row.evolution_average === null
+        ? null
+        : Number(row.evolution_average) > 0 ? 'up' : Number(row.evolution_average) < 0 ? 'down' : 'flat',
+    tooltip: domainTooltipFor(row) ?? { title: row.label, rows: [] },
+})));
 
-    return {
-        id: row.domain_id,
-        label: row.label,
-        value: row.period_average === null ? null : Number(row.period_average),
-        display: pct(row.period_average),
-        colour: tone.border,
-        tooltip: domainTooltipFor(row) ?? { title: row.label, rows: [] },
-    };
-}));
+// ---------------------------------------------- visualizações adaptativas
+
+/**
+ * How many moments there actually are to show.
+ *
+ * TWO POINTS DO NOT JUSTIFY A LINE CHART. The shape of the visualisation is
+ * chosen from the data rather than fixed in advance: nothing for one period, a
+ * slopegraph for two, and a proper trend line once there is a trend to draw.
+ */
+const periodsWithResults = computed(() => stats.value.period_series.filter((row) => row.class_average !== null));
+
+const trendShape = computed<'single' | 'slope' | 'line'>(() => {
+    if (periodsWithResults.value.length <= 1) {
+        return 'single';
+    }
+
+    return periodsWithResults.value.length === 2 ? 'slope' : 'line';
+});
+
+/** The two ends of a slopegraph: the first and last periods that have results. */
+const slopeEnds = computed(() => {
+    const rows = periodsWithResults.value;
+
+    return rows.length < 2 ? null : { from: rows[0], to: rows[rows.length - 1] };
+});
+
+const classSlope = computed<Slope[]>(() => {
+    const ends = slopeEnds.value;
+
+    return ends === null ? [] : [{
+        id: 0,
+        label: 'Média Ponderada da turma',
+        from: ends.from.class_average === null ? null : Number(ends.from.class_average),
+        to: ends.to.class_average === null ? null : Number(ends.to.class_average),
+        colour: '#4f46e5',
+    }];
+});
+
+const domainSlopes = computed<Slope[]>(() => {
+    const ends = slopeEnds.value;
+
+    if (ends === null) {
+        return [];
+    }
+
+    return stats.value.domains.map((domain) => {
+        const from = ends.from.domains.find((cell) => cell.domain_id === domain.id)?.average ?? null;
+        const to = ends.to.domains.find((cell) => cell.domain_id === domain.id)?.average ?? null;
+        const band = stats.value.domain_statistics.find((row) => row.domain_id === domain.id)?.qualitative_band ?? null;
+
+        return {
+            id: domain.id,
+            label: domain.name,
+            from: from === null ? null : Number(from),
+            to: to === null ? null : Number(to),
+            colour: inks.value[domain.id],
+            badge: band?.label ?? undefined,
+            badgeClass: toneClass(band),
+        };
+    });
+});
+
+/** Movement across the class, as proportional arrows rather than as a donut. */
+const flows = computed<Flow[]>(() => {
+    const evolution = stats.value.evolution;
+    const total = stats.value.summary.students_total;
+    const share = (count: number): number | null => (total === 0 ? null : (count / total) * 100);
+
+    return [
+        {
+            key: 'progressed', label: 'Progrediram', count: evolution.progressed,
+            percent: share(evolution.progressed), share: formatShare(evolution.percentages.progressed),
+            colour: TREND_COLOURS.up.border, direction: 'forward',
+        },
+        {
+            key: 'stable', label: 'Mantiveram-se', count: evolution.stable,
+            percent: share(evolution.stable), share: formatShare(evolution.percentages.stable),
+            colour: TREND_COLOURS.flat.border, direction: 'none',
+        },
+        {
+            key: 'regressed', label: 'Regrediram', count: evolution.regressed,
+            percent: share(evolution.regressed), share: formatShare(evolution.percentages.regressed),
+            colour: TREND_COLOURS.down.border, direction: 'backward',
+        },
+        {
+            key: 'no_comparison', label: 'Sem comparação', count: evolution.no_comparison,
+            percent: share(evolution.no_comparison), share: formatShare(evolution.percentages.no_comparison),
+            colour: 'rgb(148,163,184)', direction: 'none',
+            note: evolution.no_comparison > 0
+                ? 'Sem período anterior comparável — não é manutenção.'
+                : undefined,
+        },
+    ];
+});
+
+/** The distribution, as plates rather than as bars on an axis. */
+const plates = computed<BandPlate[]>(() => stats.value.distribution.map((band) => ({
+    scale_level_id: band.scale_level_id,
+    code: band.code,
+    label: band.label,
+    count: band.count,
+    share: formatShare(band.percentage),
+    tone: toneOf(band),
+    colour: TONE_COLOURS[toneOf(band)].border,
+})));
+
+const placedOnScale = computed(() => stats.value.distribution.reduce((total, band) => total + band.count, 0));
 
 function domainTooltipFor(row: DomainStatistic): TooltipContent | null {
     const lines: TooltipContent['rows'] = [
@@ -393,55 +476,9 @@ const classTrendTooltip = (index: number): TooltipContent | null => {
     return { title: row.label.toUpperCase(), rows: lines, footer: 'Cada período isoladamente, sem o acumulado.' };
 };
 
-/** 5 · Evolução da turma — o único donut da página. */
-const evolutionSlices = computed(() => {
-    const evolution = stats.value.evolution;
-
-    return [
-        { label: 'Progrediram', count: evolution.progressed, share: evolution.percentages.progressed, colour: TREND_COLOURS.up },
-        { label: 'Mantiveram-se', count: evolution.stable, share: evolution.percentages.stable, colour: TREND_COLOURS.flat },
-        { label: 'Regrediram', count: evolution.regressed, share: evolution.percentages.regressed, colour: TREND_COLOURS.down },
-        { label: 'Sem comparação', count: evolution.no_comparison, share: evolution.percentages.no_comparison, colour: TREND_COLOURS.none },
-    ];
-});
-
-const evolutionChart = computed<ChartConfiguration>(() => ({
-    type: 'doughnut',
-    data: {
-        labels: evolutionSlices.value.map((slice) => slice.label),
-        datasets: [{
-            data: evolutionSlices.value.map((slice) => slice.count),
-            backgroundColor: evolutionSlices.value.map((slice) => slice.colour.fill),
-            borderColor: chromeColours().surface,
-            borderWidth: 3,
-            hoverOffset: prefersReducedMotion() ? 0 : 6,
-        }],
-    },
-    options: { cutout: '68%' },
-} as ChartConfiguration));
-
-const evolutionTooltip = (index: number): TooltipContent | null => {
-    const slice = evolutionSlices.value[index];
-
-    if (slice === undefined) {
-        return null;
-    }
-
-    return {
-        title: slice.label.toUpperCase(),
-        rows: [
-            { label: 'Alunos', value: String(slice.count), strong: true, swatch: slice.colour.border },
-            { label: 'Da turma', value: formatShare(slice.share) },
-        ],
-        footer: slice.label === 'Sem comparação' ? 'Sem período anterior comparável — não é manutenção.' : undefined,
-    };
-};
 
 // ------------------------------------------------------- equivalentes textuais
 
-const distributionRows = computed(() => stats.value.distribution.map((row) => [
-    `${row.code} — ${row.label}`, row.count, formatShare(row.percentage),
-]));
 
 // The domain figures need no sr-only table of their own: RibbonBar is real DOM
 // and every value in it is already text a screen reader reads directly.
@@ -453,9 +490,6 @@ const seriesRows = computed(() => stats.value.period_series.map((row) => [
     )),
 ]));
 
-const evolutionRows = computed(() => evolutionSlices.value.map((slice) => [
-    slice.label, slice.count, formatShare(slice.share),
-]));
 
 // ------------------------------------------------------------- leitura discreta
 
@@ -766,77 +800,78 @@ const studentRows = computed(() => {
                 </span>
             </p>
 
-            <!-- ==================================== distribuição + evolução -->
-            <div class="grid gap-4 lg:grid-cols-5">
-                <section class="rounded-2xl border border-border bg-card p-6 shadow-[0_1px_0_0_var(--border),0_12px_28px_-22px_rgba(0,0,0,0.45)] lg:col-span-3 dark:shadow-[0_1px_0_0_rgba(255,255,255,0.05),0_14px_32px_-24px_rgba(0,0,0,0.9)]">
-                    <SectionHeading
-                        index="01"
-                        title="Distribuição pela escala"
-                        :description="`Menção de cada aluno, colocada pela Média Ponderada Acumulada${schoolClass.scale_name ? ` na escala «${schoolClass.scale_name}»` : ''}. Clique numa coluna para realçar esses alunos.`"
-                    />
+            <!-- ================================= 02 · COMO EVOLUIU A TURMA -->
+            <section class="border-t border-border/70 pt-7">
+                <SectionHeading
+                    index="02"
+                    title="Como evoluiu a turma"
+                    :description="hasComparison
+                        ? `Cada aluno deste período comparado com ${stats.previous_period?.label}, resultado isolado contra resultado isolado.`
+                        : 'Ainda não há período anterior para comparar.'"
+                />
 
-                    <StatChart
-                        v-if="stats.distribution.length"
-                        :config="distributionChart"
-                        :tooltip="distributionTooltip"
-                        summary="Número de alunos em cada banda da escala de classificação."
-                        :headers="['Banda', 'Alunos', 'Percentagem']"
-                        :rows="distributionRows"
-                        height-class="h-80"
-                        depth
-                        @select="(index) => toggleLevel(stats.distribution[index].scale_level_id)"
-                    />
-                    <p v-else class="py-14 text-center text-sm text-muted-foreground">
-                        A escala desta turma não tem bandas configuradas, por isso não há menções para distribuir.
-                    </p>
-                </section>
+                <div v-if="hasComparison" class="grid gap-6 lg:grid-cols-5">
+                    <!-- Arrows, not a doughnut. Four slices spend a whole card
+                         saying «most went up» and then hide by how many. -->
+                    <div class="lg:col-span-3">
+                        <FlowRibbons :flows="flows" :total="stats.summary.students_total" />
+                    </div>
 
-                <section class="rounded-2xl border border-border bg-card p-6 shadow-[0_1px_0_0_var(--border),0_12px_28px_-22px_rgba(0,0,0,0.45)] lg:col-span-2 dark:shadow-[0_1px_0_0_rgba(255,255,255,0.05),0_14px_32px_-24px_rgba(0,0,0,0.9)]">
-                    <SectionHeading
-                        index="02"
-                        title="Evolução da turma"
-                        :description="hasComparison
-                            ? `Este período comparado com ${stats.previous_period?.label}.`
-                            : 'Ainda não há período anterior para comparar.'"
-                    />
-
-                    <template v-if="hasComparison">
-                        <StatChart
-                            :config="evolutionChart"
-                            :tooltip="evolutionTooltip"
-                            summary="Quantos alunos progrediram, se mantiveram, regrediram ou não têm comparação possível."
-                            :headers="['Movimento', 'Alunos', 'Percentagem']"
-                            :rows="evolutionRows"
-                            height-class="h-56"
-                        />
-                        <!-- A legend of our own: the library's cannot carry a
-                             count and a share beside the label. -->
-                        <ul class="mt-4 space-y-1.5">
-                            <li v-for="slice in evolutionSlices" :key="slice.label" class="flex items-center gap-2 text-xs">
-                                <span class="size-2.5 shrink-0 rounded-full" :style="{ backgroundColor: slice.colour.border }"></span>
-                                <span class="text-muted-foreground">{{ slice.label }}</span>
-                                <span class="ml-auto tabular-nums font-medium">{{ slice.count }}</span>
-                                <span class="w-14 text-right tabular-nums text-muted-foreground">{{ formatShare(slice.share) }}</span>
-                            </li>
-                        </ul>
-                    </template>
-
-                    <div v-else class="flex h-72 flex-col items-center justify-center rounded-xl border border-dashed border-border/70 px-6 text-center">
-                        <Minus class="size-5 text-muted-foreground/60" />
-                        <p class="mt-3 text-sm font-medium">Sem comparação possível</p>
-                        <p class="mt-1 text-xs text-muted-foreground">
-                            A evolução aparecerá aqui quando existir um segundo momento de avaliação.
+                    <!-- Beside them, the movement of the class itself. -->
+                    <div class="rounded-2xl bg-muted/25 p-5 lg:col-span-2">
+                        <p class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Evolução média</p>
+                        <p
+                            class="mt-1.5 text-4xl font-semibold leading-none tabular-nums tracking-tight"
+                            :class="Number(stats.evolution.average_change) > 0 ? 'text-emerald-600 dark:text-emerald-400'
+                                : Number(stats.evolution.average_change) < 0 ? 'text-rose-600 dark:text-rose-400' : ''"
+                        >
+                            {{ formatPoints(stats.evolution.average_change) }}
+                            <span class="text-lg font-normal text-muted-foreground">p.p.</span>
+                        </p>
+                        <p class="mt-2 text-xs leading-relaxed text-muted-foreground">
+                            Média das variações dos {{ studentsWord(stats.evolution.comparable) }} com dois períodos
+                            comparáveis. Quem não tinha período anterior não entra nesta conta.
                         </p>
                     </div>
-                </section>
-            </div>
+                </div>
 
-            <!-- ==================================== 03 · médias por domínio -->
-            <section class="rounded-2xl border border-border bg-card p-6 shadow-[0_1px_0_0_var(--border),0_12px_28px_-22px_rgba(0,0,0,0.45)] dark:shadow-[0_1px_0_0_rgba(255,255,255,0.05),0_14px_32px_-24px_rgba(0,0,0,0.9)]">
+                <div v-else class="flex flex-col items-center justify-center rounded-2xl bg-muted/25 px-6 py-12 text-center">
+                    <Minus class="size-5 text-muted-foreground/60" />
+                    <p class="mt-3 text-sm font-medium">Sem comparação possível</p>
+                    <p class="mt-1 max-w-sm text-xs text-muted-foreground">
+                        A evolução aparecerá aqui quando existir um segundo momento de avaliação.
+                    </p>
+                </div>
+            </section>
+
+            <!-- ============================= 03 · COMO SE DISTRIBUEM OS ALUNOS -->
+            <section class="border-t border-border/70 pt-7">
                 <SectionHeading
                     index="03"
-                    title="Médias por domínio"
-                    description="Na ordem do perfil de avaliação, e não por resultado. Clique num domínio para o seguir na página."
+                    title="Como se distribuem os resultados"
+                    :description="`Menção de cada aluno, colocada pela Média Ponderada Acumulada${schoolClass.scale_name ? ` na escala «${schoolClass.scale_name}»` : ''}. Escolha uma banda para seguir esses alunos no mapa.`"
+                />
+
+                <!-- Plates, not bars on an axis: the count is the only number
+                     here and it is never large enough to need a scale. -->
+                <BandPlates
+                    v-if="plates.length"
+                    :plates="plates"
+                    :selected-id="selectedLevelId"
+                    :placed="placedOnScale"
+                    @select="toggleLevel"
+                />
+                <p v-else class="rounded-2xl bg-muted/25 py-12 text-center text-sm text-muted-foreground">
+                    A escala desta turma não tem bandas configuradas, por isso não há menções para distribuir.
+                </p>
+            </section>
+
+            <!-- ============================ 04 · DIFERENÇAS ENTRE DOMÍNIOS -->
+            <section class="border-t border-border/70 pt-7">
+                <SectionHeading
+                    index="04"
+                    title="Onde estão as diferenças entre domínios"
+                    description="Na ordem do perfil de avaliação, e não por resultado. Escolha um domínio para o seguir na página."
                 >
                     <template #aside>
                         <div v-if="extremes" class="hidden gap-5 text-xs sm:flex">
@@ -862,57 +897,95 @@ const studentRows = computed(() => {
                 />
             </section>
 
-            <!-- ==================================== evolução ao longo do ano -->
-            <div v-if="hasSeveralPeriods" class="grid gap-4 lg:grid-cols-2">
-                <section class="rounded-2xl border border-border bg-card p-6 shadow-[0_1px_0_0_var(--border),0_12px_28px_-22px_rgba(0,0,0,0.45)] dark:shadow-[0_1px_0_0_rgba(255,255,255,0.05),0_14px_32px_-24px_rgba(0,0,0,0.9)]">
-                    <SectionHeading index="04" title="Evolução global da turma" description="Média Ponderada de cada período, isoladamente." />
-                    <StatChart
-                        :config="classTrendChart"
-                        :tooltip="classTrendTooltip"
-                        summary="Média Ponderada da turma em cada período do ano letivo."
-                        :headers="['Período', 'Média Ponderada']"
-                        :rows="stats.period_series.map((row) => [row.label, pct(row.class_average)])"
-                        height-class="h-72"
-                    />
-                </section>
+            <!-- =========================== 05 · COMO MUDARAM AO LONGO DO ANO -->
+            <section v-if="trendShape !== 'single'" class="border-t border-border/70 pt-7">
+                <SectionHeading
+                    index="05"
+                    title="Como mudaram ao longo do ano"
+                    :description="trendShape === 'slope'
+                        ? `Do ${slopeEnds?.from.label} ao ${slopeEnds?.to.label}, cada período por si.`
+                        : 'Cada período por si, sem o acumulado — um acumulado inclina-se para a sua própria história.'"
+                />
 
-                <section class="rounded-2xl border border-border bg-card p-6 shadow-[0_1px_0_0_var(--border),0_12px_28px_-22px_rgba(0,0,0,0.45)] dark:shadow-[0_1px_0_0_rgba(255,255,255,0.05),0_14px_32px_-24px_rgba(0,0,0,0.9)]">
-                    <SectionHeading index="05" title="Evolução dos domínios" description="Cada linha é um domínio, período a período." />
-                    <StatChart
-                        :config="domainSeriesChart"
-                        :tooltip="domainSeriesTooltip"
-                        summary="Média da turma em cada domínio, ao longo dos períodos do ano letivo."
-                        :headers="['Período', 'Turma', ...stats.domains.map((domain) => domain.name)]"
-                        :rows="seriesRows"
-                        height-class="h-72"
-                    />
+                <!-- TWO MOMENTS GET A SLOPEGRAPH, not a line chart with an
+                     empty axis around one segment. Three or more get the line,
+                     because then there is a trend to draw. -->
+                <div v-if="trendShape === 'slope'" class="grid gap-8 lg:grid-cols-5">
+                    <div class="lg:col-span-2">
+                        <p class="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">A turma</p>
+                        <Slopegraph
+                            :slopes="classSlope"
+                            :from-label="slopeEnds!.from.label"
+                            :to-label="slopeEnds!.to.label"
+                            :show-labels="false"
+                            summary="Média Ponderada da turma no primeiro e no último período com resultados."
+                        />
+                    </div>
 
-                    <!-- The legend IS the domain selector — one control, and the
-                         same inks the lines are drawn in. -->
-                    <ul class="mt-4 flex flex-wrap gap-1.5">
-                        <li v-for="domain in stats.domains" :key="domain.id">
-                            <button
-                                type="button"
-                                class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-all duration-150 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                                :class="isLit(domain.id)
-                                    ? 'border-border bg-background hover:bg-muted/50'
-                                    : 'border-transparent bg-muted/30 text-muted-foreground'"
-                                :aria-pressed="selectedDomainId === domain.id"
-                                @click="toggleDomain(domain.id)"
-                            >
-                                <span
-                                    class="size-2 rounded-full transition-opacity"
-                                    :style="{ backgroundColor: inks[domain.id], opacity: isLit(domain.id) ? 1 : 0.35 }"
-                                ></span>
-                                {{ domain.name }}
-                            </button>
-                        </li>
-                    </ul>
-                </section>
-            </div>
+                    <div class="lg:col-span-3">
+                        <p class="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Cada domínio</p>
+                        <Slopegraph
+                            :slopes="domainSlopes"
+                            :from-label="slopeEnds!.from.label"
+                            :to-label="slopeEnds!.to.label"
+                            :selected-id="selectedDomainId"
+                            summary="Média da turma em cada domínio, no primeiro e no último período com resultados."
+                            @select="toggleDomain"
+                        />
+                    </div>
+                </div>
 
-            <!-- ============================================ 06 · o mapa -->
-            <section class="rounded-2xl border border-border bg-card p-6 shadow-[0_1px_0_0_var(--border),0_12px_28px_-22px_rgba(0,0,0,0.45)] dark:shadow-[0_1px_0_0_rgba(255,255,255,0.05),0_14px_32px_-24px_rgba(0,0,0,0.9)]">
+                <div v-else class="grid gap-6 lg:grid-cols-2">
+                    <div>
+                        <p class="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">A turma</p>
+                        <StatChart
+                            :config="classTrendChart"
+                            :tooltip="classTrendTooltip"
+                            summary="Média Ponderada da turma em cada período do ano letivo."
+                            :headers="['Período', 'Média Ponderada']"
+                            :rows="stats.period_series.map((row) => [row.label, pct(row.class_average)])"
+                            height-class="h-72"
+                        />
+                    </div>
+
+                    <div>
+                        <p class="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Cada domínio</p>
+                        <StatChart
+                            :config="domainSeriesChart"
+                            :tooltip="domainSeriesTooltip"
+                            summary="Média da turma em cada domínio, ao longo dos períodos do ano letivo."
+                            :headers="['Período', 'Turma', ...stats.domains.map((domain) => domain.name)]"
+                            :rows="seriesRows"
+                            height-class="h-72"
+                        />
+
+                        <!-- The legend IS the domain selector — one control, in
+                             the same inks the lines are drawn in. -->
+                        <ul class="mt-4 flex flex-wrap gap-1.5">
+                            <li v-for="domain in stats.domains" :key="domain.id">
+                                <button
+                                    type="button"
+                                    class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-all duration-150 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                                    :class="isLit(domain.id)
+                                        ? 'border-border bg-background hover:bg-muted/50'
+                                        : 'border-transparent bg-muted/30 text-muted-foreground'"
+                                    :aria-pressed="selectedDomainId === domain.id"
+                                    @click="toggleDomain(domain.id)"
+                                >
+                                    <span
+                                        class="size-2 rounded-full transition-opacity"
+                                        :style="{ backgroundColor: inks[domain.id], opacity: isLit(domain.id) ? 1 : 0.35 }"
+                                    ></span>
+                                    {{ domain.name }}
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ================================== 06 · O MAPA DA TURMA -->
+            <section class="border-t border-border/70 pt-7">
                 <SectionHeading
                     index="06"
                     title="Mapa da turma"
@@ -1123,6 +1196,7 @@ const studentRows = computed(() => {
                             :headers="['Domínio', 'Média do período', 'Acumulada', 'Menção', 'Autoavaliação']"
                             :rows="studentRows"
                             height-class="h-64"
+                            depth
                         />
                     </section>
 

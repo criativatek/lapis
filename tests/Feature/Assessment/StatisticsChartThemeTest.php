@@ -41,7 +41,99 @@ class StatisticsChartThemeTest extends TestCase
         return (string) file_get_contents(resource_path('js/components/infographic/RibbonBar.vue'));
     }
 
-    // ------------------------- 0. profundidade decorativa, nunca quantitativa
+    protected function plates(): string
+    {
+        return (string) file_get_contents(resource_path('js/components/infographic/BandPlates.vue'));
+    }
+
+    protected function slopegraph(): string
+    {
+        return (string) file_get_contents(resource_path('js/components/infographic/Slopegraph.vue'));
+    }
+
+    // ------------------------------------- 0. a forma segue os dados
+
+    #[Test]
+    public function the_trend_visualisation_is_chosen_from_how_many_periods_have_results(): void
+    {
+        $page = $this->page();
+
+        // TWO POINTS DO NOT JUSTIFY A LINE CHART. It spends a tall box and a
+        // 0–100 axis to draw one segment, and leaves the reader to estimate the
+        // change off a grid — which is the one thing they came for.
+        $this->assertStringContainsString("const trendShape = computed<'single' | 'slope' | 'line'>", $page);
+        $this->assertStringContainsString("return 'single';", $page);
+        $this->assertStringContainsString("periodsWithResults.value.length === 2 ? 'slope' : 'line'", $page);
+
+        // And the template actually branches on it.
+        $this->assertStringContainsString("v-if=\"trendShape !== 'single'\"", $page);
+        $this->assertStringContainsString("v-if=\"trendShape === 'slope'\"", $page);
+    }
+
+    #[Test]
+    public function a_slopegraph_places_both_ends_on_the_same_scale(): void
+    {
+        $slopegraph = $this->slopegraph();
+
+        // The steepness of a line IS the size of its change, so two lines can be
+        // compared against each other. Nothing is stretched to look dramatic.
+        $this->assertStringContainsString('return TOP + (1 - value / 100) * (HEIGHT - TOP - BOTTOM);', $slopegraph);
+
+        // Both values and the difference are written out — an SVG cannot spell
+        // them, and the difference is the whole point of the shape.
+        $this->assertStringContainsString('formatPoints(change(slope))', $slopegraph);
+        $this->assertStringContainsString('sem comparação', $slopegraph);
+    }
+
+    #[Test]
+    public function the_distribution_is_drawn_without_a_chart_library(): void
+    {
+        $page = $this->page();
+        $plates = $this->plates();
+
+        // A bar chart of five bands is mostly empty plot: the count is the only
+        // number and it is never large. Plates put the band, its words, its
+        // count and its share into one object.
+        $this->assertStringContainsString('<BandPlates', $page);
+        $this->assertStringNotContainsString('distributionChart', $page);
+
+        // The step between plates is the scale's ORDER, not a value — a
+        // constant offset per position, identical for an empty band and a full
+        // one, so it cannot encode a quantity.
+        $this->assertStringContainsString('marginBottom: `${index * 10}px`', $plates);
+    }
+
+    #[Test]
+    public function a_band_with_nobody_in_it_is_still_drawn(): void
+    {
+        $plates = $this->plates();
+
+        // A level with zero students is a fact about the class. Dropping it
+        // would redraw the composition for every class.
+        $this->assertStringContainsString('plate.count === 0', $plates);
+        $this->assertStringContainsString('border-dashed', $plates);
+        $this->assertStringContainsString('um nível vazio é um facto sobre a turma', $plates);
+    }
+
+    #[Test]
+    public function class_movement_is_shown_as_proportional_arrows_and_not_as_a_doughnut(): void
+    {
+        $page = $this->page();
+        $flows = (string) file_get_contents(resource_path('js/components/infographic/FlowRibbons.vue'));
+
+        $this->assertStringContainsString('<FlowRibbons', $page);
+        $this->assertStringNotContainsString("type: 'doughnut'", $page);
+
+        // The arrowhead is carved OUT of the length rather than added to it, so
+        // the tip lands where a plain bar would have ended.
+        $this->assertStringContainsString('clipPath:', $flows);
+        $this->assertStringContainsString("flow.direction === 'backward'", $flows);
+
+        // «Sem comparação» keeps its own note: it is not standing still.
+        $this->assertStringContainsString('não é manutenção', $page);
+    }
+
+    // ------------------------- 0b. profundidade decorativa, nunca quantitativa
 
     #[Test]
     public function the_depth_on_a_column_is_a_constant_offset_and_never_a_perspective(): void
@@ -203,7 +295,9 @@ class StatisticsChartThemeTest extends TestCase
         $theme = $this->theme();
         $page = $this->page();
 
-        foreach (['percentAxis', 'categoryAxis', 'countAxis'] as $helper) {
+        // Only the axes that still have a canvas to dress: counting students
+        // moved to BandPlates, which needs no axis at all.
+        foreach (['percentAxis', 'categoryAxis'] as $helper) {
             $this->assertStringContainsString("export function {$helper}(", $theme);
             $this->assertStringContainsString($helper, $page);
         }
