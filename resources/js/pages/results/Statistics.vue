@@ -4,16 +4,18 @@ import { CircleAlert, Minus, TrendingDown, TrendingUp, X } from '@lucide/vue';
 import type { ChartConfiguration } from 'chart.js';
 import { computed, defineAsyncComponent, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
-import BandPlates from '@/components/infographic/BandPlates.vue';
-import type { BandPlate } from '@/components/infographic/BandPlates.vue';
+import DistributionBands from '@/components/infographic/DistributionBands.vue';
+import type { DistributionBand } from '@/components/infographic/DistributionBands.vue';
+import DomainBars from '@/components/infographic/DomainBars.vue';
+import type { DomainBar } from '@/components/infographic/DomainBars.vue';
 import FlowRibbons from '@/components/infographic/FlowRibbons.vue';
 import type { Flow } from '@/components/infographic/FlowRibbons.vue';
-import InfographicMetric from '@/components/infographic/InfographicMetric.vue';
-import RibbonBar from '@/components/infographic/RibbonBar.vue';
-import type { RibbonRow } from '@/components/infographic/RibbonBar.vue';
 import SectionHeading from '@/components/infographic/SectionHeading.vue';
 import Slopegraph from '@/components/infographic/Slopegraph.vue';
 import type { Slope } from '@/components/infographic/Slopegraph.vue';
+import StatGauge from '@/components/infographic/StatGauge.vue';
+import StudentSpectrum from '@/components/infographic/StudentSpectrum.vue';
+import type { SpectrumPoint } from '@/components/infographic/StudentSpectrum.vue';
 import {
     areaGradient,
     categoryAxis,
@@ -193,6 +195,14 @@ function submitInterim(): void {
  */
 const StatChart = defineAsyncComponent(() => import('@/components/charts/StatChart.vue'));
 
+/**
+ * One card, described once.
+ *
+ * Height follows content — nothing here forces a card taller than what it
+ * holds, which is what left the old grid with half-empty boxes (§5, §22).
+ */
+const CARD = 'rounded-2xl border border-border/70 bg-card p-5 shadow-sm';
+
 const stats = computed(() => props.statistics);
 const bands = computed(() => props.statistics.scale?.bands ?? []);
 
@@ -259,31 +269,6 @@ const highlightedStudents = computed(() => stats.value.students.filter((student)
 // ------------------------------------------------------------------ gráficos
 
 
-/**
- * 2 · Médias por domínio, drawn as ribbons rather than as bars.
- *
- * The length IS the percentage; the pointed tip is clipped out of that width
- * rather than added to it, so the furthest point of each ribbon sits exactly
- * where a plain bar would have ended.
- */
-const domainRibbons = computed<RibbonRow[]>(() => stats.value.domain_statistics.map((row) => ({
-    id: row.domain_id,
-    label: row.label,
-    value: row.period_average === null ? null : Number(row.period_average),
-    display: pct(row.period_average),
-    // THE DOMAIN'S OWN INK, not its performance. Colouring the ribbon by the
-    // mention made five ribbons share three colours and told the reader nothing
-    // about which domain they were looking at; the mention is the badge below,
-    // in the scale's tone, and the movement is beside it in the trend inks.
-    colour: inks.value[row.domain_id],
-    badge: row.qualitative_band?.label ?? null,
-    badgeClass: toneClass(row.qualitative_band),
-    change: row.evolution_average === null ? null : formatPoints(row.evolution_average),
-    changeDirection: row.evolution_average === null
-        ? null
-        : Number(row.evolution_average) > 0 ? 'up' : Number(row.evolution_average) < 0 ? 'down' : 'flat',
-    tooltip: domainTooltipFor(row) ?? { title: row.label, rows: [] },
-})));
 
 // ---------------------------------------------- visualizações adaptativas
 
@@ -380,53 +365,80 @@ const flows = computed<Flow[]>(() => {
     ];
 });
 
-/** The distribution, as plates rather than as bars on an axis. */
-const plates = computed<BandPlate[]>(() => stats.value.distribution.map((band) => ({
-    scale_level_id: band.scale_level_id,
-    code: band.code,
-    label: band.label,
-    count: band.count,
-    share: formatShare(band.percentage),
-    tone: toneOf(band),
-    colour: TONE_COLOURS[toneOf(band)].border,
-})));
 
 const placedOnScale = computed(() => stats.value.distribution.reduce((total, band) => total + band.count, 0));
 
-function domainTooltipFor(row: DomainStatistic): TooltipContent | null {
-    const lines: TooltipContent['rows'] = [
-        { label: 'Média da turma', value: pct(row.period_average), strong: true, swatch: inks.value[row.domain_id] },
-    ];
+// ------------------------------------------------- a nova composição
 
-    if (row.accumulated_average !== null) {
-        lines.push({ label: 'Média acumulada', value: pct(row.accumulated_average) });
-    }
+/** The gauge's ink follows the class's own mention, when the scale has one. */
+const gaugeColour = computed<string>(() => {
+    const band = stats.value.summary.most_common_band;
 
-    if (row.evolution_average !== null) {
-        const direction = Number(row.evolution_average);
+    return band === null ? '#6366f1' : TONE_COLOURS[toneOf(band)].border;
+});
 
-        lines.push({
-            label: 'Evolução',
-            value: `${direction > 0 ? '↑' : direction < 0 ? '↓' : '→'} ${formatPoints(row.evolution_average)} p.p.`,
-            trend: direction > 0 ? 'up' : direction < 0 ? 'down' : 'flat',
-        });
-    }
+const coveredPercent = computed<number>(() => {
+    const total = stats.value.summary.students_total;
 
-    if (row.qualitative_band !== null) {
-        lines.push({ label: 'Menção', value: row.qualitative_band.label });
-    }
+    return total === 0 ? 0 : (stats.value.summary.students_with_result / total) * 100;
+});
 
-    lines.push({
-        label: 'Resultados válidos',
-        value: `${row.students_with_result} de ${stats.value.summary.students_total}`,
-    });
+/** The distribution, as filled rows rather than as floating plates. */
+const distributionBands = computed<DistributionBand[]>(() => stats.value.distribution.map((band) => {
+    const tone = toneOf(band);
 
-    if (row.partial_coverage_count > 0) {
-        lines.push({ label: 'Informação parcial', value: String(row.partial_coverage_count) });
-    }
+    return {
+        scale_level_id: band.scale_level_id,
+        code: band.code,
+        label: band.label,
+        count: band.count,
+        percent: band.percentage === null ? null : Number(band.percentage),
+        share: formatShare(band.percentage),
+        tone,
+        colour: TONE_COLOURS[tone].border,
+    };
+}));
 
-    return { title: row.label.toUpperCase(), rows: lines, footer: 'Clique para seguir este domínio na página.' };
+/** The domains, as wide bars: domain ink, scale mention, trend change. */
+const domainBars = computed<DomainBar[]>(() => stats.value.domain_statistics.map((row) => ({
+    id: row.domain_id,
+    label: row.label,
+    percent: row.period_average === null ? null : Number(row.period_average),
+    display: pct(row.period_average),
+    colour: inks.value[row.domain_id],
+    mention: row.qualitative_band?.label ?? null,
+    mentionClass: toneClass(row.qualitative_band),
+    change: row.evolution_average === null ? null : formatPoints(row.evolution_average),
+    direction: row.evolution_average === null
+        ? null
+        : Number(row.evolution_average) > 0 ? 'up' : Number(row.evolution_average) < 0 ? 'down' : 'flat',
+    students: `${row.students_with_result} de ${stats.value.summary.students_total} com resultado`
+        + (row.partial_coverage_count > 0 ? ` · ${row.partial_coverage_count} com informação parcial` : ''),
+})));
+
+/**
+ * Where each student sits on the scale.
+ *
+ * Only those who HAVE a result: an axis of results has no place for an absence,
+ * and putting one at zero would be inventing the very thing the whole engine
+ * refuses to invent.
+ */
+const spectrum = computed<SpectrumPoint[]>(() => stats.value.students
+    .filter((student) => student.weighted_average !== null)
+    .map((student) => ({
+        enrollment_id: student.enrollment_id,
+        name: student.name,
+        percent: Number(student.weighted_average),
+        display: pct(student.weighted_average),
+        mention: student.band?.label ?? null,
+        mentionClass: toneClass(student.band),
+        classNumber: student.class_number,
+    })));
+
+function openStudentById(enrollmentId: number): void {
+    selected.value = stats.value.students.find((student) => student.enrollment_id === enrollmentId) ?? null;
 }
+
 
 /** 3 · Evolução dos domínios ao longo do ano — sempre standalone. */
 const domainSeriesChart = computed<ChartConfiguration>(() => {
@@ -562,7 +574,7 @@ const classTrendTooltip = (index: number): TooltipContent | null => {
 // ------------------------------------------------------- equivalentes textuais
 
 
-// The domain figures need no sr-only table of their own: RibbonBar is real DOM
+// The domain figures need no sr-only table of their own: DomainBars is real DOM
 // and every value in it is already text a screen reader reads directly.
 
 const seriesRows = computed(() => stats.value.period_series.map((row) => [
@@ -943,155 +955,168 @@ const studentRows = computed(() => {
                 </div>
             </Transition>
 
-            <!-- ============================================ 01 · o resumo -->
-            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <InfographicMetric
-                    index="01"
-                    label="Média Ponderada da turma"
-                    :value="pct(stats.summary.class_average)"
-                    :context="stats.selected_period ? `${stats.selected_period.label}, só com este período` : undefined"
-                >
-                    <p
-                        v-if="hasComparison && stats.evolution.average_change !== null"
-                        class="mt-2.5 inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium"
-                        :class="Number(stats.evolution.average_change) > 0
-                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
-                            : Number(stats.evolution.average_change) < 0
-                                ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300'
-                                : 'bg-muted text-muted-foreground'"
+            <!-- ============================== 01 · A TURMA NUM OLHAR -->
+            <div class="grid gap-4 lg:grid-cols-3">
+                <section :class="CARD">
+                    <StatGauge
+                        :percent="stats.summary.class_average === null ? null : Number(stats.summary.class_average)"
+                        :display="pct(stats.summary.class_average)"
+                        label="Média Ponderada da turma"
+                        :badge="stats.summary.most_common_band ? null : null"
+                        :colour="gaugeColour"
+                        :caption="stats.selected_period ? `${stats.selected_period.label}, só com este período` : null"
                     >
-                        <TrendingUp v-if="Number(stats.evolution.average_change) > 0" class="size-3" />
-                        <TrendingDown v-else-if="Number(stats.evolution.average_change) < 0" class="size-3" />
-                        <Minus v-else class="size-3" />
-                        {{ formatPoints(stats.evolution.average_change) }} p.p. face a {{ stats.previous_period?.label }}
-                    </p>
-                </InfographicMetric>
+                        <p
+                            v-if="hasComparison && stats.evolution.average_change !== null"
+                            class="mt-2.5 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium"
+                            :class="Number(stats.evolution.average_change) > 0
+                                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                : Number(stats.evolution.average_change) < 0
+                                    ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300'
+                                    : 'bg-muted text-muted-foreground'"
+                        >
+                            <TrendingUp v-if="Number(stats.evolution.average_change) > 0" class="size-3" />
+                            <TrendingDown v-else-if="Number(stats.evolution.average_change) < 0" class="size-3" />
+                            <Minus v-else class="size-3" />
+                            {{ formatPoints(stats.evolution.average_change) }} p.p. face a {{ stats.previous_period?.label }}
+                        </p>
+                    </StatGauge>
+                </section>
 
-                <InfographicMetric
-                    index="02"
-                    label="Média acumulada"
-                    :value="pct(stats.summary.accumulated_average)"
-                    context="Tudo o que conta até este período"
-                />
+                <section :class="CARD">
+                    <StatGauge
+                        :percent="stats.summary.accumulated_average === null ? null : Number(stats.summary.accumulated_average)"
+                        :display="pct(stats.summary.accumulated_average)"
+                        label="Média acumulada"
+                        :badge="stats.summary.most_common_band?.label ?? null"
+                        :badge-class="toneClass(stats.summary.most_common_band)"
+                        colour="#8b5cf6"
+                        caption="Tudo o que conta até este período"
+                    >
+                        <p v-if="stats.summary.most_common_band" class="mt-2 text-center text-xs text-muted-foreground">
+                            Menção mais frequente · {{ stats.summary.most_common_band.count }} de
+                            {{ stats.summary.students_total }} alunos
+                        </p>
+                    </StatGauge>
+                </section>
 
-                <InfographicMetric index="03" label="Alunos com resultado" value="">
-                    <template #value>
-                        {{ stats.summary.students_with_result }}<span class="text-lg font-normal text-muted-foreground">/{{ stats.summary.students_total }}</span>
-                    </template>
-                    <p class="mt-2 text-xs leading-relaxed text-muted-foreground">
-                        <template v-if="stats.summary.students_without_result > 0">
-                            {{ stats.summary.students_without_result }} sem resultado neste período
-                        </template>
-                        <template v-else>Toda a turma tem resultado</template>
+                <!-- Coverage: a card that earns its height by carrying three
+                     real counts and the bar that relates them. -->
+                <section :class="CARD">
+                    <p class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Alunos com resultado</p>
+                    <p class="mt-1.5 text-[2.5rem] font-semibold leading-none tabular-nums tracking-tight">
+                        {{ stats.summary.students_with_result }}<span class="text-xl font-normal text-muted-foreground">/{{ stats.summary.students_total }}</span>
                     </p>
-                </InfographicMetric>
 
-                <InfographicMetric
-                    index="04"
-                    :label="stats.summary.most_common_band ? 'Menção mais frequente' : 'Informação parcial'"
-                    :value="stats.summary.most_common_band ? '' : String(stats.summary.partial_coverage_count)"
-                >
-                    <template v-if="stats.summary.most_common_band" #value>
-                        <span class="flex items-center gap-2">
-                            {{ stats.summary.most_common_band.code }}
-                            <span class="rounded-md px-2 py-0.5 text-xs font-medium" :class="toneClass(stats.summary.most_common_band)">
-                                {{ stats.summary.most_common_band.label }}
-                            </span>
-                        </span>
-                    </template>
-                    <p class="mt-2 text-xs leading-relaxed text-muted-foreground">
-                        <template v-if="stats.summary.most_common_band">
-                            {{ stats.summary.most_common_band.count }} de {{ stats.summary.students_total }} alunos
-                        </template>
-                        <template v-else>resultados com informação parcial</template>
+                    <div class="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-muted/50">
+                        <div
+                            class="h-full rounded-full bg-emerald-500/80 transition-all ease-out"
+                            :class="prefersReducedMotion() ? 'duration-0' : 'duration-700'"
+                            :style="{ width: `${coveredPercent}%` }"
+                        ></div>
+                    </div>
+
+                    <dl class="mt-4 space-y-2 text-sm">
+                        <div class="flex items-baseline justify-between gap-3">
+                            <dt class="text-muted-foreground">Sem resultado</dt>
+                            <dd class="font-semibold tabular-nums">{{ stats.summary.students_without_result }}</dd>
+                        </div>
+                        <div class="flex items-baseline justify-between gap-3">
+                            <dt class="flex items-center gap-1.5 text-muted-foreground">
+                                <CircleAlert v-if="stats.summary.partial_coverage_count > 0" class="size-3.5 text-amber-500" />
+                                Informação parcial
+                            </dt>
+                            <dd class="font-semibold tabular-nums">{{ stats.summary.partial_coverage_count }}</dd>
+                        </div>
+                    </dl>
+
+                    <p v-if="stats.summary.partial_coverage_count > 0" class="mt-3 text-[11px] leading-relaxed text-muted-foreground">
+                        O detalhe de cada caso está em Resultados, junto ao aviso do próprio aluno.
                     </p>
-                </InfographicMetric>
+                </section>
             </div>
 
-            <p
-                v-if="stats.summary.partial_coverage_count > 0 && stats.summary.most_common_band"
-                class="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
-            >
-                <CircleAlert class="mt-0.5 size-4 shrink-0" />
-                <span>
-                    {{ stats.summary.partial_coverage_count === 1
-                        ? `1 de ${stats.summary.students_total} alunos tem`
-                        : `${stats.summary.partial_coverage_count} de ${stats.summary.students_total} alunos têm` }}
-                    o resultado deste período calculado com informação parcial.
-                    O detalhe de cada caso está em Resultados, junto ao aviso do próprio aluno.
-                </span>
-            </p>
+            <!-- ============ 02 · DISTRIBUIÇÃO + EVOLUÇÃO, LADO A LADO -->
+            <div class="grid gap-4 lg:grid-cols-5">
+                <section :class="[CARD, 'lg:col-span-3']">
+                    <SectionHeading
+                        index="02"
+                        title="Como se distribuem os resultados"
+                        :description="`Menção de cada aluno${schoolClass.scale_name ? `, na escala «${schoolClass.scale_name}»` : ''}. Escolha uma banda para a seguir no mapa.`"
+                    />
 
-            <!-- ================================= 02 · COMO EVOLUIU A TURMA -->
-            <section class="border-t border-border/70 pt-7">
-                <SectionHeading
-                    index="02"
-                    title="Como evoluiu a turma"
-                    :description="hasComparison
-                        ? `Cada aluno deste período comparado com ${stats.previous_period?.label}, resultado isolado contra resultado isolado.`
-                        : 'Ainda não há período anterior para comparar.'"
-                />
-
-                <div v-if="hasComparison" class="grid gap-6 lg:grid-cols-5">
-                    <!-- Arrows, not a doughnut. Four slices spend a whole card
-                         saying «most went up» and then hide by how many. -->
-                    <div class="lg:col-span-3">
-                        <FlowRibbons :flows="flows" :total="stats.summary.students_total" />
-                    </div>
-
-                    <!-- Beside them, the movement of the class itself. -->
-                    <div class="rounded-2xl bg-muted/25 p-5 lg:col-span-2">
-                        <p class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Evolução média</p>
-                        <p
-                            class="mt-1.5 text-4xl font-semibold leading-none tabular-nums tracking-tight"
-                            :class="Number(stats.evolution.average_change) > 0 ? 'text-emerald-600 dark:text-emerald-400'
-                                : Number(stats.evolution.average_change) < 0 ? 'text-rose-600 dark:text-rose-400' : ''"
-                        >
-                            {{ formatPoints(stats.evolution.average_change) }}
-                            <span class="text-lg font-normal text-muted-foreground">p.p.</span>
-                        </p>
-                        <p class="mt-2 text-xs leading-relaxed text-muted-foreground">
-                            Média das variações dos {{ studentsWord(stats.evolution.comparable) }} com dois períodos
-                            comparáveis. Quem não tinha período anterior não entra nesta conta.
-                        </p>
-                    </div>
-                </div>
-
-                <div v-else class="flex flex-col items-center justify-center rounded-2xl bg-muted/25 px-6 py-12 text-center">
-                    <Minus class="size-5 text-muted-foreground/60" />
-                    <p class="mt-3 text-sm font-medium">Sem comparação possível</p>
-                    <p class="mt-1 max-w-sm text-xs text-muted-foreground">
-                        A evolução aparecerá aqui quando existir um segundo momento de avaliação.
+                    <DistributionBands
+                        v-if="distributionBands.length"
+                        :bands="distributionBands"
+                        :placed="placedOnScale"
+                        :selected-id="selectedLevelId"
+                        @select="toggleLevel"
+                    />
+                    <p v-else class="rounded-xl bg-muted/25 py-10 text-center text-sm text-muted-foreground">
+                        A escala desta turma não tem bandas configuradas, por isso não há menções para distribuir.
                     </p>
-                </div>
-            </section>
+                </section>
 
-            <!-- ============================= 03 · COMO SE DISTRIBUEM OS ALUNOS -->
-            <section class="border-t border-border/70 pt-7">
-                <SectionHeading
-                    index="03"
-                    title="Como se distribuem os resultados"
-                    :description="`Menção de cada aluno, colocada pela Média Ponderada Acumulada${schoolClass.scale_name ? ` na escala «${schoolClass.scale_name}»` : ''}. Escolha uma banda para seguir esses alunos no mapa.`"
-                />
+                <section :class="[CARD, 'lg:col-span-2']">
+                    <SectionHeading
+                        index="03"
+                        title="Como evoluiu a turma"
+                        :description="hasComparison
+                            ? `Face a ${stats.previous_period?.label}, resultado isolado contra resultado isolado.`
+                            : 'Ainda não há período anterior para comparar.'"
+                    />
 
-                <!-- Plates, not bars on an axis: the count is the only number
-                     here and it is never large enough to need a scale. -->
-                <BandPlates
-                    v-if="plates.length"
-                    :plates="plates"
-                    :selected-id="selectedLevelId"
-                    :placed="placedOnScale"
-                    @select="toggleLevel"
-                />
-                <p v-else class="rounded-2xl bg-muted/25 py-12 text-center text-sm text-muted-foreground">
-                    A escala desta turma não tem bandas configuradas, por isso não há menções para distribuir.
-                </p>
-            </section>
+                    <template v-if="hasComparison">
+                        <!-- The headline first, at full size: it is the answer,
+                             and the four rows underneath are the detail. -->
+                        <div class="mb-4 rounded-xl bg-muted/30 px-4 py-3">
+                            <p class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Evolução média</p>
+                            <p
+                                class="mt-1 text-[2.25rem] font-semibold leading-none tabular-nums tracking-tight"
+                                :class="Number(stats.evolution.average_change) > 0 ? 'text-emerald-600 dark:text-emerald-400'
+                                    : Number(stats.evolution.average_change) < 0 ? 'text-rose-600 dark:text-rose-400' : ''"
+                            >
+                                {{ formatPoints(stats.evolution.average_change) }}
+                                <span class="text-base font-normal text-muted-foreground">p.p.</span>
+                            </p>
+                            <p class="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                                Sobre os {{ studentsWord(stats.evolution.comparable) }} com dois períodos comparáveis.
+                            </p>
+                        </div>
 
-            <!-- ============================ 04 · DIFERENÇAS ENTRE DOMÍNIOS -->
-            <section class="border-t border-border/70 pt-7">
+                        <FlowRibbons :flows="flows" :total="stats.summary.students_total" />
+                    </template>
+
+                    <div v-else class="flex flex-col items-center justify-center rounded-xl bg-muted/25 px-6 py-10 text-center">
+                        <Minus class="size-5 text-muted-foreground/60" />
+                        <p class="mt-3 text-sm font-medium">Sem comparação possível</p>
+                        <p class="mt-1 text-xs text-muted-foreground">
+                            Aparece aqui quando existir um segundo momento de avaliação.
+                        </p>
+                    </div>
+                </section>
+            </div>
+
+            <!-- ==================== 04 · ONDE A TURMA SE ESPALHA -->
+            <section v-if="spectrum.length" :class="CARD">
                 <SectionHeading
                     index="04"
+                    title="Onde a turma se espalha"
+                    description="Cada aluno na sua Média Ponderada. Diz se estão juntos ou dispersos, e se a média descreve alguém. Não é uma ordenação."
+                />
+                <StudentSpectrum
+                    :points="spectrum"
+                    :average-percent="stats.summary.class_average === null ? null : Number(stats.summary.class_average)"
+                    :average-display="pct(stats.summary.class_average)"
+                    :without-result="stats.summary.students_without_result"
+                    @select="openStudentById"
+                />
+            </section>
+
+            <!-- ============================ 05 · DIFERENÇAS ENTRE DOMÍNIOS -->
+            <section :class="CARD">
+                <SectionHeading
+                    index="05"
                     title="Onde estão as diferenças entre domínios"
                     description="Na ordem do perfil de avaliação, e não por resultado. Escolha um domínio para o seguir na página."
                 >
@@ -1109,20 +1134,16 @@ const studentRows = computed(() => {
                     </template>
                 </SectionHeading>
 
-                <!-- Ribbons rather than bars, and real DOM rather than a canvas:
-                     every value is text, so this needs no parallel table. -->
-                <RibbonBar
-                    :rows="domainRibbons"
-                    :selected-id="selectedDomainId"
-                    summary="Média da turma em cada domínio, neste período."
-                    @select="toggleDomain"
-                />
+                <!-- Wide bars, in real DOM: every value is text, so this needs
+                     no parallel table. Domain ink, scale mention, trend change
+                     — three statements that never borrow each other's colour. -->
+                <DomainBars :bars="domainBars" :selected-id="selectedDomainId" @select="toggleDomain" />
             </section>
 
             <!-- =========================== 05 · COMO MUDARAM AO LONGO DO ANO -->
-            <section v-if="trendShape !== 'single'" class="border-t border-border/70 pt-7">
+            <section v-if="trendShape !== 'single'" :class="CARD">
                 <SectionHeading
-                    index="05"
+                    index="06"
                     title="Como mudaram ao longo do ano"
                     :description="trendShape === 'slope'
                         ? `Do ${slopeEnds?.from.label} ao ${slopeEnds?.to.label}, cada período por si.`
@@ -1206,10 +1227,10 @@ const studentRows = computed(() => {
                 </div>
             </section>
 
-            <!-- ================================== 06 · O MAPA DA TURMA -->
-            <section class="border-t border-border/70 pt-7">
+            <!-- ================================== 07 · O MAPA DA TURMA -->
+            <section :class="CARD">
                 <SectionHeading
-                    index="06"
+                    index="07"
                     title="Mapa da turma"
                     description="Média de cada aluno em cada domínio, neste período. O valor está sempre escrito — a cor só o reforça."
                 >

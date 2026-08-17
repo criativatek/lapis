@@ -36,14 +36,14 @@ class StatisticsChartThemeTest extends TestCase
         return (string) file_get_contents(resource_path('js/components/charts/StatChart.vue'));
     }
 
-    protected function ribbon(): string
+    protected function domainBars(): string
     {
-        return (string) file_get_contents(resource_path('js/components/infographic/RibbonBar.vue'));
+        return (string) file_get_contents(resource_path('js/components/infographic/DomainBars.vue'));
     }
 
     protected function plates(): string
     {
-        return (string) file_get_contents(resource_path('js/components/infographic/BandPlates.vue'));
+        return (string) file_get_contents(resource_path('js/components/infographic/DistributionBands.vue'));
     }
 
     protected function slopegraph(): string
@@ -51,7 +51,151 @@ class StatisticsChartThemeTest extends TestCase
         return (string) file_get_contents(resource_path('js/components/infographic/Slopegraph.vue'));
     }
 
-    // ------------------------------------- 0. a forma segue os dados
+    protected function gauge(): string
+    {
+        return (string) file_get_contents(resource_path('js/components/infographic/StatGauge.vue'));
+    }
+
+    protected function spectrum(): string
+    {
+        return (string) file_get_contents(resource_path('js/components/infographic/StudentSpectrum.vue'));
+    }
+
+    // ------------------------------------ 0. o valor é o valor, não o desenho
+
+    #[Test]
+    public function a_gauge_draws_the_canonical_figure_and_rescales_nothing(): void
+    {
+        $gauge = $this->gauge();
+        $page = $this->page();
+
+        // The arc is geometry; the figure is the Média Ponderada, formatted by
+        // the same helper the rest of the application uses.
+        $this->assertStringContainsString(':display="pct(stats.summary.class_average)"', $page);
+        $this->assertStringContainsString(':display="pct(stats.summary.accumulated_average)"', $page);
+
+        // Clamped for drawing only, so a stray value cannot overshoot the arc —
+        // and never used to change what is written in the middle.
+        $this->assertStringContainsString('Math.max(0, Math.min(100, props.percent)) / 100', $gauge);
+        $this->assertStringNotContainsString('toFixed', $gauge);
+    }
+
+    #[Test]
+    public function a_missing_value_leaves_the_gauge_empty_rather_than_at_zero(): void
+    {
+        $gauge = $this->gauge();
+
+        // A class with no result is not a class averaging nothing. The arc is
+        // simply not drawn, and the caller passes «—» as the display.
+        $this->assertStringContainsString('v-if="percent !== null"', $gauge);
+        $this->assertStringContainsString('if (props.percent === null)', $gauge);
+
+        $this->assertStringContainsString(
+            ':percent="stats.summary.class_average === null ? null : Number(stats.summary.class_average)"',
+            $this->page(),
+        );
+    }
+
+    #[Test]
+    public function the_spectrum_places_students_without_ordering_or_ranking_them(): void
+    {
+        $spectrum = $this->spectrum();
+        $page = $this->page();
+
+        // A dot sits at its own value. The sort is only so that dots landing on
+        // the same percent can stack instead of overlapping — it decides
+        // nothing about anybody.
+        $this->assertStringContainsString('left: `${point.percent}%`', $spectrum);
+        $this->assertStringContainsString('lanes', $spectrum);
+
+        // Neutral ends, and no verdicts in anything a teacher READS. Checked
+        // against the template alone: the docblock above it says «this is not a
+        // ranking», and a test that failed on the explanation rather than on
+        // the words on screen would be measuring the wrong thing.
+        preg_match('/<template>(.*)<\/template>/s', $spectrum, $rendered);
+        $this->assertNotEmpty($rendered);
+
+        foreach (['fraco', 'fracos', 'forte', 'fortes', 'ranking', 'melhores', 'piores'] as $forbidden) {
+            $this->assertDoesNotMatchRegularExpression(
+                '/\b'.preg_quote($forbidden, '/').'\b/iu',
+                $rendered[1],
+                "«{$forbidden}» é um juízo sobre um aluno, não uma posição num eixo",
+            );
+        }
+
+        // Only students who HAVE a result are placed: an axis of results has no
+        // position for an absence, and zero is not one.
+        $this->assertStringContainsString('filter((student) => student.weighted_average !== null)', $page);
+    }
+
+    #[Test]
+    public function the_spectrum_says_in_words_what_the_dots_say_in_position(): void
+    {
+        $spectrum = $this->spectrum();
+
+        // A position is unreadable without sight.
+        $this->assertStringContainsString('class="sr-only"', $spectrum);
+        $this->assertStringContainsString(':aria-label="`${point.name}: ${point.display}', $spectrum);
+    }
+
+    #[Test]
+    public function a_band_with_nobody_keeps_its_row_and_its_zero(): void
+    {
+        $bands = (string) file_get_contents(resource_path('js/components/infographic/DistributionBands.vue'));
+
+        $this->assertStringContainsString('band.count === 0', $bands);
+        $this->assertStringContainsString('Um nível vazio continua visível', $bands);
+        // Never dropped from the list.
+        $this->assertStringNotContainsString('v-if="band.count > 0"', $bands);
+    }
+
+    #[Test]
+    public function a_domain_bar_keeps_the_three_languages_apart(): void
+    {
+        $bars = (string) file_get_contents(resource_path('js/components/infographic/DomainBars.vue'));
+
+        // The bar is the DOMAIN's ink, the badge is the SCALE's tone, the change
+        // is the TREND's. Merging any two would claim something none of them
+        // says — a domain drawn in red because it fell reads as one that is
+        // failing.
+        $this->assertStringContainsString('backgroundColor: bar.colour', $bars);
+        $this->assertStringContainsString(':class="bar.mentionClass"', $bars);
+        $this->assertStringContainsString("bar.direction === 'up' ? 'text-emerald-600", $bars);
+
+        $page = $this->page();
+        $this->assertStringContainsString('colour: inks.value[row.domain_id]', $page);
+        $this->assertStringContainsString('mentionClass: toneClass(row.qualitative_band)', $page);
+    }
+
+    #[Test]
+    public function the_new_pieces_stay_still_for_a_reader_who_asked_them_to(): void
+    {
+        foreach ([
+            $this->gauge(),
+            $this->spectrum(),
+            (string) file_get_contents(resource_path('js/components/infographic/DistributionBands.vue')),
+            (string) file_get_contents(resource_path('js/components/infographic/DomainBars.vue')),
+        ] as $contents) {
+            $this->assertStringContainsString('prefersReducedMotion()', $contents);
+        }
+    }
+
+    #[Test]
+    public function no_charting_library_was_installed_for_any_of_this(): void
+    {
+        $package = (string) file_get_contents(base_path('package.json'));
+
+        // A gauge is one SVG path and a spectrum is a row of divs. Neither is
+        // worth a dependency (§31).
+        foreach (['d3', 'apexcharts', 'highcharts', 'echarts', 'gauge'] as $library) {
+            $this->assertStringNotContainsString("\"{$library}", $package);
+        }
+
+        // The one that IS here stayed.
+        $this->assertStringContainsString('"chart.js"', $package);
+    }
+
+    // ------------------------------------- 0b. a forma segue os dados
 
     #[Test]
     public function the_trend_visualisation_is_chosen_from_how_many_periods_have_results(): void
@@ -92,28 +236,19 @@ class StatisticsChartThemeTest extends TestCase
         $plates = $this->plates();
 
         // A bar chart of five bands is mostly empty plot: the count is the only
-        // number and it is never large. Plates put the band, its words, its
-        // count and its share into one object.
-        $this->assertStringContainsString('<BandPlates', $page);
+        // number and it is never large. A row carries the band, its words, its
+        // count and its share on one line, so five bands fill a card instead of
+        // floating in one.
+        $this->assertStringContainsString('<DistributionBands', $page);
         $this->assertStringNotContainsString('distributionChart', $page);
 
-        // The step between plates is the scale's ORDER, not a value — a
-        // constant offset per position, identical for an empty band and a full
-        // one, so it cannot encode a quantity.
-        $this->assertStringContainsString('marginBottom: `${index * 10}px`', $plates);
+        // The bar is the SHARE and the number beside it is the count — the only
+        // length in the row, and never scaled to the largest band.
+        $this->assertStringContainsString('width: band.percent === null', $plates);
     }
 
-    #[Test]
-    public function a_band_with_nobody_in_it_is_still_drawn(): void
-    {
-        $plates = $this->plates();
-
-        // A level with zero students is a fact about the class. Dropping it
-        // would redraw the composition for every class.
-        $this->assertStringContainsString('plate.count === 0', $plates);
-        $this->assertStringContainsString('border-dashed', $plates);
-        $this->assertStringContainsString('um nível vazio é um facto sobre a turma', $plates);
-    }
+    // The empty-band invariant moved with the component that draws it — see
+    // a_band_with_nobody_keeps_its_row_and_its_zero above.
 
     #[Test]
     public function class_movement_is_shown_as_proportional_arrows_and_not_as_a_doughnut(): void
@@ -171,30 +306,30 @@ class StatisticsChartThemeTest extends TestCase
     }
 
     #[Test]
-    public function a_ribbons_length_is_the_value_and_the_tip_is_clipped_out_of_it(): void
+    public function a_domain_bars_length_is_the_percentage_itself(): void
     {
-        $ribbon = $this->ribbon();
+        $bars = $this->domainBars();
 
-        // The width IS the percentage. The pointed tip is carved out of that
-        // width by a clip-path rather than added to it, so the furthest point
-        // of the shape lands exactly where a plain bar would have ended.
-        $this->assertStringContainsString('width: `${Math.max(row.value, 1.5)}%`', $ribbon);
-        $this->assertStringContainsString('clipPath:', $ribbon);
+        // The width IS the percentage — never scaled to the largest value,
+        // which would make a class of 40s look like a class of 90s.
+        $this->assertStringContainsString('width: `${Math.max(bar.percent, 1)}%`', $bars);
+        $this->assertStringNotContainsString('Math.max(...', $bars);
 
-        // No value is no ribbon — never a stub standing in for a zero (§37).
-        $this->assertStringContainsString('Sem resultado neste período', $ribbon);
+        // No value is no bar — never a stub standing in for a zero (§37).
+        $this->assertStringContainsString('v-if="bar.percent !== null"', $bars);
+        $this->assertStringContainsString('Sem resultado neste período', $bars);
     }
 
     #[Test]
-    public function the_ribbons_carry_their_values_as_text_rather_than_as_length_alone(): void
+    public function the_domain_bars_carry_their_values_as_text_rather_than_as_length_alone(): void
     {
-        $ribbon = $this->ribbon();
+        $bars = $this->domainBars();
 
         // Real DOM, so no parallel table is needed — but only because the value
-        // is written out beside every ribbon.
-        $this->assertStringContainsString('{{ row.display }}', $ribbon);
-        $this->assertStringContainsString('{{ row.label }}', $ribbon);
-        $this->assertStringContainsString(':aria-pressed="selectedId === row.id"', $ribbon);
+        // is written out beside every bar.
+        $this->assertStringContainsString('{{ bar.display }}', $bars);
+        $this->assertStringContainsString('{{ bar.label }}', $bars);
+        $this->assertStringContainsString(':aria-pressed="selectedId === bar.id"', $bars);
     }
 
     // ------------------------------------ 1. as três linguagens visuais
@@ -296,7 +431,7 @@ class StatisticsChartThemeTest extends TestCase
         $page = $this->page();
 
         // Only the axes that still have a canvas to dress: counting students
-        // moved to BandPlates, which needs no axis at all.
+        // moved to DistributionBands, which needs no axis at all.
         foreach (['percentAxis', 'categoryAxis'] as $helper) {
             $this->assertStringContainsString("export function {$helper}(", $theme);
             $this->assertStringContainsString($helper, $page);

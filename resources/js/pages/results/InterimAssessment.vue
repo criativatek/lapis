@@ -3,8 +3,8 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import { Camera, CircleAlert } from '@lucide/vue';
 import { computed } from 'vue';
 import Heading from '@/components/Heading.vue';
-import BandPlates from '@/components/infographic/BandPlates.vue';
-import type { BandPlate } from '@/components/infographic/BandPlates.vue';
+import DistributionBands from '@/components/infographic/DistributionBands.vue';
+import type { DistributionBand } from '@/components/infographic/DistributionBands.vue';
 import InfographicMetric from '@/components/infographic/InfographicMetric.vue';
 import SectionHeading from '@/components/infographic/SectionHeading.vue';
 import { domainColours, formatPoints, formatShare, pct, TONE_COLOURS } from '@/lib/chartTheme';
@@ -82,7 +82,7 @@ function toneClass(band: { sequence: number | null; is_negative: boolean | null 
     return qualitativeToneClasses[qualitativeToneFor({ sequence: band.sequence, is_negative: band.is_negative }, bands.value)];
 }
 
-const plates = computed<BandPlate[]>(() => props.snapshot.distribution.map((band) => {
+const distributionBands = computed<DistributionBand[]>(() => props.snapshot.distribution.map((band) => {
     const tone = qualitativeToneFor(band, bands.value);
 
     return {
@@ -90,6 +90,7 @@ const plates = computed<BandPlate[]>(() => props.snapshot.distribution.map((band
         code: band.code,
         label: band.label,
         count: band.count,
+        percent: band.percentage === null ? null : Number(band.percentage),
         share: formatShare(band.percentage),
         tone,
         colour: TONE_COLOURS[tone].border,
@@ -209,13 +210,15 @@ function remove(): void {
         </div>
 
         <!-- ============================== 02 · distribuição naquela data -->
-        <section v-if="plates.length" class="border-t border-border/70 pt-7">
+        <section v-if="distributionBands.length" class="rounded-2xl border border-border/70 bg-card p-5 shadow-sm">
             <SectionHeading
                 index="02"
                 title="Como se distribuíam os resultados"
                 :description="`Menção de cada aluno a ${interim.reference_date_label}${snapshot.scale ? `, na escala «${snapshot.scale.name_snapshot}»` : ''}.`"
             />
-            <BandPlates :plates="plates" :placed="placed" />
+            <!-- The same rows the live page uses: one visual system serves
+                 today, a cutoff, a photograph and a comparison (§33). -->
+            <DistributionBands :bands="distributionBands" :placed="placed" />
         </section>
 
         <!-- ============================== 03 · domínios naquela data -->

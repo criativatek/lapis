@@ -251,7 +251,7 @@ export function categoryAxis(chrome: Chrome, emphasised = false): Record<string,
 }
 
 // A count axis lived here until the distribution stopped being a bar chart.
-// Counting students is now done by BandPlates, which needs no axis at all —
+// Counting students is now done by DistributionBands, which needs no axis —
 // and an unused helper in a design system is a look nobody is maintaining.
 
 // ------------------------------------------------------------------ tooltip
