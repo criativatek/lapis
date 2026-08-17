@@ -7,6 +7,7 @@ use App\Models\InterimAssessment;
 use App\Models\SchoolClass;
 use App\Rules\BelongsToCurrentOrganization;
 use App\Services\Assessment\CaptureInterimAssessment;
+use App\Services\Assessment\CompareInterimToPeriodFinal;
 use App\Support\Assessment\DecisionScale;
 use App\Support\Assessment\InterimAssessmentException;
 use Illuminate\Http\RedirectResponse;
@@ -39,7 +40,11 @@ class InterimAssessmentController extends Controller
             // the global scope and would accept another school's period.
             'academic_period_id' => ['required', new BelongsToCurrentOrganization(AcademicPeriod::class)],
             'reference_date' => ['required', 'date_format:Y-m-d'],
-            'name' => ['nullable', 'string', 'max:160'],
+            // REQUIRED, and trimmed before it is judged: a name of three
+            // spaces is not a name. Accents and punctuation survive untouched —
+            // «Avaliação intercalar — Conselho de Turma» is a perfectly good
+            // thing to call this.
+            'name' => ['required', 'string', 'max:160'],
             'note' => ['nullable', 'string', 'max:2000'],
         ]);
 
@@ -53,7 +58,7 @@ class InterimAssessmentController extends Controller
                 $period,
                 Carbon::parse($validated['reference_date']),
                 $request->user(),
-                ['name' => $validated['name'] ?? null, 'note' => $validated['note'] ?? null],
+                ['name' => $validated['name'], 'note' => $validated['note'] ?? null],
             );
         } catch (InterimAssessmentException $exception) {
             // The reason names the real boundary — the fix is always a
@@ -97,6 +102,58 @@ class InterimAssessmentController extends Controller
             ],
             // READ, never rebuilt.
             'snapshot' => $interimAssessment->snapshot,
+        ]);
+    }
+
+    /**
+     * Renaming, and nothing else.
+     *
+     * A NAME IS NOT HISTORY. What must never move is what the class looked like
+     * — the snapshot, the date it was read at, the period it belongs to. What a
+     * school calls that moment is a label on the outside, and fixing a typo in
+     * it changes nothing anybody compared or exported. The model enforces the
+     * line: anything but name and note still throws.
+     */
+    public function update(Request $request, SchoolClass $class, InterimAssessment $interimAssessment): RedirectResponse
+    {
+        Gate::authorize('update', $class);
+        abort_unless((int) $interimAssessment->class_id === (int) $class->id, 404);
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:160'],
+            'note' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $interimAssessment->update([
+            'name' => trim(preg_replace('/\s+/u', ' ', $validated['name']) ?? ''),
+            'note' => $validated['note'] ?? null,
+        ]);
+
+        return back()->with('success', 'Nome atualizado. A fotografia não mudou.');
+    }
+
+    /**
+     * The photograph against where the period ended up.
+     *
+     * The interim side is READ; the final side is the canonical read model. The
+     * asymmetry is stated on screen, because a period still open will move and
+     * a teacher should know which of the two numbers can change.
+     */
+    public function compare(
+        SchoolClass $class,
+        InterimAssessment $interimAssessment,
+        CompareInterimToPeriodFinal $comparison,
+    ): Response {
+        Gate::authorize('view', $class);
+        abort_unless((int) $interimAssessment->class_id === (int) $class->id, 404);
+
+        return Inertia::render('results/InterimComparison', [
+            'schoolClass' => [
+                'ulid' => $class->ulid,
+                'label' => $class->label,
+                'subject' => $class->subject->name,
+            ],
+            'comparison' => $comparison->compare($class, $interimAssessment),
         ]);
     }
 

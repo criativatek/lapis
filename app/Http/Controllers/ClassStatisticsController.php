@@ -6,6 +6,7 @@ use App\Models\AcademicPeriod;
 use App\Models\InterimAssessment;
 use App\Models\SchoolClass;
 use App\Services\Assessment\BuildClassStatistics;
+use App\Services\Assessment\CaptureInterimAssessment;
 use App\Support\Assessment\AssessmentCutoff;
 use App\Support\Assessment\DecisionScale;
 use Illuminate\Http\Request;
@@ -29,7 +30,10 @@ use Inertia\Response;
  */
 class ClassStatisticsController extends Controller
 {
-    public function __construct(protected BuildClassStatistics $statistics) {}
+    public function __construct(
+        protected BuildClassStatistics $statistics,
+        protected CaptureInterimAssessment $capture,
+    ) {}
 
     public function show(Request $request, SchoolClass $class, ?AcademicPeriod $period = null): Response
     {
@@ -45,6 +49,14 @@ class ClassStatisticsController extends Controller
         ]);
 
         $cutoff = AssessmentCutoff::on($validated['ate'] ?? null);
+        $statistics = $this->statistics->for($class, $period, $cutoff);
+
+        // The read model decides which period is being read — including when
+        // the URL named none — so the name suggested for a photograph of it is
+        // asked of that same period rather than of a second guess.
+        $selectedPeriod = $statistics['selected_period'] === null
+            ? null
+            : AcademicPeriod::query()->whereKey($statistics['selected_period']['id'])->first();
 
         return Inertia::render('results/Statistics', [
             'schoolClass' => [
@@ -65,6 +77,10 @@ class ClassStatisticsController extends Controller
                 'label' => $cutoff->label(),
                 'is_open' => $cutoff->isOpen(),
             ],
+            // Offered in the form, never applied behind the teacher's back.
+            'suggestedInterimName' => $selectedPeriod === null
+                ? null
+                : $this->capture->suggestedName($class, $selectedPeriod),
             // What has already been kept, oldest first: a class's own timeline
             // of moments, which Relatórios will later read as one (§28).
             'interimAssessments' => InterimAssessment::query()
@@ -78,8 +94,9 @@ class ClassStatisticsController extends Controller
                     'reference_date' => $interim->reference_date->toDateString(),
                     'reference_date_label' => $interim->reference_date->format('d/m/Y'),
                     'period_label' => $interim->academicPeriod->label,
+                    'academic_period_id' => $interim->academic_period_id,
                 ])->all(),
-            'statistics' => $this->statistics->for($class, $period, $cutoff),
+            'statistics' => $statistics,
         ]);
     }
 }

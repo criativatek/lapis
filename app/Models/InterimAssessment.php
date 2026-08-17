@@ -50,16 +50,32 @@ class InterimAssessment extends Model
 
     public $timestamps = false;
 
+    /**
+     * The only things that may change after the photograph is taken.
+     *
+     * A NAME IS NOT HISTORY. What must never move is what the class looked
+     * like — the snapshot, the date it was read at, and the period it belongs
+     * to. What a school calls that moment is a label on the outside of the
+     * envelope, and correcting a typo in it changes nothing anybody compared or
+     * exported.
+     */
+    public const EDITABLE_AFTER_CAPTURE = ['name', 'note'];
+
     protected static function booted(): void
     {
         // IMMUTABILITY, ENFORCED RATHER THAN DOCUMENTED. A snapshot that could
         // be updated is not a snapshot: the moment somebody "fixes" one, every
         // comparison and every export ever taken from it silently changes
-        // meaning. Correcting one means creating a new one beside it.
-        static::updating(function (): bool {
-            throw new \LogicException(
-                'Uma avaliação intercalar é uma fotografia e não se reescreve. Crie uma nova.',
-            );
+        // meaning. Correcting the CONTENT means creating a new one beside it.
+        static::updating(function (self $interim): void {
+            $frozen = array_diff(array_keys($interim->getDirty()), self::EDITABLE_AFTER_CAPTURE);
+
+            if ($frozen !== []) {
+                throw new \LogicException(
+                    'Uma avaliação intercalar é uma fotografia e o seu conteúdo não se reescreve ('
+                    .implode(', ', $frozen).'). Crie uma nova.',
+                );
+            }
         });
     }
 

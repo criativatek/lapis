@@ -59,7 +59,7 @@ class CaptureInterimAssessment
             'class_id' => $class->id,
             'academic_period_id' => $period->id,
             'created_by' => $author->id,
-            'name' => $this->nameFor($attributes['name'] ?? null, $period, $referenceDate),
+            'name' => $this->nameFor($attributes['name'] ?? null, $class, $period),
             'reference_date' => $referenceDate->toDateString(),
             'note' => $attributes['note'] ?? null,
             'snapshot_version' => InterimAssessment::CURRENT_VERSION,
@@ -101,14 +101,39 @@ class CaptureInterimAssessment
         }
     }
 
-    /** «Avaliação intercalar — 1.º Semestre», unless the teacher said otherwise. */
-    protected function nameFor(?string $given, AcademicPeriod $period, Carbon $referenceDate): string
+    /**
+     * The name to offer, which the teacher then confirms or replaces.
+     *
+     * «Avaliação intercalar — 1.º Semestre» the first time, «2.ª Avaliação
+     * intercalar — 1.º Semestre» once there is already one in that period.
+     * Counting what is already there rather than reading the date, because the
+     * ordinal is about position among siblings and not about the calendar.
+     *
+     * A SUGGESTION AND NOTHING MORE. It is filled into an editable field and
+     * saved only once somebody presses the button — a name generated behind a
+     * teacher's back is one they never chose.
+     */
+    public function suggestedName(SchoolClass $class, AcademicPeriod $period): string
     {
-        $given = $given === null ? '' : trim($given);
+        $existing = InterimAssessment::query()
+            ->where('class_id', $class->id)
+            ->where('academic_period_id', $period->id)
+            ->count();
 
-        return $given !== ''
-            ? $given
-            : "Avaliação intercalar — {$period->label} · {$referenceDate->format('d/m/Y')}";
+        return $existing === 0
+            ? "Avaliação intercalar — {$period->label}"
+            : ($existing + 1).".ª Avaliação intercalar — {$period->label}";
+    }
+
+    /** What the teacher typed, tidied — never silently replaced. */
+    protected function nameFor(?string $given, SchoolClass $class, AcademicPeriod $period): string
+    {
+        $given = $given === null ? '' : trim(preg_replace('/\s+/u', ' ', $given) ?? '');
+
+        // The form makes this required, so an empty name means the request did
+        // not come through the form. Falling back to the suggestion is kinder
+        // than refusing, and is exactly what the teacher was shown.
+        return $given !== '' ? $given : $this->suggestedName($class, $period);
     }
 
     /**

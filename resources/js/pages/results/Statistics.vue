@@ -98,7 +98,11 @@ const props = defineProps<{
     schoolClass: { ulid: string; label: string; subject: string; has_profile: boolean; scale_name: string | null };
     decision: { label: string; classifies_by_level: boolean };
     cutoff: { date: string | null; label: string | null; is_open: boolean };
-    interimAssessments: { ulid: string; name: string; reference_date: string; reference_date_label: string; period_label: string }[];
+    suggestedInterimName: string | null;
+    interimAssessments: {
+        ulid: string; name: string; reference_date: string; reference_date_label: string;
+        period_label: string; academic_period_id: number;
+    }[];
     statistics: Statistics;
 }>();
 
@@ -146,10 +150,30 @@ function openInterimForm(): void {
     interimForm.clearErrors();
     interimForm.academic_period_id = props.statistics.selected_period?.id ?? null;
     interimForm.reference_date = props.cutoff.date ?? '';
-    interimForm.name = '';
+    // Pre-filled with the suggestion, not merely hinted at: the teacher confirms
+    // a real name rather than accepting a blank and being given one.
+    interimForm.name = props.suggestedInterimName ?? '';
     interimForm.note = '';
     savingInterim.value = true;
 }
+
+/**
+ * A name already in use in this period. Worth saying, never worth refusing —
+ * identity is the ULID, and two «Antes do Natal» in the same semester is the
+ * teacher's business.
+ */
+const duplicateName = computed<boolean>(() => {
+    const name = interimForm.name.trim().toLocaleLowerCase('pt-PT');
+
+    if (name === '') {
+        return false;
+    }
+
+    return props.interimAssessments.some(
+        (interim) => interim.academic_period_id === interimForm.academic_period_id
+            && interim.name.trim().toLocaleLowerCase('pt-PT') === name,
+    );
+});
 
 function submitInterim(): void {
     interimForm.post(`/classes/${props.schoolClass.ulid}/avaliacoes-intercalares`, {
@@ -787,9 +811,17 @@ const studentRows = computed(() => {
                         <input
                             v-model="interimForm.name"
                             type="text"
-                            :placeholder="`Avaliação intercalar — ${stats.selected_period?.label} · ${cutoff.label}`"
+                            required
+                            maxlength="160"
                             class="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                         />
+                        <span v-if="interimForm.errors.name" class="mt-1 block text-xs text-red-600">
+                            {{ interimForm.errors.name }}
+                        </span>
+                        <!-- Worth saying, never worth refusing (§6). -->
+                        <span v-else-if="duplicateName" class="mt-1 block text-xs text-amber-700 dark:text-amber-400">
+                            Já existe uma avaliação intercalar com este nome neste período. Pode continuar.
+                        </span>
                     </label>
 
                     <label class="block text-sm">

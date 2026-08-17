@@ -133,6 +133,135 @@ class InterimAssessmentTest extends TestCase
         $this->assertSame('Antes das férias', $chosen->name);
     }
 
+    #[Test]
+    public function the_suggestion_counts_what_is_already_there(): void
+    {
+        $suggest = fn (): string => $this->asTenant(fn (): string => app(CaptureInterimAssessment::class)
+            ->suggestedName($this->schoolClass(), $this->period(1)));
+
+        $this->assertSame('Avaliação intercalar — 1.º Semestre', $suggest());
+
+        $this->capture('2026-10-31');
+        $this->assertSame('2.ª Avaliação intercalar — 1.º Semestre', $suggest());
+
+        $this->capture('2026-11-15');
+        $this->assertSame('3.ª Avaliação intercalar — 1.º Semestre', $suggest());
+
+        // Counted among SIBLINGS, so the other period starts from one again.
+        $this->assertSame(
+            'Avaliação intercalar — 2.º Semestre',
+            $this->asTenant(fn (): string => app(CaptureInterimAssessment::class)
+                ->suggestedName($this->schoolClass(), $this->period(2))),
+        );
+    }
+
+    #[Test]
+    public function the_form_is_offered_the_suggestion_rather_than_having_it_applied(): void
+    {
+        $this->capture('2026-10-31');
+        $class = $this->schoolClass();
+
+        $this->actingAs($this->teacher)
+            ->get("/classes/{$class->ulid}/results/estatistica/{$this->period(1)->ulid}")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('suggestedInterimName', '2.ª Avaliação intercalar — 1.º Semestre'));
+    }
+
+    #[Test]
+    public function a_name_of_nothing_but_spaces_is_refused(): void
+    {
+        $class = $this->schoolClass();
+
+        $this->actingAs($this->teacher)
+            ->post("/classes/{$class->ulid}/avaliacoes-intercalares", [
+                'academic_period_id' => $this->period(1)->id,
+                'reference_date' => '2026-11-15',
+                'name' => '   ',
+            ])
+            ->assertSessionHasErrors('name');
+
+        $this->assertSame(0, $this->asTenant(fn (): int => InterimAssessment::query()->count()));
+    }
+
+    #[Test]
+    public function surrounding_and_repeated_spaces_are_tidied_and_accents_survive(): void
+    {
+        $interim = $this->capture('2026-11-15', attributes: [
+            'name' => "  Avaliação   intercalar — Conselho de Turma \n",
+        ]);
+
+        $this->assertSame('Avaliação intercalar — Conselho de Turma', $interim->name);
+    }
+
+    #[Test]
+    public function two_moments_with_the_same_name_are_still_two_different_moments(): void
+    {
+        // Nothing refuses this: identity is the ULID, and what a teacher calls
+        // two moments is their business (§6).
+        $first = $this->capture('2026-10-01', attributes: ['name' => 'Ponto de situação']);
+        $second = $this->capture('2026-11-15', attributes: ['name' => 'Ponto de situação']);
+
+        $this->assertNotSame($first->ulid, $second->ulid);
+        $this->assertSame('Ponto de situação', $first->name);
+        $this->assertSame('Ponto de situação', $second->name);
+
+        // And they hold different states — the name never touched the content.
+        $this->assertNull($first->snapshot['summary']['class_average']);
+        $this->assertNotNull($second->snapshot['summary']['class_average']);
+    }
+
+    #[Test]
+    public function the_name_chosen_does_not_change_a_single_number(): void
+    {
+        $plain = $this->capture('2026-11-15', attributes: ['name' => 'A']);
+        $fancy = $this->capture('2026-11-15', attributes: ['name' => 'Um nome completamente diferente']);
+
+        // Same date, same everything — a label on the envelope changes nothing
+        // inside it (§4).
+        $this->assertSame($plain->snapshot['summary'], $fancy->snapshot['summary']);
+        $this->assertSame($plain->snapshot['students'], $fancy->snapshot['students']);
+        $this->assertSame($plain->snapshot_hash, $fancy->snapshot_hash);
+    }
+
+    #[Test]
+    public function renaming_afterwards_leaves_the_photograph_untouched(): void
+    {
+        $interim = $this->capture('2026-11-15', attributes: ['name' => 'Nome inicial']);
+        $before = $interim->snapshot;
+        $class = $this->schoolClass();
+
+        $this->actingAs($this->teacher)
+            ->put("/classes/{$class->ulid}/avaliacoes-intercalares/{$interim->ulid}", [
+                'name' => '  Avaliação   intercalar de novembro  ',
+                'note' => 'Corrigido o nome.',
+            ])
+            ->assertRedirect();
+
+        $again = $this->asTenant(fn (): InterimAssessment => InterimAssessment::findOrFail($interim->id));
+
+        $this->assertSame('Avaliação intercalar de novembro', $again->name);
+        $this->assertSame('Corrigido o nome.', $again->note);
+        // THE LINE THAT MATTERS: the content, its date and its hash did not move.
+        $this->assertSame($before, $again->snapshot);
+        $this->assertSame($interim->snapshot_hash, $again->snapshot_hash);
+        $this->assertSame('2026-11-15', $again->reference_date->toDateString());
+        $this->assertTrue($again->isIntact());
+    }
+
+    #[Test]
+    public function the_content_still_refuses_to_be_written_over(): void
+    {
+        $interim = $this->capture();
+
+        // Renaming is allowed; rewriting history is not, and the model says so
+        // by naming the frozen attribute.
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('reference_date');
+
+        $interim->update(['reference_date' => '2026-12-01']);
+    }
+
     // ------------------------------------------------------ 2. imutabilidade
 
     #[Test]
@@ -166,15 +295,18 @@ class InterimAssessmentTest extends TestCase
     }
 
     #[Test]
-    public function a_snapshot_refuses_to_be_written_over(): void
+    public function the_snapshot_itself_refuses_to_be_written_over(): void
     {
         $interim = $this->capture();
 
-        // Not merely discouraged: correcting one means creating a new one
-        // beside it, because everything already drawn from this one depends on
-        // it not moving.
+        // Not merely discouraged: correcting the CONTENT means creating a new
+        // one beside it, because everything already drawn from this one depends
+        // on it not moving. The name is a label on the envelope and has its own
+        // test; this is what is inside.
         $this->expectException(LogicException::class);
-        $interim->update(['name' => 'Outro nome']);
+        $this->expectExceptionMessage('snapshot');
+
+        $interim->update(['snapshot' => ['version' => 1, 'tampered' => true]]);
     }
 
     #[Test]
@@ -419,6 +551,7 @@ class InterimAssessmentTest extends TestCase
             ->post("/classes/{$class->ulid}/avaliacoes-intercalares", [
                 'academic_period_id' => $this->period(1)->id,
                 'reference_date' => '2026-09-01',
+                'name' => 'Cedo demais',
             ])
             ->assertSessionHasErrors('reference_date');
 

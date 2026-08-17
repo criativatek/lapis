@@ -197,6 +197,9 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // module of its own (§21).
         Route::post('classes/{class}/avaliacoes-intercalares', [InterimAssessmentController::class, 'store'])->name('interim-assessments.store');
         Route::get('classes/{class}/avaliacoes-intercalares/{interimAssessment}', [InterimAssessmentController::class, 'show'])->name('interim-assessments.show');
+        Route::get('classes/{class}/avaliacoes-intercalares/{interimAssessment}/comparar', [InterimAssessmentController::class, 'compare'])->name('interim-assessments.compare');
+        // Renaming only — the snapshot itself refuses to move.
+        Route::put('classes/{class}/avaliacoes-intercalares/{interimAssessment}', [InterimAssessmentController::class, 'update'])->name('interim-assessments.update');
         Route::delete('classes/{class}/avaliacoes-intercalares/{interimAssessment}', [InterimAssessmentController::class, 'destroy'])->name('interim-assessments.destroy');
 
         // Exporting a period's qualitative mentions into the grid INOVAR

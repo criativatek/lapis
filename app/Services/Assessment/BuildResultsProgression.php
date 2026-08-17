@@ -386,6 +386,7 @@ class BuildResultsProgression
         ?Scale $scale,
         string $roundingMode,
         int $roundingScale,
+        AssessmentCutoff $cutoff,
     ): array {
         $level = fn ($scaleLevel): ?array => $scaleLevel === null ? null : [
             'code' => $scaleLevel->code,
@@ -393,6 +394,38 @@ class BuildResultsProgression
             'sequence' => $scaleLevel->sequence,
             'is_negative' => (bool) $scaleLevel->is_negative,
         ];
+
+        // A DECISION TAKEN AFTER THE CUTOFF HAD NOT BEEN TAKEN YET.
+        //
+        // The row itself already survived the query — it existed as a proposal
+        // by then. What must not travel is the decision written onto it later:
+        // showing January's grade inside November's photograph would put words
+        // in the teacher's mouth, dated to a day they had not said them.
+        //
+        // So the row is presented as it stood: proposed, undecided, and with no
+        // affordance to act, because this is history and not a working screen.
+        $decided = $cutoff->covers($classification->confirmed_at);
+
+        if (! $decided) {
+            return [
+                'ulid' => $classification->ulid,
+                'status' => ClassificationStatus::Proposed->value,
+                'can_confirm' => false,
+                'can_change' => false,
+                'is_published' => false,
+                'proposal' => $this->proposals->resolve(
+                    $scale,
+                    $classification->proposed_scale_level_id,
+                    $classification->proposed_normalized_value,
+                    $classification->proposed_value,
+                    $roundingMode,
+                    $roundingScale,
+                )->toPayload(),
+                'proposed' => $level($classification->proposedScaleLevel),
+                'final' => null,
+                'differs_from_proposal' => false,
+            ];
+        }
 
         return [
             'ulid' => $classification->ulid,
@@ -548,15 +581,18 @@ class BuildResultsProgression
             ->whereNull('superseded_by_id')
             ->with(['proposedScaleLevel', 'finalScaleLevel']);
 
-        // A DECISION EXISTS FROM THE DAY THE TEACHER TOOK IT, which is
-        // `confirmed_at`. Under a cutoff, a classification still merely proposed
-        // back then is not a decision that had been made — so the proposal rows
-        // travel as they are and only confirmed ones are held to the date.
-        if (! $cutoff->isOpen()) {
-            $query->where(fn ($inner) => $inner
-                ->whereNull('confirmed_at')
-                ->orWhere('confirmed_at', '<=', $cutoff->endOfDay()));
-        }
+        // A PROPOSAL EXISTS FROM THE MOMENT ITS ROW WAS WRITTEN.
+        //
+        // There is no `proposed_at` column because there does not need to be:
+        // ProposeClassifications creates the row, so the row IS the proposal and
+        // `created_at` is its semantic date rather than bookkeeping. A proposal
+        // generated in January simply did not exist in November, and a
+        // photograph that showed it would be showing something that had not
+        // happened.
+        //
+        // Whether the DECISION on a surviving row had been taken by then is a
+        // separate question, answered per row in classificationRow().
+        $cutoff->applyTo($query, 'created_at');
 
         $classifications = $query->get();
 
@@ -568,6 +604,7 @@ class BuildResultsProgression
                 $scale,
                 $roundingMode,
                 $roundingScale,
+                $cutoff,
             );
         }
 

@@ -9,7 +9,10 @@ use App\Models\SchoolClass;
 use App\Models\StudentItemScore;
 use App\Models\User;
 use App\Services\Assessment\BuildClassStatistics;
+use App\Services\Assessment\BuildResultsProgression;
 use App\Services\Assessment\ClassResultsCalculator;
+use App\Services\Assessment\ConfirmClassification;
+use App\Services\Assessment\ProposeClassifications;
 use App\Support\Assessment\AssessmentCutoff;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
@@ -199,6 +202,134 @@ class AssessmentCutoffTest extends TestCase
         // A free query records absolutely nothing. Keeping a moment is a
         // separate, deliberate act (§3).
         $this->assertSame($before, $after);
+    }
+
+    // ------------------------------- 2b. a classificação e a sua data
+
+    /**
+     * Proposes for the first period and returns the row of the first student
+     * who got one, so the tests below can move its dates about.
+     */
+    private function aProposal(): Classification
+    {
+        return $this->asTenant(function (): Classification {
+            app(ProposeClassifications::class)
+                ->forPeriod($this->schoolClass(), $this->period(1));
+
+            return Classification::query()->orderBy('id')->firstOrFail();
+        });
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function classificationAt(?string $until, int $enrollmentId): ?array
+    {
+        $progression = $this->asTenant(fn (): array => app(BuildResultsProgression::class)
+            ->for($this->schoolClass(), AssessmentCutoff::on($until)));
+
+        foreach ($progression['students'] as $student) {
+            if ($student['enrollment_id'] !== $enrollmentId) {
+                continue;
+            }
+
+            foreach ($student['periods'] as $row) {
+                if ($row['period_id'] === $this->period(1)->id) {
+                    return $row['classification'];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    #[Test]
+    public function a_proposal_written_before_the_cutoff_is_part_of_the_picture(): void
+    {
+        $proposal = $this->aProposal();
+        $this->asTenant(fn () => $proposal->forceFill(['created_at' => '2026-11-10 09:00:00'])->save());
+
+        $row = $this->classificationAt('2026-11-15', $proposal->enrollment_id);
+
+        $this->assertNotNull($row);
+        $this->assertSame('proposed', $row['status']);
+    }
+
+    #[Test]
+    public function a_proposal_written_after_the_cutoff_did_not_exist_yet(): void
+    {
+        $proposal = $this->aProposal();
+
+        // Proposed in January. In November there was nothing there at all — and
+        // there is no `proposed_at` column because the row IS the proposal.
+        $this->asTenant(fn () => $proposal->forceFill(['created_at' => '2027-01-20 09:00:00'])->save());
+
+        $this->assertNull($this->classificationAt('2026-11-15', $proposal->enrollment_id));
+    }
+
+    #[Test]
+    public function a_decision_taken_before_the_cutoff_is_part_of_the_picture(): void
+    {
+        $proposal = $this->aProposal();
+
+        $this->asTenant(function () use ($proposal): void {
+            app(ConfirmClassification::class)->confirm($proposal, $this->teacher);
+            $proposal->refresh();
+            $proposal->forceFill([
+                'created_at' => '2026-11-01 09:00:00',
+                'confirmed_at' => '2026-11-10 09:00:00',
+            ])->save();
+        });
+
+        $row = $this->classificationAt('2026-11-15', $proposal->enrollment_id);
+
+        $this->assertNotNull($row);
+        $this->assertNotNull($row['final'], 'a decisão já tinha sido tomada');
+        $this->assertSame('confirmed', $row['status']);
+    }
+
+    #[Test]
+    public function a_decision_taken_after_the_cutoff_is_not_shown_as_taken(): void
+    {
+        $proposal = $this->aProposal();
+
+        $this->asTenant(function () use ($proposal): void {
+            app(ConfirmClassification::class)->confirm($proposal, $this->teacher);
+            $proposal->refresh();
+            // Proposed in November, decided in January.
+            $proposal->forceFill([
+                'created_at' => '2026-11-01 09:00:00',
+                'confirmed_at' => '2027-01-20 09:00:00',
+            ])->save();
+        });
+
+        $row = $this->classificationAt('2026-11-15', $proposal->enrollment_id);
+
+        // THE ROW SURVIVES — it existed as a proposal. The decision does not:
+        // showing January's grade inside November would put words in the
+        // teacher's mouth, dated to a day they had not said them.
+        $this->assertNotNull($row);
+        $this->assertSame('proposed', $row['status']);
+        $this->assertNull($row['final']);
+        $this->assertFalse($row['is_published']);
+        $this->assertFalse($row['can_confirm'], 'uma fotografia não convida a agir');
+        $this->assertNotNull($row['proposal'], 'a proposta que existia continua lá');
+    }
+
+    #[Test]
+    public function without_a_cutoff_the_decision_reads_exactly_as_it_does_today(): void
+    {
+        $proposal = $this->aProposal();
+
+        $this->asTenant(function () use ($proposal): void {
+            app(ConfirmClassification::class)->confirm($proposal, $this->teacher);
+        });
+
+        $row = $this->classificationAt(null, $proposal->enrollment_id);
+
+        $this->assertNotNull($row);
+        $this->assertSame('confirmed', $row['status']);
+        $this->assertNotNull($row['final']);
     }
 
     // ---------------------------------------------- 3. o objeto em si

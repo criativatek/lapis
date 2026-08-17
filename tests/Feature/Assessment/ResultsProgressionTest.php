@@ -16,6 +16,7 @@ use App\Models\StudentIdentity;
 use App\Models\Subject;
 use App\Models\User;
 use App\Services\Assessment\BuildResultsProgression;
+use App\Support\Assessment\AssessmentCutoff;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
@@ -281,8 +282,17 @@ class ResultsProgressionTest extends TestCase
 
         $method = new \ReflectionMethod(app(BuildResultsProgression::class), 'classificationRow');
 
+        // An OPEN cutoff: this is the ordinary reading, with no slice of time
+        // applied. The decision travels because there is no date holding it back.
         /** @var array<string, mixed> $row */
-        $row = $method->invoke(app(BuildResultsProgression::class), $classification, null, 'half_up', 0);
+        $row = $method->invoke(
+            app(BuildResultsProgression::class),
+            $classification,
+            null,
+            'half_up',
+            0,
+            AssessmentCutoff::none(),
+        );
 
         // A 4, a 16 — the value the scale calls it. The qualitative mention
         // comes along beside it, for the colour and the tooltip.
