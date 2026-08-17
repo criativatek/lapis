@@ -9,6 +9,7 @@ use App\Http\Controllers\ClassController;
 use App\Http\Controllers\ClassificationController;
 use App\Http\Controllers\ClassPhotoImportController;
 use App\Http\Controllers\ClassProfileMigrationController;
+use App\Http\Controllers\ClassStatisticsController;
 use App\Http\Controllers\CorrectionImportController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EnrollmentController;
@@ -185,6 +186,10 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // Declared BEFORE the {period?} wildcard, which would otherwise swallow
         // it and go looking for a period called «quadro-sintese».
         Route::get('classes/{class}/results/quadro-sintese', [ResultsController::class, 'summary'])->name('results.summary');
+        // Same reason as above: declared before the {period?} wildcard. The
+        // period is optional — without one the read model opens on the latest
+        // period that actually has results.
+        Route::get('classes/{class}/results/estatistica/{period?}', [ClassStatisticsController::class, 'show'])->name('results.statistics');
 
         // Exporting a period's qualitative mentions into the grid INOVAR
         // produced. Its own capability: the assessment core does not depend on

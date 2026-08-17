@@ -241,6 +241,12 @@ function post(row: Row, data: { final_scale_level_id: number | null; final_value
                 >
                     Quadro Síntese
                 </Link>
+                <Link
+                    :href="`/classes/${schoolClass.ulid}/results/estatistica`"
+                    class="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
+                >
+                    Estatística
+                </Link>
             </div>
         </div>
 

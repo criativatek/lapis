@@ -181,6 +181,12 @@ function proposalText(proposal: Proposal | undefined): string {
                     {{ period.label }}
                 </Link>
                 <span class="rounded-md border border-primary bg-primary px-3 py-1.5 text-sm text-primary-foreground">Quadro Síntese</span>
+                <Link
+                    :href="`/classes/${schoolClass.ulid}/results/estatistica`"
+                    class="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
+                >
+                    Estatística
+                </Link>
             </div>
         </div>
 
