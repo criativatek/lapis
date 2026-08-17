@@ -250,20 +250,9 @@ export function categoryAxis(chrome: Chrome, emphasised = false): Record<string,
     };
 }
 
-/** A count axis — whole numbers only, and no decimals invented between them. */
-export function countAxis(chrome: Chrome): Record<string, unknown> {
-    return {
-        beginAtZero: true,
-        border: { display: false },
-        grid: { color: chrome.grid, drawTicks: false },
-        ticks: {
-            color: chrome.muted,
-            font: { ...CHART_FONT, size: 11, weight: 400 },
-            padding: 8,
-            precision: 0,
-        },
-    };
-}
+// A count axis lived here until the distribution stopped being a bar chart.
+// Counting students is now done by BandPlates, which needs no axis at all —
+// and an unused helper in a design system is a look nobody is maintaining.
 
 // ------------------------------------------------------------------ tooltip
 
