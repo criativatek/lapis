@@ -148,6 +148,39 @@ export function domainColours(domainIds: number[]): Record<number, string> {
     return map;
 }
 
+/**
+ * The same colour, lifted or darkened.
+ *
+ * Used for the decorative faces of a column: a lighter top, a darker side. The
+ * shift is small on purpose — enough to read as light falling on a solid, never
+ * enough to look like a second colour carrying a second meaning.
+ */
+export function shade(colour: string, amount: number): string {
+    const parse = (value: string): [number, number, number, number] => {
+        if (value.startsWith('#')) {
+            const hex = value.slice(1);
+
+            return [
+                parseInt(hex.slice(0, 2), 16),
+                parseInt(hex.slice(2, 4), 16),
+                parseInt(hex.slice(4, 6), 16),
+                1,
+            ];
+        }
+
+        const parts = value.replace(/rgba?\(|\)/g, '').split(',').map((part) => Number(part.trim()));
+
+        return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0, parts[3] ?? 1];
+    };
+
+    const [red, green, blue, alpha] = parse(colour);
+    const move = (channel: number): number => Math.max(0, Math.min(255, Math.round(
+        amount >= 0 ? channel + (255 - channel) * amount : channel * (1 + amount),
+    )));
+
+    return `rgba(${move(red)}, ${move(green)}, ${move(blue)}, ${alpha})`;
+}
+
 /** The same colour, faded, for anything the reader is not looking at. */
 export function muted(colour: string, alpha = 0.16): string {
     if (colour.startsWith('#')) {
@@ -293,6 +326,108 @@ export function formatShare(value: string | number | null): string {
 /** «6 alunos» / «1 aluno» — said properly, both ways. */
 export function students(count: number): string {
     return count === 1 ? '1 aluno' : `${count} alunos`;
+}
+
+// ------------------------------------------------------------- profundidade
+
+/**
+ * Decorative depth for a bar chart — and DECORATIVE IS THE WHOLE POINT.
+ *
+ * The front face is the bar Chart.js itself drew, at exactly the height its
+ * scale computed. This plugin only adds two parallelograms BESIDE and ABOVE it:
+ * a lighter top and a darker side, offset by a few pixels, the way a solid
+ * catches light.
+ *
+ * NOTHING QUANTITATIVE IS TOUCHED. There is no perspective, no vanishing point
+ * and no foreshortening: the offset is a constant number of pixels, identical
+ * for a bar of 4 students and a bar of 40, so it cannot change how two bars
+ * compare. A 3-D pie or a tilted axis distorts the very thing the reader is
+ * trying to judge; this cannot, because the value is still read off the front
+ * face alone and the faces are the same size on every bar.
+ *
+ * Skipped entirely on narrow viewports, where the extra geometry is noise
+ * rather than depth (§21).
+ */
+export const columnDepthPlugin = {
+    id: 'lapisColumnDepth',
+    afterDatasetsDraw(chart: ChartType): void {
+        const depth = chart.width < 480 ? 0 : 7;
+
+        if (depth === 0) {
+            return;
+        }
+
+        const context = chart.ctx;
+
+        for (const dataset of chart.getSortedVisibleDatasetMetas()) {
+            if (dataset.type !== 'bar') {
+                continue;
+            }
+
+            for (const [index, element] of dataset.data.entries()) {
+                const bar = element as unknown as { x: number; y: number; base: number; width: number; height: number };
+
+                // A bar of zero has no solid to catch any light.
+                if (bar === undefined || Math.abs(bar.base - bar.y) < 0.5) {
+                    continue;
+                }
+
+                const colours = dataset.controller.getDataset().backgroundColor;
+                const fill = Array.isArray(colours) ? String(colours[index]) : String(colours ?? '#888');
+
+                const halfWidth = bar.width / 2;
+                const left = bar.x - halfWidth;
+                const right = bar.x + halfWidth;
+
+                context.save();
+
+                // The side face: from the front face's right edge, back and up.
+                context.fillStyle = shade(fill, -0.22);
+                context.beginPath();
+                context.moveTo(right, bar.y);
+                context.lineTo(right + depth, bar.y - depth);
+                context.lineTo(right + depth, bar.base - depth);
+                context.lineTo(right, bar.base);
+                context.closePath();
+                context.fill();
+
+                // The top face: a lid, sitting ON the value rather than adding
+                // to it.
+                context.fillStyle = shade(fill, 0.2);
+                context.beginPath();
+                context.moveTo(left, bar.y);
+                context.lineTo(left + depth, bar.y - depth);
+                context.lineTo(right + depth, bar.y - depth);
+                context.lineTo(right, bar.y);
+                context.closePath();
+                context.fill();
+
+                context.restore();
+            }
+        }
+    },
+};
+
+/**
+ * A soft vertical wash under an area line.
+ *
+ * Built against the canvas's own pixel box, so it fades over the plot rather
+ * than over an arbitrary distance.
+ */
+export function areaGradient(chart: ChartType, colour: string): CanvasGradient | string {
+    const { ctx, chartArea } = chart;
+
+    if (chartArea === undefined) {
+        return muted(colour, 0.12);
+    }
+
+    const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+
+    gradient.addColorStop(0, muted(colour, 0.28));
+    gradient.addColorStop(0.55, muted(colour, 0.10));
+    gradient.addColorStop(1, muted(colour, 0.01));
+
+    return gradient;
 }
 
 export type TooltipState = {

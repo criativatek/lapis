@@ -14,7 +14,7 @@ import {
 } from 'chart.js';
 import type { ChartConfiguration } from 'chart.js';
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
-import { animation, chromeColours, externalTooltipHandler, prefersReducedMotion } from '@/lib/chartTheme';
+import { animation, chromeColours, columnDepthPlugin, externalTooltipHandler, prefersReducedMotion } from '@/lib/chartTheme';
 import type { TooltipResolver, TooltipState } from '@/lib/chartTheme';
 
 /**
@@ -51,8 +51,13 @@ const props = withDefaults(
         headers: string[];
         rows: (string | number)[][];
         heightClass?: string;
+        /**
+         * Draws a decorative lid and side face on each bar. Purely aesthetic —
+         * the front face keeps the exact height the scale gave it.
+         */
+        depth?: boolean;
     }>(),
-    { heightClass: 'h-64', tooltip: undefined },
+    { heightClass: 'h-64', tooltip: undefined, depth: false },
 );
 
 const emit = defineEmits<{ (event: 'select', dataIndex: number, datasetIndex: number): void }>();
@@ -99,7 +104,12 @@ function draw(): void {
     }
 
     chart.value?.destroy();
-    chart.value = new Chart(canvas.value, themed.value);
+    chart.value = new Chart(canvas.value, {
+        ...themed.value,
+        // Per-chart rather than globally registered, so a chart that did not ask
+        // for depth cannot pick it up by accident.
+        plugins: props.depth ? [columnDepthPlugin] : [],
+    });
 }
 
 /** A click on a bar or a point is a selection, not just a hover. */

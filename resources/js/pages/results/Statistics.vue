@@ -5,7 +5,12 @@ import type { ChartConfiguration } from 'chart.js';
 import { computed, ref } from 'vue';
 import StatChart from '@/components/charts/StatChart.vue';
 import Heading from '@/components/Heading.vue';
+import InfographicMetric from '@/components/infographic/InfographicMetric.vue';
+import RibbonBar from '@/components/infographic/RibbonBar.vue';
+import type { RibbonRow } from '@/components/infographic/RibbonBar.vue';
+import SectionHeading from '@/components/infographic/SectionHeading.vue';
 import {
+    areaGradient,
     categoryAxis,
     chromeColours,
     countAxis,
@@ -203,46 +208,27 @@ const distributionTooltip = (index: number): TooltipContent | null => {
     };
 };
 
-/** 2 · Médias por domínio. */
-const domainChart = computed<ChartConfiguration>(() => {
-    const chrome = chromeColours();
-    const rows = stats.value.domain_statistics;
+/**
+ * 2 · Médias por domínio, drawn as ribbons rather than as bars.
+ *
+ * The length IS the percentage; the pointed tip is clipped out of that width
+ * rather than added to it, so the furthest point of each ribbon sits exactly
+ * where a plain bar would have ended.
+ */
+const domainRibbons = computed<RibbonRow[]>(() => stats.value.domain_statistics.map((row) => {
+    const tone = row.qualitative_band === null ? TONE_COLOURS.neutral : TONE_COLOURS[toneOf(row.qualitative_band)];
 
     return {
-        type: 'bar',
-        data: {
-            labels: rows.map((row) => row.label),
-            datasets: [{
-                data: rows.map((row) => (row.period_average === null ? null : Number(row.period_average))),
-                backgroundColor: rows.map((row) => {
-                    const tone = row.qualitative_band === null ? TONE_COLOURS.neutral : TONE_COLOURS[toneOf(row.qualitative_band)];
+        id: row.domain_id,
+        label: row.label,
+        value: row.period_average === null ? null : Number(row.period_average),
+        display: pct(row.period_average),
+        colour: tone.border,
+        tooltip: domainTooltipFor(row) ?? { title: row.label, rows: [] },
+    };
+}));
 
-                    return isLit(row.domain_id) ? tone.fill : tone.soft;
-                }),
-                borderColor: rows.map((row) => {
-                    const tone = row.qualitative_band === null ? TONE_COLOURS.neutral : TONE_COLOURS[toneOf(row.qualitative_band)];
-
-                    return isLit(row.domain_id) ? tone.border : 'transparent';
-                }),
-                borderWidth: 1.5,
-                borderRadius: 8,
-                maxBarThickness: 26,
-            }],
-        },
-        options: {
-            indexAxis: 'y',
-            scales: { x: percentAxis(chrome), y: categoryAxis(chrome, true) },
-        },
-    } as ChartConfiguration;
-});
-
-const domainTooltip = (index: number): TooltipContent | null => {
-    const row = stats.value.domain_statistics[index];
-
-    if (row === undefined) {
-        return null;
-    }
-
+function domainTooltipFor(row: DomainStatistic): TooltipContent | null {
     const lines: TooltipContent['rows'] = [
         { label: 'Média da turma', value: pct(row.period_average), strong: true, swatch: inks.value[row.domain_id] },
     ];
@@ -275,7 +261,7 @@ const domainTooltip = (index: number): TooltipContent | null => {
     }
 
     return { title: row.label.toUpperCase(), rows: lines, footer: 'Clique para seguir este domínio na página.' };
-};
+}
 
 /** 3 · Evolução dos domínios ao longo do ano — sempre standalone. */
 const domainSeriesChart = computed<ChartConfiguration>(() => {
@@ -362,10 +348,12 @@ const classTrendChart = computed<ChartConfiguration>(() => {
             datasets: [{
                 data: series.map((row) => (row.class_average === null ? null : Number(row.class_average))),
                 borderColor: '#4f46e5',
-                backgroundColor: 'rgba(79,70,229,0.10)',
+                // A wash rather than a flat fill: it gives the line something to
+                // sit on without ever reading as a second quantity.
+                backgroundColor: (context: { chart: Parameters<typeof areaGradient>[0] }) => areaGradient(context.chart, '#4f46e5'),
                 borderWidth: 2.5,
                 pointRadius: 5,
-                pointHoverRadius: 7,
+                pointHoverRadius: 8,
                 pointBackgroundColor: chrome.surface,
                 pointBorderColor: '#4f46e5',
                 pointBorderWidth: 2.5,
@@ -455,11 +443,8 @@ const distributionRows = computed(() => stats.value.distribution.map((row) => [
     `${row.code} — ${row.label}`, row.count, formatShare(row.percentage),
 ]));
 
-const domainRows = computed(() => stats.value.domain_statistics.map((row) => [
-    row.label, pct(row.period_average), pct(row.accumulated_average),
-    row.qualitative_band?.label ?? '—', row.students_with_result,
-    row.evolution_average === null ? '—' : `${formatPoints(row.evolution_average)} p.p.`,
-]));
+// The domain figures need no sr-only table of their own: RibbonBar is real DOM
+// and every value in it is already text a screen reader reads directly.
 
 const seriesRows = computed(() => stats.value.period_series.map((row) => [
     row.label, pct(row.class_average),
@@ -495,6 +480,13 @@ function heatCell(student: Student, domainId: number): DomainCell | undefined {
 }
 
 const selected = ref<Student | null>(null);
+
+/**
+ * The crosshair. Purely a reading aid: with fifteen students and five domains,
+ * following one row across is where a finger on the screen used to go.
+ */
+const hoveredStudentId = ref<number | null>(null);
+const hoveredDomainId = ref<number | null>(null);
 
 /** The chosen student, domain by domain. */
 const studentChart = computed<ChartConfiguration | null>(() => {
@@ -695,14 +687,14 @@ const studentRows = computed(() => {
                 </div>
             </Transition>
 
-            <!-- ============================================ cards de resumo -->
+            <!-- ============================================ 01 · o resumo -->
             <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <div class="group rounded-2xl border border-border bg-card p-5 transition-shadow duration-200 hover:shadow-sm">
-                    <p class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Média Ponderada da turma</p>
-                    <p class="mt-1.5 text-3xl font-semibold tabular-nums tracking-tight">{{ pct(stats.summary.class_average) }}</p>
-                    <p class="mt-1 text-xs text-muted-foreground">
-                        <template v-if="stats.selected_period">{{ stats.selected_period.label }}, só com este período</template>
-                    </p>
+                <InfographicMetric
+                    index="01"
+                    label="Média Ponderada da turma"
+                    :value="pct(stats.summary.class_average)"
+                    :context="stats.selected_period ? `${stats.selected_period.label}, só com este período` : undefined"
+                >
                     <p
                         v-if="hasComparison && stats.evolution.average_change !== null"
                         class="mt-2.5 inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium"
@@ -717,47 +709,47 @@ const studentRows = computed(() => {
                         <Minus v-else class="size-3" />
                         {{ formatPoints(stats.evolution.average_change) }} p.p. face a {{ stats.previous_period?.label }}
                     </p>
-                </div>
+                </InfographicMetric>
 
-                <div class="rounded-2xl border border-border bg-card p-5 transition-shadow duration-200 hover:shadow-sm">
-                    <p class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Média acumulada</p>
-                    <p class="mt-1.5 text-3xl font-semibold tabular-nums tracking-tight">{{ pct(stats.summary.accumulated_average) }}</p>
-                    <p class="mt-1 text-xs text-muted-foreground">Tudo o que conta até este período</p>
-                </div>
+                <InfographicMetric
+                    index="02"
+                    label="Média acumulada"
+                    :value="pct(stats.summary.accumulated_average)"
+                    context="Tudo o que conta até este período"
+                />
 
-                <div class="rounded-2xl border border-border bg-card p-5 transition-shadow duration-200 hover:shadow-sm">
-                    <p class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Alunos com resultado</p>
-                    <p class="mt-1.5 text-3xl font-semibold tabular-nums tracking-tight">
+                <InfographicMetric index="03" label="Alunos com resultado" value="">
+                    <template #value>
                         {{ stats.summary.students_with_result }}<span class="text-lg font-normal text-muted-foreground">/{{ stats.summary.students_total }}</span>
-                    </p>
-                    <p class="mt-1 text-xs text-muted-foreground">
+                    </template>
+                    <p class="mt-2 text-xs leading-relaxed text-muted-foreground">
                         <template v-if="stats.summary.students_without_result > 0">
                             {{ stats.summary.students_without_result }} sem resultado neste período
                         </template>
                         <template v-else>Toda a turma tem resultado</template>
                     </p>
-                </div>
+                </InfographicMetric>
 
-                <div class="rounded-2xl border border-border bg-card p-5 transition-shadow duration-200 hover:shadow-sm">
-                    <p class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                        {{ stats.summary.most_common_band ? 'Menção mais frequente' : 'Informação parcial' }}
-                    </p>
-                    <template v-if="stats.summary.most_common_band">
-                        <p class="mt-1.5 flex items-center gap-2">
-                            <span class="text-3xl font-semibold tabular-nums tracking-tight">{{ stats.summary.most_common_band.code }}</span>
+                <InfographicMetric
+                    index="04"
+                    :label="stats.summary.most_common_band ? 'Menção mais frequente' : 'Informação parcial'"
+                    :value="stats.summary.most_common_band ? '' : String(stats.summary.partial_coverage_count)"
+                >
+                    <template v-if="stats.summary.most_common_band" #value>
+                        <span class="flex items-center gap-2">
+                            {{ stats.summary.most_common_band.code }}
                             <span class="rounded-md px-2 py-0.5 text-xs font-medium" :class="toneClass(stats.summary.most_common_band)">
                                 {{ stats.summary.most_common_band.label }}
                             </span>
-                        </p>
-                        <p class="mt-1 text-xs text-muted-foreground">
+                        </span>
+                    </template>
+                    <p class="mt-2 text-xs leading-relaxed text-muted-foreground">
+                        <template v-if="stats.summary.most_common_band">
                             {{ stats.summary.most_common_band.count }} de {{ stats.summary.students_total }} alunos
-                        </p>
-                    </template>
-                    <template v-else>
-                        <p class="mt-1.5 text-3xl font-semibold tabular-nums tracking-tight">{{ stats.summary.partial_coverage_count }}</p>
-                        <p class="mt-1 text-xs text-muted-foreground">resultados com informação parcial</p>
-                    </template>
-                </div>
+                        </template>
+                        <template v-else>resultados com informação parcial</template>
+                    </p>
+                </InfographicMetric>
             </div>
 
             <p
@@ -776,12 +768,12 @@ const studentRows = computed(() => {
 
             <!-- ==================================== distribuição + evolução -->
             <div class="grid gap-4 lg:grid-cols-5">
-                <section class="rounded-2xl border border-border bg-card p-6 lg:col-span-3">
-                    <h2 class="text-sm font-semibold">Distribuição pela escala</h2>
-                    <p class="mb-5 text-xs text-muted-foreground">
-                        Menção de cada aluno, colocada pela Média Ponderada Acumulada<template v-if="schoolClass.scale_name"> na escala «{{ schoolClass.scale_name }}»</template>.
-                        Clique numa barra para realçar esses alunos.
-                    </p>
+                <section class="rounded-2xl border border-border bg-card p-6 shadow-[0_1px_0_0_var(--border),0_12px_28px_-22px_rgba(0,0,0,0.45)] lg:col-span-3 dark:shadow-[0_1px_0_0_rgba(255,255,255,0.05),0_14px_32px_-24px_rgba(0,0,0,0.9)]">
+                    <SectionHeading
+                        index="01"
+                        title="Distribuição pela escala"
+                        :description="`Menção de cada aluno, colocada pela Média Ponderada Acumulada${schoolClass.scale_name ? ` na escala «${schoolClass.scale_name}»` : ''}. Clique numa coluna para realçar esses alunos.`"
+                    />
 
                     <StatChart
                         v-if="stats.distribution.length"
@@ -791,6 +783,7 @@ const studentRows = computed(() => {
                         :headers="['Banda', 'Alunos', 'Percentagem']"
                         :rows="distributionRows"
                         height-class="h-80"
+                        depth
                         @select="(index) => toggleLevel(stats.distribution[index].scale_level_id)"
                     />
                     <p v-else class="py-14 text-center text-sm text-muted-foreground">
@@ -798,12 +791,14 @@ const studentRows = computed(() => {
                     </p>
                 </section>
 
-                <section class="rounded-2xl border border-border bg-card p-6 lg:col-span-2">
-                    <h2 class="text-sm font-semibold">Evolução da turma</h2>
-                    <p class="mb-5 text-xs text-muted-foreground">
-                        <template v-if="hasComparison">Este período comparado com {{ stats.previous_period?.label }}.</template>
-                        <template v-else>Ainda não há período anterior para comparar.</template>
-                    </p>
+                <section class="rounded-2xl border border-border bg-card p-6 shadow-[0_1px_0_0_var(--border),0_12px_28px_-22px_rgba(0,0,0,0.45)] lg:col-span-2 dark:shadow-[0_1px_0_0_rgba(255,255,255,0.05),0_14px_32px_-24px_rgba(0,0,0,0.9)]">
+                    <SectionHeading
+                        index="02"
+                        title="Evolução da turma"
+                        :description="hasComparison
+                            ? `Este período comparado com ${stats.previous_period?.label}.`
+                            : 'Ainda não há período anterior para comparar.'"
+                    />
 
                     <template v-if="hasComparison">
                         <StatChart
@@ -836,43 +831,41 @@ const studentRows = computed(() => {
                 </section>
             </div>
 
-            <!-- ======================================== médias por domínio -->
-            <section class="rounded-2xl border border-border bg-card p-6">
-                <div class="mb-5 flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                        <h2 class="text-sm font-semibold">Médias por domínio</h2>
-                        <p class="text-xs text-muted-foreground">
-                            Na ordem do perfil de avaliação, e não por resultado. Clique num domínio para o seguir na página.
-                        </p>
-                    </div>
-                    <div v-if="extremes" class="flex gap-5 text-xs">
-                        <p>
-                            <span class="text-muted-foreground">Média mais elevada</span><br />
-                            <span class="font-medium">{{ extremes.highest.label }} · {{ pct(extremes.highest.period_average) }}</span>
-                        </p>
-                        <p>
-                            <span class="text-muted-foreground">Média mais baixa</span><br />
-                            <span class="font-medium">{{ extremes.lowest.label }} · {{ pct(extremes.lowest.period_average) }}</span>
-                        </p>
-                    </div>
-                </div>
+            <!-- ==================================== 03 · médias por domínio -->
+            <section class="rounded-2xl border border-border bg-card p-6 shadow-[0_1px_0_0_var(--border),0_12px_28px_-22px_rgba(0,0,0,0.45)] dark:shadow-[0_1px_0_0_rgba(255,255,255,0.05),0_14px_32px_-24px_rgba(0,0,0,0.9)]">
+                <SectionHeading
+                    index="03"
+                    title="Médias por domínio"
+                    description="Na ordem do perfil de avaliação, e não por resultado. Clique num domínio para o seguir na página."
+                >
+                    <template #aside>
+                        <div v-if="extremes" class="hidden gap-5 text-xs sm:flex">
+                            <p>
+                                <span class="text-muted-foreground">Média mais elevada</span><br />
+                                <span class="font-medium">{{ extremes.highest.label }} · {{ pct(extremes.highest.period_average) }}</span>
+                            </p>
+                            <p>
+                                <span class="text-muted-foreground">Média mais baixa</span><br />
+                                <span class="font-medium">{{ extremes.lowest.label }} · {{ pct(extremes.lowest.period_average) }}</span>
+                            </p>
+                        </div>
+                    </template>
+                </SectionHeading>
 
-                <StatChart
-                    :config="domainChart"
-                    :tooltip="domainTooltip"
+                <!-- Ribbons rather than bars, and real DOM rather than a canvas:
+                     every value is text, so this needs no parallel table. -->
+                <RibbonBar
+                    :rows="domainRibbons"
+                    :selected-id="selectedDomainId"
                     summary="Média da turma em cada domínio, neste período."
-                    :headers="['Domínio', 'Média do período', 'Média acumulada', 'Menção', 'Alunos com resultado', 'Evolução']"
-                    :rows="domainRows"
-                    :height-class="stats.domains.length > 5 ? 'h-96' : 'h-80'"
-                    @select="(index) => toggleDomain(stats.domain_statistics[index].domain_id)"
+                    @select="toggleDomain"
                 />
             </section>
 
             <!-- ==================================== evolução ao longo do ano -->
             <div v-if="hasSeveralPeriods" class="grid gap-4 lg:grid-cols-2">
-                <section class="rounded-2xl border border-border bg-card p-6">
-                    <h2 class="text-sm font-semibold">Evolução global da turma</h2>
-                    <p class="mb-5 text-xs text-muted-foreground">Média Ponderada de cada período, isoladamente.</p>
+                <section class="rounded-2xl border border-border bg-card p-6 shadow-[0_1px_0_0_var(--border),0_12px_28px_-22px_rgba(0,0,0,0.45)] dark:shadow-[0_1px_0_0_rgba(255,255,255,0.05),0_14px_32px_-24px_rgba(0,0,0,0.9)]">
+                    <SectionHeading index="04" title="Evolução global da turma" description="Média Ponderada de cada período, isoladamente." />
                     <StatChart
                         :config="classTrendChart"
                         :tooltip="classTrendTooltip"
@@ -883,9 +876,8 @@ const studentRows = computed(() => {
                     />
                 </section>
 
-                <section class="rounded-2xl border border-border bg-card p-6">
-                    <h2 class="text-sm font-semibold">Evolução dos domínios</h2>
-                    <p class="mb-5 text-xs text-muted-foreground">Cada linha é um domínio, período a período.</p>
+                <section class="rounded-2xl border border-border bg-card p-6 shadow-[0_1px_0_0_var(--border),0_12px_28px_-22px_rgba(0,0,0,0.45)] dark:shadow-[0_1px_0_0_rgba(255,255,255,0.05),0_14px_32px_-24px_rgba(0,0,0,0.9)]">
+                    <SectionHeading index="05" title="Evolução dos domínios" description="Cada linha é um domínio, período a período." />
                     <StatChart
                         :config="domainSeriesChart"
                         :tooltip="domainSeriesTooltip"
@@ -919,19 +911,19 @@ const studentRows = computed(() => {
                 </section>
             </div>
 
-            <!-- ================================================== heatmap -->
-            <section class="rounded-2xl border border-border bg-card p-6">
-                <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                        <h2 class="text-sm font-semibold">Alunos e domínios</h2>
-                        <p class="text-xs text-muted-foreground">
-                            Média de cada aluno em cada domínio, neste período. O valor está sempre escrito — a cor só o reforça.
+            <!-- ============================================ 06 · o mapa -->
+            <section class="rounded-2xl border border-border bg-card p-6 shadow-[0_1px_0_0_var(--border),0_12px_28px_-22px_rgba(0,0,0,0.45)] dark:shadow-[0_1px_0_0_rgba(255,255,255,0.05),0_14px_32px_-24px_rgba(0,0,0,0.9)]">
+                <SectionHeading
+                    index="06"
+                    title="Mapa da turma"
+                    description="Média de cada aluno em cada domínio, neste período. O valor está sempre escrito — a cor só o reforça."
+                >
+                    <template #aside>
+                        <p v-if="selectedLevel" class="text-xs text-muted-foreground">
+                            A realçar {{ studentsWord(highlightedStudents) }} com menção «{{ selectedLevel.label }}»
                         </p>
-                    </div>
-                    <p v-if="selectedLevel" class="text-xs text-muted-foreground">
-                        A realçar {{ studentsWord(highlightedStudents) }} com menção «{{ selectedLevel.label }}»
-                    </p>
-                </div>
+                    </template>
+                </SectionHeading>
 
                 <div class="-mx-2 overflow-x-auto px-2">
                     <table class="w-max min-w-full border-separate border-spacing-y-1 text-sm">
@@ -970,13 +962,19 @@ const studentRows = computed(() => {
                                 v-for="student in stats.students"
                                 :key="student.enrollment_id"
                                 class="transition-opacity duration-200"
-                                :class="matchesLevel(student) ? '' : 'opacity-30'"
+                                :class="[
+                                    matchesLevel(student) ? '' : 'opacity-30',
+                                    hoveredStudentId === student.enrollment_id ? 'bg-muted/25' : '',
+                                ]"
+                                @mouseleave="hoveredStudentId = null"
                             >
                                 <th scope="row" class="sticky left-0 z-10 bg-card px-3 py-1 text-left font-normal">
                                     <button
                                         type="button"
                                         class="flex items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                                         @click="selected = student"
+                                        @mouseenter="hoveredStudentId = student.enrollment_id"
+                                        @focus="hoveredStudentId = student.enrollment_id"
                                     >
                                         <span class="w-5 shrink-0 text-right tabular-nums text-xs text-muted-foreground">
                                             {{ student.class_number ?? '—' }}
@@ -985,15 +983,28 @@ const studentRows = computed(() => {
                                         <CircleAlert v-if="student.coverage_warning && student.weighted_average !== null" class="size-3 shrink-0 text-amber-500" />
                                     </button>
                                 </th>
-                                <td v-for="domain in stats.domains" :key="domain.id" class="px-1.5 py-1 text-center">
+                                <td
+                                    v-for="domain in stats.domains"
+                                    :key="domain.id"
+                                    class="px-1.5 py-1 text-center transition-colors duration-150"
+                                    :class="hoveredDomainId === domain.id ? 'bg-muted/25' : ''"
+                                    @mouseenter="hoveredStudentId = student.enrollment_id; hoveredDomainId = domain.id"
+                                >
+                                    <!--
+                                      A cell with a face: a solid bottom edge and
+                                      a soft shadow, and a lift of 2px under the
+                                      pointer. Decorative — the value is written
+                                      in it and the tone only reinforces (§22).
+                                    -->
                                     <span
-                                        class="inline-flex min-w-16 items-center justify-center rounded-lg px-2 py-1.5 text-xs tabular-nums transition-all duration-200"
+                                        class="inline-flex min-w-16 items-center justify-center rounded-lg px-2 py-1.5 text-xs tabular-nums shadow-[0_1px_0_0_rgba(0,0,0,0.06)] dark:shadow-[0_1px_0_0_rgba(255,255,255,0.06)]"
                                         :class="[
                                             heatCell(student, domain.id)?.mention
                                                 ? toneClass(heatCell(student, domain.id)!.mention)
                                                 : 'bg-muted/40 text-muted-foreground',
                                             isLit(domain.id) ? '' : 'opacity-25',
                                             selectedDomainId === domain.id ? 'ring-1 ring-primary/40' : '',
+                                            prefersReducedMotion() ? '' : 'transition-all duration-150 hover:-translate-y-0.5 hover:shadow-[0_3px_6px_-2px_rgba(0,0,0,0.25)]',
                                         ]"
                                         :title="heatCell(student, domain.id)?.mention?.label ?? 'Sem resultado'"
                                     >

@@ -36,6 +36,75 @@ class StatisticsChartThemeTest extends TestCase
         return (string) file_get_contents(resource_path('js/components/charts/StatChart.vue'));
     }
 
+    protected function ribbon(): string
+    {
+        return (string) file_get_contents(resource_path('js/components/infographic/RibbonBar.vue'));
+    }
+
+    // ------------------------- 0. profundidade decorativa, nunca quantitativa
+
+    #[Test]
+    public function the_depth_on_a_column_is_a_constant_offset_and_never_a_perspective(): void
+    {
+        $theme = $this->theme();
+
+        // THE POINT OF THE WHOLE THING. A 3-D pie or a tilted axis distorts the
+        // very comparison the reader is making. This cannot: the offset is a
+        // fixed number of pixels, identical on a bar of 4 students and one of
+        // 40, so it cannot change how two bars compare.
+        $this->assertStringContainsString('const depth = chart.width < 480 ? 0 : 7;', $theme);
+
+        preg_match('/afterDatasetsDraw\(chart: ChartType\): void \{(.*?)\n    \},/s', $theme, $matches);
+        $this->assertNotEmpty($matches, 'o plugin de profundidade tem de existir');
+
+        $body = $matches[1];
+
+        // The front face is Chart.js's own bar, untouched. Nothing here may
+        // recompute a height, a scale or a value.
+        foreach (['getPixelForValue', 'scale.getPixel', 'bar.height *', 'bar.y *'] as $forbidden) {
+            $this->assertStringNotContainsString($forbidden, $body, "o plugin não pode recalcular geometria: «{$forbidden}»");
+        }
+
+        // The faces are drawn from the bar's own y and base, offset by `depth`.
+        $this->assertStringContainsString('context.moveTo(right, bar.y)', $body);
+        $this->assertStringContainsString('bar.y - depth', $body);
+    }
+
+    #[Test]
+    public function depth_is_dropped_entirely_on_a_narrow_viewport(): void
+    {
+        // On a phone the extra geometry is noise rather than depth (§21).
+        $this->assertStringContainsString('chart.width < 480 ? 0 : 7', $this->theme());
+        $this->assertStringContainsString('if (depth === 0) {', $this->theme());
+    }
+
+    #[Test]
+    public function a_ribbons_length_is_the_value_and_the_tip_is_clipped_out_of_it(): void
+    {
+        $ribbon = $this->ribbon();
+
+        // The width IS the percentage. The pointed tip is carved out of that
+        // width by a clip-path rather than added to it, so the furthest point
+        // of the shape lands exactly where a plain bar would have ended.
+        $this->assertStringContainsString('width: `${Math.max(row.value, 1.5)}%`', $ribbon);
+        $this->assertStringContainsString('clipPath:', $ribbon);
+
+        // No value is no ribbon — never a stub standing in for a zero (§37).
+        $this->assertStringContainsString('Sem resultado neste período', $ribbon);
+    }
+
+    #[Test]
+    public function the_ribbons_carry_their_values_as_text_rather_than_as_length_alone(): void
+    {
+        $ribbon = $this->ribbon();
+
+        // Real DOM, so no parallel table is needed — but only because the value
+        // is written out beside every ribbon.
+        $this->assertStringContainsString('{{ row.display }}', $ribbon);
+        $this->assertStringContainsString('{{ row.label }}', $ribbon);
+        $this->assertStringContainsString(':aria-pressed="selectedId === row.id"', $ribbon);
+    }
+
     // ------------------------------------ 1. as três linguagens visuais
 
     #[Test]
@@ -209,6 +278,33 @@ class StatisticsChartThemeTest extends TestCase
         $this->assertStringContainsString(':aria-label="summary"', $chart);
         $this->assertStringContainsString('class="sr-only"', $chart);
         $this->assertStringNotContainsString('class="hidden"', $chart);
+    }
+
+    #[Test]
+    public function the_infographic_numerals_are_decoration_and_not_content(): void
+    {
+        $heading = (string) file_get_contents(resource_path('js/components/infographic/SectionHeading.vue'));
+
+        // «01» says the page has a reading order. It is not a name, an id or a
+        // value, so it is hidden from assistive technology and the real heading
+        // beside it does the work.
+        $this->assertStringContainsString('aria-hidden="true"', $heading);
+        $this->assertStringContainsString('<h2 :id="id"', $heading);
+    }
+
+    #[Test]
+    public function the_heatmap_cells_lift_without_hiding_anything(): void
+    {
+        $page = $this->page();
+
+        // Depth is decoration: a lift and a shadow, both skipped for a reader
+        // who asked for less motion, and neither carrying meaning (§22).
+        $this->assertStringContainsString('hover:-translate-y-0.5', $page);
+        $this->assertStringContainsString("prefersReducedMotion() ? '' : 'transition-all duration-150 hover:-translate-y-0.5", $page);
+
+        // The crosshair is a reading aid over a wide table, and nothing more.
+        $this->assertStringContainsString('hoveredStudentId', $page);
+        $this->assertStringContainsString('hoveredDomainId', $page);
     }
 
     #[Test]
