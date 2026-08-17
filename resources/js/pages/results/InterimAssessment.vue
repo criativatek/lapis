@@ -58,6 +58,8 @@ type Snapshot = {
 const props = defineProps<{
     schoolClass: { ulid: string; label: string; subject: string };
     decision: { label: string; classifies_by_level: boolean };
+    canExportToInovar: boolean;
+    periodUlid: string;
     interim: {
         ulid: string; name: string; reference_date: string; reference_date_label: string;
         note: string | null; created_at: string; snapshot_version: number; is_intact: boolean;
@@ -124,6 +126,15 @@ function remove(): void {
                     class="rounded-md border border-primary bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
                 >
                     Comparar com o final do {{ snapshot.period.label_snapshot }}
+                </Link>
+                <!-- Only where the capability is there: a school that never
+                     uses INOVAR never meets this. -->
+                <Link
+                    v-if="canExportToInovar"
+                    :href="`/classes/${schoolClass.ulid}/exports/inovar/${periodUlid}?intercalar=${interim.ulid}`"
+                    class="rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-muted/40"
+                >
+                    Exportar para INOVAR
                 </Link>
                 <button
                     type="button"

@@ -390,14 +390,21 @@ class InovarPartialCoverageTest extends TestCase
     #[Test]
     public function the_detail_comes_from_the_service_that_raises_the_warning(): void
     {
-        $source = (string) file_get_contents(app_path('Services/Export/InovarExportPreviewBuilder.php'));
+        // Reading the mentions and their coverage moved into the source when a
+        // second one — a kept moment — had to answer the same question. The
+        // rule did not move: it is still the service the ⚠ on Resultados reads.
+        $source = (string) file_get_contents(app_path('Services/Export/CurrentPeriodResultsSource.php'));
+        $builder = (string) file_get_contents(app_path('Services/Export/InovarExportPreviewBuilder.php'));
 
-        // The same service the ⚠ on Resultados reads — no second rule, and no
-        // guessing at missing elements by counting.
         $this->assertStringContainsString('CoverageExplanation', $source);
         $this->assertStringContainsString('$this->coverage->forResults(', $source);
-        $this->assertStringNotContainsString('raises_coverage_warning', $source);
-        $this->assertStringNotContainsString('StudentItemScore', $source);
+
+        // No second rule, and no guessing at missing elements by counting —
+        // in either file.
+        foreach ([$source, $builder] as $contents) {
+            $this->assertStringNotContainsString('raises_coverage_warning', $contents);
+            $this->assertStringNotContainsString('StudentItemScore', $contents);
+        }
     }
 
     // ------------------------------------------- 5. e nada disto bloqueia

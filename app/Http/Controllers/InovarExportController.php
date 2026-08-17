@@ -3,12 +3,15 @@
 namespace App\Http\Controllers;
 
 use App\Models\AcademicPeriod;
+use App\Models\InterimAssessment;
 use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Audit\AuditLog;
 use App\Services\Export\FillInovarTemplate;
 use App\Services\Export\InovarExportPreviewBuilder;
+use App\Services\Export\InovarExportSource;
 use App\Services\Export\InovarTemplateReader;
+use App\Services\Export\InterimSnapshotSource;
 use App\Support\Export\InovarTemplateException;
 use App\Support\Export\InovarTemplateStorage;
 use Illuminate\Http\RedirectResponse;
@@ -40,15 +43,17 @@ class InovarExportController extends Controller
         protected AuditLog $audit,
     ) {}
 
-    public function create(SchoolClass $class, string $period): Response
+    public function create(Request $request, SchoolClass $class, string $period): Response
     {
         Gate::authorize('view', $class);
 
         $selected = $this->period($class, $period);
+        $interim = $this->interim($request, $class);
 
         return Inertia::render('exports/Inovar', [
             'schoolClass' => ['ulid' => $class->ulid, 'label' => $class->label, 'subject' => $class->subject->name],
             'period' => ['ulid' => $selected->ulid, 'label' => $selected->label],
+            'interim' => $this->interimPayload($interim),
             'token' => null,
             'preview' => null,
         ]);
@@ -59,6 +64,7 @@ class InovarExportController extends Controller
         Gate::authorize('update', $class);
 
         $selected = $this->period($class, $period);
+        $interim = $this->interim($request, $class);
 
         $data = $request->validate([
             // The grid INOVAR exports is .xls; .xlsx is accepted because a
@@ -81,7 +87,8 @@ class InovarExportController extends Controller
             'schoolClass' => ['ulid' => $class->ulid, 'label' => $class->label, 'subject' => $class->subject->name],
             'period' => ['ulid' => $selected->ulid, 'label' => $selected->label],
             'token' => $token,
-            'preview' => $this->previewBuilder->build($class, $selected, $template),
+            'interim' => $this->interimPayload($interim),
+            'preview' => $this->previewBuilder->build($class, $selected, $template, $this->sourceFor($interim)),
         ]);
     }
 
@@ -106,6 +113,7 @@ class InovarExportController extends Controller
         Gate::authorize('update', $class);
 
         $selected = $this->period($class, $period);
+        $interim = $this->interim($request, $class);
 
         if (! $this->storage->exists($token)) {
             return back()->withErrors(['template' => __('A grelha carregada já não está disponível. Carregue-a novamente.')]);
@@ -114,7 +122,7 @@ class InovarExportController extends Controller
         try {
             $templatePath = $this->storage->absolutePath($token);
             $template = $this->reader->read($templatePath);
-            $preview = $this->previewBuilder->build($class, $selected, $template);
+            $preview = $this->previewBuilder->build($class, $selected, $template, $this->sourceFor($interim));
 
             if ($preview['summary']['blocking_errors'] !== []) {
                 return back()->withErrors(['template' => $preview['summary']['blocking_errors'][0]]);
@@ -180,6 +188,52 @@ class InovarExportController extends Controller
     {
         return AcademicPeriod::where('academic_year_id', $class->academic_year_id)
             ->where('ulid', $ulid)->firstOrFail();
+    }
+
+    /**
+     * The kept moment being exported, if this is that kind of export.
+     *
+     * Resolved from the request rather than the route so the whole flow — the
+     * upload, the preview and the download — is the SAME three endpoints a
+     * school already uses for the end of a period. A second set would be a
+     * second thing to keep in agreement with the first (§9).
+     *
+     * Scoped to this class: a ULID is not a key to everything.
+     */
+    protected function interim(Request $request, SchoolClass $class): ?InterimAssessment
+    {
+        $ulid = $request->query('intercalar');
+
+        if (! is_string($ulid) || $ulid === '') {
+            return null;
+        }
+
+        return InterimAssessment::query()
+            ->where('class_id', $class->id)
+            ->where('ulid', $ulid)
+            ->firstOrFail();
+    }
+
+    /**
+     * Where the mentions come from — a stored photograph, or the period as it
+     * stands. Null lets the builder use its own default.
+     */
+    protected function sourceFor(?InterimAssessment $interim): ?InovarExportSource
+    {
+        return $interim === null ? null : new InterimSnapshotSource($interim);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    protected function interimPayload(?InterimAssessment $interim): ?array
+    {
+        return $interim === null ? null : [
+            'ulid' => $interim->ulid,
+            // The teacher's own name for the moment (§8 of the naming decision).
+            'name' => $interim->name,
+            'reference_date_label' => $interim->reference_date->format('d/m/Y'),
+        ];
     }
 
     protected function user(): User

@@ -10,6 +10,7 @@ use App\Services\Assessment\CaptureInterimAssessment;
 use App\Services\Assessment\CompareInterimToPeriodFinal;
 use App\Support\Assessment\DecisionScale;
 use App\Support\Assessment\InterimAssessmentException;
+use App\Support\Entitlements\Entitlements;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -88,6 +89,10 @@ class InterimAssessmentController extends Controller
                 'subject' => $class->subject->name,
             ],
             'decision' => DecisionScale::for($scale)->toPayload(),
+            // Presentation only: the export route is gated by the same
+            // capability, and hiding a link is never what keeps anybody out.
+            'canExportToInovar' => app(Entitlements::class)->allows('inovar_export'),
+            'periodUlid' => $interimAssessment->academicPeriod->ulid,
             'interim' => [
                 'ulid' => $interimAssessment->ulid,
                 'name' => $interimAssessment->name,

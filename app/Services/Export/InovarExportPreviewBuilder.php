@@ -6,8 +6,6 @@ use App\Domain\Export\InovarTemplate;
 use App\Models\AcademicPeriod;
 use App\Models\Domain;
 use App\Models\Enrollment;
-use App\Models\Scale;
-use App\Models\ScaleLevel;
 use App\Models\SchoolClass;
 use App\Services\Assessment\BuildResultsProgression;
 use App\Services\Assessment\ClassResultsCalculator;
@@ -39,23 +37,36 @@ class InovarExportPreviewBuilder
     /**
      * @return array<string, mixed>
      */
-    public function build(SchoolClass $class, AcademicPeriod $period, InovarTemplate $template): array
-    {
-        $scale = $class->profileVersion?->scale()->with('levels')->first();
+    public function build(
+        SchoolClass $class,
+        AcademicPeriod $period,
+        InovarTemplate $template,
+        ?InovarExportSource $source = null,
+    ): array {
+        // The period as it stands, unless a kept moment was handed over. The
+        // grid, the matching, the filling and the fidelity checks are identical
+        // either way — only where the mentions come from differs (§9, §10).
+        $source ??= new CurrentPeriodResultsSource(
+            $class, $period, $this->progression, $this->calculator, $this->coverage, $this->codes,
+        );
 
         $enrollments = $this->enrollments($class);
 
         $domains = $this->domainRows($class, $template);
         $students = $this->studentRows($enrollments, $template);
-        $values = $this->valueRows($class, $period, $students, $domains);
+        $values = $this->valueRows($source, $students, $domains);
 
-        $blocking = $this->blockingErrors($students, $domains, $scale, $this->withoutProcessNumber($enrollments));
+        $blocking = $this->blockingErrors($students, $domains, $source, $this->withoutProcessNumber($enrollments));
         $warnings = $this->warnings($students, $values);
 
         return [
             'students' => $students,
             'domains' => $domains,
             'values' => $values,
+            'source' => [
+                'label' => $source->label(),
+                'reference_label' => $source->referenceLabel(),
+            ],
             'summary' => [
                 'matched_students' => count(array_filter($students, fn (array $row): bool => $row['matched'])),
                 'unmatched_students' => count(array_filter($students, fn (array $row): bool => ! $row['matched'])),
@@ -210,14 +221,12 @@ class InovarExportPreviewBuilder
      * @param  list<array<string, mixed>>  $domains
      * @return list<array<string, mixed>>
      */
-    protected function valueRows(SchoolClass $class, AcademicPeriod $period, array $students, array $domains): array
+    protected function valueRows(InovarExportSource $source, array $students, array $domains): array
     {
-        $byEnrollment = $this->mentionsByEnrollment($class, $period);
-
-        // WHY a result is partial, from the service that already answers that
-        // question for the ⚠ on Resultados. Read in the same scope the warning
-        // itself comes from, so the reason and the flag can never disagree.
-        $notes = $this->coverage->forResults($this->calculator->forPeriod($class, $period));
+        // Whatever the source is, it answers the same question: for this
+        // enrolment and this domain, which mention, which code, and why was it
+        // partial. The builder never asks how it knows.
+        $cells = $source->cells();
 
         $rows = [];
 
@@ -231,16 +240,15 @@ class InovarExportPreviewBuilder
                     continue;
                 }
 
-                $cell = $byEnrollment[$student['enrollment_id']][$domain['lapis_domain_id']] ?? null;
-                $mention = $cell['mention'] ?? null;
-                $code = $this->codes->forLevel($mention === null ? null : $this->levelOf($class, $mention));
+                $cell = $cells[$student['enrollment_id']][$domain['lapis_domain_id']] ?? null;
+                $code = $cell['inovar_code'] ?? null;
 
                 $rows[] = [
                     'row' => $student['row'],
                     'column' => $domain['inovar_column'],
                     'student' => $student['display_name'],
                     'domain' => $domain['lapis_domain'],
-                    'qualitative_band' => $mention['label'] ?? null,
+                    'qualitative_band' => $cell['band_label'] ?? null,
                     'inovar_code' => $code,
                     'coverage_warning' => (bool) ($cell['coverage_warning'] ?? false),
                     // The elements the engine itself named as the reason: their
@@ -248,7 +256,7 @@ class InovarExportPreviewBuilder
                     // against them. Never a state inferred from a missing score
                     // — a cell nobody has graded yet says nothing about whether
                     // anybody was there.
-                    'coverage_elements' => $notes[$student['enrollment_id']]['domains'][$domain['lapis_domain_id']]['absences'] ?? [],
+                    'coverage_elements' => $cell['coverage_elements'] ?? [],
                     // No mention is no mark. The cell is left exactly as the
                     // grid had it — never an F, never a zero (§10).
                     'writable' => $code !== null,
@@ -259,43 +267,9 @@ class InovarExportPreviewBuilder
         return $rows;
     }
 
-    /**
-     * The accumulated mention of every domain, per enrolment, for this period —
-     * read straight from the model the Quadro Síntese reads.
-     *
-     * @return array<int, array<int, array<string, mixed>>>
-     */
-    protected function mentionsByEnrollment(SchoolClass $class, AcademicPeriod $period): array
-    {
-        $byEnrollment = [];
-
-        foreach ($this->progression->for($class)['students'] as $student) {
-            foreach ($student['periods'] as $row) {
-                if ($row['period_id'] !== $period->id) {
-                    continue;
-                }
-
-                foreach ($row['domains'] as $domain) {
-                    $byEnrollment[$student['enrollment_id']][$domain['domain_id']] = [
-                        'mention' => $domain['mention'],
-                        'coverage_warning' => $domain['coverage_warning'],
-                    ];
-                }
-            }
-        }
-
-        return $byEnrollment;
-    }
-
-    /**
-     * @param  array<string, mixed>  $mention
-     */
-    protected function levelOf(SchoolClass $class, array $mention): ?ScaleLevel
-    {
-        $scale = $class->profileVersion?->scale()->with('levels')->first();
-
-        return $scale?->levels->firstWhere('id', $mention['scale_level_id']);
-    }
+    // Reading the mentions and resolving a band's code moved to
+    // CurrentPeriodResultsSource, which is now one of two places that can
+    // answer that question. The builder no longer knows which it is talking to.
 
     /**
      * @param  list<array<string, mixed>>  $students
@@ -303,7 +277,7 @@ class InovarExportPreviewBuilder
      * @param  list<string>  $withoutNumber
      * @return list<string>
      */
-    protected function blockingErrors(array $students, array $domains, ?Scale $scale, array $withoutNumber): array
+    protected function blockingErrors(array $students, array $domains, InovarExportSource $source, array $withoutNumber): array
     {
         $errors = [];
 
@@ -323,8 +297,8 @@ class InovarExportPreviewBuilder
             }
         }
 
-        if (! $this->codes->covers($scale)) {
-            $missing = $this->codes->missingFrom($scale);
+        if (! $source->isExportable()) {
+            $missing = $source->missingBands();
 
             $errors[] = $missing === []
                 ? 'A escala de classificação desta turma não tem correspondência INOVAR configurada.'

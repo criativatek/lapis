@@ -30,9 +30,14 @@ type Preview = {
 const props = defineProps<{
     schoolClass: { ulid: string; label: string; subject: string };
     period: { ulid: string; label: string };
+    /** Set when a kept moment is being exported instead of the period itself. */
+    interim: { ulid: string; name: string; reference_date_label: string } | null;
     token: string | null;
     preview: Preview | null;
 }>();
+
+/** Carried through the upload and the download, so all three steps agree. */
+const interimQuery = computed(() => (props.interim === null ? '' : `?intercalar=${props.interim.ulid}`));
 
 const page = usePage();
 
@@ -64,7 +69,7 @@ function base(): string {
  * the attachment and stays where it is, and a refusal redirects back with the
  * reason on it.
  */
-const downloadUrl = computed(() => (props.token === null ? '#' : `${base()}/${props.token}`));
+const downloadUrl = computed(() => (props.token === null ? '#' : `${base()}/${props.token}${interimQuery.value}`));
 
 function chooseFile(): void {
     fileInput.value?.click();
@@ -82,7 +87,7 @@ function submitTemplate(): void {
         return;
     }
 
-    upload.post(base(), { forceFormData: true, preserveScroll: true });
+    upload.post(base() + interimQuery.value, { forceFormData: true, preserveScroll: true });
 }
 
 /**
@@ -104,6 +109,16 @@ function noteDownloadStarted(): void {
                 title="Exportar para INOVAR"
                 :description="`${schoolClass.label} · ${schoolClass.subject} · ${period.label}`"
             />
+
+            <!-- WHAT is being exported, said before anything is uploaded: the
+                 end of the period, or a moment kept along the way (§15, §16). -->
+            <p
+                v-if="interim"
+                class="mt-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm"
+            >
+                <strong>{{ interim.name }}</strong> · fotografia de {{ interim.reference_date_label }}.
+                As menções são as que estavam guardadas nessa data — alterações posteriores não entram.
+            </p>
             <Link :href="`/classes/${schoolClass.ulid}/results/quadro-sintese`" class="text-sm text-muted-foreground hover:underline">
                 ← Voltar ao Quadro Síntese
             </Link>
