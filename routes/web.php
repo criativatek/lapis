@@ -16,6 +16,7 @@ use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\EvidenceController;
 use App\Http\Controllers\InovarExportController;
 use App\Http\Controllers\InstrumentController;
+use App\Http\Controllers\InterimAssessmentController;
 use App\Http\Controllers\InterventionController;
 use App\Http\Controllers\PublicSelfAssessmentController;
 use App\Http\Controllers\ReportsController;
@@ -190,6 +191,13 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // period is optional — without one the read model opens on the latest
         // period that actually has results.
         Route::get('classes/{class}/results/estatistica/{period?}', [ClassStatisticsController::class, 'show'])->name('results.statistics');
+
+        // Avaliações intercalares — a kept photograph of a class on a date.
+        // Inside Resultados, because that is what it is a photograph OF; not a
+        // module of its own (§21).
+        Route::post('classes/{class}/avaliacoes-intercalares', [InterimAssessmentController::class, 'store'])->name('interim-assessments.store');
+        Route::get('classes/{class}/avaliacoes-intercalares/{interimAssessment}', [InterimAssessmentController::class, 'show'])->name('interim-assessments.show');
+        Route::delete('classes/{class}/avaliacoes-intercalares/{interimAssessment}', [InterimAssessmentController::class, 'destroy'])->name('interim-assessments.destroy');
 
         // Exporting a period's qualitative mentions into the grid INOVAR
         // produced. Its own capability: the assessment core does not depend on

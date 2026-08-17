@@ -379,6 +379,122 @@ class InterimAssessmentTest extends TestCase
 
     // ------------------------------------------------------ 6. isolamento
 
+    // ------------------------------------------------------ 7. pela web
+
+    #[Test]
+    public function a_teacher_can_keep_a_moment_and_open_it_again(): void
+    {
+        $class = $this->schoolClass();
+
+        $this->actingAs($this->teacher)
+            ->post("/classes/{$class->ulid}/avaliacoes-intercalares", [
+                'academic_period_id' => $this->period(1)->id,
+                'reference_date' => '2026-11-15',
+                'name' => 'Antes do Natal',
+                'note' => 'Ponto de situação.',
+            ])
+            ->assertRedirect();
+
+        $interim = $this->asTenant(fn (): InterimAssessment => InterimAssessment::firstOrFail());
+
+        $this->assertSame('Antes do Natal', $interim->name);
+
+        $this->actingAs($this->teacher)
+            ->get("/classes/{$class->ulid}/avaliacoes-intercalares/{$interim->ulid}")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('results/InterimAssessment')
+                ->where('interim.reference_date_label', '15/11/2026')
+                ->where('interim.is_intact', true)
+                ->has('snapshot.students')
+                ->has('snapshot.summary'));
+    }
+
+    #[Test]
+    public function a_refused_date_comes_back_saying_which_boundary_it_broke(): void
+    {
+        $class = $this->schoolClass();
+
+        $this->actingAs($this->teacher)
+            ->post("/classes/{$class->ulid}/avaliacoes-intercalares", [
+                'academic_period_id' => $this->period(1)->id,
+                'reference_date' => '2026-09-01',
+            ])
+            ->assertSessionHasErrors('reference_date');
+
+        // Nothing was written on the way out.
+        $this->assertSame(0, $this->asTenant(fn (): int => InterimAssessment::query()->count()));
+    }
+
+    #[Test]
+    public function the_statistics_page_lists_what_has_been_kept(): void
+    {
+        $this->capture('2026-10-31', attributes: ['name' => 'Primeira']);
+        $this->capture('2026-12-12', attributes: ['name' => 'Segunda']);
+
+        $class = $this->schoolClass();
+
+        $this->actingAs($this->teacher)
+            ->get("/classes/{$class->ulid}/results/estatistica")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->has('interimAssessments', 2)
+                // Oldest first: a class's own timeline of moments (§28).
+                ->where('interimAssessments.0.name', 'Primeira')
+                ->where('interimAssessments.1.name', 'Segunda'));
+    }
+
+    #[Test]
+    public function another_organization_cannot_open_a_kept_moment(): void
+    {
+        $interim = $this->capture();
+        $class = $this->schoolClass();
+        $stranger = User::factory()->create();
+
+        $this->actingAs($stranger)
+            ->get("/classes/{$class->ulid}/avaliacoes-intercalares/{$interim->ulid}")
+            ->assertNotFound();
+    }
+
+    #[Test]
+    public function a_moment_kept_for_another_class_is_not_reachable_through_this_one(): void
+    {
+        $interim = $this->capture();
+
+        $otherClass = $this->asTenant(function (): SchoolClass {
+            $class = $this->schoolClass();
+
+            return SchoolClass::create([
+                'academic_year_id' => $class->academic_year_id,
+                'subject_id' => $class->subject_id,
+                'label' => '7.º B',
+                'grade_level' => '7.º',
+                'status' => 'active',
+            ]);
+        });
+
+        // Same organization, wrong class: the ULID is not a key to everything.
+        //
+        // The refusal comes from the class policy, which stops a teacher at a
+        // class they do not teach before the interim is even looked at — so the
+        // answer is 403 rather than 404. The controller's own check that the
+        // photograph belongs to this class is the second lock, for a teacher
+        // who does teach both.
+        $this->actingAs($this->teacher)
+            ->get("/classes/{$otherClass->ulid}/avaliacoes-intercalares/{$interim->ulid}")
+            ->assertForbidden();
+    }
+
+    #[Test]
+    public function a_forged_identifier_finds_nothing(): void
+    {
+        $class = $this->schoolClass();
+
+        $this->actingAs($this->teacher)
+            ->get("/classes/{$class->ulid}/avaliacoes-intercalares/01ZZZZZZZZZZZZZZZZZZZZZZZZ")
+            ->assertNotFound();
+    }
+
     #[Test]
     public function an_interim_belongs_to_the_organization_that_took_it(): void
     {

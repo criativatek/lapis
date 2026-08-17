@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\AcademicPeriod;
+use App\Models\InterimAssessment;
 use App\Models\SchoolClass;
 use App\Services\Assessment\BuildClassStatistics;
 use App\Support\Assessment\AssessmentCutoff;
@@ -64,6 +65,20 @@ class ClassStatisticsController extends Controller
                 'label' => $cutoff->label(),
                 'is_open' => $cutoff->isOpen(),
             ],
+            // What has already been kept, oldest first: a class's own timeline
+            // of moments, which Relatórios will later read as one (§28).
+            'interimAssessments' => InterimAssessment::query()
+                ->where('class_id', $class->id)
+                ->with('academicPeriod')
+                ->orderBy('reference_date')
+                ->get()
+                ->map(fn (InterimAssessment $interim): array => [
+                    'ulid' => $interim->ulid,
+                    'name' => $interim->name,
+                    'reference_date' => $interim->reference_date->toDateString(),
+                    'reference_date_label' => $interim->reference_date->format('d/m/Y'),
+                    'period_label' => $interim->academicPeriod->label,
+                ])->all(),
             'statistics' => $this->statistics->for($class, $period, $cutoff),
         ]);
     }

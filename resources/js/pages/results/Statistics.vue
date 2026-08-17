@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { CircleAlert, Minus, TrendingDown, TrendingUp, X } from '@lucide/vue';
 import type { ChartConfiguration } from 'chart.js';
 import { computed, defineAsyncComponent, ref } from 'vue';
@@ -98,6 +98,7 @@ const props = defineProps<{
     schoolClass: { ulid: string; label: string; subject: string; has_profile: boolean; scale_name: string | null };
     decision: { label: string; classifies_by_level: boolean };
     cutoff: { date: string | null; label: string | null; is_open: boolean };
+    interimAssessments: { ulid: string; name: string; reference_date: string; reference_date_label: string; period_label: string }[];
     statistics: Statistics;
 }>();
 
@@ -121,6 +122,40 @@ function applyCutoff(date: string): void {
         query,
         { preserveScroll: true, preserveState: false },
     );
+}
+
+// ------------------------------------------------- guardar uma intercalar
+
+/**
+ * Keeping the moment is a SEPARATE, DELIBERATE ACT.
+ *
+ * Looking at a date records nothing; this is what records it. The name is
+ * suggested by the server and stays editable, because what a school calls this
+ * moment is theirs to decide.
+ */
+const savingInterim = ref(false);
+
+const interimForm = useForm<{ academic_period_id: number | null; reference_date: string; name: string; note: string }>({
+    academic_period_id: null,
+    reference_date: '',
+    name: '',
+    note: '',
+});
+
+function openInterimForm(): void {
+    interimForm.clearErrors();
+    interimForm.academic_period_id = props.statistics.selected_period?.id ?? null;
+    interimForm.reference_date = props.cutoff.date ?? '';
+    interimForm.name = '';
+    interimForm.note = '';
+    savingInterim.value = true;
+}
+
+function submitInterim(): void {
+    interimForm.post(`/classes/${props.schoolClass.ulid}/avaliacoes-intercalares`, {
+        preserveScroll: true,
+        onSuccess: () => (savingInterim.value = false),
+    });
 }
 
 /**
@@ -724,7 +759,106 @@ const studentRows = computed(() => {
                 <p v-else class="text-sm text-muted-foreground">
                     A visualizar tudo o que existe hoje.
                 </p>
+
+                <button
+                    v-if="!cutoff.is_open"
+                    type="button"
+                    class="rounded-md border border-primary bg-primary px-3 py-1 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                    @click="openInterimForm"
+                >
+                    Guardar como avaliação intercalar
+                </button>
             </div>
+
+            <!-- O formulário. Só aparece quando o professor o pede. -->
+            <form
+                v-if="savingInterim"
+                class="space-y-3 rounded-xl border border-border bg-card p-5"
+                @submit.prevent="submitInterim"
+            >
+                <h2 class="text-sm font-semibold">Guardar como avaliação intercalar</h2>
+                <p class="text-xs text-muted-foreground">
+                    Fica uma fotografia do estado nesta data. Corrigir notas mais tarde não a altera.
+                </p>
+
+                <div class="grid gap-3 sm:grid-cols-2">
+                    <label class="block text-sm">
+                        <span class="mb-1 block text-xs text-muted-foreground">Nome</span>
+                        <input
+                            v-model="interimForm.name"
+                            type="text"
+                            :placeholder="`Avaliação intercalar — ${stats.selected_period?.label} · ${cutoff.label}`"
+                            class="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                        />
+                    </label>
+
+                    <label class="block text-sm">
+                        <span class="mb-1 block text-xs text-muted-foreground">Data de referência</span>
+                        <input
+                            v-model="interimForm.reference_date"
+                            type="date"
+                            required
+                            class="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                        />
+                        <span v-if="interimForm.errors.reference_date" class="mt-1 block text-xs text-red-600">
+                            {{ interimForm.errors.reference_date }}
+                        </span>
+                    </label>
+                </div>
+
+                <label class="block text-sm">
+                    <span class="mb-1 block text-xs text-muted-foreground">Observação (opcional)</span>
+                    <textarea
+                        v-model="interimForm.note"
+                        rows="2"
+                        class="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                    ></textarea>
+                </label>
+
+                <p class="text-xs text-muted-foreground">
+                    Período: <strong>{{ stats.selected_period?.label }}</strong>
+                </p>
+
+                <div class="flex gap-2">
+                    <button
+                        type="submit"
+                        class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+                        :disabled="interimForm.processing"
+                    >
+                        {{ interimForm.processing ? 'A guardar…' : 'Guardar' }}
+                    </button>
+                    <button
+                        type="button"
+                        class="rounded-md border border-border px-4 py-2 text-sm transition-colors hover:bg-muted/40"
+                        @click="savingInterim = false"
+                    >
+                        Cancelar
+                    </button>
+                </div>
+            </form>
+
+            <!-- A lista do que já foi guardado (§21). -->
+            <section v-if="interimAssessments.length" class="rounded-xl bg-muted/25 p-5">
+                <h2 class="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Avaliações intercalares
+                </h2>
+                <ul class="divide-y divide-border/60">
+                    <li v-for="interim in interimAssessments" :key="interim.ulid" class="flex flex-wrap items-center gap-3 py-2">
+                        <div class="min-w-0">
+                            <p class="truncate text-sm font-medium">{{ interim.name }}</p>
+                            <p class="text-xs text-muted-foreground">
+                                {{ interim.period_label }} · {{ interim.reference_date_label }}
+                            </p>
+                        </div>
+                        <Link
+                            :href="`/classes/${schoolClass.ulid}/avaliacoes-intercalares/${interim.ulid}`"
+                            class="ml-auto rounded-md border border-border px-3 py-1 text-sm transition-colors hover:bg-background"
+                        >
+                            Ver
+                        </Link>
+                    </li>
+                </ul>
+            </section>
 
             <!-- =============================================== período -->
             <div v-if="stats.periods.length > 1" class="flex flex-wrap items-center gap-2">
