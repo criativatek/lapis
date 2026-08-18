@@ -52,8 +52,16 @@ class InterimAssessment extends Model
      * have one and is never given one — it is a photograph, and what it did not
      * record it never observed. Readers show «—» for it rather than a zero,
      * because «não foi registado» and «ninguém passou» are different sentences.
+     *
+     * v2 → v3: `success` changed what it COUNTS. Up to v2 it counted the
+     * mentions the calculated averages landed on; from v3 it counts the
+     * classifications the teacher actually assigned, which is what an official
+     * pass rate means. The key is the same and the question is not, so the
+     * version — not the presence of the key — is what tells a reader whether
+     * two figures may be placed side by side. v2 documents keep their own
+     * meaning and are never rewritten.
      */
-    public const CURRENT_VERSION = 2;
+    public const CURRENT_VERSION = 3;
 
     public $timestamps = false;
 

@@ -34,9 +34,9 @@ type Comparison = {
         progressed: number; stable: number; regressed: number; no_comparison: number;
         comparable: number; average_change: string | null;
     };
-    transitions: Record<CrossingKey | HeldKey | 'unclassified' | 'no_comparison' | 'comparable', number> & {
+    transitions: Record<CrossingKey | HeldKey | 'unclassified' | 'no_assigned_classification' | 'comparable', number> & {
         percentages: Record<CrossingKey | HeldKey, string | null>;
-        share_of_class: { unclassified: string | null; no_comparison: string | null };
+        share_of_class: { unclassified: string | null; no_assigned_classification: string | null };
     };
     domains: {
         domain_id: number; label: string;
@@ -241,7 +241,7 @@ const finalLabel = computed(() => `Final do ${props.comparison.period.label}`);
                 :held="held"
                 :crossing-comparable="comparison.transitions.comparable"
                 :unclassified="comparison.transitions.unclassified"
-                :no-comparison="comparison.transitions.no_comparison"
+                :no-comparison="comparison.transitions.no_assigned_classification"
                 :interactive="false"
                 movement-caption="com resultado nos dois momentos"
             />

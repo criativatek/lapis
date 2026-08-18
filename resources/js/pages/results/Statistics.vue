@@ -73,11 +73,11 @@ type Student = {
     transition: TransitionKey;
 };
 
-type TransitionKey = CrossingKey | HeldKey | 'unclassified' | 'no_comparison';
+type TransitionKey = CrossingKey | HeldKey | 'unclassified' | 'no_assigned_classification';
 
-type Transitions = Record<CrossingKey | HeldKey | 'unclassified' | 'no_comparison' | 'comparable', number> & {
+type Transitions = Record<CrossingKey | HeldKey | 'unclassified' | 'no_assigned_classification' | 'comparable', number> & {
     percentages: Record<CrossingKey | HeldKey, string | null>;
-    share_of_class: { unclassified: string | null; no_comparison: string | null };
+    share_of_class: { unclassified: string | null; no_assigned_classification: string | null };
 };
 
 type DomainStatistic = {
@@ -1209,7 +1209,7 @@ const studentRows = computed(() => {
                     index="02"
                     title="Como evoluiu a turma"
                     :description="hasComparison
-                        ? `Face a ${stats.previous_period?.label}. Quanto se moveram os resultados, e quem mudou de lado da escala — duas leituras diferentes.`
+                        ? `Face a ${stats.previous_period?.label}. Quanto se moveram os resultados calculados, e quem mudou de patamar na classificação que atribuiu — duas leituras diferentes.`
                         : 'Ainda não há período anterior para comparar.'"
                 />
 
@@ -1223,7 +1223,7 @@ const studentRows = computed(() => {
                     :held="held"
                     :crossing-comparable="stats.evolution.transitions.comparable"
                     :unclassified="stats.evolution.transitions.unclassified"
-                    :no-comparison="stats.evolution.transitions.no_comparison"
+                    :no-comparison="stats.evolution.transitions.no_assigned_classification"
                     :selected="selectedGroup"
                     @select="toggleGroup"
                 />
@@ -1242,7 +1242,7 @@ const studentRows = computed(() => {
                 <SectionHeading
                     index="03"
                     title="Como se distribuem os resultados"
-                    :description="`Menção de cada aluno${schoolClass.scale_name ? `, na escala «${schoolClass.scale_name}»` : ''}. Escolha uma banda para a seguir no mapa.`"
+                    :description="`Leitura estatística: a menção onde cai a Média Ponderada Acumulada de cada aluno${schoolClass.scale_name ? `, na escala «${schoolClass.scale_name}»` : ''} — não a classificação atribuída. Escolha uma banda para a seguir no mapa.`"
                 />
 
                 <DistributionBands
@@ -1622,10 +1622,10 @@ const studentRows = computed(() => {
                             class="size-4 shrink-0"
                         />
                         <span v-if="selected.transition === 'failure_to_success'">
-                            Passou de resultado negativo para positivo face a {{ stats.previous_period?.label }}.
+                            Passou de classificação negativa para positiva face a {{ stats.previous_period?.label }}.
                         </span>
                         <span v-else>
-                            Passou de resultado positivo para negativo face a {{ stats.previous_period?.label }}.
+                            Passou de classificação positiva para negativa face a {{ stats.previous_period?.label }}.
                         </span>
                     </p>
 

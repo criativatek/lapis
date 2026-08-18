@@ -4,6 +4,7 @@ namespace Tests\Feature\Assessment;
 
 use App\Domain\Assessment\Bc;
 use App\Models\AcademicPeriod;
+use App\Models\ClassificationScope;
 use App\Models\Domain;
 use App\Models\Scale;
 use App\Models\SchoolClass;
@@ -11,6 +12,9 @@ use App\Models\StudentItemScore;
 use App\Models\User;
 use App\Services\Assessment\BuildClassStatistics;
 use App\Services\Assessment\BuildResultsProgression;
+use App\Services\Assessment\ConfirmClassification;
+use App\Services\Assessment\OpenClassification;
+use App\Services\Assessment\ProposeClassifications;
 use App\Services\StudentEnrollmentService;
 use App\Support\Assessment\AssessmentCutoff;
 use App\Support\Tenancy\CurrentOrganization;
@@ -40,6 +44,13 @@ class ClassStatisticsTest extends TestCase
     use RefreshDatabase;
 
     protected User $teacher;
+
+    /**
+     * First name → enrolment id, read once from the read model's own names.
+     *
+     * @var array<string, int>|null
+     */
+    private ?array $enrollmentIds = null;
 
     protected function setUp(): void
     {
@@ -711,68 +722,248 @@ class ClassStatisticsTest extends TestCase
     // ------------------------------------------------ 10. a taxa de sucesso
 
     /**
-     * The scale's own statement about a band, changed without touching a score.
+     * The teacher's own decision, taken the way the decision screen takes it.
      *
-     * This is the whole point of the section: what makes a result a pass is a
-     * flag on the scale, so moving that flag has to move the rate — and nothing
-     * else may.
+     * Opened through OpenClassification — so a student the engine reached no
+     * result for can still be graded, exactly as in the application — and then
+     * confirmed through the one service that confirms one. Nothing here writes
+     * a classification row by hand, so what the tests exercise is the real
+     * domain rule about when a decision exists (§8).
+     */
+    private function assign(string $firstName, int $sequence, string $code): void
+    {
+        $this->asTenant(function () use ($firstName, $sequence, $code): void {
+            $class = $this->schoolClass();
+            $enrollment = $class->enrollments()->findOrFail($this->enrollmentIdOf($firstName));
+
+            $classification = app(OpenClassification::class)->forDecision(
+                $class,
+                $this->period($sequence),
+                $enrollment,
+                ClassificationScope::Period,
+            );
+
+            $level = $class->profileVersion->scale->levels->firstWhere('code', $code);
+
+            app(ConfirmClassification::class)->confirm($classification, $this->teacher, $level->id);
+        });
+    }
+
+    /**
+     * The scale's own statement about a band, changed without touching a grade.
+     *
+     * What makes a decision a pass is a flag on the scale, so moving that flag
+     * has to move the rate — and nothing else may.
      */
     private function markBandAsNegative(string $code, bool $negative = true): void
     {
-        $this->asTenant(function () use ($code, $negative): void {
-            Scale::withoutGlobalScope('scaleVisibility')
-                ->where('name', 'Escala 1 a 5')
-                ->firstOrFail()
-                ->levels()
-                ->where('code', $code)
-                ->update(['is_negative' => $negative]);
-        });
+        $this->asTenant(fn () => Scale::withoutGlobalScope('scaleVisibility')
+            ->where('name', 'Escala 1 a 5')->firstOrFail()
+            ->levels()->where('code', $code)
+            ->update(['is_negative' => $negative]));
     }
 
     /** Everything one student ever answered, gone — not zeroed, gone. */
     private function eraseTheScoresOf(string $firstName): void
     {
-        // Found through the read model's own name, so the fixture and the
-        // assertions are talking about the same person.
-        $enrollmentId = $this->student($firstName)['enrollment_id'];
+        $enrollmentId = $this->enrollmentIdOf($firstName);
 
         $this->asTenant(fn () => StudentItemScore::where('enrollment_id', $enrollmentId)->delete());
     }
 
-    #[Test]
-    public function the_success_rate_counts_the_students_the_scale_calls_positive(): void
+    /** A decision written as a bare number, which is what a numeric scale takes. */
+    private function assignValue(string $firstName, int $sequence, string $value): void
     {
+        $this->asTenant(function () use ($firstName, $sequence, $value): void {
+            $class = $this->schoolClass();
+            $enrollment = $class->enrollments()->findOrFail($this->enrollmentIdOf($firstName));
+
+            $classification = app(OpenClassification::class)->forDecision(
+                $class,
+                $this->period($sequence),
+                $enrollment,
+                ClassificationScope::Period,
+            );
+
+            app(ConfirmClassification::class)->confirm($classification, $this->teacher, null, $value);
+        });
+    }
+
+    /** Moves the class onto «Escala 0 a 20», with or without qualitative bands. */
+    private function useTheNumericScale(bool $withBands = false): void
+    {
+        $this->asTenant(function () use ($withBands): void {
+            $scale = Scale::withoutGlobalScope('scaleVisibility')
+                ->where('name', 'Escala 0 a 20')->firstOrFail();
+
+            if ($withBands) {
+                $scale->levels()->createMany([
+                    [
+                        'code' => 'N', 'label' => 'Não satisfaz', 'sequence' => 1, 'is_negative' => true,
+                        'band_min_normalized' => '0.000000', 'band_max_normalized' => '47.499999',
+                    ],
+                    [
+                        'code' => 'S', 'label' => 'Satisfaz', 'sequence' => 2, 'is_negative' => false,
+                        'band_min_normalized' => '47.500000', 'band_max_normalized' => '100.000000',
+                    ],
+                ]);
+            }
+
+            DB::table('assessment_profile_versions')
+                ->where('id', $this->schoolClass()->profileVersion->id)
+                ->update(['scale_id' => $scale->id]);
+        });
+    }
+
+    /** A proposal and no decision: the system has spoken, the teacher has not. */
+    private function proposeOnly(int $sequence): void
+    {
+        $this->asTenant(fn () => app(ProposeClassifications::class)
+            ->forPeriod($this->schoolClass(), $this->period($sequence)));
+    }
+
+    private function enrollmentIdOf(string $firstName): int
+    {
+        if ($this->enrollmentIds === null) {
+            $this->enrollmentIds = [];
+
+            foreach ($this->statistics(2)['students'] as $student) {
+                $this->enrollmentIds[explode(' ', (string) $student['name'])[0]] = (int) $student['enrollment_id'];
+            }
+        }
+
+        return $this->enrollmentIds[$firstName];
+    }
+
+    /**
+     * The whole class graded, so the rate has something to count.
+     *
+     * @param  array<string, string>  $levels
+     */
+    private function assignAll(int $sequence, array $levels): void
+    {
+        foreach ($levels as $firstName => $code) {
+            $this->assign($firstName, $sequence, $code);
+        }
+    }
+
+    #[Test]
+    public function the_success_rate_counts_the_classifications_the_teacher_assigned(): void
+    {
+        $this->assignAll(2, [
+            'Ana' => '4', 'Bruno' => '2', 'Carolina' => '5',
+            'Diogo' => '4', 'Eva' => '3', 'Filipe' => '1',
+        ]);
+
         $success = $this->statistics(2)['summary']['success'];
 
-        // Every student in the demo class lands on a positive band.
-        $this->assertSame(6, $success['succeeded']);
-        $this->assertSame(0, $success['failed']);
+        // «2» and «1» are the negative bands of this scale; the other four are not.
+        $this->assertSame(4, $success['succeeded']);
+        $this->assertSame(2, $success['failed']);
         $this->assertSame(6, $success['placed']);
-        $this->assertSame('100.0', $success['rate']);
+        $this->assertSame('66.7', $success['rate']);
+    }
+
+    #[Test]
+    public function a_calculated_mention_never_stands_in_for_a_grade(): void
+    {
+        // Ana's accumulated average lands in «Bom». Her teacher wrote «2».
+        $this->assign('Ana', 2, '2');
+        $this->assign('Bruno', 2, '3');
+
+        $statistics = $this->statistics(2);
+
+        $this->assertFalse($statistics['students'][0]['band']['is_negative'], 'a média continua positiva');
+        $this->assertSame(1, $statistics['summary']['success']['failed'], 'e a classificação atribuída é negativa');
+        $this->assertSame('50.0', $statistics['summary']['success']['rate']);
+    }
+
+    #[Test]
+    public function a_low_average_with_a_positive_grade_counts_as_a_pass(): void
+    {
+        // Eva's own figure is the lowest of the class; her teacher decided «4».
+        $this->markBandAsNegative('3');
+        $this->assign('Eva', 2, '4');
+
+        $success = $this->statistics(2)['summary']['success'];
+
+        $this->assertSame(1, $success['succeeded']);
+        $this->assertSame(0, $success['failed']);
+    }
+
+    #[Test]
+    public function a_proposal_is_not_a_decision(): void
+    {
+        // Every student has a proposal on screen and nobody has been graded.
+        $this->proposeOnly(2);
+
+        $success = $this->statistics(2)['summary']['success'];
+
+        $this->assertSame(6, $success['without_classification']);
+        $this->assertSame(0, $success['placed']);
+        $this->assertNull($success['rate'], 'o sistema propôs; o professor não decidiu');
+    }
+
+    #[Test]
+    public function the_proposal_is_never_read_as_the_grade_when_the_teacher_decided_otherwise(): void
+    {
+        // LÁPIS proposed «4» for Ana. The teacher assigned «2».
+        $this->proposeOnly(2);
+        $this->assign('Ana', 2, '2');
+
+        $statistics = $this->statistics(2);
+        $classification = $this->student('Ana')['classification'];
+
+        $this->assertSame('4', $classification['proposed']['code']);
+        $this->assertSame('2', $classification['final']['code']);
+        $this->assertSame(1, $statistics['summary']['success']['failed']);
+        $this->assertSame(0, $statistics['summary']['success']['succeeded']);
+    }
+
+    #[Test]
+    public function a_self_assessment_is_not_a_grade_either(): void
+    {
+        $this->assign('Ana', 2, '2');
+
+        $statistics = $this->statistics(2);
+
+        // Whatever the student said about themselves, the count follows the
+        // teacher's decision — four different statements, kept apart (§14).
+        $this->assertSame(1, $statistics['summary']['success']['failed']);
+        $this->assertSame(0, $statistics['summary']['success']['succeeded']);
     }
 
     #[Test]
     public function the_passing_line_is_the_scales_own_flag_and_never_a_threshold_written_here(): void
     {
+        $this->assignAll(2, [
+            'Ana' => '4', 'Bruno' => '3', 'Carolina' => '5',
+            'Diogo' => '4', 'Eva' => '3', 'Filipe' => '3',
+        ]);
+
         $before = $this->statistics(2)['summary']['success'];
 
         // «Suficiente» is now a negative band, as far as this scale is
-        // concerned. Not one score, weight or grid changed.
+        // concerned. Not one grade, score or weight changed.
         $this->markBandAsNegative('3');
 
         $after = $this->statistics(2)['summary']['success'];
 
         $this->assertSame('100.0', $before['rate']);
-        $this->assertSame(3, $after['failed'], 'os tres alunos em Suficiente passam a insucesso');
-        $this->assertSame(3, $after['succeeded']);
+        $this->assertSame(3, $after['failed'], 'os tres alunos com «Suficiente» passam a insucesso');
         $this->assertSame('50.0', $after['rate']);
     }
 
     #[Test]
     public function a_scale_whose_passing_line_sits_elsewhere_gives_a_different_rate(): void
     {
+        $this->assignAll(2, [
+            'Ana' => '4', 'Bruno' => '3', 'Carolina' => '5',
+            'Diogo' => '4', 'Eva' => '3', 'Filipe' => '3',
+        ]);
+
         // A school that only counts «Muito Bom» as success. If anything here
-        // were hard-coded to 50%, this number could not move.
+        // were hard-coded to «>= 3» or «>= 50%», this could not move.
         $this->markBandAsNegative('3');
         $this->markBandAsNegative('4');
 
@@ -784,34 +975,32 @@ class ClassStatisticsTest extends TestCase
     }
 
     #[Test]
-    public function a_student_without_a_result_is_not_counted_as_a_failure(): void
+    public function a_student_without_an_assigned_classification_is_not_counted_as_a_failure(): void
     {
-        $this->eraseTheScoresOf('Bruno');
+        $this->assign('Ana', 2, '4');
 
         $success = $this->statistics(2)['summary']['success'];
 
-        $this->assertSame(1, $success['without_result']);
-        $this->assertSame(0, $success['failed'], 'uma ausencia de resultado nao e uma negativa');
+        $this->assertSame(5, $success['without_classification']);
+        $this->assertSame(0, $success['failed'], 'não ter sido classificado não é uma negativa');
     }
 
     #[Test]
-    public function students_without_a_result_stay_out_of_the_denominator(): void
+    public function students_without_an_assigned_classification_stay_out_of_the_denominator(): void
     {
-        $this->eraseTheScoresOf('Bruno');
+        $this->assign('Ana', 2, '4');
+        $this->assign('Bruno', 2, '3');
 
         $success = $this->statistics(2)['summary']['success'];
 
-        $this->assertSame(5, $success['placed'], 'o denominador perde-o, nao o absorve');
-        // Five of five still passed, so the rate is unchanged — which is the
-        // point: removing somebody who had no result cannot move it.
+        $this->assertSame(2, $success['placed'], 'o denominador são os classificados, não a turma');
         $this->assertSame('100.0', $success['rate']);
     }
 
     #[Test]
-    public function the_denominator_is_exactly_the_students_a_band_was_placed_on(): void
+    public function the_denominator_is_exactly_the_students_with_a_grade_the_scale_can_read(): void
     {
-        $this->markBandAsNegative('3');
-        $this->eraseTheScoresOf('Bruno');
+        $this->assignAll(2, ['Ana' => '4', 'Bruno' => '2', 'Carolina' => '5']);
 
         $success = $this->statistics(2)['summary']['success'];
 
@@ -823,51 +1012,27 @@ class ClassStatisticsTest extends TestCase
     }
 
     #[Test]
-    public function a_result_the_scale_places_no_band_for_is_counted_apart(): void
+    public function with_nobody_classified_the_rate_is_absent_rather_than_zero(): void
     {
-        // A gap in the scale between 55 and 69,5. Three students' accumulated
-        // figures now fall into nothing at all.
-        $this->asTenant(fn () => Scale::withoutGlobalScope('scaleVisibility')
-            ->where('name', 'Escala 1 a 5')->firstOrFail()
-            ->levels()->where('code', '3')
-            ->update(['band_max_normalized' => '55.000000']));
-
-        $success = $this->statistics(2)['summary']['success'];
-
-        $this->assertSame(3, $success['unplaced']);
-        $this->assertSame(
-            3,
-            $success['succeeded'] + $success['failed'],
-            'a escala nao diz se e positivo, por isso isto tambem nao diz',
-        );
-        $this->assertSame(3, $success['placed']);
-    }
-
-    #[Test]
-    public function with_nobody_placed_the_rate_is_absent_rather_than_zero(): void
-    {
-        $this->asTenant(fn () => StudentItemScore::query()->delete());
-
         $success = $this->statistics(2)['summary']['success'];
 
         $this->assertSame(0, $success['placed']);
         $this->assertNull($success['rate'], 'nao sabemos nao se escreve 0%');
         $this->assertNull($success['failure_rate']);
-        $this->assertSame(6, $success['without_result']);
+        $this->assertSame(6, $success['without_classification']);
     }
 
     #[Test]
     public function the_three_groups_account_for_every_student_in_the_class(): void
     {
-        $this->markBandAsNegative('3');
-        $this->eraseTheScoresOf('Bruno');
+        $this->assignAll(2, ['Ana' => '4', 'Bruno' => '2']);
 
         $statistics = $this->statistics(2);
         $success = $statistics['summary']['success'];
 
         $this->assertSame(
             $statistics['summary']['students_total'],
-            $success['succeeded'] + $success['failed'] + $success['unplaced'] + $success['without_result'],
+            $success['succeeded'] + $success['failed'] + $success['unplaced'] + $success['without_classification'],
             'nenhum aluno desaparece nem e contado duas vezes',
         );
     }
@@ -875,7 +1040,7 @@ class ClassStatisticsTest extends TestCase
     #[Test]
     public function the_success_and_failure_rates_complete_each_other(): void
     {
-        $this->markBandAsNegative('3');
+        $this->assignAll(2, ['Ana' => '4', 'Bruno' => '2', 'Carolina' => '5']);
 
         $success = $this->statistics(2)['summary']['success'];
 
@@ -886,29 +1051,11 @@ class ClassStatisticsTest extends TestCase
     }
 
     #[Test]
-    public function the_rate_is_read_from_the_same_band_the_quadro_sintese_places(): void
+    public function each_domain_reports_its_own_success_from_the_calculated_mention(): void
     {
-        $this->markBandAsNegative('3');
-
-        $statistics = $this->statistics(2);
-        $negatives = 0;
-
-        foreach ($statistics['students'] as $student) {
-            if ($student['band'] !== null && $student['band']['is_negative']) {
-                $negatives++;
-            }
-        }
-
-        $this->assertSame(
-            $negatives,
-            $statistics['summary']['success']['failed'],
-            'a taxa e a mencao de cada aluno saem da mesma decisao',
-        );
-    }
-
-    #[Test]
-    public function each_domain_reports_its_own_success(): void
-    {
+        // A domain has no assigned classification — a decision is taken for the
+        // period, not per domain — so this reading stays what it always was and
+        // the screen says which figure it is about (§13).
         $domains = collect($this->statistics(2)['domain_statistics'])->keyBy('label');
 
         $this->assertSame(6, $domains['Escrita']['succeeded']);
@@ -928,7 +1075,7 @@ class ClassStatisticsTest extends TestCase
             $domains['Escrita']['succeeded'],
             'mover a linha da escala tem de mover tambem o sucesso por dominio',
         );
-        $this->assertSame(6, $domains['Escrita']['placed'], 'o denominador do dominio nao muda');
+        $this->assertSame(6, $domains['Escrita']['placed'], 'o denominador do domínio não muda');
     }
 
     #[Test]
@@ -944,6 +1091,7 @@ class ClassStatisticsTest extends TestCase
     #[Test]
     public function the_page_carries_the_success_figures(): void
     {
+        $this->assign('Ana', 2, '4');
         $class = $this->asTenant(fn (): SchoolClass => $this->schoolClass());
 
         $this->actingAs($this->teacher)
@@ -952,8 +1100,8 @@ class ClassStatisticsTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->has('statistics.summary.success.rate')
                 ->has('statistics.summary.success.placed')
-                ->has('statistics.summary.success.without_result')
-                ->where('statistics.summary.success.succeeded', 6),
+                ->has('statistics.summary.success.without_classification')
+                ->where('statistics.summary.success.succeeded', 1),
             );
     }
 
@@ -1163,74 +1311,6 @@ class ClassStatisticsTest extends TestCase
     // ------------------------------------------ 12. mudanças de patamar
 
     /**
-     * The class's own scale, reshaped.
-     *
-     * The demo scores never move in this section. What moves is where the
-     * scale draws its bands and which of them it calls negative — which is the
-     * whole claim being tested: crossing the line is the SCALE's statement, so
-     * redrawing the line has to redraw who crossed, and nothing else may.
-     *
-     * @param  array<string, array{min?: string, max?: string, negative?: bool}>  $levels
-     */
-    private function reshapeScale(array $levels): void
-    {
-        $this->asTenant(function () use ($levels): void {
-            $scale = Scale::withoutGlobalScope('scaleVisibility')->where('name', 'Escala 1 a 5')->firstOrFail();
-
-            foreach ($levels as $code => $shape) {
-                $changes = [];
-
-                if (isset($shape['min'])) {
-                    $changes['band_min_normalized'] = $shape['min'];
-                }
-
-                if (isset($shape['max'])) {
-                    $changes['band_max_normalized'] = $shape['max'];
-                }
-
-                if (array_key_exists('negative', $shape)) {
-                    $changes['is_negative'] = $shape['negative'];
-                }
-
-                $scale->levels()->where('code', $code)->update($changes);
-            }
-        });
-    }
-
-    /**
-     * A scale that has nothing to do with the system ones.
-     *
-     * Two bands and a line at 60 — the sort of thing a school actually writes
-     * for a domain-based profile. Nothing in the read model knows about it.
-     */
-    private function useATwoBandScale(): void
-    {
-        $this->asTenant(function (): void {
-            $scale = Scale::create([
-                'name' => 'Atingiu / Não atingiu',
-                'kind' => 'level',
-                'min_value' => 0,
-                'max_value' => 1,
-            ]);
-
-            $scale->levels()->createMany([
-                [
-                    'code' => 'NA', 'label' => 'Não atingiu', 'sequence' => 1,
-                    'is_negative' => true, 'band_min_normalized' => '0.000000', 'band_max_normalized' => '59.999999',
-                ],
-                [
-                    'code' => 'A', 'label' => 'Atingiu', 'sequence' => 2,
-                    'is_negative' => false, 'band_min_normalized' => '60.000000', 'band_max_normalized' => '100.000000',
-                ],
-            ]);
-
-            DB::table('assessment_profile_versions')
-                ->where('id', $this->schoolClass()->profileVersion->id)
-                ->update(['scale_id' => $scale->id]);
-        });
-    }
-
-    /**
      * @return array<string, mixed>
      */
     private function transitions(?int $sequence = 2): array
@@ -1238,14 +1318,39 @@ class ClassStatisticsTest extends TestCase
         return $this->statistics($sequence)['evolution']['transitions'];
     }
 
+    /**
+     * The scenario the bug was reported from.
+     *
+     * A teacher looking at the Quadro Síntese saw a «4» become a «2» and a «2»
+     * become a «4», and Estatística reported «Passaram a resultado negativo:
+     * 0». It was reading the mention the averages landed on, which had not
+     * moved, instead of the grades, which had.
+     */
+    #[Test]
+    public function the_levels_the_teacher_assigned_are_what_decide_a_crossing(): void
+    {
+        $this->assignAll(1, ['Ana' => '4', 'Bruno' => '2', 'Carolina' => '3', 'Diogo' => '3', 'Eva' => '3']);
+        $this->assignAll(2, ['Ana' => '2', 'Bruno' => '4', 'Carolina' => '4', 'Diogo' => '4', 'Eva' => '3', 'Filipe' => '4']);
+
+        $transitions = $this->transitions();
+
+        $this->assertSame(1, $transitions['success_to_failure'], 'Ana: 4 → 2');
+        $this->assertSame(1, $transitions['failure_to_success'], 'Bruno: 2 → 4');
+        $this->assertSame(3, $transitions['success_to_success'], 'Carolina, Diogo e Eva');
+        $this->assertSame(0, $transitions['failure_to_failure']);
+
+        // Filipe was graded only in the second period, so there is no official
+        // crossing to report for him — and he is not in the denominator.
+        $this->assertSame(1, $transitions['no_assigned_classification']);
+        $this->assertSame(5, $transitions['comparable']);
+        $this->assertSame('no_assigned_classification', $this->student('Filipe')['transition']);
+    }
+
     #[Test]
     public function a_student_who_crosses_up_is_counted_as_having_reached_a_positive_result(): void
     {
-        // Eva went 50,1% → 65,7%. With the line drawn at 60 she crossed it.
-        $this->reshapeScale([
-            '2' => ['max' => '59.999999', 'negative' => true],
-            '3' => ['min' => '60.000000', 'negative' => false],
-        ]);
+        $this->assign('Eva', 1, '2');
+        $this->assign('Eva', 2, '4');
 
         $this->assertSame(1, $this->transitions()['failure_to_success']);
         $this->assertSame('failure_to_success', $this->student('Eva')['transition']);
@@ -1254,11 +1359,8 @@ class ClassStatisticsTest extends TestCase
     #[Test]
     public function a_student_who_crosses_down_is_counted_as_having_fallen_to_a_negative_result(): void
     {
-        // Ana went 80,1% → 77,8%. With the line at 79 she fell through it.
-        $this->reshapeScale([
-            '3' => ['max' => '78.999999', 'negative' => true],
-            '4' => ['min' => '79.000000', 'negative' => false],
-        ]);
+        $this->assign('Ana', 1, '4');
+        $this->assign('Ana', 2, '2');
 
         $this->assertSame(1, $this->transitions()['success_to_failure']);
         $this->assertSame('success_to_failure', $this->student('Ana')['transition']);
@@ -1267,36 +1369,32 @@ class ClassStatisticsTest extends TestCase
     #[Test]
     public function staying_on_the_positive_side_is_its_own_count(): void
     {
-        // The scale as the system ships it: everybody comparable is positive at
-        // both ends, and none of them «changed patamar».
-        $transitions = $this->transitions();
+        $this->assign('Ana', 1, '3');
+        $this->assign('Ana', 2, '4');
 
-        $this->assertSame(4, $transitions['success_to_success']);
-        $this->assertSame(0, $transitions['failure_to_success']);
-        $this->assertSame(0, $transitions['success_to_failure']);
+        $this->assertSame(1, $this->transitions()['success_to_success']);
         $this->assertSame('success_to_success', $this->student('Ana')['transition']);
     }
 
     #[Test]
     public function staying_on_the_negative_side_is_its_own_count(): void
     {
-        // "Suficiente" declared negative: Bruno and Eva were and remain there.
-        $this->markBandAsNegative('3');
+        $this->assign('Ana', 1, '1');
+        $this->assign('Ana', 2, '2');
 
-        $transitions = $this->transitions();
-
-        $this->assertSame(2, $transitions['failure_to_failure']);
-        $this->assertSame('failure_to_failure', $this->student('Bruno')['transition']);
-        $this->assertSame('failure_to_failure', $this->student('Eva')['transition']);
+        $this->assertSame(1, $this->transitions()['failure_to_failure']);
+        $this->assertSame('failure_to_failure', $this->student('Ana')['transition']);
     }
 
     #[Test]
     public function progressing_is_not_the_same_as_crossing(): void
     {
+        // Eva rose fifteen points and her teacher kept her on «3» both times.
+        $this->assign('Eva', 1, '3');
+        $this->assign('Eva', 2, '3');
+
         $statistics = $this->statistics(2);
 
-        // Eva rose 15 points and did not change side. Two different readings of
-        // the same student, and the section shows both rather than one.
         $this->assertSame('up', $this->student('Eva')['evolution']['direction']);
         $this->assertSame('success_to_success', $this->student('Eva')['transition']);
         $this->assertSame(2, $statistics['evolution']['progressed']);
@@ -1306,9 +1404,11 @@ class ClassStatisticsTest extends TestCase
     #[Test]
     public function regressing_is_not_the_same_as_crossing_either(): void
     {
+        $this->assign('Ana', 1, '4');
+        $this->assign('Ana', 2, '4');
+
         $statistics = $this->statistics(2);
 
-        // Ana fell and stayed comfortably positive.
         $this->assertSame('down', $this->student('Ana')['evolution']['direction']);
         $this->assertSame('success_to_success', $this->student('Ana')['transition']);
         $this->assertSame(2, $statistics['evolution']['regressed']);
@@ -1316,96 +1416,142 @@ class ClassStatisticsTest extends TestCase
     }
 
     #[Test]
-    public function a_student_with_nothing_before_has_nothing_to_have_crossed(): void
+    public function grading_a_class_does_not_touch_the_quantitative_movement(): void
     {
-        // Diogo enrolled after the first period. He did not «stay» on any side.
-        $this->assertSame('no_comparison', $this->student('Diogo')['transition']);
-        $this->assertSame(2, $this->transitions()['no_comparison']);
+        $before = $this->statistics(2)['evolution'];
+
+        $this->assignAll(1, ['Ana' => '4', 'Bruno' => '2']);
+        $this->assignAll(2, ['Ana' => '2', 'Bruno' => '4']);
+
+        $after = $this->statistics(2)['evolution'];
+
+        // Progression is arithmetic over evidence and knows nothing about
+        // grades. Only the crossings moved (§19.10).
+        $this->assertSame($before['progressed'], $after['progressed']);
+        $this->assertSame($before['stable'], $after['stable']);
+        $this->assertSame($before['regressed'], $after['regressed']);
+        $this->assertSame($before['average_change'], $after['average_change']);
+        $this->assertNotSame($before['transitions'], $after['transitions']);
     }
 
     #[Test]
-    public function a_result_the_scale_cannot_place_is_unclassified_and_never_a_crossing(): void
+    public function a_student_graded_in_only_one_of_the_two_periods_is_left_out(): void
     {
-        // A gap swallowing both of Ana's figures. We know where she stood; the
-        // scale has no opinion about which side that was.
-        $this->reshapeScale(['4' => ['max' => '75.000000']]);
+        $this->assign('Ana', 2, '4');
+
+        $this->assertSame('no_assigned_classification', $this->student('Ana')['transition']);
+        $this->assertSame(0, $this->transitions()['comparable']);
+    }
+
+    #[Test]
+    public function a_proposal_at_one_end_does_not_make_a_crossing(): void
+    {
+        // Proposals everywhere, a decision only in the second period. There is
+        // no earlier grade, so there is no earlier side.
+        $this->proposeOnly(1);
+        $this->assign('Ana', 2, '2');
+
+        $this->assertSame('no_assigned_classification', $this->student('Ana')['transition']);
+        $this->assertSame(0, $this->transitions()['success_to_failure']);
+    }
+
+    #[Test]
+    public function a_numeric_decision_the_scale_cannot_read_is_unclassified_and_never_a_crossing(): void
+    {
+        // «Escala 0 a 20» defines no qualitative levels, so LÁPIS has no
+        // statement about which side of it a «7» or a «14» sits on — and does
+        // not invent one at 9,5 (§6). The decisions are real and the scale is
+        // silent, which is a different answer from having no decision at all.
+        $this->useTheNumericScale();
+
+        $this->assignValue('Ana', 1, '7');
+        $this->assignValue('Ana', 2, '14');
 
         $transitions = $this->transitions();
 
         $this->assertSame(1, $transitions['unclassified']);
-        $this->assertSame('unclassified', $this->student('Ana')['transition']);
-        $this->assertSame(0, $transitions['success_to_failure']);
-        $this->assertSame(0, $transitions['failure_to_success']);
+        $this->assertSame(0, $transitions['failure_to_success'], 'subir de 7 para 14 não é uma travessia que a escala afirme');
+        $this->assertSame(0, $transitions['comparable']);
+        $this->assertNull($transitions['percentages']['failure_to_success']);
     }
 
     #[Test]
-    public function an_unplaceable_result_is_told_apart_from_having_no_result(): void
+    public function a_numeric_decision_is_read_when_the_scale_does_carry_bands(): void
     {
-        $this->reshapeScale(['4' => ['max' => '75.000000']]);
+        // The same numeric scale, given the bands a school would configure on
+        // it. Now it HAS a statement, and «7 → 14» crosses the line it draws —
+        // read through the scale's own interval, never through a «>= 10».
+        $this->useTheNumericScale(withBands: true);
 
-        // Ana has figures the scale cannot place; Diogo has no earlier figure
-        // at all. Folding either into the other would be a different claim.
-        $this->assertSame('unclassified', $this->student('Ana')['transition']);
-        $this->assertSame('no_comparison', $this->student('Diogo')['transition']);
-    }
+        $this->assignValue('Ana', 1, '7');
+        $this->assignValue('Ana', 2, '14');
 
-    #[Test]
-    public function the_same_scores_on_a_scale_with_a_different_line_give_different_crossings(): void
-    {
-        $before = $this->transitions();
-
-        $this->reshapeScale([
-            '2' => ['max' => '59.999999', 'negative' => true],
-            '3' => ['min' => '60.000000', 'negative' => false],
-        ]);
-
-        $after = $this->transitions();
-
-        // Not one score changed. If «>= 50%» were written anywhere in the read
-        // model, this number could not have moved.
-        $this->assertSame(0, $before['failure_to_success']);
-        $this->assertSame(1, $after['failure_to_success']);
+        $this->assertSame(1, $this->transitions()['failure_to_success']);
     }
 
     #[Test]
     public function a_scale_of_the_schools_own_decides_this_just_the_same(): void
     {
-        $this->useATwoBandScale();
-
-        $transitions = $this->transitions();
-
-        // «Não atingiu» → «Atingiu», on a two-band scale the application has
-        // never heard of, with its line at 60.
-        $this->assertSame(1, $transitions['failure_to_success']);
-        $this->assertSame('failure_to_success', $this->student('Eva')['transition']);
-        $this->assertSame(3, $transitions['success_to_success']);
-    }
-
-    #[Test]
-    public function a_numeric_scale_with_no_bands_places_nobody_rather_than_guessing(): void
-    {
-        // «Escala 0 a 20» defines no qualitative levels, so LÁPIS has no
-        // statement about which side of it a 12 sits on — and does not invent
-        // one (§1). Everybody comparable comes back unclassified.
+        // Two bands and a line at 60, on a scale the application has never
+        // heard of. Its own `is_negative` is all that is read.
         $this->asTenant(function (): void {
-            $scale = Scale::withoutGlobalScope('scaleVisibility')->where('name', 'Escala 0 a 20')->firstOrFail();
+            $scale = Scale::create([
+                'name' => 'Atingiu / Não atingiu', 'kind' => 'level', 'min_value' => 0, 'max_value' => 1,
+            ]);
+
+            $scale->levels()->createMany([
+                [
+                    'code' => 'NA', 'label' => 'Não atingiu', 'sequence' => 1, 'is_negative' => true,
+                    'band_min_normalized' => '0.000000', 'band_max_normalized' => '59.999999',
+                ],
+                [
+                    'code' => 'A', 'label' => 'Atingiu', 'sequence' => 2, 'is_negative' => false,
+                    'band_min_normalized' => '60.000000', 'band_max_normalized' => '100.000000',
+                ],
+            ]);
 
             DB::table('assessment_profile_versions')
                 ->where('id', $this->schoolClass()->profileVersion->id)
                 ->update(['scale_id' => $scale->id]);
         });
 
+        $this->assign('Ana', 1, 'NA');
+        $this->assign('Ana', 2, 'A');
+        $this->assign('Bruno', 1, 'A');
+        $this->assign('Bruno', 2, 'NA');
+
         $transitions = $this->transitions();
 
-        $this->assertSame(4, $transitions['unclassified']);
-        $this->assertSame(0, $transitions['comparable']);
-        $this->assertNull($transitions['percentages']['failure_to_success']);
+        $this->assertSame(1, $transitions['failure_to_success']);
+        $this->assertSame(1, $transitions['success_to_failure']);
+        $this->assertSame(2, $transitions['comparable']);
+    }
+
+    #[Test]
+    public function moving_the_scales_line_moves_who_crossed_without_touching_a_grade(): void
+    {
+        $this->assign('Ana', 1, '3');
+        $this->assign('Ana', 2, '4');
+
+        $before = $this->transitions();
+
+        // «Suficiente» becomes negative. The same two grades now describe a
+        // student who climbed out of insucesso. Nothing was re-graded, and no
+        // «>= 3» exists anywhere for this to have gone around.
+        $this->markBandAsNegative('3');
+
+        $after = $this->transitions();
+
+        $this->assertSame(1, $before['success_to_success']);
+        $this->assertSame(1, $after['failure_to_success']);
+        $this->assertSame(0, $after['success_to_success']);
     }
 
     #[Test]
     public function the_denominator_is_the_four_transitions_and_nothing_else(): void
     {
-        $this->reshapeScale(['4' => ['max' => '75.000000']]);
+        $this->assign('Ana', 1, '4');
+        $this->assign('Ana', 2, '2');
 
         $transitions = $this->transitions();
 
@@ -1418,21 +1564,22 @@ class ClassStatisticsTest extends TestCase
         // And the two that sit outside it get their share of the CLASS, in
         // their own key, so nobody reads them against the wrong base.
         $this->assertArrayHasKey('unclassified', $transitions['share_of_class']);
-        $this->assertArrayHasKey('no_comparison', $transitions['share_of_class']);
+        $this->assertArrayHasKey('no_assigned_classification', $transitions['share_of_class']);
         $this->assertArrayNotHasKey('unclassified', $transitions['percentages']);
     }
 
     #[Test]
     public function the_six_groups_account_for_every_student_in_the_class(): void
     {
-        $this->reshapeScale(['4' => ['max' => '75.000000']]);
+        $this->assign('Ana', 1, '4');
+        $this->assign('Ana', 2, '2');
 
         $statistics = $this->statistics(2);
         $transitions = $statistics['evolution']['transitions'];
 
         $this->assertSame(
             $statistics['summary']['students_total'],
-            $transitions['comparable'] + $transitions['unclassified'] + $transitions['no_comparison'],
+            $transitions['comparable'] + $transitions['unclassified'] + $transitions['no_assigned_classification'],
         );
     }
 
@@ -1443,17 +1590,15 @@ class ClassStatisticsTest extends TestCase
         $transitions = $this->transitions(1);
 
         $this->assertSame(0, $transitions['comparable']);
-        $this->assertSame(6, $transitions['no_comparison']);
+        $this->assertSame(6, $transitions['no_assigned_classification']);
         $this->assertNull($transitions['percentages']['success_to_success']);
     }
 
     #[Test]
     public function each_students_own_transition_agrees_with_the_class_counts(): void
     {
-        $this->reshapeScale([
-            '3' => ['max' => '78.999999', 'negative' => true],
-            '4' => ['min' => '79.000000', 'negative' => false],
-        ]);
+        $this->assignAll(1, ['Ana' => '4', 'Bruno' => '2', 'Carolina' => '3']);
+        $this->assignAll(2, ['Ana' => '2', 'Bruno' => '4', 'Carolina' => '3']);
 
         $statistics = $this->statistics(2);
         $counted = [];
@@ -1462,7 +1607,7 @@ class ClassStatisticsTest extends TestCase
             $counted[$student['transition']] = ($counted[$student['transition']] ?? 0) + 1;
         }
 
-        foreach (['failure_to_success', 'success_to_failure', 'success_to_success', 'failure_to_failure', 'unclassified', 'no_comparison'] as $key) {
+        foreach (['failure_to_success', 'success_to_failure', 'success_to_success', 'failure_to_failure', 'unclassified', 'no_assigned_classification'] as $key) {
             $this->assertSame(
                 $counted[$key] ?? 0,
                 $statistics['evolution']['transitions'][$key],
@@ -1472,42 +1617,29 @@ class ClassStatisticsTest extends TestCase
     }
 
     #[Test]
-    public function the_crossing_is_read_on_the_same_figure_the_mention_is_placed_on(): void
+    public function a_grade_written_after_the_cutoff_had_not_been_written_yet(): void
     {
-        $this->markBandAsNegative('3');
+        // Graded at the end of the year, both periods.
+        $this->travelTo('2027-06-30');
+        $this->assign('Ana', 1, '4');
+        $this->assign('Ana', 2, '2');
 
-        $statistics = $this->statistics(2);
+        $this->assertSame('success_to_failure', $this->student('Ana')['transition']);
 
-        foreach ($statistics['students'] as $student) {
-            if (! in_array($student['transition'], ['failure_to_failure', 'success_to_failure'], true)) {
-                continue;
-            }
-
-            // Wherever this says the student ended up negative, the mention the
-            // Quadro Síntese places on them says the same thing.
-            $this->assertTrue(
-                $student['band']['is_negative'],
-                "{$student['name']} termina negativo aqui e positivo na menção",
-            );
-        }
-    }
-
-    #[Test]
-    public function a_cutoff_moves_the_crossings_with_the_evidence_it_hides(): void
-    {
         $class = $this->asTenant(fn (): SchoolClass => $this->schoolClass());
 
-        // Read as of a date before any of the year's evidence: there are no
-        // figures to place, so there is nothing anybody could have crossed.
+        // Read as of February, when the evidence was all in and neither grade
+        // had been given. A photograph must not put a grade in the teacher's
+        // mouth, dated to a day they had not said it.
         $transitions = $this->asTenant(fn (): array => app(BuildClassStatistics::class)->for(
             $class,
             $this->period(2),
-            AssessmentCutoff::on(Carbon::parse('2026-09-01')),
+            AssessmentCutoff::on(Carbon::parse('2027-02-15')),
         )['evolution']['transitions']);
 
         $this->assertSame(0, $transitions['comparable']);
-        $this->assertSame(6, $transitions['no_comparison']);
-        $this->assertSame(0, $transitions['unclassified'], 'sem prova não é «a escala não sabe»');
+        $this->assertSame(6, $transitions['no_assigned_classification']);
+        $this->assertSame(0, $transitions['unclassified'], 'sem decisão não é «a escala não sabe»');
     }
 
     #[Test]

@@ -225,25 +225,34 @@ class BuildClassStatistics
     }
 
     /**
-     * «Quantos alunos atingiram resultado positivo?»
+     * «Quantos alunos tiveram classificação positiva atribuída?»
      *
-     * DECIDED BY THE SCALE, NEVER BY A THRESHOLD WRITTEN HERE. A band carries
-     * `is_negative`, which is the scale's own statement about whether being
-     * placed there is a pass or a fail — and it is the same flag the results
-     * screens already colour by. Hard-coding «>= 50%» would be inventing a
-     * pedagogical rule, and would be wrong the moment a school uses a 0–20, a
-     * 1–5 or a scale of its own where the passing line sits somewhere else.
+     * THE OFFICIAL RATE, AND THEREFORE THE TEACHER'S OWN DECISIONS. This is the
+     * number a conselho de turma quotes, so it counts grades that were actually
+     * given — not the mentions the averages happen to land on. A student whose
+     * accumulated figure sits in «Bom» and whose teacher wrote «2» is a
+     * negative, and a rate that said otherwise would be reporting something
+     * nobody decided (§13, §25).
+     *
+     * The statistical reading has not gone anywhere: «Como se distribuem os
+     * resultados» still bands the Média Ponderada Acumulada, and says so on
+     * screen. The two are kept apart rather than averaged into one number that
+     * means neither (§4).
+     *
+     * WHICH SIDE A DECISION IS ON IS THE SCALE'S STATEMENT, through
+     * `is_negative`. Hard-coding «>= 50%» or «>= 10» would invent a pedagogical
+     * rule and would be wrong the moment a school configures its own scale.
      *
      * THREE GROUPS, AND ONLY ONE DENOMINATOR:
      *
-     *  - placed: a student whose accumulated figure fell in a band. Those and
-     *    only those are counted for or against the rate;
-     *  - unplaced: a student WITH a result on a scale that has no band for it.
-     *    The scale cannot say whether that is a pass, so neither can this —
-     *    counting them either way would be answering a question nobody asked
-     *    the scale;
-     *  - without_result: no result at all. Never a failure (§11): an absence is
-     *    not a bad grade, and it stays out of the denominator entirely.
+     *  - placed: a student with a decision whose side the scale can state.
+     *    Those and only those are counted for or against the rate;
+     *  - unplaced: decided, but on a scale that has no statement about that
+     *    decision. Counting them either way would answer a question nobody
+     *    asked the scale;
+     *  - without_classification: nothing decided yet, or still only a proposal.
+     *    Never a failure (§11): not having been graded is not a bad grade, and
+     *    it stays out of the denominator entirely.
      *
      * @param  list<array<string, mixed>>  $rows
      * @return array<string, mixed>
@@ -253,24 +262,15 @@ class BuildClassStatistics
         $succeeded = 0;
         $failed = 0;
         $unplaced = 0;
-        $withoutResult = 0;
+        $withoutClassification = 0;
 
         foreach ($rows as $row) {
-            if (($row['period']['accumulated_average'] ?? null) === null) {
-                $withoutResult++;
-
-                continue;
-            }
-
-            $band = $this->bandOf($row, $scale);
-
-            if ($band === null) {
-                $unplaced++;
-
-                continue;
-            }
-
-            $band->is_negative ? $failed++ : $succeeded++;
+            match ($this->assignedOutcomeOf($row, $scale)) {
+                'positive' => $succeeded++,
+                'negative' => $failed++,
+                'unclassified' => $unplaced++,
+                default => $withoutClassification++,
+            };
         }
 
         $placed = $succeeded + $failed;
@@ -278,9 +278,9 @@ class BuildClassStatistics
         return [
             'succeeded' => $succeeded,
             'failed' => $failed,
-            // With a result, but on a scale that places nothing.
+            // Decided, but on a scale that states nothing about that decision.
             'unplaced' => $unplaced,
-            'without_result' => $withoutResult,
+            'without_classification' => $withoutClassification,
             // The denominator, stated so a screen never has to guess it.
             'placed' => $placed,
             'rate' => $this->percentage($succeeded, $placed),
@@ -350,16 +350,15 @@ class BuildClassStatistics
      * actually cares about. The two readings answer different questions and the
      * section shows both rather than letting one stand for the other.
      *
-     * THE SIDE IS THE SCALE'S OWN, through the same band the success rate and
-     * the Quadro Síntese place — `is_negative` on the band of the ACCUMULATED
-     * figure, at both ends. There is no second engine for positive/negative
-     * here and no threshold written anywhere in this file (§2, §4).
+     * THE SIDE IS THE TEACHER'S DECISION, read through the scale's own
+     * `is_negative`. There is no second engine for positive/negative here and
+     * no threshold written anywhere in this file (§2, §4).
      *
-     * THE MOVEMENT ABOVE READS THE STANDALONE FIGURE AND THIS READS THE
-     * ACCUMULATED ONE, deliberately: movement asks «did this period go better
-     * than the last», and a mention is placed on the accumulated result, so a
-     * change of mention has to be read on the figure that carries it. The two
-     * denominators are stated separately for exactly that reason.
+     * THE MOVEMENT ABOVE READS THE CALCULATED RESULT AND THIS READS THE
+     * ASSIGNED CLASSIFICATION, deliberately and with different denominators:
+     * «subiu nove pontos» is arithmetic about evidence, «passou a positivo» is
+     * a decision somebody took. A student can do the first without the second
+     * and the second without the first.
      *
      * @param  list<array<string, mixed>>  $rows
      * @param  list<array<string, mixed>>  $previousRows
@@ -379,17 +378,17 @@ class BuildClassStatistics
             'success_to_success' => 0,
             'failure_to_failure' => 0,
             'unclassified' => 0,
-            'no_comparison' => 0,
+            'no_assigned_classification' => 0,
         ];
 
         foreach ($rows as $row) {
             $counts[$this->transitionOf($row, $before[(int) $row['enrollment_id']] ?? null, $scale)]++;
         }
 
-        // THE DENOMINATOR IS THE FOUR TRANSITIONS AND NOTHING ELSE. A student
-        // the scale cannot place, or who has nothing to be compared against,
-        // did not «stay» anywhere — folding them in would answer a question
-        // nobody asked the scale (§3).
+        // THE DENOMINATOR IS STUDENTS WITH A DECISION AT BOTH ENDS whose side
+        // the scale can state — not students with two averages, and not the
+        // class. Somebody the teacher has not graded yet did not «stay»
+        // anywhere, and counting them either way would invent a grade (§11).
         $comparable = $counts['failure_to_success'] + $counts['success_to_failure']
             + $counts['success_to_success'] + $counts['failure_to_failure'];
 
@@ -406,43 +405,131 @@ class BuildClassStatistics
             // class — said in its own key rather than mixed into the one above.
             'share_of_class' => [
                 'unclassified' => $this->percentage($counts['unclassified'], count($rows)),
-                'no_comparison' => $this->percentage($counts['no_comparison'], count($rows)),
+                'no_assigned_classification' => $this->percentage($counts['no_assigned_classification'], count($rows)),
             ],
         ];
     }
 
     /**
-     * Which side of the scale a student was on, and which side they are on now.
+     * Which side of the scale the TEACHER put this student on, and which side
+     * they are on now.
+     *
+     * THE DECISION, NOT THE ARITHMETIC. Passing and failing are things a
+     * teacher decides, and LÁPIS keeps four different statements about a
+     * student deliberately apart (§14): the Média Ponderada is what was
+     * calculated, the proposal is what the system suggested, the self
+     * assessment is what the student said, and the classification is what the
+     * teacher decided. Only the last one is a grade. A student whose average
+     * lands in «Bom» and whose teacher wrote «2» has a negative classification,
+     * and this must say so.
      *
      * @param  array<string, mixed>  $row
      * @param  array<string, mixed>|null  $previousRow
      */
     protected function transitionOf(array $row, ?array $previousRow, ?Scale $scale): string
     {
-        // NO RESULT AT EITHER END IS «NOTHING TO COMPARE», never «unclassified»
-        // and never a fall. This has to be asked BEFORE the band, because a
-        // missing value has no band either and the two mean different things.
-        if ($previousRow === null
-            || ($previousRow['period']['accumulated_average'] ?? null) === null
-            || ($row['period']['accumulated_average'] ?? null) === null) {
-            return 'no_comparison';
+        if ($previousRow === null) {
+            return 'no_assigned_classification';
         }
 
-        $from = $this->bandOf($previousRow, $scale);
-        $to = $this->bandOf($row, $scale);
+        $before = $this->assignedOutcomeOf($previousRow, $scale);
+        $after = $this->assignedOutcomeOf($row, $scale);
 
-        // Both ends have a figure, but the scale places no band on one of them
-        // and so has no opinion about which side it is.
-        if ($from === null || $to === null) {
+        // NOTHING WAS DECIDED AT ONE OF THE ENDS. There is no official crossing
+        // to report, and filling the gap from the average or the proposal would
+        // be putting a grade in the teacher's mouth (§7, §3.3).
+        if ($before === 'none' || $after === 'none') {
+            return 'no_assigned_classification';
+        }
+
+        // Decided, but on a scale that cannot say which side that decision is.
+        if ($before === 'unclassified' || $after === 'unclassified') {
             return 'unclassified';
         }
 
         return match (true) {
-            $from->is_negative && ! $to->is_negative => 'failure_to_success',
-            ! $from->is_negative && $to->is_negative => 'success_to_failure',
-            $from->is_negative => 'failure_to_failure',
+            $before === 'negative' && $after === 'positive' => 'failure_to_success',
+            $before === 'positive' && $after === 'negative' => 'success_to_failure',
+            $before === 'negative' => 'failure_to_failure',
             default => 'success_to_success',
         };
+    }
+
+    /**
+     * The side of the scale the teacher's own decision falls on.
+     *
+     * «none» — nothing was decided for this period, or what exists is still a
+     * proposal. A proposal is the system talking and is never read as a grade.
+     * «unclassified» — a decision exists, but the scale has no statement about
+     * which side it is; saying nothing is the correct answer (§10.4).
+     *
+     * @param  array<string, mixed>  $row
+     * @return 'positive'|'negative'|'unclassified'|'none'
+     */
+    protected function assignedOutcomeOf(array $row, ?Scale $scale): string
+    {
+        $classification = $row['period']['classification'] ?? null;
+
+        if ($classification === null) {
+            return 'none';
+        }
+
+        // ONLY A DECISION COUNTS. `proposed` means the teacher has not answered
+        // yet; `superseded` is not the live one. The progression already forces
+        // a post-cutoff confirmation back to `proposed`, so a photograph read at
+        // a date cannot see a grade written after it.
+        if (! in_array($classification['status'] ?? null, ['confirmed', 'published'], true)) {
+            return 'none';
+        }
+
+        $final = $classification['final'] ?? null;
+
+        // A levelled decision states its own side, through the scale.
+        if ($final !== null) {
+            return ($final['is_negative'] ?? false) ? 'negative' : 'positive';
+        }
+
+        return $this->sideOfNumericDecision($classification['final_value'] ?? null, $scale);
+    }
+
+    /**
+     * A decision written as a bare number, on a numeric scale.
+     *
+     * ONLY THE SCALE'S OWN BANDS MAY ANSWER. A numeric scale that was never
+     * given qualitative bands has no statement about where passing begins, and
+     * a «>= 10» written here would be inventing a pedagogical rule (§1, §6).
+     *
+     * When it does have bands, they live in normalized space, so the teacher's
+     * number is placed back onto that axis with the inverse of the one approved
+     * placement rule — `min + (normalized/100) × (max − min)` — applied to the
+     * DECISION and never to a computed result.
+     *
+     * @return 'positive'|'negative'|'unclassified'
+     */
+    protected function sideOfNumericDecision(?string $value, ?Scale $scale): string
+    {
+        if ($value === null || trim($value) === '' || $scale === null) {
+            return 'unclassified';
+        }
+
+        if ($scale->levels->isEmpty() || $scale->min_value === null || $scale->max_value === null) {
+            return 'unclassified';
+        }
+
+        $span = Bc::sub(Bc::of((string) $scale->max_value), Bc::of((string) $scale->min_value));
+
+        if (Bc::compare($span, '0') === 0) {
+            return 'unclassified';
+        }
+
+        $normalized = Bc::mul(
+            Bc::div(Bc::sub(Bc::of($value), Bc::of((string) $scale->min_value)), $span),
+            '100',
+        );
+
+        $level = $this->proposals->bandFor($scale, $normalized);
+
+        return $level === null ? 'unclassified' : ($level->is_negative ? 'negative' : 'positive');
     }
 
     /**
@@ -896,7 +983,7 @@ class BuildClassStatistics
                 'partial_coverage_count' => 0,
                 'most_common_band' => null,
                 'success' => [
-                    'succeeded' => 0, 'failed' => 0, 'unplaced' => 0, 'without_result' => 0,
+                    'succeeded' => 0, 'failed' => 0, 'unplaced' => 0, 'without_classification' => 0,
                     'placed' => 0, 'rate' => null, 'failure_rate' => null,
                 ],
             ],
@@ -907,12 +994,12 @@ class BuildClassStatistics
                 'transitions' => [
                     'failure_to_success' => 0, 'success_to_failure' => 0,
                     'success_to_success' => 0, 'failure_to_failure' => 0,
-                    'unclassified' => 0, 'no_comparison' => 0, 'comparable' => 0,
+                    'unclassified' => 0, 'no_assigned_classification' => 0, 'comparable' => 0,
                     'percentages' => [
                         'failure_to_success' => null, 'success_to_failure' => null,
                         'success_to_success' => null, 'failure_to_failure' => null,
                     ],
-                    'share_of_class' => ['unclassified' => null, 'no_comparison' => null],
+                    'share_of_class' => ['unclassified' => null, 'no_assigned_classification' => null],
                 ],
             ],
             'distribution' => [],

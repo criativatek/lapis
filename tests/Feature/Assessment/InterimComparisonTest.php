@@ -4,6 +4,8 @@ namespace Tests\Feature\Assessment;
 
 use App\Domain\Assessment\Bc;
 use App\Models\AcademicPeriod;
+use App\Models\ClassificationScope;
+use App\Models\ClassificationStatus;
 use App\Models\Domain;
 use App\Models\InstrumentType;
 use App\Models\InterimAssessment;
@@ -14,7 +16,9 @@ use App\Models\StudentItemScore;
 use App\Models\User;
 use App\Services\Assessment\CaptureInterimAssessment;
 use App\Services\Assessment\CompareInterimToPeriodFinal;
+use App\Services\Assessment\ConfirmClassification;
 use App\Services\Assessment\InstrumentBuilder;
+use App\Services\Assessment\OpenClassification;
 use App\Services\Assessment\RecordScores;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
@@ -35,6 +39,9 @@ use Tests\TestCase;
 class InterimComparisonTest extends TestCase
 {
     use RefreshDatabase;
+
+    /** The demo class in roll order, so a fixture can name a student. */
+    private const ROLL = ['Ana' => 1, 'Bruno' => 2, 'Carolina' => 3, 'Diogo' => 4, 'Eva' => 5, 'Filipe' => 6];
 
     protected User $teacher;
 
@@ -395,26 +402,80 @@ class InterimComparisonTest extends TestCase
             ->assertNotFound();
     }
 
-    // ------------------------------- a taxa de sucesso nos dois momentos
+    // ------------------- a classificação atribuída, nos dois momentos
+
+    /**
+     * A decision taken the way the decision screen takes it.
+     *
+     * The photograph then stores whatever the read model saw, so what these
+     * exercise is the real rule about when a grade exists — not a row written
+     * by hand into the snapshot.
+     */
+    private function assign(string $firstName, int $sequence, string $code, ?string $at = null): void
+    {
+        // WHEN a grade was given matters here as much as what it was: a
+        // photograph shows the decisions that had been taken by its date, so a
+        // fixture meant to be inside one has to be dated inside it too.
+        $now = Carbon::now();
+
+        if ($at !== null) {
+            $this->travelTo(Carbon::parse($at));
+        }
+
+        $this->asTenant(function () use ($firstName, $sequence, $code): void {
+            $class = $this->schoolClass();
+            $enrollment = $class->enrollments()
+                ->where('class_number', self::ROLL[$firstName])->firstOrFail();
+
+            $classification = app(OpenClassification::class)->forDecision(
+                $class,
+                $this->period($sequence),
+                $enrollment,
+                ClassificationScope::Period,
+            );
+
+            $level = $class->profileVersion->scale->levels->firstWhere('code', $code);
+
+            // Changing one's mind before publication is an ordinary act on the
+            // same row, and the application has its own verb for it.
+            $classification->status === ClassificationStatus::Confirmed
+                ? app(ConfirmClassification::class)->redecide($classification, $this->teacher, $level->id)
+                : app(ConfirmClassification::class)->confirm($classification, $this->teacher, $level->id);
+        });
+
+        $this->travelTo($now);
+    }
+
+    /** Flips the scale's own statement about a band, live. */
+    private function markBandAsNegative(string $code, bool $negative = true): void
+    {
+        $this->asTenant(fn () => Scale::withoutGlobalScope('scaleVisibility')
+            ->where('name', 'Escala 1 a 5')->firstOrFail()
+            ->levels()->where('code', $code)
+            ->update(['is_negative' => $negative]));
+    }
 
     #[Test]
     public function the_photograph_records_the_success_rate_of_the_moment(): void
     {
+        $this->assign('Ana', 1, '4', '2026-11-01');
         $interim = $this->capture('2026-11-15');
 
         $success = $interim->snapshot['summary']['success'];
 
+        $this->assertSame(1, $success['succeeded'], 'a fotografia conta as classificações atribuídas');
         $this->assertSame(
             $success['succeeded'] + $success['failed'],
             $success['placed'],
             'a fotografia guarda os tres grupos e um so denominador',
         );
-        $this->assertArrayHasKey('without_result', $success);
+        $this->assertArrayHasKey('without_classification', $success);
     }
 
     #[Test]
     public function the_comparison_states_the_rate_at_both_ends(): void
     {
+        $this->assign('Ana', 1, '4', '2026-11-01');
         $interim = $this->capture('2026-11-15');
         $this->addLaterInstrument();
 
@@ -430,6 +491,8 @@ class InterimComparisonTest extends TestCase
     #[Test]
     public function the_change_between_the_two_rates_is_in_percentage_points(): void
     {
+        $this->assign('Ana', 1, '4', '2026-11-01');
+        $this->assign('Bruno', 1, '2', '2026-11-01');
         $interim = $this->capture('2026-11-15');
         $this->addLaterInstrument();
 
@@ -447,6 +510,7 @@ class InterimComparisonTest extends TestCase
     #[Test]
     public function an_older_photograph_that_never_recorded_a_rate_says_so_rather_than_zero(): void
     {
+        $this->assign('Ana', 1, '4', '2026-11-01');
         $interim = $this->capture('2026-11-15');
 
         // A document written before the block existed. It is never rebuilt to
@@ -473,6 +537,28 @@ class InterimComparisonTest extends TestCase
     }
 
     #[Test]
+    public function a_rate_recorded_before_it_meant_assigned_grades_is_not_placed_beside_one(): void
+    {
+        $this->assign('Ana', 1, '4', '2026-11-01');
+        $interim = $this->capture('2026-11-15');
+
+        // A v2 photograph HAS a `success` block, but it counted the mentions the
+        // averages landed on. Same key, different question — so it is declared
+        // unavailable rather than quietly compared, and never rewritten (§16).
+        $this->asTenant(function () use ($interim): void {
+            DB::table('interim_assessments')->where('id', $interim->id)->update(['snapshot_version' => 2]);
+        });
+
+        $comparison = $this->compare($interim->fresh())['success'];
+
+        $this->assertFalse($comparison['interim_is_available']);
+        $this->assertNull($comparison['change']);
+        $this->assertNotNull($comparison['final']);
+        // And the document itself is untouched.
+        $this->assertNotNull($interim->fresh()->snapshot['summary']['success']);
+    }
+
+    #[Test]
     public function a_photograph_taken_now_carries_the_current_snapshot_version(): void
     {
         $this->assertSame(
@@ -483,64 +569,87 @@ class InterimComparisonTest extends TestCase
 
     // ---------------------------------- quem mudou de patamar entre os dois
 
-    /** Flips the scale's own statement about a band, live. */
-    private function markBandAsNegative(string $code, bool $negative = true): void
-    {
-        $this->asTenant(fn () => Scale::withoutGlobalScope('scaleVisibility')
-            ->where('name', 'Escala 1 a 5')->firstOrFail()
-            ->levels()->where('code', $code)
-            ->update(['is_negative' => $negative]));
-    }
-
     #[Test]
     public function the_comparison_counts_who_changed_side_of_the_scale(): void
     {
+        $this->assign('Ana', 1, '4', '2026-11-01');
+        $this->assign('Bruno', 1, '2', '2026-11-01');
+
         $interim = $this->capture('2026-11-15');
-        $this->addLaterInstrument();
+
+        // The teacher then grades the end of the period the other way round.
+        $this->assign('Ana', 1, '2');
+        $this->assign('Bruno', 1, '4');
 
         $transitions = $this->compare($interim)['transitions'];
 
+        $this->assertSame(1, $transitions['success_to_failure'], 'Ana: 4 → 2');
+        $this->assertSame(1, $transitions['failure_to_success'], 'Bruno: 2 → 4');
+        $this->assertSame(2, $transitions['comparable']);
         $this->assertSame(
             $transitions['failure_to_success'] + $transitions['success_to_failure']
                 + $transitions['success_to_success'] + $transitions['failure_to_failure'],
             $transitions['comparable'],
         );
-        $this->assertArrayHasKey('share_of_class', $transitions);
     }
 
     #[Test]
-    public function the_interim_side_is_the_band_the_photograph_stored_and_not_todays(): void
+    public function a_class_nobody_graded_reports_no_crossings_rather_than_inventing_them(): void
     {
+        // Averages everywhere and not one decision. There is no official
+        // crossing to report, and the calculated mention does not stand in.
+        $interim = $this->capture('2026-11-15');
+        $this->addLaterInstrument();
+
+        $transitions = $this->compare($interim)['transitions'];
+
+        $this->assertSame(0, $transitions['comparable']);
+        $this->assertSame(6, $transitions['no_assigned_classification']);
+    }
+
+    #[Test]
+    public function the_interim_side_is_the_grade_the_photograph_stored_and_not_todays(): void
+    {
+        $this->assign('Ana', 1, '4', '2026-11-01');
         $interim = $this->capture('2026-11-15');
 
-        // The scale changes its mind AFTER the photograph. November did not.
-        $this->markBandAsNegative('3');
-        $this->markBandAsNegative('4');
-        $this->markBandAsNegative('5');
+        // The teacher changes their mind afterwards. November did not.
+        $this->assign('Ana', 1, '2');
 
         $comparison = $this->compare($interim);
-        $transitions = $comparison['transitions'];
 
-        // Everybody who had a positive mention in the photograph now ends the
-        // period negative — because the scale moved, not because they fell.
-        $this->assertGreaterThan(0, $transitions['success_to_failure']);
-        $this->assertSame(0, $transitions['failure_to_success']);
+        $this->assertSame(1, $comparison['transitions']['success_to_failure']);
 
-        foreach ($comparison['students'] as $student) {
-            if ($student['transition'] === 'no_comparison') {
-                continue;
-            }
+        $ana = collect($comparison['students'])->firstWhere('transition', 'success_to_failure');
 
-            $this->assertFalse(
-                $student['interim_band']['is_negative'],
-                'a fotografia guarda a leitura de então e não se reescreve',
-            );
-        }
+        $this->assertSame('4', $ana['interim_classification']['final']['code'], 'a fotografia guarda o que viu');
+        $this->assertSame('2', $ana['final_classification']['final']['code']);
+    }
+
+    #[Test]
+    public function reconfiguring_the_scale_afterwards_does_not_rewrite_the_photograph(): void
+    {
+        $this->assign('Ana', 1, '3', '2026-11-01');
+        $interim = $this->capture('2026-11-15');
+
+        // «Suficiente» becomes negative AFTER the photograph. What the snapshot
+        // stored keeps the scale's opinion of the day it was taken.
+        $this->markBandAsNegative('3');
+
+        $comparison = $this->compare($interim);
+        $ana = collect($comparison['students'])->first(fn (array $row): bool => $row['transition'] !== 'no_assigned_classification');
+
+        $this->assertFalse(
+            $ana['interim_classification']['final']['is_negative'],
+            'a fotografia guarda a leitura de então e não se reescreve',
+        );
+        $this->assertSame('success_to_failure', $ana['transition']);
     }
 
     #[Test]
     public function a_photograph_that_never_recorded_a_side_is_left_unclassified(): void
     {
+        $this->assign('Ana', 1, '4', '2026-11-01');
         $interim = $this->capture('2026-11-15');
 
         // A document written before bands carried this flag. Guessing which
@@ -549,8 +658,8 @@ class InterimComparisonTest extends TestCase
             $snapshot = $interim->snapshot;
 
             foreach ($snapshot['students'] as $index => $student) {
-                if ($student['band'] !== null) {
-                    unset($snapshot['students'][$index]['band']['is_negative']);
+                if (($student['classification']['final'] ?? null) !== null) {
+                    unset($snapshot['students'][$index]['classification']['final']['is_negative']);
                 }
             }
 
@@ -562,30 +671,32 @@ class InterimComparisonTest extends TestCase
 
         $transitions = $this->compare($interim->fresh())['transitions'];
 
-        $this->assertGreaterThan(0, $transitions['unclassified']);
+        $this->assertSame(1, $transitions['unclassified']);
         $this->assertSame(0, $transitions['comparable']);
         $this->assertSame(0, $transitions['success_to_success'], 'não sabemos não é «manteve-se»');
     }
 
     #[Test]
-    public function a_student_missing_from_one_end_has_no_transition_to_report(): void
+    public function a_student_graded_at_only_one_end_has_no_transition_to_report(): void
     {
+        // Graded now, and not then.
         $interim = $this->capture('2026-11-15');
+        $this->assign('Ana', 1, '4');
 
         $comparison = $this->compare($interim);
+        $ana = collect($comparison['students'])->firstWhere('final_classification.final.code', '4');
 
-        foreach ($comparison['students'] as $student) {
-            if ($student['interim_band'] === null || $student['final_band'] === null) {
-                $this->assertSame('no_comparison', $student['transition']);
-            }
-        }
+        $this->assertSame('no_assigned_classification', $ana['transition']);
+        $this->assertSame(0, $comparison['transitions']['comparable']);
     }
 
     #[Test]
     public function each_students_transition_agrees_with_the_comparisons_counts(): void
     {
+        $this->assign('Ana', 1, '4', '2026-11-01');
+        $this->assign('Bruno', 1, '2', '2026-11-01');
         $interim = $this->capture('2026-11-15');
-        $this->markBandAsNegative('3');
+        $this->assign('Ana', 1, '2');
 
         $comparison = $this->compare($interim);
         $counted = [];
@@ -594,7 +705,7 @@ class InterimComparisonTest extends TestCase
             $counted[$student['transition']] = ($counted[$student['transition']] ?? 0) + 1;
         }
 
-        foreach (['failure_to_success', 'success_to_failure', 'success_to_success', 'failure_to_failure', 'unclassified', 'no_comparison'] as $key) {
+        foreach (['failure_to_success', 'success_to_failure', 'success_to_success', 'failure_to_failure', 'unclassified', 'no_assigned_classification'] as $key) {
             $this->assertSame($counted[$key] ?? 0, $comparison['transitions'][$key], "«{$key}» diverge");
         }
     }

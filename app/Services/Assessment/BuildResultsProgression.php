@@ -423,6 +423,7 @@ class BuildResultsProgression
                 )->toPayload(),
                 'proposed' => $level($classification->proposedScaleLevel),
                 'final' => null,
+                'final_value' => null,
                 'differs_from_proposal' => false,
             ];
         }
@@ -452,6 +453,11 @@ class BuildResultsProgression
             // The decision. Never filled in from the proposal by this service or
             // by any other: the teacher decides, the system proposes (§3.3).
             'final' => $level($classification->finalScaleLevel),
+            // The decision written as a bare number, which is what a numeric
+            // scale takes. Carried beside the level rather than instead of it,
+            // because on a levelled scale both are set and the level is the
+            // more specific statement.
+            'final_value' => $classification->final_value,
             'differs_from_proposal' => $classification->final_scale_level_id !== null
                 && $classification->proposed_scale_level_id !== null
                 && $classification->final_scale_level_id !== $classification->proposed_scale_level_id,

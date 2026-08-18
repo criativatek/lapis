@@ -33,6 +33,13 @@ class CompareInterimToPeriodFinal
 {
     public const PRECISION = BuildResultsProgression::PRECISION;
 
+    /**
+     * The first snapshot version whose `success` block counts assigned
+     * classifications. Earlier ones counted calculated mentions and answer a
+     * different question, so they are not placed beside a live figure.
+     */
+    public const OFFICIAL_RATE_FROM_VERSION = 3;
+
     public function __construct(protected BuildClassStatistics $statistics) {}
 
     /**
@@ -72,7 +79,7 @@ class CompareInterimToPeriodFinal
                 'interim_students_with_result' => $snapshot['summary']['students_with_result'] ?? 0,
                 'final_students_with_result' => $final['summary']['students_with_result'] ?? 0,
             ],
-            'success' => $this->success($snapshot, $final),
+            'success' => $this->success($snapshot, $final, (int) $interim->snapshot_version),
             'movement' => $this->movement($students),
             'transitions' => $this->transitions($students),
             'domains' => $this->domains($snapshot, $final),
@@ -89,13 +96,21 @@ class CompareInterimToPeriodFinal
      * with zeros — «não sabemos» and «ninguém passou» are different sentences,
      * and a snapshot is never recomputed to fill the gap (§8, §11).
      *
+     * AND A v2 PHOTOGRAPH IS NOT COMPARABLE EITHER. It stored a rate under this
+     * key, but that rate counted the mentions the averages landed on, and the
+     * live one counts the grades the teacher gave. Same key, different
+     * question — so it is declared unavailable rather than quietly placed
+     * beside a number it does not answer. The document is not rewritten (§16).
+     *
      * @param  array<string, mixed>  $snapshot
      * @param  array<string, mixed>  $final
      * @return array<string, mixed>
      */
-    protected function success(array $snapshot, array $final): array
+    protected function success(array $snapshot, array $final, int $version): array
     {
-        $interim = $snapshot['summary']['success'] ?? null;
+        $interim = $version >= self::OFFICIAL_RATE_FROM_VERSION
+            ? ($snapshot['summary']['success'] ?? null)
+            : null;
         $current = $final['summary']['success'] ?? null;
 
         return [
@@ -215,7 +230,10 @@ class CompareInterimToPeriodFinal
                 // Crossing the line is not the same as moving: a student can
                 // rise six points without changing side, and fall five while
                 // changing it (§1 of the movement decision).
-                'transition' => $this->transitionOf($interimStudent['band'] ?? null, $finalStudent['band'] ?? null),
+                'transition' => $this->transitionOf(
+                    $interimStudent['classification'] ?? null,
+                    $finalStudent['classification'] ?? null,
+                ),
                 // Kept apart, as they are everywhere else: a decision, an
                 // answer the student gave, and a calculated mention are three
                 // different statements.
@@ -266,15 +284,14 @@ class CompareInterimToPeriodFinal
     /**
      * Who crossed the line between the photograph and the end of the period.
      *
-     * READ ENTIRELY FROM WHAT WAS ALREADY WRITTEN DOWN. The interim side is the
-     * band the snapshot stored, which carries its own `is_negative` — the
-     * scale's opinion AS IT STOOD when the photograph was taken. Nothing is
-     * re-banded against today's scale, so reconfiguring it next term cannot
-     * rewrite who was failing in November (§24).
+     * THE TEACHER'S OWN DECISIONS, at both ends. The interim side is the
+     * classification the snapshot stored — status and final level as they
+     * stood — and the final side is the live one. Nothing is re-derived from an
+     * average, so a class whose grades were never given reports «sem
+     * classificação comparável» rather than a crossing nobody decided (§15).
      *
-     * A photograph old enough to have stored no `is_negative` for a band leaves
-     * that student `unclassified`: we know where they were, not which side the
-     * scale then called it, and guessing would be inventing history.
+     * Because the photograph keeps the decision it saw, reconfiguring the scale
+     * next term cannot rewrite who was failing in November (§24).
      *
      * @param  list<array<string, mixed>>  $students
      * @return array<string, mixed>
@@ -287,7 +304,7 @@ class CompareInterimToPeriodFinal
             'success_to_success' => 0,
             'failure_to_failure' => 0,
             'unclassified' => 0,
-            'no_comparison' => 0,
+            'no_assigned_classification' => 0,
         ];
 
         foreach ($students as $student) {
@@ -308,37 +325,75 @@ class CompareInterimToPeriodFinal
             ],
             'share_of_class' => [
                 'unclassified' => $this->percentage($counts['unclassified'], count($students)),
-                'no_comparison' => $this->percentage($counts['no_comparison'], count($students)),
+                'no_assigned_classification' => $this->percentage($counts['no_assigned_classification'], count($students)),
             ],
         ];
     }
 
     /**
-     * Which side of the scale a student was on at each end.
+     * Which side of the scale the teacher's decision fell on, at each end.
      *
      * @param  array<string, mixed>|null  $from
      * @param  array<string, mixed>|null  $to
      */
     protected function transitionOf(?array $from, ?array $to): string
     {
-        if ($from === null || $to === null) {
-            return 'no_comparison';
+        $before = $this->assignedSideOf($from);
+        $after = $this->assignedSideOf($to);
+
+        if ($before === 'none' || $after === 'none') {
+            return 'no_assigned_classification';
         }
 
-        // The photograph's own word, and the live one. Either can be silent.
-        $wasNegative = $from['is_negative'] ?? null;
-        $isNegative = $to['is_negative'] ?? null;
-
-        if ($wasNegative === null || $isNegative === null) {
+        if ($before === 'unclassified' || $after === 'unclassified') {
             return 'unclassified';
         }
 
         return match (true) {
-            $wasNegative && ! $isNegative => 'failure_to_success',
-            ! $wasNegative && $isNegative => 'success_to_failure',
-            $wasNegative => 'failure_to_failure',
+            $before === 'negative' && $after === 'positive' => 'failure_to_success',
+            $before === 'positive' && $after === 'negative' => 'success_to_failure',
+            $before === 'negative' => 'failure_to_failure',
             default => 'success_to_success',
         };
+    }
+
+    /**
+     * A classification payload — stored or live — read for its side.
+     *
+     * A photograph taken before this feature existed still holds the
+     * classification it saw, so the same reading works on both. What it never
+     * does is fall back to the proposal or to the average when nothing was
+     * decided: «não foi atribuída» is the answer (§7, §15).
+     *
+     * @param  array<string, mixed>|null  $classification
+     * @return 'positive'|'negative'|'unclassified'|'none'
+     */
+    protected function assignedSideOf(?array $classification): string
+    {
+        if ($classification === null) {
+            return 'none';
+        }
+
+        if (! in_array($classification['status'] ?? null, ['confirmed', 'published'], true)) {
+            return 'none';
+        }
+
+        $final = $classification['final'] ?? null;
+
+        if ($final === null) {
+            // A bare numeric decision. The snapshot did not store the scale's
+            // interval, so nothing here can place it without re-reading a scale
+            // that may since have moved — and that is history, not arithmetic.
+            return ($classification['final_value'] ?? null) === null ? 'none' : 'unclassified';
+        }
+
+        // A photograph old enough not to have recorded the flag knows where the
+        // student was, not which side the scale then called it.
+        if (! array_key_exists('is_negative', $final) || $final['is_negative'] === null) {
+            return 'unclassified';
+        }
+
+        return $final['is_negative'] ? 'negative' : 'positive';
     }
 
     protected function percentage(int $count, int $total): ?string

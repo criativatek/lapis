@@ -339,7 +339,27 @@ class StatisticsChartThemeTest extends TestCase
         // rising six points and crossing the line are different facts.
         $this->assertStringContainsString('Mudanças de patamar', $board);
         $this->assertStringContainsString('com dois períodos comparáveis', $board);
-        $this->assertStringContainsString('com menção nos dois momentos', $board);
+        $this->assertStringContainsString('com classificação atribuída nos dois momentos', $board);
+
+        // AND THE SOURCE OF EACH IS SAID ON THE CARD. A teacher must never have
+        // to guess whether a figure came from the averages or from the grades.
+        $this->assertStringContainsString('lê a classificação que atribuiu, não a média', $board);
+    }
+
+    #[Test]
+    public function the_official_rate_says_it_counts_assigned_classifications(): void
+    {
+        $rate = (string) file_get_contents(resource_path('js/components/infographic/SuccessRate.vue'));
+        $page = $this->page();
+
+        $this->assertStringContainsString('com classificação atribuída', $rate);
+        $this->assertStringContainsString('Conta as classificações que atribuiu, não as médias', $rate);
+        $this->assertStringContainsString('Por classificar', $rate);
+
+        // And the statistical block beside it says which figure IT bands, so
+        // the two readings are never mistaken for each other (§13).
+        $this->assertStringContainsString('Leitura estatística', $page);
+        $this->assertStringContainsString('não a classificação atribuída', $page);
     }
 
     #[Test]
@@ -425,9 +445,9 @@ class StatisticsChartThemeTest extends TestCase
             $this->assertStringContainsString($word, $page, "falta a leitura «{$word}»");
         }
 
-        // And «sem comparação» keeps its own sentence rather than being folded
-        // into «mantiveram-se».
-        $this->assertStringContainsString('Sem comparação', $this->board());
+        // And «sem classificação comparável» keeps its own sentence rather than
+        // being folded into «mantiveram-se».
+        $this->assertStringContainsString('Sem classificação comparável', $this->board());
         $this->assertStringContainsString('não são «mantiveram-se»', $this->board());
     }
 

@@ -4,7 +4,12 @@ import { computed } from 'vue';
 import { prefersReducedMotion } from '@/lib/chartTheme';
 
 /**
- * «Quantos alunos atingiram resultado positivo?», answered in one line.
+ * «Quantos alunos tiveram classificação positiva?», answered in one line.
+ *
+ * THE GRADES THE TEACHER GAVE, not the mentions the averages landed on. This is
+ * the number a conselho de turma quotes, so it counts decisions; the
+ * statistical reading lives further down the page under «Como se distribuem os
+ * resultados» and says there which figure it bands.
  *
  * A SEGMENTED BAR RATHER THAN A DOUGHNUT. The question is about two parts of
  * one whole, and a bar shows a proportion as a length the eye reads directly —
@@ -12,16 +17,16 @@ import { prefersReducedMotion } from '@/lib/chartTheme';
  * hides the counts behind a hover.
  *
  * WHAT IS AND IS NOT IN THE DENOMINATOR is stated on the card, because a rate
- * without its base is a number nobody can check. Students with no result stand
- * apart and are never folded in: an absence is not a failure.
+ * without its base is a number nobody can check. Students nobody has graded yet
+ * stand apart and are never folded in: not having been graded is not a failure.
  */
 
 export type SuccessFigures = {
     succeeded: number;
     failed: number;
-    /** With a result, on a scale that places no band for it. */
+    /** Graded, on a scale that says nothing about which side that grade is. */
     unplaced: number;
-    without_result: number;
+    without_classification: number;
     /** succeeded + failed — the denominator, and nothing else. */
     placed: number;
     /** Already formatted by the caller, or null when nobody is placed. */
@@ -54,9 +59,9 @@ const students = (count: number): string => (count === 1 ? '1 aluno' : `${count}
         </p>
         <p class="mt-1 text-[11px] text-muted-foreground">
             <template v-if="figures.placed > 0">
-                de {{ students(figures.placed) }} com menção
+                de {{ students(figures.placed) }} com classificação atribuída
             </template>
-            <template v-else>Ainda não há menções atribuídas</template>
+            <template v-else>Ainda não há classificações atribuídas</template>
         </p>
 
         <!-- Two parts of one whole. -->
@@ -92,10 +97,10 @@ const students = (count: number): string => (count === 1 ? '1 aluno' : `${count}
             </div>
 
             <!-- Outside the rate, and said so. -->
-            <div v-if="figures.without_result > 0" class="flex items-baseline gap-2">
+            <div v-if="figures.without_classification > 0" class="flex items-baseline gap-2">
                 <Minus aria-hidden="true" class="size-3.5 shrink-0 translate-y-0.5 text-muted-foreground/60" />
-                <dt class="text-muted-foreground">Sem resultado</dt>
-                <dd class="ml-auto font-semibold tabular-nums text-muted-foreground">{{ figures.without_result }}</dd>
+                <dt class="text-muted-foreground">Por classificar</dt>
+                <dd class="ml-auto font-semibold tabular-nums text-muted-foreground">{{ figures.without_classification }}</dd>
                 <dd class="w-14 shrink-0 text-right text-xs text-muted-foreground">fora</dd>
             </div>
 
@@ -107,8 +112,12 @@ const students = (count: number): string => (count === 1 ? '1 aluno' : `${count}
             </div>
         </dl>
 
-        <p v-if="figures.without_result > 0 || figures.unplaced > 0" class="mt-2.5 text-[11px] leading-relaxed text-muted-foreground">
-            Quem não tem resultado fica de fora da taxa — uma ausência não é um insucesso.
+        <p class="mt-2.5 text-[11px] leading-relaxed text-muted-foreground">
+            <template v-if="figures.without_classification > 0 || figures.unplaced > 0">
+                Conta as classificações que atribuiu, não as médias. Quem ainda não tem classificação
+                fica de fora da taxa — não ter sido classificado não é um insucesso.
+            </template>
+            <template v-else>Conta as classificações que atribuiu, não as médias calculadas.</template>
         </p>
     </div>
 </template>

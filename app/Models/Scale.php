@@ -26,8 +26,8 @@ use Illuminate\Support\Carbon;
  * @property int|null $organization_id
  * @property string $name
  * @property string $kind
- * @property string $min_value
- * @property string $max_value
+ * @property string|null $min_value
+ * @property string|null $max_value
  * @property Carbon|null $frozen_at
  */
 #[Fillable(['name', 'kind', 'min_value', 'max_value'])]

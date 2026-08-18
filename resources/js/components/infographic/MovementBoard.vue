@@ -265,7 +265,7 @@ const students = (count: number): string => (count === 1 ? '1 aluno' : `${count}
             </h3>
             <span aria-hidden="true" class="h-px flex-1 bg-border/70"></span>
             <span class="text-[10px] tabular-nums text-muted-foreground">
-                {{ crossingComparable }} com menção nos dois momentos
+                {{ crossingComparable }} com classificação atribuída nos dois momentos
             </span>
         </div>
 
@@ -314,7 +314,7 @@ const students = (count: number): string => (count === 1 ? '1 aluno' : `${count}
                 <span class="relative mt-1.5 block text-sm font-medium leading-snug">{{ crossing.label }}</span>
 
                 <span class="relative mt-0.5 block text-[11px] tabular-nums text-muted-foreground">
-                    <template v-if="crossing.count > 0">{{ crossing.share }} de quem tem menção nos dois momentos</template>
+                    <template v-if="crossing.count > 0">{{ crossing.share }} de quem tem classificação nos dois momentos</template>
                     <template v-else>Ninguém mudou de patamar neste sentido</template>
                 </span>
             </component>
@@ -344,17 +344,23 @@ const students = (count: number): string => (count === 1 ? '1 aluno' : `${count}
 
             <div class="flex items-center gap-1.5">
                 <Circle aria-hidden="true" class="size-3.5 shrink-0 text-muted-foreground/60" />
-                <dt class="text-muted-foreground">Sem comparação</dt>
+                <dt class="text-muted-foreground">Sem classificação comparável</dt>
                 <dd class="font-semibold tabular-nums" :class="noComparison > 0 ? '' : 'text-muted-foreground'">
                     {{ noComparison }}
                 </dd>
             </div>
         </dl>
 
-        <!-- Only when it changes what the denominators mean (§16). -->
-        <p v-if="noComparison > 0" class="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-            {{ students(noComparison) }} sem um momento anterior comparável — ficam fora das contagens
-            acima, e não são «mantiveram-se».
+        <!-- WHAT THIS BLOCK READS, said plainly. The register above is about
+             results and this one is about grades, and a teacher must never have
+             to guess which of the two a number came from (§12). -->
+        <p class="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+            <template v-if="noComparison > 0">
+                Mudança de patamar lê a classificação que atribuiu, não a média.
+                {{ students(noComparison) }} sem classificação atribuída nos dois momentos ficam fora
+                destas contagens — e não são «mantiveram-se».
+            </template>
+            <template v-else>Mudança de patamar lê a classificação que atribuiu, não a média calculada.</template>
         </p>
     </div>
 </template>
