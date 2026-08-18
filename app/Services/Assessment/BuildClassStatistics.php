@@ -79,7 +79,7 @@ class BuildClassStatistics
             'distribution' => $this->distribution($rows, $scale),
             'domain_statistics' => $this->domainStatistics($rows, $domains, $scale),
             'period_series' => $this->periodSeries($students, $periods, $domains),
-            'students' => $this->students($rows, $scale),
+            'students' => $this->students($rows, $scale, $students),
         ];
     }
 
@@ -214,6 +214,71 @@ class BuildClassStatistics
             'accumulated_average' => $this->mean($accumulated),
             'partial_coverage_count' => $partial,
             'most_common_band' => $this->mostCommonBand($rows, $scale),
+            'success' => $this->success($rows, $scale),
+        ];
+    }
+
+    /**
+     * «Quantos alunos atingiram resultado positivo?»
+     *
+     * DECIDED BY THE SCALE, NEVER BY A THRESHOLD WRITTEN HERE. A band carries
+     * `is_negative`, which is the scale's own statement about whether being
+     * placed there is a pass or a fail — and it is the same flag the results
+     * screens already colour by. Hard-coding «>= 50%» would be inventing a
+     * pedagogical rule, and would be wrong the moment a school uses a 0–20, a
+     * 1–5 or a scale of its own where the passing line sits somewhere else.
+     *
+     * THREE GROUPS, AND ONLY ONE DENOMINATOR:
+     *
+     *  - placed: a student whose accumulated figure fell in a band. Those and
+     *    only those are counted for or against the rate;
+     *  - unplaced: a student WITH a result on a scale that has no band for it.
+     *    The scale cannot say whether that is a pass, so neither can this —
+     *    counting them either way would be answering a question nobody asked
+     *    the scale;
+     *  - without_result: no result at all. Never a failure (§11): an absence is
+     *    not a bad grade, and it stays out of the denominator entirely.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return array<string, mixed>
+     */
+    protected function success(array $rows, ?Scale $scale): array
+    {
+        $succeeded = 0;
+        $failed = 0;
+        $unplaced = 0;
+        $withoutResult = 0;
+
+        foreach ($rows as $row) {
+            if (($row['period']['accumulated_average'] ?? null) === null) {
+                $withoutResult++;
+
+                continue;
+            }
+
+            $band = $this->bandOf($row, $scale);
+
+            if ($band === null) {
+                $unplaced++;
+
+                continue;
+            }
+
+            $band->is_negative ? $failed++ : $succeeded++;
+        }
+
+        $placed = $succeeded + $failed;
+
+        return [
+            'succeeded' => $succeeded,
+            'failed' => $failed,
+            // With a result, but on a scale that places nothing.
+            'unplaced' => $unplaced,
+            'without_result' => $withoutResult,
+            // The denominator, stated so a screen never has to guess it.
+            'placed' => $placed,
+            'rate' => $this->percentage($succeeded, $placed),
+            'failure_rate' => $this->percentage($failed, $placed),
         ];
     }
 
@@ -342,12 +407,27 @@ class BuildClassStatistics
             $accumulated = [];
             $changes = [];
             $partial = 0;
+            $succeeded = 0;
+            $placed = 0;
 
             foreach ($rows as $row) {
                 $cell = $this->domainCell($row, $domain['id']);
 
                 if ($cell === null) {
                     continue;
+                }
+
+                // The same rule as the class figure, applied to this domain's
+                // own mention: the scale decides, and a domain the scale places
+                // nothing in counts for neither side.
+                $mention = $cell['mention'] ?? null;
+
+                if ($mention !== null) {
+                    $placed++;
+
+                    if ($mention['is_negative'] === false) {
+                        $succeeded++;
+                    }
                 }
 
                 if ($cell['weighted_average'] !== null) {
@@ -381,6 +461,12 @@ class BuildClassStatistics
                 'students_with_result' => count($period),
                 'students_without_result' => count($rows) - count($period),
                 'partial_coverage_count' => $partial,
+                // Success within this domain — «5 de 6» — so a teacher can see
+                // which domain is carrying the class and which is holding it
+                // back, without a second chart for each (§7).
+                'succeeded' => $succeeded,
+                'placed' => $placed,
+                'success_rate' => $this->percentage($succeeded, $placed),
                 // The band of the CLASS's accumulated mean in this domain. A
                 // statistic about the group, never a mention belonging to any
                 // student — placed by the same resolver all the same.
@@ -452,10 +538,33 @@ class BuildClassStatistics
      * whatever the canonical read model said about them.
      *
      * @param  list<array<string, mixed>>  $rows
+     * @param  list<array<string, mixed>>  $progressionStudents
      * @return list<array<string, mixed>>
      */
-    protected function students(array $rows, ?Scale $scale): array
+    protected function students(array $rows, ?Scale $scale, array $progressionStudents = []): array
     {
+        // Each student's own line through the year, lifted whole from the
+        // progression: their period figures, their movement and their domains,
+        // exactly as the canonical model wrote them. Nothing is recomputed and
+        // no query is added — the data was already in hand.
+        $series = [];
+
+        foreach ($progressionStudents as $student) {
+            $series[(int) $student['enrollment_id']] = array_map(fn (array $entry): array => [
+                'period_id' => $entry['period_id'],
+                'period_label' => $entry['period_label'],
+                'weighted_average' => $entry['weighted_average'],
+                'accumulated_average' => $entry['accumulated_average'],
+                'coverage_warning' => (bool) $entry['coverage_warning'],
+                'evolution' => $entry['evolution'],
+                'domains' => array_map(fn (array $cell): array => [
+                    'domain_id' => $cell['domain_id'],
+                    'weighted_average' => $cell['weighted_average'],
+                    'mention' => $cell['mention'],
+                ], $entry['domains']),
+            ], $student['periods']);
+        }
+
         $students = [];
 
         foreach ($rows as $row) {
@@ -473,6 +582,8 @@ class BuildClassStatistics
                 'domains' => $period['domains'] ?? [],
                 'self_assessment' => $period['self_assessment'] ?? null,
                 'classification' => $period['classification'] ?? null,
+                // Their whole year, for the individual panel (§3, §5).
+                'series' => $series[$row['enrollment_id']] ?? [],
             ];
         }
 
@@ -662,6 +773,10 @@ class BuildClassStatistics
                 'accumulated_average' => null,
                 'partial_coverage_count' => 0,
                 'most_common_band' => null,
+                'success' => [
+                    'succeeded' => 0, 'failed' => 0, 'unplaced' => 0, 'without_result' => 0,
+                    'placed' => 0, 'rate' => null, 'failure_rate' => null,
+                ],
             ],
             'evolution' => [
                 'progressed' => 0, 'stable' => 0, 'regressed' => 0, 'no_comparison' => 0,

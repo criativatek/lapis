@@ -117,7 +117,9 @@ class InterimAssessmentTest extends TestCase
         $interim = $this->capture();
 
         $this->assertSame(InterimAssessment::CURRENT_VERSION, $interim->snapshot_version);
-        $this->assertSame(1, $interim->snapshot['version']);
+        // The document says its own version too, so a payload that ever travels
+        // without its row can still be read.
+        $this->assertSame(InterimAssessment::CURRENT_VERSION, $interim->snapshot['version']);
         $this->assertTrue($interim->isIntact());
         $this->assertSame(64, strlen($interim->snapshot_hash));
     }

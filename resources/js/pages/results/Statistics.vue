@@ -16,6 +16,8 @@ import SectionHeading from '@/components/infographic/SectionHeading.vue';
 import StatGauge from '@/components/infographic/StatGauge.vue';
 import StudentSpectrum from '@/components/infographic/StudentSpectrum.vue';
 import type { SpectrumPoint } from '@/components/infographic/StudentSpectrum.vue';
+import SuccessRate from '@/components/infographic/SuccessRate.vue';
+import type { SuccessFigures } from '@/components/infographic/SuccessRate.vue';
 import {
     areaGradient,
     categoryAxis,
@@ -61,6 +63,13 @@ type Student = {
     domains: DomainCell[];
     self_assessment: Level;
     classification: { status: string; is_published: boolean; final: Level; proposed: Level } | null;
+    /** The student's own line through the year, from the canonical read model. */
+    series: {
+        period_id: number; period_label: string;
+        weighted_average: string | null; accumulated_average: string | null;
+        coverage_warning: boolean; evolution: Evolution;
+        domains: { domain_id: number; weighted_average: string | null; mention: Band }[];
+    }[];
 };
 
 type DomainStatistic = {
@@ -68,6 +77,7 @@ type DomainStatistic = {
     period_average: string | null; accumulated_average: string | null; evolution_average: string | null;
     students_with_result: number; students_without_result: number; partial_coverage_count: number;
     qualitative_band: Band;
+    succeeded: number; placed: number; success_rate: string | null;
 };
 
 type Statistics = {
@@ -81,6 +91,7 @@ type Statistics = {
         class_average: string | null; accumulated_average: string | null;
         partial_coverage_count: number;
         most_common_band: (NonNullable<Band> & { count: number }) | null;
+        success: SuccessFigures;
     };
     evolution: {
         progressed: number; stable: number; regressed: number; no_comparison: number;
@@ -439,6 +450,61 @@ const spectrum = computed<SpectrumPoint[]>(() => stats.value.students
         mentionClass: toneClass(student.band),
         classNumber: student.class_number,
     })));
+
+// -------------------------------------------- a evolução de um aluno
+
+/** The periods this student actually has a figure in. Never invented. */
+const studentMoments = computed(() => (selected.value?.series ?? [])
+    .filter((entry) => entry.weighted_average !== null));
+
+/**
+ * The shape of the individual reading follows how many moments there are, for
+ * the same reason the class one does: two points do not justify a line chart,
+ * and one point is a number rather than a trend (§3).
+ */
+const studentShape = computed<'single' | 'slope' | 'line'>(() => {
+    if (studentMoments.value.length <= 1) {
+        return 'single';
+    }
+
+    return studentMoments.value.length === 2 ? 'slope' : 'line';
+});
+
+/** The student's own ends, for the dumbbells. */
+const studentEnds = computed(() => {
+    const moments = studentMoments.value;
+
+    return moments.length < 2 ? null : { from: moments[0], to: moments[moments.length - 1] };
+});
+
+const studentChange = computed<number | null>(() => {
+    const ends = studentEnds.value;
+
+    return ends === null ? null : Number(ends.to.weighted_average) - Number(ends.from.weighted_average);
+});
+
+/** One row per domain: where this student started and where they ended. */
+const studentDomainDumbbells = computed<Dumbbell[]>(() => {
+    const ends = studentEnds.value;
+
+    if (ends === null) {
+        return [];
+    }
+
+    return stats.value.domains.map((domain) => {
+        const from = ends.from.domains.find((cell) => cell.domain_id === domain.id)?.weighted_average ?? null;
+        const to = ends.to.domains.find((cell) => cell.domain_id === domain.id)?.weighted_average ?? null;
+
+        return {
+            id: domain.id,
+            label: domain.name,
+            from: from === null ? null : Number(from),
+            to: to === null ? null : Number(to),
+            // The SAME ink the domain carries everywhere else on the page.
+            colour: inks.value[domain.id],
+        };
+    });
+});
 
 function openStudentById(enrollmentId: number): void {
     selected.value = stats.value.students.find((student) => student.enrollment_id === enrollmentId) ?? null;
@@ -961,7 +1027,7 @@ const studentRows = computed(() => {
             </Transition>
 
             <!-- ============================== 01 · A TURMA NUM OLHAR -->
-            <div class="grid gap-4 lg:grid-cols-3">
+            <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <section :class="[card('amber'), 'p-5']">
                     <StatGauge
                         :percent="stats.summary.class_average === null ? null : Number(stats.summary.class_average)"
@@ -1005,10 +1071,20 @@ const studentRows = computed(() => {
                     </StatGauge>
                 </section>
 
-                <!-- Coverage: a card that earns its place beside the two gauges
-                     by carrying three real counts and the bar that relates
-                     them, on a ground of its own (§6). -->
+                <!-- «Quantos alunos atingiram resultado positivo?» — decided by
+                     the scale's own is_negative, never by a threshold. -->
                 <section :class="[card('mint'), 'p-5']">
+                    <SuccessRate
+                        :figures="stats.summary.success"
+                        :rate-display="formatShare(stats.summary.success.rate)"
+                        :success-share="formatShare(stats.summary.success.rate)"
+                        :failure-share="formatShare(stats.summary.success.failure_rate)"
+                    />
+                </section>
+
+                <!-- Coverage completes the top row: four cards, each a real
+                     count with its own ground (§6). -->
+                <section :class="[card('plain'), 'p-5']">
                     <p class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Alunos com resultado</p>
                     <p class="mt-1.5 text-[2.5rem] font-semibold leading-none tabular-nums tracking-tight">
                         {{ stats.summary.students_with_result }}<span class="text-xl font-normal text-muted-foreground">/{{ stats.summary.students_total }}</span>
@@ -1452,9 +1528,83 @@ const studentRows = computed(() => {
                     </p>
 
                     <section class="mt-6">
-                        <h3 class="mb-4 text-sm font-semibold">Por domínio</h3>
+                        <h3 class="mb-3 text-sm font-semibold">Como evoluiu ao longo do ano</h3>
+
+                        <!-- ONE MOMENT IS A NUMBER, NOT A TREND. Two get the
+                             two ends stated plainly; three or more get the line
+                             (§3). Nothing is drawn for a period with no result:
+                             a blank is not a zero and never a fall (§8). -->
+                        <div v-if="studentShape === 'single'" :class="[INSET, 'px-4 py-3 text-sm text-muted-foreground']">
+                            <template v-if="studentMoments.length === 1">
+                                Um único momento com resultado ({{ studentMoments[0].period_label }}) — ainda não há
+                                evolução para mostrar.
+                            </template>
+                            <template v-else>Ainda não há resultados para este aluno.</template>
+                        </div>
+
+                        <div v-else-if="studentShape === 'slope'" :class="[INSET, 'flex items-center gap-4 px-4 py-3']">
+                            <div>
+                                <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                    {{ studentEnds!.from.period_label }}
+                                </p>
+                                <p class="text-xl font-semibold tabular-nums text-muted-foreground">
+                                    {{ pct(studentEnds!.from.weighted_average) }}
+                                </p>
+                            </div>
+
+                            <p
+                                class="flex items-center gap-1 text-sm font-medium tabular-nums"
+                                :class="Number(studentChange) > 0 ? 'text-emerald-700 dark:text-emerald-400'
+                                    : Number(studentChange) < 0 ? 'text-rose-700 dark:text-rose-400' : 'text-muted-foreground'"
+                            >
+                                <span aria-hidden="true">{{ Number(studentChange) > 0 ? '↗' : Number(studentChange) < 0 ? '↘' : '→' }}</span>
+                                {{ formatPoints(studentChange) }} p.p.
+                            </p>
+
+                            <div class="ml-auto text-right">
+                                <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                    {{ studentEnds!.to.period_label }}
+                                </p>
+                                <p class="text-[1.75rem] font-semibold leading-none tabular-nums tracking-tight">
+                                    {{ pct(studentEnds!.to.weighted_average) }}
+                                </p>
+                            </div>
+                        </div>
+
+                        <ul v-else class="space-y-1">
+                            <li
+                                v-for="moment in studentMoments"
+                                :key="moment.period_id"
+                                class="flex items-baseline gap-3 rounded-lg px-2 py-1.5 text-sm odd:bg-muted/25"
+                            >
+                                <span class="text-muted-foreground">{{ moment.period_label }}</span>
+                                <span class="ml-auto font-semibold tabular-nums">{{ pct(moment.weighted_average) }}</span>
+                                <span
+                                    v-if="moment.evolution"
+                                    class="w-20 text-right text-xs tabular-nums"
+                                    :class="moment.evolution.direction === 'up' ? 'text-emerald-700 dark:text-emerald-400'
+                                        : moment.evolution.direction === 'down' ? 'text-rose-700 dark:text-rose-400' : 'text-muted-foreground'"
+                                >
+                                    {{ moment.evolution.direction === 'up' ? '↑' : moment.evolution.direction === 'down' ? '↓' : '→' }}
+                                    {{ formatPoints(moment.evolution.points) }}
+                                </span>
+                                <span v-else class="w-20 text-right text-[11px] text-muted-foreground">—</span>
+                            </li>
+                        </ul>
+
+                        <h3 class="mb-3 mt-5 text-sm font-semibold">Em que domínios melhorou ou regrediu</h3>
+
+                        <DumbbellRows
+                            v-if="studentEnds"
+                            :rows="studentDomainDumbbells"
+                            :from-label="studentEnds.from.period_label"
+                            :to-label="studentEnds.to.period_label"
+                        />
+
+                        <!-- With only one moment there is nothing to join, so
+                             the domains are read as they stand. -->
                         <StatChart
-                            v-if="studentChart"
+                            v-else-if="studentChart"
                             :config="studentChart"
                             :tooltip="studentTooltip"
                             :summary="`Média de ${selected.name} em cada domínio, no período e acumulada.`"

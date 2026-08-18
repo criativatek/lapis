@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Assessment;
 
+use App\Domain\Assessment\Bc;
 use App\Models\AcademicPeriod;
 use App\Models\Domain;
 use App\Models\Scale;
@@ -703,5 +704,457 @@ class ClassStatisticsTest extends TestCase
         $this->actingAs($stranger)
             ->get("/classes/{$class->ulid}/results/estatistica")
             ->assertNotFound();
+    }
+
+    // ------------------------------------------------ 10. a taxa de sucesso
+
+    /**
+     * The scale's own statement about a band, changed without touching a score.
+     *
+     * This is the whole point of the section: what makes a result a pass is a
+     * flag on the scale, so moving that flag has to move the rate — and nothing
+     * else may.
+     */
+    private function markBandAsNegative(string $code, bool $negative = true): void
+    {
+        $this->asTenant(function () use ($code, $negative): void {
+            Scale::withoutGlobalScope('scaleVisibility')
+                ->where('name', 'Escala 1 a 5')
+                ->firstOrFail()
+                ->levels()
+                ->where('code', $code)
+                ->update(['is_negative' => $negative]);
+        });
+    }
+
+    /** Everything one student ever answered, gone — not zeroed, gone. */
+    private function eraseTheScoresOf(string $firstName): void
+    {
+        // Found through the read model's own name, so the fixture and the
+        // assertions are talking about the same person.
+        $enrollmentId = $this->student($firstName)['enrollment_id'];
+
+        $this->asTenant(fn () => StudentItemScore::where('enrollment_id', $enrollmentId)->delete());
+    }
+
+    #[Test]
+    public function the_success_rate_counts_the_students_the_scale_calls_positive(): void
+    {
+        $success = $this->statistics(2)['summary']['success'];
+
+        // Every student in the demo class lands on a positive band.
+        $this->assertSame(6, $success['succeeded']);
+        $this->assertSame(0, $success['failed']);
+        $this->assertSame(6, $success['placed']);
+        $this->assertSame('100.0', $success['rate']);
+    }
+
+    #[Test]
+    public function the_passing_line_is_the_scales_own_flag_and_never_a_threshold_written_here(): void
+    {
+        $before = $this->statistics(2)['summary']['success'];
+
+        // «Suficiente» is now a negative band, as far as this scale is
+        // concerned. Not one score, weight or grid changed.
+        $this->markBandAsNegative('3');
+
+        $after = $this->statistics(2)['summary']['success'];
+
+        $this->assertSame('100.0', $before['rate']);
+        $this->assertSame(3, $after['failed'], 'os tres alunos em Suficiente passam a insucesso');
+        $this->assertSame(3, $after['succeeded']);
+        $this->assertSame('50.0', $after['rate']);
+    }
+
+    #[Test]
+    public function a_scale_whose_passing_line_sits_elsewhere_gives_a_different_rate(): void
+    {
+        // A school that only counts «Muito Bom» as success. If anything here
+        // were hard-coded to 50%, this number could not move.
+        $this->markBandAsNegative('3');
+        $this->markBandAsNegative('4');
+
+        $success = $this->statistics(2)['summary']['success'];
+
+        $this->assertSame(1, $success['succeeded']);
+        $this->assertSame(5, $success['failed']);
+        $this->assertSame('16.7', $success['rate']);
+    }
+
+    #[Test]
+    public function a_student_without_a_result_is_not_counted_as_a_failure(): void
+    {
+        $this->eraseTheScoresOf('Bruno');
+
+        $success = $this->statistics(2)['summary']['success'];
+
+        $this->assertSame(1, $success['without_result']);
+        $this->assertSame(0, $success['failed'], 'uma ausencia de resultado nao e uma negativa');
+    }
+
+    #[Test]
+    public function students_without_a_result_stay_out_of_the_denominator(): void
+    {
+        $this->eraseTheScoresOf('Bruno');
+
+        $success = $this->statistics(2)['summary']['success'];
+
+        $this->assertSame(5, $success['placed'], 'o denominador perde-o, nao o absorve');
+        // Five of five still passed, so the rate is unchanged — which is the
+        // point: removing somebody who had no result cannot move it.
+        $this->assertSame('100.0', $success['rate']);
+    }
+
+    #[Test]
+    public function the_denominator_is_exactly_the_students_a_band_was_placed_on(): void
+    {
+        $this->markBandAsNegative('3');
+        $this->eraseTheScoresOf('Bruno');
+
+        $success = $this->statistics(2)['summary']['success'];
+
+        $this->assertSame(
+            $success['succeeded'] + $success['failed'],
+            $success['placed'],
+            'nao ha terceiro grupo escondido dentro do denominador',
+        );
+    }
+
+    #[Test]
+    public function a_result_the_scale_places_no_band_for_is_counted_apart(): void
+    {
+        // A gap in the scale between 55 and 69,5. Three students' accumulated
+        // figures now fall into nothing at all.
+        $this->asTenant(fn () => Scale::withoutGlobalScope('scaleVisibility')
+            ->where('name', 'Escala 1 a 5')->firstOrFail()
+            ->levels()->where('code', '3')
+            ->update(['band_max_normalized' => '55.000000']));
+
+        $success = $this->statistics(2)['summary']['success'];
+
+        $this->assertSame(3, $success['unplaced']);
+        $this->assertSame(
+            3,
+            $success['succeeded'] + $success['failed'],
+            'a escala nao diz se e positivo, por isso isto tambem nao diz',
+        );
+        $this->assertSame(3, $success['placed']);
+    }
+
+    #[Test]
+    public function with_nobody_placed_the_rate_is_absent_rather_than_zero(): void
+    {
+        $this->asTenant(fn () => StudentItemScore::query()->delete());
+
+        $success = $this->statistics(2)['summary']['success'];
+
+        $this->assertSame(0, $success['placed']);
+        $this->assertNull($success['rate'], 'nao sabemos nao se escreve 0%');
+        $this->assertNull($success['failure_rate']);
+        $this->assertSame(6, $success['without_result']);
+    }
+
+    #[Test]
+    public function the_three_groups_account_for_every_student_in_the_class(): void
+    {
+        $this->markBandAsNegative('3');
+        $this->eraseTheScoresOf('Bruno');
+
+        $statistics = $this->statistics(2);
+        $success = $statistics['summary']['success'];
+
+        $this->assertSame(
+            $statistics['summary']['students_total'],
+            $success['succeeded'] + $success['failed'] + $success['unplaced'] + $success['without_result'],
+            'nenhum aluno desaparece nem e contado duas vezes',
+        );
+    }
+
+    #[Test]
+    public function the_success_and_failure_rates_complete_each_other(): void
+    {
+        $this->markBandAsNegative('3');
+
+        $success = $this->statistics(2)['summary']['success'];
+
+        $this->assertSame(
+            '100.0',
+            Bc::round(Bc::add(Bc::of($success['rate']), Bc::of($success['failure_rate'])), 1, 'half_up'),
+        );
+    }
+
+    #[Test]
+    public function the_rate_is_read_from_the_same_band_the_quadro_sintese_places(): void
+    {
+        $this->markBandAsNegative('3');
+
+        $statistics = $this->statistics(2);
+        $negatives = 0;
+
+        foreach ($statistics['students'] as $student) {
+            if ($student['band'] !== null && $student['band']['is_negative']) {
+                $negatives++;
+            }
+        }
+
+        $this->assertSame(
+            $negatives,
+            $statistics['summary']['success']['failed'],
+            'a taxa e a mencao de cada aluno saem da mesma decisao',
+        );
+    }
+
+    #[Test]
+    public function each_domain_reports_its_own_success(): void
+    {
+        $domains = collect($this->statistics(2)['domain_statistics'])->keyBy('label');
+
+        $this->assertSame(6, $domains['Escrita']['succeeded']);
+        $this->assertSame(6, $domains['Escrita']['placed']);
+        $this->assertSame('100.0', $domains['Escrita']['success_rate']);
+    }
+
+    #[Test]
+    public function a_domain_success_rate_follows_the_scale_too(): void
+    {
+        $this->markBandAsNegative('3');
+
+        $domains = collect($this->statistics(2)['domain_statistics'])->keyBy('label');
+
+        $this->assertLessThan(
+            6,
+            $domains['Escrita']['succeeded'],
+            'mover a linha da escala tem de mover tambem o sucesso por dominio',
+        );
+        $this->assertSame(6, $domains['Escrita']['placed'], 'o denominador do dominio nao muda');
+    }
+
+    #[Test]
+    public function a_domain_nobody_is_placed_in_has_no_rate(): void
+    {
+        $domains = collect($this->statistics(2)['domain_statistics'])->keyBy('label');
+
+        // Nothing has been assessed in this domain in the demo class.
+        $this->assertSame(0, $domains['Educação Literária']['placed']);
+        $this->assertNull($domains['Educação Literária']['success_rate']);
+    }
+
+    #[Test]
+    public function the_page_carries_the_success_figures(): void
+    {
+        $class = $this->asTenant(fn (): SchoolClass => $this->schoolClass());
+
+        $this->actingAs($this->teacher)
+            ->get("/classes/{$class->ulid}/results/estatistica")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->has('statistics.summary.success.rate')
+                ->has('statistics.summary.success.placed')
+                ->has('statistics.summary.success.without_result')
+                ->where('statistics.summary.success.succeeded', 6),
+            );
+    }
+
+    // -------------------------------------------- 11. o percurso do aluno
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function student(string $firstName, ?int $sequence = 2): array
+    {
+        $student = collect($this->statistics($sequence)['students'])
+            ->first(fn (array $row): bool => str_starts_with($row['name'], $firstName));
+
+        $this->assertNotNull($student, "nao ha aluno {$firstName} na turma");
+
+        return $student;
+    }
+
+    #[Test]
+    public function a_students_series_has_one_entry_for_every_period_of_the_year(): void
+    {
+        $periods = $this->asTenant(fn (): int => $this->schoolClass()->academicYear->periods()->count());
+
+        foreach ($this->statistics(2)['students'] as $student) {
+            $this->assertCount($periods, $student['series'], "{$student['name']} tem o ano todo");
+        }
+    }
+
+    #[Test]
+    public function the_series_repeats_what_the_progression_said_and_computes_nothing(): void
+    {
+        $statistics = $this->statistics(2);
+        $progression = $this->asTenant(fn (): array => app(BuildResultsProgression::class)->for($this->schoolClass()));
+
+        foreach ($statistics['students'] as $index => $student) {
+            foreach ($student['series'] as $moment => $entry) {
+                $source = $progression['students'][$index]['periods'][$moment];
+
+                $this->assertSame($source['period_id'], $entry['period_id']);
+                $this->assertSame($source['period_label'], $entry['period_label']);
+                $this->assertSame($source['weighted_average'], $entry['weighted_average']);
+                $this->assertSame($source['accumulated_average'], $entry['accumulated_average']);
+                $this->assertSame($source['evolution'], $entry['evolution']);
+            }
+        }
+    }
+
+    #[Test]
+    public function a_period_without_a_result_appears_as_a_blank_rather_than_a_zero(): void
+    {
+        // Diogo enrolled after the first period. It is empty for him, and empty
+        // is not zero (§13.3).
+        $first = $this->student('Diogo')['series'][0];
+
+        $this->assertNull($first['weighted_average']);
+    }
+
+    #[Test]
+    public function a_student_who_enrolled_late_still_has_the_earlier_periods_laid_out(): void
+    {
+        $series = $this->student('Diogo')['series'];
+
+        // The period exists in their line — named, and empty. Hiding it would
+        // make the year look shorter than it was.
+        $this->assertNotEmpty($series[0]['period_label']);
+        $this->assertNull($series[0]['weighted_average']);
+        $this->assertNotNull($series[1]['weighted_average']);
+    }
+
+    #[Test]
+    public function the_first_moment_has_no_movement_because_there_is_nothing_before_it(): void
+    {
+        $this->assertNull($this->student('Ana')['series'][0]['evolution']);
+    }
+
+    #[Test]
+    public function movement_between_moments_is_the_progressions_own(): void
+    {
+        $series = $this->student('Ana')['series'];
+        $progression = $this->asTenant(fn (): array => app(BuildResultsProgression::class)->for($this->schoolClass()));
+
+        $source = collect($progression['students'])->firstWhere('name', 'Ana Marques');
+
+        $this->assertSame($source['periods'][1]['evolution'], $series[1]['evolution']);
+        // Ana fell from 80,1 to 72,5 — and the panel must say so, not smooth it.
+        $this->assertSame('down', $series[1]['evolution']['direction']);
+    }
+
+    #[Test]
+    public function a_moment_without_a_previous_result_has_no_movement_either(): void
+    {
+        // Nothing precedes Diogo's only period, so there is nothing to compare
+        // against — and «sem comparação» is not «manteve-se».
+        $this->assertNull($this->student('Diogo')['series'][1]['evolution']);
+    }
+
+    #[Test]
+    public function each_moment_carries_the_domains_as_they_stood_then(): void
+    {
+        $domains = count($this->statistics(2)['domains']);
+
+        foreach ($this->student('Ana')['series'] as $moment) {
+            $this->assertCount($domains, $moment['domains']);
+            $this->assertArrayHasKey('domain_id', $moment['domains'][0]);
+            $this->assertArrayHasKey('weighted_average', $moment['domains'][0]);
+            $this->assertArrayHasKey('mention', $moment['domains'][0]);
+        }
+    }
+
+    #[Test]
+    public function the_series_is_the_whole_year_whichever_period_is_being_read(): void
+    {
+        $fromFirst = $this->student('Ana', 1)['series'];
+        $fromSecond = $this->student('Ana', 2)['series'];
+
+        // Reading the first period does not shorten anybody's history: the
+        // panel answers «como evoluiu ao longo do ano», not «até aqui».
+        $this->assertSame($fromFirst, $fromSecond);
+    }
+
+    #[Test]
+    public function the_series_carries_the_coverage_warning_rather_than_deciding_one(): void
+    {
+        $progression = $this->asTenant(fn (): array => app(BuildResultsProgression::class)->for($this->schoolClass()));
+        $source = collect($progression['students'])->firstWhere('name', 'Ana Marques');
+
+        foreach ($this->student('Ana')['series'] as $index => $moment) {
+            $this->assertSame((bool) $source['periods'][$index]['coverage_warning'], $moment['coverage_warning']);
+        }
+    }
+
+    #[Test]
+    public function a_student_with_no_results_at_all_still_has_the_year_laid_out(): void
+    {
+        $this->eraseTheScoresOf('Bruno');
+
+        $series = $this->student('Bruno')['series'];
+
+        $this->assertNotEmpty($series);
+
+        foreach ($series as $moment) {
+            $this->assertNull($moment['weighted_average'], 'sem resultado e vazio, nao e zero');
+            $this->assertNull($moment['evolution']);
+        }
+    }
+
+    #[Test]
+    public function every_students_whole_year_costs_no_extra_queries(): void
+    {
+        $baseline = $this->countQueries();
+
+        $this->asTenant(function (): void {
+            $class = $this->schoolClass();
+            $template = $class->enrollments()->orderBy('class_number')->first();
+            $scores = StudentItemScore::where('enrollment_id', $template->id)->get();
+
+            for ($number = 7; $number <= 16; $number++) {
+                $student = app(StudentEnrollmentService::class)->enrollNew($class, [
+                    'name' => "Aluno de Carga {$number}",
+                    'class_number' => $number,
+                    'enrolled_on' => '2026-09-14',
+                ]);
+
+                foreach ($scores as $score) {
+                    $copy = $score->replicate(['id']);
+                    $copy->enrollment_id = $student->id;
+                    $copy->save();
+                }
+            }
+        });
+
+        $grown = $this->countQueries();
+        $statistics = $this->statistics(1);
+        $periods = $this->asTenant(fn (): int => $this->schoolClass()->academicYear->periods()->count());
+
+        // Sixteen students, each with their own line through the year — and the
+        // same query count as six. The series is a reshaping of what the
+        // progression already handed over, never a second read (§14).
+        $this->assertCount(16, $statistics['students']);
+
+        foreach ($statistics['students'] as $student) {
+            $this->assertCount($periods, $student['series']);
+        }
+
+        $this->assertLessThanOrEqual(
+            $baseline + 2,
+            $grown,
+            "o número de queries cresceu de {$baseline} para {$grown} ao juntar 10 alunos",
+        );
+    }
+
+    #[Test]
+    public function the_page_carries_each_students_series(): void
+    {
+        $class = $this->asTenant(fn (): SchoolClass => $this->schoolClass());
+
+        $this->actingAs($this->teacher)
+            ->get("/classes/{$class->ulid}/results/estatistica")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->has('statistics.students.0.series')
+                ->has('statistics.students.0.series.0.period_label')
+                ->has('statistics.students.0.series.0.domains'),
+            );
     }
 }

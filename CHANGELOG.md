@@ -2,6 +2,28 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.35.0] — 2026-08-18
+
+### «Qual é a taxa de sucesso desta turma?» — Resultados → Estatística
+
+- **A pergunta passa a ter resposta direta.** A Estatística abre com quantos alunos atingiram resultado positivo, em número e em percentagem, sem obrigar a contar menções à mão.
+- **Quem decide o que é positivo é a escala, não a aplicação.** O sinal vem da própria escala do perfil, que diz de cada menção se é negativa. Não há nenhum «50%» escrito no código: uma escola que ponha a linha noutro sítio vê a taxa mudar em conformidade.
+- **Um aluno sem resultado não é um insucesso.** Fica contado à parte e fora do denominador, tal como quem tem resultado numa zona que a escala não classifica. O cartão diz sempre sobre quantos alunos a taxa foi calculada.
+- **Sucesso por domínio.** Cada domínio mostra o seu «5 em 6», para se ver qual está a puxar a turma e qual a está a travar.
+- **Sem ninguém classificado, a taxa fica por dizer.** Aparece «—», nunca 0%: não saber e ninguém ter passado são frases diferentes.
+
+### O percurso de cada aluno
+
+- **Ao clicar num aluno vê-se o ano inteiro.** Onde estava, onde está e quanto se moveu entre períodos — um período de cada vez, com o valor e a variação em pontos percentuais.
+- **Em que domínios melhorou ou regrediu.** As duas pontas de cada domínio ligadas na mesma linha, com a cor que esse domínio já tem no resto da página.
+- **A leitura acompanha o que há para ler.** Um único momento é um número e diz-se que ainda não há evolução; dois mostram-se como duas pontas; três ou mais ganham a série completa.
+- **Um período vazio fica vazio.** Quem se inscreveu tarde, ou ainda não tem elementos avaliados, não passa a ter zeros nem quedas que nunca aconteceram.
+
+### Avaliações intercalares
+
+- **A fotografia passa a guardar também a taxa de sucesso do momento**, e a comparação com o final do período mostra as duas lado a lado.
+- **As fotografias antigas continuam a ser lidas como foram tiradas.** Uma que nunca registou esta taxa diz «—» em vez de um zero — não se recalcula o passado para preencher a lacuna.
+
 ## [0.34.0] — 2026-08-16
 
 ### O ano inteiro numa página — Quadro Síntese

@@ -72,9 +72,43 @@ class CompareInterimToPeriodFinal
                 'interim_students_with_result' => $snapshot['summary']['students_with_result'] ?? 0,
                 'final_students_with_result' => $final['summary']['students_with_result'] ?? 0,
             ],
+            'success' => $this->success($snapshot, $final),
             'movement' => $this->movement($students),
             'domains' => $this->domains($snapshot, $final),
             'students' => $students,
+        ];
+    }
+
+    /**
+     * The success rate at both moments.
+     *
+     * The interim side is READ from its document; the final side comes from the
+     * live read model. A photograph taken before the block that added this
+     * figure has no `success` in it at all, and says so with nulls rather than
+     * with zeros — «não sabemos» and «ninguém passou» are different sentences,
+     * and a snapshot is never recomputed to fill the gap (§8, §11).
+     *
+     * @param  array<string, mixed>  $snapshot
+     * @param  array<string, mixed>  $final
+     * @return array<string, mixed>
+     */
+    protected function success(array $snapshot, array $final): array
+    {
+        $interim = $snapshot['summary']['success'] ?? null;
+        $current = $final['summary']['success'] ?? null;
+
+        return [
+            'interim' => $interim,
+            'final' => $current,
+            // Percentage POINTS between the two rates, when both exist.
+            'change' => $this->change($interim['rate'] ?? null, $current['rate'] ?? null),
+            // «18 → 21», the counts a report will want to quote (§9, §10).
+            'interim_succeeded' => $interim['succeeded'] ?? null,
+            'final_succeeded' => $current['succeeded'] ?? null,
+            'interim_failed' => $interim['failed'] ?? null,
+            'final_failed' => $current['failed'] ?? null,
+            // Older photographs predate this figure and cannot grow one.
+            'interim_is_available' => $interim !== null,
         ];
     }
 

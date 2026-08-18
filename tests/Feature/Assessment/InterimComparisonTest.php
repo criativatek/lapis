@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Assessment;
 
+use App\Domain\Assessment\Bc;
 use App\Models\AcademicPeriod;
 use App\Models\Domain;
 use App\Models\InstrumentType;
@@ -18,6 +19,7 @@ use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -390,5 +392,91 @@ class InterimComparisonTest extends TestCase
         $this->actingAs($stranger)
             ->get("/classes/{$class->ulid}/avaliacoes-intercalares/{$interim->ulid}/comparar")
             ->assertNotFound();
+    }
+
+    // ------------------------------- a taxa de sucesso nos dois momentos
+
+    #[Test]
+    public function the_photograph_records_the_success_rate_of_the_moment(): void
+    {
+        $interim = $this->capture('2026-11-15');
+
+        $success = $interim->snapshot['summary']['success'];
+
+        $this->assertSame(
+            $success['succeeded'] + $success['failed'],
+            $success['placed'],
+            'a fotografia guarda os tres grupos e um so denominador',
+        );
+        $this->assertArrayHasKey('without_result', $success);
+    }
+
+    #[Test]
+    public function the_comparison_states_the_rate_at_both_ends(): void
+    {
+        $interim = $this->capture('2026-11-15');
+        $this->addLaterInstrument();
+
+        $comparison = $this->compare($interim)['success'];
+
+        $this->assertTrue($comparison['interim_is_available']);
+        $this->assertNotNull($comparison['interim']);
+        $this->assertNotNull($comparison['final']);
+        $this->assertSame($comparison['interim']['succeeded'], $comparison['interim_succeeded']);
+        $this->assertSame($comparison['final']['succeeded'], $comparison['final_succeeded']);
+    }
+
+    #[Test]
+    public function the_change_between_the_two_rates_is_in_percentage_points(): void
+    {
+        $interim = $this->capture('2026-11-15');
+        $this->addLaterInstrument();
+
+        $comparison = $this->compare($interim)['success'];
+
+        $expected = Bc::round(
+            Bc::sub(Bc::of($comparison['final']['rate']), Bc::of($comparison['interim']['rate'])),
+            CompareInterimToPeriodFinal::PRECISION,
+            'half_up',
+        );
+
+        $this->assertSame($expected, $comparison['change']);
+    }
+
+    #[Test]
+    public function an_older_photograph_that_never_recorded_a_rate_says_so_rather_than_zero(): void
+    {
+        $interim = $this->capture('2026-11-15');
+
+        // A document written before the block existed. It is never rebuilt to
+        // fill the gap — a photograph did not observe what it did not record.
+        $this->asTenant(function () use ($interim): void {
+            $snapshot = $interim->snapshot;
+            unset($snapshot['summary']['success']);
+
+            DB::table('interim_assessments')->where('id', $interim->id)->update([
+                'snapshot_version' => 1,
+                'snapshot' => json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'snapshot_hash' => InterimAssessment::hashFor($snapshot),
+            ]);
+        });
+
+        $comparison = $this->compare($interim->fresh())['success'];
+
+        $this->assertFalse($comparison['interim_is_available']);
+        $this->assertNull($comparison['interim']);
+        $this->assertNull($comparison['interim_succeeded'], 'nao sabemos nao se escreve 0');
+        $this->assertNull($comparison['change'], 'sem um dos lados nao ha diferenca');
+        // The live side is still readable — only the past is silent.
+        $this->assertNotNull($comparison['final']);
+    }
+
+    #[Test]
+    public function a_photograph_taken_now_carries_the_current_snapshot_version(): void
+    {
+        $this->assertSame(
+            InterimAssessment::CURRENT_VERSION,
+            $this->capture('2026-11-15')->snapshot_version,
+        );
     }
 }

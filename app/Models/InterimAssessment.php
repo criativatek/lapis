@@ -45,8 +45,15 @@ class InterimAssessment extends Model
 {
     use BelongsToOrganization, HasUlids;
 
-    /** The shape the current writer produces. Only ever grows. */
-    public const CURRENT_VERSION = 1;
+    /**
+     * The shape the current writer produces. Only ever grows.
+     *
+     * v1 → v2: the summary gained a `success` block. A v1 document does not
+     * have one and is never given one — it is a photograph, and what it did not
+     * record it never observed. Readers show «—» for it rather than a zero,
+     * because «não foi registado» and «ninguém passou» are different sentences.
+     */
+    public const CURRENT_VERSION = 2;
 
     public $timestamps = false;
 
