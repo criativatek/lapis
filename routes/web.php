@@ -20,6 +20,7 @@ use App\Http\Controllers\InterimAssessmentController;
 use App\Http\Controllers\InterventionController;
 use App\Http\Controllers\PublicSelfAssessmentController;
 use App\Http\Controllers\Reports\ReportController;
+use App\Http\Controllers\Reports\ReportSectionController;
 use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\ResultsController;
 use App\Http\Controllers\RosterImportController;
@@ -237,13 +238,32 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     Route::middleware('module:reports')->group(function () {
         Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
 
-        // The pauta. Declared before `reports/{report}` so that «pautas» is not
-        // swallowed as a (invalid) report ulid.
+        // Every literal segment is declared before `reports/{report}`, or it
+        // would be swallowed as an (invalid) report ulid.
+        Route::get('reports/novo', [ReportController::class, 'create'])->name('reports.create');
+        Route::post('reports', [ReportController::class, 'store'])->name('reports.store');
+        Route::get('reports/contexto/{class}', [ReportController::class, 'context'])->name('reports.context');
+
+        // The pauta.
         Route::get('reports/pautas', [ReportsController::class, 'index'])->name('pautas.index');
         Route::get('classes/{class}/report', [ReportsController::class, 'show'])->name('pautas.show');
         Route::get('classes/{class}/report/export', [ReportsController::class, 'export'])->name('pautas.export');
         Route::put('classes/{class}/report/evidence-setting', [ReportsController::class, 'updateEvidenceSetting'])->name('pautas.evidence-setting.update');
         Route::put('classes/{class}/report/students/{enrollment}/evidence-setting', [ReportsController::class, 'updateStudentEvidenceSetting'])->name('pautas.student-evidence-setting.update');
+
+        // The report document itself. Last, so the wildcard cannot shadow the
+        // literal segments above.
+        Route::get('reports/{report}', [ReportController::class, 'show'])->name('reports.show');
+        Route::put('reports/{report}', [ReportController::class, 'update'])->name('reports.update');
+        Route::delete('reports/{report}', [ReportController::class, 'destroy'])->name('reports.destroy');
+        Route::post('reports/{report}/gerar', [ReportController::class, 'regenerate'])->name('reports.regenerate');
+
+        // One section at a time (§44) — edit, regenerate from today's data,
+        // restore the last automatic text, reorder.
+        Route::put('reports/{report}/seccoes/ordem', [ReportSectionController::class, 'reorder'])->name('reports.sections.reorder');
+        Route::put('reports/{report}/seccoes/{section}', [ReportSectionController::class, 'update'])->name('reports.sections.update');
+        Route::post('reports/{report}/seccoes/{section}/gerar', [ReportSectionController::class, 'regenerate'])->name('reports.sections.regenerate');
+        Route::post('reports/{report}/seccoes/{section}/restaurar', [ReportSectionController::class, 'restore'])->name('reports.sections.restore');
     });
 
     // Records — the teacher's logbook (§14). Qualitative evidence, never a grade.

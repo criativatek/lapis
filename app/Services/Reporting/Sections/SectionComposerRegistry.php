@@ -23,7 +23,19 @@ class SectionComposerRegistry
      * @var list<class-string<SectionComposer>>
      */
     public const COMPOSERS = [
-        //
+        // Turma — descriptive, and therefore Base.
+        ClassIdentificationComposer::class,
+        OverallAssessmentComposer::class,
+        ClassDistributionComposer::class,
+        DomainResultsComposer::class,
+        ClassEvolutionComposer::class,
+        ClassSelfAssessmentComposer::class,
+        ClassRecordsComposer::class,
+
+        // Shared across types.
+        PlanningComplianceComposer::class,
+        InterventionsSummaryComposer::class,
+        FinalSynthesisComposer::class,
     ];
 
     /** @var array<string, SectionComposer>|null */

@@ -77,11 +77,7 @@ function formatDate(value: string): string {
                 description="Documentos que descrevem o que os dados dizem — escritos pelo LÁPIS, decididos por si."
             />
 
-            <!-- The creation flow arrives with the first report type that can
-                 actually be generated; until then offering the button would be
-                 a link to nothing. `availableTypes` is already sent so that the
-                 menu it opens offers exactly what this plan allows. -->
-            <Button v-if="false" as-child>
+            <Button v-if="availableTypes.length > 0" as-child>
                 <Link href="/reports/novo">
                     <Plus class="size-4" />
                     Novo relatório
