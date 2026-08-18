@@ -4,25 +4,59 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 
 ## [0.35.0] — 2026-08-18
 
-### «Qual é a taxa de sucesso desta turma?» — Resultados → Estatística
+### Resultados → Estatística: uma visão geral de desempenho
 
-- **A pergunta passa a ter resposta direta.** A Estatística abre com quantos alunos atingiram resultado positivo, em número e em percentagem, sem obrigar a contar menções à mão.
-- **Quem decide o que é positivo é a escala, não a aplicação.** O sinal vem da própria escala do perfil, que diz de cada menção se é negativa. Não há nenhum «50%» escrito no código: uma escola que ponha a linha noutro sítio vê a taxa mudar em conformidade.
-- **Um aluno sem resultado não é um insucesso.** Fica contado à parte e fora do denominador, tal como quem tem resultado numa zona que a escala não classifica. O cartão diz sempre sobre quantos alunos a taxa foi calculada.
-- **Sucesso por domínio.** Cada domínio mostra o seu «5 em 6», para se ver qual está a puxar a turma e qual a está a travar.
-- **Sem ninguém classificado, a taxa fica por dizer.** Aparece «—», nunca 0%: não saber e ninguém ter passado são frases diferentes.
+- **A turma lida como um todo.** Uma página nova que agrega o que Resultados e o Quadro Síntese já mostram — médias, distribuição, domínios, evolução — sem recalcular nada: os números são os mesmos, apenas contados e agrupados.
+- **Quatro indicadores no topo**: o resultado da turma, a taxa de sucesso, quantos alunos têm resultado e como evoluiu. Cada um diz sobre quantos alunos foi calculado, porque uma percentagem sem a sua base é um número que ninguém pode conferir.
+- **Gráficos com linguagem própria.** A forma segue os dados — um momento é um número, dois são duas pontas, três ou mais ganham série — e o Chart.js só é carregado quando é mesmo preciso.
+- **Onde a turma se espalha, e o mapa da turma.** O valor está sempre escrito; a cor só o reforça. Escolher um domínio ou uma classificação realça esses alunos em toda a página, sempre com forma de limpar a seleção.
 
-### O percurso de cada aluno
+### Avaliação contínua: qual é o resultado do momento
 
-- **Ao clicar num aluno vê-se o ano inteiro.** Onde estava, onde está e quanto se moveu entre períodos — um período de cada vez, com o valor e a variação em pontos percentuais.
-- **Em que domínios melhorou ou regrediu.** As duas pontas de cada domínio ligadas na mesma linha, com a cor que esse domínio já tem no resto da página.
-- **A leitura acompanha o que há para ler.** Um único momento é um número e diz-se que ainda não há evolução; dois mostram-se como duas pontas; três ou mais ganham a série completa.
-- **Um período vazio fica vazio.** Quem se inscreveu tarde, ou ainda não tem elementos avaliados, não passa a ter zeros nem quedas que nunca aconteceram.
+- **A leitura principal deixa de ser sempre a média isolada do período.** No primeiro momento do ano, a Média Ponderada do período é o resultado; a partir daí é a Média Ponderada Acumulada, que é o que traduz a avaliação contínua e aquilo que a classificação acompanha.
+- **A regra vem do perfil, não do calendário.** É lida da configuração de continuidade de cada período, por isso funciona com semestres, trimestres ou períodos, e uma escola cujo segundo período não acumule vê a leitura ajustar-se sozinha.
+- **A média isolada continua disponível** como leitura suplementar, com um comutador «Avaliação contínua / Só neste período» que muda os resultados apresentados — e nunca as classificações nem a taxa de sucesso.
+- **Duas evoluções, com nomes diferentes.** «Evolução do desempenho» compara o trabalho de cada período; «Evolução na avaliação contínua» compara o resultado que respondia em cada momento. Um aluno pode cair vinte pontos como período e cinco como ano: as duas frases são verdadeiras e não se substituem uma à outra.
+
+### A classificação atribuída é a fonte oficial
+
+- **Taxa de sucesso, distribuição e mudanças de nível contam as classificações que o professor atribuiu** — não as menções em que as médias calhem cair. Uma média em «Bom» com nível 2 atribuído conta como negativa.
+- **Uma proposta não é uma decisão.** Só uma classificação confirmada ou publicada conta; quem ainda não foi classificado fica à parte e fora dos denominadores, nunca como insucesso.
+- **A distribuição mostra o valor da classificação.** «2», «3», «4» em destaque, com a menção da escala por baixo como referência. Numa escala numérica agrupa pelos valores efetivamente atribuídos, sem inventar intervalos.
+- **A distribuição estatística das médias mantém-se**, agora recolhida e claramente identificada como leitura secundária.
+
+### Quem progrediu, e quem mudou de nível
+
+- **Duas leituras separadas.** Quantos alunos progrediram, mantiveram-se ou regrediram nos resultados calculados; e quantos passaram para um nível igual ou superior ao limiar da escala, ou abaixo dele.
+- **A linguagem vem da escala.** «Passaram para nível igual ou superior a 3» em vez de «passaram a positivo» — e o número vem da configuração, não do código: uma escala 0–20 com o limiar em 10 diz 10.
+- **Progredir e ser positivo são coisas diferentes**, e passam a ter visuais distintos: um aluno pode descer e continuar positivo, ou subir e continuar negativo.
 
 ### Avaliações intercalares
 
-- **A fotografia passa a guardar também a taxa de sucesso do momento**, e a comparação com o final do período mostra as duas lado a lado.
-- **As fotografias antigas continuam a ser lidas como foram tiradas.** Uma que nunca registou esta taxa diz «—» em vez de um zero — não se recalcula o passado para preencher a lacuna.
+- **«Dados até»**: ver a turma como estava numa data, sem gravar nada.
+- **Guardar esse momento como Avaliação intercalar** — uma fotografia imutável, com nome próprio, listada e reabrível.
+- **Comparar a intercalar com o final do período**, aluno a aluno e domínio a domínio, na leitura que o período usa: acumulado contra acumulado quando há continuidade, com o desempenho isolado por baixo.
+- **Exportar para INOVAR a partir da própria fotografia**, com os códigos que a escala tinha nessa data.
+- **O passado não se reescreve.** Uma fotografia antiga que não registou determinada leitura diz «—» em vez de a ir buscar aos dados de hoje.
+
+### Importação de turmas: a coluna SIT
+
+- **Os cinco códigos passam a ser reconhecidos**: X (matriculado), TR (transferência), MT (mudou de turma), AM (anulou matrícula) e EF (excluído por faltas). Antes só TR era interpretado e os restantes entravam como matriculados.
+- **A reimportação corrige o estado.** Um aluno que passa a MT deixa de constar da turma corrente; se voltar a X, regressa — sem duplicar matrícula nem aluno.
+- **Um código desconhecido ou vazio não altera nada** e é assinalado na pré-visualização, que passa a mostrar «MT — Mudou de turma» e a indicar a mudança de estado.
+- **Nada é apagado.** O aluno, a identidade, a matrícula e todo o histórico mantêm-se; a exclusão por faltas é um estado administrativo e não gera classificação, zero nem falta.
+
+### Alunos da turma e alunos do histórico
+
+- **Os ecrãs correntes mostram apenas quem está na turma hoje**; a página da turma passa a listar à parte, recolhidos, os alunos que já não a integram, com o motivo em palavras.
+- **O histórico mantém-se intacto.** Resultados, classificações e avaliações intercalares dos períodos em que estiveram inscritos continuam a incluí-los.
+- **Um registo novo de intervenção ou de evidência só nomeia alunos da turma atual**; editar um registo antigo continua a preservar os participantes que ele já tinha.
+
+### Acessibilidade e linguagem
+
+- **Nenhuma leitura depende da cor**: todos os ícones são decorativos e acompanhados de texto, os valores estão sempre escritos e os controlos anunciam o estado.
+- **Animações respeitam `prefers-reduced-motion`** e todas as superfícies têm variante para modo escuro.
+- **Percentagens e plurais em pt-PT**, e cada figura diz de que base foi calculada.
 
 ## [0.34.0] — 2026-08-16
 
