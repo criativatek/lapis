@@ -9,6 +9,7 @@ use App\Domain\Reporting\LearningAttitude;
 use App\Domain\Reporting\PlanningCompliance;
 use App\Http\Controllers\Controller;
 use App\Models\AcademicPeriod;
+use App\Models\Domain;
 use App\Models\Enrollment;
 use App\Models\InterimAssessment;
 use App\Models\Report;
@@ -23,6 +24,7 @@ use App\Services\Documents\DocumentIdentity;
 use App\Services\Reporting\ComposeReport;
 use App\Services\Reporting\CreateReport;
 use App\Services\Reporting\ReportCapabilities;
+use App\Services\Reporting\ReportLibraryProvider;
 use App\Services\Reporting\ReportListing;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -53,6 +55,7 @@ class ReportController extends Controller
         protected CreateReport $creator,
         protected ComposeReport $composer,
         protected DocumentIdentity $identity,
+        protected ReportLibraryProvider $library,
         protected AuditLog $audit,
     ) {}
 
@@ -251,6 +254,21 @@ class ReportController extends Controller
             ])->all(),
             'identity' => $this->identity->forCurrentOrganization(),
             'characterisation' => $this->characterisationOptions($report),
+            // §14: what a difficulty can be, and which strategies answer each
+            // one. Only sent when the plan includes the sections that use it.
+            'library' => $this->capabilities->allowsPedagogicalAnalysis() ? [
+                'difficulties' => $this->library->difficulties($report->schoolClass?->subject_id),
+                'strategies' => $this->library->strategiesByDifficulty(),
+                // The domains a difficulty may be associated with are this
+                // subject's own, not a free-text field: the association is what
+                // lets the report quote a figure beside it.
+                'domains' => $this->domainsOf($report),
+            ] : null,
+            // The roster, for the section that may name students — and only for
+            // that. Nothing else on this page needs it.
+            'enrollments' => $this->capabilities->allowsPedagogicalAnalysis()
+                ? $this->rosterOf($report)
+                : [],
             'can' => [
                 'update' => Gate::allows('update', $report),
                 'finalize' => Gate::allows('finalize', $report),
@@ -290,8 +308,31 @@ class ReportController extends Controller
             'teacher_input.planning.recovery_plan' => ['nullable', 'string', 'max:500'],
             'teacher_input.planning.note' => ['nullable', 'string', 'max:1000'],
             'teacher_input.final_note' => ['nullable', 'string', 'max:2000'],
+            // §14: difficulties, and the strategies chosen against each one.
+            'teacher_input.difficulties' => ['nullable', 'array'],
+            'teacher_input.difficulties.*.code' => ['nullable', 'string', 'max:64'],
+            'teacher_input.difficulties.*.label' => ['nullable', 'string', 'max:200'],
+            'teacher_input.difficulties.*.domain' => ['nullable', 'string', 'max:120'],
+            'teacher_input.difficulties.*.note' => ['nullable', 'string', 'max:500'],
+            'teacher_input.difficulties.*.strategies' => ['nullable', 'array'],
+            'teacher_input.difficulties.*.strategies.*.code' => ['nullable', 'string', 'max:64'],
+            'teacher_input.difficulties.*.strategies.*.label' => ['nullable', 'string', 'max:200'],
+            'teacher_input.difficulties.*.strategies.*.objective' => ['nullable', 'string', 'max:300'],
+            // §57: the students the teacher flagged. Listing them is one
+            // decision; letting the document name them is a separate one.
+            'teacher_input.students_requiring_attention' => ['nullable', 'array'],
+            'teacher_input.students_requiring_attention.*.enrollment_id' => ['required', new BelongsToCurrentOrganization(Enrollment::class)],
+            'teacher_input.students_requiring_attention.*.note' => ['nullable', 'string', 'max:500'],
             'name_students' => ['sometimes', 'boolean'],
         ]);
+
+        // A chosen library entry becomes a COPY of its words, resolved here and
+        // never looked up again: rewording the library next year must not
+        // rewrite a report written this year (§33, §38).
+        if (isset($data['teacher_input']['difficulties']) && is_array($data['teacher_input']['difficulties'])) {
+            $data['teacher_input']['difficulties'] = $this->library
+                ->resolveDifficulties($data['teacher_input']['difficulties']);
+        }
 
         $attributes = [];
 
@@ -418,6 +459,51 @@ class ReportController extends Controller
             'standings' => IndicatorStanding::options(),
             'planning' => PlanningCompliance::options(),
         ];
+    }
+
+    /**
+     * The subject's domains, by name.
+     *
+     * @return list<string>
+     */
+    protected function domainsOf(Report $report): array
+    {
+        $subjectId = $report->schoolClass?->subject_id;
+
+        if ($subjectId === null) {
+            return [];
+        }
+
+        return array_values(Domain::query()
+            ->where('subject_id', $subjectId)
+            ->orderBy('name')
+            ->pluck('name')
+            ->all());
+    }
+
+    /**
+     * The class roster, for the one section that may name a student.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function rosterOf(Report $report): array
+    {
+        $class = $report->schoolClass;
+
+        if ($class === null) {
+            return [];
+        }
+
+        return array_values($class->activeEnrollments()
+            ->with('student.identity')
+            ->orderBy('class_number')
+            ->get()
+            ->map(fn (Enrollment $enrollment) => [
+                'id' => $enrollment->id,
+                'class_number' => $enrollment->class_number,
+                'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
+            ])
+            ->all());
     }
 
     protected function guardBelongsToClass(SchoolClass $class, ?AcademicPeriod $period, ?InterimAssessment $interim): void

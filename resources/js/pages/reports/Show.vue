@@ -3,6 +3,8 @@ import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { Check, Eye, Pencil, RefreshCw, RotateCcw, Trash2, X } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
+import type { ChosenDifficulty } from '@/components/reports/DifficultyPicker.vue';
+import DifficultyPicker from '@/components/reports/DifficultyPicker.vue';
 import ReportLetterhead from '@/components/reports/ReportLetterhead.vue';
 import ReportSectionData from '@/components/reports/ReportSectionData.vue';
 import { Button } from '@/components/ui/button';
@@ -62,11 +64,23 @@ type Characterisation = {
     planning: Option[];
 };
 
+type LibraryEntry = { code: string | null; label: string; objective: string | null };
+
+type Library = {
+    difficulties: LibraryEntry[];
+    strategies: Record<string, LibraryEntry[]>;
+    domains: string[];
+};
+
+type EnrollmentRow = { id: number; class_number: number | null; name: string };
+
 const props = defineProps<{
     report: ReportPayload;
     sections: SectionPayload[];
     identity: Identity;
     characterisation: Characterisation;
+    library: Library | null;
+    enrollments: EnrollmentRow[];
     can: { update: boolean; finalize: boolean; delete: boolean; export: boolean };
 }>();
 
@@ -90,11 +104,15 @@ function saveTitle() {
 
 type IndicatorChoice = { indicator: string; standing: string };
 
+type FlaggedStudent = { enrollment_id: number; note: string | null };
+
 const input = props.report.teacher_input as {
     behaviour?: string;
     attitude?: string;
     indicators?: IndicatorChoice[];
     observation?: string;
+    difficulties?: ChosenDifficulty[];
+    students_requiring_attention?: FlaggedStudent[];
     planning?: {
         compliance?: string;
         pending_content?: string[];
@@ -107,11 +125,14 @@ const input = props.report.teacher_input as {
 };
 
 const characterisationForm = useForm({
+    name_students: props.report.name_students,
     teacher_input: {
         behaviour: input.behaviour ?? '',
         attitude: input.attitude ?? '',
         indicators: (input.indicators ?? []) as IndicatorChoice[],
         observation: input.observation ?? '',
+        difficulties: (input.difficulties ?? []) as ChosenDifficulty[],
+        students_requiring_attention: (input.students_requiring_attention ?? []) as FlaggedStudent[],
         planning: {
             compliance: input.planning?.compliance ?? '',
             pending_content: (input.planning?.pending_content ?? []).join('\n'),
@@ -147,9 +168,37 @@ function setStanding(indicator: string, standing: string) {
     }
 }
 
+function isFlagged(enrollmentId: number): boolean {
+    return characterisationForm.teacher_input.students_requiring_attention.some(
+        (row) => row.enrollment_id === enrollmentId,
+    );
+}
+
+function toggleFlagged(enrollmentId: number) {
+    const rows = characterisationForm.teacher_input.students_requiring_attention;
+    const index = rows.findIndex((row) => row.enrollment_id === enrollmentId);
+
+    if (index === -1) {
+        rows.push({ enrollment_id: enrollmentId, note: null });
+    } else {
+        rows.splice(index, 1);
+    }
+}
+
+function setFlaggedNote(enrollmentId: number, note: string) {
+    const row = characterisationForm.teacher_input.students_requiring_attention.find(
+        (candidate) => candidate.enrollment_id === enrollmentId,
+    );
+
+    if (row) {
+        row.note = note.trim() === '' ? null : note;
+    }
+}
+
 function saveCharacterisation() {
     characterisationForm
         .transform((data) => ({
+            name_students: data.name_students,
             teacher_input: {
                 ...data.teacher_input,
                 // Empty means "unanswered", and unanswered must reach the server
@@ -362,6 +411,63 @@ function destroyReport() {
                             rows="3"
                             class="rounded-md border border-border bg-background p-2 text-sm"
                         ></textarea>
+                    </div>
+
+                    <!-- §14: dificuldade → estratégia → objetivo. -->
+                    <div v-if="library" class="space-y-2 border-t border-border pt-4">
+                        <Label>Dificuldades identificadas</Label>
+                        <p class="text-xs text-muted-foreground">
+                            O LÁPIS não infere dificuldades a partir dos resultados. Estas são as que validar — e
+                            as estratégias que escolher ficam ligadas a cada uma.
+                        </p>
+                        <DifficultyPicker
+                            v-model="characterisationForm.teacher_input.difficulties"
+                            :difficulties="library.difficulties"
+                            :strategies="library.strategies"
+                            :domains="library.domains"
+                        />
+                    </div>
+
+                    <!-- §57: two separate decisions, and both are the teacher's. -->
+                    <div v-if="enrollments.length > 0" class="space-y-2 border-t border-border pt-4">
+                        <Label>Alunos que requerem acompanhamento particular</Label>
+                        <p class="text-xs text-muted-foreground">
+                            Assinalar não é o mesmo que identificar. Sem a autorização abaixo, o relatório diz
+                            quantos são e não diz quem.
+                        </p>
+
+                        <ul class="divide-y divide-border overflow-hidden rounded-md border border-border">
+                            <li v-for="enrollment in enrollments" :key="enrollment.id" class="px-3 py-2 text-sm">
+                                <label class="flex items-center gap-2">
+                                    <input
+                                        type="checkbox"
+                                        class="size-4"
+                                        :checked="isFlagged(enrollment.id)"
+                                        @change="toggleFlagged(enrollment.id)"
+                                    />
+                                    <span>
+                                        <template v-if="enrollment.class_number">{{ enrollment.class_number }}. </template>
+                                        {{ enrollment.name }}
+                                    </span>
+                                </label>
+                                <Input
+                                    v-if="isFlagged(enrollment.id)"
+                                    class="mt-2 h-8"
+                                    placeholder="Nota (opcional)"
+                                    @update:model-value="setFlaggedNote(enrollment.id, String($event))"
+                                />
+                            </li>
+                        </ul>
+
+                        <label class="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
+                            <input v-model="characterisationForm.name_students" type="checkbox" class="mt-0.5 size-4" />
+                            <span>
+                                <span class="block font-medium">Identificar os alunos pelo nome no relatório</span>
+                                <span class="block text-xs text-muted-foreground">
+                                    Um relatório de turma é agregado por omissão.
+                                </span>
+                            </span>
+                        </label>
                     </div>
                 </template>
 

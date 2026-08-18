@@ -36,6 +36,13 @@ class SectionComposerRegistry
         PlanningComplianceComposer::class,
         InterventionsSummaryComposer::class,
         FinalSynthesisComposer::class,
+
+        // Interpretive — every word in these is the teacher's, and the
+        // capability gate decides whether they exist at all.
+        BehaviourAttitudeComposer::class,
+        DifficultiesComposer::class,
+        ImprovementProposalsComposer::class,
+        StudentsRequiringAttentionComposer::class,
     ];
 
     /** @var array<string, SectionComposer>|null */

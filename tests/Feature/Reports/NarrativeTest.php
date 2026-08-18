@@ -74,6 +74,19 @@ class NarrativeTest extends TestCase
     }
 
     #[Test]
+    public function a_clause_that_opens_with_a_comma_does_not_leave_a_space_before_it(): void
+    {
+        // Composers legitimately hand over «, e o mais baixo» as a continuing
+        // clause. The seam must not show.
+        $this->assertSame(
+            'Leitura (72,1%), e o mais baixo Escrita.',
+            Phrase::sentence('Leitura (72,1%)', ', e o mais baixo', 'Escrita'),
+        );
+
+        $this->assertSame('Uma citação «assim».', Phrase::sentence('uma citação «', 'assim', '»'));
+    }
+
+    #[Test]
     public function a_sentence_is_capitalised_and_terminated_once(): void
     {
         $this->assertSame('Uma frase.', Phrase::sentence('uma frase'));

@@ -174,7 +174,14 @@ class Phrase
         return mb_strtoupper(mb_substr($text, 0, 1)).mb_substr($text, 1);
     }
 
-    /** Adds a full stop unless the sentence already ends in punctuation. */
+    /**
+     * Adds a full stop unless the sentence already ends in punctuation.
+     *
+     * A closing guillemet is NOT punctuation for this purpose: «assim» needs a
+     * stop after it, and Portuguese puts it outside the quotation. What is
+     * checked is the last character that is not a closing mark, so a sentence
+     * that already ends «assim.» is left alone.
+     */
     public static function terminate(string $text): string
     {
         $text = rtrim($text);
@@ -183,15 +190,35 @@ class Phrase
             return '';
         }
 
-        return in_array(mb_substr($text, -1), ['.', '!', '?', ':', '»'], true)
+        $tail = rtrim($text, '»"\'');
+
+        return in_array(mb_substr($tail === '' ? $text : $tail, -1), ['.', '!', '?', ':'], true)
             ? $text
             : $text.'.';
     }
 
-    /** Collapses the double spaces that dropping an empty clause leaves behind. */
+    /**
+     * Tidies the seams that assembling a sentence from parts leaves behind.
+     *
+     * Two of them, and both are the kind of thing a reader notices immediately
+     * even when they could not say what is wrong:
+     *
+     *  - the double space where an empty clause was dropped;
+     *  - the space before a comma, when a clause legitimately begins with one
+     *    because it continues the previous one («…, e o mais baixo»).
+     *
+     * Done here rather than in each composer, so that no sentence anywhere can
+     * ship with «Leitura (72,1%) , e o mais baixo».
+     */
     protected static function squash(string $text): string
     {
-        return trim((string) preg_replace('/\s+/u', ' ', $text));
+        $text = (string) preg_replace('/\s+/u', ' ', $text);
+        // No space before closing punctuation.
+        $text = (string) preg_replace('/\s+([,.;:!?%»])/u', '$1', $text);
+        // No space after an opening quote.
+        $text = (string) preg_replace('/([«(])\s+/u', '$1', $text);
+
+        return trim($text);
     }
 
     /**
