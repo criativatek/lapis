@@ -198,6 +198,10 @@ class CaptureInterimAssessment
             // The class-level figures, exactly as the screen showed them.
             'summary' => $statistics['summary'],
             'evolution' => $statistics['evolution'],
+            // The grades as they stood, and the averages as they stood. Both
+            // kept, because a photograph that recorded only one of them cannot
+            // later be asked the other (§12).
+            'assigned_distribution' => $statistics['assigned_distribution'],
             'distribution' => $statistics['distribution'],
             'domain_statistics' => $statistics['domain_statistics'],
 

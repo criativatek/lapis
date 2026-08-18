@@ -389,6 +389,9 @@ class BuildResultsProgression
         AssessmentCutoff $cutoff,
     ): array {
         $level = fn ($scaleLevel): ?array => $scaleLevel === null ? null : [
+            // The band's own identity, so a reader can GROUP by it rather than
+            // by the words on it — two scales may both call a level «Bom».
+            'scale_level_id' => (int) $scaleLevel->id,
             'code' => $scaleLevel->code,
             'label' => $scaleLevel->label,
             'sequence' => $scaleLevel->sequence,

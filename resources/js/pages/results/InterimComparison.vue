@@ -38,6 +38,17 @@ type Comparison = {
         percentages: Record<CrossingKey | HeldKey, string | null>;
         share_of_class: { unclassified: string | null; no_assigned_classification: string | null };
     };
+    assigned_distribution: {
+        /** False for a photograph taken before this block was recorded. */
+        interim_is_available: boolean;
+        bands: {
+            scale_level_id: number; code: string; label: string; sequence: number; is_negative: boolean;
+            interim_count: number | null; final_count: number | null; change: number | null;
+            only_in_interim?: boolean; only_in_final?: boolean;
+        }[];
+        interim_classified: number | null; final_classified: number | null;
+        interim_without_classification: number | null; final_without_classification: number | null;
+    };
     domains: {
         domain_id: number; label: string;
         interim_average: string | null; final_average: string | null; change: string | null;
@@ -247,9 +258,55 @@ const finalLabel = computed(() => `Final do ${props.comparison.period.label}`);
             />
         </section>
 
-        <!-- ============================================ 03 · a turma -->
+        <!-- ================================== 03 · as classificações -->
         <section class="border-t border-border/70 pt-7">
-            <SectionHeading index="03" title="A turma, de um momento ao outro" />
+            <SectionHeading
+                index="03"
+                title="Quantos alunos em cada nível"
+                description="Os níveis atribuídos num momento e no outro. Sem ordenação por resultado."
+            />
+
+            <div v-if="comparison.assigned_distribution.interim_is_available">
+                <ul class="space-y-1.5">
+                    <li
+                        v-for="band in comparison.assigned_distribution.bands"
+                        :key="band.scale_level_id"
+                        class="flex items-baseline gap-3 rounded-lg px-2.5 py-2 text-sm odd:bg-muted/25"
+                    >
+                        <span class="min-w-0 font-medium">{{ band.code }} · {{ band.label }}</span>
+                        <span v-if="band.only_in_interim" class="text-[11px] text-muted-foreground">já não existe na escala</span>
+                        <span v-else-if="band.only_in_final" class="text-[11px] text-muted-foreground">não existia então</span>
+
+                        <span class="ml-auto flex items-baseline gap-2 tabular-nums">
+                            <span class="w-8 text-right text-muted-foreground">{{ band.interim_count ?? '—' }}</span>
+                            <span aria-hidden="true" class="text-muted-foreground/60">→</span>
+                            <span class="w-8 text-right font-semibold">{{ band.final_count ?? '—' }}</span>
+                            <span
+                                class="w-10 text-right text-xs"
+                                :class="(band.change ?? 0) > 0 ? 'text-emerald-700 dark:text-emerald-400'
+                                    : (band.change ?? 0) < 0 ? 'text-rose-700 dark:text-rose-400' : 'text-muted-foreground'"
+                            >{{ band.change === null ? '' : band.change > 0 ? `+${band.change}` : band.change }}</span>
+                        </span>
+                    </li>
+                </ul>
+
+                <p class="mt-2.5 text-[11px] leading-relaxed text-muted-foreground">
+                    Classificações atribuídas, não médias calculadas.
+                    {{ comparison.assigned_distribution.interim_without_classification }} sem classificação em
+                    {{ comparison.interim.name }} · {{ comparison.assigned_distribution.final_without_classification }} sem
+                    classificação agora.
+                </p>
+            </div>
+
+            <p v-else class="rounded-xl bg-muted/25 px-4 py-6 text-center text-sm text-muted-foreground">
+                Esta fotografia foi tirada antes de as classificações atribuídas passarem a ser registadas nela,
+                por isso não há distribuição para comparar. O que ela guardou não se reescreve.
+            </p>
+        </section>
+
+        <!-- ============================================ 04 · a turma -->
+        <section class="border-t border-border/70 pt-7">
+            <SectionHeading index="04" title="A turma, de um momento ao outro" />
             <Slopegraph
                 :slopes="classSlope"
                 :from-label="comparison.interim.reference_date_label"
@@ -259,10 +316,10 @@ const finalLabel = computed(() => `Final do ${props.comparison.period.label}`);
             />
         </section>
 
-        <!-- ============================================ 04 · domínios -->
+        <!-- ============================================ 05 · domínios -->
         <section class="border-t border-border/70 pt-7">
             <SectionHeading
-                index="04"
+                index="05"
                 title="Cada domínio"
                 description="Os nomes são os que existiam quando a fotografia foi tirada."
             />
@@ -285,9 +342,9 @@ const finalLabel = computed(() => `Final do ${props.comparison.period.label}`);
             </ul>
         </section>
 
-        <!-- ============================================== 05 · alunos -->
+        <!-- ============================================== 06 · alunos -->
         <section class="border-t border-border/70 pt-7">
-            <SectionHeading index="05" title="Aluno a aluno" description="Sem ordenação por resultado." />
+            <SectionHeading index="06" title="Aluno a aluno" description="Sem ordenação por resultado." />
 
             <div class="-mx-2 overflow-x-auto px-2">
                 <table class="w-max min-w-full text-sm">

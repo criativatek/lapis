@@ -82,6 +82,7 @@ class CompareInterimToPeriodFinal
             'success' => $this->success($snapshot, $final, (int) $interim->snapshot_version),
             'movement' => $this->movement($students),
             'transitions' => $this->transitions($students),
+            'assigned_distribution' => $this->assignedDistributions($snapshot, $final),
             'domains' => $this->domains($snapshot, $final),
             'students' => $students,
         ];
@@ -327,6 +328,92 @@ class CompareInterimToPeriodFinal
                 'unclassified' => $this->percentage($counts['unclassified'], count($students)),
                 'no_assigned_classification' => $this->percentage($counts['no_assigned_classification'], count($students)),
             ],
+        ];
+    }
+
+    /**
+     * How many students held each level, then and now.
+     *
+     * MATCHED BY THE BAND'S OWN IDENTITY, so a level renamed since is still the
+     * same level, and shown under the words the photograph recorded — this is a
+     * reading of the past. A band that only one of the two moments knows keeps
+     * its row: «era 4, já não existe» and «não havia, agora há» are both facts.
+     *
+     * No ranking, no ordering by size: the scale's own sequence, which is the
+     * order a teacher reads a pauta in (§13).
+     *
+     * @param  array<string, mixed>  $snapshot
+     * @param  array<string, mixed>  $final
+     * @return array<string, mixed>
+     */
+    protected function assignedDistributions(array $snapshot, array $final): array
+    {
+        $interim = $snapshot['assigned_distribution'] ?? null;
+        $current = $final['assigned_distribution'] ?? null;
+
+        // A photograph taken before this block existed did not record it, and
+        // is never given one from today's grades (§12, §16).
+        if ($interim === null) {
+            return [
+                'interim_is_available' => false,
+                'bands' => [],
+                'interim_classified' => null,
+                'final_classified' => $current['classified'] ?? null,
+                'interim_without_classification' => null,
+                'final_without_classification' => $current['without_classification'] ?? null,
+            ];
+        }
+
+        $finalBands = [];
+
+        foreach ($current['bands'] ?? [] as $band) {
+            $finalBands[(int) $band['scale_level_id']] = $band;
+        }
+
+        $rows = [];
+
+        foreach ($interim['bands'] ?? [] as $band) {
+            $id = (int) $band['scale_level_id'];
+            $counterpart = $finalBands[$id] ?? null;
+            unset($finalBands[$id]);
+
+            $rows[] = [
+                'scale_level_id' => $id,
+                // Historical words first: the level as it read then.
+                'code' => $band['code'],
+                'label' => $band['label'],
+                'sequence' => (int) $band['sequence'],
+                'is_negative' => (bool) $band['is_negative'],
+                'interim_count' => (int) $band['count'],
+                'final_count' => $counterpart === null ? null : (int) $counterpart['count'],
+                'change' => $counterpart === null ? null : (int) $counterpart['count'] - (int) $band['count'],
+                'only_in_interim' => $counterpart === null,
+            ];
+        }
+
+        foreach ($finalBands as $id => $band) {
+            $rows[] = [
+                'scale_level_id' => (int) $id,
+                'code' => $band['code'],
+                'label' => $band['label'],
+                'sequence' => (int) $band['sequence'],
+                'is_negative' => (bool) $band['is_negative'],
+                'interim_count' => null,
+                'final_count' => (int) $band['count'],
+                'change' => null,
+                'only_in_final' => true,
+            ];
+        }
+
+        usort($rows, fn (array $first, array $second): int => $first['sequence'] <=> $second['sequence']);
+
+        return [
+            'interim_is_available' => true,
+            'bands' => $rows,
+            'interim_classified' => (int) ($interim['classified'] ?? 0),
+            'final_classified' => $current['classified'] ?? null,
+            'interim_without_classification' => (int) ($interim['without_classification'] ?? 0),
+            'final_without_classification' => $current['without_classification'] ?? null,
         ];
     }
 

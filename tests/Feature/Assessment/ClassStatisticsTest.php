@@ -789,6 +789,36 @@ class ClassStatisticsTest extends TestCase
         });
     }
 
+    /**
+     * A scale that has nothing to do with the system ones.
+     *
+     * Two bands and a line at 60 — the sort of thing a school actually writes
+     * for a domain-based profile. Nothing in the read model knows about it.
+     */
+    private function useATwoBandScale(): void
+    {
+        $this->asTenant(function (): void {
+            $scale = Scale::create([
+                'name' => 'Atingiu / Não atingiu', 'kind' => 'level', 'min_value' => 0, 'max_value' => 1,
+            ]);
+
+            $scale->levels()->createMany([
+                [
+                    'code' => 'NA', 'label' => 'Não atingiu', 'sequence' => 1, 'is_negative' => true,
+                    'band_min_normalized' => '0.000000', 'band_max_normalized' => '59.999999',
+                ],
+                [
+                    'code' => 'A', 'label' => 'Atingiu', 'sequence' => 2, 'is_negative' => false,
+                    'band_min_normalized' => '60.000000', 'band_max_normalized' => '100.000000',
+                ],
+            ]);
+
+            DB::table('assessment_profile_versions')
+                ->where('id', $this->schoolClass()->profileVersion->id)
+                ->update(['scale_id' => $scale->id]);
+        });
+    }
+
     /** Moves the class onto «Escala 0 a 20», with or without qualitative bands. */
     private function useTheNumericScale(bool $withBands = false): void
     {
@@ -1494,26 +1524,7 @@ class ClassStatisticsTest extends TestCase
     {
         // Two bands and a line at 60, on a scale the application has never
         // heard of. Its own `is_negative` is all that is read.
-        $this->asTenant(function (): void {
-            $scale = Scale::create([
-                'name' => 'Atingiu / Não atingiu', 'kind' => 'level', 'min_value' => 0, 'max_value' => 1,
-            ]);
-
-            $scale->levels()->createMany([
-                [
-                    'code' => 'NA', 'label' => 'Não atingiu', 'sequence' => 1, 'is_negative' => true,
-                    'band_min_normalized' => '0.000000', 'band_max_normalized' => '59.999999',
-                ],
-                [
-                    'code' => 'A', 'label' => 'Atingiu', 'sequence' => 2, 'is_negative' => false,
-                    'band_min_normalized' => '60.000000', 'band_max_normalized' => '100.000000',
-                ],
-            ]);
-
-            DB::table('assessment_profile_versions')
-                ->where('id', $this->schoolClass()->profileVersion->id)
-                ->update(['scale_id' => $scale->id]);
-        });
+        $this->useATwoBandScale();
 
         $this->assign('Ana', 1, 'NA');
         $this->assign('Ana', 2, 'A');
@@ -1656,6 +1667,279 @@ class ClassStatisticsTest extends TestCase
                 ->has('statistics.evolution.transitions.comparable')
                 ->has('statistics.evolution.transitions.share_of_class')
                 ->has('statistics.students.0.transition'),
+            );
+    }
+
+    // ------------------------- 13. a distribuição das classificações
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function assignedDistribution(?int $sequence = 2): array
+    {
+        return $this->statistics($sequence)['assigned_distribution'];
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function countsByCode(?int $sequence = 2): array
+    {
+        $counts = [];
+
+        foreach ($this->assignedDistribution($sequence)['bands'] as $band) {
+            $counts[$band['code']] = $band['count'];
+        }
+
+        return $counts;
+    }
+
+    /**
+     * The scenario the bug was reported from.
+     *
+     * A «2» was on the pauta and the distribution showed «Insuficiente: 0»,
+     * because it was counting where the averages landed rather than what had
+     * been written.
+     */
+    #[Test]
+    public function a_level_the_teacher_assigned_appears_in_its_own_band(): void
+    {
+        $this->assignAll(2, [
+            'Ana' => '2', 'Bruno' => '4', 'Carolina' => '4',
+            'Diogo' => '4', 'Eva' => '3', 'Filipe' => '4',
+        ]);
+
+        $this->assertSame(
+            ['1' => 0, '2' => 1, '3' => 1, '4' => 4, '5' => 0],
+            $this->countsByCode(),
+        );
+        $this->assertSame(6, $this->assignedDistribution()['classified']);
+    }
+
+    #[Test]
+    public function a_positive_average_with_a_negative_level_counts_in_the_negative_band(): void
+    {
+        // Ana's accumulated figure lands in «Bom». Her teacher wrote «2».
+        $this->assign('Ana', 2, '2');
+
+        $statistics = $this->statistics(2);
+
+        $this->assertSame('4', $this->student('Ana')['band']['code'], 'a média continua em Bom');
+        $this->assertSame('2', $this->student('Ana')['assigned']['code']);
+        $this->assertSame(1, collect($statistics['assigned_distribution']['bands'])->firstWhere('code', '2')['count']);
+        $this->assertSame(0, collect($statistics['assigned_distribution']['bands'])->firstWhere('code', '4')['count']);
+    }
+
+    #[Test]
+    public function a_negative_average_with_a_positive_level_counts_in_the_positive_band(): void
+    {
+        // The scale calls «Suficiente» negative, which is where Eva's own
+        // figure lands. Her teacher decided «4».
+        $this->markBandAsNegative('3');
+        $this->assign('Eva', 2, '4');
+
+        $this->assertSame('3', $this->student('Eva')['band']['code']);
+        $this->assertSame(['1' => 0, '2' => 0, '3' => 0, '4' => 1, '5' => 0], $this->countsByCode());
+    }
+
+    #[Test]
+    public function a_proposal_without_a_decision_is_counted_nowhere(): void
+    {
+        // Every student has a proposal on screen and nobody has been graded.
+        $this->proposeOnly(2);
+
+        $distribution = $this->assignedDistribution();
+
+        $this->assertSame(0, $distribution['classified']);
+        $this->assertSame(6, $distribution['without_classification']);
+        $this->assertSame(['1' => 0, '2' => 0, '3' => 0, '4' => 0, '5' => 0], $this->countsByCode());
+    }
+
+    #[Test]
+    public function students_without_a_classification_are_shown_apart_and_never_as_zero(): void
+    {
+        $this->assign('Ana', 2, '4');
+
+        $distribution = $this->assignedDistribution();
+
+        $this->assertSame(1, $distribution['classified']);
+        $this->assertSame(5, $distribution['without_classification']);
+        // And they are in no band at all — not folded into the lowest one.
+        $this->assertSame(1, array_sum(array_column($distribution['bands'], 'count')));
+    }
+
+    #[Test]
+    public function every_band_of_the_scale_keeps_its_row_including_the_empty_ones(): void
+    {
+        $this->assign('Ana', 2, '4');
+
+        $bands = $this->assignedDistribution()['bands'];
+
+        // Five levels, five rows. «Nível 2: 0» is an answer; a missing row is
+        // not, and would redraw the grid from class to class.
+        $this->assertCount(5, $bands);
+        $this->assertSame(['1', '2', '3', '4', '5'], array_column($bands, 'code'));
+    }
+
+    #[Test]
+    public function the_bands_come_out_in_the_scales_own_sequence(): void
+    {
+        $sequences = array_column($this->assignedDistribution()['bands'], 'sequence');
+
+        $sorted = $sequences;
+        sort($sorted);
+
+        $this->assertSame($sorted, $sequences, 'a ordem é a da escala, nunca por contagem');
+    }
+
+    #[Test]
+    public function a_scale_of_the_schools_own_is_shown_in_its_own_words(): void
+    {
+        $this->useATwoBandScale();
+
+        $this->assign('Ana', 2, 'A');
+        $this->assign('Bruno', 2, 'NA');
+
+        $bands = $this->assignedDistribution()['bands'];
+
+        // Nothing here knows what a «3» is. A school using «Não atingiu /
+        // Atingiu» gets exactly those, in its own order (§10).
+        $this->assertSame(['Não atingiu', 'Atingiu'], array_column($bands, 'label'));
+        $this->assertSame([1, 1], array_column($bands, 'count'));
+    }
+
+    #[Test]
+    public function a_numeric_decision_is_grouped_by_the_scales_bands_when_it_has_them(): void
+    {
+        $this->useTheNumericScale(withBands: true);
+
+        $this->assignValue('Ana', 2, '14');
+        $this->assignValue('Bruno', 2, '7');
+
+        $counts = [];
+
+        foreach ($this->assignedDistribution()['bands'] as $band) {
+            $counts[$band['code']] = $band['count'];
+        }
+
+        $this->assertSame(['N' => 1, 'S' => 1], $counts);
+    }
+
+    #[Test]
+    public function a_numeric_decision_on_a_scale_with_no_bands_is_counted_apart(): void
+    {
+        $this->useTheNumericScale();
+
+        $this->assignValue('Ana', 2, '14');
+
+        $distribution = $this->assignedDistribution();
+
+        // The grade exists and the scale cannot name it. Neither a band nor
+        // «sem classificação» — its own count, and no invented interval (§11).
+        $this->assertSame(1, $distribution['unplaced']);
+        $this->assertSame(0, $distribution['classified']);
+        $this->assertSame(5, $distribution['without_classification']);
+        $this->assertSame([], $distribution['bands']);
+    }
+
+    #[Test]
+    public function a_grade_written_after_the_cutoff_is_not_in_the_distribution(): void
+    {
+        $this->travelTo('2027-06-30');
+        $this->assign('Ana', 2, '2');
+
+        $this->assertSame(1, $this->assignedDistribution()['classified']);
+
+        $class = $this->asTenant(fn (): SchoolClass => $this->schoolClass());
+
+        $distribution = $this->asTenant(fn (): array => app(BuildClassStatistics::class)->for(
+            $class,
+            $this->period(2),
+            AssessmentCutoff::on(Carbon::parse('2027-02-15')),
+        )['assigned_distribution']);
+
+        $this->assertSame(0, $distribution['classified']);
+        $this->assertSame(6, $distribution['without_classification']);
+    }
+
+    #[Test]
+    public function the_distribution_and_the_success_rate_count_the_same_students(): void
+    {
+        $this->assignAll(2, ['Ana' => '2', 'Bruno' => '4', 'Carolina' => '1']);
+
+        $statistics = $this->statistics(2);
+        $distribution = $statistics['assigned_distribution'];
+        $success = $statistics['summary']['success'];
+
+        // Two readings of one set of decisions. If they could disagree, one of
+        // them would be lying (§8).
+        $this->assertSame($success['placed'], $distribution['classified']);
+        $this->assertSame($success['without_classification'], $distribution['without_classification']);
+        $this->assertSame($success['unplaced'], $distribution['unplaced']);
+
+        $negatives = 0;
+
+        foreach ($distribution['bands'] as $band) {
+            if ($band['is_negative']) {
+                $negatives += $band['count'];
+            }
+        }
+
+        $this->assertSame($success['failed'], $negatives);
+    }
+
+    #[Test]
+    public function the_calculated_distribution_stays_beside_it_and_is_not_touched(): void
+    {
+        $before = $this->statistics(2)['distribution'];
+
+        $this->assignAll(2, ['Ana' => '2', 'Bruno' => '1']);
+
+        $statistics = $this->statistics(2);
+
+        // Grading a class does not move where the averages fall — the two
+        // readings are separate on purpose and can disagree (§1, §12).
+        $this->assertSame($before, $statistics['distribution']);
+        $this->assertNotSame(
+            array_column($statistics['distribution'], 'count'),
+            array_column($statistics['assigned_distribution']['bands'], 'count'),
+        );
+    }
+
+    #[Test]
+    public function a_band_the_scale_no_longer_has_keeps_its_row(): void
+    {
+        $this->assign('Ana', 2, '5');
+
+        // The school drops «Muito Bom» from the scale afterwards. Ana was still
+        // given it, and her history is true even if the scale has moved on.
+        $this->asTenant(fn () => Scale::withoutGlobalScope('scaleVisibility')
+            ->where('name', 'Escala 1 a 5')->firstOrFail()
+            ->levels()->where('code', '5')
+            ->update(['band_min_normalized' => null, 'band_max_normalized' => null, 'sequence' => 9]));
+
+        $bands = collect($this->assignedDistribution()['bands']);
+
+        $this->assertSame(1, $bands->firstWhere('code', '5')['count']);
+        $this->assertSame(1, $this->assignedDistribution()['classified']);
+    }
+
+    #[Test]
+    public function the_page_carries_the_assigned_distribution(): void
+    {
+        $this->assign('Ana', 2, '2');
+        $class = $this->asTenant(fn (): SchoolClass => $this->schoolClass());
+
+        $this->actingAs($this->teacher)
+            ->get("/classes/{$class->ulid}/results/estatistica")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->has('statistics.assigned_distribution.bands')
+                ->has('statistics.assigned_distribution.classified')
+                ->has('statistics.assigned_distribution.without_classification')
+                ->has('statistics.students.0.assigned')
+                // The calculated one is still there, beside it.
+                ->has('statistics.distribution'),
             );
     }
 }

@@ -60,8 +60,13 @@ class InterimAssessment extends Model
      * version — not the presence of the key — is what tells a reader whether
      * two figures may be placed side by side. v2 documents keep their own
      * meaning and are never rewritten.
+     *
+     * v3 → v4: the document gained `assigned_distribution` — how many students
+     * were GIVEN each level, beside the existing `distribution` of where their
+     * averages landed. Additive: a v3 photograph has no such block and never
+     * grows one, and a reader shows «não registado» rather than a row of zeros.
      */
-    public const CURRENT_VERSION = 3;
+    public const CURRENT_VERSION = 4;
 
     public $timestamps = false;
 

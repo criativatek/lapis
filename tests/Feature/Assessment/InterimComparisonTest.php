@@ -725,4 +725,136 @@ class InterimComparisonTest extends TestCase
                 ->has('comparison.transitions.comparable')
                 ->has('comparison.students.0.transition'));
     }
+
+    // ----------------- a distribuição das classificações, nos dois momentos
+
+    #[Test]
+    public function the_photograph_records_how_many_students_held_each_level(): void
+    {
+        $this->assign('Ana', 1, '2', '2026-11-01');
+        $this->assign('Bruno', 1, '4', '2026-11-01');
+
+        $interim = $this->capture('2026-11-15');
+
+        $counts = [];
+
+        foreach ($interim->snapshot['assigned_distribution']['bands'] as $band) {
+            $counts[$band['code']] = $band['count'];
+        }
+
+        $this->assertSame(['1' => 0, '2' => 1, '3' => 0, '4' => 1, '5' => 0], $counts);
+        $this->assertSame(2, $interim->snapshot['assigned_distribution']['classified']);
+        $this->assertSame(4, $interim->snapshot['assigned_distribution']['without_classification']);
+    }
+
+    #[Test]
+    public function the_photograph_holds_the_grades_of_its_day_and_not_todays(): void
+    {
+        $this->assign('Ana', 1, '2', '2026-11-01');
+        $interim = $this->capture('2026-11-15');
+
+        // The teacher changes their mind in June. November does not.
+        $this->assign('Ana', 1, '5');
+
+        $stored = collect($interim->fresh()->snapshot['assigned_distribution']['bands']);
+
+        $this->assertSame(1, $stored->firstWhere('code', '2')['count']);
+        $this->assertSame(0, $stored->firstWhere('code', '5')['count']);
+    }
+
+    #[Test]
+    public function the_comparison_puts_the_two_distributions_side_by_side(): void
+    {
+        $this->assign('Ana', 1, '2', '2026-11-01');
+        $this->assign('Bruno', 1, '3', '2026-11-01');
+
+        $interim = $this->capture('2026-11-15');
+
+        // By the end of the period Ana climbed and Bruno was joined by Carolina.
+        $this->assign('Ana', 1, '4');
+        $this->assign('Carolina', 1, '3');
+
+        $distribution = $this->compare($interim)['assigned_distribution'];
+        $bands = collect($distribution['bands'])->keyBy('code');
+
+        $this->assertTrue($distribution['interim_is_available']);
+        $this->assertSame([1, 0, -1], [
+            $bands['2']['interim_count'], $bands['2']['final_count'], $bands['2']['change'],
+        ]);
+        $this->assertSame([1, 2, 1], [
+            $bands['3']['interim_count'], $bands['3']['final_count'], $bands['3']['change'],
+        ]);
+        $this->assertSame([0, 1, 1], [
+            $bands['4']['interim_count'], $bands['4']['final_count'], $bands['4']['change'],
+        ]);
+    }
+
+    #[Test]
+    public function the_bands_of_the_comparison_stay_in_the_scales_own_order(): void
+    {
+        $this->assign('Ana', 1, '2', '2026-11-01');
+        $interim = $this->capture('2026-11-15');
+
+        $sequences = array_column($this->compare($interim)['assigned_distribution']['bands'], 'sequence');
+        $sorted = $sequences;
+        sort($sorted);
+
+        $this->assertSame($sorted, $sequences, 'sem ordenação por contagem');
+    }
+
+    #[Test]
+    public function students_without_a_grade_are_reported_at_both_ends(): void
+    {
+        $this->assign('Ana', 1, '4', '2026-11-01');
+        $interim = $this->capture('2026-11-15');
+        $this->assign('Bruno', 1, '3');
+
+        $distribution = $this->compare($interim)['assigned_distribution'];
+
+        $this->assertSame(5, $distribution['interim_without_classification']);
+        $this->assertSame(4, $distribution['final_without_classification']);
+    }
+
+    #[Test]
+    public function a_photograph_taken_before_this_block_says_so_rather_than_showing_zeros(): void
+    {
+        $this->assign('Ana', 1, '4', '2026-11-01');
+        $interim = $this->capture('2026-11-15');
+
+        // A v3 document never recorded the grades per level and is not given
+        // them from today's — that would be rebuilding history (§12).
+        $this->asTenant(function () use ($interim): void {
+            $snapshot = $interim->snapshot;
+            unset($snapshot['assigned_distribution']);
+
+            DB::table('interim_assessments')->where('id', $interim->id)->update([
+                'snapshot_version' => 3,
+                'snapshot' => json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'snapshot_hash' => InterimAssessment::hashFor($snapshot),
+            ]);
+        });
+
+        $distribution = $this->compare($interim->fresh())['assigned_distribution'];
+
+        $this->assertFalse($distribution['interim_is_available']);
+        $this->assertSame([], $distribution['bands']);
+        $this->assertNull($distribution['interim_classified']);
+        // The live side is still readable — only the past is silent.
+        $this->assertNotNull($distribution['final_classified']);
+    }
+
+    #[Test]
+    public function the_comparison_page_carries_the_two_distributions(): void
+    {
+        $this->assign('Ana', 1, '4', '2026-11-01');
+        $interim = $this->capture('2026-11-15');
+        $class = $this->schoolClass();
+
+        $this->actingAs($this->teacher)
+            ->get("/classes/{$class->ulid}/avaliacoes-intercalares/{$interim->ulid}/comparar")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->has('comparison.assigned_distribution.bands')
+                ->where('comparison.assigned_distribution.interim_is_available', true));
+    }
 }

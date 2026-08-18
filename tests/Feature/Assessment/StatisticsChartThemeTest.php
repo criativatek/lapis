@@ -358,8 +358,39 @@ class StatisticsChartThemeTest extends TestCase
 
         // And the statistical block beside it says which figure IT bands, so
         // the two readings are never mistaken for each other (§13).
-        $this->assertStringContainsString('Leitura estatística', $page);
-        $this->assertStringContainsString('não a classificação atribuída', $page);
+        $this->assertStringContainsString('Leitura secundária', $page);
+        $this->assertStringContainsString('o que o cálculo', $page);
+    }
+
+    #[Test]
+    public function the_distribution_the_page_opens_on_counts_the_assigned_levels(): void
+    {
+        $page = $this->page();
+
+        // The primary grid is the grades. The averages keep their own grid,
+        // folded, under a heading that names what is inside it (§2, §7).
+        $this->assertStringContainsString('Como se distribuem as classificações', $page);
+        $this->assertStringContainsString(':bands="assignedBands"', $page);
+        $this->assertStringContainsString('Sem classificação atribuída', $page);
+
+        $this->assertStringContainsString(':bands="distributionBands"', $page);
+        $this->assertStringContainsString('showCalculatedDistribution', $page);
+    }
+
+    #[Test]
+    public function a_band_chosen_on_the_assigned_grid_highlights_who_was_graded_there(): void
+    {
+        $page = $this->page();
+
+        // Two selections, kept apart: choosing «Insuficiente» on the grades
+        // must not light up the students whose AVERAGE happens to land there,
+        // and vice versa (§14).
+        $this->assertStringContainsString('student.assigned?.scale_level_id === selectedLevelId.value', $page);
+        $this->assertStringContainsString('student.band?.scale_level_id === selectedCalculatedLevelId.value', $page);
+
+        // And the chip says which of the two a highlight came from.
+        $this->assertStringContainsString('atribuído · ', $page);
+        $this->assertStringContainsString('calculado · ', $page);
     }
 
     #[Test]

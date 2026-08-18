@@ -82,6 +82,9 @@ class BuildClassStatistics
             'scale' => $this->scalePayload($scale),
             'summary' => $this->summary($rows, $scale),
             'evolution' => $this->evolution($rows, $previousRows, $scale),
+            // The grades, and the averages. Two readings, never averaged into
+            // one, each named on screen by what it counts (§1, §8).
+            'assigned_distribution' => $this->assignedDistribution($rows, $scale),
             'distribution' => $this->distribution($rows, $scale),
             'domain_statistics' => $this->domainStatistics($rows, $domains, $scale),
             'period_series' => $this->periodSeries($students, $periods, $domains),
@@ -456,80 +459,116 @@ class BuildClassStatistics
     }
 
     /**
+     * Whether the teacher actually decided this student's period.
+     *
+     * ONLY A DECISION COUNTS. `proposed` means they have not answered yet;
+     * `superseded` is not the live one. The progression already forces a
+     * post-cutoff confirmation back to `proposed`, so a page read at a date
+     * cannot see a grade written after it.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function hasAssignedClassification(array $row): bool
+    {
+        $classification = $row['period']['classification'] ?? null;
+
+        if ($classification === null) {
+            return false;
+        }
+
+        if (! in_array($classification['status'] ?? null, ['confirmed', 'published'], true)) {
+            return false;
+        }
+
+        return ($classification['final'] ?? null) !== null
+            || ($classification['final_value'] ?? null) !== null;
+    }
+
+    /**
+     * The band the teacher's own decision names — the grade, as a mention.
+     *
+     * On a levelled scale this IS the decision: the level they chose, carried
+     * out of the canonical read model with its own identity. On a numeric one
+     * the decision is a bare number, and only the scale's own bands may name
+     * it; a scale without them gets null rather than an invented interval.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>|null
+     */
+    protected function assignedLevelOf(array $row, ?Scale $scale): ?array
+    {
+        if (! $this->hasAssignedClassification($row)) {
+            return null;
+        }
+
+        $classification = $row['period']['classification'];
+        $final = $classification['final'] ?? null;
+
+        if ($final !== null) {
+            return $final;
+        }
+
+        return $this->bandPayload($this->bandForNumericDecision($classification['final_value'] ?? null, $scale));
+    }
+
+    /**
      * The side of the scale the teacher's own decision falls on.
      *
      * «none» — nothing was decided for this period, or what exists is still a
-     * proposal. A proposal is the system talking and is never read as a grade.
-     * «unclassified» — a decision exists, but the scale has no statement about
-     * which side it is; saying nothing is the correct answer (§10.4).
+     * proposal. «unclassified» — a decision exists, but the scale has no
+     * statement about which side it is; saying nothing is the correct answer
+     * (§10.4).
      *
      * @param  array<string, mixed>  $row
      * @return 'positive'|'negative'|'unclassified'|'none'
      */
     protected function assignedOutcomeOf(array $row, ?Scale $scale): string
     {
-        $classification = $row['period']['classification'] ?? null;
-
-        if ($classification === null) {
+        if (! $this->hasAssignedClassification($row)) {
             return 'none';
         }
 
-        // ONLY A DECISION COUNTS. `proposed` means the teacher has not answered
-        // yet; `superseded` is not the live one. The progression already forces
-        // a post-cutoff confirmation back to `proposed`, so a photograph read at
-        // a date cannot see a grade written after it.
-        if (! in_array($classification['status'] ?? null, ['confirmed', 'published'], true)) {
-            return 'none';
+        $level = $this->assignedLevelOf($row, $scale);
+
+        if ($level === null) {
+            return 'unclassified';
         }
 
-        $final = $classification['final'] ?? null;
-
-        // A levelled decision states its own side, through the scale.
-        if ($final !== null) {
-            return ($final['is_negative'] ?? false) ? 'negative' : 'positive';
-        }
-
-        return $this->sideOfNumericDecision($classification['final_value'] ?? null, $scale);
+        return ($level['is_negative'] ?? false) ? 'negative' : 'positive';
     }
 
     /**
-     * A decision written as a bare number, on a numeric scale.
+     * A decision written as a bare number, placed on the scale's own bands.
      *
      * ONLY THE SCALE'S OWN BANDS MAY ANSWER. A numeric scale that was never
      * given qualitative bands has no statement about where passing begins, and
-     * a «>= 10» written here would be inventing a pedagogical rule (§1, §6).
+     * a «>= 10» written here would be inventing a pedagogical rule (§1, §11).
      *
      * When it does have bands, they live in normalized space, so the teacher's
      * number is placed back onto that axis with the inverse of the one approved
      * placement rule — `min + (normalized/100) × (max − min)` — applied to the
      * DECISION and never to a computed result.
-     *
-     * @return 'positive'|'negative'|'unclassified'
      */
-    protected function sideOfNumericDecision(?string $value, ?Scale $scale): string
+    protected function bandForNumericDecision(?string $value, ?Scale $scale): ?ScaleLevel
     {
         if ($value === null || trim($value) === '' || $scale === null) {
-            return 'unclassified';
+            return null;
         }
 
         if ($scale->levels->isEmpty() || $scale->min_value === null || $scale->max_value === null) {
-            return 'unclassified';
+            return null;
         }
 
         $span = Bc::sub(Bc::of((string) $scale->max_value), Bc::of((string) $scale->min_value));
 
         if (Bc::compare($span, '0') === 0) {
-            return 'unclassified';
+            return null;
         }
 
-        $normalized = Bc::mul(
+        return $this->proposals->bandFor($scale, Bc::mul(
             Bc::div(Bc::sub(Bc::of($value), Bc::of((string) $scale->min_value)), $span),
             '100',
-        );
-
-        $level = $this->proposals->bandFor($scale, $normalized);
-
-        return $level === null ? 'unclassified' : ($level->is_negative ? 'negative' : 'positive');
+        ));
     }
 
     /**
@@ -543,6 +582,113 @@ class BuildClassStatistics
      * Every band of the scale appears, including the ones nobody is in: a level
      * with zero students is a fact about the class, and omitting it would draw
      * a different chart for every class (§49).
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    /**
+     * «Quantos alunos tiveram nível 2?» — the grades, counted.
+     *
+     * THE ANSWER A PAUTA GIVES. The distribution beside it bands the calculated
+     * average and answers a different question; both are on the page and each
+     * says which it is, because a class where one student was given a «2» and
+     * whose averages all land in «Suficiente» is described truthfully by
+     * neither on its own (§1).
+     *
+     * EVERY BAND OF THE SCALE GETS A ROW, in the scale's own sequence and with
+     * the scale's own words, including the ones nobody is in — «Nível 2: 0» is
+     * an answer and a missing row is not. Nothing here knows what a «3» is: a
+     * school using «Não atingiu / Atingiu / Superou» gets exactly those.
+     *
+     * A band that no longer belongs to the scale but that somebody was graded
+     * on still gets its row, at the end: their history is true even if the
+     * scale has moved on.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return array<string, mixed>
+     */
+    protected function assignedDistribution(array $rows, ?Scale $scale): array
+    {
+        $counts = [];
+        $seen = [];
+        $classified = 0;
+        $unplaced = 0;
+        $withoutClassification = 0;
+
+        foreach ($rows as $row) {
+            if (! $this->hasAssignedClassification($row)) {
+                $withoutClassification++;
+
+                continue;
+            }
+
+            $level = $this->assignedLevelOf($row, $scale);
+
+            // Graded, on a scale that cannot name it. Counted apart rather than
+            // dropped into a band it was never placed in.
+            if ($level === null) {
+                $unplaced++;
+
+                continue;
+            }
+
+            $id = (int) $level['scale_level_id'];
+            $counts[$id] = ($counts[$id] ?? 0) + 1;
+            $seen[$id] = $level;
+            $classified++;
+        }
+
+        $bands = [];
+        $levels = $scale === null ? collect() : $scale->levels->sortBy('sequence');
+
+        foreach ($levels as $level) {
+            $id = (int) $level->id;
+            unset($seen[$id]);
+
+            $bands[] = [
+                'scale_level_id' => $id,
+                'code' => (string) $level->code,
+                'label' => (string) $level->label,
+                'sequence' => (int) $level->sequence,
+                'is_negative' => (bool) $level->is_negative,
+                'count' => $counts[$id] ?? 0,
+                // Of the students actually graded. Dividing by the whole class
+                // would let students nobody has classified yet silently shrink
+                // every band without appearing anywhere.
+                'percentage' => $this->percentage($counts[$id] ?? 0, $classified),
+            ];
+        }
+
+        foreach ($seen as $id => $level) {
+            $bands[] = [
+                'scale_level_id' => (int) $id,
+                'code' => (string) $level['code'],
+                'label' => (string) $level['label'],
+                'sequence' => (int) $level['sequence'],
+                'is_negative' => (bool) $level['is_negative'],
+                'count' => $counts[$id],
+                'percentage' => $this->percentage($counts[$id], $classified),
+                // The scale no longer has this band; the grade still happened.
+                'outside_scale' => true,
+            ];
+        }
+
+        return [
+            'bands' => $bands,
+            // The denominator, stated so a screen never has to guess it.
+            'classified' => $classified,
+            'unplaced' => $unplaced,
+            'without_classification' => $withoutClassification,
+        ];
+    }
+
+    /**
+     * Where the CALCULATED averages land, across the scale's bands.
+     *
+     * The secondary reading, and named as such on screen: it answers «onde está
+     * a turma» and not «que notas foram dadas». Kept because it is genuinely
+     * useful before a class is graded, and because the gap between the two is
+     * itself worth seeing (§7).
      *
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
@@ -784,6 +930,11 @@ class BuildClassStatistics
                 'coverage_warning' => $period['coverage_warning'] ?? false,
                 'evolution' => $period['evolution'] ?? null,
                 'band' => $this->bandPayload($this->bandOf($row, $scale)),
+                // The grade, as a mention. Kept beside the calculated band and
+                // never in place of it: a selection made on the assigned
+                // distribution must highlight the students who were GRADED
+                // there, not the ones whose average happens to land there (§14).
+                'assigned' => $this->assignedLevelOf($row, $scale),
                 'domains' => $period['domains'] ?? [],
                 'self_assessment' => $period['self_assessment'] ?? null,
                 'classification' => $period['classification'] ?? null,
@@ -1001,6 +1152,9 @@ class BuildClassStatistics
                     ],
                     'share_of_class' => ['unclassified' => null, 'no_assigned_classification' => null],
                 ],
+            ],
+            'assigned_distribution' => [
+                'bands' => [], 'classified' => 0, 'unplaced' => 0, 'without_classification' => 0,
             ],
             'distribution' => [],
             'domain_statistics' => [],

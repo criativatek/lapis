@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { ArrowDownRight, ArrowUpRight, CircleAlert, Minus, TrendingDown, TrendingUp, X } from '@lucide/vue';
+import { ArrowDownRight, ArrowUpRight, ChevronRight, CircleAlert, Minus, TrendingDown, TrendingUp, X } from '@lucide/vue';
 import type { ChartConfiguration } from 'chart.js';
 import { computed, defineAsyncComponent, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
@@ -59,6 +59,8 @@ type Student = {
     coverage_warning: boolean;
     evolution: Evolution;
     band: Band;
+    /** The grade, as a mention — what the teacher assigned. */
+    assigned: Band;
     domains: DomainCell[];
     self_assessment: Level;
     classification: { status: string; is_published: boolean; final: Level; proposed: Level } | null;
@@ -106,6 +108,10 @@ type Statistics = {
         comparable: number; average_change: string | null;
         percentages: { progressed: string | null; stable: string | null; regressed: string | null; no_comparison: string | null };
         transitions: Transitions;
+    };
+    assigned_distribution: {
+        bands: (NonNullable<Band> & { count: number; percentage: string | null; outside_scale?: boolean })[];
+        classified: number; unplaced: number; without_classification: number;
     };
     distribution: (NonNullable<Band> & { count: number; percentage: string | null })[];
     domain_statistics: DomainStatistic[];
@@ -260,31 +266,58 @@ function goToPeriod(ulid: string): void {
  * to clear them (§5).
  */
 const selectedDomainId = ref<number | null>(null);
+/**
+ * A band of the ASSIGNED distribution, and one of the calculated one — kept as
+ * two refs rather than one, because they mean different things about a student
+ * and a selection must never silently swap which (§14).
+ */
 const selectedLevelId = ref<number | null>(null);
+const selectedCalculatedLevelId = ref<number | null>(null);
 /** «progressed», «failure_to_success» — a group from the movement board. */
 const selectedGroup = ref<string | null>(null);
 
+/**
+ * The calculated distribution starts folded.
+ *
+ * Not hidden — one click away, and its heading names what is inside. It answers
+ * a real question («onde está a turma antes de eu classificar?») but it is not
+ * the one this page opens on, and two grids of five tiles side by side read as
+ * one contradictory grid of ten (§7).
+ */
+const showCalculatedDistribution = ref<boolean>(false);
+
 function toggleDomain(domainId: number): void {
-    selectedLevelId.value = null;
-    selectedGroup.value = null;
-    selectedDomainId.value = selectedDomainId.value === domainId ? null : domainId;
+    const previous = selectedDomainId.value;
+
+    clearSelection();
+    selectedDomainId.value = previous === domainId ? null : domainId;
 }
 
 function toggleLevel(levelId: number): void {
-    selectedDomainId.value = null;
-    selectedGroup.value = null;
-    selectedLevelId.value = selectedLevelId.value === levelId ? null : levelId;
+    const previous = selectedLevelId.value;
+
+    clearSelection();
+    selectedLevelId.value = previous === levelId ? null : levelId;
+}
+
+function toggleCalculatedLevel(levelId: number): void {
+    const previous = selectedCalculatedLevelId.value;
+
+    clearSelection();
+    selectedCalculatedLevelId.value = previous === levelId ? null : levelId;
 }
 
 function toggleGroup(key: string): void {
-    selectedDomainId.value = null;
-    selectedLevelId.value = null;
-    selectedGroup.value = selectedGroup.value === key ? null : key;
+    const previous = selectedGroup.value;
+
+    clearSelection();
+    selectedGroup.value = previous === key ? null : key;
 }
 
 function clearSelection(): void {
     selectedDomainId.value = null;
     selectedLevelId.value = null;
+    selectedCalculatedLevelId.value = null;
     selectedGroup.value = null;
 }
 
@@ -302,7 +335,14 @@ const selectedGroupLabel = computed<string | null>(() => (
 ));
 
 const selectedDomain = computed(() => stats.value.domains.find((domain) => domain.id === selectedDomainId.value) ?? null);
-const selectedLevel = computed(() => stats.value.distribution.find((band) => band.scale_level_id === selectedLevelId.value) ?? null);
+
+const selectedLevel = computed(() => (
+    stats.value.assigned_distribution.bands.find((band) => band.scale_level_id === selectedLevelId.value) ?? null
+));
+
+const selectedCalculatedLevel = computed(() => (
+    stats.value.distribution.find((band) => band.scale_level_id === selectedCalculatedLevelId.value) ?? null
+));
 
 /** Whether a domain should be drawn at full strength. */
 function isLit(domainId: number): boolean {
@@ -323,7 +363,14 @@ function matchesLevel(student: Student): boolean {
             || (selectedGroup.value === 'regressed' && student.evolution?.direction === 'down');
     }
 
-    return selectedLevelId.value === null || student.band?.scale_level_id === selectedLevelId.value;
+    // A band chosen on the ASSIGNED distribution points at the students who
+    // were GRADED there — never at those whose average happens to land there.
+    if (selectedLevelId.value !== null) {
+        return student.assigned?.scale_level_id === selectedLevelId.value;
+    }
+
+    return selectedCalculatedLevelId.value === null
+        || student.band?.scale_level_id === selectedCalculatedLevelId.value;
 }
 
 const highlightedStudents = computed(() => stats.value.students.filter((student) => matchesLevel(student)).length);
@@ -479,8 +526,12 @@ const coveredPercent = computed<number>(() => {
     return total === 0 ? 0 : (stats.value.summary.students_with_result / total) * 100;
 });
 
-/** The distribution, as filled rows rather than as floating plates. */
-const distributionBands = computed<DistributionBand[]>(() => stats.value.distribution.map((band) => {
+/**
+ * A band, dressed for the tiles. Used for both distributions, which is the
+ * point: the same shape, so the difference between them is only the source and
+ * the words above them.
+ */
+function toBand(band: { scale_level_id: number; code: string; label: string; sequence: number; is_negative: boolean; count: number; percentage: string | null }): DistributionBand {
     const tone = toneOf(band);
 
     return {
@@ -493,7 +544,13 @@ const distributionBands = computed<DistributionBand[]>(() => stats.value.distrib
         tone,
         colour: TONE_COLOURS[tone].border,
     };
-}));
+}
+
+/** The grades the teacher gave, counted per level. The primary reading. */
+const assignedBands = computed<DistributionBand[]>(() => stats.value.assigned_distribution.bands.map(toBand));
+
+/** Where the calculated averages land. Kept, and labelled as secondary. */
+const distributionBands = computed<DistributionBand[]>(() => stats.value.distribution.map(toBand));
 
 /** The domains, as wide bars: domain ink, scale mention, trend change. */
 const domainBars = computed<DomainBar[]>(() => stats.value.domain_statistics.map((row) => ({
@@ -1080,7 +1137,7 @@ const studentRows = computed(() => {
                 enter-to-class="opacity-100 translate-y-0"
             >
                 <div
-                    v-if="selectedDomain || selectedLevel || selectedGroupLabel"
+                    v-if="selectedDomain || selectedLevel || selectedCalculatedLevel || selectedGroupLabel"
                     class="flex flex-wrap items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm"
                     role="status"
                 >
@@ -1091,9 +1148,16 @@ const studentRows = computed(() => {
                         {{ selectedDomain.name }}
                     </span>
 
+                    <!-- The chip names WHICH reading the band came from, so a
+                         selection is never ambiguous between the two (§14). -->
                     <span v-if="selectedLevel" class="inline-flex items-center gap-2 rounded-full bg-background px-3 py-1 font-medium shadow-sm">
                         {{ selectedLevel.code }} · {{ selectedLevel.label }}
-                        <span class="text-muted-foreground">{{ studentsWord(highlightedStudents) }}</span>
+                        <span class="text-muted-foreground">atribuído · {{ studentsWord(highlightedStudents) }}</span>
+                    </span>
+
+                    <span v-if="selectedCalculatedLevel" class="inline-flex items-center gap-2 rounded-full bg-background px-3 py-1 font-medium shadow-sm">
+                        {{ selectedCalculatedLevel.code }} · {{ selectedCalculatedLevel.label }}
+                        <span class="text-muted-foreground">calculado · {{ studentsWord(highlightedStudents) }}</span>
                     </span>
 
                     <span v-if="selectedGroupLabel" class="inline-flex items-center gap-2 rounded-full bg-background px-3 py-1 font-medium shadow-sm">
@@ -1237,24 +1301,87 @@ const studentRows = computed(() => {
                 </div>
             </section>
 
-            <!-- ======================= 03 · DISTRIBUIÇÃO PELA ESCALA -->
+            <!-- ================= 03 · DISTRIBUIÇÃO DAS CLASSIFICAÇÕES -->
             <section :class="[card('sky'), 'p-5']">
                 <SectionHeading
                     index="03"
-                    title="Como se distribuem os resultados"
-                    :description="`Leitura estatística: a menção onde cai a Média Ponderada Acumulada de cada aluno${schoolClass.scale_name ? `, na escala «${schoolClass.scale_name}»` : ''} — não a classificação atribuída. Escolha uma banda para a seguir no mapa.`"
+                    title="Como se distribuem as classificações"
+                    :description="`Os níveis que atribuiu a cada aluno${schoolClass.scale_name ? `, na escala «${schoolClass.scale_name}»` : ''}. Escolha uma banda para seguir esses alunos no mapa.`"
                 />
 
                 <DistributionBands
-                    v-if="distributionBands.length"
-                    :bands="distributionBands"
-                    :placed="placedOnScale"
+                    v-if="assignedBands.length"
+                    :bands="assignedBands"
+                    :placed="stats.assigned_distribution.classified"
                     :selected-id="selectedLevelId"
                     @select="toggleLevel"
                 />
                 <p v-else class="rounded-xl bg-muted/25 py-10 text-center text-sm text-muted-foreground">
-                    A escala desta turma não tem bandas configuradas, por isso não há menções para distribuir.
+                    A escala desta turma não tem bandas configuradas, por isso não há níveis para distribuir.
                 </p>
+
+                <!-- OUTSIDE THE BANDS, AND SAID SO. A student nobody has graded
+                     is not a zero anywhere on this row (§5). -->
+                <p
+                    v-if="stats.assigned_distribution.without_classification > 0 || stats.assigned_distribution.unplaced > 0"
+                    class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 rounded-xl bg-background/50 px-3.5 py-2.5 text-xs dark:bg-background/25"
+                >
+                    <span v-if="stats.assigned_distribution.without_classification > 0" class="flex items-center gap-1.5">
+                        <Minus aria-hidden="true" class="size-3.5 shrink-0 text-muted-foreground/60" />
+                        <span class="text-muted-foreground">Sem classificação atribuída</span>
+                        <strong class="font-semibold tabular-nums">{{ stats.assigned_distribution.without_classification }}</strong>
+                    </span>
+
+                    <span v-if="stats.assigned_distribution.unplaced > 0" class="flex items-center gap-1.5">
+                        <Minus aria-hidden="true" class="size-3.5 shrink-0 text-muted-foreground/60" />
+                        <span class="text-muted-foreground">Classificados sem banda na escala</span>
+                        <strong class="font-semibold tabular-nums">{{ stats.assigned_distribution.unplaced }}</strong>
+                    </span>
+                </p>
+
+                <!-- ---- a leitura secundária: onde caem as médias ---- -->
+                <div class="mt-5 border-t border-border/60 pt-4">
+                    <button
+                        type="button"
+                        class="flex w-full items-center gap-2 rounded-lg text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                        :aria-expanded="showCalculatedDistribution"
+                        aria-controls="distribuicao-calculada"
+                        @click="showCalculatedDistribution = !showCalculatedDistribution"
+                    >
+                        <ChevronRight
+                            aria-hidden="true"
+                            class="size-3.5 shrink-0 text-muted-foreground transition-transform"
+                            :class="showCalculatedDistribution ? 'rotate-90' : ''"
+                        />
+                        <span class="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                            Leitura secundária · onde caem os resultados calculados
+                        </span>
+                        <span aria-hidden="true" class="ml-2 h-px flex-1 bg-border/70"></span>
+                    </button>
+
+                    <div v-show="showCalculatedDistribution" id="distribuicao-calculada" class="mt-3.5">
+                        <!-- A DIFFERENT QUESTION, AND IT SAYS SO. This bands the
+                             Média Ponderada Acumulada; the row above counts the
+                             grades. They can disagree, and when they do that is
+                             information rather than an error (§7). -->
+                        <p class="mb-3 text-xs leading-relaxed text-muted-foreground">
+                            A menção onde cai a Média Ponderada Acumulada de cada aluno — o que o cálculo
+                            diz, não o que foi atribuído. Serve para ver onde a turma está antes de classificar,
+                            e onde a decisão se afastou do cálculo.
+                        </p>
+
+                        <DistributionBands
+                            v-if="distributionBands.length"
+                            :bands="distributionBands"
+                            :placed="placedOnScale"
+                            :selected-id="selectedCalculatedLevelId"
+                            @select="toggleCalculatedLevel"
+                        />
+                        <p v-else class="rounded-xl bg-muted/25 py-8 text-center text-sm text-muted-foreground">
+                            Sem bandas configuradas na escala.
+                        </p>
+                    </div>
+                </div>
             </section>
 
             <!-- ==================== 04 · ONDE A TURMA SE ESPALHA -->
@@ -1412,7 +1539,10 @@ const studentRows = computed(() => {
                 >
                     <template #aside>
                         <p v-if="selectedLevel" class="text-xs text-muted-foreground">
-                            A realçar {{ studentsWord(highlightedStudents) }} com menção «{{ selectedLevel.label }}»
+                            A realçar {{ studentsWord(highlightedStudents) }} com «{{ selectedLevel.label }}» atribuído
+                        </p>
+                        <p v-else-if="selectedCalculatedLevel" class="text-xs text-muted-foreground">
+                            A realçar {{ studentsWord(highlightedStudents) }} cuja média cai em «{{ selectedCalculatedLevel.label }}»
                         </p>
                     </template>
                 </SectionHeading>
