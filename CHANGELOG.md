@@ -2,6 +2,17 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.36.0] — 2026-08-19
+
+### Definições → Identidade da escola
+
+- **A escola passa a poder identificar-se uma vez.** Nome oficial, nome curto, morada, código postal, localidade, telefone, email e website, mais os dados administrativos opcionais — código da escola, NIF, departamento, país e um texto de rodapé.
+- **Logótipo com carregamento, substituição e remoção.** PNG, JPG ou WebP até 2 MB; o ficheiro fica em armazenamento privado e só é servido a quem pertence à organização. Substituir apaga o anterior.
+- **Nada é obrigatório.** Uma escola que hoje só sabe o nome guarda o nome; um campo deixado em branco fica por preencher e não como texto vazio. O que é escrito é guardado tal como foi escrito.
+- **Pré-visualização do cabeçalho.** Mostra exatamente o que um documento vai imprimir, sem linhas vazias quando faltam contactos, e diz quando ainda não há nada configurado.
+- **Quem administra a organização altera; quem lá trabalha vê.** Uma escola nunca lê nem sobrepõe a identidade de outra.
+- **Preparação para os documentos.** A identidade fica disponível num ponto único para que os relatórios e exportações futuros a recebam já pronta, em vez de cada um voltar a pedir estes dados. Esta versão não gera ainda nenhum documento.
+
 ## [0.35.0] — 2026-08-18
 
 ### Resultados → Estatística: uma visão geral de desempenho
