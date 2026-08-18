@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
 /**
@@ -61,6 +62,16 @@ class Organization extends Model
     public function owner(): BelongsTo
     {
         return $this->belongsTo(User::class, 'owner_id');
+    }
+
+    /**
+     * Who this school is on a document — absent until somebody fills it in.
+     *
+     * @return HasOne<OrganizationIdentity, $this>
+     */
+    public function identity(): HasOne
+    {
+        return $this->hasOne(OrganizationIdentity::class);
     }
 
     /**

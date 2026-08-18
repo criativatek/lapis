@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Settings\ProfileController;
+use App\Http\Controllers\Settings\SchoolIdentityController;
 use App\Http\Controllers\Settings\SecurityController;
 use Illuminate\Auth\Middleware\RequirePassword;
 use Illuminate\Support\Facades\Route;
@@ -24,6 +25,28 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('user-password.update');
 
     Route::inertia('settings/appearance', 'settings/Appearance')->name('appearance.edit');
+
+    /*
+     * The school as it appears on a document.
+     *
+     * Gated by `module:reports`, because that is what it is FOR: the identity
+     * exists so that Relatórios — a Base module — can head a document without
+     * asking the teacher to type their school's name into every one. Reading
+     * and writing are told apart by the policy, not by the plan.
+     */
+    Route::middleware('module:reports')->group(function () {
+        Route::get('settings/school-identity', [SchoolIdentityController::class, 'edit'])
+            ->name('settings.school-identity.edit');
+        Route::put('settings/school-identity', [SchoolIdentityController::class, 'update'])
+            ->name('settings.school-identity.update');
+        Route::post('settings/school-identity/logo', [SchoolIdentityController::class, 'storeLogo'])
+            ->name('settings.school-identity.logo.store');
+        Route::delete('settings/school-identity/logo', [SchoolIdentityController::class, 'destroyLogo'])
+            ->name('settings.school-identity.logo.destroy');
+        // The file itself, streamed from the private disk after authorization.
+        Route::get('settings/school-identity/logo', [SchoolIdentityController::class, 'logo'])
+            ->name('settings.school-identity.logo');
+    });
 });
 
 Route::get('.well-known/passkey-endpoints', function () {

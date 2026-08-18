@@ -23,6 +23,12 @@ const sidebarNavItems: NavItem[] = [
         title: 'Appearance',
         href: editAppearance(),
     },
+    {
+        // The one entry a teacher will look for by its Portuguese name: it is
+        // about their school, not about their account.
+        title: 'Identidade da escola',
+        href: '/settings/school-identity',
+    },
 ];
 
 const { isCurrentOrParentUrl } = useCurrentUrl();
