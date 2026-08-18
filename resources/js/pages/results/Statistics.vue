@@ -67,6 +67,8 @@ type Student = {
     band: Band;
     /** The grade, as a mention — what the teacher assigned. */
     assigned: Band;
+    /** Which group of the assigned distribution they are in. */
+    assigned_key: string | null;
     domains: DomainCell[];
     self_assessment: Level;
     classification: { status: string; is_published: boolean; final: Level; proposed: Level } | null;
@@ -151,10 +153,16 @@ type Statistics = {
         percentages: { progressed: string | null; stable: string | null; regressed: string | null; no_comparison: string | null };
     };
     assigned_distribution: {
-        bands: (NonNullable<Band> & { count: number; percentage: string | null; outside_scale?: boolean })[];
+        bands: {
+            key: string; scale_level_id: number | null; code: string; label: string | null;
+            sequence: number; is_negative: boolean | null;
+            count: number; percentage: string | null; outside_scale?: boolean;
+        }[];
+        /** «levels» groups by ScaleLevel; «values» by the number assigned. */
+        mode: 'levels' | 'values';
         classified: number; unplaced: number; without_classification: number;
     };
-    distribution: (NonNullable<Band> & { count: number; percentage: string | null })[];
+    distribution: (NonNullable<Band> & { key?: string; count: number; percentage: string | null })[];
     domain_statistics: DomainStatistic[];
     period_series: {
         period_id: number; label: string; sequence: number;
@@ -314,8 +322,8 @@ const selectedDomainId = ref<number | null>(null);
  * two refs rather than one, because they mean different things about a student
  * and a selection must never silently swap which (§14).
  */
-const selectedLevelId = ref<number | null>(null);
-const selectedCalculatedLevelId = ref<number | null>(null);
+const selectedLevelKey = ref<string | null>(null);
+const selectedCalculatedLevelKey = ref<string | null>(null);
 /** «progressed», «failure_to_success» — a group from the movement board. */
 const selectedGroup = ref<string | null>(null);
 
@@ -471,18 +479,18 @@ function toggleDomain(domainId: number): void {
     selectedDomainId.value = previous === domainId ? null : domainId;
 }
 
-function toggleLevel(levelId: number): void {
-    const previous = selectedLevelId.value;
+function toggleLevel(key: string): void {
+    const previous = selectedLevelKey.value;
 
     clearSelection();
-    selectedLevelId.value = previous === levelId ? null : levelId;
+    selectedLevelKey.value = previous === key ? null : key;
 }
 
-function toggleCalculatedLevel(levelId: number): void {
-    const previous = selectedCalculatedLevelId.value;
+function toggleCalculatedLevel(key: string): void {
+    const previous = selectedCalculatedLevelKey.value;
 
     clearSelection();
-    selectedCalculatedLevelId.value = previous === levelId ? null : levelId;
+    selectedCalculatedLevelKey.value = previous === key ? null : key;
 }
 
 function toggleGroup(key: string): void {
@@ -494,8 +502,8 @@ function toggleGroup(key: string): void {
 
 function clearSelection(): void {
     selectedDomainId.value = null;
-    selectedLevelId.value = null;
-    selectedCalculatedLevelId.value = null;
+    selectedLevelKey.value = null;
+    selectedCalculatedLevelKey.value = null;
     selectedGroup.value = null;
 }
 
@@ -521,11 +529,11 @@ const selectedGroupLabel = computed<string | null>(() => (
 const selectedDomain = computed(() => stats.value.domains.find((domain) => domain.id === selectedDomainId.value) ?? null);
 
 const selectedLevel = computed(() => (
-    stats.value.assigned_distribution.bands.find((band) => band.scale_level_id === selectedLevelId.value) ?? null
+    stats.value.assigned_distribution.bands.find((band) => band.key === selectedLevelKey.value) ?? null
 ));
 
 const selectedCalculatedLevel = computed(() => (
-    stats.value.distribution.find((band) => band.scale_level_id === selectedCalculatedLevelId.value) ?? null
+    stats.value.distribution.find((band) => String(band.scale_level_id) === selectedCalculatedLevelKey.value) ?? null
 ));
 
 /** Whether a domain should be drawn at full strength. */
@@ -549,12 +557,12 @@ function matchesLevel(student: Student): boolean {
 
     // A band chosen on the ASSIGNED distribution points at the students who
     // were GRADED there — never at those whose average happens to land there.
-    if (selectedLevelId.value !== null) {
-        return student.assigned?.scale_level_id === selectedLevelId.value;
+    if (selectedLevelKey.value !== null) {
+        return student.assigned_key === selectedLevelKey.value;
     }
 
-    return selectedCalculatedLevelId.value === null
-        || student.band?.scale_level_id === selectedCalculatedLevelId.value;
+    return selectedCalculatedLevelKey.value === null
+        || String(student.band?.scale_level_id) === selectedCalculatedLevelKey.value;
 }
 
 const highlightedStudents = computed(() => stats.value.students.filter((student) => matchesLevel(student)).length);
@@ -773,10 +781,14 @@ const placedOnScale = computed(() => stats.value.distribution.reduce((total, ban
  * point: the same shape, so the difference between them is only the source and
  * the words above them.
  */
-function toBand(band: { scale_level_id: number; code: string; label: string; sequence: number; is_negative: boolean; count: number; percentage: string | null }): DistributionBand {
-    const tone = toneOf(band);
+function toBand(band: {
+    key?: string; scale_level_id: number | null; code: string; label: string | null;
+    sequence: number; is_negative: boolean | null; count: number; percentage: string | null;
+}): DistributionBand {
+    const tone = toneOf({ sequence: band.sequence, is_negative: band.is_negative ?? false });
 
     return {
+        key: band.key ?? String(band.scale_level_id),
         scale_level_id: band.scale_level_id,
         code: band.code,
         label: band.label,
@@ -1645,14 +1657,15 @@ const studentRows = computed(() => {
                     <SectionHeading
                         index="04"
                         title="Como se distribuem as classificações"
-                        :description="`Os níveis que atribuiu a cada aluno${schoolClass.scale_name ? `, na escala «${schoolClass.scale_name}»` : ''}. Escolha uma banda para seguir esses alunos no mapa.`"
+                        :description="`Valores efetivamente atribuídos aos alunos${schoolClass.scale_name ? `, na escala «${schoolClass.scale_name}»` : ''}. As menções da escala aparecem como referência. Escolha uma classificação para seguir esses alunos no mapa.`"
                     />
 
                     <DistributionBands
                         v-if="assignedBands.length"
                         :bands="assignedBands"
                         :placed="stats.assigned_distribution.classified"
-                        :selected-id="selectedLevelId"
+                        :selected-key="selectedLevelKey"
+                        lead-with="value"
                         @select="toggleLevel"
                     />
                     <p v-else class="rounded-xl bg-muted/25 py-10 text-center text-sm text-muted-foreground">
@@ -1712,7 +1725,7 @@ const studentRows = computed(() => {
                                 v-if="distributionBands.length"
                                 :bands="distributionBands"
                                 :placed="placedOnScale"
-                                :selected-id="selectedCalculatedLevelId"
+                                :selected-key="selectedCalculatedLevelKey"
                                 @select="toggleCalculatedLevel"
                             />
                             <p v-else class="rounded-xl bg-muted/25 py-8 text-center text-sm text-muted-foreground">

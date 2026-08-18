@@ -1810,37 +1810,84 @@ class ClassStatisticsTest extends TestCase
     }
 
     #[Test]
-    public function a_numeric_decision_is_grouped_by_the_scales_bands_when_it_has_them(): void
+    public function a_numeric_scale_is_distributed_by_the_number_the_teacher_wrote(): void
     {
         $this->useTheNumericScale(withBands: true);
 
         $this->assignValue('Ana', 2, '14');
-        $this->assignValue('Bruno', 2, '7');
+        $this->assignValue('Bruno', 2, '14');
+        $this->assignValue('Carolina', 2, '7');
 
+        $distribution = $this->assignedDistribution();
         $counts = [];
 
-        foreach ($this->assignedDistribution()['bands'] as $band) {
-            $counts[$band['code']] = $band['count'];
+        foreach ($distribution['bands'] as $entry) {
+            $counts[$entry['code']] = $entry['count'];
         }
 
-        $this->assertSame(['N' => 1, 'S' => 1], $counts);
+        // «Insuficiente: 1» is not the answer to «quantos tiveram 7?» (§2.4).
+        $this->assertSame('values', $distribution['mode']);
+        $this->assertSame(['7' => 1, '14' => 2], $counts);
+        $this->assertSame(3, $distribution['classified']);
     }
 
     #[Test]
-    public function a_numeric_decision_on_a_scale_with_no_bands_is_counted_apart(): void
+    public function a_numeric_distribution_carries_the_mention_beside_the_value(): void
+    {
+        $this->useTheNumericScale(withBands: true);
+
+        $this->assignValue('Ana', 2, '14');
+
+        $entry = collect($this->assignedDistribution()['bands'])->firstWhere('code', '14');
+
+        // The band's words ride along as a mention, never in place of the grade.
+        $this->assertSame('Satisfaz', $entry['label']);
+        $this->assertFalse($entry['is_negative']);
+    }
+
+    #[Test]
+    public function a_numeric_scale_with_no_bands_still_distributes_the_values(): void
+    {
+        $this->useTheNumericScale();
+
+        $this->assignValue('Ana', 2, '14');
+        $this->assignValue('Bruno', 2, '8');
+
+        $distribution = $this->assignedDistribution();
+
+        // No mention to show, and the distribution is still a real answer:
+        // «quantos tiveram 14?» does not need the scale to have an opinion
+        // about whether 14 is a pass (§2.19).
+        $this->assertSame(['8', '14'], array_column($distribution['bands'], 'code'));
+        $this->assertSame([null, null], array_column($distribution['bands'], 'label'));
+        $this->assertSame(2, $distribution['classified']);
+        $this->assertSame(4, $distribution['without_classification']);
+    }
+
+    #[Test]
+    public function the_values_come_out_in_their_own_order_and_never_by_count(): void
+    {
+        $this->useTheNumericScale();
+
+        $this->assignValue('Ana', 2, '14');
+        $this->assignValue('Bruno', 2, '8');
+        $this->assignValue('Carolina', 2, '8');
+        $this->assignValue('Diogo', 2, '20');
+
+        // 8 has the most students and still comes first, because 8 < 14 < 20.
+        $this->assertSame(['8', '14', '20'], array_column($this->assignedDistribution()['bands'], 'code'));
+    }
+
+    #[Test]
+    public function only_the_values_somebody_was_given_get_a_row(): void
     {
         $this->useTheNumericScale();
 
         $this->assignValue('Ana', 2, '14');
 
-        $distribution = $this->assignedDistribution();
-
-        // The grade exists and the scale cannot name it. Neither a band nor
-        // «sem classificação» — its own count, and no invented interval (§11).
-        $this->assertSame(1, $distribution['unplaced']);
-        $this->assertSame(0, $distribution['classified']);
-        $this->assertSame(5, $distribution['without_classification']);
-        $this->assertSame([], $distribution['bands']);
+        // A 0–20 has twenty-one possible grades; a class of one uses one of
+        // them, and twenty empty rows would be twenty pieces of noise (§2.4).
+        $this->assertCount(1, $this->assignedDistribution()['bands']);
     }
 
     #[Test]
@@ -2143,5 +2190,133 @@ class ClassStatisticsTest extends TestCase
                 ->has('statistics.students.0.primary_average')
                 ->has('statistics.students.0.continuous_evolution'),
             );
+    }
+
+    // ------------------- 16. o valor da classificação, não a menção
+
+    #[Test]
+    public function a_levelled_scale_is_distributed_by_the_level_the_teacher_wrote(): void
+    {
+        $this->assignAll(2, [
+            'Ana' => '2', 'Bruno' => '4', 'Carolina' => '4',
+            'Diogo' => '4', 'Eva' => '3', 'Filipe' => '4',
+        ]);
+
+        $distribution = $this->assignedDistribution();
+
+        $this->assertSame('levels', $distribution['mode']);
+        // The codes are what a teacher writes on a pauta; the labels ride
+        // along as mentions (§2.3).
+        $this->assertSame(['1', '2', '3', '4', '5'], array_column($distribution['bands'], 'code'));
+        $this->assertSame([0, 1, 1, 4, 0], array_column($distribution['bands'], 'count'));
+        $this->assertSame(
+            ['Fraco', 'Insuficiente', 'Suficiente', 'Bom', 'Muito Bom'],
+            array_column($distribution['bands'], 'label'),
+        );
+    }
+
+    #[Test]
+    public function every_entry_carries_the_key_a_selection_points_at(): void
+    {
+        $this->assign('Ana', 2, '2');
+
+        foreach ($this->assignedDistribution()['bands'] as $entry) {
+            $this->assertIsString($entry['key']);
+            $this->assertNotSame('', $entry['key']);
+        }
+
+        // And the student carries the same key, so one comparison highlights
+        // exactly the students that entry counted (§2.12).
+        $ana = $this->student('Ana');
+        $two = collect($this->assignedDistribution()['bands'])->firstWhere('code', '2');
+
+        $this->assertSame($two['key'], $ana['assigned_key']);
+    }
+
+    #[Test]
+    public function a_student_without_a_classification_belongs_to_no_group(): void
+    {
+        $this->assign('Ana', 2, '2');
+
+        $this->assertNull($this->student('Bruno')['assigned_key']);
+    }
+
+    #[Test]
+    public function a_qualitative_scale_uses_its_own_words_as_the_classification(): void
+    {
+        $this->useATwoBandScale();
+
+        $this->assign('Ana', 2, 'A');
+        $this->assign('Bruno', 2, 'NA');
+
+        $distribution = $this->assignedDistribution();
+
+        // «Não atingiu» IS the classification here — there is no number
+        // underneath it to prefer (§2.6).
+        $this->assertSame('levels', $distribution['mode']);
+        $this->assertSame(['NA', 'A'], array_column($distribution['bands'], 'code'));
+        $this->assertSame(['Não atingiu', 'Atingiu'], array_column($distribution['bands'], 'label'));
+    }
+
+    #[Test]
+    public function a_numeric_scale_never_produces_a_row_per_possible_grade(): void
+    {
+        $this->useTheNumericScale();
+
+        $this->assignValue('Ana', 2, '8');
+        $this->assignValue('Bruno', 2, '10');
+        $this->assignValue('Carolina', 2, '10');
+        $this->assignValue('Diogo', 2, '14');
+
+        $distribution = $this->assignedDistribution();
+
+        // Three values used, three rows — not twenty-one (§2.4, §2.5).
+        $this->assertCount(3, $distribution['bands']);
+        $this->assertSame(['8', '10', '14'], array_column($distribution['bands'], 'code'));
+        $this->assertSame([1, 2, 1], array_column($distribution['bands'], 'count'));
+    }
+
+    #[Test]
+    public function no_range_is_ever_invented_for_a_numeric_scale(): void
+    {
+        $this->useTheNumericScale();
+
+        $this->assignValue('Ana', 2, '8');
+        $this->assignValue('Bruno', 2, '9');
+
+        // «5–9» is a band this scale does not have. Each value keeps its row.
+        $this->assertSame(['8', '9'], array_column($this->assignedDistribution()['bands'], 'code'));
+    }
+
+    #[Test]
+    public function the_calculated_distribution_stays_a_reading_of_mentions(): void
+    {
+        $this->assignAll(2, ['Ana' => '2', 'Bruno' => '4']);
+
+        $statistics = $this->statistics(2);
+
+        // The two grids answer different questions, and only one of them is
+        // about what the teacher wrote (§2.10, §2.13).
+        $this->assertSame('levels', $statistics['assigned_distribution']['mode']);
+        $this->assertNotSame(
+            array_column($statistics['assigned_distribution']['bands'], 'count'),
+            array_column($statistics['distribution'], 'count'),
+        );
+    }
+
+    #[Test]
+    public function the_page_carries_the_mode_and_the_keys(): void
+    {
+        $this->assign('Ana', 2, '2');
+        $class = $this->asTenant(fn (): SchoolClass => $this->schoolClass());
+
+        $this->actingAs($this->teacher)
+            ->get("/classes/{$class->ulid}/results/estatistica")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('statistics.assigned_distribution.mode', 'levels')
+                ->has('statistics.assigned_distribution.bands.0.key')
+                ->has('statistics.assigned_distribution.bands.0.code')
+                ->has('statistics.students.0.assigned_key'));
     }
 }

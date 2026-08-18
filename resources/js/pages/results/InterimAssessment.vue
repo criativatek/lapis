@@ -86,6 +86,7 @@ const distributionBands = computed<DistributionBand[]>(() => props.snapshot.dist
     const tone = qualitativeToneFor(band, bands.value);
 
     return {
+        key: String(band.scale_level_id),
         scale_level_id: band.scale_level_id,
         code: band.code,
         label: band.label,

@@ -712,6 +712,37 @@ class BuildClassStatistics
     }
 
     /**
+     * Which group of the assigned distribution this student is in.
+     *
+     * A levelled scale groups by the level, a numeric one by the number the
+     * teacher wrote — the same rule the distribution itself uses, so a
+     * selection can never point at a group the grid does not draw (§2.12).
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function assignedKeyOf(array $row, ?Scale $scale): ?string
+    {
+        if (! $this->hasAssignedClassification($row)) {
+            return null;
+        }
+
+        if ($scale === null || $scale->kind === 'level') {
+            $level = $this->assignedLevelOf($row, $scale);
+
+            return $level === null ? null : (string) $level['scale_level_id'];
+        }
+
+        $classification = $row['period']['classification'];
+        $value = $classification['final_value'] ?? null;
+
+        if ($value === null || trim((string) $value) === '') {
+            $value = $classification['final']['code'] ?? null;
+        }
+
+        return $value === null ? null : $this->trimZeros((string) $value);
+    }
+
+    /**
      * The side of the scale the teacher's own decision falls on.
      *
      * «none» — nothing was decided for this period, or what exists is still a
@@ -809,6 +840,17 @@ class BuildClassStatistics
      */
     protected function assignedDistribution(array $rows, ?Scale $scale): array
     {
+        // A NUMERIC SCALE IS DISTRIBUTED BY THE NUMBER THE TEACHER WROTE.
+        //
+        // «Insuficiente: 3» is not the answer to «quantos tiveram 8?» — on a
+        // 0–20 the classification IS the number, and grouping it into the
+        // scale's bands would be answering with the mention instead of with
+        // the grade. A levelled scale needs no such translation: its levels ARE
+        // the values a teacher assigns (§2.1, §2.4).
+        if ($scale !== null && $scale->kind !== 'level') {
+            return $this->assignedValueDistribution($rows, $scale);
+        }
+
         $counts = [];
         $seen = [];
         $classified = 0;
@@ -847,6 +889,9 @@ class BuildClassStatistics
 
             $bands[] = [
                 'scale_level_id' => $id,
+                // The selection key: a level id here, the value itself on a
+                // numeric scale — one string either way (§2.12).
+                'key' => (string) $id,
                 'code' => (string) $level->code,
                 'label' => (string) $level->label,
                 'sequence' => (int) $level->sequence,
@@ -862,6 +907,7 @@ class BuildClassStatistics
         foreach ($seen as $id => $level) {
             $bands[] = [
                 'scale_level_id' => (int) $id,
+                'key' => (string) $id,
                 'code' => (string) $level['code'],
                 'label' => (string) $level['label'],
                 'sequence' => (int) $level['sequence'],
@@ -876,8 +922,93 @@ class BuildClassStatistics
         return [
             'bands' => $bands,
             // The denominator, stated so a screen never has to guess it.
+            'mode' => 'levels',
             'classified' => $classified,
             'unplaced' => $unplaced,
+            'without_classification' => $withoutClassification,
+        ];
+    }
+
+    /**
+     * The numbers the teacher actually wrote, counted.
+     *
+     * ONE ROW PER VALUE ASSIGNED, and only for values somebody was given: a
+     * 0–20 has twenty-one possible grades and a class of six uses five of them,
+     * so listing all twenty-one would be twenty-one mostly-empty rows. Nothing
+     * is grouped into ranges either — «10 a 13» is a band this scale may not
+     * have, and inventing one would be inventing a pedagogical rule (§2.4).
+     *
+     * The band's own words ride along when the scale has one for that value,
+     * as a mention beside the grade rather than in place of it.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return array<string, mixed>
+     */
+    protected function assignedValueDistribution(array $rows, Scale $scale): array
+    {
+        $counts = [];
+        $mentions = [];
+        $classified = 0;
+        $withoutClassification = 0;
+
+        foreach ($rows as $row) {
+            if (! $this->hasAssignedClassification($row)) {
+                $withoutClassification++;
+
+                continue;
+            }
+
+            $value = $row['period']['classification']['final_value'] ?? null;
+
+            // A decision recorded only as a level on a scale that is not
+            // levelled: its own code is the closest thing to a number.
+            if ($value === null || trim((string) $value) === '') {
+                $value = $row['period']['classification']['final']['code'] ?? null;
+            }
+
+            if ($value === null) {
+                $withoutClassification++;
+
+                continue;
+            }
+
+            $key = $this->trimZeros((string) $value);
+            $counts[$key] = ($counts[$key] ?? 0) + 1;
+            $mentions[$key] ??= $this->bandPayload($this->bandForNumericDecision((string) $value, $scale));
+            $classified++;
+        }
+
+        // The scale's own order, which for numbers is the numbers' own —
+        // never by how many students happen to be on each (§2.22).
+        uksort($counts, fn (string $first, string $second): int => is_numeric($first) && is_numeric($second)
+            ? $first <=> $second
+            : strcmp($first, $second));
+
+        $entries = [];
+        $sequence = 0;
+
+        foreach ($counts as $key => $count) {
+            $entries[] = [
+                // No level to point at: the value itself identifies the group.
+                // Cast because PHP turns «8» into an integer array key.
+                'scale_level_id' => $mentions[$key]['scale_level_id'] ?? null,
+                'key' => (string) $key,
+                'code' => (string) $key,
+                'label' => $mentions[$key]['label'] ?? null,
+                'sequence' => $sequence++,
+                'is_negative' => $mentions[$key]['is_negative'] ?? null,
+                'count' => $count,
+                'percentage' => $this->percentage($count, $classified),
+            ];
+        }
+
+        return [
+            'bands' => $entries,
+            'mode' => 'values',
+            'classified' => $classified,
+            // Every assigned value gets a row here, so nothing is «unplaced»:
+            // not having a band is a missing mention, not a missing grade.
+            'unplaced' => 0,
             'without_classification' => $withoutClassification,
         ];
     }
@@ -1178,6 +1309,10 @@ class BuildClassStatistics
                 // distribution must highlight the students who were GRADED
                 // there, not the ones whose average happens to land there (§14).
                 'assigned' => $this->assignedLevelOf($row, $scale),
+                // The group this student belongs to in that distribution: a level
+                // id on a levelled scale, the number they were given on a
+                // numeric one. One key, so one comparison highlights them.
+                'assigned_key' => $this->assignedKeyOf($row, $scale),
                 'domains' => $period['domains'] ?? [],
                 'self_assessment' => $period['self_assessment'] ?? null,
                 'classification' => $period['classification'] ?? null,
@@ -1516,7 +1651,7 @@ class BuildClassStatistics
                 'percentages' => ['progressed' => null, 'stable' => null, 'regressed' => null, 'no_comparison' => null],
             ],
             'assigned_distribution' => [
-                'bands' => [], 'classified' => 0, 'unplaced' => 0, 'without_classification' => 0,
+                'bands' => [], 'mode' => 'levels', 'classified' => 0, 'unplaced' => 0, 'without_classification' => 0,
             ],
             'distribution' => [],
             'domain_statistics' => [],

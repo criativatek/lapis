@@ -580,6 +580,37 @@ class StatisticsChartThemeTest extends TestCase
     }
 
     #[Test]
+    public function the_assigned_grid_leads_with_the_classification_and_not_the_mention(): void
+    {
+        $page = $this->page();
+        $bands = $this->plates();
+
+        // «2» is the grade; «Insuficiente» is what the scale calls it. Leading
+        // with the words would answer a question about grades with a
+        // description (§2.3, §2.10).
+        $this->assertStringContainsString('lead-with="value"', $page);
+        $this->assertStringContainsString("leadWith === 'value'", $bands);
+        $this->assertStringContainsString('{{ band.code }}', $bands);
+
+        // And the calculated grid keeps leading with the mention, because there
+        // is no assigned value there to lead with.
+        $this->assertStringContainsString("leadWith?: 'value' | 'mention'", $bands);
+        $this->assertStringContainsString("leadWith: 'mention'", $bands);
+        $this->assertStringContainsString('Valores efetivamente atribuídos', $page);
+    }
+
+    #[Test]
+    public function a_classification_tile_announces_the_value_the_mention_and_the_count(): void
+    {
+        $bands = $this->plates();
+
+        // «Classificação 2, Insuficiente, 1 aluno, 16,7%» — a tile that reads
+        // as a number and a colour is unreadable without sight (§2.25).
+        $this->assertStringContainsString('Classificação ${band.code}', $bands);
+        $this->assertStringContainsString("band.count === 1 ? '1 aluno'", $bands);
+    }
+
+    #[Test]
     public function a_band_chosen_on_the_assigned_grid_highlights_who_was_graded_there(): void
     {
         $page = $this->page();
@@ -587,8 +618,10 @@ class StatisticsChartThemeTest extends TestCase
         // Two selections, kept apart: choosing «Insuficiente» on the grades
         // must not light up the students whose AVERAGE happens to land there,
         // and vice versa (§14).
-        $this->assertStringContainsString('student.assigned?.scale_level_id === selectedLevelId.value', $page);
-        $this->assertStringContainsString('student.band?.scale_level_id === selectedCalculatedLevelId.value', $page);
+        // One key either way: a level id on a levelled scale, the number the
+        // teacher wrote on a numeric one (§2.12).
+        $this->assertStringContainsString('student.assigned_key === selectedLevelKey.value', $page);
+        $this->assertStringContainsString('String(student.band?.scale_level_id) === selectedCalculatedLevelKey.value', $page);
 
         // And the chip says which of the two a highlight came from.
         $this->assertStringContainsString('atribuído · ', $page);
@@ -899,7 +932,7 @@ class StatisticsChartThemeTest extends TestCase
         // A filter the reader cannot see is a filter they forget, and then they
         // wonder why half the class disappeared (§5).
         $this->assertStringContainsString('selectedDomainId', $page);
-        $this->assertStringContainsString('selectedLevelId', $page);
+        $this->assertStringContainsString('selectedLevelKey', $page);
         $this->assertStringContainsString('function clearSelection', $page);
         $this->assertStringContainsString('A destacar:', $page);
         $this->assertStringContainsString('Limpar', $page);
