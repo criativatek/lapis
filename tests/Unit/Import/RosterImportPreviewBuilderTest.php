@@ -135,7 +135,7 @@ class RosterImportPreviewBuilderTest extends TestCase
     #[Test]
     public function an_unrecognized_situation_code_is_flagged_but_still_included(): void
     {
-        $rows = [new RosterRow('Maria Teste', 1, null, 'MT', null, null)];
+        $rows = [new RosterRow('Maria Teste', 1, null, 'ZZ', null, null)];
 
         $preview = (new RosterImportPreviewBuilder)->build($rows, [], fn () => null);
 

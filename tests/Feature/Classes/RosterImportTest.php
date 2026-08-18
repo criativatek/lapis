@@ -617,7 +617,7 @@ class RosterImportTest extends TestCase
                 'name' => 'Maria Teste',
                 'class_number' => 1,
                 'birth_date' => null,
-                'situation_code' => 'MT',
+                'situation_code' => 'ZZ',
                 'note' => null,
                 'photo_index' => null,
                 'photo_extension' => null,

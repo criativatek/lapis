@@ -25,12 +25,13 @@ use Illuminate\Support\Carbon;
  * @property Carbon $enrolled_on
  * @property Carbon|null $left_on
  * @property EnrollmentStatus $status
+ * @property EnrollmentStatusReason|null $status_reason
  * @property bool $is_late_entry
  * @property string|null $late_entry_note
  * @property string|null $import_note
  * @property bool|null $include_evidence_in_report
  */
-#[Fillable(['class_id', 'student_id', 'class_number', 'enrolled_on', 'left_on', 'status', 'is_late_entry', 'late_entry_note', 'import_note', 'include_evidence_in_report'])]
+#[Fillable(['class_id', 'student_id', 'class_number', 'enrolled_on', 'left_on', 'status', 'status_reason', 'is_late_entry', 'late_entry_note', 'import_note', 'include_evidence_in_report'])]
 class Enrollment extends Model
 {
     /** @use HasFactory<EnrollmentFactory> */
@@ -55,6 +56,7 @@ class Enrollment extends Model
             'enrolled_on' => 'date',
             'left_on' => 'date',
             'status' => EnrollmentStatus::class,
+            'status_reason' => EnrollmentStatusReason::class,
             'is_late_entry' => 'boolean',
             'include_evidence_in_report' => 'boolean',
         ];

@@ -19,7 +19,7 @@ class StudentEnrollmentService
     public function __construct(protected CurrentOrganization $currentOrganization) {}
 
     /**
-     * @param  array{name: string, class_number?: int|null, enrolled_on?: string|null, school_number?: string|null, birth_date?: string|null, photo_path?: string|null, import_note?: string|null, status?: string}  $data
+     * @param  array{name: string, class_number?: int|null, enrolled_on?: string|null, school_number?: string|null, birth_date?: string|null, photo_path?: string|null, import_note?: string|null, status?: string, status_reason?: string|null}  $data
      */
     public function enrollNew(SchoolClass $class, array $data): Enrollment
     {
@@ -45,6 +45,8 @@ class StudentEnrollmentService
                 'class_number' => $data['class_number'] ?? null,
                 'enrolled_on' => $enrolledOn,
                 'status' => $data['status'] ?? 'active',
+                // Why, when the roster said so. Null for a plain enrolment.
+                'status_reason' => $data['status_reason'] ?? null,
                 'is_late_entry' => $isLate,
                 'import_note' => $data['import_note'] ?? null,
             ]);
@@ -112,7 +114,7 @@ class StudentEnrollmentService
      * data — and the match is by name within this class, which is unambiguous
      * or the row would have been marked a duplicate.
      *
-     * @param  array{name?: string, class_number?: int|null, birth_date?: string|null, school_number?: string|null, import_note?: string|null}  $data
+     * @param  array{name?: string, class_number?: int|null, birth_date?: string|null, school_number?: string|null, import_note?: string|null, situation?: array{status: string, status_reason: ?string}}  $data
      */
     public function fillFromRoster(Enrollment $enrollment, array $data): Enrollment
     {
@@ -140,6 +142,18 @@ class StudentEnrollmentService
                 'class_number' => $data['class_number'] ?? null,
                 'import_note' => $data['import_note'] ?? null,
             ], fn ($value): bool => $value !== null && $value !== '');
+
+            // THE ADMINISTRATIVE STATE, when the roll stated one.
+            //
+            // Written whole — status AND reason together — so a student who
+            // goes from «mudou de turma» back to «matriculado» does not keep a
+            // reason describing a departure that was undone. Absent from $data
+            // when the roll's «SIT.» was empty or unknown, in which case
+            // whatever the record already said stands (§5, §10, §11).
+            if (isset($data['situation'])) {
+                $enrollmentFields['status'] = $data['situation']['status'];
+                $enrollmentFields['status_reason'] = $data['situation']['status_reason'];
+            }
 
             if ($enrollmentFields !== []) {
                 $enrollment->update($enrollmentFields);

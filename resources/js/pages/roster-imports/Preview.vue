@@ -20,6 +20,11 @@ type PreviewRow = {
     birth_date: string | null;
     situation_code: string;
     situation_recognized: boolean;
+    /** «Mudou de turma» — the words, not the code. Null when unrecognised. */
+    situation_label: string | null;
+    /** What the record says today, when the student is already on the roll. */
+    current_state: string | null;
+    state_changes: boolean;
     process_number: string | null;
     note: string | null;
     photo_index: number | null;
@@ -296,12 +301,36 @@ function submit(): void {
                                     variant="outline"
                                     >já nesta turma — atualiza os dados em falta</Badge
                                 >
+                                <!-- THE CODE READ, NOT THE CODE SHOWN. «MT» on
+                                     a roll means «Mudou de turma», and a
+                                     teacher should not have to know the
+                                     abbreviation to check the import (§12). -->
+                                <Badge v-if="row.situation_label" variant="outline">
+                                    {{ row.situation_code }} — {{ row.situation_label }}
+                                </Badge>
+
+                                <!-- Only when the roll asks for something other
+                                     than what the record already says. -->
+                                <Badge
+                                    v-if="row.state_changes"
+                                    variant="outline"
+                                    class="border-amber-300 text-amber-900 dark:border-amber-800 dark:text-amber-200"
+                                >
+                                    {{ row.current_state }} → {{ row.situation_label }}
+                                </Badge>
+
                                 <Badge
                                     v-if="!row.situation_recognized"
                                     variant="outline"
+                                    class="border-amber-300 text-amber-900 dark:border-amber-800 dark:text-amber-200"
                                 >
-                                    situação "{{ row.situation_code }}" não
-                                    reconhecida — entra como Inscrito
+                                    <template v-if="row.situation_code">
+                                        situação "{{ row.situation_code }}" não reconhecida — o estado
+                                        da matrícula fica como está
+                                    </template>
+                                    <template v-else>
+                                        sem situação no ficheiro — o estado da matrícula fica como está
+                                    </template>
                                 </Badge>
                             </td>
                         </tr>

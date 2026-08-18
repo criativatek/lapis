@@ -4,6 +4,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Domain\Import\EnrollmentSituation;
+use App\Models\Enrollment;
 use App\Models\EnrollmentStatus;
 use App\Models\SchoolClass;
 use App\Models\StudentIdentity;
@@ -86,7 +88,21 @@ class RosterImportController extends Controller
         // No photos at this step (see the comment above $token) — the
         // preview page always starts with an empty photo pool; attachPhotos()
         // below is the only place that ever populates it.
-        $rows = $this->previewBuilder->build($rosterRows, [], $enrolledAs);
+        // What the record says today, so the preview can show a CHANGE rather
+        // than only a destination. Resolved from one query for the whole class,
+        // never one per row.
+        $currentStates = $class->enrollments()
+            ->get(['id', 'status', 'status_reason'])
+            ->mapWithKeys(fn (Enrollment $enrollment): array => [
+                $enrollment->id => $enrollment->status_reason?->label() ?? $enrollment->status->label(),
+            ]);
+
+        $rows = $this->previewBuilder->build(
+            $rosterRows,
+            [],
+            $enrolledAs,
+            fn (int $enrollmentId): ?string => $currentStates->get($enrollmentId),
+        );
 
         return Inertia::render('roster-imports/Preview', [
             'schoolClassUlid' => $class->ulid,
@@ -286,13 +302,20 @@ class RosterImportController extends Controller
                         // the record does not. Nothing is created, nothing is
                         // erased, and the photo just staged is not orphaned —
                         // it is simply not what this path writes.
-                        $this->enrollmentService->fillFromRoster($existing, [
+                        // THE ROLL IS A SNAPSHOT OF THE CLASS AS IT STANDS, so
+                        // a re-import is where «X → MT» actually gets recorded:
+                        // filling in a name and skipping the state would leave
+                        // a student on a roll the school says they left. The
+                        // record itself is untouched — nothing is deleted, and
+                        // the history stays exactly where it was (§3, §13).
+                        $this->enrollmentService->fillFromRoster($existing, array_filter([
                             'name' => $row['name'],
                             'class_number' => $row['class_number'] ?? null,
                             'birth_date' => $row['birth_date'] ?? null,
                             'import_note' => $row['note'] ?? null,
                             'school_number' => $row['process_number'] ?? null,
-                        ]);
+                            'situation' => $this->situationFor($row['situation_code'] ?? null),
+                        ], fn ($value): bool => $value !== null));
 
                         if ($photoPath !== null) {
                             Storage::disk(StudentPhotoService::DISK)->delete($photoPath);
@@ -303,6 +326,11 @@ class RosterImportController extends Controller
                         continue;
                     }
 
+                    // An unrecognised «SIT.» enrols the student plainly rather
+                    // than guessing at a state — the preview already told the
+                    // teacher the code was not understood (§10, §11).
+                    $situation = $this->situationFor($row['situation_code'] ?? null);
+
                     $this->enrollmentService->enrollNew($class, [
                         'name' => $row['name'],
                         'class_number' => $row['class_number'] ?? null,
@@ -310,7 +338,8 @@ class RosterImportController extends Controller
                         'import_note' => $row['note'] ?? null,
                         'school_number' => $row['process_number'] ?? null,
                         'photo_path' => $photoPath,
-                        'status' => $this->mapSituation($row['situation_code']),
+                        'status' => $situation['status'] ?? EnrollmentStatus::Active->value,
+                        'status_reason' => $situation['status_reason'] ?? null,
                     ]);
                 } catch (Throwable $exception) {
                     // enrollNew() rolls its own transaction back, so nothing in
@@ -355,11 +384,27 @@ class RosterImportController extends Controller
         );
     }
 
-    protected function mapSituation(string $code): string
+    /**
+     * The administrative state a roster row asks for.
+     *
+     * AN UNKNOWN OR EMPTY «SIT.» CHANGES NOTHING. The preview already flags it
+     * for the teacher; turning it into «matriculado» here would be the
+     * application guessing, and on a re-import that guess would silently put a
+     * student back on a roll they had left (§10, §11).
+     *
+     * @return array{status: string, status_reason: ?string}|null
+     */
+    protected function situationFor(?string $code): ?array
     {
-        return match ($code) {
-            'TR' => EnrollmentStatus::TransferredOut->value,
-            default => EnrollmentStatus::Active->value,
-        };
+        $situation = EnrollmentSituation::tryFromCode($code);
+
+        if ($situation === null) {
+            return null;
+        }
+
+        return [
+            'status' => $situation->status()->value,
+            'status_reason' => $situation->reason()?->value,
+        ];
     }
 }

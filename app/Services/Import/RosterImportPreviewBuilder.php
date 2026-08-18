@@ -2,6 +2,7 @@
 
 namespace App\Services\Import;
 
+use App\Domain\Import\EnrollmentSituation;
 use App\Domain\Import\PhotoMatch;
 use App\Domain\Import\RosterRow;
 use Illuminate\Support\Str;
@@ -14,7 +15,10 @@ use Illuminate\Support\Str;
  */
 class RosterImportPreviewBuilder
 {
-    protected const RECOGNIZED_SITUATIONS = ['X', 'TR'];
+    /**
+     * The «SIT.» codes this application understands, and what they mean, are
+     * EnrollmentSituation's business — never a second list kept here (§25).
+     */
 
     /** A student the class does not have yet. */
     public const ACTION_ENROL = 'enrol';
@@ -29,9 +33,10 @@ class RosterImportPreviewBuilder
      * @param  list<RosterRow>  $rosterRows
      * @param  list<PhotoMatch>  $photoMatches
      * @param  \Closure(string): ?int  $enrolledAs  Receives the name already normalized (squished, lowercased) — not the raw roster spelling — and answers with the id of the enrollment that student already has in this class, or null. A real (database-backed) implementation must compare against an equally normalized column/value.
-     * @return list<array{name: string, class_number: ?int, birth_date: ?string, situation_code: string, situation_recognized: bool, process_number: ?string, note: ?string, photo_index: ?int, photo_extension: ?string, duplicate_in_file: bool, already_enrolled: bool, enrollment_id: ?int, action: string, include: bool}>
+     * @param  \Closure(int): ?string|null  $currentStateOf  The words the record currently uses for that enrolment, so the preview can show a change instead of only a destination (§12). Optional: without it the preview simply shows no «estado atual».
+     * @return list<array<string, mixed>>
      */
-    public function build(array $rosterRows, array $photoMatches, \Closure $enrolledAs): array
+    public function build(array $rosterRows, array $photoMatches, \Closure $enrolledAs, ?\Closure $currentStateOf = null): array
     {
         $nameCounts = [];
 
@@ -58,12 +63,27 @@ class RosterImportPreviewBuilder
                 default => self::ACTION_ENROL,
             };
 
+            // «MT» read as «Mudou de turma», not shown as a bare code — and an
+            // unrecognised one says so rather than being quietly treated as
+            // «Matriculado» (§10, §24).
+            $situation = EnrollmentSituation::tryFromCode($row->situationCode);
+            $currentState = $enrollmentId !== null && $currentStateOf !== null
+                ? $currentStateOf($enrollmentId)
+                : null;
+            $newState = $situation?->label();
+
             $preview[] = [
                 'name' => $row->name,
                 'class_number' => $row->classNumber,
                 'birth_date' => $row->birthDate,
                 'situation_code' => $row->situationCode,
-                'situation_recognized' => in_array($row->situationCode, self::RECOGNIZED_SITUATIONS, true),
+                'situation_recognized' => $situation !== null,
+                'situation_label' => $newState,
+                'current_state' => $currentState,
+                // Only when the roll actually asks for something different from
+                // what the record says — a change is worth a line, a repetition
+                // is noise (§12).
+                'state_changes' => $newState !== null && $currentState !== null && $newState !== $currentState,
                 'process_number' => $row->processNumber,
                 'note' => $row->note,
                 'photo_index' => $photoIndex,
