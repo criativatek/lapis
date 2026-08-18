@@ -6,6 +6,7 @@ use App\Domain\Assessment\Bc;
 use App\Models\AcademicPeriod;
 use App\Models\ClassificationScope;
 use App\Models\Domain;
+use App\Models\ProfileVersionPeriod;
 use App\Models\Scale;
 use App\Models\SchoolClass;
 use App\Models\StudentItemScore;
@@ -1940,6 +1941,207 @@ class ClassStatisticsTest extends TestCase
                 ->has('statistics.students.0.assigned')
                 // The calculated one is still there, beside it.
                 ->has('statistics.distribution'),
+            );
+    }
+
+    // ------------------------- 14. qual é o resultado do momento
+
+    /** Says whether a period feeds the continuous line, as the profile does. */
+    private function periodContributes(int $sequence, bool $contributes): void
+    {
+        $this->asTenant(function () use ($sequence, $contributes): void {
+            $class = $this->schoolClass();
+
+            ProfileVersionPeriod::updateOrCreate(
+                [
+                    'assessment_profile_version_id' => $class->profileVersion->id,
+                    'academic_period_id' => $this->period($sequence)->id,
+                ],
+                ['contributes_to_accumulated' => $contributes, 'is_cumulative' => $contributes],
+            );
+        });
+    }
+
+    #[Test]
+    public function the_first_moment_answers_with_the_periods_own_weighted_average(): void
+    {
+        $statistics = $this->statistics(1);
+
+        // Nothing is behind it to accumulate, so the period's own figure IS
+        // the result — and there is no second reading to offer.
+        $this->assertSame('period', $statistics['primary']['kind']);
+        $this->assertSame($statistics['summary']['class_average'], $statistics['summary']['primary_average']);
+        $this->assertNull($statistics['summary']['supplementary_average']);
+        $this->assertFalse($statistics['primary']['has_supplementary']);
+    }
+
+    #[Test]
+    public function a_later_moment_answers_with_the_accumulated_figure(): void
+    {
+        $statistics = $this->statistics(2);
+
+        // The continuous assessment is what the year has produced so far, and
+        // it is what the teacher will classify against (§56).
+        $this->assertSame('accumulated', $statistics['primary']['kind']);
+        $this->assertSame($statistics['summary']['accumulated_average'], $statistics['summary']['primary_average']);
+        $this->assertNotSame($statistics['summary']['class_average'], $statistics['summary']['primary_average']);
+    }
+
+    #[Test]
+    public function the_periods_own_figure_stays_available_as_the_second_reading(): void
+    {
+        $statistics = $this->statistics(2);
+
+        // Not removed, not hidden — named as what it is: «e só neste período?»
+        $this->assertSame($statistics['summary']['class_average'], $statistics['summary']['supplementary_average']);
+        $this->assertTrue($statistics['primary']['has_supplementary']);
+        $this->assertSame('Só no 2.º Semestre', $statistics['primary']['supplementary_label']);
+    }
+
+    #[Test]
+    public function the_rule_reads_the_profile_and_never_the_word_semestre(): void
+    {
+        // A profile whose second period stands outside the continuous line.
+        $this->periodContributes(2, false);
+
+        $statistics = $this->statistics(2);
+
+        $this->assertSame('period', $statistics['primary']['kind'], 'um período que não acumula responde por si');
+        $this->assertNull($statistics['summary']['supplementary_average']);
+    }
+
+    #[Test]
+    public function the_first_contributing_moment_is_the_one_that_answers_for_itself(): void
+    {
+        // The FIRST period is the one excluded this time, which makes the
+        // second the first moment of the continuous line.
+        $this->periodContributes(1, false);
+
+        $this->assertSame('period', $this->statistics(2)['primary']['kind']);
+    }
+
+    #[Test]
+    public function each_student_carries_both_readings_under_their_own_names(): void
+    {
+        $statistics = $this->statistics(2);
+
+        foreach ($statistics['students'] as $student) {
+            $this->assertSame($student['accumulated_average'], $student['primary_average']);
+            $this->assertSame($student['weighted_average'], $student['supplementary_average']);
+        }
+    }
+
+    #[Test]
+    public function every_moment_of_the_year_records_which_figure_answered_for_it(): void
+    {
+        $series = $this->statistics(2)['period_series'];
+
+        $this->assertSame('period', $series[0]['primary_kind']);
+        $this->assertSame($series[0]['class_average'], $series[0]['primary_average']);
+
+        $this->assertSame('accumulated', $series[1]['primary_kind']);
+        $this->assertSame($series[1]['accumulated_average'], $series[1]['primary_average']);
+    }
+
+    // -------------------------------- 15. as duas leituras da evolução
+
+    #[Test]
+    public function the_continuous_evolution_compares_the_result_of_each_moment(): void
+    {
+        $statistics = $this->statistics(2);
+        $ana = $this->student('Ana');
+
+        // Ana: 80,1% no 1.º semestre, acumulado de 77,8% no 2.º.
+        $expected = round((float) $ana['accumulated_average'] - (float) $ana['series'][0]['weighted_average'], 1);
+
+        $this->assertSame($expected, (float) $ana['continuous_evolution']['points']);
+        $this->assertSame('down', $ana['continuous_evolution']['direction']);
+        $this->assertSame(4, $statistics['continuous_evolution']['comparable']);
+    }
+
+    #[Test]
+    public function the_period_against_period_evolution_keeps_its_own_meaning(): void
+    {
+        $ana = $this->student('Ana');
+
+        // Unchanged: this period's own work against the last period's own work.
+        $expected = round((float) $ana['weighted_average'] - (float) $ana['series'][0]['weighted_average'], 1);
+
+        $this->assertSame($expected, (float) $ana['evolution']['points']);
+    }
+
+    #[Test]
+    public function the_two_evolutions_are_different_numbers_under_different_names(): void
+    {
+        $statistics = $this->statistics(2);
+        $ana = $this->student('Ana');
+
+        // Ana fell as a period and fell less as a year. Both are true, and
+        // neither may be quietly served under the other's name (§45).
+        $this->assertNotSame($ana['evolution']['points'], $ana['continuous_evolution']['points']);
+        $this->assertNotSame(
+            $statistics['evolution']['average_change'],
+            $statistics['continuous_evolution']['average_change'],
+        );
+        $this->assertArrayHasKey('average_change', $statistics['evolution']);
+        $this->assertArrayHasKey('average_change', $statistics['continuous_evolution']);
+    }
+
+    #[Test]
+    public function a_missing_end_gives_no_continuous_movement_rather_than_a_fall(): void
+    {
+        // Diogo enrolled after the first period: nothing to compare against,
+        // and an absence is never read as a drop to zero (§13.3).
+        $this->assertNull($this->student('Diogo')['continuous_evolution']);
+        $this->assertSame(2, $this->statistics(2)['continuous_evolution']['no_comparison']);
+    }
+
+    #[Test]
+    public function at_the_first_moment_nobody_has_a_continuous_movement_yet(): void
+    {
+        $continuous = $this->statistics(1)['continuous_evolution'];
+
+        $this->assertSame(0, $continuous['comparable']);
+        $this->assertSame(6, $continuous['no_comparison']);
+        $this->assertNull($continuous['average_change']);
+    }
+
+    #[Test]
+    public function the_grades_and_their_distribution_do_not_follow_the_reading(): void
+    {
+        $this->assign('Ana', 2, '2');
+
+        $first = $this->statistics(1);
+        $second = $this->statistics(2);
+
+        // Success and the assigned distribution are statements about decisions,
+        // not about which average is being read. Changing moment changes the
+        // averages on the page and not these (§4, §34).
+        $this->assertSame('period', $first['primary']['kind']);
+        $this->assertSame('accumulated', $second['primary']['kind']);
+        $this->assertSame(1, $second['summary']['success']['failed']);
+        $this->assertSame(
+            1,
+            collect($second['assigned_distribution']['bands'])->firstWhere('code', '2')['count'],
+        );
+    }
+
+    #[Test]
+    public function the_page_carries_the_reading_of_the_moment(): void
+    {
+        $class = $this->asTenant(fn (): SchoolClass => $this->schoolClass());
+
+        $this->actingAs($this->teacher)
+            ->get("/classes/{$class->ulid}/results/estatistica")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('statistics.primary.kind', 'accumulated')
+                ->has('statistics.primary.supplementary_label')
+                ->has('statistics.summary.primary_average')
+                ->has('statistics.summary.supplementary_average')
+                ->has('statistics.continuous_evolution.average_change')
+                ->has('statistics.students.0.primary_average')
+                ->has('statistics.students.0.continuous_evolution'),
             );
     }
 }

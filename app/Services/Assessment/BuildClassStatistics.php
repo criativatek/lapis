@@ -68,6 +68,13 @@ class BuildClassStatistics
         $scale = $class->profileVersion?->scale()->with('levels')->first();
         $rows = $this->rowsFor($students, $selected['id']);
 
+        // WHICH FIGURE IS THE ANSWER, at each moment of this year. Read from
+        // the profile version's own periods, so a school that configures
+        // continuity differently gets a different answer here without a line
+        // of code changing (§2).
+        $scopes = $this->primaryScopes($class, $periods);
+        $primaryKind = $scopes[$selected['id']] ?? 'period';
+
         $previous = $this->previousPeriod($periods, $selected['id']);
         // The same students, read at the period before — so a change of side on
         // the scale can be seen at all. Another reshaping of what is already in
@@ -80,15 +87,141 @@ class BuildClassStatistics
             'previous_period' => $previous,
             'domains' => $domains,
             'scale' => $this->scalePayload($scale),
-            'summary' => $this->summary($rows, $scale),
+            // Which reading answers «como está a turma» at this moment, and
+            // which one is the supplementary «e só neste período?» (§1, §5).
+            'primary' => $this->primaryPayload($primaryKind, $scopes, $periods, $selected),
+            'summary' => $this->summary($rows, $scale, $primaryKind),
             'evolution' => $this->evolution($rows, $previousRows, $scale),
+            'continuous_evolution' => $this->continuousEvolution(
+                $rows,
+                $previousRows,
+                $primaryKind,
+                $previous === null ? null : ($scopes[$previous['id']] ?? 'period'),
+            ),
             // The grades, and the averages. Two readings, never averaged into
             // one, each named on screen by what it counts (§1, §8).
             'assigned_distribution' => $this->assignedDistribution($rows, $scale),
             'distribution' => $this->distribution($rows, $scale),
             'domain_statistics' => $this->domainStatistics($rows, $domains, $scale),
-            'period_series' => $this->periodSeries($students, $periods, $domains),
-            'students' => $this->students($rows, $scale, $students, $previousRows),
+            'period_series' => $this->periodSeries($students, $periods, $domains, $scopes),
+            'students' => $this->students(
+                $rows,
+                $scale,
+                $students,
+                $previousRows,
+                $primaryKind,
+                $scopes,
+                $previous === null ? null : ($scopes[$previous['id']] ?? 'period'),
+            ),
+        ];
+    }
+
+    /**
+     * Which figure IS the result, at each period of this year.
+     *
+     * IN CONTINUOUS ASSESSMENT THE ANSWER MOVES. At the first moment that
+     * counts, the period's own Média Ponderada is the whole story — there is
+     * nothing behind it to accumulate. From the second onwards the accumulated
+     * figure is what the year has produced so far, and it is what the teacher
+     * will classify against; the period's own figure becomes a supplementary
+     * reading answering «e só neste período, como esteve?» (§1, §56).
+     *
+     * READ FROM THE PROFILE VERSION, never from the word «semestre». Continuity
+     * is `contributes_to_accumulated` on the version's own periods — the same
+     * flag ClassResultsCalculator builds the accumulated scope from — so a
+     * school whose second period stands alone gets `period` for it, and one
+     * with three cumulative terms gets `accumulated` for the last two. Nothing
+     * here knows how many periods a year has.
+     *
+     * ONE QUERY for the whole page, not one per period.
+     *
+     * @param  list<array<string, mixed>>  $periods
+     * @return array<int, 'period'|'accumulated'>
+     */
+    protected function primaryScopes(SchoolClass $class, array $periods): array
+    {
+        $contributes = $class->profileVersion?->periods()
+            ->pluck('contributes_to_accumulated', 'academic_period_id');
+
+        $scopes = [];
+        $earlierContributors = 0;
+
+        foreach ($periods as $period) {
+            $id = (int) $period['id'];
+            // Absent configuration means continuity, which is the same default
+            // the calculator uses when it builds the accumulated scope.
+            $counts = (bool) ($contributes?->get($id) ?? true);
+
+            $scopes[$id] = $this->scopeFor($counts, $earlierContributors);
+
+            if ($counts) {
+                $earlierContributors++;
+            }
+        }
+
+        return $scopes;
+    }
+
+    /**
+     * A period answers for itself when it does not feed the continuous line, or
+     * when nothing yet does.
+     *
+     * @return 'period'|'accumulated'
+     */
+    protected function scopeFor(bool $contributes, int $earlierContributors): string
+    {
+        return ! $contributes || $earlierContributors === 0 ? 'period' : 'accumulated';
+    }
+
+    /**
+     * The chosen figure of a student's period row.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function primaryValueOf(array $row, string $kind): ?string
+    {
+        return $kind === 'accumulated'
+            ? ($row['period']['accumulated_average'] ?? null)
+            : ($row['period']['weighted_average'] ?? null);
+    }
+
+    /**
+     * The other one — null when the two would be the same number.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function supplementaryValueOf(array $row, string $kind): ?string
+    {
+        return $kind === 'accumulated' ? ($row['period']['weighted_average'] ?? null) : null;
+    }
+
+    /**
+     * What the page should call the two readings, decided once and server-side.
+     *
+     * @param  array<int, string>  $scopes
+     * @param  list<array<string, mixed>>  $periods
+     * @param  array<string, mixed>  $selected
+     * @return array<string, mixed>
+     */
+    protected function primaryPayload(string $kind, array $scopes, array $periods, array $selected): array
+    {
+        $continuous = $kind === 'accumulated';
+
+        return [
+            'kind' => $kind,
+            'label' => $continuous ? 'Média Ponderada Acumulada' : 'Média Ponderada',
+            'short_label' => $continuous ? 'Média acumulada da turma' : 'Média da turma',
+            'caption' => $continuous
+                ? 'Resultado acumulado · avaliação contínua'
+                : "Resultado do {$selected['label']}",
+            'supplementary_label' => $continuous ? "Só no {$selected['label']}" : null,
+            // Whether there is a second reading at all. At the first moment the
+            // two figures are the same number and showing both would invent a
+            // distinction the data does not have.
+            'has_supplementary' => $continuous,
+            // Every period of the year and which figure answers for it, so the
+            // longitudinal readings can follow the same rule.
+            'scopes' => $scopes,
         ];
     }
 
@@ -192,7 +325,7 @@ class BuildClassStatistics
      * @param  list<array<string, mixed>>  $rows
      * @return array<string, mixed>
      */
-    protected function summary(array $rows, ?Scale $scale): array
+    protected function summary(array $rows, ?Scale $scale, string $primaryKind = 'period'): array
     {
         $standalone = $this->valuesOf($rows, 'weighted_average');
         $accumulated = $this->valuesOf($rows, 'accumulated_average');
@@ -221,6 +354,15 @@ class BuildClassStatistics
             'students_without_result' => count($rows) - count($standalone),
             'class_average' => $this->mean($standalone),
             'accumulated_average' => $this->mean($accumulated),
+            // THE ANSWER, and the other one. Both are already above under their
+            // own names; these two say which is which at this moment, so no
+            // screen has to re-derive the rule (§2).
+            'primary_average' => $primaryKind === 'accumulated'
+                ? $this->mean($accumulated)
+                : $this->mean($standalone),
+            'supplementary_average' => $primaryKind === 'accumulated'
+                ? $this->mean($standalone)
+                : null,
             'partial_coverage_count' => $partial,
             'most_common_band' => $this->mostCommonBand($rows, $scale),
             'success' => $this->success($rows, $scale),
@@ -342,6 +484,120 @@ class BuildClassStatistics
                 'no_comparison' => $this->percentage($counts['no_comparison'], count($rows)),
             ],
             'transitions' => $this->transitions($rows, $previousRows, $scale),
+        ];
+    }
+
+    /**
+     * How the CONTINUOUS assessment moved — a second reading, never the same
+     * field as the first.
+     *
+     * `evolution` above compares this period's own work against the last
+     * period's own work, which is what BuildResultsProgression has always
+     * meant by the word and what it still means. That answers «este período
+     * correu melhor que o anterior?».
+     *
+     * This one compares the RESULT OF THE MOMENT at each end — the figure that
+     * actually answers «como está o aluno» there. A student who scored 70 in
+     * the first period and 50 in the second fell twenty points as a period and
+     * five as a year, and both sentences are true. They are given different
+     * names because they are different facts, and one may never be quietly
+     * substituted for the other (§13, §14, §45).
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @param  list<array<string, mixed>>  $previousRows
+     * @return array<string, mixed>
+     */
+    protected function continuousEvolution(
+        array $rows,
+        array $previousRows,
+        string $kind,
+        ?string $previousKind,
+    ): array {
+        $before = [];
+
+        foreach ($previousRows as $row) {
+            $before[(int) $row['enrollment_id']] = $row;
+        }
+
+        $counts = ['progressed' => 0, 'stable' => 0, 'regressed' => 0, 'no_comparison' => 0];
+        $changes = [];
+
+        foreach ($rows as $row) {
+            $movement = $this->continuousMovementOf(
+                $row,
+                $before[(int) $row['enrollment_id']] ?? null,
+                $kind,
+                $previousKind,
+            );
+
+            if ($movement === null) {
+                $counts['no_comparison']++;
+
+                continue;
+            }
+
+            $counts[match ($movement['direction']) {
+                'up' => 'progressed',
+                'down' => 'regressed',
+                default => 'stable',
+            }]++;
+
+            $changes[] = $movement['points'];
+        }
+
+        return [
+            ...$counts,
+            'comparable' => count($changes),
+            'average_change' => $this->mean($changes),
+            'percentages' => [
+                'progressed' => $this->percentage($counts['progressed'], count($rows)),
+                'stable' => $this->percentage($counts['stable'], count($rows)),
+                'regressed' => $this->percentage($counts['regressed'], count($rows)),
+                'no_comparison' => $this->percentage($counts['no_comparison'], count($rows)),
+            ],
+        ];
+    }
+
+    /**
+     * One student's movement between the two moments' own results.
+     *
+     * Rounded and compared at the precision the page shows, so «igual» on
+     * screen is «manteve-se» here — the same rule BuildResultsProgression uses
+     * for its own subtraction, applied to a different pair of numbers.
+     *
+     * @param  array<string, mixed>  $row
+     * @param  array<string, mixed>|null  $previousRow
+     * @return array{direction: string, points: string}|null
+     */
+    protected function continuousMovementOf(
+        array $row,
+        ?array $previousRow,
+        string $kind,
+        ?string $previousKind,
+    ): ?array {
+        if ($previousRow === null || $previousKind === null) {
+            return null;
+        }
+
+        $from = $this->primaryValueOf($previousRow, $previousKind);
+        $to = $this->primaryValueOf($row, $kind);
+
+        // A missing end is «nothing to compare», never a fall to zero (§13.3).
+        if ($from === null || $to === null) {
+            return null;
+        }
+
+        $before = Bc::round(Bc::of($from), self::PRECISION, 'half_up');
+        $after = Bc::round(Bc::of($to), self::PRECISION, 'half_up');
+        $comparison = Bc::compare($after, $before);
+
+        return [
+            'direction' => match (true) {
+                $comparison > 0 => 'up',
+                $comparison < 0 => 'down',
+                default => 'flat',
+            },
+            'points' => Bc::round(Bc::sub($after, $before), self::PRECISION, 'half_up'),
         ];
     }
 
@@ -830,33 +1086,46 @@ class BuildClassStatistics
      *
      * @param  list<array<string, mixed>>  $students
      * @param  list<array<string, mixed>>  $periods
+     * @param  array<int, string>  $scopes
      * @param  list<array{id: int, name: string}>  $domains
      * @return list<array<string, mixed>>
      */
-    protected function periodSeries(array $students, array $periods, array $domains): array
+    protected function periodSeries(array $students, array $periods, array $domains, array $scopes = []): array
     {
         $series = [];
 
         foreach ($periods as $period) {
             $rows = $this->rowsFor($students, $period['id']);
             $overall = $this->valuesOf($rows, 'weighted_average');
+            $accumulated = $this->valuesOf($rows, 'accumulated_average');
+            $kind = $scopes[$period['id']] ?? 'period';
 
             $byDomain = [];
 
             foreach ($domains as $domain) {
                 $values = [];
+                $running = [];
 
                 foreach ($rows as $row) {
                     $cell = $this->domainCell($row, $domain['id']);
 
-                    if ($cell !== null && $cell['weighted_average'] !== null) {
+                    if ($cell === null) {
+                        continue;
+                    }
+
+                    if ($cell['weighted_average'] !== null) {
                         $values[] = (string) $cell['weighted_average'];
+                    }
+
+                    if (($cell['accumulated_average'] ?? null) !== null) {
+                        $running[] = (string) $cell['accumulated_average'];
                     }
                 }
 
                 $byDomain[] = [
                     'domain_id' => $domain['id'],
                     'average' => $this->mean($values),
+                    'accumulated_average' => $this->mean($running),
                     'students_with_result' => count($values),
                 ];
             }
@@ -866,6 +1135,11 @@ class BuildClassStatistics
                 'label' => $period['label'],
                 'sequence' => $period['sequence'],
                 'class_average' => $this->mean($overall),
+                'accumulated_average' => $this->mean($accumulated),
+                // The figure that answered for the class at THIS moment — the
+                // line a «como foi o ano» sparkline should draw (§22).
+                'primary_average' => $kind === 'accumulated' ? $this->mean($accumulated) : $this->mean($overall),
+                'primary_kind' => $kind,
                 'students_with_result' => count($overall),
                 'domains' => $byDomain,
             ];
@@ -884,10 +1158,18 @@ class BuildClassStatistics
      * @param  list<array<string, mixed>>  $rows
      * @param  list<array<string, mixed>>  $progressionStudents
      * @param  list<array<string, mixed>>  $previousRows
+     * @param  array<int, string>  $scopes
      * @return list<array<string, mixed>>
      */
-    protected function students(array $rows, ?Scale $scale, array $progressionStudents = [], array $previousRows = []): array
-    {
+    protected function students(
+        array $rows,
+        ?Scale $scale,
+        array $progressionStudents = [],
+        array $previousRows = [],
+        string $primaryKind = 'period',
+        array $scopes = [],
+        ?string $previousPrimaryKind = null,
+    ): array {
         // Each student's own line through the year, lifted whole from the
         // progression: their period figures, their movement and their domains,
         // exactly as the canonical model wrote them. Nothing is recomputed and
@@ -900,6 +1182,12 @@ class BuildClassStatistics
                 'period_label' => $entry['period_label'],
                 'weighted_average' => $entry['weighted_average'],
                 'accumulated_average' => $entry['accumulated_average'],
+                // The figure that answered for this student AT THAT MOMENT, so
+                // an individual timeline reads as one continuous line instead
+                // of switching meaning halfway through (§29).
+                'primary_average' => ($scopes[$entry['period_id']] ?? 'period') === 'accumulated'
+                    ? $entry['accumulated_average']
+                    : $entry['weighted_average'],
                 'coverage_warning' => (bool) $entry['coverage_warning'],
                 'evolution' => $entry['evolution'],
                 'domains' => array_map(fn (array $cell): array => [
@@ -927,8 +1215,19 @@ class BuildClassStatistics
                 'class_number' => $row['class_number'],
                 'weighted_average' => $period['weighted_average'] ?? null,
                 'accumulated_average' => $period['accumulated_average'] ?? null,
+                // The same two figures, named by which answers for them here.
+                'primary_average' => $this->primaryValueOf($row, $primaryKind),
+                'supplementary_average' => $this->supplementaryValueOf($row, $primaryKind),
                 'coverage_warning' => $period['coverage_warning'] ?? false,
                 'evolution' => $period['evolution'] ?? null,
+                // Their own movement in the continuous assessment, beside the
+                // period-against-period one. Different question, different key.
+                'continuous_evolution' => $this->continuousMovementOf(
+                    $row,
+                    $before[(int) $row['enrollment_id']] ?? null,
+                    $primaryKind,
+                    $previousPrimaryKind,
+                ),
                 'band' => $this->bandPayload($this->bandOf($row, $scale)),
                 // The grade, as a mention. Kept beside the calculated band and
                 // never in place of it: a selection made on the assigned
@@ -1125,12 +1424,18 @@ class BuildClassStatistics
             'previous_period' => null,
             'domains' => $domains,
             'scale' => null,
+            'primary' => [
+                'kind' => 'period', 'label' => 'Média Ponderada', 'short_label' => 'Média da turma',
+                'caption' => null, 'supplementary_label' => null, 'has_supplementary' => false, 'scopes' => [],
+            ],
             'summary' => [
                 'students_total' => 0,
                 'students_with_result' => 0,
                 'students_without_result' => 0,
                 'class_average' => null,
                 'accumulated_average' => null,
+                'primary_average' => null,
+                'supplementary_average' => null,
                 'partial_coverage_count' => 0,
                 'most_common_band' => null,
                 'success' => [
@@ -1152,6 +1457,11 @@ class BuildClassStatistics
                     ],
                     'share_of_class' => ['unclassified' => null, 'no_assigned_classification' => null],
                 ],
+            ],
+            'continuous_evolution' => [
+                'progressed' => 0, 'stable' => 0, 'regressed' => 0, 'no_comparison' => 0,
+                'comparable' => 0, 'average_change' => null,
+                'percentages' => ['progressed' => null, 'stable' => null, 'regressed' => null, 'no_comparison' => null],
             ],
             'assigned_distribution' => [
                 'bands' => [], 'classified' => 0, 'unplaced' => 0, 'without_classification' => 0,
