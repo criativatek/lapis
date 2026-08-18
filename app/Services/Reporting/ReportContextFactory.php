@@ -7,6 +7,7 @@ use App\Models\ReportType;
 use App\Services\Documents\DocumentIdentity;
 use App\Services\Reporting\Source\ClassReportSource;
 use App\Services\Reporting\Source\ReportSource;
+use App\Services\Reporting\Source\StudentReportSource;
 
 /**
  * Assembles the one context a whole generation runs on.
@@ -24,6 +25,7 @@ class ReportContextFactory
 {
     public function __construct(
         protected ClassReportSource $classSource,
+        protected StudentReportSource $studentSource,
         protected DocumentIdentity $identity,
         protected ReportCapabilities $capabilities,
     ) {}
@@ -41,10 +43,11 @@ class ReportContextFactory
     protected function sourceFor(ReportType $type): ReportSource
     {
         return match ($type) {
+            ReportType::SchoolClass => $this->classSource,
             // The individual report reads the same class facts and then narrows
             // to one student: a student's numbers and their class's numbers come
             // from the same single read, and must agree.
-            ReportType::SchoolClass, ReportType::Student => $this->classSource,
+            ReportType::Student => $this->studentSource,
             // Their own sources arrive with their phases; until then a report of
             // that type generates nothing rather than guessing.
             ReportType::Records, ReportType::School => new NullReportSource,

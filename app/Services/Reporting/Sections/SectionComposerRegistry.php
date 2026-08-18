@@ -32,6 +32,15 @@ class SectionComposerRegistry
         ClassSelfAssessmentComposer::class,
         ClassRecordsComposer::class,
 
+        // Individual — the same facts, narrowed to one student.
+        StudentIdentificationComposer::class,
+        StudentSynthesisComposer::class,
+        StudentDomainPerformanceComposer::class,
+        StudentEvolutionComposer::class,
+        StudentClassificationComposer::class,
+        StudentSelfAssessmentComposer::class,
+        StudentRecordsComposer::class,
+
         // Shared across types.
         PlanningComplianceComposer::class,
         InterventionsSummaryComposer::class,

@@ -4,6 +4,7 @@ namespace App\Services\Reporting\Sections;
 
 use App\Domain\Reporting\ContentSource;
 use App\Domain\Reporting\SectionKey;
+use App\Models\ReportType;
 use App\Services\Reporting\ComposedSection;
 use App\Services\Reporting\Narrative\Phrase;
 use App\Services\Reporting\ReportContext;
@@ -53,6 +54,43 @@ class FinalSynthesisComposer implements SectionComposer
     }
 
     protected function recap(ReportContext $context): ?string
+    {
+        return $context->report->type === ReportType::Student
+            ? $this->studentRecap($context)
+            : $this->classRecap($context);
+    }
+
+    /**
+     * The individual recap: their figure and their grade, in that order — the
+     * two things a reader has to leave with, and the two the sections above
+     * were careful to keep apart.
+     */
+    protected function studentRecap(ReportContext $context): ?string
+    {
+        $student = $context->fact('student');
+
+        if (! is_array($student)) {
+            return null;
+        }
+
+        $average = Phrase::percentage($student['primary_average'] ?? null);
+        $assigned = $student['assigned'] ?? null;
+        $grade = is_array($assigned) ? ($assigned['label'] ?? $assigned['code'] ?? null) : null;
+
+        if ($average === null && $grade === null) {
+            return null;
+        }
+
+        return Phrase::sentence(
+            'Em síntese, e no que respeita a',
+            $context->scopeLabel().',',
+            $average === null ? null : 'o resultado apurado situou-se em '.$average,
+            $average !== null && $grade !== null ? 'e' : null,
+            $grade === null ? null : 'a classificação atribuída foi '.$grade,
+        );
+    }
+
+    protected function classRecap(ReportContext $context): ?string
     {
         $summary = $context->fact('summary');
 
