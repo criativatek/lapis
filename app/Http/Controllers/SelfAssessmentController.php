@@ -55,7 +55,9 @@ class SelfAssessmentController extends Controller
         $periods = AcademicPeriod::where('academic_year_id', $class->academic_year_id)->orderBy('sequence')->get();
         $selected = $period !== null ? $periods->firstWhere('ulid', $period) : $periods->first();
 
-        $enrollments = $class->enrollments()->with('student.identity')->orderBy('class_number')->get();
+        // Asking a student who has left the class to self-assess would be asking
+        // the wrong person; their earlier answers are untouched (§17).
+        $enrollments = $class->activeEnrollments()->with('student.identity')->orderBy('class_number')->get();
 
         $filled = $selected !== null
             ? SelfAssessment::query()
@@ -132,7 +134,9 @@ class SelfAssessmentController extends Controller
         $selected = AcademicPeriod::where('academic_year_id', $class->academic_year_id)
             ->where('ulid', $period)->firstOrFail();
 
-        $enrollments = $class->enrollments()->with('student.identity')->orderBy('class_number')->get();
+        // Asking a student who has left the class to self-assess would be asking
+        // the wrong person; their earlier answers are untouched (§17).
+        $enrollments = $class->activeEnrollments()->with('student.identity')->orderBy('class_number')->get();
 
         $filled = SelfAssessment::query()
             ->where('academic_period_id', $selected->id)

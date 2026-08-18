@@ -47,6 +47,14 @@ const props = defineProps<{
         profile_name: string | null;
     };
     students: Student[];
+    /** Students who were on this roll and are no longer part of the class. */
+    former_students: {
+        ulid: string;
+        name: string;
+        class_number: number | null;
+        /** «Mudou de turma» — why they left, in words. */
+        state_label: string;
+    }[];
     availableProfiles: ProfileOption[];
     instruments: {
         ulid: string;
@@ -591,6 +599,50 @@ function submitPhotos(): void {
                 </tbody>
             </table>
         </section>
+
+        <!-- NOT DELETED, JUST NOT HERE ANY MORE. Folded away, because a
+             teacher works with the class as it stands — but visible, so
+             importing a roll that moves three students somewhere else does not
+             read as three students having vanished. -->
+        <details
+            v-if="former_students.length"
+            class="rounded-lg border border-dashed border-border"
+        >
+            <summary
+                class="cursor-pointer px-4 py-3 text-sm font-medium select-none"
+            >
+                Alunos que já não integram a turma
+                <span class="ml-1 text-muted-foreground"
+                    >· {{ former_students.length }}</span
+                >
+            </summary>
+
+            <div class="border-t border-border px-4 py-3">
+                <p class="mb-3 text-xs text-muted-foreground">
+                    Continuam no histórico da turma: os resultados, as
+                    classificações e as avaliações intercalares dos períodos em
+                    que estiveram inscritos mantêm-se inalterados.
+                </p>
+
+                <ul class="divide-y divide-border/60">
+                    <li
+                        v-for="student in former_students"
+                        :key="student.ulid"
+                        class="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2 text-sm"
+                    >
+                        <span
+                            class="w-6 shrink-0 tabular-nums text-xs text-muted-foreground"
+                            >{{ student.class_number ?? "—" }}</span
+                        >
+                        <span class="min-w-0">{{ student.name }}</span>
+                        <span
+                            class="ml-auto shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground"
+                            >{{ student.state_label }}</span
+                        >
+                    </li>
+                </ul>
+            </div>
+        </details>
 
         <Dialog v-model:open="editDialogOpen">
             <DialogContent>

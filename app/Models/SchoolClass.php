@@ -100,6 +100,27 @@ class SchoolClass extends Model
     }
 
     /**
+     * The class AS IT STANDS TODAY — the composition an operational screen means.
+     *
+     * DELIBERATELY NOT THE DEFAULT. `enrollments()` still returns everyone who
+     * was ever on this roll, because that is what history needs: a student who
+     * transferred out in February was in the class in November, and their
+     * results, their classifications and any photograph taken then are all
+     * still true. A global scope here would have quietly rewritten every one of
+     * those readings.
+     *
+     * So the choice is made at each call site, by what the screen is FOR
+     * (§31): «quem está nesta turma» asks this one, «quem esteve» asks the
+     * other, and neither can be reached by accident.
+     *
+     * @return HasMany<Enrollment, $this>
+     */
+    public function activeEnrollments(): HasMany
+    {
+        return $this->enrollments()->where('status', EnrollmentStatus::Active);
+    }
+
+    /**
      * @return HasMany<Instrument, $this>
      */
     public function instruments(): HasMany

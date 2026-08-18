@@ -35,7 +35,8 @@ class ClassPhotoImportController extends Controller
             return back()->withErrors(['photos' => $exception->getMessage()]);
         }
 
-        $enrollments = $class->enrollments()->with('student.identity')->get();
+        // The class as it stands: a photo sheet is about who is here now (§4).
+        $enrollments = $class->activeEnrollments()->with('student.identity')->get();
         $rows = array_values($enrollments
             ->map(fn (Enrollment $enrollment) => ['name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)'])
             ->all());

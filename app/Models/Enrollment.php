@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToOrganization;
 use Database\Factories\EnrollmentFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -48,6 +49,20 @@ class Enrollment extends Model
     public function getRouteKeyName(): string
     {
         return 'ulid';
+    }
+
+    /**
+     * The enrolments that are part of the class today.
+     *
+     * The one place the rule is written. `EnrollmentStatus::isCurrent()` is its
+     * in-memory twin, and both state it positively: a status added later is
+     * not current until somebody says so (§2, §9, §10).
+     *
+     * @param  Builder<Enrollment>  $query
+     */
+    public function scopeActive(Builder $query): void
+    {
+        $query->where('status', EnrollmentStatus::Active);
     }
 
     protected function casts(): array

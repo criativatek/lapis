@@ -9,6 +9,7 @@ use App\Models\AssessmentProfileVersion;
 use App\Models\Classification;
 use App\Models\ClassStatus;
 use App\Models\Enrollment;
+use App\Models\EnrollmentStatus;
 use App\Models\Instrument;
 use App\Models\ProfileVersionStatus;
 use App\Models\SchoolClass;
@@ -106,7 +107,11 @@ class ClassController extends Controller
                 ]),
             // Names come from the encrypted identity — shown to the class's own
             // teacher, who is authorized. The pseudonym is what leaves the app.
-            'students' => $class->enrollments()->with('student.identity')->orderBy('class_number')->get()
+            // THE CLASS AS IT STANDS. Somebody the roll says has transferred,
+            // moved class, cancelled or been excluded is not part of the group
+            // a teacher works with today — and is not deleted either: they are
+            // listed below, under their own heading (§4, §13).
+            'students' => $class->activeEnrollments()->with('student.identity')->orderBy('class_number')->get()
                 ->map(fn (Enrollment $enrollment) => [
                     'ulid' => $enrollment->ulid,
                     'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
@@ -122,6 +127,24 @@ class ClassController extends Controller
                     'is_late_entry' => $enrollment->is_late_entry,
                     'status_label' => $enrollment->status->label(),
                     'photo_url' => $enrollment->student->photoUrl(),
+                ]),
+
+            // NOT DELETED, JUST NOT HERE ANY MORE. Kept visible so a teacher
+            // who imported a roll and lost three names can see where they
+            // went, and named by WHY they left rather than by a status code
+            // (§13, §14). One query, ordered like the roll itself.
+            'former_students' => $class->enrollments()
+                ->whereNot('status', EnrollmentStatus::Active)
+                ->with('student.identity')
+                ->orderBy('class_number')
+                ->get()
+                ->map(fn (Enrollment $enrollment) => [
+                    'ulid' => $enrollment->ulid,
+                    'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
+                    'class_number' => $enrollment->class_number,
+                    // The reason when the roll gave one, the status otherwise —
+                    // «Mudou de turma», never «moved_class».
+                    'state_label' => $enrollment->status_reason?->label() ?? $enrollment->status->label(),
                 ]),
         ]);
     }
