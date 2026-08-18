@@ -17,6 +17,7 @@ class ReferenceDataSeeder extends Seeder
             EntitlementsSeeder::class,
             SystemScalesSeeder::class,
             InstrumentTypesSeeder::class,
+            ReportLibrarySeeder::class,
         ]);
     }
 }

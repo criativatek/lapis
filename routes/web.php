@@ -19,6 +19,7 @@ use App\Http\Controllers\InstrumentController;
 use App\Http\Controllers\InterimAssessmentController;
 use App\Http\Controllers\InterventionController;
 use App\Http\Controllers\PublicSelfAssessmentController;
+use App\Http\Controllers\Reports\ReportController;
 use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\ResultsController;
 use App\Http\Controllers\RosterImportController;
@@ -228,14 +229,21 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
             ->name('classifications.decide');
     });
 
-    // Reports — the classification sheet (pauta) of decided grades, printable and
-    // exportable to CSV.
+    // Relatórios (§53). Two artifacts under one module, deliberately named
+    // apart: `reports.*` is the report DOCUMENT — sections, an author, a draft
+    // that gets finalized and exported — and `pautas.*` is the classification
+    // sheet, a table of decided grades. Sharing the `reports.show` name between
+    // them would have made every link ambiguous.
     Route::middleware('module:reports')->group(function () {
-        Route::get('reports', [ReportsController::class, 'index'])->name('reports.index');
-        Route::get('classes/{class}/report', [ReportsController::class, 'show'])->name('reports.show');
-        Route::get('classes/{class}/report/export', [ReportsController::class, 'export'])->name('reports.export');
-        Route::put('classes/{class}/report/evidence-setting', [ReportsController::class, 'updateEvidenceSetting'])->name('reports.evidence-setting.update');
-        Route::put('classes/{class}/report/students/{enrollment}/evidence-setting', [ReportsController::class, 'updateStudentEvidenceSetting'])->name('reports.student-evidence-setting.update');
+        Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
+
+        // The pauta. Declared before `reports/{report}` so that «pautas» is not
+        // swallowed as a (invalid) report ulid.
+        Route::get('reports/pautas', [ReportsController::class, 'index'])->name('pautas.index');
+        Route::get('classes/{class}/report', [ReportsController::class, 'show'])->name('pautas.show');
+        Route::get('classes/{class}/report/export', [ReportsController::class, 'export'])->name('pautas.export');
+        Route::put('classes/{class}/report/evidence-setting', [ReportsController::class, 'updateEvidenceSetting'])->name('pautas.evidence-setting.update');
+        Route::put('classes/{class}/report/students/{enrollment}/evidence-setting', [ReportsController::class, 'updateStudentEvidenceSetting'])->name('pautas.student-evidence-setting.update');
     });
 
     // Records — the teacher's logbook (§14). Qualitative evidence, never a grade.

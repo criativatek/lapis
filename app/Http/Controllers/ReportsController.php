@@ -19,12 +19,13 @@ use Inertia\Response;
 
 /**
  * The classification sheet (pauta) — the artifact that closes the cycle. It shows
- * the DECIDED grades (confirmed or published), never proposals: a report reflects
- * what the teacher settled, per student and period, and can be printed or exported.
+ * the DECIDED grades (confirmed or published), never proposals: it reflects what
+ * the teacher settled, per student and period, and can be printed or exported.
  *
- * This reads from `classifications`; the fuller report aggregate (§13 — draft →
- * reviewed → approved → exported, pulling self-assessments and evidence) is a
- * later phase and lives outside this slice.
+ * A TABLE, NOT A DOCUMENT. The report documents — sections, an author, a draft
+ * that is finalized and exported — live in Reports\ReportController under
+ * `reports.*`. This is the grade sheet they sit beside, reachable from the
+ * Relatórios hub and routed under `pautas.*`.
  */
 class ReportsController extends Controller
 {
@@ -44,7 +45,7 @@ class ReportsController extends Controller
                 'academic_year' => $class->academicYear->label,
             ]);
 
-        return Inertia::render('reports/Index', ['classes' => $classes]);
+        return Inertia::render('reports/Pautas', ['classes' => $classes]);
     }
 
     public function show(SchoolClass $class): Response

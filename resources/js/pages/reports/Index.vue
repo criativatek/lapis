@@ -1,34 +1,195 @@
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3';
-import { ChevronRight, FileText } from '@lucide/vue';
+import { Head, Link, router } from '@inertiajs/vue3';
+import { ChevronRight, FileSpreadsheet, FileText, Plus } from '@lucide/vue';
+import { computed, ref, watch } from 'vue';
 import Heading from '@/components/Heading.vue';
+import { Button } from '@/components/ui/button';
 
-type ClassRow = { ulid: string; label: string; subject: string; academic_year: string };
+type Option = { value: string; label: string };
 
-defineProps<{ classes: ClassRow[] }>();
+type ReportRow = {
+    ulid: string;
+    title: string;
+    type: string;
+    type_label: string;
+    status: string;
+    status_label: string;
+    subject_label: string;
+    scope_label: string;
+    author: string | null;
+    created_at: string;
+    updated_at: string;
+    finalized_at: string | null;
+    based_on: { ulid: string; title: string } | null;
+};
+
+type ClassRow = { id: number; ulid: string; label: string; subject: string };
+
+const props = defineProps<{
+    reports: ReportRow[];
+    total: number;
+    filters: { type: string | null; status: string | null; class_id: number | null };
+    availableTypes: Option[];
+    statuses: Option[];
+    classes: ClassRow[];
+}>();
+
+const type = ref(props.filters.type ?? '');
+const status = ref(props.filters.status ?? '');
+const classId = ref(props.filters.class_id === null ? '' : String(props.filters.class_id));
+
+// One reload for any filter change, replacing the entry rather than stacking
+// history: a teacher narrowing a list is not navigating.
+watch([type, status, classId], () => {
+    router.get(
+        '/reports',
+        {
+            type: type.value || undefined,
+            status: status.value || undefined,
+            class_id: classId.value || undefined,
+        },
+        { replace: true, preserveState: true, preserveScroll: true },
+    );
+});
+
+const hasFilters = computed(() => type.value !== '' || status.value !== '' || classId.value !== '');
+
+function clearFilters() {
+    type.value = '';
+    status.value = '';
+    classId.value = '';
+}
+
+const dateFormatter = new Intl.DateTimeFormat('pt-PT', { day: '2-digit', month: 'short', year: 'numeric' });
+
+function formatDate(value: string): string {
+    return dateFormatter.format(new Date(value));
+}
 </script>
 
 <template>
     <Head title="Relatórios" />
 
-    <div class="mx-auto w-full max-w-3xl space-y-6 p-4">
-        <Heading title="Relatórios" description="Pauta de classificações por turma — imprimível e exportável." />
+    <div class="mx-auto w-full max-w-5xl space-y-6 p-4">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <Heading
+                title="Relatórios"
+                description="Documentos que descrevem o que os dados dizem — escritos pelo LÁPIS, decididos por si."
+            />
 
-        <div v-if="classes.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
+            <!-- The creation flow arrives with the first report type that can
+                 actually be generated; until then offering the button would be
+                 a link to nothing. `availableTypes` is already sent so that the
+                 menu it opens offers exactly what this plan allows. -->
+            <Button v-if="false" as-child>
+                <Link href="/reports/novo">
+                    <Plus class="size-4" />
+                    Novo relatório
+                </Link>
+            </Button>
+        </div>
+
+        <!-- The pauta lives in this module too, but it is a different artifact:
+             a table of decided grades, not a document with sections. Linked, not
+             mixed into the list. -->
+        <Link
+            href="/reports/pautas"
+            class="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 hover:bg-muted/30"
+        >
+            <span class="flex items-center gap-3">
+                <FileSpreadsheet class="size-5 shrink-0 text-muted-foreground" />
+                <span>
+                    <span class="block font-medium">Pautas de classificações</span>
+                    <span class="block text-sm text-muted-foreground">
+                        A folha das classificações decididas, por turma.
+                    </span>
+                </span>
+            </span>
+            <ChevronRight class="size-4 shrink-0 text-muted-foreground" />
+        </Link>
+
+        <div class="flex flex-wrap items-end gap-3">
+            <label class="grid gap-1 text-sm">
+                <span class="text-xs font-medium text-muted-foreground">Tipo</span>
+                <select v-model="type" class="h-9 rounded-md border border-border bg-background px-2 text-sm">
+                    <option value="">Todos</option>
+                    <option v-for="option in availableTypes" :key="option.value" :value="option.value">
+                        {{ option.label }}
+                    </option>
+                </select>
+            </label>
+
+            <label class="grid gap-1 text-sm">
+                <span class="text-xs font-medium text-muted-foreground">Estado</span>
+                <select v-model="status" class="h-9 rounded-md border border-border bg-background px-2 text-sm">
+                    <option value="">Todos</option>
+                    <option v-for="option in statuses" :key="option.value" :value="option.value">
+                        {{ option.label }}
+                    </option>
+                </select>
+            </label>
+
+            <label class="grid gap-1 text-sm">
+                <span class="text-xs font-medium text-muted-foreground">Turma</span>
+                <select v-model="classId" class="h-9 rounded-md border border-border bg-background px-2 text-sm">
+                    <option value="">Todas</option>
+                    <option v-for="schoolClass in classes" :key="schoolClass.id" :value="String(schoolClass.id)">
+                        {{ schoolClass.label }} · {{ schoolClass.subject }}
+                    </option>
+                </select>
+            </label>
+
+            <Button v-if="hasFilters" variant="ghost" size="sm" @click="clearFilters">Limpar</Button>
+        </div>
+
+        <div v-if="reports.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
             <FileText class="mx-auto mb-3 size-8 text-muted-foreground" />
-            <p class="text-sm text-muted-foreground">Ainda não tem turmas.</p>
+            <p class="text-sm font-medium">
+                {{ hasFilters ? 'Nenhum relatório corresponde a estes filtros.' : 'Ainda não criou nenhum relatório.' }}
+            </p>
+            <p v-if="!hasFilters" class="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+                Um relatório parte dos dados que já tem — resultados, classificações atribuídas, registos — e
+                escreve-os em frases que pode rever e editar antes de exportar.
+            </p>
         </div>
 
         <ul v-else class="divide-y divide-border overflow-hidden rounded-lg border border-border">
-            <li v-for="schoolClass in classes" :key="schoolClass.ulid">
-                <Link :href="`/classes/${schoolClass.ulid}/report`" class="flex items-center justify-between gap-3 px-4 py-3 hover:bg-muted/30">
-                    <span>
-                        <span class="font-medium">{{ schoolClass.label }}</span>
-                        <span class="ml-2 text-sm text-muted-foreground">{{ schoolClass.subject }} · {{ schoolClass.academic_year }}</span>
+            <li v-for="report in reports" :key="report.ulid">
+                <Link
+                    :href="`/reports/${report.ulid}`"
+                    class="flex items-center justify-between gap-4 px-4 py-3 hover:bg-muted/30"
+                >
+                    <span class="min-w-0">
+                        <span class="flex flex-wrap items-center gap-2">
+                            <span class="font-medium">{{ report.title }}</span>
+                            <span
+                                class="rounded-full px-2 py-0.5 text-[11px] font-medium"
+                                :class="
+                                    report.status === 'finalized'
+                                        ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                                        : 'bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                                "
+                            >
+                                {{ report.status_label }}
+                            </span>
+                        </span>
+                        <span class="mt-0.5 block text-sm break-words text-muted-foreground">
+                            {{ report.type_label }} · {{ report.subject_label }} · {{ report.scope_label }}
+                        </span>
+                        <span class="mt-0.5 block text-xs text-muted-foreground">
+                            {{ report.author ?? '—' }} · atualizado a {{ formatDate(report.updated_at) }}
+                            <template v-if="report.based_on">
+                                · a partir de «{{ report.based_on.title }}»
+                            </template>
+                        </span>
                     </span>
-                    <ChevronRight class="size-4 text-muted-foreground" />
+                    <ChevronRight class="size-4 shrink-0 text-muted-foreground" />
                 </Link>
             </li>
         </ul>
+
+        <p v-if="total > reports.length" class="text-xs text-muted-foreground">
+            A mostrar {{ reports.length }} de {{ total }} relatórios. Use os filtros para encontrar os restantes.
+        </p>
     </div>
 </template>

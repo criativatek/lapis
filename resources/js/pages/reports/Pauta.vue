@@ -64,7 +64,7 @@ function updateStudentOverride(row: Row, event: Event): void {
         <div class="print-hide flex flex-wrap items-center justify-between gap-3">
             <div>
                 <h1 class="text-xl font-semibold tracking-tight">Pauta — {{ schoolClass.label }}</h1>
-                <Link href="/reports" class="text-sm text-muted-foreground hover:underline">← Voltar aos relatórios</Link>
+                <Link href="/reports/pautas" class="text-sm text-muted-foreground hover:underline">← Voltar às pautas</Link>
             </div>
             <div class="flex gap-2">
                 <a

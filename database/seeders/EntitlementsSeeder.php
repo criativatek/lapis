@@ -41,6 +41,13 @@ class EntitlementsSeeder extends Seeder
         // Pro.
         'calendar' => 'Agenda do Ano Letivo',
         'lessons' => 'Aulas e Sumários',
+        // Relatórios stays in Base — a descriptive report is part of the core
+        // offer. What separates the plans is whether the report may INTERPRET:
+        // characterise behaviour and attitude, name difficulties, propose
+        // measures for overcoming them. Descriptive sections never consult
+        // this; analytical ones cannot be produced without it (§4 of the
+        // Relatórios brief).
+        'report_pedagogical_analysis' => 'Análise Pedagógica nos Relatórios',
         'ai_assistance' => 'Apoio de IA',
         'advanced_analytics' => 'Análises Avançadas',
         'template_sharing' => 'Partilha de Modelos',
@@ -70,6 +77,7 @@ class EntitlementsSeeder extends Seeder
         ...self::BASE_MODULES,
         'calendar', 'lessons', 'ai_assistance', 'advanced_analytics', 'template_sharing',
         'self_assessment_links', 'correction_grid_import', 'inovar_export',
+        'report_pedagogical_analysis',
     ];
 
     protected const INSTITUTIONAL_MODULES = [
