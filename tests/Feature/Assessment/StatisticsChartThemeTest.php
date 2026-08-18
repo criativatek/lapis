@@ -51,9 +51,14 @@ class StatisticsChartThemeTest extends TestCase
         return (string) file_get_contents(resource_path('js/components/infographic/Slopegraph.vue'));
     }
 
-    protected function gauge(): string
+    protected function donut(): string
     {
-        return (string) file_get_contents(resource_path('js/components/infographic/StatGauge.vue'));
+        return (string) file_get_contents(resource_path('js/components/infographic/OutcomeDonut.vue'));
+    }
+
+    protected function kpi(): string
+    {
+        return (string) file_get_contents(resource_path('js/components/infographic/KpiCard.vue'));
     }
 
     protected function spectrum(): string
@@ -64,36 +69,97 @@ class StatisticsChartThemeTest extends TestCase
     // ------------------------------------ 0. o valor é o valor, não o desenho
 
     #[Test]
-    public function a_gauge_draws_the_canonical_figure_and_rescales_nothing(): void
+    public function a_kpi_states_the_base_of_its_own_number(): void
     {
-        $gauge = $this->gauge();
+        $kpi = $this->kpi();
         $page = $this->page();
 
-        // The arc is geometry; the figure is the Média Ponderada, formatted by
-        // the same helper the rest of the application uses.
-        $this->assertStringContainsString(':display="pct(stats.summary.class_average)"', $page);
-        $this->assertStringContainsString(':display="pct(stats.summary.accumulated_average)"', $page);
+        // «68,4%» alone is unreadable — of what, out of how many? Every card
+        // carries a context line, and the pedagogical note lives behind the
+        // info button rather than as a paragraph inside the card (§39, §40).
+        $this->assertStringContainsString('{{ context }}', $kpi);
+        $this->assertStringContainsString(':title="help"', $kpi);
+        $this->assertStringContainsString(':aria-label="`O que é: ${label}. ${help}`"', $kpi);
 
-        // Clamped for drawing only, so a stray value cannot overshoot the arc —
-        // and never used to change what is written in the middle.
-        $this->assertStringContainsString('Math.max(0, Math.min(100, props.percent)) / 100', $gauge);
-        $this->assertStringNotContainsString('toFixed', $gauge);
+        $this->assertStringContainsString('classificações positivas', $page);
+        $this->assertStringContainsString('com dois momentos comparáveis', $page);
     }
 
     #[Test]
-    public function a_missing_value_leaves_the_gauge_empty_rather_than_at_zero(): void
+    public function the_headline_figure_is_the_result_of_the_moment(): void
     {
-        $gauge = $this->gauge();
+        $page = $this->page();
 
-        // A class with no result is not a class averaging nothing. The arc is
-        // simply not drawn, and the caller passes «—» as the display.
-        $this->assertStringContainsString('v-if="percent !== null"', $gauge);
-        $this->assertStringContainsString('if (props.percent === null)', $gauge);
+        // Not «the period's own average» by default. Which figure answers was
+        // decided server-side from the profile's own continuity (§1, §9).
+        $this->assertStringContainsString(':label="stats.primary.short_label"', $page);
+        $this->assertStringContainsString(':value="pct(readingAverage)"', $page);
+        $this->assertStringContainsString("stats.value.primary.kind === 'accumulated' && continuousView.value", $page);
 
-        $this->assertStringContainsString(
-            ':percent="stats.summary.class_average === null ? null : Number(stats.summary.class_average)"',
-            $this->page(),
-        );
+        // And the other reading is present, smaller, and named (§5, §23).
+        $this->assertStringContainsString('stats.primary.has_supplementary', $page);
+        $this->assertStringContainsString('supplementaryLabel', $page);
+    }
+
+    #[Test]
+    public function the_reading_switch_moves_averages_and_never_the_grades(): void
+    {
+        $page = $this->page();
+
+        // Spectrum, domains and the map follow the switch; the success rate,
+        // the assigned distribution and the crossings do not — those are
+        // statements about decisions the teacher took (§34).
+        $this->assertStringContainsString('readingValueOf(student)', $page);
+        $this->assertStringContainsString('usingAccumulated.value ? row.accumulated_average : row.period_average', $page);
+        $this->assertStringContainsString('usingAccumulated.value ? cell.accumulated_average : cell.weighted_average', $page);
+
+        $this->assertStringContainsString(':succeeded="stats.summary.success.succeeded"', $page);
+        $this->assertStringContainsString(':bands="assignedBands"', $page);
+        $this->assertStringContainsString('não muda classificações nem taxa de sucesso', $page);
+    }
+
+    #[Test]
+    public function the_two_evolutions_reach_the_page_under_different_names(): void
+    {
+        $page = $this->page();
+
+        // A single «evolução» that silently changed meaning with the toggle
+        // would be the bug this feature exists to avoid (§13, §15).
+        $this->assertStringContainsString('continuous_evolution', $page);
+        $this->assertStringContainsString('stats.value.evolution', $page);
+        $this->assertStringContainsString("'Evolução na avaliação contínua'", $page);
+        $this->assertStringContainsString("'Evolução do desempenho'", $page);
+    }
+
+    #[Test]
+    public function the_outcome_ring_counts_grades_and_never_movement(): void
+    {
+        $donut = $this->donut();
+
+        // Positive is not «progrediu». A student can fall six points and stay
+        // comfortably positive; drawing the two as one ring would say
+        // otherwise (§18, §19).
+        $this->assertStringContainsString('Classificação positiva', $donut);
+        $this->assertStringContainsString('Classificação negativa', $donut);
+        $this->assertStringNotContainsString('Progrediram', $donut);
+        $this->assertStringNotContainsString('Regrediram', $donut);
+
+        // The counts are written out, so nothing depends on judging an angle.
+        $this->assertStringContainsString('{{ succeeded }}', $donut);
+        $this->assertStringContainsString('{{ failed }}', $donut);
+        $this->assertStringContainsString('Sem classificação', $donut);
+    }
+
+    #[Test]
+    public function the_movement_bars_share_one_scale_and_never_the_largest_count(): void
+    {
+        $board = (string) file_get_contents(resource_path('js/components/infographic/MovementBoard.vue'));
+
+        // Scaling to the tallest bar would draw «4 de 6» and «4 de 40» the
+        // same, and the shape of a class would redraw itself per class.
+        $this->assertStringContainsString('props.comparable + props.noComparison', $board);
+        $this->assertStringContainsString('barWidth(movement.count)', $board);
+        $this->assertStringContainsString('{{ movement.count }}', $board);
     }
 
     #[Test]
@@ -125,7 +191,7 @@ class StatisticsChartThemeTest extends TestCase
 
         // Only students who HAVE a result are placed: an axis of results has no
         // position for an absence, and zero is not one.
-        $this->assertStringContainsString('filter((student) => student.weighted_average !== null)', $page);
+        $this->assertStringContainsString('filter((student) => readingValueOf(student) !== null)', $page);
     }
 
     #[Test]
@@ -184,10 +250,14 @@ class StatisticsChartThemeTest extends TestCase
         }
 
         // Each of the top cards gets its own ground, so they read as a set
-        // rather than as three copies.
-        foreach (["card('amber')", "card('violet')", "card('mint')"] as $usage) {
+        // rather than as four copies. The KPIs name the tone; the sections
+        // still reach for the surface helper directly.
+        foreach (['tone="violet"', 'tone="mint"', 'tone="sky"', 'tone="amber"'] as $usage) {
             $this->assertStringContainsString($usage, $page);
         }
+
+        $this->assertStringContainsString("card('sky')", $page);
+        $this->assertStringContainsString("card('mint')", $page);
     }
 
     #[Test]
@@ -229,7 +299,7 @@ class StatisticsChartThemeTest extends TestCase
     public function the_new_pieces_stay_still_for_a_reader_who_asked_them_to(): void
     {
         foreach ([
-            $this->gauge(),
+            $this->donut(),
             $this->spectrum(),
             (string) file_get_contents(resource_path('js/components/infographic/DistributionBands.vue')),
             (string) file_get_contents(resource_path('js/components/infographic/DomainBars.vue')),
@@ -322,9 +392,10 @@ class StatisticsChartThemeTest extends TestCase
         $this->assertStringNotContainsString('FlowRibbons', $page);
         $this->assertFileDoesNotExist(resource_path('js/components/infographic/FlowRibbons.vue'));
 
-        // Every figure is a numeral and a word. Nothing is encoded as a length,
-        // an angle or a saturation, so the board survives being printed grey.
-        $this->assertStringNotContainsString('width: `${', $board);
+        // The movement bars ARE lengths, deliberately — three counts on one
+        // baseline answer «quantos, comparados uns com os outros» in a way
+        // three separate numerals cannot. What is forbidden is a length with
+        // no numeral beside it, so every bar carries its own count and share.
         $this->assertStringContainsString('{{ movement.count }}', $board);
         $this->assertStringContainsString('{{ movement.share }}', $board);
         $this->assertStringContainsString('{{ crossing.count }}', $board);
@@ -349,12 +420,11 @@ class StatisticsChartThemeTest extends TestCase
     #[Test]
     public function the_official_rate_says_it_counts_assigned_classifications(): void
     {
-        $rate = (string) file_get_contents(resource_path('js/components/infographic/SuccessRate.vue'));
         $page = $this->page();
 
-        $this->assertStringContainsString('com classificação atribuída', $rate);
-        $this->assertStringContainsString('Conta as classificações que atribuiu, não as médias', $rate);
-        $this->assertStringContainsString('Por classificar', $rate);
+        $this->assertStringContainsString('classificações positivas', $page);
+        $this->assertStringContainsString('Conta as classificações que atribuiu, não as médias', $page);
+        $this->assertStringContainsString('Por classificar', $page);
 
         // And the statistical block beside it says which figure IT bands, so
         // the two readings are never mistaken for each other (§13).
@@ -761,10 +831,7 @@ class StatisticsChartThemeTest extends TestCase
         $page = $this->page();
 
         // The value is written in every cell; the tone only reinforces it.
-        $this->assertMatchesRegularExpression(
-            '/\{\{ pct\(heatCell\(student, domain\.id\)\?\.weighted_average \?\? null\) \}\}/',
-            $page,
-        );
+        $this->assertStringContainsString('{{ pct(heatValue(student, domain.id)) }}', $page);
         $this->assertStringContainsString(':title="heatCell(student, domain.id)?.mention?.label', $page);
     }
 }

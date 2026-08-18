@@ -89,41 +89,47 @@ const emit = defineEmits<{ (event: 'select', key: string): void }>();
  * dark ground turns to mud, so dark mode gets a deep desaturated version and
  * carries the identity in the edge instead of the fill (§28).
  */
-const SURFACES: Record<string, { ground: string; glow: string; ink: string }> = {
+const SURFACES: Record<string, { ground: string; glow: string; ink: string; fill: string }> = {
     progressed: {
         ground: 'bg-gradient-to-br from-emerald-50 via-emerald-50/70 to-teal-100/70 border-emerald-200/70'
             + ' dark:from-emerald-950/50 dark:via-emerald-950/25 dark:to-teal-900/25 dark:border-emerald-900/50',
         glow: 'bg-emerald-300/40 dark:bg-emerald-500/20',
         ink: 'text-emerald-700 dark:text-emerald-300',
+        fill: 'from-emerald-300 to-teal-400 dark:from-emerald-700 dark:to-teal-600',
     },
     stable: {
         ground: 'bg-gradient-to-br from-slate-50 via-slate-50/70 to-sky-100/60 border-slate-200/70'
             + ' dark:from-slate-900/70 dark:via-slate-900/35 dark:to-sky-950/35 dark:border-slate-700/50',
         glow: 'bg-sky-300/35 dark:bg-sky-500/15',
         ink: 'text-slate-600 dark:text-slate-300',
+        fill: 'from-slate-300 to-sky-300 dark:from-slate-600 dark:to-sky-800',
     },
     regressed: {
         ground: 'bg-gradient-to-br from-rose-50 via-rose-50/70 to-orange-100/60 border-rose-200/70'
             + ' dark:from-rose-950/50 dark:via-rose-950/25 dark:to-orange-950/25 dark:border-rose-900/50',
         glow: 'bg-rose-300/40 dark:bg-rose-500/20',
         ink: 'text-rose-700 dark:text-rose-300',
+        fill: 'from-rose-300 to-orange-300 dark:from-rose-800 dark:to-orange-900',
     },
     failure_to_success: {
         ground: 'bg-gradient-to-br from-emerald-50 via-teal-50 to-emerald-100/80 border-emerald-200/70'
             + ' dark:from-emerald-950/55 dark:via-teal-950/35 dark:to-emerald-900/30 dark:border-emerald-800/50',
         glow: 'bg-emerald-300/45 dark:bg-emerald-500/25',
         ink: 'text-emerald-700 dark:text-emerald-300',
+        fill: 'from-emerald-300 to-teal-400 dark:from-emerald-700 dark:to-teal-600',
     },
     success_to_failure: {
         ground: 'bg-gradient-to-br from-rose-50 via-orange-50/70 to-rose-100/70 border-rose-200/70'
             + ' dark:from-rose-950/55 dark:via-orange-950/30 dark:to-rose-900/30 dark:border-rose-800/50',
         glow: 'bg-rose-300/45 dark:bg-rose-500/25',
         ink: 'text-rose-700 dark:text-rose-300',
+        fill: 'from-rose-300 to-orange-300 dark:from-rose-800 dark:to-orange-900',
     },
     neutral: {
         ground: 'bg-gradient-to-br from-muted/40 to-muted/10 border-border/70',
         glow: 'bg-muted-foreground/10',
         ink: 'text-muted-foreground',
+        fill: 'from-muted to-muted',
     },
 };
 
@@ -149,6 +155,23 @@ const HeroIcon = computed(() => {
 });
 
 const motion = computed<string>(() => (prefersReducedMotion() ? 'duration-0' : 'duration-300'));
+
+/**
+ * ONE SCALE FOR THE THREE BARS, and it is the number of students.
+ *
+ * Never the largest count: scaling to the tallest would make «4 de 6» and
+ * «4 de 40» draw the same bar, and the shape of the class would silently
+ * redraw itself per class. A zero keeps its row and draws nothing.
+ */
+const barBase = computed<number>(() => Math.max(
+    props.comparable + props.noComparison,
+    ...props.movements.map((movement) => movement.count),
+    1,
+));
+
+function barWidth(count: number): number {
+    return (count / barBase.value) * 100;
+}
 
 /** Nobody to point at means nothing to select. */
 function isSelectable(count: number): boolean {
@@ -203,59 +226,49 @@ const students = (count: number): string => (count === 1 ? '1 aluno' : `${count}
                 </p>
             </div>
 
-            <!-- THREE COMPACT CARDS, read as one triptych. No bar underneath:
-                 the counts and the shares already say the proportion, and a
-                 second encoding of the same fact is decoration. -->
-            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:col-span-3">
-                <component
-                    :is="isSelectable(movement.count) ? 'button' : 'div'"
-                    v-for="movement in movements"
-                    :key="movement.key"
-                    :type="isSelectable(movement.count) ? 'button' : undefined"
-                    class="relative overflow-hidden rounded-[18px] border px-3.5 py-3 text-left transition ease-out"
-                    :class="[
-                        SURFACES[movement.key].ground,
-                        motion,
-                        isSelectable(movement.count) ? 'cursor-pointer hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring' : '',
-                        selected === movement.key ? 'ring-2 ring-foreground/25 shadow-md' : '',
-                        selected !== null && selected !== movement.key ? 'opacity-60' : '',
-                    ]"
-                    :aria-pressed="isSelectable(movement.count) ? selected === movement.key : undefined"
-                    @click="toggle(movement.key, movement.count)"
-                >
-                    <span
-                        aria-hidden="true"
-                        class="pointer-events-none absolute -right-6 -top-8 size-20 rounded-full blur-2xl"
-                        :class="SURFACES[movement.key].glow"
-                    ></span>
-
-                    <!-- Stacked on a phone the card reads across; from `sm` up
-                         it reads down, so three of them line up as a triptych
-                         and neither shape is ever squashed (§20). -->
-                    <span class="relative flex items-center justify-between gap-3 sm:block">
-                        <span class="flex min-w-0 items-center gap-1.5">
+            <!-- THREE BARS ON ONE SCALE. The counts are small and the question
+                 is «quantos, comparados uns com os outros» — three lengths
+                 sharing a baseline answer that in one look, which three
+                 separate numerals cannot. The numeral is still at the end of
+                 every bar, so nothing has to be measured by eye. -->
+            <ul class="flex flex-col justify-center gap-2.5 lg:col-span-3">
+                <li v-for="movement in movements" :key="movement.key">
+                    <component
+                        :is="isSelectable(movement.count) ? 'button' : 'div'"
+                        :type="isSelectable(movement.count) ? 'button' : undefined"
+                        class="flex w-full items-center gap-3 rounded-[14px] px-2.5 py-1.5 text-left transition ease-out"
+                        :class="[
+                            motion,
+                            isSelectable(movement.count) ? 'cursor-pointer hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring' : '',
+                            selected === movement.key ? 'bg-muted/50 ring-1 ring-foreground/15' : '',
+                            selected !== null && selected !== movement.key ? 'opacity-55' : '',
+                        ]"
+                        :aria-pressed="isSelectable(movement.count) ? selected === movement.key : undefined"
+                        @click="toggle(movement.key, movement.count)"
+                    >
+                        <span class="flex w-[7.5rem] shrink-0 items-center gap-1.5">
                             <component
                                 :is="MOVEMENT_ICONS[movement.key]"
                                 aria-hidden="true"
                                 class="size-3.5 shrink-0"
                                 :class="SURFACES[movement.key].ink"
                             />
-                            <span class="text-[10px] font-semibold uppercase leading-tight tracking-[0.1em] text-muted-foreground">
-                                {{ movement.label }}
-                            </span>
+                            <span class="truncate text-xs font-medium">{{ movement.label }}</span>
                         </span>
 
-                        <span class="flex shrink-0 items-baseline gap-2 sm:mt-2 sm:block">
-                            <span class="text-[1.875rem] font-semibold leading-none tabular-nums tracking-tight">
-                                {{ movement.count }}
-                            </span>
-                            <span class="text-xs tabular-nums text-muted-foreground sm:mt-1 sm:block">
-                                {{ movement.share }}
-                            </span>
+                        <span class="h-6 min-w-0 flex-1 overflow-hidden rounded-lg bg-muted/40">
+                            <span
+                                class="block h-full rounded-lg bg-gradient-to-r transition-all ease-out"
+                                :class="[SURFACES[movement.key].fill, motion]"
+                                :style="{ width: `${barWidth(movement.count)}%` }"
+                            ></span>
                         </span>
-                    </span>
-                </component>
-            </div>
+
+                        <span class="w-6 shrink-0 text-right text-base font-semibold tabular-nums">{{ movement.count }}</span>
+                        <span class="w-12 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">{{ movement.share }}</span>
+                    </component>
+                </li>
+            </ul>
         </div>
 
         <!-- ------------------------------------------- mudanças de patamar -->

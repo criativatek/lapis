@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { ArrowDownRight, ArrowUpRight, ChevronRight, CircleAlert, Minus, TrendingDown, TrendingUp, X } from '@lucide/vue';
+import {
+    ArrowDownRight, ArrowUpRight, ChartNoAxesCombined, ChevronRight, CircleAlert,
+    Minus, TrendingDown, TrendingUp, Trophy, Users, X,
+} from '@lucide/vue';
 import type { ChartConfiguration } from 'chart.js';
 import { computed, defineAsyncComponent, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
@@ -10,14 +13,13 @@ import DomainBars from '@/components/infographic/DomainBars.vue';
 import type { DomainBar } from '@/components/infographic/DomainBars.vue';
 import DumbbellRows from '@/components/infographic/DumbbellRows.vue';
 import type { Dumbbell } from '@/components/infographic/DumbbellRows.vue';
+import KpiCard from '@/components/infographic/KpiCard.vue';
 import MovementBoard from '@/components/infographic/MovementBoard.vue';
 import type { CrossingCard, CrossingKey, HeldCard, HeldKey, MovementCard } from '@/components/infographic/MovementBoard.vue';
+import OutcomeDonut from '@/components/infographic/OutcomeDonut.vue';
 import SectionHeading from '@/components/infographic/SectionHeading.vue';
-import StatGauge from '@/components/infographic/StatGauge.vue';
 import StudentSpectrum from '@/components/infographic/StudentSpectrum.vue';
 import type { SpectrumPoint } from '@/components/infographic/StudentSpectrum.vue';
-import SuccessRate from '@/components/infographic/SuccessRate.vue';
-import type { SuccessFigures } from '@/components/infographic/SuccessRate.vue';
 import {
     areaGradient,
     categoryAxis,
@@ -56,8 +58,12 @@ type Student = {
     class_number: number | null;
     weighted_average: string | null;
     accumulated_average: string | null;
+    primary_average: string | null;
+    supplementary_average: string | null;
     coverage_warning: boolean;
     evolution: Evolution;
+    /** Movement of the result of the moment — a different fact from `evolution`. */
+    continuous_evolution: { direction: string; points: string } | null;
     band: Band;
     /** The grade, as a mention — what the teacher assigned. */
     assigned: Band;
@@ -68,11 +74,25 @@ type Student = {
     series: {
         period_id: number; period_label: string;
         weighted_average: string | null; accumulated_average: string | null;
+        primary_average: string | null;
         coverage_warning: boolean; evolution: Evolution;
         domains: { domain_id: number; weighted_average: string | null; mention: Band }[];
     }[];
     /** Which side of the scale they were on, and are on now. */
     transition: TransitionKey;
+};
+
+/** The official rate, counted on the grades the teacher assigned. */
+type SuccessFigures = {
+    succeeded: number;
+    failed: number;
+    /** Graded, on a scale that says nothing about which side that grade is. */
+    unplaced: number;
+    without_classification: number;
+    /** succeeded + failed — the denominator, and nothing else. */
+    placed: number;
+    rate: string | null;
+    failure_rate: string | null;
 };
 
 type TransitionKey = CrossingKey | HeldKey | 'unclassified' | 'no_assigned_classification';
@@ -96,9 +116,16 @@ type Statistics = {
     previous_period: { id: number; ulid: string; label: string; sequence: number } | null;
     domains: { id: number; name: string }[];
     scale: { name: string; kind: string; bands: { label: string; sequence: number; is_negative: boolean }[] } | null;
+    primary: {
+        kind: 'period' | 'accumulated';
+        label: string; short_label: string; caption: string | null;
+        supplementary_label: string | null; has_supplementary: boolean;
+        scopes: Record<string, 'period' | 'accumulated'>;
+    };
     summary: {
         students_total: number; students_with_result: number; students_without_result: number;
         class_average: string | null; accumulated_average: string | null;
+        primary_average: string | null; supplementary_average: string | null;
         partial_coverage_count: number;
         most_common_band: (NonNullable<Band> & { count: number }) | null;
         success: SuccessFigures;
@@ -109,6 +136,12 @@ type Statistics = {
         percentages: { progressed: string | null; stable: string | null; regressed: string | null; no_comparison: string | null };
         transitions: Transitions;
     };
+    /** The same shape, read on the result of each moment rather than on the period's own. */
+    continuous_evolution: {
+        progressed: number; stable: number; regressed: number; no_comparison: number;
+        comparable: number; average_change: string | null;
+        percentages: { progressed: string | null; stable: string | null; regressed: string | null; no_comparison: string | null };
+    };
     assigned_distribution: {
         bands: (NonNullable<Band> & { count: number; percentage: string | null; outside_scale?: boolean })[];
         classified: number; unplaced: number; without_classification: number;
@@ -117,8 +150,10 @@ type Statistics = {
     domain_statistics: DomainStatistic[];
     period_series: {
         period_id: number; label: string; sequence: number;
-        class_average: string | null; students_with_result: number;
-        domains: { domain_id: number; average: string | null; students_with_result: number }[];
+        class_average: string | null; accumulated_average: string | null;
+        primary_average: string | null; primary_kind: 'period' | 'accumulated';
+        students_with_result: number;
+        domains: { domain_id: number; average: string | null; accumulated_average: string | null; students_with_result: number }[];
     }[];
     students: Student[];
 };
@@ -275,6 +310,81 @@ const selectedLevelId = ref<number | null>(null);
 const selectedCalculatedLevelId = ref<number | null>(null);
 /** «progressed», «failure_to_success» — a group from the movement board. */
 const selectedGroup = ref<string | null>(null);
+
+// ------------------------------------------------- a leitura em curso
+
+/**
+ * WHICH READING THE RESULT-BASED VISUALS SHOW.
+ *
+ * One page, one scope switch — not two dashboards. «Avaliação contínua» draws
+ * the figure that answers for each moment (the accumulated one, once the year
+ * has accumulated); «Só este período» draws the period's own work. The default
+ * is the continuous one, because that is what the teacher classifies against.
+ *
+ * IT MOVES AVERAGES AND NOTHING ELSE. The success rate, the assigned
+ * distribution and the crossings are statements about decisions the teacher
+ * took, and no choice of average may edit them (§34).
+ */
+const continuousView = ref<boolean>(true);
+
+/** There is only a choice to make once the two readings differ. */
+const canSwitchReading = computed<boolean>(() => stats.value.primary.has_supplementary);
+
+const usingAccumulated = computed<boolean>(() => (
+    stats.value.primary.kind === 'accumulated' && continuousView.value
+));
+
+/** The class figure the page is currently showing. */
+const readingAverage = computed<string | null>(() => (
+    usingAccumulated.value ? stats.value.summary.accumulated_average : stats.value.summary.class_average
+));
+
+const supplementaryAverage = computed<string | null>(() => (
+    usingAccumulated.value ? stats.value.summary.class_average : stats.value.summary.accumulated_average
+));
+
+const supplementaryLabel = computed<string>(() => (
+    usingAccumulated.value ? (stats.value.primary.supplementary_label ?? 'Só neste período') : 'Acumulado do ano'
+));
+
+const readingCaption = computed<string>(() => (
+    usingAccumulated.value
+        ? 'Resultado acumulado · avaliação contínua'
+        : `Resultado do ${stats.value.selected_period?.label ?? 'período'}, isolado`
+));
+
+/** The movement that belongs to the reading on screen. Two datasets, one shape. */
+const readingEvolution = computed(() => (
+    usingAccumulated.value ? stats.value.continuous_evolution : stats.value.evolution
+));
+
+const readingEvolutionLabel = computed<string>(() => (
+    usingAccumulated.value ? 'Evolução na avaliação contínua' : 'Evolução do desempenho'
+));
+
+const evolutionTrend = computed(() => {
+    const change = readingEvolution.value.average_change;
+
+    if (!hasComparison.value || change === null) {
+        return null;
+    }
+
+    return {
+        display: `${formatPoints(change)} p.p. face a ${stats.value.previous_period?.label ?? 'o período anterior'}`,
+        direction: Number(change) > 0 ? 'up' as const : Number(change) < 0 ? 'down' as const : 'flat' as const,
+    };
+});
+
+const evolutionTrendIcon = computed(() => {
+    const direction = evolutionTrend.value?.direction;
+
+    return direction === 'up' ? TrendingUp : direction === 'down' ? TrendingDown : Minus;
+});
+
+/** One student's figure, under the reading on screen. */
+function readingValueOf(student: Student): string | null {
+    return usingAccumulated.value ? student.accumulated_average : student.weighted_average;
+}
 
 /**
  * The calculated distribution starts folded.
@@ -456,7 +566,7 @@ const domainDumbbells = computed<Dumbbell[]>(() => {
  * all decided by the read model, which decided them from the scale.
  */
 const movements = computed<MovementCard[]>(() => {
-    const evolution = stats.value.evolution;
+    const evolution = readingEvolution.value;
 
     return [
         { key: 'progressed', label: 'Progrediram', count: evolution.progressed, share: formatShare(evolution.percentages.progressed) },
@@ -499,7 +609,7 @@ const held = computed<HeldCard[]>(() => {
 });
 
 const averageDirection = computed<'up' | 'down' | 'flat' | null>(() => {
-    const change = stats.value.evolution.average_change;
+    const change = readingEvolution.value.average_change;
 
     if (change === null) {
         return null;
@@ -508,23 +618,41 @@ const averageDirection = computed<'up' | 'down' | 'flat' | null>(() => {
     return Number(change) > 0 ? 'up' : Number(change) < 0 ? 'down' : 'flat';
 });
 
+/**
+ * The class's own line through the year, drawn on the figure that answered at
+ * each moment — never a line that silently changes meaning halfway (§22).
+ */
+const primaryTrend = computed(() => stats.value.period_series
+    .filter((row) => row.primary_average !== null)
+    .map((row) => ({ label: row.label, percent: Number(row.primary_average) })));
+
+const trendSummary = computed<string>(() => (
+    `Resultado da turma em cada momento do ano: ${primaryTrend.value
+        .map((point) => `${point.label}, ${pct(String(point.percent))}`)
+        .join('; ')}.`
+));
+
+/** A polyline over 0–100, for the band at the foot of the page. */
+const trendPoints = computed<string>(() => {
+    const points = primaryTrend.value;
+
+    if (points.length < 2) {
+        return '';
+    }
+
+    return points
+        .map((point, index) => {
+            const x = (index / (points.length - 1)) * 100;
+
+            return `${x},${40 - (point.percent / 100) * 36}`;
+        })
+        .join(' ');
+});
+
 
 const placedOnScale = computed(() => stats.value.distribution.reduce((total, band) => total + band.count, 0));
 
 // ------------------------------------------------- a nova composição
-
-/** The gauge's ink follows the class's own mention, when the scale has one. */
-const gaugeColour = computed<string>(() => {
-    const band = stats.value.summary.most_common_band;
-
-    return band === null ? '#6366f1' : TONE_COLOURS[toneOf(band)].border;
-});
-
-const coveredPercent = computed<number>(() => {
-    const total = stats.value.summary.students_total;
-
-    return total === 0 ? 0 : (stats.value.summary.students_with_result / total) * 100;
-});
 
 /**
  * A band, dressed for the tiles. Used for both distributions, which is the
@@ -553,21 +681,28 @@ const assignedBands = computed<DistributionBand[]>(() => stats.value.assigned_di
 const distributionBands = computed<DistributionBand[]>(() => stats.value.distribution.map(toBand));
 
 /** The domains, as wide bars: domain ink, scale mention, trend change. */
-const domainBars = computed<DomainBar[]>(() => stats.value.domain_statistics.map((row) => ({
-    id: row.domain_id,
-    label: row.label,
-    percent: row.period_average === null ? null : Number(row.period_average),
-    display: pct(row.period_average),
-    colour: inks.value[row.domain_id],
-    mention: row.qualitative_band?.label ?? null,
-    mentionClass: toneClass(row.qualitative_band),
-    change: row.evolution_average === null ? null : formatPoints(row.evolution_average),
-    direction: row.evolution_average === null
-        ? null
-        : Number(row.evolution_average) > 0 ? 'up' : Number(row.evolution_average) < 0 ? 'down' : 'flat',
-    students: `${row.students_with_result} de ${stats.value.summary.students_total} com resultado`
-        + (row.partial_coverage_count > 0 ? ` · ${row.partial_coverage_count} com informação parcial` : ''),
-})));
+const domainBars = computed<DomainBar[]>(() => stats.value.domain_statistics.map((row) => {
+    // A domain has no assigned classification — the decision is taken for the
+    // period — so this stays a calculated reading, and follows the same figure
+    // the rest of the page is showing (§25).
+    const value = usingAccumulated.value ? row.accumulated_average : row.period_average;
+
+    return {
+        id: row.domain_id,
+        label: row.label,
+        percent: value === null ? null : Number(value),
+        display: pct(value),
+        colour: inks.value[row.domain_id],
+        mention: row.qualitative_band?.label ?? null,
+        mentionClass: toneClass(row.qualitative_band),
+        change: row.evolution_average === null ? null : formatPoints(row.evolution_average),
+        direction: row.evolution_average === null
+            ? null
+            : Number(row.evolution_average) > 0 ? 'up' : Number(row.evolution_average) < 0 ? 'down' : 'flat',
+        students: `${row.students_with_result} de ${stats.value.summary.students_total} com resultado`
+            + (row.partial_coverage_count > 0 ? ` · ${row.partial_coverage_count} com informação parcial` : ''),
+    };
+}));
 
 /**
  * Where each student sits on the scale.
@@ -577,12 +712,15 @@ const domainBars = computed<DomainBar[]>(() => stats.value.domain_statistics.map
  * refuses to invent.
  */
 const spectrum = computed<SpectrumPoint[]>(() => stats.value.students
-    .filter((student) => student.weighted_average !== null)
+    .filter((student) => readingValueOf(student) !== null)
     .map((student) => ({
         enrollment_id: student.enrollment_id,
         name: student.name,
-        percent: Number(student.weighted_average),
-        display: pct(student.weighted_average),
+        // The axis carries ONE figure at a time. Mixing an accumulated result
+        // and a period one on the same line would place two students side by
+        // side who are not comparable at all (§26).
+        percent: Number(readingValueOf(student)),
+        display: pct(readingValueOf(student)),
         mention: student.band?.label ?? null,
         mentionClass: toneClass(student.band),
         classNumber: student.class_number,
@@ -590,9 +728,23 @@ const spectrum = computed<SpectrumPoint[]>(() => stats.value.students
 
 // -------------------------------------------- a evolução de um aluno
 
-/** The periods this student actually has a figure in. Never invented. */
+/**
+ * The student's movement in the reading that answers for them — the continuous
+ * one when there is one, the period-against-period one otherwise.
+ */
+const studentMovement = computed(() => (
+    stats.value.primary.has_supplementary
+        ? selected.value?.continuous_evolution ?? null
+        : selected.value?.evolution ?? null
+));
+
+/**
+ * The moments this student actually has a figure in, drawn on the result that
+ * answered at each one. Never invented, and never a line that changes meaning
+ * halfway through the year (§29).
+ */
 const studentMoments = computed(() => (selected.value?.series ?? [])
-    .filter((entry) => entry.weighted_average !== null));
+    .filter((entry) => entry.primary_average !== null));
 
 /**
  * The shape of the individual reading follows how many moments there are, for
@@ -617,7 +769,7 @@ const studentEnds = computed(() => {
 const studentChange = computed<number | null>(() => {
     const ends = studentEnds.value;
 
-    return ends === null ? null : Number(ends.to.weighted_average) - Number(ends.from.weighted_average);
+    return ends === null ? null : Number(ends.to.primary_average) - Number(ends.from.primary_average);
 });
 
 /** One row per domain: where this student started and where they ended. */
@@ -811,6 +963,23 @@ const extremes = computed(() => {
 
 // ------------------------------------------------------------------ heatmap
 
+/**
+ * The domain figure the map is showing, under the reading in force.
+ *
+ * The cell holds both; which one is drawn follows the same switch as the rest
+ * of the page, so a «60,3%» in the map never means something different from a
+ * «60,3%» in the header (§27).
+ */
+function heatValue(student: Student, domainId: number): string | null {
+    const cell = heatCell(student, domainId);
+
+    if (cell === undefined) {
+        return null;
+    }
+
+    return usingAccumulated.value ? cell.accumulated_average : cell.weighted_average;
+}
+
 function heatCell(student: Student, domainId: number): DomainCell | undefined {
     return student.domains.find((domain) => domain.domain_id === domainId);
 }
@@ -921,7 +1090,10 @@ const studentRows = computed(() => {
         <!-- ================================================== cabeçalho -->
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
-                <Heading :title="`Estatística — ${schoolClass.label}`" :description="schoolClass.subject" />
+                <Heading
+                    title="Visão geral de desempenho"
+                    :description="`${schoolClass.label} · ${schoolClass.subject} — o desempenho e a evolução da turma nas avaliações realizadas.`"
+                />
                 <div class="flex flex-wrap gap-3 text-sm">
                     <Link :href="`/classes/${schoolClass.ulid}`" class="text-muted-foreground hover:underline">← Voltar à turma</Link>
                     <Link :href="`/classes/${schoolClass.ulid}/results/quadro-sintese`" class="text-primary hover:underline">
@@ -1175,96 +1347,124 @@ const studentRows = computed(() => {
                 </div>
             </Transition>
 
+            <!-- ONE SWITCH, NOT TWO DASHBOARDS. It changes which average the
+                 result-based readings draw and nothing else — the grades and
+                 everything counted from them stay put (§34, §35). -->
+            <div v-if="canSwitchReading" class="flex flex-wrap items-center gap-3">
+                <span class="text-xs font-medium text-muted-foreground">Ler os resultados como:</span>
+
+                <div class="inline-flex rounded-full border border-border bg-card p-0.5 shadow-sm">
+                    <button
+                        v-for="option in [
+                            { continuous: true, label: 'Avaliação contínua' },
+                            { continuous: false, label: `Só no ${stats.selected_period?.label}` },
+                        ]"
+                        :key="option.label"
+                        type="button"
+                        class="rounded-full px-3.5 py-1 text-xs font-medium transition-colors"
+                        :class="continuousView === option.continuous
+                            ? 'bg-primary text-primary-foreground shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground'"
+                        :aria-pressed="continuousView === option.continuous"
+                        @click="continuousView = option.continuous"
+                    >
+                        {{ option.label }}
+                    </button>
+                </div>
+
+                <p class="text-[11px] text-muted-foreground" role="status">
+                    <template v-if="continuousView">
+                        O acumulado do ano até aqui — a leitura que a classificação acompanha.
+                    </template>
+                    <template v-else>
+                        Só o trabalho deste período. Leitura suplementar: não muda classificações nem taxa de sucesso.
+                    </template>
+                </p>
+            </div>
+
             <!-- ============================== 01 · A TURMA NUM OLHAR -->
-            <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <section :class="[card('amber'), 'p-5']">
-                    <StatGauge
-                        :percent="stats.summary.class_average === null ? null : Number(stats.summary.class_average)"
-                        :display="pct(stats.summary.class_average)"
-                        label="Média Ponderada da turma"
-                        :badge="stats.summary.most_common_band ? null : null"
-                        :colour="gaugeColour"
-                        :caption="stats.selected_period ? `${stats.selected_period.label}, só com este período` : null"
+            <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <!-- THE RESULT OF THE MOMENT. Which figure that is was decided
+                     server-side from the profile's own continuity, and the
+                     caption says which one arrived (§9). -->
+                <KpiCard
+                    tone="violet"
+                    :icon="ChartNoAxesCombined"
+                    :label="stats.primary.short_label"
+                    :value="pct(readingAverage)"
+                    :context="readingCaption"
+                    :help="stats.primary.kind === 'accumulated'
+                        ? 'Considera os períodos que contribuem para a avaliação contínua até ao momento.'
+                        : 'Considera os elementos realizados neste período.'"
+                >
+                    <p
+                        v-if="stats.primary.has_supplementary"
+                        class="mt-3 flex items-baseline gap-2 border-t border-border/50 pt-2.5 text-[11px]"
                     >
-                        <p
-                            v-if="hasComparison && stats.evolution.average_change !== null"
-                            class="mt-2.5 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium"
-                            :class="Number(stats.evolution.average_change) > 0
-                                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
-                                : Number(stats.evolution.average_change) < 0
-                                    ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300'
-                                    : 'bg-muted text-muted-foreground'"
-                        >
-                            <TrendingUp v-if="Number(stats.evolution.average_change) > 0" class="size-3" />
-                            <TrendingDown v-else-if="Number(stats.evolution.average_change) < 0" class="size-3" />
-                            <Minus v-else class="size-3" />
-                            {{ formatPoints(stats.evolution.average_change) }} p.p. face a {{ stats.previous_period?.label }}
-                        </p>
-                    </StatGauge>
-                </section>
+                        <span class="text-muted-foreground">{{ supplementaryLabel }}</span>
+                        <span class="ml-auto font-semibold tabular-nums">{{ pct(supplementaryAverage) }}</span>
+                    </p>
+                </KpiCard>
 
-                <section :class="[card('violet'), 'p-5']">
-                    <StatGauge
-                        :percent="stats.summary.accumulated_average === null ? null : Number(stats.summary.accumulated_average)"
-                        :display="pct(stats.summary.accumulated_average)"
-                        label="Média acumulada"
-                        :badge="stats.summary.most_common_band?.label ?? null"
-                        :badge-class="toneClass(stats.summary.most_common_band)"
-                        colour="#8b5cf6"
-                        caption="Tudo o que conta até este período"
+                <!-- «Quantos alunos tiveram classificação positiva?» — decided
+                     by the scale's own is_negative, never by a threshold, and
+                     counted on the grades rather than on the averages (§10). -->
+                <KpiCard
+                    tone="mint"
+                    :icon="Trophy"
+                    label="Taxa de sucesso"
+                    :value="formatShare(stats.summary.success.rate)"
+                    :context="stats.summary.success.placed > 0
+                        ? `${stats.summary.success.succeeded} de ${stats.summary.success.placed} classificações positivas`
+                        : 'Ainda não há classificações atribuídas'"
+                    help="Conta as classificações que atribuiu, não as médias calculadas. Quem ainda não tem classificação fica fora."
+                >
+                    <p
+                        v-if="stats.summary.success.without_classification > 0"
+                        class="mt-3 flex items-baseline gap-2 border-t border-border/50 pt-2.5 text-[11px]"
                     >
-                        <p v-if="stats.summary.most_common_band" class="mt-2 text-center text-xs text-muted-foreground">
-                            Menção mais frequente · {{ stats.summary.most_common_band.count }} de
-                            {{ stats.summary.students_total }} alunos
-                        </p>
-                    </StatGauge>
-                </section>
-
-                <!-- «Quantos alunos atingiram resultado positivo?» — decided by
-                     the scale's own is_negative, never by a threshold. -->
-                <section :class="[card('mint'), 'p-5']">
-                    <SuccessRate
-                        :figures="stats.summary.success"
-                        :rate-display="formatShare(stats.summary.success.rate)"
-                        :success-share="formatShare(stats.summary.success.rate)"
-                        :failure-share="formatShare(stats.summary.success.failure_rate)"
-                    />
-                </section>
-
-                <!-- Coverage completes the top row: four cards, each a real
-                     count with its own ground (§6). -->
-                <section :class="[card('plain'), 'p-5']">
-                    <p class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Alunos com resultado</p>
-                    <p class="mt-1.5 text-[2.5rem] font-semibold leading-none tabular-nums tracking-tight">
-                        {{ stats.summary.students_with_result }}<span class="text-xl font-normal text-muted-foreground">/{{ stats.summary.students_total }}</span>
+                        <span class="text-muted-foreground">Por classificar</span>
+                        <span class="ml-auto font-semibold tabular-nums">{{ stats.summary.success.without_classification }}</span>
                     </p>
+                </KpiCard>
 
-                    <div class="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-muted/50">
-                        <div
-                            class="h-full rounded-full bg-emerald-500/80 transition-all ease-out"
-                            :class="prefersReducedMotion() ? 'duration-0' : 'duration-700'"
-                            :style="{ width: `${coveredPercent}%` }"
-                        ></div>
-                    </div>
-
-                    <dl class="mt-4 space-y-2 text-sm">
-                        <div class="flex items-baseline justify-between gap-3">
-                            <dt class="text-muted-foreground">Sem resultado</dt>
-                            <dd class="font-semibold tabular-nums">{{ stats.summary.students_without_result }}</dd>
-                        </div>
-                        <div class="flex items-baseline justify-between gap-3">
-                            <dt class="flex items-center gap-1.5 text-muted-foreground">
-                                <CircleAlert v-if="stats.summary.partial_coverage_count > 0" class="size-3.5 text-amber-500" />
-                                Informação parcial
-                            </dt>
-                            <dd class="font-semibold tabular-nums">{{ stats.summary.partial_coverage_count }}</dd>
-                        </div>
-                    </dl>
-
-                    <p v-if="stats.summary.partial_coverage_count > 0" class="mt-3 text-[11px] leading-relaxed text-muted-foreground">
-                        O detalhe de cada caso está em Resultados, junto ao aviso do próprio aluno.
+                <KpiCard
+                    tone="sky"
+                    :icon="Users"
+                    label="Alunos com resultado"
+                    :value="`${stats.summary.students_with_result}`"
+                    :unit="`/ ${stats.summary.students_total}`"
+                    :context="stats.summary.students_without_result > 0
+                        ? `${stats.summary.students_without_result} ainda sem qualquer elemento avaliado`
+                        : 'Toda a turma tem elementos avaliados'"
+                >
+                    <p
+                        v-if="stats.summary.partial_coverage_count > 0"
+                        class="mt-3 flex items-baseline gap-2 border-t border-border/50 pt-2.5 text-[11px]"
+                    >
+                        <span class="text-muted-foreground">Com informação parcial</span>
+                        <span class="ml-auto font-semibold tabular-nums">{{ stats.summary.partial_coverage_count }}</span>
                     </p>
-                </section>
+                </KpiCard>
+
+                <!-- The evolution of the READING ON SCREEN. In «avaliação
+                     contínua» that is the continuous one, which is a different
+                     number from the period-against-period figure (§12, §13). -->
+                <KpiCard
+                    tone="amber"
+                    :icon="TrendingUp"
+                    :label="readingEvolutionLabel"
+                    :value="hasComparison ? `${formatPoints(readingEvolution.average_change)}` : '—'"
+                    :unit="hasComparison && readingEvolution.average_change !== null ? 'p.p.' : null"
+                    :trend="evolutionTrend"
+                    :trend-icon="evolutionTrendIcon"
+                    :context="hasComparison
+                        ? `Sobre ${studentsWord(readingEvolution.comparable)} com dois momentos comparáveis`
+                        : 'Ainda não há um momento anterior para comparar'"
+                    :help="continuousView
+                        ? 'Compara o resultado que respondia em cada momento — no 2.º período, o acumulado.'
+                        : 'Compara o trabalho realizado neste período com o do período anterior.'"
+                />
             </div>
 
             <!-- ============================ 02 · COMO EVOLUIU A TURMA -->
@@ -1279,9 +1479,12 @@ const studentRows = computed(() => {
 
                 <MovementBoard
                     v-if="hasComparison"
-                    :average-display="formatPoints(stats.evolution.average_change)"
+                    :average-display="formatPoints(readingEvolution.average_change)"
                     :average-direction="averageDirection"
-                    :comparable="stats.evolution.comparable"
+                    :comparable="readingEvolution.comparable"
+                    :movement-caption="usingAccumulated
+                        ? 'com dois momentos comparáveis, resultado acumulado contra o resultado anterior'
+                        : 'com dois períodos comparáveis, resultado isolado contra resultado isolado'"
                     :movements="movements"
                     :crossings="crossings"
                     :held="held"
@@ -1301,93 +1504,178 @@ const studentRows = computed(() => {
                 </div>
             </section>
 
-            <!-- ================= 03 · DISTRIBUIÇÃO DAS CLASSIFICAÇÕES -->
-            <section :class="[card('sky'), 'p-5']">
-                <SectionHeading
-                    index="03"
-                    title="Como se distribuem as classificações"
-                    :description="`Os níveis que atribuiu a cada aluno${schoolClass.scale_name ? `, na escala «${schoolClass.scale_name}»` : ''}. Escolha uma banda para seguir esses alunos no mapa.`"
-                />
+            <!-- ========== 03 · CLASSIFICAÇÕES POSITIVAS E NEGATIVAS -->
+            <div class="grid gap-4 lg:grid-cols-5">
+                <section :class="[card('mint'), 'rounded-[22px] p-5 lg:col-span-2']">
+                    <SectionHeading
+                        index="03"
+                        title="Classificações positivas e negativas"
+                        description="As classificações que atribuiu, e de que lado da escala caem. Progredir e ser positivo são coisas diferentes."
+                    />
 
-                <DistributionBands
-                    v-if="assignedBands.length"
-                    :bands="assignedBands"
-                    :placed="stats.assigned_distribution.classified"
-                    :selected-id="selectedLevelId"
-                    @select="toggleLevel"
-                />
-                <p v-else class="rounded-xl bg-muted/25 py-10 text-center text-sm text-muted-foreground">
-                    A escala desta turma não tem bandas configuradas, por isso não há níveis para distribuir.
-                </p>
+                    <OutcomeDonut
+                        :succeeded="stats.summary.success.succeeded"
+                        :failed="stats.summary.success.failed"
+                        :unplaced="stats.summary.success.unplaced"
+                        :without-classification="stats.summary.success.without_classification"
+                        :success-share="formatShare(stats.summary.success.rate)"
+                        :failure-share="formatShare(stats.summary.success.failure_rate)"
+                    />
+                </section>
 
-                <!-- OUTSIDE THE BANDS, AND SAID SO. A student nobody has graded
-                     is not a zero anywhere on this row (§5). -->
-                <p
-                    v-if="stats.assigned_distribution.without_classification > 0 || stats.assigned_distribution.unplaced > 0"
-                    class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 rounded-xl bg-background/50 px-3.5 py-2.5 text-xs dark:bg-background/25"
-                >
-                    <span v-if="stats.assigned_distribution.without_classification > 0" class="flex items-center gap-1.5">
-                        <Minus aria-hidden="true" class="size-3.5 shrink-0 text-muted-foreground/60" />
-                        <span class="text-muted-foreground">Sem classificação atribuída</span>
-                        <strong class="font-semibold tabular-nums">{{ stats.assigned_distribution.without_classification }}</strong>
-                    </span>
+                <!-- ================= 04 · DISTRIBUIÇÃO DAS CLASSIFICAÇÕES -->
+                <section :class="[card('sky'), 'rounded-[22px] p-5 lg:col-span-3']">
+                    <SectionHeading
+                        index="04"
+                        title="Como se distribuem as classificações"
+                        :description="`Os níveis que atribuiu a cada aluno${schoolClass.scale_name ? `, na escala «${schoolClass.scale_name}»` : ''}. Escolha uma banda para seguir esses alunos no mapa.`"
+                    />
 
-                    <span v-if="stats.assigned_distribution.unplaced > 0" class="flex items-center gap-1.5">
-                        <Minus aria-hidden="true" class="size-3.5 shrink-0 text-muted-foreground/60" />
-                        <span class="text-muted-foreground">Classificados sem banda na escala</span>
-                        <strong class="font-semibold tabular-nums">{{ stats.assigned_distribution.unplaced }}</strong>
-                    </span>
-                </p>
+                    <DistributionBands
+                        v-if="assignedBands.length"
+                        :bands="assignedBands"
+                        :placed="stats.assigned_distribution.classified"
+                        :selected-id="selectedLevelId"
+                        @select="toggleLevel"
+                    />
+                    <p v-else class="rounded-xl bg-muted/25 py-10 text-center text-sm text-muted-foreground">
+                        A escala desta turma não tem bandas configuradas, por isso não há níveis para distribuir.
+                    </p>
 
-                <!-- ---- a leitura secundária: onde caem as médias ---- -->
-                <div class="mt-5 border-t border-border/60 pt-4">
-                    <button
-                        type="button"
-                        class="flex w-full items-center gap-2 rounded-lg text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                        :aria-expanded="showCalculatedDistribution"
-                        aria-controls="distribuicao-calculada"
-                        @click="showCalculatedDistribution = !showCalculatedDistribution"
+                    <!-- OUTSIDE THE BANDS, AND SAID SO. A student nobody has
+                         graded is not a zero anywhere on this row. -->
+                    <p
+                        v-if="stats.assigned_distribution.without_classification > 0 || stats.assigned_distribution.unplaced > 0"
+                        class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 rounded-xl bg-background/50 px-3.5 py-2.5 text-xs dark:bg-background/25"
                     >
-                        <ChevronRight
-                            aria-hidden="true"
-                            class="size-3.5 shrink-0 text-muted-foreground transition-transform"
-                            :class="showCalculatedDistribution ? 'rotate-90' : ''"
-                        />
-                        <span class="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                            Leitura secundária · onde caem os resultados calculados
+                        <span v-if="stats.assigned_distribution.without_classification > 0" class="flex items-center gap-1.5">
+                            <Minus aria-hidden="true" class="size-3.5 shrink-0 text-muted-foreground/60" />
+                            <span class="text-muted-foreground">Sem classificação atribuída</span>
+                            <strong class="font-semibold tabular-nums">{{ stats.assigned_distribution.without_classification }}</strong>
                         </span>
-                        <span aria-hidden="true" class="ml-2 h-px flex-1 bg-border/70"></span>
-                    </button>
 
-                    <div v-show="showCalculatedDistribution" id="distribuicao-calculada" class="mt-3.5">
-                        <!-- A DIFFERENT QUESTION, AND IT SAYS SO. This bands the
-                             Média Ponderada Acumulada; the row above counts the
-                             grades. They can disagree, and when they do that is
-                             information rather than an error (§7). -->
-                        <p class="mb-3 text-xs leading-relaxed text-muted-foreground">
-                            A menção onde cai a Média Ponderada Acumulada de cada aluno — o que o cálculo
-                            diz, não o que foi atribuído. Serve para ver onde a turma está antes de classificar,
-                            e onde a decisão se afastou do cálculo.
-                        </p>
+                        <span v-if="stats.assigned_distribution.unplaced > 0" class="flex items-center gap-1.5">
+                            <Minus aria-hidden="true" class="size-3.5 shrink-0 text-muted-foreground/60" />
+                            <span class="text-muted-foreground">Classificados sem banda na escala</span>
+                            <strong class="font-semibold tabular-nums">{{ stats.assigned_distribution.unplaced }}</strong>
+                        </span>
+                    </p>
 
-                        <DistributionBands
-                            v-if="distributionBands.length"
-                            :bands="distributionBands"
-                            :placed="placedOnScale"
-                            :selected-id="selectedCalculatedLevelId"
-                            @select="toggleCalculatedLevel"
-                        />
-                        <p v-else class="rounded-xl bg-muted/25 py-8 text-center text-sm text-muted-foreground">
-                            Sem bandas configuradas na escala.
+                    <!-- ---- a leitura secundária: onde caem as médias ---- -->
+                    <div class="mt-5 border-t border-border/60 pt-4">
+                        <button
+                            type="button"
+                            class="flex w-full items-center gap-2 rounded-lg text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                            :aria-expanded="showCalculatedDistribution"
+                            aria-controls="distribuicao-calculada"
+                            @click="showCalculatedDistribution = !showCalculatedDistribution"
+                        >
+                            <ChevronRight
+                                aria-hidden="true"
+                                class="size-3.5 shrink-0 text-muted-foreground transition-transform"
+                                :class="showCalculatedDistribution ? 'rotate-90' : ''"
+                            />
+                            <span class="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                                Leitura secundária · onde caem os resultados calculados
+                            </span>
+                            <span aria-hidden="true" class="ml-2 h-px flex-1 bg-border/70"></span>
+                        </button>
+
+                        <div v-show="showCalculatedDistribution" id="distribuicao-calculada" class="mt-3.5">
+                            <!-- A DIFFERENT QUESTION, AND IT SAYS SO. This bands
+                                 the Média Ponderada Acumulada; the row above
+                                 counts the grades. They can disagree, and when
+                                 they do that is information, not an error. -->
+                            <p class="mb-3 text-xs leading-relaxed text-muted-foreground">
+                                A menção onde cai a Média Ponderada Acumulada de cada aluno — o que o cálculo
+                                diz, não o que foi atribuído.
+                            </p>
+
+                            <DistributionBands
+                                v-if="distributionBands.length"
+                                :bands="distributionBands"
+                                :placed="placedOnScale"
+                                :selected-id="selectedCalculatedLevelId"
+                                @select="toggleCalculatedLevel"
+                            />
+                            <p v-else class="rounded-xl bg-muted/25 py-8 text-center text-sm text-muted-foreground">
+                                Sem bandas configuradas na escala.
+                            </p>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- ============================= O RESULTADO, EM DESTAQUE -->
+            <section
+                class="relative overflow-hidden rounded-[22px] border border-emerald-200/60 bg-gradient-to-r from-emerald-50 via-emerald-50/60 to-teal-50/40 p-5 shadow-sm sm:p-6 dark:border-emerald-900/50 dark:from-emerald-950/40 dark:via-emerald-950/20 dark:to-teal-950/20"
+            >
+                <div class="flex flex-wrap items-center gap-x-8 gap-y-4">
+                    <span
+                        aria-hidden="true"
+                        class="inline-flex size-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-100/80 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                    >
+                        <ChartNoAxesCombined class="size-6" />
+                    </span>
+
+                    <div class="min-w-0">
+                        <p class="text-[3rem] font-semibold leading-none tabular-nums tracking-tight">
+                            {{ pct(readingAverage) }}
                         </p>
+                        <p class="mt-1.5 text-sm font-medium">{{ stats.primary.short_label }}</p>
+                    </div>
+
+                    <p class="max-w-sm text-xs leading-relaxed text-muted-foreground">
+                        <template v-if="usingAccumulated">
+                            É este o resultado que traduz a avaliação contínua até ao momento, e é sobre ele
+                            que a classificação se decide.
+                        </template>
+                        <template v-else>
+                            Leitura isolada: só os elementos realizados neste período.
+                        </template>
+                    </p>
+
+                    <!-- The class's own line through the year, on the figure
+                         that answered at each moment. -->
+                    <div v-if="trendPoints" class="ml-auto shrink-0">
+                        <svg viewBox="0 0 100 44" class="h-12 w-40" role="img" :aria-label="trendSummary">
+                            <polyline
+                                :points="trendPoints"
+                                fill="none"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                class="stroke-emerald-600 dark:stroke-emerald-400"
+                            />
+                            <circle
+                                v-for="(point, index) in primaryTrend"
+                                :key="point.label"
+                                :cx="(index / (primaryTrend.length - 1)) * 100"
+                                :cy="40 - (point.percent / 100) * 36"
+                                r="2.5"
+                                class="fill-emerald-600 dark:fill-emerald-400"
+                            />
+                        </svg>
+                        <p class="mt-1 text-center text-[10px] text-muted-foreground">Ao longo do ano</p>
+                    </div>
+
+                    <!-- The other reading, deliberately small (§23). -->
+                    <div
+                        v-if="stats.primary.has_supplementary"
+                        class="rounded-2xl bg-background/70 px-4 py-3 dark:bg-background/30"
+                    >
+                        <p class="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                            {{ supplementaryLabel }}
+                        </p>
+                        <p class="mt-1 text-xl font-semibold tabular-nums">{{ pct(supplementaryAverage) }}</p>
                     </div>
                 </div>
             </section>
 
-            <!-- ==================== 04 · ONDE A TURMA SE ESPALHA -->
+            <!-- ==================== 05 · ONDE A TURMA SE ESPALHA -->
             <section v-if="spectrum.length" :class="CARD">
                 <SectionHeading
-                    index="04"
+                    index="05"
                     title="Onde a turma se espalha"
                     description="Cada aluno na sua Média Ponderada. Diz se estão juntos ou dispersos, e se a média descreve alguém. Não é uma ordenação."
                 />
@@ -1400,10 +1688,10 @@ const studentRows = computed(() => {
                 />
             </section>
 
-            <!-- ============================ 05 · DIFERENÇAS ENTRE DOMÍNIOS -->
+            <!-- ============================ 06 · DIFERENÇAS ENTRE DOMÍNIOS -->
             <section :class="CARD">
                 <SectionHeading
-                    index="05"
+                    index="06"
                     title="Onde estão as diferenças entre domínios"
                     description="Na ordem do perfil de avaliação, e não por resultado. Escolha um domínio para o seguir na página."
                 >
@@ -1427,10 +1715,10 @@ const studentRows = computed(() => {
                 <DomainBars :bars="domainBars" :selected-id="selectedDomainId" @select="toggleDomain" />
             </section>
 
-            <!-- =========================== 05 · COMO MUDARAM AO LONGO DO ANO -->
+            <!-- =========================== 07 · COMO MUDARAM AO LONGO DO ANO -->
             <section v-if="trendShape !== 'single'" :class="CARD">
                 <SectionHeading
-                    index="06"
+                    index="07"
                     title="Como mudaram ao longo do ano"
                     :description="trendShape === 'slope'
                         ? `Do ${slopeEnds?.from.label} ao ${slopeEnds?.to.label}, cada período por si.`
@@ -1530,12 +1818,12 @@ const studentRows = computed(() => {
                 </div>
             </section>
 
-            <!-- ================================== 07 · O MAPA DA TURMA -->
+            <!-- ================================== 08 · O MAPA DA TURMA -->
             <section :class="CARD">
                 <SectionHeading
-                    index="07"
+                    index="08"
                     title="Mapa da turma"
-                    description="Média de cada aluno em cada domínio, neste período. O valor está sempre escrito — a cor só o reforça."
+                    :description="`${usingAccumulated ? 'Resultado acumulado' : 'Só este período'} de cada aluno em cada domínio. O valor está sempre escrito — a cor só o reforça.`"
                 >
                     <template #aside>
                         <p v-if="selectedLevel" class="text-xs text-muted-foreground">
@@ -1630,7 +1918,7 @@ const studentRows = computed(() => {
                                         ]"
                                         :title="heatCell(student, domain.id)?.mention?.label ?? 'Sem resultado'"
                                     >
-                                        {{ pct(heatCell(student, domain.id)?.weighted_average ?? null) }}
+                                        {{ pct(heatValue(student, domain.id)) }}
                                     </span>
                                 </td>
                                 <td class="px-3 py-1 text-center">
@@ -1681,22 +1969,37 @@ const studentRows = computed(() => {
                     </div>
 
                     <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                        <div class="rounded-xl border border-border p-3">
-                            <p class="text-[11px] uppercase tracking-wider text-muted-foreground">Período</p>
-                            <p class="mt-0.5 text-xl font-semibold tabular-nums">{{ pct(selected.weighted_average) }}</p>
+                        <!-- THE RESULT OF THE MOMENT FIRST, at full size, and
+                             the period's own figure beside it in a quieter box
+                             — so the difference between the two is the first
+                             thing a teacher sees rather than something to work
+                             out (§28). -->
+                        <div
+                            class="rounded-xl border border-violet-200/70 bg-violet-50/60 p-3 dark:border-violet-900/50 dark:bg-violet-950/25"
+                        >
+                            <p class="text-[11px] uppercase tracking-wider text-muted-foreground">
+                                {{ stats.primary.kind === 'accumulated' ? 'Avaliação contínua' : 'Resultado' }}
+                            </p>
+                            <p class="mt-0.5 text-2xl font-semibold tabular-nums">{{ pct(selected.primary_average) }}</p>
+                        </div>
+                        <div v-if="stats.primary.has_supplementary" class="rounded-xl border border-border p-3">
+                            <p class="text-[11px] uppercase tracking-wider text-muted-foreground">
+                                {{ stats.primary.supplementary_label }}
+                            </p>
+                            <p class="mt-0.5 text-xl font-semibold tabular-nums text-muted-foreground">
+                                {{ pct(selected.supplementary_average) }}
+                            </p>
                         </div>
                         <div class="rounded-xl border border-border p-3">
-                            <p class="text-[11px] uppercase tracking-wider text-muted-foreground">Acumulada</p>
-                            <p class="mt-0.5 text-xl font-semibold tabular-nums">{{ pct(selected.accumulated_average) }}</p>
-                        </div>
-                        <div class="rounded-xl border border-border p-3">
-                            <p class="text-[11px] uppercase tracking-wider text-muted-foreground">Evolução</p>
+                            <p class="text-[11px] uppercase tracking-wider text-muted-foreground">
+                                {{ stats.primary.has_supplementary ? 'Evolução contínua' : 'Evolução' }}
+                            </p>
                             <p
                                 class="mt-0.5 text-xl font-semibold tabular-nums"
-                                :class="selected.evolution?.direction === 'up' ? 'text-emerald-600 dark:text-emerald-400'
-                                    : selected.evolution?.direction === 'down' ? 'text-rose-600 dark:text-rose-400' : ''"
+                                :class="studentMovement?.direction === 'up' ? 'text-emerald-600 dark:text-emerald-400'
+                                    : studentMovement?.direction === 'down' ? 'text-rose-600 dark:text-rose-400' : ''"
                             >
-                                {{ selected.evolution ? formatPoints(selected.evolution.points) : '—' }}
+                                {{ studentMovement ? formatPoints(studentMovement.points) : '—' }}
                             </p>
                             <p class="text-[11px] text-muted-foreground">p.p.</p>
                         </div>
@@ -1760,7 +2063,10 @@ const studentRows = computed(() => {
                     </p>
 
                     <section class="mt-6">
-                        <h3 class="mb-3 text-sm font-semibold">Como evoluiu ao longo do ano</h3>
+                        <h3 class="mb-1 text-sm font-semibold">Como evoluiu ao longo do ano</h3>
+                        <p class="mb-3 text-[11px] text-muted-foreground">
+                            O resultado que respondia em cada momento — no 2.º período, o acumulado.
+                        </p>
 
                         <!-- ONE MOMENT IS A NUMBER, NOT A TREND. Two get the
                              two ends stated plainly; three or more get the line
@@ -1780,7 +2086,7 @@ const studentRows = computed(() => {
                                     {{ studentEnds!.from.period_label }}
                                 </p>
                                 <p class="text-xl font-semibold tabular-nums text-muted-foreground">
-                                    {{ pct(studentEnds!.from.weighted_average) }}
+                                    {{ pct(studentEnds!.from.primary_average) }}
                                 </p>
                             </div>
 
@@ -1798,7 +2104,7 @@ const studentRows = computed(() => {
                                     {{ studentEnds!.to.period_label }}
                                 </p>
                                 <p class="text-[1.75rem] font-semibold leading-none tabular-nums tracking-tight">
-                                    {{ pct(studentEnds!.to.weighted_average) }}
+                                    {{ pct(studentEnds!.to.primary_average) }}
                                 </p>
                             </div>
                         </div>
@@ -1810,7 +2116,7 @@ const studentRows = computed(() => {
                                 class="flex items-baseline gap-3 rounded-lg px-2 py-1.5 text-sm odd:bg-muted/25"
                             >
                                 <span class="text-muted-foreground">{{ moment.period_label }}</span>
-                                <span class="ml-auto font-semibold tabular-nums">{{ pct(moment.weighted_average) }}</span>
+                                <span class="ml-auto font-semibold tabular-nums">{{ pct(moment.primary_average) }}</span>
                                 <span
                                     v-if="moment.evolution"
                                     class="w-20 text-right text-xs tabular-nums"
