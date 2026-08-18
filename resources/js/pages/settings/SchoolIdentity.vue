@@ -132,9 +132,14 @@ const logoSrc = computed<string | null>(() => (
                 seus documentos vão usar, mas não a pode alterar.
             </p>
 
-            <div class="grid gap-6 lg:grid-cols-5">
+            <!-- ONE COLUMN, NOT TWO. The settings layout caps its content at
+                 576px, which two columns turn into two unreadable ones — the
+                 preview ended up ~190px wide and broke «Rua Paulo VI» over
+                 three lines. The letterhead sits underneath the form instead,
+                 at the full width it needs. -->
+            <div class="space-y-8">
                 <!-- ------------------------------------------- o formulário -->
-                <form class="space-y-6 lg:col-span-3" @submit.prevent="save">
+                <form class="space-y-6" @submit.prevent="save">
                     <!-- The logo, on its own request. -->
                     <section class="space-y-3">
                         <Label for="logo-input">Logótipo</Label>
@@ -242,7 +247,10 @@ const logoSrc = computed<string | null>(() => (
                             <InputError :message="form.errors.phone" />
                         </div>
 
-                        <div class="grid gap-2">
+                        <!-- Full width: an institutional address does not fit
+                             in half of a 576px column, and neither does its
+                             label. -->
+                        <div class="grid gap-2 sm:col-span-2">
                             <Label for="email">Email institucional</Label>
                             <Input id="email" v-model="form.email" type="email" :disabled="!canEdit" />
                             <InputError :message="form.errors.email" />
@@ -315,55 +323,59 @@ const logoSrc = computed<string | null>(() => (
                 </form>
 
                 <!-- ------------------------------------- a pré-visualização -->
-                <aside class="lg:col-span-2">
-                    <div class="sticky top-4 space-y-3">
-                        <h2 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                            Pré-visualização em documentos
-                        </h2>
+                <!-- ------------------------------------- a pré-visualização -->
+                <aside class="space-y-3 border-t border-border pt-6">
+                    <h2 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        Pré-visualização em documentos
+                    </h2>
 
-                        <!-- Deliberately plain: this is a letterhead, not a
-                             dashboard card. What it shows is exactly what a
-                             document will print, and nothing empty appears. -->
-                        <div class="rounded-xl border border-border bg-card p-5 shadow-sm">
-                            <div class="flex items-start gap-4">
-                                <img
-                                    v-if="logoSrc"
-                                    :src="logoSrc"
-                                    alt=""
-                                    class="size-14 shrink-0 object-contain"
-                                />
+                    <!-- Deliberately plain: this is a letterhead, not a
+                         dashboard card. What it shows is exactly what a
+                         document will print, and nothing empty appears.
 
-                                <div class="min-w-0">
-                                    <p class="font-semibold leading-tight">{{ preview.name }}</p>
-                                    <p
-                                        v-for="line in preview.header_lines"
-                                        :key="line"
-                                        class="mt-0.5 text-xs leading-relaxed text-muted-foreground"
-                                    >
-                                        {{ line }}
-                                    </p>
-                                </div>
+                         `min-w-0` on the text column and `break-words` on the
+                         lines, because an institutional email is one long
+                         unbreakable token and would otherwise push the card
+                         wider than its container. -->
+                    <div class="rounded-xl border border-border bg-card p-5 shadow-sm">
+                        <div class="flex items-start gap-4">
+                            <img
+                                v-if="logoSrc"
+                                :src="logoSrc"
+                                alt=""
+                                class="size-14 shrink-0 object-contain"
+                            />
+
+                            <div class="min-w-0 flex-1">
+                                <p class="font-semibold leading-snug break-words">{{ preview.name }}</p>
+                                <p
+                                    v-for="line in preview.header_lines"
+                                    :key="line"
+                                    class="mt-0.5 text-xs leading-relaxed break-words text-muted-foreground"
+                                >
+                                    {{ line }}
+                                </p>
                             </div>
-
-                            <div class="my-4 h-px bg-border"></div>
-
-                            <p class="text-xs text-muted-foreground">
-                                Relatório de Turma · 7.º A · Português
-                            </p>
-
-                            <p v-if="preview.footer_note" class="mt-4 border-t border-border pt-3 text-[11px] text-muted-foreground">
-                                {{ preview.footer_note }}
-                            </p>
                         </div>
 
-                        <p v-if="!preview.is_configured" class="text-xs text-muted-foreground">
-                            Ainda não configurou a identidade da escola. Enquanto não o fizer, os documentos
-                            usam <strong>{{ organizationName }}</strong>, o nome da sua conta.
+                        <div class="my-4 h-px bg-border"></div>
+
+                        <p class="text-xs text-muted-foreground">
+                            Relatório de Turma · 7.º A · Português
                         </p>
-                        <p v-else class="text-xs text-muted-foreground">
-                            Guardado depois de gravar. Os relatórios e exportações vão usar estes dados.
+
+                        <p v-if="preview.footer_note" class="mt-4 border-t border-border pt-3 text-[11px] break-words text-muted-foreground">
+                            {{ preview.footer_note }}
                         </p>
                     </div>
+
+                    <p v-if="!preview.is_configured" class="text-xs text-muted-foreground">
+                        Ainda não configurou a identidade da escola. Enquanto não o fizer, os documentos
+                        usam <strong>{{ organizationName }}</strong>, o nome da sua conta.
+                    </p>
+                    <p v-else class="text-xs text-muted-foreground">
+                        Atualiza depois de gravar. Os relatórios e exportações vão usar estes dados.
+                    </p>
                 </aside>
             </div>
         </div>
