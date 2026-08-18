@@ -3,13 +3,13 @@ import { Head, Link } from '@inertiajs/vue3';
 import { CircleAlert } from '@lucide/vue';
 import { computed } from 'vue';
 import Heading from '@/components/Heading.vue';
-import FlowRibbons from '@/components/infographic/FlowRibbons.vue';
-import type { Flow } from '@/components/infographic/FlowRibbons.vue';
 import InfographicMetric from '@/components/infographic/InfographicMetric.vue';
+import MovementBoard from '@/components/infographic/MovementBoard.vue';
+import type { CrossingCard, CrossingKey, HeldCard, HeldKey, MovementCard } from '@/components/infographic/MovementBoard.vue';
 import SectionHeading from '@/components/infographic/SectionHeading.vue';
 import Slopegraph from '@/components/infographic/Slopegraph.vue';
 import type { Slope } from '@/components/infographic/Slopegraph.vue';
-import { domainColours, formatPoints, pct, TREND_COLOURS } from '@/lib/chartTheme';
+import { domainColours, formatPoints, formatShare, pct } from '@/lib/chartTheme';
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
 
 /**
@@ -33,6 +33,10 @@ type Comparison = {
     movement: {
         progressed: number; stable: number; regressed: number; no_comparison: number;
         comparable: number; average_change: string | null;
+    };
+    transitions: Record<CrossingKey | HeldKey | 'unclassified' | 'no_comparison' | 'comparable', number> & {
+        percentages: Record<CrossingKey | HeldKey, string | null>;
+        share_of_class: { unclassified: string | null; no_comparison: string | null };
     };
     domains: {
         domain_id: number; label: string;
@@ -100,22 +104,58 @@ const domainSlopes = computed<Slope[]>(() => props.comparison.domains.map((domai
 
 const total = computed(() => props.comparison.students.length);
 
-const flows = computed<Flow[]>(() => {
+/**
+ * The same two readings the class page shows, in the same board.
+ *
+ * A teacher who learnt «passaram a resultado positivo» on Estatística must
+ * find the same words, the same icons and the same grounds here — a second
+ * vocabulary for the same fact is a second thing to learn (§23).
+ */
+const movements = computed<MovementCard[]>(() => {
     const movement = props.comparison.movement;
-    const share = (count: number): number | null => (total.value === 0 ? null : (count / total.value) * 100);
-    const label = (count: number): string => (total.value === 0 ? '—' : `${((count / total.value) * 100).toFixed(1)}%`);
+    const percentage = (count: number): string => (
+        total.value === 0 ? '—' : formatShare((count / total.value) * 100)
+    );
 
     return [
-        { key: 'progressed', label: 'Progrediram', count: movement.progressed, percent: share(movement.progressed), share: label(movement.progressed), colour: TREND_COLOURS.up.border, direction: 'forward' },
-        { key: 'stable', label: 'Mantiveram-se', count: movement.stable, percent: share(movement.stable), share: label(movement.stable), colour: TREND_COLOURS.flat.border, direction: 'none' },
-        { key: 'regressed', label: 'Regrediram', count: movement.regressed, percent: share(movement.regressed), share: label(movement.regressed), colour: TREND_COLOURS.down.border, direction: 'backward' },
+        { key: 'progressed', label: 'Progrediram', count: movement.progressed, share: percentage(movement.progressed) },
+        { key: 'stable', label: 'Mantiveram-se', count: movement.stable, share: percentage(movement.stable) },
+        { key: 'regressed', label: 'Regrediram', count: movement.regressed, share: percentage(movement.regressed) },
+    ];
+});
+
+const crossings = computed<CrossingCard[]>(() => {
+    const transitions = props.comparison.transitions;
+
+    return [
         {
-            key: 'no_comparison', label: 'Sem comparação', count: movement.no_comparison,
-            percent: share(movement.no_comparison), share: label(movement.no_comparison),
-            colour: 'rgb(148,163,184)', direction: 'none',
-            note: movement.no_comparison > 0 ? 'Sem resultado num dos dois momentos — não é manutenção.' : undefined,
+            key: 'failure_to_success',
+            label: 'Passaram a resultado positivo',
+            count: transitions.failure_to_success,
+            share: formatShare(transitions.percentages.failure_to_success),
+        },
+        {
+            key: 'success_to_failure',
+            label: 'Passaram a resultado negativo',
+            count: transitions.success_to_failure,
+            share: formatShare(transitions.percentages.success_to_failure),
         },
     ];
+});
+
+const held = computed<HeldCard[]>(() => [
+    { key: 'success_to_success', label: 'Mantiveram resultado positivo', count: props.comparison.transitions.success_to_success },
+    { key: 'failure_to_failure', label: 'Mantiveram resultado negativo', count: props.comparison.transitions.failure_to_failure },
+]);
+
+const averageDirection = computed<'up' | 'down' | 'flat' | null>(() => {
+    const change = props.comparison.movement.average_change;
+
+    if (change === null) {
+        return null;
+    }
+
+    return Number(change) > 0 ? 'up' : Number(change) < 0 ? 'down' : 'flat';
 });
 
 const finalLabel = computed(() => `Final do ${props.comparison.period.label}`);
@@ -190,9 +230,21 @@ const finalLabel = computed(() => `Final do ${props.comparison.period.label}`);
             <SectionHeading
                 index="02"
                 title="Quem se moveu, e para onde"
-                :description="`Cada aluno de ${comparison.interim.reference_date_label} até ao estado atual do período.`"
+                :description="`Cada aluno de ${comparison.interim.reference_date_label} até ao estado atual do período. Quanto se moveram, e quem mudou de lado da escala.`"
             />
-            <FlowRibbons :flows="flows" :total="total" />
+            <MovementBoard
+                :average-display="formatPoints(comparison.movement.average_change)"
+                :average-direction="averageDirection"
+                :comparable="comparison.movement.comparable"
+                :movements="movements"
+                :crossings="crossings"
+                :held="held"
+                :crossing-comparable="comparison.transitions.comparable"
+                :unclassified="comparison.transitions.unclassified"
+                :no-comparison="comparison.transitions.no_comparison"
+                :interactive="false"
+                movement-caption="com resultado nos dois momentos"
+            />
         </section>
 
         <!-- ============================================ 03 · a turma -->

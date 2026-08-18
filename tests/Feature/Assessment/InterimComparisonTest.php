@@ -8,6 +8,7 @@ use App\Models\Domain;
 use App\Models\InstrumentType;
 use App\Models\InterimAssessment;
 use App\Models\ResultState;
+use App\Models\Scale;
 use App\Models\SchoolClass;
 use App\Models\StudentItemScore;
 use App\Models\User;
@@ -478,5 +479,139 @@ class InterimComparisonTest extends TestCase
             InterimAssessment::CURRENT_VERSION,
             $this->capture('2026-11-15')->snapshot_version,
         );
+    }
+
+    // ---------------------------------- quem mudou de patamar entre os dois
+
+    /** Flips the scale's own statement about a band, live. */
+    private function markBandAsNegative(string $code, bool $negative = true): void
+    {
+        $this->asTenant(fn () => Scale::withoutGlobalScope('scaleVisibility')
+            ->where('name', 'Escala 1 a 5')->firstOrFail()
+            ->levels()->where('code', $code)
+            ->update(['is_negative' => $negative]));
+    }
+
+    #[Test]
+    public function the_comparison_counts_who_changed_side_of_the_scale(): void
+    {
+        $interim = $this->capture('2026-11-15');
+        $this->addLaterInstrument();
+
+        $transitions = $this->compare($interim)['transitions'];
+
+        $this->assertSame(
+            $transitions['failure_to_success'] + $transitions['success_to_failure']
+                + $transitions['success_to_success'] + $transitions['failure_to_failure'],
+            $transitions['comparable'],
+        );
+        $this->assertArrayHasKey('share_of_class', $transitions);
+    }
+
+    #[Test]
+    public function the_interim_side_is_the_band_the_photograph_stored_and_not_todays(): void
+    {
+        $interim = $this->capture('2026-11-15');
+
+        // The scale changes its mind AFTER the photograph. November did not.
+        $this->markBandAsNegative('3');
+        $this->markBandAsNegative('4');
+        $this->markBandAsNegative('5');
+
+        $comparison = $this->compare($interim);
+        $transitions = $comparison['transitions'];
+
+        // Everybody who had a positive mention in the photograph now ends the
+        // period negative — because the scale moved, not because they fell.
+        $this->assertGreaterThan(0, $transitions['success_to_failure']);
+        $this->assertSame(0, $transitions['failure_to_success']);
+
+        foreach ($comparison['students'] as $student) {
+            if ($student['transition'] === 'no_comparison') {
+                continue;
+            }
+
+            $this->assertFalse(
+                $student['interim_band']['is_negative'],
+                'a fotografia guarda a leitura de então e não se reescreve',
+            );
+        }
+    }
+
+    #[Test]
+    public function a_photograph_that_never_recorded_a_side_is_left_unclassified(): void
+    {
+        $interim = $this->capture('2026-11-15');
+
+        // A document written before bands carried this flag. Guessing which
+        // side it was would be inventing history (§24).
+        $this->asTenant(function () use ($interim): void {
+            $snapshot = $interim->snapshot;
+
+            foreach ($snapshot['students'] as $index => $student) {
+                if ($student['band'] !== null) {
+                    unset($snapshot['students'][$index]['band']['is_negative']);
+                }
+            }
+
+            DB::table('interim_assessments')->where('id', $interim->id)->update([
+                'snapshot' => json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'snapshot_hash' => InterimAssessment::hashFor($snapshot),
+            ]);
+        });
+
+        $transitions = $this->compare($interim->fresh())['transitions'];
+
+        $this->assertGreaterThan(0, $transitions['unclassified']);
+        $this->assertSame(0, $transitions['comparable']);
+        $this->assertSame(0, $transitions['success_to_success'], 'não sabemos não é «manteve-se»');
+    }
+
+    #[Test]
+    public function a_student_missing_from_one_end_has_no_transition_to_report(): void
+    {
+        $interim = $this->capture('2026-11-15');
+
+        $comparison = $this->compare($interim);
+
+        foreach ($comparison['students'] as $student) {
+            if ($student['interim_band'] === null || $student['final_band'] === null) {
+                $this->assertSame('no_comparison', $student['transition']);
+            }
+        }
+    }
+
+    #[Test]
+    public function each_students_transition_agrees_with_the_comparisons_counts(): void
+    {
+        $interim = $this->capture('2026-11-15');
+        $this->markBandAsNegative('3');
+
+        $comparison = $this->compare($interim);
+        $counted = [];
+
+        foreach ($comparison['students'] as $student) {
+            $counted[$student['transition']] = ($counted[$student['transition']] ?? 0) + 1;
+        }
+
+        foreach (['failure_to_success', 'success_to_failure', 'success_to_success', 'failure_to_failure', 'unclassified', 'no_comparison'] as $key) {
+            $this->assertSame($counted[$key] ?? 0, $comparison['transitions'][$key], "«{$key}» diverge");
+        }
+    }
+
+    #[Test]
+    public function the_comparison_page_carries_the_transitions(): void
+    {
+        $interim = $this->capture('2026-11-15');
+        $class = $this->schoolClass();
+
+        $this->actingAs($this->teacher)
+            ->get("/classes/{$class->ulid}/avaliacoes-intercalares/{$interim->ulid}/comparar")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->has('comparison.transitions.failure_to_success')
+                ->has('comparison.transitions.success_to_failure')
+                ->has('comparison.transitions.comparable')
+                ->has('comparison.students.0.transition'));
     }
 }

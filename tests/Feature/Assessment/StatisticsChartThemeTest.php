@@ -309,26 +309,131 @@ class StatisticsChartThemeTest extends TestCase
     // a_band_with_nobody_keeps_its_row_and_its_zero above.
 
     #[Test]
-    public function class_movement_is_one_whole_split_into_shares_and_not_a_doughnut(): void
+    public function class_movement_is_a_board_of_figures_and_not_a_bar_or_a_doughnut(): void
     {
         $page = $this->page();
-        $flows = (string) file_get_contents(resource_path('js/components/infographic/FlowRibbons.vue'));
+        $board = $this->board();
 
-        $this->assertStringContainsString('<FlowRibbons', $page);
+        $this->assertStringContainsString('<MovementBoard', $page);
         $this->assertStringNotContainsString("type: 'doughnut'", $page);
 
-        // ONE bar, whose segments are shares of the same whole — so «most went
-        // up» is the shape rather than four lengths to compare against four
-        // different starting points.
-        $this->assertStringContainsString('width: `${segment.percent}%`', $flows);
-        $this->assertStringContainsString('flow.count > 0', $flows);
+        // THE OLD READING IS GONE, not restyled: no segmented bar of the class
+        // and no component drawing one.
+        $this->assertStringNotContainsString('FlowRibbons', $page);
+        $this->assertFileDoesNotExist(resource_path('js/components/infographic/FlowRibbons.vue'));
 
-        // Direction survives without colour: every row carries its own arrow.
-        $this->assertStringContainsString("forward: '↑'", $flows);
-        $this->assertStringContainsString("backward: '↓'", $flows);
+        // Every figure is a numeral and a word. Nothing is encoded as a length,
+        // an angle or a saturation, so the board survives being printed grey.
+        $this->assertStringNotContainsString('width: `${', $board);
+        $this->assertStringContainsString('{{ movement.count }}', $board);
+        $this->assertStringContainsString('{{ movement.share }}', $board);
+        $this->assertStringContainsString('{{ crossing.count }}', $board);
+    }
 
-        // «Sem comparação» keeps its own note: it is not standing still.
-        $this->assertStringContainsString('não é manutenção', $page);
+    #[Test]
+    public function the_board_keeps_moving_and_crossing_as_two_separate_readings(): void
+    {
+        $board = $this->board();
+
+        // Two registers, each with its own heading and its own denominator —
+        // rising six points and crossing the line are different facts.
+        $this->assertStringContainsString('Mudanças de patamar', $board);
+        $this->assertStringContainsString('com dois períodos comparáveis', $board);
+        $this->assertStringContainsString('com menção nos dois momentos', $board);
+    }
+
+    #[Test]
+    public function the_gradients_are_fixed_grounds_and_never_carry_a_value(): void
+    {
+        $board = $this->board();
+
+        // A ground is chosen by CATEGORY and written as a constant. Nothing
+        // interpolates a colour, a stop or an opacity from a figure (§8).
+        $this->assertStringContainsString('bg-gradient-to-br from-emerald-50', $board);
+        $this->assertStringNotContainsString('gradient-to-br from-${', $board);
+        $this->assertDoesNotMatchRegularExpression(
+            '/(from|via|to)-\[.*(count|share|percent|average)/',
+            $board,
+            'um degradé não pode ser calculado a partir de um valor',
+        );
+
+        // And each has a dark twin rather than the same pastel over a dark page.
+        $this->assertStringContainsString('dark:from-emerald-950', $board);
+        $this->assertStringContainsString('dark:from-rose-950', $board);
+    }
+
+    #[Test]
+    public function every_figure_on_the_board_carries_a_word_beside_its_icon(): void
+    {
+        $board = $this->board();
+
+        // Every icon is decoration and says so, so nothing on this board is
+        // announced to a screen reader as a picture of a trend.
+        preg_match_all('/<component\s+:is="(?:HeroIcon|\w+_ICONS)[^>]*>/s', $board, $icons);
+
+        $this->assertNotEmpty($icons[0]);
+
+        foreach ($icons[0] as $icon) {
+            $this->assertStringContainsString('aria-hidden="true"', $icon, "ícone sem aria-hidden: {$icon}");
+        }
+
+        $this->assertStringContainsString('{{ movement.label }}', $board);
+        $this->assertStringContainsString('{{ crossing.label }}', $board);
+        $this->assertStringContainsString('{{ row.label }}', $board);
+    }
+
+    #[Test]
+    public function the_board_honours_a_reader_who_asked_for_less_motion(): void
+    {
+        $board = $this->board();
+
+        $this->assertStringContainsString('prefersReducedMotion()', $board);
+        $this->assertStringContainsString("'duration-0'", $board);
+    }
+
+    #[Test]
+    public function a_card_nobody_is_in_is_not_a_pressable_control(): void
+    {
+        $board = $this->board();
+
+        // Zero is still shown — «ninguém passou» is an answer — but it stops
+        // being a button, because there is nobody to highlight.
+        $this->assertStringContainsString("isSelectable(movement.count) ? 'button' : 'div'", $board);
+        $this->assertStringContainsString("isSelectable(crossing.count) ? 'button' : 'div'", $board);
+        $this->assertStringContainsString('return props.interactive && count > 0;', $board);
+        // Pressed state is announced, not merely drawn.
+        $this->assertStringContainsString(':aria-pressed=', $board);
+    }
+
+    #[Test]
+    public function each_of_the_six_readings_has_a_word_of_its_own(): void
+    {
+        $page = $this->page();
+
+        // Colour distinguishes them at a glance; the words are what actually
+        // carry the meaning, so a reader who cannot tell mint from coral loses
+        // nothing (§27).
+        foreach ([
+            'Progrediram',
+            'Mantiveram-se',
+            'Regrediram',
+            'Passaram a resultado positivo',
+            'Passaram a resultado negativo',
+            'Mantiveram resultado positivo',
+            'Mantiveram resultado negativo',
+        ] as $word) {
+            $this->assertStringContainsString($word, $page, "falta a leitura «{$word}»");
+        }
+
+        // And «sem comparação» keeps its own sentence rather than being folded
+        // into «mantiveram-se».
+        $this->assertStringContainsString('Sem comparação', $this->board());
+        $this->assertStringContainsString('não são «mantiveram-se»', $this->board());
+    }
+
+    private function board(): string
+    {
+        return (string) file_get_contents(resource_path('js/components/infographic/MovementBoard.vue'));
     }
 
     // ------------------------- 0b. profundidade decorativa, nunca quantitativa

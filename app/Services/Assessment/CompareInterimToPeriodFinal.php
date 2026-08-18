@@ -74,6 +74,7 @@ class CompareInterimToPeriodFinal
             ],
             'success' => $this->success($snapshot, $final),
             'movement' => $this->movement($students),
+            'transitions' => $this->transitions($students),
             'domains' => $this->domains($snapshot, $final),
             'students' => $students,
         ];
@@ -211,6 +212,10 @@ class CompareInterimToPeriodFinal
                 'final_band' => $finalStudent['band'] ?? null,
                 'interim_coverage_warning' => (bool) ($interimStudent['coverage_warning'] ?? false),
                 'final_coverage_warning' => (bool) ($finalStudent['coverage_warning'] ?? false),
+                // Crossing the line is not the same as moving: a student can
+                // rise six points without changing side, and fall five while
+                // changing it (§1 of the movement decision).
+                'transition' => $this->transitionOf($interimStudent['band'] ?? null, $finalStudent['band'] ?? null),
                 // Kept apart, as they are everywhere else: a decision, an
                 // answer the student gave, and a calculated mention are three
                 // different statements.
@@ -256,6 +261,93 @@ class CompareInterimToPeriodFinal
         }
 
         return $rows;
+    }
+
+    /**
+     * Who crossed the line between the photograph and the end of the period.
+     *
+     * READ ENTIRELY FROM WHAT WAS ALREADY WRITTEN DOWN. The interim side is the
+     * band the snapshot stored, which carries its own `is_negative` — the
+     * scale's opinion AS IT STOOD when the photograph was taken. Nothing is
+     * re-banded against today's scale, so reconfiguring it next term cannot
+     * rewrite who was failing in November (§24).
+     *
+     * A photograph old enough to have stored no `is_negative` for a band leaves
+     * that student `unclassified`: we know where they were, not which side the
+     * scale then called it, and guessing would be inventing history.
+     *
+     * @param  list<array<string, mixed>>  $students
+     * @return array<string, mixed>
+     */
+    protected function transitions(array $students): array
+    {
+        $counts = [
+            'failure_to_success' => 0,
+            'success_to_failure' => 0,
+            'success_to_success' => 0,
+            'failure_to_failure' => 0,
+            'unclassified' => 0,
+            'no_comparison' => 0,
+        ];
+
+        foreach ($students as $student) {
+            $counts[$student['transition']]++;
+        }
+
+        $comparable = $counts['failure_to_success'] + $counts['success_to_failure']
+            + $counts['success_to_success'] + $counts['failure_to_failure'];
+
+        return [
+            ...$counts,
+            'comparable' => $comparable,
+            'percentages' => [
+                'failure_to_success' => $this->percentage($counts['failure_to_success'], $comparable),
+                'success_to_failure' => $this->percentage($counts['success_to_failure'], $comparable),
+                'success_to_success' => $this->percentage($counts['success_to_success'], $comparable),
+                'failure_to_failure' => $this->percentage($counts['failure_to_failure'], $comparable),
+            ],
+            'share_of_class' => [
+                'unclassified' => $this->percentage($counts['unclassified'], count($students)),
+                'no_comparison' => $this->percentage($counts['no_comparison'], count($students)),
+            ],
+        ];
+    }
+
+    /**
+     * Which side of the scale a student was on at each end.
+     *
+     * @param  array<string, mixed>|null  $from
+     * @param  array<string, mixed>|null  $to
+     */
+    protected function transitionOf(?array $from, ?array $to): string
+    {
+        if ($from === null || $to === null) {
+            return 'no_comparison';
+        }
+
+        // The photograph's own word, and the live one. Either can be silent.
+        $wasNegative = $from['is_negative'] ?? null;
+        $isNegative = $to['is_negative'] ?? null;
+
+        if ($wasNegative === null || $isNegative === null) {
+            return 'unclassified';
+        }
+
+        return match (true) {
+            $wasNegative && ! $isNegative => 'failure_to_success',
+            ! $wasNegative && $isNegative => 'success_to_failure',
+            $wasNegative => 'failure_to_failure',
+            default => 'success_to_success',
+        };
+    }
+
+    protected function percentage(int $count, int $total): ?string
+    {
+        if ($total === 0) {
+            return null;
+        }
+
+        return Bc::round(Bc::mul(Bc::div((string) $count, (string) $total), '100'), self::PRECISION, 'half_up');
     }
 
     /**

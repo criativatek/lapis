@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { CircleAlert, Minus, TrendingDown, TrendingUp, X } from '@lucide/vue';
+import { ArrowDownRight, ArrowUpRight, CircleAlert, Minus, TrendingDown, TrendingUp, X } from '@lucide/vue';
 import type { ChartConfiguration } from 'chart.js';
 import { computed, defineAsyncComponent, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
@@ -10,8 +10,8 @@ import DomainBars from '@/components/infographic/DomainBars.vue';
 import type { DomainBar } from '@/components/infographic/DomainBars.vue';
 import DumbbellRows from '@/components/infographic/DumbbellRows.vue';
 import type { Dumbbell } from '@/components/infographic/DumbbellRows.vue';
-import FlowRibbons from '@/components/infographic/FlowRibbons.vue';
-import type { Flow } from '@/components/infographic/FlowRibbons.vue';
+import MovementBoard from '@/components/infographic/MovementBoard.vue';
+import type { CrossingCard, CrossingKey, HeldCard, HeldKey, MovementCard } from '@/components/infographic/MovementBoard.vue';
 import SectionHeading from '@/components/infographic/SectionHeading.vue';
 import StatGauge from '@/components/infographic/StatGauge.vue';
 import StudentSpectrum from '@/components/infographic/StudentSpectrum.vue';
@@ -31,7 +31,6 @@ import {
     prefersReducedMotion,
     students as studentsWord,
     TONE_COLOURS,
-    TREND_COLOURS,
 } from '@/lib/chartTheme';
 import type { TooltipContent } from '@/lib/chartTheme';
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
@@ -70,6 +69,15 @@ type Student = {
         coverage_warning: boolean; evolution: Evolution;
         domains: { domain_id: number; weighted_average: string | null; mention: Band }[];
     }[];
+    /** Which side of the scale they were on, and are on now. */
+    transition: TransitionKey;
+};
+
+type TransitionKey = CrossingKey | HeldKey | 'unclassified' | 'no_comparison';
+
+type Transitions = Record<CrossingKey | HeldKey | 'unclassified' | 'no_comparison' | 'comparable', number> & {
+    percentages: Record<CrossingKey | HeldKey, string | null>;
+    share_of_class: { unclassified: string | null; no_comparison: string | null };
 };
 
 type DomainStatistic = {
@@ -97,6 +105,7 @@ type Statistics = {
         progressed: number; stable: number; regressed: number; no_comparison: number;
         comparable: number; average_change: string | null;
         percentages: { progressed: string | null; stable: string | null; regressed: string | null; no_comparison: string | null };
+        transitions: Transitions;
     };
     distribution: (NonNullable<Band> & { count: number; percentage: string | null })[];
     domain_statistics: DomainStatistic[];
@@ -252,21 +261,45 @@ function goToPeriod(ulid: string): void {
  */
 const selectedDomainId = ref<number | null>(null);
 const selectedLevelId = ref<number | null>(null);
+/** «progressed», «failure_to_success» — a group from the movement board. */
+const selectedGroup = ref<string | null>(null);
 
 function toggleDomain(domainId: number): void {
     selectedLevelId.value = null;
+    selectedGroup.value = null;
     selectedDomainId.value = selectedDomainId.value === domainId ? null : domainId;
 }
 
 function toggleLevel(levelId: number): void {
     selectedDomainId.value = null;
+    selectedGroup.value = null;
     selectedLevelId.value = selectedLevelId.value === levelId ? null : levelId;
+}
+
+function toggleGroup(key: string): void {
+    selectedDomainId.value = null;
+    selectedLevelId.value = null;
+    selectedGroup.value = selectedGroup.value === key ? null : key;
 }
 
 function clearSelection(): void {
     selectedDomainId.value = null;
     selectedLevelId.value = null;
+    selectedGroup.value = null;
 }
+
+/** The words the chip and the map caption use for a chosen group. */
+const GROUP_LABELS: Record<string, string> = {
+    progressed: 'Progrediram',
+    stable: 'Mantiveram-se',
+    regressed: 'Regrediram',
+    failure_to_success: 'Passaram a resultado positivo',
+    success_to_failure: 'Passaram a resultado negativo',
+};
+
+const selectedGroupLabel = computed<string | null>(() => (
+    selectedGroup.value === null ? null : GROUP_LABELS[selectedGroup.value] ?? null
+));
 
 const selectedDomain = computed(() => stats.value.domains.find((domain) => domain.id === selectedDomainId.value) ?? null);
 const selectedLevel = computed(() => stats.value.distribution.find((band) => band.scale_level_id === selectedLevelId.value) ?? null);
@@ -276,8 +309,20 @@ function isLit(domainId: number): boolean {
     return selectedDomainId.value === null || selectedDomainId.value === domainId;
 }
 
-/** The students of the chosen band — highlighted, never hidden. */
+/**
+ * The students the current selection points at — highlighted, never hidden.
+ *
+ * A band and a movement group are asked of the same student in the same way, so
+ * the map and the spectrum both dim by one rule instead of two.
+ */
 function matchesLevel(student: Student): boolean {
+    if (selectedGroup.value !== null) {
+        return student.transition === selectedGroup.value
+            || (selectedGroup.value === 'progressed' && student.evolution?.direction === 'up')
+            || (selectedGroup.value === 'stable' && student.evolution?.direction === 'flat')
+            || (selectedGroup.value === 'regressed' && student.evolution?.direction === 'down');
+    }
+
     return selectedLevelId.value === null || student.band?.scale_level_id === selectedLevelId.value;
 }
 
@@ -348,37 +393,72 @@ const domainDumbbells = computed<Dumbbell[]>(() => {
 });
 
 
-/** Movement across the class, as proportional arrows rather than as a donut. */
-const flows = computed<Flow[]>(() => {
+// ------------------------------------------------ movimento e patamar
+
+/**
+ * TWO READINGS, KEPT APART ON PURPOSE.
+ *
+ * `movements` counts who went up, held or came down — the standalone result of
+ * this period against the standalone result of the last. `crossings` counts who
+ * changed SIDE of the scale, read on the accumulated figure because that is
+ * what carries a mention. A student can appear in «progrediram» and in
+ * «mantiveram positivo» at once, and that is not a contradiction: they are
+ * answers to different questions and the board says which is which.
+ *
+ * Everything here is relabelling. The counts, the shares and the grouping were
+ * all decided by the read model, which decided them from the scale.
+ */
+const movements = computed<MovementCard[]>(() => {
     const evolution = stats.value.evolution;
-    const total = stats.value.summary.students_total;
-    const share = (count: number): number | null => (total === 0 ? null : (count / total) * 100);
+
+    return [
+        { key: 'progressed', label: 'Progrediram', count: evolution.progressed, share: formatShare(evolution.percentages.progressed) },
+        { key: 'stable', label: 'Mantiveram-se', count: evolution.stable, share: formatShare(evolution.percentages.stable) },
+        { key: 'regressed', label: 'Regrediram', count: evolution.regressed, share: formatShare(evolution.percentages.regressed) },
+    ];
+});
+
+/**
+ * «Positivo» and «negativo» rather than «sucesso» and «insucesso»: it is the
+ * word the scale's own bands are described by everywhere else in LÁPIS, and a
+ * mention is what a teacher writes on a pauta.
+ */
+const crossings = computed<CrossingCard[]>(() => {
+    const transitions = stats.value.evolution.transitions;
 
     return [
         {
-            key: 'progressed', label: 'Progrediram', count: evolution.progressed,
-            percent: share(evolution.progressed), share: formatShare(evolution.percentages.progressed),
-            colour: TREND_COLOURS.up.border, direction: 'forward',
+            key: 'failure_to_success',
+            label: 'Passaram a resultado positivo',
+            count: transitions.failure_to_success,
+            share: formatShare(transitions.percentages.failure_to_success),
         },
         {
-            key: 'stable', label: 'Mantiveram-se', count: evolution.stable,
-            percent: share(evolution.stable), share: formatShare(evolution.percentages.stable),
-            colour: TREND_COLOURS.flat.border, direction: 'none',
-        },
-        {
-            key: 'regressed', label: 'Regrediram', count: evolution.regressed,
-            percent: share(evolution.regressed), share: formatShare(evolution.percentages.regressed),
-            colour: TREND_COLOURS.down.border, direction: 'backward',
-        },
-        {
-            key: 'no_comparison', label: 'Sem comparação', count: evolution.no_comparison,
-            percent: share(evolution.no_comparison), share: formatShare(evolution.percentages.no_comparison),
-            colour: 'rgb(148,163,184)', direction: 'none',
-            note: evolution.no_comparison > 0
-                ? 'Sem período anterior comparável — não é manutenção.'
-                : undefined,
+            key: 'success_to_failure',
+            label: 'Passaram a resultado negativo',
+            count: transitions.success_to_failure,
+            share: formatShare(transitions.percentages.success_to_failure),
         },
     ];
+});
+
+const held = computed<HeldCard[]>(() => {
+    const transitions = stats.value.evolution.transitions;
+
+    return [
+        { key: 'success_to_success', label: 'Mantiveram resultado positivo', count: transitions.success_to_success },
+        { key: 'failure_to_failure', label: 'Mantiveram resultado negativo', count: transitions.failure_to_failure },
+    ];
+});
+
+const averageDirection = computed<'up' | 'down' | 'flat' | null>(() => {
+    const change = stats.value.evolution.average_change;
+
+    if (change === null) {
+        return null;
+    }
+
+    return Number(change) > 0 ? 'up' : Number(change) < 0 ? 'down' : 'flat';
 });
 
 
@@ -1000,7 +1080,7 @@ const studentRows = computed(() => {
                 enter-to-class="opacity-100 translate-y-0"
             >
                 <div
-                    v-if="selectedDomain || selectedLevel"
+                    v-if="selectedDomain || selectedLevel || selectedGroupLabel"
                     class="flex flex-wrap items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm"
                     role="status"
                 >
@@ -1013,6 +1093,11 @@ const studentRows = computed(() => {
 
                     <span v-if="selectedLevel" class="inline-flex items-center gap-2 rounded-full bg-background px-3 py-1 font-medium shadow-sm">
                         {{ selectedLevel.code }} · {{ selectedLevel.label }}
+                        <span class="text-muted-foreground">{{ studentsWord(highlightedStudents) }}</span>
+                    </span>
+
+                    <span v-if="selectedGroupLabel" class="inline-flex items-center gap-2 rounded-full bg-background px-3 py-1 font-medium shadow-sm">
+                        {{ selectedGroupLabel }}
                         <span class="text-muted-foreground">{{ studentsWord(highlightedStudents) }}</span>
                     </span>
 
@@ -1118,66 +1203,59 @@ const studentRows = computed(() => {
                 </section>
             </div>
 
-            <!-- ============ 02 · DISTRIBUIÇÃO + EVOLUÇÃO, LADO A LADO -->
-            <div class="grid gap-4 lg:grid-cols-5">
-                <section :class="[card('sky'), 'p-5 lg:col-span-3']">
-                    <SectionHeading
-                        index="02"
-                        title="Como se distribuem os resultados"
-                        :description="`Menção de cada aluno${schoolClass.scale_name ? `, na escala «${schoolClass.scale_name}»` : ''}. Escolha uma banda para a seguir no mapa.`"
-                    />
+            <!-- ============================ 02 · COMO EVOLUIU A TURMA -->
+            <section :class="[card('plain'), 'rounded-[22px] p-5 sm:p-6']">
+                <SectionHeading
+                    index="02"
+                    title="Como evoluiu a turma"
+                    :description="hasComparison
+                        ? `Face a ${stats.previous_period?.label}. Quanto se moveram os resultados, e quem mudou de lado da escala — duas leituras diferentes.`
+                        : 'Ainda não há período anterior para comparar.'"
+                />
 
-                    <DistributionBands
-                        v-if="distributionBands.length"
-                        :bands="distributionBands"
-                        :placed="placedOnScale"
-                        :selected-id="selectedLevelId"
-                        @select="toggleLevel"
-                    />
-                    <p v-else class="rounded-xl bg-muted/25 py-10 text-center text-sm text-muted-foreground">
-                        A escala desta turma não tem bandas configuradas, por isso não há menções para distribuir.
+                <MovementBoard
+                    v-if="hasComparison"
+                    :average-display="formatPoints(stats.evolution.average_change)"
+                    :average-direction="averageDirection"
+                    :comparable="stats.evolution.comparable"
+                    :movements="movements"
+                    :crossings="crossings"
+                    :held="held"
+                    :crossing-comparable="stats.evolution.transitions.comparable"
+                    :unclassified="stats.evolution.transitions.unclassified"
+                    :no-comparison="stats.evolution.transitions.no_comparison"
+                    :selected="selectedGroup"
+                    @select="toggleGroup"
+                />
+
+                <div v-else class="flex flex-col items-center justify-center rounded-xl bg-muted/25 px-6 py-12 text-center">
+                    <Minus class="size-5 text-muted-foreground/60" />
+                    <p class="mt-3 text-sm font-medium">Sem comparação possível</p>
+                    <p class="mt-1 text-xs text-muted-foreground">
+                        Aparece aqui quando existir um segundo momento de avaliação.
                     </p>
-                </section>
+                </div>
+            </section>
 
-                <section :class="[card('rose'), 'p-5 lg:col-span-2']">
-                    <SectionHeading
-                        index="03"
-                        title="Como evoluiu a turma"
-                        :description="hasComparison
-                            ? `Face a ${stats.previous_period?.label}, resultado isolado contra resultado isolado.`
-                            : 'Ainda não há período anterior para comparar.'"
-                    />
+            <!-- ======================= 03 · DISTRIBUIÇÃO PELA ESCALA -->
+            <section :class="[card('sky'), 'p-5']">
+                <SectionHeading
+                    index="03"
+                    title="Como se distribuem os resultados"
+                    :description="`Menção de cada aluno${schoolClass.scale_name ? `, na escala «${schoolClass.scale_name}»` : ''}. Escolha uma banda para a seguir no mapa.`"
+                />
 
-                    <template v-if="hasComparison">
-                        <!-- The headline first, at full size: it is the answer,
-                             and the four rows underneath are the detail. -->
-                        <div class="mb-4 rounded-xl bg-muted/30 px-4 py-3">
-                            <p class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Evolução média</p>
-                            <p
-                                class="mt-1 text-[2.25rem] font-semibold leading-none tabular-nums tracking-tight"
-                                :class="Number(stats.evolution.average_change) > 0 ? 'text-emerald-600 dark:text-emerald-400'
-                                    : Number(stats.evolution.average_change) < 0 ? 'text-rose-600 dark:text-rose-400' : ''"
-                            >
-                                {{ formatPoints(stats.evolution.average_change) }}
-                                <span class="text-base font-normal text-muted-foreground">p.p.</span>
-                            </p>
-                            <p class="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-                                Sobre os {{ studentsWord(stats.evolution.comparable) }} com dois períodos comparáveis.
-                            </p>
-                        </div>
-
-                        <FlowRibbons :flows="flows" :total="stats.summary.students_total" />
-                    </template>
-
-                    <div v-else class="flex flex-col items-center justify-center rounded-xl bg-muted/25 px-6 py-10 text-center">
-                        <Minus class="size-5 text-muted-foreground/60" />
-                        <p class="mt-3 text-sm font-medium">Sem comparação possível</p>
-                        <p class="mt-1 text-xs text-muted-foreground">
-                            Aparece aqui quando existir um segundo momento de avaliação.
-                        </p>
-                    </div>
-                </section>
-            </div>
+                <DistributionBands
+                    v-if="distributionBands.length"
+                    :bands="distributionBands"
+                    :placed="placedOnScale"
+                    :selected-id="selectedLevelId"
+                    @select="toggleLevel"
+                />
+                <p v-else class="rounded-xl bg-muted/25 py-10 text-center text-sm text-muted-foreground">
+                    A escala desta turma não tem bandas configuradas, por isso não há menções para distribuir.
+                </p>
+            </section>
 
             <!-- ==================== 04 · ONDE A TURMA SE ESPALHA -->
             <section v-if="spectrum.length" :class="CARD">
@@ -1525,6 +1603,30 @@ const studentRows = computed(() => {
                             O detalhe está em Resultados, no aviso do próprio aluno.
                         </span>
                         <span v-else>Ainda não há elementos avaliados que produzam um resultado neste período.</span>
+                    </p>
+
+                    <!-- CROSSING THE LINE IS SAID OUT LOUD, and only when it
+                         happened. The same iconography and the same words the
+                         class board uses, so «passou a positivo» means one thing
+                         on this page (§22). -->
+                    <p
+                        v-if="selected.transition === 'failure_to_success' || selected.transition === 'success_to_failure'"
+                        class="mt-3 flex items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-sm font-medium"
+                        :class="selected.transition === 'failure_to_success'
+                            ? 'border-emerald-200/70 bg-gradient-to-br from-emerald-50 via-teal-50 to-emerald-100/80 text-emerald-800 dark:border-emerald-800/50 dark:from-emerald-950/55 dark:via-teal-950/35 dark:to-emerald-900/30 dark:text-emerald-200'
+                            : 'border-rose-200/70 bg-gradient-to-br from-rose-50 via-orange-50/70 to-rose-100/70 text-rose-800 dark:border-rose-800/50 dark:from-rose-950/55 dark:via-orange-950/30 dark:to-rose-900/30 dark:text-rose-200'"
+                    >
+                        <component
+                            :is="selected.transition === 'failure_to_success' ? ArrowUpRight : ArrowDownRight"
+                            aria-hidden="true"
+                            class="size-4 shrink-0"
+                        />
+                        <span v-if="selected.transition === 'failure_to_success'">
+                            Passou de resultado negativo para positivo face a {{ stats.previous_period?.label }}.
+                        </span>
+                        <span v-else>
+                            Passou de resultado positivo para negativo face a {{ stats.previous_period?.label }}.
+                        </span>
                     </p>
 
                     <section class="mt-6">

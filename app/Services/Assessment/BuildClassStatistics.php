@@ -68,18 +68,24 @@ class BuildClassStatistics
         $scale = $class->profileVersion?->scale()->with('levels')->first();
         $rows = $this->rowsFor($students, $selected['id']);
 
+        $previous = $this->previousPeriod($periods, $selected['id']);
+        // The same students, read at the period before — so a change of side on
+        // the scale can be seen at all. Another reshaping of what is already in
+        // hand, not another read.
+        $previousRows = $previous === null ? [] : $this->rowsFor($students, $previous['id']);
+
         return [
             'periods' => $periods,
             'selected_period' => $selected,
-            'previous_period' => $this->previousPeriod($periods, $selected['id']),
+            'previous_period' => $previous,
             'domains' => $domains,
             'scale' => $this->scalePayload($scale),
             'summary' => $this->summary($rows, $scale),
-            'evolution' => $this->evolution($rows),
+            'evolution' => $this->evolution($rows, $previousRows, $scale),
             'distribution' => $this->distribution($rows, $scale),
             'domain_statistics' => $this->domainStatistics($rows, $domains, $scale),
             'period_series' => $this->periodSeries($students, $periods, $domains),
-            'students' => $this->students($rows, $scale, $students),
+            'students' => $this->students($rows, $scale, $students, $previousRows),
         ];
     }
 
@@ -291,9 +297,10 @@ class BuildClassStatistics
      * (§37).
      *
      * @param  list<array<string, mixed>>  $rows
+     * @param  list<array<string, mixed>>  $previousRows
      * @return array<string, mixed>
      */
-    protected function evolution(array $rows): array
+    protected function evolution(array $rows, array $previousRows = [], ?Scale $scale = null): array
     {
         $counts = ['progressed' => 0, 'stable' => 0, 'regressed' => 0, 'no_comparison' => 0];
         $changes = [];
@@ -331,7 +338,111 @@ class BuildClassStatistics
                 'regressed' => $this->percentage($counts['regressed'], count($rows)),
                 'no_comparison' => $this->percentage($counts['no_comparison'], count($rows)),
             ],
+            'transitions' => $this->transitions($rows, $previousRows, $scale),
         ];
+    }
+
+    /**
+     * Who changed SIDE of the scale, which is not the same as who moved.
+     *
+     * A student going from 62% to 68% progressed and stayed exactly where they
+     * were pedagogically; one going from 48% to 53% crossed the line the school
+     * actually cares about. The two readings answer different questions and the
+     * section shows both rather than letting one stand for the other.
+     *
+     * THE SIDE IS THE SCALE'S OWN, through the same band the success rate and
+     * the Quadro Síntese place — `is_negative` on the band of the ACCUMULATED
+     * figure, at both ends. There is no second engine for positive/negative
+     * here and no threshold written anywhere in this file (§2, §4).
+     *
+     * THE MOVEMENT ABOVE READS THE STANDALONE FIGURE AND THIS READS THE
+     * ACCUMULATED ONE, deliberately: movement asks «did this period go better
+     * than the last», and a mention is placed on the accumulated result, so a
+     * change of mention has to be read on the figure that carries it. The two
+     * denominators are stated separately for exactly that reason.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @param  list<array<string, mixed>>  $previousRows
+     * @return array<string, mixed>
+     */
+    protected function transitions(array $rows, array $previousRows, ?Scale $scale): array
+    {
+        $before = [];
+
+        foreach ($previousRows as $row) {
+            $before[(int) $row['enrollment_id']] = $row;
+        }
+
+        $counts = [
+            'failure_to_success' => 0,
+            'success_to_failure' => 0,
+            'success_to_success' => 0,
+            'failure_to_failure' => 0,
+            'unclassified' => 0,
+            'no_comparison' => 0,
+        ];
+
+        foreach ($rows as $row) {
+            $counts[$this->transitionOf($row, $before[(int) $row['enrollment_id']] ?? null, $scale)]++;
+        }
+
+        // THE DENOMINATOR IS THE FOUR TRANSITIONS AND NOTHING ELSE. A student
+        // the scale cannot place, or who has nothing to be compared against,
+        // did not «stay» anywhere — folding them in would answer a question
+        // nobody asked the scale (§3).
+        $comparable = $counts['failure_to_success'] + $counts['success_to_failure']
+            + $counts['success_to_success'] + $counts['failure_to_failure'];
+
+        return [
+            ...$counts,
+            'comparable' => $comparable,
+            'percentages' => [
+                'failure_to_success' => $this->percentage($counts['failure_to_success'], $comparable),
+                'success_to_failure' => $this->percentage($counts['success_to_failure'], $comparable),
+                'success_to_success' => $this->percentage($counts['success_to_success'], $comparable),
+                'failure_to_failure' => $this->percentage($counts['failure_to_failure'], $comparable),
+            ],
+            // These two sit OUTSIDE that denominator, so their share is of the
+            // class — said in its own key rather than mixed into the one above.
+            'share_of_class' => [
+                'unclassified' => $this->percentage($counts['unclassified'], count($rows)),
+                'no_comparison' => $this->percentage($counts['no_comparison'], count($rows)),
+            ],
+        ];
+    }
+
+    /**
+     * Which side of the scale a student was on, and which side they are on now.
+     *
+     * @param  array<string, mixed>  $row
+     * @param  array<string, mixed>|null  $previousRow
+     */
+    protected function transitionOf(array $row, ?array $previousRow, ?Scale $scale): string
+    {
+        // NO RESULT AT EITHER END IS «NOTHING TO COMPARE», never «unclassified»
+        // and never a fall. This has to be asked BEFORE the band, because a
+        // missing value has no band either and the two mean different things.
+        if ($previousRow === null
+            || ($previousRow['period']['accumulated_average'] ?? null) === null
+            || ($row['period']['accumulated_average'] ?? null) === null) {
+            return 'no_comparison';
+        }
+
+        $from = $this->bandOf($previousRow, $scale);
+        $to = $this->bandOf($row, $scale);
+
+        // Both ends have a figure, but the scale places no band on one of them
+        // and so has no opinion about which side it is.
+        if ($from === null || $to === null) {
+            return 'unclassified';
+        }
+
+        return match (true) {
+            $from->is_negative && ! $to->is_negative => 'failure_to_success',
+            ! $from->is_negative && $to->is_negative => 'success_to_failure',
+            $from->is_negative => 'failure_to_failure',
+            default => 'success_to_success',
+        };
     }
 
     /**
@@ -539,9 +650,10 @@ class BuildClassStatistics
      *
      * @param  list<array<string, mixed>>  $rows
      * @param  list<array<string, mixed>>  $progressionStudents
+     * @param  list<array<string, mixed>>  $previousRows
      * @return list<array<string, mixed>>
      */
-    protected function students(array $rows, ?Scale $scale, array $progressionStudents = []): array
+    protected function students(array $rows, ?Scale $scale, array $progressionStudents = [], array $previousRows = []): array
     {
         // Each student's own line through the year, lifted whole from the
         // progression: their period figures, their movement and their domains,
@@ -565,6 +677,12 @@ class BuildClassStatistics
             ], $student['periods']);
         }
 
+        $before = [];
+
+        foreach ($previousRows as $row) {
+            $before[(int) $row['enrollment_id']] = $row;
+        }
+
         $students = [];
 
         foreach ($rows as $row) {
@@ -584,6 +702,10 @@ class BuildClassStatistics
                 'classification' => $period['classification'] ?? null,
                 // Their whole year, for the individual panel (§3, §5).
                 'series' => $series[$row['enrollment_id']] ?? [],
+                // Which side of the scale they were on and are on now — the
+                // same word the class counts are grouped by, so a card and a
+                // student can never disagree about who crossed.
+                'transition' => $this->transitionOf($row, $before[(int) $row['enrollment_id']] ?? null, $scale),
             ];
         }
 
@@ -782,6 +904,16 @@ class BuildClassStatistics
                 'progressed' => 0, 'stable' => 0, 'regressed' => 0, 'no_comparison' => 0,
                 'comparable' => 0, 'average_change' => null,
                 'percentages' => ['progressed' => null, 'stable' => null, 'regressed' => null, 'no_comparison' => null],
+                'transitions' => [
+                    'failure_to_success' => 0, 'success_to_failure' => 0,
+                    'success_to_success' => 0, 'failure_to_failure' => 0,
+                    'unclassified' => 0, 'no_comparison' => 0, 'comparable' => 0,
+                    'percentages' => [
+                        'failure_to_success' => null, 'success_to_failure' => null,
+                        'success_to_success' => null, 'failure_to_failure' => null,
+                    ],
+                    'share_of_class' => ['unclassified' => null, 'no_comparison' => null],
+                ],
             ],
             'distribution' => [],
             'domain_statistics' => [],
