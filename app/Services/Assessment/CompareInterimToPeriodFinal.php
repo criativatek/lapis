@@ -40,7 +40,10 @@ class CompareInterimToPeriodFinal
      */
     public const OFFICIAL_RATE_FROM_VERSION = 3;
 
-    public function __construct(protected BuildClassStatistics $statistics) {}
+    public function __construct(
+        protected BuildClassStatistics $statistics,
+        protected PrimaryResultScope $scope,
+    ) {}
 
     /**
      * @return array<string, mixed>
@@ -53,7 +56,17 @@ class CompareInterimToPeriodFinal
         // everything that counts.
         $final = $this->statistics->for($class, $interim->academicPeriod);
 
-        $students = $this->students($snapshot, $final);
+        // WHICH PAIR OF FIGURES THIS COMPARISON IS ABOUT. The same rule
+        // Estatística opens on, asked of the period the photograph belongs to:
+        // where the profile defines continuity, the comparison is about the
+        // accumulated result at both ends, and the period's own work is the
+        // supplementary reading (§1, §23).
+        //
+        // Choosing is not computing. Both figures were already inside the
+        // photograph; nothing academic is recalculated to answer this.
+        $kind = $this->scope->forPeriod($class, $interim->academicPeriod);
+
+        $students = $this->students($snapshot, $final, $kind);
 
         return [
             'interim' => [
@@ -70,12 +83,19 @@ class CompareInterimToPeriodFinal
             ],
             'is_final_still_open' => true,
             'summary' => [
-                'interim_average' => $snapshot['summary']['class_average'] ?? null,
-                'final_average' => $final['summary']['class_average'] ?? null,
-                'change' => $this->change(
-                    $snapshot['summary']['class_average'] ?? null,
-                    $final['summary']['class_average'] ?? null,
+                'primary' => $this->reading(
+                    $kind,
+                    $snapshot['summary'] ?? [],
+                    $final['summary'] ?? [],
+                    'class_average',
+                    'accumulated_average',
                 ),
+                // Null at the first moment of the year: the two figures would
+                // be the same number, and showing both would invent a
+                // distinction the data does not have (§16).
+                'supplementary' => $kind === 'accumulated'
+                    ? $this->reading('period', $snapshot['summary'] ?? [], $final['summary'] ?? [], 'class_average', 'accumulated_average')
+                    : null,
                 'interim_students_with_result' => $snapshot['summary']['students_with_result'] ?? 0,
                 'final_students_with_result' => $final['summary']['students_with_result'] ?? 0,
             ],
@@ -83,8 +103,46 @@ class CompareInterimToPeriodFinal
             'movement' => $this->movement($students),
             'transitions' => $this->transitions($students),
             'assigned_distribution' => $this->assignedDistributions($snapshot, $final),
-            'domains' => $this->domains($snapshot, $final),
+            'domains' => $this->domains($snapshot, $final, $kind),
             'students' => $students,
+        ];
+    }
+
+    /**
+     * One reading, at both ends, with the difference between them.
+     *
+     * THE SNAPSHOT IS ASKED FOR A NUMBER IT ALREADY HAS. A photograph old
+     * enough not to have recorded the accumulated figure says so with nulls
+     * rather than being handed today's — «não disponível nesta fotografia» and
+     * «não mudou» are different sentences, and rebuilding the past from the
+     * present is the one thing this whole feature exists to avoid (§5).
+     *
+     * @param  array<string, mixed>  $interim
+     * @param  array<string, mixed>  $final
+     * @return array<string, mixed>
+     */
+    protected function reading(string $kind, array $interim, array $final, string $periodKey, string $accumulatedKey): array
+    {
+        $key = $kind === 'accumulated' ? $accumulatedKey : $periodKey;
+        $continuous = $kind === 'accumulated';
+
+        $before = $interim[$key] ?? null;
+        $after = $final[$key] ?? null;
+
+        return [
+            'kind' => $kind,
+            'label' => $continuous ? 'Avaliação contínua' : 'Desempenho no período',
+            'caption' => $continuous
+                ? 'Resultado acumulado num momento e no outro'
+                : 'Só os elementos realizados neste período',
+            'interim_value' => $before,
+            'final_value' => $after,
+            'change' => $this->change($before, $after),
+            'direction' => $this->direction($before, $after),
+            // A photograph that never stored this figure cannot be asked for
+            // it. Note the key EXISTING with a null value is a different fact:
+            // that is «ninguém tinha resultado», which is a real answer.
+            'is_available' => array_key_exists($key, $interim),
         ];
     }
 
@@ -140,7 +198,7 @@ class CompareInterimToPeriodFinal
      * @param  array<string, mixed>  $final
      * @return list<array<string, mixed>>
      */
-    protected function domains(array $snapshot, array $final): array
+    protected function domains(array $snapshot, array $final, string $kind): array
     {
         $finalByDomain = [];
 
@@ -159,9 +217,14 @@ class CompareInterimToPeriodFinal
                 'domain_id' => $domainId,
                 // Historical words first: this is a reading of the past.
                 'label' => $interimDomain['label'],
-                'interim_average' => $interimDomain['period_average'],
-                'final_average' => $finalDomain['period_average'] ?? null,
-                'change' => $this->change($interimDomain['period_average'], $finalDomain['period_average'] ?? null),
+                // The same rule as the class figure, applied per domain: where
+                // the profile defines continuity, the domain's accumulated
+                // reading is the one compared and its period figure sits
+                // beside it (§8).
+                'primary' => $this->reading($kind, $interimDomain, $finalDomain ?? [], 'period_average', 'accumulated_average'),
+                'supplementary' => $kind === 'accumulated'
+                    ? $this->reading('period', $interimDomain, $finalDomain ?? [], 'period_average', 'accumulated_average')
+                    : null,
                 'interim_mention' => $interimDomain['qualitative_band'] ?? null,
                 'final_mention' => $finalDomain['qualitative_band'] ?? null,
                 'interim_partial_coverage' => (int) ($interimDomain['partial_coverage_count'] ?? 0),
@@ -177,9 +240,10 @@ class CompareInterimToPeriodFinal
             $rows[] = [
                 'domain_id' => (int) $domainId,
                 'label' => $finalDomain['label'],
-                'interim_average' => null,
-                'final_average' => $finalDomain['period_average'],
-                'change' => null,
+                'primary' => $this->reading($kind, [], $finalDomain, 'period_average', 'accumulated_average'),
+                'supplementary' => $kind === 'accumulated'
+                    ? $this->reading('period', [], $finalDomain, 'period_average', 'accumulated_average')
+                    : null,
                 'interim_mention' => null,
                 'final_mention' => $finalDomain['qualitative_band'] ?? null,
                 'interim_partial_coverage' => 0,
@@ -198,7 +262,7 @@ class CompareInterimToPeriodFinal
      * @param  array<string, mixed>  $final
      * @return list<array<string, mixed>>
      */
-    protected function students(array $snapshot, array $final): array
+    protected function students(array $snapshot, array $final, string $kind = 'period'): array
     {
         $finalByEnrollment = [];
 
@@ -212,18 +276,28 @@ class CompareInterimToPeriodFinal
             $enrollmentId = (int) $interimStudent['enrollment_id'];
             $finalStudent = $finalByEnrollment[$enrollmentId] ?? null;
 
-            $interimValue = $interimStudent['weighted_average'];
-            $finalValue = $finalStudent['weighted_average'] ?? null;
+            // The reading that answers for this student, and the one beside it.
+            $primary = $this->reading(
+                $kind,
+                $interimStudent,
+                $finalStudent ?? [],
+                'weighted_average',
+                'accumulated_average',
+            );
 
             $rows[] = [
                 'enrollment_id' => $enrollmentId,
                 // The name as it read then, so a photograph reads like itself.
                 'name' => $interimStudent['name_snapshot'],
                 'class_number' => $interimStudent['class_number'],
-                'interim_average' => $interimValue,
-                'final_average' => $finalValue,
-                'change' => $this->change($interimValue, $finalValue),
-                'direction' => $this->direction($interimValue, $finalValue),
+                'primary' => $primary,
+                'supplementary' => $kind === 'accumulated'
+                    ? $this->reading('period', $interimStudent, $finalStudent ?? [], 'weighted_average', 'accumulated_average')
+                    : null,
+                // The movement counted for the class is the movement of the
+                // PRIMARY reading — the comparison this page is about.
+                'change' => $primary['change'],
+                'direction' => $primary['direction'],
                 'interim_band' => $interimStudent['band'],
                 'final_band' => $finalStudent['band'] ?? null,
                 'interim_coverage_warning' => (bool) ($interimStudent['coverage_warning'] ?? false),
@@ -242,7 +316,7 @@ class CompareInterimToPeriodFinal
                 'final_classification' => $finalStudent['classification'] ?? null,
                 'interim_self_assessment' => $interimStudent['self_assessment'] ?? null,
                 'final_self_assessment' => $finalStudent['self_assessment'] ?? null,
-                'domains' => $this->studentDomains($interimStudent, $finalStudent),
+                'domains' => $this->studentDomains($interimStudent, $finalStudent, $kind),
             ];
         }
 
@@ -254,7 +328,7 @@ class CompareInterimToPeriodFinal
      * @param  array<string, mixed>|null  $finalStudent
      * @return list<array<string, mixed>>
      */
-    protected function studentDomains(array $interimStudent, ?array $finalStudent): array
+    protected function studentDomains(array $interimStudent, ?array $finalStudent, string $kind = 'period'): array
     {
         $finalCells = [];
 
@@ -271,9 +345,10 @@ class CompareInterimToPeriodFinal
             $rows[] = [
                 'domain_id' => $domainId,
                 'label' => $cell['label_snapshot'],
-                'interim_average' => $cell['weighted_average'],
-                'final_average' => $finalCell['weighted_average'] ?? null,
-                'change' => $this->change($cell['weighted_average'], $finalCell['weighted_average'] ?? null),
+                'primary' => $this->reading($kind, $cell, $finalCell ?? [], 'weighted_average', 'accumulated_average'),
+                'supplementary' => $kind === 'accumulated'
+                    ? $this->reading('period', $cell, $finalCell ?? [], 'weighted_average', 'accumulated_average')
+                    : null,
                 'interim_mention' => $cell['mention'],
                 'final_mention' => $finalCell['mention'] ?? null,
             ];

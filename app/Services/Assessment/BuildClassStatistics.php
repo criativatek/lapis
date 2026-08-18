@@ -43,6 +43,7 @@ class BuildClassStatistics
     public function __construct(
         protected BuildResultsProgression $progression,
         protected ScaleProposalResolver $proposals,
+        protected PrimaryResultScope $scope,
     ) {}
 
     /**
@@ -72,7 +73,7 @@ class BuildClassStatistics
         // the profile version's own periods, so a school that configures
         // continuity differently gets a different answer here without a line
         // of code changing (§2).
-        $scopes = $this->primaryScopes($class, $periods);
+        $scopes = $this->scope->forClass($class, $periods);
         $primaryKind = $scopes[$selected['id']] ?? 'period';
 
         $previous = $this->previousPeriod($periods, $selected['id']);
@@ -114,63 +115,6 @@ class BuildClassStatistics
                 $previous === null ? null : ($scopes[$previous['id']] ?? 'period'),
             ),
         ];
-    }
-
-    /**
-     * Which figure IS the result, at each period of this year.
-     *
-     * IN CONTINUOUS ASSESSMENT THE ANSWER MOVES. At the first moment that
-     * counts, the period's own Média Ponderada is the whole story — there is
-     * nothing behind it to accumulate. From the second onwards the accumulated
-     * figure is what the year has produced so far, and it is what the teacher
-     * will classify against; the period's own figure becomes a supplementary
-     * reading answering «e só neste período, como esteve?» (§1, §56).
-     *
-     * READ FROM THE PROFILE VERSION, never from the word «semestre». Continuity
-     * is `contributes_to_accumulated` on the version's own periods — the same
-     * flag ClassResultsCalculator builds the accumulated scope from — so a
-     * school whose second period stands alone gets `period` for it, and one
-     * with three cumulative terms gets `accumulated` for the last two. Nothing
-     * here knows how many periods a year has.
-     *
-     * ONE QUERY for the whole page, not one per period.
-     *
-     * @param  list<array<string, mixed>>  $periods
-     * @return array<int, 'period'|'accumulated'>
-     */
-    protected function primaryScopes(SchoolClass $class, array $periods): array
-    {
-        $contributes = $class->profileVersion?->periods()
-            ->pluck('contributes_to_accumulated', 'academic_period_id');
-
-        $scopes = [];
-        $earlierContributors = 0;
-
-        foreach ($periods as $period) {
-            $id = (int) $period['id'];
-            // Absent configuration means continuity, which is the same default
-            // the calculator uses when it builds the accumulated scope.
-            $counts = (bool) ($contributes?->get($id) ?? true);
-
-            $scopes[$id] = $this->scopeFor($counts, $earlierContributors);
-
-            if ($counts) {
-                $earlierContributors++;
-            }
-        }
-
-        return $scopes;
-    }
-
-    /**
-     * A period answers for itself when it does not feed the continuous line, or
-     * when nothing yet does.
-     *
-     * @return 'period'|'accumulated'
-     */
-    protected function scopeFor(bool $contributes, int $earlierContributors): string
-    {
-        return ! $contributes || $earlierContributors === 0 ? 'period' : 'accumulated';
     }
 
     /**

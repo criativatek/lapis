@@ -9,11 +9,13 @@ use App\Models\ClassificationStatus;
 use App\Models\Domain;
 use App\Models\InstrumentType;
 use App\Models\InterimAssessment;
+use App\Models\ProfileVersionPeriod;
 use App\Models\ResultState;
 use App\Models\Scale;
 use App\Models\SchoolClass;
 use App\Models\StudentItemScore;
 use App\Models\User;
+use App\Services\Assessment\BuildClassStatistics;
 use App\Services\Assessment\CaptureInterimAssessment;
 use App\Services\Assessment\CompareInterimToPeriodFinal;
 use App\Services\Assessment\ConfirmClassification;
@@ -150,7 +152,7 @@ class InterimComparisonTest extends TestCase
         // The left side is exactly what was stored.
         $this->assertSame(
             $interim->snapshot['summary']['class_average'],
-            $comparison['summary']['interim_average'],
+            $comparison['summary']['primary']['interim_value'],
         );
 
         // And the photograph did not move on the way.
@@ -181,11 +183,11 @@ class InterimComparisonTest extends TestCase
         $comparison = $this->compare($interim);
         $summary = $comparison['summary'];
 
-        $this->assertNotNull($summary['interim_average']);
-        $this->assertNotNull($summary['final_average']);
+        $this->assertNotNull($summary['primary']['interim_value']);
+        $this->assertNotNull($summary['primary']['final_value']);
         $this->assertSame(
-            round((float) $summary['final_average'] - (float) $summary['interim_average'], 1),
-            (float) $summary['change'],
+            round((float) $summary['primary']['final_value'] - (float) $summary['primary']['interim_value'], 1),
+            (float) $summary['primary']['change'],
         );
     }
 
@@ -197,10 +199,10 @@ class InterimComparisonTest extends TestCase
 
         $comparison = $this->compare($interim);
 
-        $this->assertNull($comparison['summary']['interim_average']);
+        $this->assertNull($comparison['summary']['primary']['interim_value']);
         // A missing end means no difference — never «0,0 p.p.», which would
         // read as «não mudou nada» (§37).
-        $this->assertNull($comparison['summary']['change']);
+        $this->assertNull($comparison['summary']['primary']['change']);
         $this->assertNull($comparison['movement']['average_change']);
         $this->assertSame(0, $comparison['movement']['comparable']);
     }
@@ -282,8 +284,8 @@ class InterimComparisonTest extends TestCase
         $this->assertNotEmpty($domains);
 
         foreach ($domains as $domain) {
-            $this->assertArrayHasKey('interim_average', $domain);
-            $this->assertArrayHasKey('final_average', $domain);
+            $this->assertArrayHasKey('primary', $domain);
+            $this->assertArrayHasKey('supplementary', $domain);
             $this->assertArrayHasKey('interim_mention', $domain);
             $this->assertArrayHasKey('final_mention', $domain);
             $this->assertArrayHasKey('interim_partial_coverage', $domain);
@@ -321,8 +323,8 @@ class InterimComparisonTest extends TestCase
 
         foreach ($students as $student) {
             $this->assertArrayHasKey('name', $student);
-            $this->assertArrayHasKey('interim_average', $student);
-            $this->assertArrayHasKey('final_average', $student);
+            $this->assertArrayHasKey('primary', $student);
+            $this->assertArrayHasKey('supplementary', $student);
             $this->assertArrayHasKey('change', $student);
             $this->assertArrayHasKey('interim_band', $student);
             $this->assertArrayHasKey('final_band', $student);
@@ -856,5 +858,235 @@ class InterimComparisonTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->has('comparison.assigned_distribution.bands')
                 ->where('comparison.assigned_distribution.interim_is_available', true));
+    }
+
+    // ------------------- qual das duas leituras é a comparação principal
+
+    /** Says whether a period feeds the continuous line, as the profile does. */
+    private function periodContributes(int $sequence, bool $contributes): void
+    {
+        $this->asTenant(function () use ($sequence, $contributes): void {
+            $class = $this->schoolClass();
+
+            ProfileVersionPeriod::updateOrCreate(
+                [
+                    'assessment_profile_version_id' => $class->profileVersion->id,
+                    'academic_period_id' => $this->period($sequence)->id,
+                ],
+                ['contributes_to_accumulated' => $contributes, 'is_cumulative' => $contributes],
+            );
+        });
+    }
+
+    /** A photograph of the SECOND period, which is where the two readings differ. */
+    private function captureSecondPeriod(string $date): InterimAssessment
+    {
+        return $this->asTenant(fn (): InterimAssessment => app(CaptureInterimAssessment::class)->capture(
+            $this->schoolClass(),
+            $this->period(2),
+            Carbon::parse($date),
+            $this->teacher,
+            ['name' => 'Intercalar de março'],
+        ));
+    }
+
+    #[Test]
+    public function a_photograph_of_the_first_moment_compares_the_periods_own_result(): void
+    {
+        $interim = $this->capture('2026-11-15');
+
+        $summary = $this->compare($interim)['summary'];
+
+        // Nothing is behind the first period to accumulate, so its own figure
+        // IS the result — and there is no second reading to offer (§16).
+        $this->assertSame('period', $summary['primary']['kind']);
+        $this->assertNull($summary['supplementary']);
+    }
+
+    #[Test]
+    public function a_photograph_of_a_later_moment_compares_the_accumulated_result(): void
+    {
+        $interim = $this->captureSecondPeriod('2027-03-15');
+
+        $summary = $this->compare($interim)['summary'];
+
+        $this->assertSame('accumulated', $summary['primary']['kind']);
+        $this->assertSame('Avaliação contínua', $summary['primary']['label']);
+        $this->assertNotNull($summary['supplementary']);
+        $this->assertSame('period', $summary['supplementary']['kind']);
+    }
+
+    #[Test]
+    public function the_two_comparisons_read_different_numbers(): void
+    {
+        $interim = $this->captureSecondPeriod('2027-03-15');
+
+        $summary = $this->compare($interim)['summary'];
+        $snapshot = $interim->snapshot['summary'];
+
+        // The primary side comes from what the photograph stored under the
+        // accumulated name, and the supplementary from what it stored under
+        // the period's own. Neither is recomputed.
+        $this->assertSame($snapshot['accumulated_average'], $summary['primary']['interim_value']);
+        $this->assertSame($snapshot['class_average'], $summary['supplementary']['interim_value']);
+        $this->assertNotSame($summary['primary']['interim_value'], $summary['supplementary']['interim_value']);
+    }
+
+    #[Test]
+    public function the_main_difference_is_accumulated_against_accumulated(): void
+    {
+        $interim = $this->captureSecondPeriod('2027-03-15');
+        $this->addLaterInstrument();
+
+        $summary = $this->compare($interim)['summary'];
+        $final = $this->asTenant(fn (): array => app(BuildClassStatistics::class)
+            ->for($this->schoolClass(), $this->period(2))['summary']);
+
+        $this->assertSame($final['accumulated_average'], $summary['primary']['final_value']);
+        $this->assertSame(
+            round((float) $summary['primary']['final_value'] - (float) $summary['primary']['interim_value'], 1),
+            (float) $summary['primary']['change'],
+        );
+    }
+
+    #[Test]
+    public function the_supplementary_difference_is_standalone_against_standalone(): void
+    {
+        $interim = $this->captureSecondPeriod('2027-03-15');
+        $this->addLaterInstrument();
+
+        $summary = $this->compare($interim)['summary'];
+        $final = $this->asTenant(fn (): array => app(BuildClassStatistics::class)
+            ->for($this->schoolClass(), $this->period(2))['summary']);
+
+        $this->assertSame($final['class_average'], $summary['supplementary']['final_value']);
+        $this->assertNotSame($summary['primary']['change'], $summary['supplementary']['change']);
+    }
+
+    #[Test]
+    public function the_rule_reads_the_profile_and_never_the_word_semestre(): void
+    {
+        // A profile whose second period stands outside the continuous line.
+        $this->periodContributes(2, false);
+
+        $summary = $this->compare($this->captureSecondPeriod('2027-03-15'))['summary'];
+
+        $this->assertSame('period', $summary['primary']['kind']);
+        $this->assertNull($summary['supplementary'], 'sem continuidade não há segunda leitura');
+    }
+
+    #[Test]
+    public function each_domain_follows_the_same_rule(): void
+    {
+        $interim = $this->captureSecondPeriod('2027-03-15');
+
+        $comparison = $this->compare($interim);
+
+        foreach ($comparison['domains'] as $domain) {
+            $this->assertSame('accumulated', $domain['primary']['kind']);
+            $this->assertNotNull($domain['supplementary']);
+            $this->assertSame('period', $domain['supplementary']['kind']);
+        }
+
+        // And the primary side really is the accumulated figure the photograph
+        // stored for that domain, not its period one.
+        $stored = collect($interim->snapshot['domain_statistics'])->keyBy('domain_id');
+        $first = $comparison['domains'][0];
+
+        $this->assertSame($stored[$first['domain_id']]['accumulated_average'], $first['primary']['interim_value']);
+        $this->assertSame($stored[$first['domain_id']]['period_average'], $first['supplementary']['interim_value']);
+    }
+
+    #[Test]
+    public function each_student_carries_both_readings(): void
+    {
+        $interim = $this->captureSecondPeriod('2027-03-15');
+
+        $comparison = $this->compare($interim);
+        $stored = collect($interim->snapshot['students'])->keyBy('enrollment_id');
+
+        foreach ($comparison['students'] as $student) {
+            $source = $stored[$student['enrollment_id']];
+
+            $this->assertSame('accumulated', $student['primary']['kind']);
+            $this->assertSame($source['accumulated_average'], $student['primary']['interim_value']);
+            $this->assertSame($source['weighted_average'], $student['supplementary']['interim_value']);
+            // The movement counted for the class is the PRIMARY one.
+            $this->assertSame($student['primary']['change'], $student['change']);
+            $this->assertSame($student['primary']['direction'], $student['direction']);
+        }
+    }
+
+    #[Test]
+    public function a_photograph_that_never_stored_the_figure_says_so_rather_than_borrowing_todays(): void
+    {
+        $interim = $this->captureSecondPeriod('2027-03-15');
+
+        // A document from before the accumulated figure was recorded at all.
+        $this->asTenant(function () use ($interim): void {
+            $snapshot = $interim->snapshot;
+            unset($snapshot['summary']['accumulated_average']);
+
+            DB::table('interim_assessments')->where('id', $interim->id)->update([
+                'snapshot' => json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'snapshot_hash' => InterimAssessment::hashFor($snapshot),
+            ]);
+        });
+
+        $summary = $this->compare($interim->fresh())['summary'];
+
+        $this->assertFalse($summary['primary']['is_available']);
+        $this->assertNull($summary['primary']['interim_value']);
+        $this->assertNull($summary['primary']['change'], 'sem um dos lados não há diferença');
+        // The live side is still readable — only the past is silent.
+        $this->assertNotNull($summary['primary']['final_value']);
+    }
+
+    #[Test]
+    public function a_stored_null_is_a_real_answer_and_not_an_unavailable_one(): void
+    {
+        // Before any instrument of the year: the photograph HAS the key and it
+        // is empty, which is «ninguém tinha resultado» — a different sentence
+        // from «esta fotografia não guardou isto».
+        $summary = $this->compare($this->capture('2026-10-01'))['summary'];
+
+        $this->assertTrue($summary['primary']['is_available']);
+        $this->assertNull($summary['primary']['interim_value']);
+        $this->assertNull($summary['primary']['change']);
+    }
+
+    #[Test]
+    public function the_grades_and_everything_counted_from_them_are_untouched(): void
+    {
+        $this->assign('Ana', 2, '2', '2027-03-01');
+        $interim = $this->captureSecondPeriod('2027-03-15');
+
+        $comparison = $this->compare($interim);
+
+        // Success, crossings and the assigned distribution answer questions
+        // about decisions, and no choice of average may edit them (§12–§14).
+        $this->assertSame(1, $comparison['success']['interim']['failed']);
+        $this->assertSame(1, $comparison['transitions']['success_to_success']
+            + $comparison['transitions']['failure_to_failure']
+            + $comparison['transitions']['failure_to_success']
+            + $comparison['transitions']['success_to_failure']);
+        $this->assertSame(1, $comparison['assigned_distribution']['interim_classified']);
+    }
+
+    #[Test]
+    public function the_comparison_page_carries_both_readings(): void
+    {
+        $interim = $this->captureSecondPeriod('2027-03-15');
+        $class = $this->schoolClass();
+
+        $this->actingAs($this->teacher)
+            ->get("/classes/{$class->ulid}/avaliacoes-intercalares/{$interim->ulid}/comparar")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('comparison.summary.primary.kind', 'accumulated')
+                ->has('comparison.summary.primary.change')
+                ->where('comparison.summary.supplementary.kind', 'period')
+                ->has('comparison.students.0.primary')
+                ->has('comparison.domains.0.primary'));
     }
 }

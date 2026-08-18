@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
-import { CircleAlert } from '@lucide/vue';
+import { CircleAlert, Minus, TrendingDown, TrendingUp } from '@lucide/vue';
 import { computed } from 'vue';
 import Heading from '@/components/Heading.vue';
-import InfographicMetric from '@/components/infographic/InfographicMetric.vue';
 import MovementBoard from '@/components/infographic/MovementBoard.vue';
 import type { CrossingCard, CrossingKey, HeldCard, HeldKey, MovementCard } from '@/components/infographic/MovementBoard.vue';
 import SectionHeading from '@/components/infographic/SectionHeading.vue';
@@ -22,12 +21,31 @@ import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTon
 
 type Mention = { label?: string; label_snapshot?: string; sequence: number; is_negative: boolean } | null;
 
+/**
+ * One reading at both ends. `kind` says WHICH figure it is, so the page never
+ * has to guess whether a number is an accumulated result or a period's own.
+ */
+type Reading = {
+    kind: 'period' | 'accumulated';
+    label: string;
+    caption: string;
+    interim_value: string | null;
+    final_value: string | null;
+    change: string | null;
+    direction: 'up' | 'down' | 'flat' | null;
+    /** False for a photograph that never stored this figure. */
+    is_available: boolean;
+};
+
 type Comparison = {
     interim: { ulid: string; name: string; reference_date: string; reference_date_label: string };
     period: { id: number; label: string };
     is_final_still_open: boolean;
     summary: {
-        interim_average: string | null; final_average: string | null; change: string | null;
+        /** The reading this period is about — accumulated where the profile says so. */
+        primary: Reading;
+        /** The period's own work. Null at the first moment: the two would be one number. */
+        supplementary: Reading | null;
         interim_students_with_result: number; final_students_with_result: number;
     };
     movement: {
@@ -51,14 +69,14 @@ type Comparison = {
     };
     domains: {
         domain_id: number; label: string;
-        interim_average: string | null; final_average: string | null; change: string | null;
+        primary: Reading; supplementary: Reading | null;
         interim_mention: Mention; final_mention: Mention;
         interim_partial_coverage: number; final_partial_coverage: number;
         only_in_interim?: boolean; only_in_final?: boolean;
     }[];
     students: {
         enrollment_id: number; name: string; class_number: number | null;
-        interim_average: string | null; final_average: string | null;
+        primary: Reading; supplementary: Reading | null;
         change: string | null; direction: 'up' | 'down' | 'flat' | null;
         interim_band: Mention; final_band: Mention;
         interim_coverage_warning: boolean; final_coverage_warning: boolean;
@@ -94,20 +112,29 @@ function mentionLabel(band: Mention): string {
 
 const inks = computed(() => domainColours(props.comparison.domains.map((domain) => domain.domain_id)));
 
-/** The class itself, from one moment to the other. */
+const value = (raw: string | null): number | null => (raw === null ? null : Number(raw));
+
+/**
+ * The class itself, from one moment to the other — ON THE PRIMARY READING.
+ *
+ * There is one slopegraph on this page and it draws the comparison the period
+ * is actually about. The other reading appears as numbers, not as a second
+ * chart of the same size: two equal charts would put two answers on the same
+ * footing and leave the teacher to guess which is which (§11).
+ */
 const classSlope = computed<Slope[]>(() => [{
     id: 0,
-    label: 'Média Ponderada da turma',
-    from: props.comparison.summary.interim_average === null ? null : Number(props.comparison.summary.interim_average),
-    to: props.comparison.summary.final_average === null ? null : Number(props.comparison.summary.final_average),
+    label: props.comparison.summary.primary.label,
+    from: value(props.comparison.summary.primary.interim_value),
+    to: value(props.comparison.summary.primary.final_value),
     colour: '#4f46e5',
 }]);
 
 const domainSlopes = computed<Slope[]>(() => props.comparison.domains.map((domain) => ({
     id: domain.domain_id,
     label: domain.label,
-    from: domain.interim_average === null ? null : Number(domain.interim_average),
-    to: domain.final_average === null ? null : Number(domain.final_average),
+    from: value(domain.primary.interim_value),
+    to: value(domain.primary.final_value),
     colour: inks.value[domain.domain_id],
     badge: mentionLabel(domain.final_mention) === '—' ? undefined : mentionLabel(domain.final_mention),
     badgeClass: toneClass(domain.final_mention),
@@ -204,37 +231,88 @@ const finalLabel = computed(() => `Final do ${props.comparison.period.label}`);
         </p>
 
         <!-- ================================================ 01 · a turma -->
-        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <InfographicMetric
-                index="01"
-                :label="comparison.interim.name"
-                :value="pct(comparison.summary.interim_average)"
-                :context="`${comparison.interim.reference_date_label} · ${comparison.summary.interim_students_with_result} com resultado`"
-            />
-            <InfographicMetric
-                index="02"
-                :label="finalLabel"
-                :value="pct(comparison.summary.final_average)"
-                :context="`${comparison.summary.final_students_with_result} com resultado`"
-            />
-            <InfographicMetric index="03" label="Diferença" value="">
-                <template #value>
-                    <span
-                        :class="Number(comparison.summary.change) > 0 ? 'text-emerald-600 dark:text-emerald-400'
-                            : Number(comparison.summary.change) < 0 ? 'text-rose-600 dark:text-rose-400' : ''"
-                    >
-                        {{ formatPoints(comparison.summary.change) }}
-                    </span>
-                </template>
-                <p class="mt-2 text-xs text-muted-foreground">pontos percentuais</p>
-            </InfographicMetric>
-            <InfographicMetric
-                index="04"
-                label="Evolução média por aluno"
-                :value="formatPoints(comparison.movement.average_change)"
-                :context="`Só os ${comparison.movement.comparable} alunos com resultado nos dois momentos`"
-            />
-        </div>
+        <!-- THE READING THE PERIOD IS ABOUT, at full size. Where the profile
+             defines continuity that is the accumulated result at both ends;
+             the period's own work sits underneath, deliberately smaller. -->
+        <section
+            class="relative overflow-hidden rounded-[22px] border border-emerald-200/60 bg-gradient-to-r from-emerald-50 via-emerald-50/50 to-teal-50/30 p-5 shadow-sm sm:p-6 dark:border-emerald-900/50 dark:from-emerald-950/40 dark:via-emerald-950/20 dark:to-teal-950/15"
+        >
+            <p class="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                {{ comparison.summary.primary.label }}
+            </p>
+            <p class="mt-0.5 text-xs text-muted-foreground">{{ comparison.summary.primary.caption }}</p>
+
+            <div v-if="comparison.summary.primary.is_available" class="mt-4 flex flex-wrap items-end gap-x-6 gap-y-3">
+                <div>
+                    <p class="text-[10px] uppercase tracking-wider text-muted-foreground">
+                        {{ comparison.interim.reference_date_label }}
+                    </p>
+                    <p class="text-2xl font-semibold tabular-nums text-muted-foreground">
+                        {{ pct(comparison.summary.primary.interim_value) }}
+                    </p>
+                </div>
+
+                <span aria-hidden="true" class="pb-2 text-lg text-muted-foreground/60">→</span>
+
+                <div>
+                    <p class="text-[10px] uppercase tracking-wider text-muted-foreground">{{ finalLabel }}</p>
+                    <p class="text-[2.75rem] font-semibold leading-none tabular-nums tracking-tight">
+                        {{ pct(comparison.summary.primary.final_value) }}
+                    </p>
+                </div>
+
+                <p
+                    class="mb-1 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium tabular-nums"
+                    :class="comparison.summary.primary.direction === 'up'
+                        ? 'bg-emerald-100/70 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300'
+                        : comparison.summary.primary.direction === 'down'
+                            ? 'bg-rose-100/70 text-rose-800 dark:bg-rose-950/50 dark:text-rose-300'
+                            : 'bg-muted text-muted-foreground'"
+                >
+                    <component
+                        :is="comparison.summary.primary.direction === 'up' ? TrendingUp
+                            : comparison.summary.primary.direction === 'down' ? TrendingDown : Minus"
+                        aria-hidden="true"
+                        class="size-3.5 shrink-0"
+                    />
+                    {{ formatPoints(comparison.summary.primary.change) }} p.p.
+                </p>
+
+                <p class="ml-auto text-[11px] text-muted-foreground">
+                    {{ comparison.summary.interim_students_with_result }} com resultado então ·
+                    {{ comparison.summary.final_students_with_result }} agora
+                </p>
+            </div>
+
+            <p v-else class="mt-4 text-sm text-muted-foreground">
+                Esta fotografia não guardou este resultado, por isso não há comparação a fazer.
+                O que ela guardou não se reescreve.
+            </p>
+
+            <!-- The other reading, as numbers only: a second slopegraph of the
+                 same size would put two answers on the same footing (§2, §11). -->
+            <div
+                v-if="comparison.summary.supplementary"
+                class="mt-4 flex flex-wrap items-baseline gap-x-4 gap-y-1 border-t border-emerald-200/50 pt-3 text-sm dark:border-emerald-900/40"
+            >
+                <span class="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                    Só neste período
+                </span>
+                <span class="tabular-nums text-muted-foreground">
+                    {{ pct(comparison.summary.supplementary.interim_value) }}
+                </span>
+                <span aria-hidden="true" class="text-muted-foreground/60">→</span>
+                <span class="font-semibold tabular-nums">{{ pct(comparison.summary.supplementary.final_value) }}</span>
+                <span
+                    class="text-xs tabular-nums"
+                    :class="comparison.summary.supplementary.direction === 'up' ? 'text-emerald-700 dark:text-emerald-400'
+                        : comparison.summary.supplementary.direction === 'down' ? 'text-rose-700 dark:text-rose-400' : 'text-muted-foreground'"
+                >
+                    {{ formatPoints(comparison.summary.supplementary.change) }} p.p.
+                </span>
+                <span class="text-[11px] text-muted-foreground">{{ comparison.summary.supplementary.caption }}</span>
+            </div>
+        </section>
 
         <!-- ============================================= 02 · movimento -->
         <section class="border-t border-border/70 pt-7">
@@ -344,7 +422,13 @@ const finalLabel = computed(() => `Final do ${props.comparison.period.label}`);
 
         <!-- ============================================== 06 · alunos -->
         <section class="border-t border-border/70 pt-7">
-            <SectionHeading index="06" title="Aluno a aluno" description="Sem ordenação por resultado." />
+            <SectionHeading
+                index="06"
+                title="Aluno a aluno"
+                :description="comparison.summary.supplementary
+                    ? ` em cima; só neste período, em baixo e mais pequeno. Sem ordenação por resultado.`
+                    : 'Sem ordenação por resultado.'"
+            />
 
             <div class="-mx-2 overflow-x-auto px-2">
                 <table class="w-max min-w-full text-sm">
@@ -367,13 +451,23 @@ const finalLabel = computed(() => `Final do ${props.comparison.period.label}`);
                                 <span class="mr-1.5 tabular-nums text-xs text-muted-foreground">{{ student.class_number ?? '—' }}</span>
                                 {{ student.name }}
                             </th>
+                            <!-- The primary reading at full weight, and the
+                                 period's own underneath it in small type — so
+                                 the difference between the two is visible per
+                                 student without a second table (§9). -->
                             <td class="px-3 py-1.5 text-center tabular-nums">
-                                {{ pct(student.interim_average) }}
-                                <CircleAlert v-if="student.interim_coverage_warning && student.interim_average !== null" class="ml-0.5 inline size-3 text-amber-500" />
+                                {{ pct(student.primary.interim_value) }}
+                                <CircleAlert v-if="student.interim_coverage_warning && student.primary.interim_value !== null" class="ml-0.5 inline size-3 text-amber-500" />
+                                <span v-if="student.supplementary" class="block text-[10px] text-muted-foreground">
+                                    {{ pct(student.supplementary.interim_value) }}
+                                </span>
                             </td>
                             <td class="px-3 py-1.5 text-center tabular-nums">
-                                {{ pct(student.final_average) }}
-                                <CircleAlert v-if="student.final_coverage_warning && student.final_average !== null" class="ml-0.5 inline size-3 text-amber-500" />
+                                {{ pct(student.primary.final_value) }}
+                                <CircleAlert v-if="student.final_coverage_warning && student.primary.final_value !== null" class="ml-0.5 inline size-3 text-amber-500" />
+                                <span v-if="student.supplementary" class="block text-[10px] text-muted-foreground">
+                                    {{ pct(student.supplementary.final_value) }}
+                                </span>
                             </td>
                             <td
                                 class="px-3 py-1.5 text-center tabular-nums"
@@ -385,6 +479,11 @@ const finalLabel = computed(() => `Final do ${props.comparison.period.label}`);
                                     {{ formatPoints(student.change) }}
                                 </template>
                                 <span v-else class="text-xs">sem comparação</span>
+
+                                <span
+                                    v-if="student.supplementary && student.supplementary.change !== null"
+                                    class="block text-[10px] text-muted-foreground"
+                                >{{ formatPoints(student.supplementary.change) }}</span>
                             </td>
                             <td class="px-3 py-1.5 text-center">
                                 <span class="text-xs text-muted-foreground">{{ mentionLabel(student.interim_band) }}</span>
