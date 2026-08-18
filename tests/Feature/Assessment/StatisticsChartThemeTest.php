@@ -154,17 +154,75 @@ class StatisticsChartThemeTest extends TestCase
     {
         $bars = (string) file_get_contents(resource_path('js/components/infographic/DomainBars.vue'));
 
-        // The bar is the DOMAIN's ink, the badge is the SCALE's tone, the change
-        // is the TREND's. Merging any two would claim something none of them
-        // says — a domain drawn in red because it fell reads as one that is
-        // failing.
-        $this->assertStringContainsString('backgroundColor: bar.colour', $bars);
+        // The ground and the bar are the DOMAIN's ink, the badge is the SCALE's
+        // tone, the change is the TREND's. Merging any two would claim
+        // something none of them says — a domain drawn in red because it fell
+        // reads as one that is failing.
+        $this->assertStringContainsString('color-mix(in srgb, ${bar.colour}', $bars);
+        $this->assertStringContainsString('shade(bar.colour, 0.3)}, ${bar.colour}', $bars);
         $this->assertStringContainsString(':class="bar.mentionClass"', $bars);
-        $this->assertStringContainsString("bar.direction === 'up' ? 'text-emerald-600", $bars);
+        $this->assertStringContainsString("bar.direction === 'up' ? 'text-emerald-700", $bars);
 
         $page = $this->page();
         $this->assertStringContainsString('colour: inks.value[row.domain_id]', $page);
         $this->assertStringContainsString('mentionClass: toneClass(row.qualitative_band)', $page);
+    }
+
+    #[Test]
+    public function the_cards_sit_on_tinted_grounds_rather_than_white_on_white(): void
+    {
+        $surfaces = (string) file_get_contents(resource_path('js/lib/surfaces.ts'));
+        $page = $this->page();
+
+        // The page used to be white cards on a white page, which is why every
+        // rearrangement still looked the same: nothing about the FIELD changed.
+        $this->assertStringContainsString('export const PAGE', $surfaces);
+        $this->assertStringContainsString(':class="PAGE"', $page);
+
+        foreach (['amber', 'violet', 'mint', 'sky', 'rose'] as $tone) {
+            $this->assertStringContainsString("{$tone}:", $surfaces);
+        }
+
+        // Each of the top cards gets its own ground, so they read as a set
+        // rather than as three copies.
+        foreach (["card('amber')", "card('violet')", "card('mint')"] as $usage) {
+            $this->assertStringContainsString($usage, $page);
+        }
+    }
+
+    #[Test]
+    public function a_tinted_ground_never_competes_with_a_result_or_a_trend(): void
+    {
+        $surfaces = (string) file_get_contents(resource_path('js/lib/surfaces.ts'));
+
+        // Saturated colour on this page already means something: the scale's
+        // tones mean performance, the trend inks mean movement. A surface must
+        // never be mistaken for either, so every ground is a 50-step at partial
+        // opacity — weaker than both by a wide margin.
+        // The `dark:` prefix has to be part of the match, not merely near it —
+        // on a dark ground a pale wash turns to mud, so those variants are
+        // deliberately deep and are judged by a different rule.
+        preg_match_all('/(dark:)?bg-(\w+)-(\d+)\/(\d+)/', $surfaces, $matches, PREG_SET_ORDER);
+
+        $this->assertNotEmpty($matches);
+
+        $light = 0;
+
+        foreach ($matches as [$whole, $isDark, , $step, $opacity]) {
+            if ($isDark !== '') {
+                // Dark twins carry their identity in the border, so the fill
+                // stays faint.
+                $this->assertLessThanOrEqual(30, (int) $opacity, "«{$whole}» é opaco de mais para um fundo escuro");
+
+                continue;
+            }
+
+            $light++;
+            $this->assertLessThanOrEqual(50, (int) $step, "«{$whole}» é escuro de mais para um fundo");
+            $this->assertLessThanOrEqual(70, (int) $opacity, "«{$whole}» é opaco de mais para um fundo");
+        }
+
+        $this->assertGreaterThan(0, $light, 'nenhum fundo claro foi encontrado');
     }
 
     #[Test]
@@ -251,7 +309,7 @@ class StatisticsChartThemeTest extends TestCase
     // a_band_with_nobody_keeps_its_row_and_its_zero above.
 
     #[Test]
-    public function class_movement_is_shown_as_proportional_arrows_and_not_as_a_doughnut(): void
+    public function class_movement_is_one_whole_split_into_shares_and_not_a_doughnut(): void
     {
         $page = $this->page();
         $flows = (string) file_get_contents(resource_path('js/components/infographic/FlowRibbons.vue'));
@@ -259,10 +317,15 @@ class StatisticsChartThemeTest extends TestCase
         $this->assertStringContainsString('<FlowRibbons', $page);
         $this->assertStringNotContainsString("type: 'doughnut'", $page);
 
-        // The arrowhead is carved OUT of the length rather than added to it, so
-        // the tip lands where a plain bar would have ended.
-        $this->assertStringContainsString('clipPath:', $flows);
-        $this->assertStringContainsString("flow.direction === 'backward'", $flows);
+        // ONE bar, whose segments are shares of the same whole — so «most went
+        // up» is the shape rather than four lengths to compare against four
+        // different starting points.
+        $this->assertStringContainsString('width: `${segment.percent}%`', $flows);
+        $this->assertStringContainsString('flow.count > 0', $flows);
+
+        // Direction survives without colour: every row carries its own arrow.
+        $this->assertStringContainsString("forward: '↑'", $flows);
+        $this->assertStringContainsString("backward: '↓'", $flows);
 
         // «Sem comparação» keeps its own note: it is not standing still.
         $this->assertStringContainsString('não é manutenção', $page);

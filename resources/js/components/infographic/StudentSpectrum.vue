@@ -74,6 +74,18 @@ const tallest = computed(() => Math.max(1, ...laid.value.map((point) => point.la
             class="relative w-full"
             :style="{ height: `${Math.max(96, tallest * 26 + 44)}px` }"
         >
+            <!--
+              A pale wash along the axis, so the strip reads as a field the
+              students are placed ON rather than as empty page with dots on it.
+              DECORATIVE: the gradient is continuous and marks no thresholds,
+              because thresholds belong to the scale and the scale draws them in
+              the distribution, not here.
+            -->
+            <div
+                aria-hidden="true"
+                class="absolute inset-x-0 bottom-8 top-2 rounded-lg bg-gradient-to-r from-rose-100/50 via-amber-100/40 to-emerald-100/50 dark:from-rose-950/25 dark:via-amber-950/20 dark:to-emerald-950/25"
+            ></div>
+
             <!-- The axis. Structure, not data. -->
             <div class="absolute inset-x-0 bottom-8 h-px bg-border"></div>
 

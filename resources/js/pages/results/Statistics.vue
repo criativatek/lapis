@@ -8,11 +8,11 @@ import DistributionBands from '@/components/infographic/DistributionBands.vue';
 import type { DistributionBand } from '@/components/infographic/DistributionBands.vue';
 import DomainBars from '@/components/infographic/DomainBars.vue';
 import type { DomainBar } from '@/components/infographic/DomainBars.vue';
+import DumbbellRows from '@/components/infographic/DumbbellRows.vue';
+import type { Dumbbell } from '@/components/infographic/DumbbellRows.vue';
 import FlowRibbons from '@/components/infographic/FlowRibbons.vue';
 import type { Flow } from '@/components/infographic/FlowRibbons.vue';
 import SectionHeading from '@/components/infographic/SectionHeading.vue';
-import Slopegraph from '@/components/infographic/Slopegraph.vue';
-import type { Slope } from '@/components/infographic/Slopegraph.vue';
 import StatGauge from '@/components/infographic/StatGauge.vue';
 import StudentSpectrum from '@/components/infographic/StudentSpectrum.vue';
 import type { SpectrumPoint } from '@/components/infographic/StudentSpectrum.vue';
@@ -34,6 +34,7 @@ import {
 import type { TooltipContent } from '@/lib/chartTheme';
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
 import type { Evolution } from '@/lib/results';
+import { card, INSET, PAGE } from '@/lib/surfaces';
 
 type Band = { scale_level_id: number; code: string; label: string; sequence: number; is_negative: boolean } | null;
 type Level = { code: string; label: string; sequence: number; is_negative: boolean } | null;
@@ -196,12 +197,17 @@ function submitInterim(): void {
 const StatChart = defineAsyncComponent(() => import('@/components/charts/StatChart.vue'));
 
 /**
- * One card, described once.
+ * The page's surfaces.
  *
- * Height follows content — nothing here forces a card taller than what it
- * holds, which is what left the old grid with half-empty boxes (§5, §22).
+ * White cards on a white page is why «before» and «after» kept looking alike
+ * however the contents were rearranged: nothing about the FIELD had changed.
+ * Each card now sits on a tinted ground, and the page under them is warm rather
+ * than white, so the cards read as objects placed on it.
+ *
+ * Height still follows content — nothing forces a card taller than what it
+ * holds, which is what left the old grid with half-empty boxes (§21).
  */
-const CARD = 'rounded-2xl border border-border/70 bg-card p-5 shadow-sm';
+const CARD = `${card('plain')} p-5`;
 
 const stats = computed(() => props.statistics);
 const bands = computed(() => props.statistics.scale?.bands ?? []);
@@ -296,19 +302,20 @@ const slopeEnds = computed(() => {
     return rows.length < 2 ? null : { from: rows[0], to: rows[rows.length - 1] };
 });
 
-const classSlope = computed<Slope[]>(() => {
+
+/** The class's own change between the two ends, in percentage points. */
+const classPeriodChange = computed<number | null>(() => {
     const ends = slopeEnds.value;
 
-    return ends === null ? [] : [{
-        id: 0,
-        label: 'Média Ponderada da turma',
-        from: ends.from.class_average === null ? null : Number(ends.from.class_average),
-        to: ends.to.class_average === null ? null : Number(ends.to.class_average),
-        colour: '#4f46e5',
-    }];
+    if (ends === null || ends.from.class_average === null || ends.to.class_average === null) {
+        return null;
+    }
+
+    return Number(ends.to.class_average) - Number(ends.from.class_average);
 });
 
-const domainSlopes = computed<Slope[]>(() => {
+/** The same two ends per domain, as one compact row each. */
+const domainDumbbells = computed<Dumbbell[]>(() => {
     const ends = slopeEnds.value;
 
     if (ends === null) {
@@ -318,7 +325,6 @@ const domainSlopes = computed<Slope[]>(() => {
     return stats.value.domains.map((domain) => {
         const from = ends.from.domains.find((cell) => cell.domain_id === domain.id)?.average ?? null;
         const to = ends.to.domains.find((cell) => cell.domain_id === domain.id)?.average ?? null;
-        const band = stats.value.domain_statistics.find((row) => row.domain_id === domain.id)?.qualitative_band ?? null;
 
         return {
             id: domain.id,
@@ -326,11 +332,10 @@ const domainSlopes = computed<Slope[]>(() => {
             from: from === null ? null : Number(from),
             to: to === null ? null : Number(to),
             colour: inks.value[domain.id],
-            badge: band?.label ?? undefined,
-            badgeClass: toneClass(band),
         };
     });
 });
+
 
 /** Movement across the class, as proportional arrows rather than as a donut. */
 const flows = computed<Flow[]>(() => {
@@ -709,7 +714,7 @@ const studentRows = computed(() => {
 <template>
     <Head :title="`Estatística — ${schoolClass.label}`" />
 
-    <div class="space-y-6 p-4">
+    <div :class="PAGE" class="min-h-full space-y-5 p-4 sm:p-5">
         <!-- ================================================== cabeçalho -->
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -957,7 +962,7 @@ const studentRows = computed(() => {
 
             <!-- ============================== 01 · A TURMA NUM OLHAR -->
             <div class="grid gap-4 lg:grid-cols-3">
-                <section :class="CARD">
+                <section :class="[card('amber'), 'p-5']">
                     <StatGauge
                         :percent="stats.summary.class_average === null ? null : Number(stats.summary.class_average)"
                         :display="pct(stats.summary.class_average)"
@@ -983,7 +988,7 @@ const studentRows = computed(() => {
                     </StatGauge>
                 </section>
 
-                <section :class="CARD">
+                <section :class="[card('violet'), 'p-5']">
                     <StatGauge
                         :percent="stats.summary.accumulated_average === null ? null : Number(stats.summary.accumulated_average)"
                         :display="pct(stats.summary.accumulated_average)"
@@ -1000,9 +1005,10 @@ const studentRows = computed(() => {
                     </StatGauge>
                 </section>
 
-                <!-- Coverage: a card that earns its height by carrying three
-                     real counts and the bar that relates them. -->
-                <section :class="CARD">
+                <!-- Coverage: a card that earns its place beside the two gauges
+                     by carrying three real counts and the bar that relates
+                     them, on a ground of its own (§6). -->
+                <section :class="[card('mint'), 'p-5']">
                     <p class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Alunos com resultado</p>
                     <p class="mt-1.5 text-[2.5rem] font-semibold leading-none tabular-nums tracking-tight">
                         {{ stats.summary.students_with_result }}<span class="text-xl font-normal text-muted-foreground">/{{ stats.summary.students_total }}</span>
@@ -1038,7 +1044,7 @@ const studentRows = computed(() => {
 
             <!-- ============ 02 · DISTRIBUIÇÃO + EVOLUÇÃO, LADO A LADO -->
             <div class="grid gap-4 lg:grid-cols-5">
-                <section :class="[CARD, 'lg:col-span-3']">
+                <section :class="[card('sky'), 'p-5 lg:col-span-3']">
                     <SectionHeading
                         index="02"
                         title="Como se distribuem os resultados"
@@ -1057,7 +1063,7 @@ const studentRows = computed(() => {
                     </p>
                 </section>
 
-                <section :class="[CARD, 'lg:col-span-2']">
+                <section :class="[card('rose'), 'p-5 lg:col-span-2']">
                     <SectionHeading
                         index="03"
                         title="Como evoluiu a turma"
@@ -1150,29 +1156,45 @@ const studentRows = computed(() => {
                         : 'Cada período por si, sem o acumulado — um acumulado inclina-se para a sua própria história.'"
                 />
 
-                <!-- TWO MOMENTS GET A SLOPEGRAPH, not a line chart with an
-                     empty axis around one segment. Three or more get the line,
-                     because then there is a trend to draw. -->
-                <div v-if="trendShape === 'slope'" class="grid gap-8 lg:grid-cols-5">
-                    <div class="lg:col-span-2">
-                        <p class="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">A turma</p>
-                        <Slopegraph
-                            :slopes="classSlope"
-                            :from-label="slopeEnds!.from.label"
-                            :to-label="slopeEnds!.to.label"
-                            :show-labels="false"
-                            summary="Média Ponderada da turma no primeiro e no último período com resultados."
-                        />
+                <!-- TWO MOMENTS GET DUMBBELLS, not a tall slopegraph spending
+                     most of its height on air. One line per series: where it
+                     started, where it ended, and the distance between — which
+                     is the whole question. Three or more periods get the line
+                     chart, because then there is a trend to draw. -->
+                <div v-if="trendShape === 'slope'" class="grid gap-5 lg:grid-cols-5">
+                    <!-- The class itself, at full size: it is the headline. -->
+                    <div :class="[INSET, 'flex flex-col justify-center p-4 lg:col-span-2']">
+                        <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            {{ slopeEnds!.from.label }}
+                        </p>
+                        <p class="mt-0.5 text-xl font-semibold tabular-nums text-muted-foreground">
+                            {{ pct(slopeEnds!.from.class_average) }}
+                        </p>
+
+                        <p
+                            class="my-2 flex items-center gap-2 text-2xl font-semibold tabular-nums"
+                            :class="Number(stats.evolution.average_change) > 0 ? 'text-emerald-700 dark:text-emerald-400'
+                                : Number(stats.evolution.average_change) < 0 ? 'text-rose-700 dark:text-rose-400' : ''"
+                        >
+                            <span aria-hidden="true" class="text-muted-foreground/50">↓</span>
+                            {{ formatPoints(classPeriodChange) }}
+                            <span class="text-sm font-normal text-muted-foreground">p.p.</span>
+                        </p>
+
+                        <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            {{ slopeEnds!.to.label }}
+                        </p>
+                        <p class="mt-0.5 text-[2rem] font-semibold leading-none tabular-nums tracking-tight">
+                            {{ pct(slopeEnds!.to.class_average) }}
+                        </p>
                     </div>
 
                     <div class="lg:col-span-3">
-                        <p class="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Cada domínio</p>
-                        <Slopegraph
-                            :slopes="domainSlopes"
+                        <DumbbellRows
+                            :rows="domainDumbbells"
                             :from-label="slopeEnds!.from.label"
                             :to-label="slopeEnds!.to.label"
                             :selected-id="selectedDomainId"
-                            summary="Média da turma em cada domínio, no primeiro e no último período com resultados."
                             @select="toggleDomain"
                         />
                     </div>

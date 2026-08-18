@@ -1,24 +1,25 @@
 <script setup lang="ts">
-import { prefersReducedMotion, shade } from '@/lib/chartTheme';
+import { computed } from 'vue';
+import { prefersReducedMotion } from '@/lib/chartTheme';
 
 /**
- * Movement across the class, as proportional arrows.
+ * Movement across the class, as ONE segmented bar and a short legend.
  *
- * A doughnut of four slices spends a large card saying «most of them went up»
- * and then makes the reader hover to find out by how many. Four arrows say the
- * same thing in a quarter of the height, with the count and the share written
- * beside each one — and an arrow POINTS, which is the whole subject here.
+ * Four separate arrows made the reader measure four lengths against four
+ * different starting points to answer a question about proportions. A single
+ * bar answers it in one look — the segments are shares of the same whole, so
+ * «most went up» is the shape of the bar rather than something to work out.
  *
- * The arrows point the way the movement went: forward for progress, backward
- * for regression, and blunt for the two that did not move. Direction is
- * reinforced by the word, the count and the arrowhead, never by colour alone.
+ * The legend underneath carries the counts and the percentages, because a
+ * proportion is not a number and a teacher needs both. Direction survives in
+ * the arrow beside each label, so nothing here depends on colour alone.
  */
 
 export type Flow = {
     key: string;
     label: string;
     count: number;
-    /** 0–100 of the class, for the arrow's length. Null when there is nobody. */
+    /** 0–100 of the class. Null when there is nobody at all. */
     percent: number | null;
     /** Already formatted. */
     share: string;
@@ -27,56 +28,60 @@ export type Flow = {
     note?: string;
 };
 
-defineProps<{ flows: Flow[]; total: number }>();
+const props = defineProps<{ flows: Flow[]; total: number }>();
+
+/** Only the segments that have somebody in them get width in the bar. */
+const segments = computed(() => props.flows.filter((flow) => flow.count > 0));
+
+const arrow: Record<Flow['direction'], string> = {
+    forward: '↑',
+    backward: '↓',
+    none: '→',
+};
 </script>
 
 <template>
-    <ul class="space-y-2.5">
-        <li v-for="flow in flows" :key="flow.key">
-            <div class="mb-1 flex items-baseline justify-between gap-3">
-                <span class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    {{ flow.label }}
-                </span>
-                <span class="text-xs tabular-nums">
-                    <span class="font-semibold">{{ flow.count }}</span>
-                    <span class="text-muted-foreground"> · {{ flow.share }}</span>
-                </span>
-            </div>
+    <div>
+        <!-- One bar, one whole. -->
+        <div class="flex h-3.5 w-full overflow-hidden rounded-full bg-muted/50">
+            <span
+                v-for="segment in segments"
+                :key="segment.key"
+                class="h-full first:rounded-l-full last:rounded-r-full transition-all ease-out"
+                :class="prefersReducedMotion() ? 'duration-0' : 'duration-700'"
+                :style="{ width: `${segment.percent}%`, backgroundColor: segment.colour }"
+                :title="`${segment.label}: ${segment.count} · ${segment.share}`"
+            ></span>
+        </div>
 
-            <div class="relative h-6 w-full rounded-md bg-muted/35">
-                <div
-                    v-if="flow.percent !== null && flow.count > 0"
-                    class="absolute inset-y-0 transition-all ease-out"
-                    :class="[
-                        prefersReducedMotion() ? 'duration-0' : 'duration-500',
-                        flow.direction === 'backward' ? 'right-0' : 'left-0',
-                    ]"
-                    :style="{
-                        width: `${Math.max(flow.percent, 3)}%`,
-                        background: `linear-gradient(180deg, ${shade(flow.colour, 0.18)}, ${flow.colour})`,
-                        // The head is carved OUT of the length, never added to
-                        // it, so the tip lands exactly where a plain bar ends.
-                        clipPath: flow.direction === 'backward'
-                            ? 'polygon(100% 0, 100% 100%, 12px 100%, 0 50%, 12px 0)'
-                            : flow.direction === 'forward'
-                                ? 'polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%)'
-                                : 'none',
-                    }"
-                ></div>
-
+        <ul class="mt-3.5 space-y-1.5">
+            <li v-for="flow in flows" :key="flow.key" class="flex items-baseline gap-2 text-sm">
                 <span
-                    v-else
-                    class="absolute inset-y-0 left-2.5 flex items-center text-[11px] text-muted-foreground"
-                >
-                    Nenhum aluno
+                    aria-hidden="true"
+                    class="w-3 shrink-0 text-center text-xs"
+                    :style="{ color: flow.count > 0 ? flow.colour : undefined }"
+                    :class="flow.count === 0 ? 'text-muted-foreground/50' : ''"
+                >{{ arrow[flow.direction] }}</span>
+
+                <span class="text-muted-foreground" :class="flow.count === 0 ? 'opacity-60' : ''">{{ flow.label }}</span>
+
+                <span class="ml-auto tabular-nums font-semibold" :class="flow.count === 0 ? 'text-muted-foreground/60' : ''">
+                    {{ flow.count }}
                 </span>
-            </div>
+                <span class="w-14 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{{ flow.share }}</span>
+            </li>
+        </ul>
 
-            <p v-if="flow.note" class="mt-1 text-[11px] leading-relaxed text-muted-foreground">{{ flow.note }}</p>
-        </li>
-    </ul>
+        <p
+            v-for="flow in flows.filter((row) => row.note && row.count > 0)"
+            :key="`${flow.key}-note`"
+            class="mt-2 text-[11px] leading-relaxed text-muted-foreground"
+        >
+            {{ flow.note }}
+        </p>
 
-    <p class="mt-3 text-[11px] text-muted-foreground">
-        Percentagens sobre os {{ total }} alunos da turma.
-    </p>
+        <p class="mt-2 text-[11px] text-muted-foreground">
+            Percentagens sobre os {{ total }} alunos da turma.
+        </p>
+    </div>
 </template>

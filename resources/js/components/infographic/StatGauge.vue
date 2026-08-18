@@ -66,7 +66,12 @@ const offset = computed(() => length * (1 - filled.value));
 
 <template>
     <div class="flex flex-col items-center">
-        <div class="relative w-full max-w-[15rem]">
+        <!-- The label sits ABOVE the arc: a teacher reads what this is, then
+             the number, then the qualifier. The old order buried the label
+             under the whole gauge. -->
+        <p class="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{{ label }}</p>
+
+        <div class="relative w-full max-w-[13rem]">
             <svg
                 :viewBox="`0 0 200 ${CENTRE_Y + 20}`"
                 class="w-full"
@@ -116,8 +121,7 @@ const offset = computed(() => length * (1 - filled.value));
             </div>
         </div>
 
-        <p class="mt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{{ label }}</p>
-        <p v-if="caption" class="mt-0.5 text-center text-xs text-muted-foreground">{{ caption }}</p>
+        <p v-if="caption" class="mt-1 text-center text-[11px] leading-snug text-muted-foreground">{{ caption }}</p>
         <slot />
     </div>
 </template>
