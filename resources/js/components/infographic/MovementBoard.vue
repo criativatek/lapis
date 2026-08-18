@@ -52,9 +52,6 @@ export type HeldCard = {
 
 const props = withDefaults(
     defineProps<{
-        /** «+8,8» — formatted by the page, so this decides no arithmetic. */
-        averageDisplay: string;
-        averageDirection: 'up' | 'down' | 'flat' | null;
         /** Students with two comparable standalone results. */
         comparable: number;
         movements: MovementCard[];
@@ -64,6 +61,10 @@ const props = withDefaults(
         crossingComparable: number;
         unclassified: number;
         noComparison: number;
+        /** «Evolução dos níveis atribuídos» — the scale decides the noun. */
+        crossingTitle: string;
+        /** «Esta leitura compara os níveis…» — built from the scale's own line. */
+        crossingCaption: string;
         selected?: string | null;
         /**
          * Whether the cards select a group of students. Off where there is
@@ -137,23 +138,6 @@ const MOVEMENT_ICONS = { progressed: TrendingUp, stable: Minus, regressed: Trend
 const CROSSING_ICONS = { failure_to_success: ArrowUpRight, success_to_failure: ArrowDownRight };
 const HELD_ICONS = { success_to_success: Check, failure_to_failure: TriangleAlert };
 
-/** The average's own ground. Flat and absent both read as neutral. */
-const heroTone = computed<string>(() => {
-    if (props.averageDirection === 'up') {
-        return 'progressed';
-    }
-
-    return props.averageDirection === 'down' ? 'regressed' : 'stable';
-});
-
-const HeroIcon = computed(() => {
-    if (props.averageDirection === 'up') {
-        return TrendingUp;
-    }
-
-    return props.averageDirection === 'down' ? TrendingDown : Minus;
-});
-
 const motion = computed<string>(() => (prefersReducedMotion() ? 'duration-0' : 'duration-300'));
 
 /**
@@ -189,50 +173,23 @@ const students = (count: number): string => (count === 1 ? '1 aluno' : `${count}
 
 <template>
     <div>
-        <!-- ---------------------------------------- a média e quem se moveu -->
-        <div class="grid gap-3 lg:grid-cols-5">
-            <!-- THE HEADLINE, given a whole panel of its own. It answers «a
-                 turma melhorou ou piorou?» before any counting starts. -->
-            <div
-                class="relative overflow-hidden rounded-[18px] border px-5 py-4 lg:col-span-2"
-                :class="SURFACES[heroTone].ground"
-            >
-                <span
-                    aria-hidden="true"
-                    class="pointer-events-none absolute -right-10 -top-12 size-36 rounded-full blur-3xl"
-                    :class="SURFACES[heroTone].glow"
-                ></span>
+        <!-- WHO MOVED, AND HOW MANY. «Quanto evoluiu a média» is answered once,
+             by the KPI at the top of the page — repeating it here would put the
+             same number on screen twice and leave the reader wondering which
+             one to believe. This section answers the other question, and gets
+             the whole width to do it (§1.1, §1.2).
 
-                <p class="relative text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Evolução média
-                </p>
+             THREE BARS ON ONE SCALE. The counts are small and the question is
+             «quantos, comparados uns com os outros» — three lengths sharing a
+             baseline answer that in one look, which three separate numerals
+             cannot. The numeral is still at the end of every bar, so nothing
+             has to be measured by eye. -->
+        <p class="mb-3 text-[11px] text-muted-foreground">
+            Sobre {{ students(comparable) }} {{ movementCaption }}.
+        </p>
 
-                <p class="relative mt-2 flex items-baseline gap-2">
-                    <component
-                        :is="HeroIcon"
-                        aria-hidden="true"
-                        class="size-6 shrink-0 self-center"
-                        :class="SURFACES[heroTone].ink"
-                    />
-                    <span
-                        class="text-[2.75rem] font-semibold leading-none tabular-nums tracking-tight"
-                        :class="SURFACES[heroTone].ink"
-                    >{{ averageDisplay }}</span>
-                    <span class="text-sm font-medium text-muted-foreground">p.p.</span>
-                </p>
-
-                <p class="relative mt-2.5 text-[11px] leading-relaxed text-muted-foreground">
-                    Sobre {{ students(comparable) }} {{ movementCaption }}.
-                </p>
-            </div>
-
-            <!-- THREE BARS ON ONE SCALE. The counts are small and the question
-                 is «quantos, comparados uns com os outros» — three lengths
-                 sharing a baseline answer that in one look, which three
-                 separate numerals cannot. The numeral is still at the end of
-                 every bar, so nothing has to be measured by eye. -->
-            <ul class="flex flex-col justify-center gap-2.5 lg:col-span-3">
-                <li v-for="movement in movements" :key="movement.key">
+        <ul class="flex flex-col gap-2.5">
+            <li v-for="movement in movements" :key="movement.key">
                     <component
                         :is="isSelectable(movement.count) ? 'button' : 'div'"
                         :type="isSelectable(movement.count) ? 'button' : undefined"
@@ -267,14 +224,13 @@ const students = (count: number): string => (count === 1 ? '1 aluno' : `${count}
                         <span class="w-6 shrink-0 text-right text-base font-semibold tabular-nums">{{ movement.count }}</span>
                         <span class="w-12 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">{{ movement.share }}</span>
                     </component>
-                </li>
-            </ul>
-        </div>
+            </li>
+        </ul>
 
-        <!-- ------------------------------------------- mudanças de patamar -->
+        <!-- ------------------------------- a evolução do que foi atribuído -->
         <div class="mt-5 mb-3 flex items-center gap-3">
             <h3 class="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Mudanças de patamar
+                {{ crossingTitle }}
             </h3>
             <span aria-hidden="true" class="h-px flex-1 bg-border/70"></span>
             <span class="text-[10px] tabular-nums text-muted-foreground">
@@ -328,7 +284,7 @@ const students = (count: number): string => (count === 1 ? '1 aluno' : `${count}
 
                 <span class="relative mt-0.5 block text-[11px] tabular-nums text-muted-foreground">
                     <template v-if="crossing.count > 0">{{ crossing.share }} de quem tem classificação nos dois momentos</template>
-                    <template v-else>Ninguém mudou de patamar neste sentido</template>
+                    <template v-else>Nenhum aluno fez este percurso</template>
                 </span>
             </component>
         </div>
@@ -364,16 +320,16 @@ const students = (count: number): string => (count === 1 ? '1 aluno' : `${count}
             </div>
         </dl>
 
-        <!-- WHAT THIS BLOCK READS, said plainly. The register above is about
-             results and this one is about grades, and a teacher must never have
-             to guess which of the two a number came from (§12). -->
+        <!-- WHAT THIS BLOCK READS, said plainly and against the scale's own
+             line. The register above is about calculated results and this one
+             is about the grades the teacher wrote, and a reader must never have
+             to guess which of the two a number came from (§1.12). -->
         <p class="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+            {{ crossingCaption }}
             <template v-if="noComparison > 0">
-                Mudança de patamar lê a classificação que atribuiu, não a média.
                 {{ students(noComparison) }} sem classificação atribuída nos dois momentos ficam fora
                 destas contagens — e não são «mantiveram-se».
             </template>
-            <template v-else>Mudança de patamar lê a classificação que atribuiu, não a média calculada.</template>
         </p>
     </div>
 </template>

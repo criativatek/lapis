@@ -115,7 +115,15 @@ type Statistics = {
     selected_period: { id: number; ulid: string; label: string; sequence: number } | null;
     previous_period: { id: number; ulid: string; label: string; sequence: number } | null;
     domains: { id: number; name: string }[];
-    scale: { name: string; kind: string; bands: { label: string; sequence: number; is_negative: boolean }[] } | null;
+    scale: {
+        name: string; kind: string;
+        bands: { label: string; sequence: number; is_negative: boolean }[];
+        /** Where this scale puts its passing line, and the words for it. */
+        threshold: {
+            noun: string; value: string | null; label: string | null;
+            at_or_above: string; below: string;
+        };
+    } | null;
     primary: {
         kind: 'period' | 'accumulated';
         label: string; short_label: string; caption: string | null;
@@ -496,12 +504,18 @@ const GROUP_LABELS: Record<string, string> = {
     progressed: 'Progrediram',
     stable: 'Mantiveram-se',
     regressed: 'Regrediram',
-    failure_to_success: 'Passaram a resultado positivo',
-    success_to_failure: 'Passaram a resultado negativo',
 };
 
+/** The chip names the group in the same words its card does. */
+const CROSSING_LABELS = computed<Record<string, string>>(() => ({
+    failure_to_success: `Passaram para ${threshold.value.at_or_above}`,
+    success_to_failure: `Passaram para ${threshold.value.below}`,
+}));
+
 const selectedGroupLabel = computed<string | null>(() => (
-    selectedGroup.value === null ? null : GROUP_LABELS[selectedGroup.value] ?? null
+    selectedGroup.value === null
+        ? null
+        : GROUP_LABELS[selectedGroup.value] ?? CROSSING_LABELS.value[selectedGroup.value] ?? null
 ));
 
 const selectedDomain = computed(() => stats.value.domains.find((domain) => domain.id === selectedDomainId.value) ?? null);
@@ -610,7 +624,7 @@ const domainDumbbells = computed<Dumbbell[]>(() => {
 });
 
 
-// ------------------------------------------------ movimento e patamar
+// ------------------------------ movimento e evolução do que foi atribuído
 
 /**
  * TWO READINGS, KEPT APART ON PURPOSE.
@@ -636,23 +650,40 @@ const movements = computed<MovementCard[]>(() => {
 });
 
 /**
- * «Positivo» and «negativo» rather than «sucesso» and «insucesso»: it is the
- * word the scale's own bands are described by everywhere else in LÁPIS, and a
- * mention is what a teacher writes on a pauta.
+ * WHERE THE SCALE PUTS ITS LINE, in words the school can check.
+ *
+ * «Passaram a resultado positivo» was generic and says nothing verifiable;
+ * «Passaram para nível igual ou superior a 3» is the same fact stated against
+ * the configuration. The phrasing arrives from the read model, built from the
+ * first level the scale does not call negative — never from a 3, a 10 or a 50
+ * written here (§1.6, §1.9).
  */
+const threshold = computed(() => stats.value.scale?.threshold ?? {
+    noun: 'classificação',
+    value: null,
+    label: null,
+    at_or_above: 'classificação não negativa',
+    below: 'classificação negativa',
+});
+
+/** «1 passou» / «2 passaram» — said properly, both ways (§1.11). */
+function crossed(count: number): string {
+    return count === 1 ? 'Passou' : 'Passaram';
+}
+
 const crossings = computed<CrossingCard[]>(() => {
     const transitions = stats.value.evolution.transitions;
 
     return [
         {
             key: 'failure_to_success',
-            label: 'Passaram a resultado positivo',
+            label: `${crossed(transitions.failure_to_success)} para ${threshold.value.at_or_above}`,
             count: transitions.failure_to_success,
             share: formatShare(transitions.percentages.failure_to_success),
         },
         {
             key: 'success_to_failure',
-            label: 'Passaram a resultado negativo',
+            label: `${crossed(transitions.success_to_failure)} para ${threshold.value.below}`,
             count: transitions.success_to_failure,
             share: formatShare(transitions.percentages.success_to_failure),
         },
@@ -663,21 +694,33 @@ const held = computed<HeldCard[]>(() => {
     const transitions = stats.value.evolution.transitions;
 
     return [
-        { key: 'success_to_success', label: 'Mantiveram resultado positivo', count: transitions.success_to_success },
-        { key: 'failure_to_failure', label: 'Mantiveram resultado negativo', count: transitions.failure_to_failure },
+        {
+            key: 'success_to_success',
+            label: `Mantiveram ${threshold.value.at_or_above}`,
+            count: transitions.success_to_success,
+        },
+        {
+            key: 'failure_to_failure',
+            label: `Mantiveram ${threshold.value.below}`,
+            count: transitions.failure_to_failure,
+        },
     ];
 });
 
-const averageDirection = computed<'up' | 'down' | 'flat' | null>(() => {
-    const change = readingEvolution.value.average_change;
+/** «Evolução dos níveis atribuídos» — the scale decides the noun (§1.4). */
+const crossingTitle = computed<string>(() => (
+    threshold.value.noun === 'nível'
+        ? 'Evolução dos níveis atribuídos'
+        : 'Evolução das classificações atribuídas'
+));
 
-    if (change === null) {
-        return null;
-    }
+const crossingCaption = computed<string>(() => {
+    const plural = threshold.value.noun === 'nível' ? 'os níveis' : 'as classificações';
 
-    return Number(change) > 0 ? 'up' : Number(change) < 0 ? 'down' : 'flat';
+    return `Esta leitura compara ${plural} que atribuiu nos dois momentos, tendo em conta o limiar`
+        + ' definido pela escala.';
+
 });
-
 /**
  * The class's own line through the year, drawn on the figure that answered at
  * each moment — never a line that silently changes meaning halfway (§22).
@@ -1547,14 +1590,12 @@ const studentRows = computed(() => {
                     index="02"
                     title="Como evoluiu a turma"
                     :description="hasComparison
-                        ? `Face a ${stats.previous_period?.label}. Quanto se moveram os resultados calculados, e quem mudou de patamar na classificação que atribuiu — duas leituras diferentes.`
+                        ? `Face a ${stats.previous_period?.label}. Quantos alunos progrediram, mantiveram-se ou regrediram nos resultados calculados, e como evoluíram as classificações que atribuiu.`
                         : 'Ainda não há período anterior para comparar.'"
                 />
 
                 <MovementBoard
                     v-if="hasComparison"
-                    :average-display="formatPoints(readingEvolution.average_change)"
-                    :average-direction="averageDirection"
                     :comparable="readingEvolution.comparable"
                     :movement-caption="usingAccumulated
                         ? 'com dois momentos comparáveis, resultado acumulado contra o resultado anterior'
@@ -1562,6 +1603,8 @@ const studentRows = computed(() => {
                     :movements="movements"
                     :crossings="crossings"
                     :held="held"
+                    :crossing-title="crossingTitle"
+                    :crossing-caption="crossingCaption"
                     :crossing-comparable="stats.evolution.transitions.comparable"
                     :unclassified="stats.evolution.transitions.unclassified"
                     :no-comparison="stats.evolution.transitions.no_assigned_classification"
@@ -2133,10 +2176,10 @@ const studentRows = computed(() => {
                             class="size-4 shrink-0"
                         />
                         <span v-if="selected.transition === 'failure_to_success'">
-                            Passou de classificação negativa para positiva face a {{ stats.previous_period?.label }}.
+                            Passou para {{ threshold.at_or_above }} face a {{ stats.previous_period?.label }}.
                         </span>
                         <span v-else>
-                            Passou de classificação positiva para negativa face a {{ stats.previous_period?.label }}.
+                            Passou para {{ threshold.below }} face a {{ stats.previous_period?.label }}.
                         </span>
                     </p>
 

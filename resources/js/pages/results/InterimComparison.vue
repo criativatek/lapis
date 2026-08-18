@@ -56,6 +56,8 @@ type Comparison = {
         percentages: Record<CrossingKey | HeldKey, string | null>;
         share_of_class: { unclassified: string | null; no_assigned_classification: string | null };
     };
+    /** Where the scale puts its passing line, for the words on the cards. */
+    threshold: { noun: string; at_or_above: string; below: string } | null;
     assigned_distribution: {
         /** False for a photograph taken before this block was recorded. */
         interim_is_available: boolean;
@@ -162,19 +164,31 @@ const movements = computed<MovementCard[]>(() => {
     ];
 });
 
+/**
+ * The scale's own line, in words. Same phrasing as Estatística, from the same
+ * source — a second vocabulary for the same fact is a second thing to learn.
+ */
+const threshold = computed(() => props.comparison.threshold ?? {
+    noun: 'classificação',
+    at_or_above: 'classificação não negativa',
+    below: 'classificação negativa',
+});
+
+const crossed = (count: number): string => (count === 1 ? 'Passou' : 'Passaram');
+
 const crossings = computed<CrossingCard[]>(() => {
     const transitions = props.comparison.transitions;
 
     return [
         {
             key: 'failure_to_success',
-            label: 'Passaram a resultado positivo',
+            label: `${crossed(transitions.failure_to_success)} para ${threshold.value.at_or_above}`,
             count: transitions.failure_to_success,
             share: formatShare(transitions.percentages.failure_to_success),
         },
         {
             key: 'success_to_failure',
-            label: 'Passaram a resultado negativo',
+            label: `${crossed(transitions.success_to_failure)} para ${threshold.value.below}`,
             count: transitions.success_to_failure,
             share: formatShare(transitions.percentages.success_to_failure),
         },
@@ -182,18 +196,29 @@ const crossings = computed<CrossingCard[]>(() => {
 });
 
 const held = computed<HeldCard[]>(() => [
-    { key: 'success_to_success', label: 'Mantiveram resultado positivo', count: props.comparison.transitions.success_to_success },
-    { key: 'failure_to_failure', label: 'Mantiveram resultado negativo', count: props.comparison.transitions.failure_to_failure },
+    {
+        key: 'success_to_success',
+        label: `Mantiveram ${threshold.value.at_or_above}`,
+        count: props.comparison.transitions.success_to_success,
+    },
+    {
+        key: 'failure_to_failure',
+        label: `Mantiveram ${threshold.value.below}`,
+        count: props.comparison.transitions.failure_to_failure,
+    },
 ]);
 
-const averageDirection = computed<'up' | 'down' | 'flat' | null>(() => {
-    const change = props.comparison.movement.average_change;
+const crossingTitle = computed<string>(() => (
+    threshold.value.noun === 'nível'
+        ? 'Evolução dos níveis atribuídos'
+        : 'Evolução das classificações atribuídas'
+));
 
-    if (change === null) {
-        return null;
-    }
+const crossingCaption = computed<string>(() => {
+    const plural = threshold.value.noun === 'nível' ? 'os níveis' : 'as classificações';
 
-    return Number(change) > 0 ? 'up' : Number(change) < 0 ? 'down' : 'flat';
+    return `Esta leitura compara ${plural} que atribuiu nos dois momentos, tendo em conta o limiar`
+        + ' definido pela escala.';
 });
 
 const finalLabel = computed(() => `Final do ${props.comparison.period.label}`);
@@ -322,12 +347,12 @@ const finalLabel = computed(() => `Final do ${props.comparison.period.label}`);
                 :description="`Cada aluno de ${comparison.interim.reference_date_label} até ao estado atual do período. Quanto se moveram, e quem mudou de lado da escala.`"
             />
             <MovementBoard
-                :average-display="formatPoints(comparison.movement.average_change)"
-                :average-direction="averageDirection"
                 :comparable="comparison.movement.comparable"
                 :movements="movements"
                 :crossings="crossings"
                 :held="held"
+                :crossing-title="crossingTitle"
+                :crossing-caption="crossingCaption"
                 :crossing-comparable="comparison.transitions.comparable"
                 :unclassified="comparison.transitions.unclassified"
                 :no-comparison="comparison.transitions.no_assigned_classification"

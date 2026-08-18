@@ -213,6 +213,75 @@ class StatisticsChartThemeTest extends TestCase
     }
 
     #[Test]
+    public function the_average_is_stated_once_on_the_page_and_not_twice(): void
+    {
+        $board = (string) file_get_contents(resource_path('js/components/infographic/MovementBoard.vue'));
+        $page = $this->page();
+
+        // The KPI at the top answers «quanto evoluiu a média»; this section
+        // answers «quantos alunos». The same number on screen twice leaves the
+        // reader wondering which one to believe (§1.1, §1.2).
+        $this->assertStringNotContainsString('averageDisplay', $board);
+        $this->assertStringNotContainsString('Evolução média', $board);
+
+        // Checked on the board's own usage: StudentSpectrum has a prop of the
+        // same name for the average marker on its axis, which is a different
+        // reading and stays.
+        preg_match('/<MovementBoard(.*?)\/>/s', $page, $usage);
+        $this->assertNotEmpty($usage);
+        $this->assertStringNotContainsString('average-display', $usage[1]);
+
+        // And the KPI still carries it.
+        $this->assertStringContainsString(':label="readingEvolutionLabel"', $page);
+    }
+
+    #[Test]
+    public function the_word_patamar_is_gone_from_the_interface(): void
+    {
+        foreach ([
+            resource_path('js/components/infographic/MovementBoard.vue'),
+            resource_path('js/pages/results/Statistics.vue'),
+            resource_path('js/pages/results/InterimComparison.vue'),
+        ] as $file) {
+            $contents = (string) file_get_contents($file);
+
+            $this->assertDoesNotMatchRegularExpression(
+                '/patamar/ui',
+                $contents,
+                basename($file).' ainda fala em «patamar»',
+            );
+        }
+    }
+
+    #[Test]
+    public function the_crossing_section_is_named_by_the_kind_of_scale(): void
+    {
+        $page = $this->page();
+
+        // «nível» for a levelled scale, «classificação» for a numeric one —
+        // decided by the scale, never hardcoded per school (§1.4).
+        $this->assertStringContainsString("threshold.value.noun === 'nível'", $page);
+        $this->assertStringContainsString("'Evolução dos níveis atribuídos'", $page);
+        $this->assertStringContainsString("'Evolução das classificações atribuídas'", $page);
+    }
+
+    #[Test]
+    public function the_cards_name_the_scales_own_line_instead_of_saying_positive(): void
+    {
+        $page = $this->page();
+
+        // «Passaram para nível igual ou superior a 3» rather than «passaram a
+        // resultado positivo»: the same fact, stated so a school can check it.
+        $this->assertStringContainsString('threshold.value.at_or_above', $page);
+        $this->assertStringContainsString('threshold.value.below', $page);
+        $this->assertStringNotContainsString("'Passaram a resultado positivo'", $page);
+        $this->assertStringNotContainsString("'Mantiveram resultado positivo'", $page);
+
+        // Singular and plural, said properly (§1.11, §1.20).
+        $this->assertStringContainsString("count === 1 ? 'Passou' : 'Passaram'", $page);
+    }
+
+    #[Test]
     public function the_movement_bars_share_one_scale_and_never_the_largest_count(): void
     {
         $board = (string) file_get_contents(resource_path('js/components/infographic/MovementBoard.vue'));
@@ -470,13 +539,14 @@ class StatisticsChartThemeTest extends TestCase
 
         // Two registers, each with its own heading and its own denominator —
         // rising six points and crossing the line are different facts.
-        $this->assertStringContainsString('Mudanças de patamar', $board);
+        $this->assertStringContainsString('{{ crossingTitle }}', $board);
         $this->assertStringContainsString('com dois períodos comparáveis', $board);
         $this->assertStringContainsString('com classificação atribuída nos dois momentos', $board);
 
         // AND THE SOURCE OF EACH IS SAID ON THE CARD. A teacher must never have
         // to guess whether a figure came from the averages or from the grades.
-        $this->assertStringContainsString('lê a classificação que atribuiu, não a média', $board);
+        $this->assertStringContainsString('{{ crossingCaption }}', $board);
+        $this->assertStringContainsString('que atribuiu nos dois momentos, tendo em conta o limiar', $this->page());
     }
 
     #[Test]
@@ -600,10 +670,12 @@ class StatisticsChartThemeTest extends TestCase
             'Progrediram',
             'Mantiveram-se',
             'Regrediram',
-            'Passaram a resultado positivo',
-            'Passaram a resultado negativo',
-            'Mantiveram resultado positivo',
-            'Mantiveram resultado negativo',
+            // The crossings name the scale's own line rather than saying
+            // «positivo»; the words themselves are built from the threshold.
+            'para ${threshold.value.at_or_above}',
+            'para ${threshold.value.below}',
+            'Mantiveram ${threshold.value.at_or_above}',
+            'Mantiveram ${threshold.value.below}',
         ] as $word) {
             $this->assertStringContainsString($word, $page, "falta a leitura «{$word}»");
         }

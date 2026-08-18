@@ -1286,7 +1286,115 @@ class BuildClassStatistics
             'name' => (string) $scale->name,
             'kind' => (string) $scale->kind,
             'bands' => $bands,
+            'threshold' => $this->thresholdPayload($scale),
         ];
+    }
+
+    /**
+     * WHERE THIS SCALE PUTS THE LINE, in the words a teacher would use.
+     *
+     * «Passaram a resultado positivo» is generic and says nothing a school can
+     * check; «Passaram para nível igual ou superior a 3» is the same fact
+     * stated against the scale's own configuration. So the phrasing is built
+     * here, once, from the first level the scale does NOT call negative — never
+     * from a 3, a 10 or a 50 written into the code.
+     *
+     * «IGUAL OU SUPERIOR», never «superior»: the boundary level is on the
+     * passing side of its own line, and «superior a 3» would exclude the very
+     * level that defines it.
+     *
+     * THREE SHAPES, because scales have three:
+     *
+     *  - a levelled scale states the value the teacher writes as the level's
+     *    own code, so «3» is read straight off it;
+     *  - a numeric scale states it as a band boundary in normalized space, so
+     *    it is placed back on the scale's own interval by the same approved
+     *    rule the proposals use;
+     *  - a scale whose levels are words has no number to quote, and gets its
+     *    own wording rather than an invented one (§1.9).
+     *
+     * @return array<string, mixed>
+     */
+    protected function thresholdPayload(Scale $scale): array
+    {
+        $noun = $scale->kind === 'level' ? 'nível' : 'classificação';
+
+        $first = $scale->levels->sortBy('sequence')->first(fn (ScaleLevel $level): bool => ! $level->is_negative);
+
+        $value = $first === null ? null : $this->thresholdValueOf($scale, $first);
+
+        if ($value !== null) {
+            return [
+                'noun' => $noun,
+                'value' => $value,
+                'label' => null,
+                'at_or_above' => "{$noun} igual ou superior a {$value}",
+                'below' => "{$noun} inferior a {$value}",
+            ];
+        }
+
+        // Words rather than a number: «Atingiu» and everything after it.
+        if ($first !== null) {
+            return [
+                'noun' => $noun,
+                'value' => null,
+                'label' => (string) $first->label,
+                'at_or_above' => "«{$first->label}» ou superior",
+                'below' => "abaixo de «{$first->label}»",
+            ];
+        }
+
+        // A scale that says nothing about a passing line. Nothing is invented;
+        // the crossings will be «sem menção na escala» anyway.
+        return [
+            'noun' => $noun,
+            'value' => null,
+            'label' => null,
+            'at_or_above' => "{$noun} não negativa",
+            'below' => "{$noun} negativa",
+        ];
+    }
+
+    /**
+     * The number a teacher would recognise for the passing line, or null when
+     * the scale gives none.
+     */
+    protected function thresholdValueOf(Scale $scale, ScaleLevel $level): ?string
+    {
+        // A levelled scale: the code IS what gets written on the pauta.
+        if ($scale->kind === 'level') {
+            return is_numeric($level->code) ? $this->trimZeros((string) $level->code) : null;
+        }
+
+        $boundary = $level->band_min_normalized;
+
+        if ($boundary === null) {
+            return null;
+        }
+
+        // A percentage scale is already expressed on that axis.
+        if ($scale->kind === 'percentage') {
+            return $this->trimZeros(Bc::round(Bc::of((string) $boundary), 0, 'half_up'));
+        }
+
+        if ($scale->min_value === null || $scale->max_value === null) {
+            return null;
+        }
+
+        // The one approved placement rule, forwards: min + (normalized/100) × span.
+        $span = Bc::sub(Bc::of((string) $scale->max_value), Bc::of((string) $scale->min_value));
+
+        return $this->trimZeros(Bc::round(
+            Bc::add(Bc::of((string) $scale->min_value), Bc::mul(Bc::div(Bc::of((string) $boundary), '100'), $span)),
+            0,
+            'half_up',
+        ));
+    }
+
+    /** «10.000» reads as «10» on a card. */
+    protected function trimZeros(string $value): string
+    {
+        return rtrim(rtrim($value, '0'), '.') ?: '0';
     }
 
     /**

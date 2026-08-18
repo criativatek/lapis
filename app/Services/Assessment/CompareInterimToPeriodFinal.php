@@ -103,6 +103,10 @@ class CompareInterimToPeriodFinal
             'movement' => $this->movement($students),
             'transitions' => $this->transitions($students),
             'assigned_distribution' => $this->assignedDistributions($snapshot, $final),
+            // Where the scale puts its line, for the WORDS on the cards. The
+            // counts themselves come from the `is_negative` each side recorded,
+            // so this changes no arithmetic — only how it is phrased (§1.13).
+            'threshold' => $final['scale']['threshold'] ?? null,
             'domains' => $this->domains($snapshot, $final, $kind),
             'students' => $students,
         ];
