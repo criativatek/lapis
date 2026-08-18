@@ -71,6 +71,8 @@ type LegalFraming = 'auto' | 'manual' | 'none' | null;
 const props = defineProps<{
     schoolClass: { ulid: string; label: string; subject: string };
     enrollments: { id: number; name: string }[];
+    /** Ids of the students who are in the class today. */
+    activeEnrollmentIds: number[];
     domains: { id: number; name: string }[];
     periods: { id: number; label: string }[];
     types: InterventionType[];
@@ -148,6 +150,21 @@ const selectedMapping = computed(() => selectedType.value?.legal_mapping ?? null
 const selectedMeasureLevel = computed(() => props.supportMeasureLevels.find((level) => level.value === form.support_measure_level) ?? null);
 const availableMeasures = computed(() => selectedMeasureLevel.value?.measures ?? []);
 const editingUlid = ref<string | null>(null);
+/** Who the intervention being edited already names, including students who have left. */
+const editingParticipantIds = ref<number[]>([]);
+
+/**
+ * WHO THIS FORM MAY NAME.
+ *
+ * A new intervention is about the class as it stands. Editing one is about the
+ * students it already has — including anybody who has since moved class, whose
+ * checkbox must still be there or saving the edit would silently drop them
+ * from a record nobody asked to change (§3.1, §3.3).
+ */
+const selectableEnrollments = computed(() => props.enrollments.filter(
+    (enrollment) => props.activeEnrollmentIds.includes(enrollment.id)
+        || editingParticipantIds.value.includes(enrollment.id),
+));
 // Where the framing of the intervention being edited came from. A framing the
 // teacher chose by hand survives a change of type; one the system derived
 // belonged to the old type and must be recomputed.
@@ -299,7 +316,7 @@ function removeFraming(): void {
 resetAutomaticFraming();
 
 function selectAllEnrollments(): void {
-    form.enrollment_ids = props.enrollments.map((enrollment) => enrollment.id);
+    form.enrollment_ids = selectableEnrollments.value.map((enrollment) => enrollment.id);
 }
 
 function clearSelectedEnrollments(): void {
@@ -333,6 +350,7 @@ function edit(intervention: Intervention): void {
     editingFramingSource.value = intervention.legal_framing?.source ?? null;
     form.clearErrors();
     form.target_type = intervention.target_type;
+    editingParticipantIds.value = [...intervention.participant_ids];
     form.enrollment_ids = [...intervention.participant_ids];
     form.intervention_type = intervention.intervention_type ?? props.types[0]?.value ?? '';
     form.domain_relation = intervention.domain_relation;
@@ -358,6 +376,7 @@ function edit(intervention: Intervention): void {
 
 function cancelEdit(): void {
     editingUlid.value = null;
+    editingParticipantIds.value = [];
     editingFramingSource.value = null;
     form.reset();
     form.clearErrors();
@@ -387,6 +406,7 @@ function submit(): void {
         preserveScroll: true,
         onSuccess: () => {
             editingUlid.value = null;
+            editingParticipantIds.value = [];
             editingFramingSource.value = null;
             form.reset();
             resetAutomaticFraming();
@@ -519,7 +539,7 @@ function clearFilters(): void {
                 <span class="mb-1 block text-xs text-muted-foreground">Aluno</span>
                 <select v-model="form.enrollment_ids[0]" class="w-full rounded-md border border-border bg-background px-2 py-1.5">
                     <option :value="undefined" disabled>Escolher…</option>
-                    <option v-for="enrollment in enrollments" :key="enrollment.id" :value="enrollment.id">{{ enrollment.name }}</option>
+                    <option v-for="enrollment in selectableEnrollments" :key="enrollment.id" :value="enrollment.id">{{ enrollment.name }}</option>
                 </select>
             </label>
 
@@ -529,7 +549,7 @@ function clearFilters(): void {
                     <button type="button" class="text-muted-foreground hover:underline" @click="clearSelectedEnrollments">Limpar seleção</button>
                 </div>
                 <div class="max-h-48 space-y-1 overflow-y-auto">
-                    <label v-for="enrollment in enrollments" :key="enrollment.id" class="flex items-center gap-2 text-sm">
+                    <label v-for="enrollment in selectableEnrollments" :key="enrollment.id" class="flex items-center gap-2 text-sm">
                         <input v-model="form.enrollment_ids" type="checkbox" :value="enrollment.id" class="rounded border-border" />
                         {{ enrollment.name }}
                     </label>

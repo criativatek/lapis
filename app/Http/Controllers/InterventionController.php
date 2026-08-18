@@ -132,11 +132,19 @@ class InterventionController extends Controller
 
         return Inertia::render('interventions/Show', [
             'schoolClass' => ['ulid' => $class->ulid, 'label' => $class->label, 'subject' => $class->subject->name],
+            // EVERYONE WHO WAS EVER ON THIS ROLL, because the list also feeds
+            // the filter and the edit form: an intervention recorded in
+            // November belongs to the students of November, and neither
+            // finding it nor correcting it may depend on them still being here.
             'enrollments' => $class->enrollments()->with('student.identity')->orderBy('class_number')->get()
                 ->map(fn (Enrollment $enrollment) => [
                     'id' => $enrollment->id,
                     'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
                 ]),
+            // The class as it stands — the only students a NEW intervention may
+            // name. The form picks from this one and falls back to the list
+            // above only for participants an intervention already has (§3.1).
+            'activeEnrollmentIds' => $class->activeEnrollments()->pluck('id'),
             'domains' => Domain::where('subject_id', $class->subject_id)->orderBy('name')->get(['id', 'name']),
             'periods' => AcademicPeriod::where('academic_year_id', $class->academic_year_id)
                 ->orderBy('sequence')->get(['id', 'label']),
@@ -175,7 +183,7 @@ class InterventionController extends Controller
 
         $validated = $this->validatePayload($request);
         $type = InterventionType::from($validated['intervention_type']);
-        $this->guardCrossReferences($class, $validated);
+        $this->guardCrossReferences($class, $validated, isNew: true);
 
         // Resolved at the intervention's own date, not today's.
         $framework = $this->frameworkFor(Carbon::parse($validated['started_on']));
@@ -378,7 +386,7 @@ class InterventionController extends Controller
      *
      * @param  array<string, mixed>  $validated
      */
-    protected function guardCrossReferences(SchoolClass $class, array $validated): void
+    protected function guardCrossReferences(SchoolClass $class, array $validated, bool $isNew = false): void
     {
         $targetType = InterventionTargetType::from($validated['target_type']);
         /** @var list<int> $participantIds */
@@ -395,11 +403,24 @@ class InterventionController extends Controller
         }
 
         if ($participantIds !== []) {
+            // MEMBERSHIP IS CHECKED AGAINST EVERYONE WHO WAS EVER ON THIS ROLL.
+            // An intervention recorded in November belongs to the students of
+            // November, and editing it — to correct a date, a description, a
+            // domain — must not fail because one of them has since moved class.
             $belonging = $class->enrollments()->whereKey($participantIds)->count();
 
             if ($belonging !== count($participantIds)) {
                 throw ValidationException::withMessages([
                     'enrollment_ids' => __('Aluno inválido para esta turma.'),
+                ]);
+            }
+
+            // A NEW record is about the class as it stands, so it may only name
+            // students who are in it. Only on create: this must never be able
+            // to reject an edit to something already recorded (§3.2, §3.3).
+            if ($isNew && $class->activeEnrollments()->whereKey($participantIds)->count() !== count($participantIds)) {
+                throw ValidationException::withMessages([
+                    'enrollment_ids' => __('Um aluno que já não integra a turma não pode entrar num registo novo.'),
                 ]);
             }
         }

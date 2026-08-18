@@ -89,6 +89,7 @@ class EvidenceController extends Controller
 
         return Inertia::render('records/Show', [
             'schoolClass' => ['ulid' => $class->ulid, 'label' => $class->label, 'subject' => $class->subject->name],
+            'activeEnrollmentIds' => $class->activeEnrollments()->pluck('id'),
             'enrollments' => $class->enrollments()->with('student.identity')->orderBy('class_number')->get()
                 ->map(fn ($enrollment) => ['id' => $enrollment->id, 'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)']),
             'domains' => Domain::where('subject_id', $class->subject_id)->orderBy('name')->get(['id', 'name']),
@@ -142,7 +143,7 @@ class EvidenceController extends Controller
             'enrollment_ids.*' => ['integer'],
         ]));
 
-        $this->guardCrossReferences($class, $validated);
+        $this->guardCrossReferences($class, $validated, isNew: true);
 
         $targets = $validated['enrollment_ids'] === [] ? [null] : $validated['enrollment_ids'];
 
@@ -288,15 +289,27 @@ class EvidenceController extends Controller
      *
      * @param  array<string, mixed>  $validated
      */
-    protected function guardCrossReferences(SchoolClass $class, array $validated): void
+    protected function guardCrossReferences(SchoolClass $class, array $validated, bool $isNew = false): void
     {
         $enrollmentIds = array_values(array_unique(array_filter(array_merge(
             [$validated['enrollment_id'] ?? null],
             $validated['enrollment_ids'] ?? [],
         ), fn ($id) => $id !== null)));
 
+        // MEMBERSHIP AGAINST EVERYONE WHO WAS EVER ON THIS ROLL: a record made
+        // in November belongs to November's students, and correcting it must
+        // not fail because one of them has since moved class.
         if ($enrollmentIds !== [] && $class->enrollments()->whereIn('id', $enrollmentIds)->count() !== count($enrollmentIds)) {
             throw ValidationException::withMessages(['enrollment_ids' => __('Aluno inválido para esta turma.')]);
+        }
+
+        // A NEW record is about the class as it stands. Only on create, so an
+        // edit to something already recorded can never be refused (§3.2, §3.3).
+        if ($isNew && $enrollmentIds !== []
+            && $class->activeEnrollments()->whereIn('id', $enrollmentIds)->count() !== count($enrollmentIds)) {
+            throw ValidationException::withMessages([
+                'enrollment_ids' => __('Um aluno que já não integra a turma não pode entrar num registo novo.'),
+            ]);
         }
         if (($validated['domain_id'] ?? null) !== null
             && ! Domain::where('subject_id', $class->subject_id)->whereKey($validated['domain_id'])->exists()) {

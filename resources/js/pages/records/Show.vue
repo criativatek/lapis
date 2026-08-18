@@ -28,6 +28,8 @@ type Kind = { value: string; label: string; group: string; group_label: string }
 const props = defineProps<{
     schoolClass: { ulid: string; label: string; subject: string };
     enrollments: { id: number; name: string }[];
+    /** Ids of the students who are in the class today. */
+    activeEnrollmentIds: number[];
     domains: { id: number; name: string }[];
     kinds: Kind[];
     severities: { value: string; label: string }[];
@@ -137,8 +139,20 @@ const form = useForm<FormData>({
 type CreateTargetMode = 'whole_class' | 'students';
 const createTargetMode = ref<CreateTargetMode>('whole_class');
 
+/**
+ * WHO A NEW RECORD MAY NAME: the class as it stands.
+ *
+ * enrollments still holds everyone who was ever on this roll, because the
+ * filter below and the edit form both need them — a record made in November
+ * belongs to November's students, and neither finding it nor correcting it may
+ * depend on them still being here.
+ */
+const selectableEnrollments = computed(
+    () => props.enrollments.filter((enrollment) => props.activeEnrollmentIds.includes(enrollment.id)),
+);
+
 function selectAllEnrollments(): void {
-    form.enrollment_ids = props.enrollments.map((enrollment) => enrollment.id);
+    form.enrollment_ids = selectableEnrollments.value.map((enrollment) => enrollment.id);
 }
 
 function clearSelectedEnrollments(): void {
@@ -331,7 +345,7 @@ function applyFilters(): void {
                                 <button type="button" class="text-muted-foreground hover:underline" @click="clearSelectedEnrollments">Limpar seleção</button>
                             </div>
                             <div class="max-h-48 space-y-1 overflow-y-auto">
-                                <label v-for="enrollment in enrollments" :key="enrollment.id" class="flex items-center gap-2 text-sm">
+                                <label v-for="enrollment in selectableEnrollments" :key="enrollment.id" class="flex items-center gap-2 text-sm">
                                     <input v-model="form.enrollment_ids" type="checkbox" :value="enrollment.id" class="rounded border-border" />
                                     {{ enrollment.name }}
                                 </label>
