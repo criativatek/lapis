@@ -343,15 +343,75 @@ const supplementaryAverage = computed<string | null>(() => (
     usingAccumulated.value ? stats.value.summary.class_average : stats.value.summary.accumulated_average
 ));
 
-const supplementaryLabel = computed<string>(() => (
-    usingAccumulated.value ? (stats.value.primary.supplementary_label ?? 'Só neste período') : 'Acumulado do ano'
+/**
+ * WHAT THE BIG NUMBER IS, said by the label rather than assumed.
+ *
+ * The figure follows the switch, so the words have to follow it too — a «66,8%»
+ * under «Média acumulada da turma» is a contradiction the reader has to resolve
+ * on the application's behalf, and they should never have to.
+ *
+ * The period's own name comes from the AcademicPeriod, so «2.º Semestre», «3.º
+ * Período» and «1.º Trimestre» all read naturally without a branch per school
+ * calendar.
+ */
+const periodName = computed<string>(() => stats.value.selected_period?.label ?? 'período');
+
+const readingLabel = computed<string>(() => (
+    usingAccumulated.value ? 'Média acumulada da turma' : `Média ponderada do ${periodName.value}`
 ));
 
 const readingCaption = computed<string>(() => (
     usingAccumulated.value
-        ? 'Resultado acumulado · avaliação contínua'
-        : `Resultado do ${stats.value.selected_period?.label ?? 'período'}, isolado`
+        ? 'Considera a avaliação realizada ao longo do ano letivo até este momento.'
+        : `Considera apenas os elementos realizados no ${periodName.value}.`
 ));
+
+const readingHelp = computed<string>(() => (
+    usingAccumulated.value
+        ? 'Considera os períodos que contribuem para a avaliação contínua até este momento.'
+        : 'Mostra apenas os resultados dos elementos realizados neste período, sem o efeito dos períodos anteriores.'
+));
+
+/** The other perspective — named in full, never as a bare «acumulado». */
+const supplementaryLabel = computed<string>(() => (
+    usingAccumulated.value
+        ? `Só no ${periodName.value}`
+        : 'Média acumulada ao longo do ano letivo'
+));
+
+/**
+ * How far apart the two readings are, in percentage points.
+ *
+ * Both numbers are already on the page; this only subtracts them, at the
+ * precision they are shown at, so «igual» on screen is «igual» here.
+ */
+const readingGap = computed<number | null>(() => {
+    const primary = readingAverage.value;
+    const other = supplementaryAverage.value;
+
+    if (primary === null || other === null) {
+        return null;
+    }
+
+    return Number(Number(primary).toFixed(1)) - Number(Number(other).toFixed(1));
+});
+
+/**
+ * The gap, named by what it is measured AGAINST.
+ *
+ * «+6,5 p.p.» on its own would leave the reader to work out which of the two
+ * numbers is above the other; naming the far side settles it in one phrase and
+ * keeps the block from turning into a paragraph (§4).
+ */
+const readingGapCaption = computed<string | null>(() => {
+    if (readingGap.value === null) {
+        return null;
+    }
+
+    return usingAccumulated.value
+        ? `${formatPoints(readingGap.value)} p.p. face ao desempenho só deste período`
+        : `${formatPoints(readingGap.value)} p.p. face ao acumulado`;
+});
 
 /** The movement that belongs to the reading on screen. Two datasets, one shape. */
 const readingEvolution = computed(() => (
@@ -623,11 +683,22 @@ const averageDirection = computed<'up' | 'down' | 'flat' | null>(() => {
  * each moment — never a line that silently changes meaning halfway (§22).
  */
 const primaryTrend = computed(() => stats.value.period_series
-    .filter((row) => row.primary_average !== null)
-    .map((row) => ({ label: row.label, percent: Number(row.primary_average) })));
+    .map((row) => ({
+        label: row.label,
+        // The line draws the reading in force. Labelling it «ao longo do ano»
+        // while it plots something else is the same contradiction the headline
+        // had (§5).
+        value: usingAccumulated.value ? row.primary_average : row.class_average,
+    }))
+    .filter((row) => row.value !== null)
+    .map((row) => ({ label: row.label, percent: Number(row.value) })));
+
+const trendLabel = computed<string>(() => (
+    usingAccumulated.value ? 'Evolução da média acumulada' : 'Média de cada período'
+));
 
 const trendSummary = computed<string>(() => (
-    `Resultado da turma em cada momento do ano: ${primaryTrend.value
+    `${trendLabel.value}: ${primaryTrend.value
         .map((point) => `${point.label}, ${pct(String(point.percent))}`)
         .join('; ')}.`
 ));
@@ -1390,20 +1461,23 @@ const studentRows = computed(() => {
                 <KpiCard
                     tone="violet"
                     :icon="ChartNoAxesCombined"
-                    :label="stats.primary.short_label"
+                    :label="readingLabel"
                     :value="pct(readingAverage)"
                     :context="readingCaption"
-                    :help="stats.primary.kind === 'accumulated'
-                        ? 'Considera os períodos que contribuem para a avaliação contínua até ao momento.'
-                        : 'Considera os elementos realizados neste período.'"
+                    :help="readingHelp"
                 >
-                    <p
+                    <div
                         v-if="stats.primary.has_supplementary"
-                        class="mt-3 flex items-baseline gap-2 border-t border-border/50 pt-2.5 text-[11px]"
+                        class="mt-3 border-t border-border/50 pt-2.5 text-[11px]"
                     >
-                        <span class="text-muted-foreground">{{ supplementaryLabel }}</span>
-                        <span class="ml-auto font-semibold tabular-nums">{{ pct(supplementaryAverage) }}</span>
-                    </p>
+                        <p class="flex items-baseline gap-2">
+                            <span class="min-w-0 text-muted-foreground">{{ supplementaryLabel }}</span>
+                            <span class="ml-auto shrink-0 font-semibold tabular-nums">{{ pct(supplementaryAverage) }}</span>
+                        </p>
+                        <p v-if="readingGap !== null" class="mt-1 tabular-nums text-muted-foreground">
+                            {{ readingGapCaption }}
+                        </p>
+                    </div>
                 </KpiCard>
 
                 <!-- «Quantos alunos tiveram classificação positiva?» — decided
@@ -1462,7 +1536,7 @@ const studentRows = computed(() => {
                         ? `Sobre ${studentsWord(readingEvolution.comparable)} com dois momentos comparáveis`
                         : 'Ainda não há um momento anterior para comparar'"
                     :help="continuousView
-                        ? 'Compara o resultado que respondia em cada momento — no 2.º período, o acumulado.'
+                        ? 'Compara o resultado que respondia em cada momento — a partir do segundo, o acumulado.'
                         : 'Compara o trabalho realizado neste período com o do período anterior.'"
                 />
             </div>
@@ -1622,7 +1696,7 @@ const studentRows = computed(() => {
                         <p class="text-[3rem] font-semibold leading-none tabular-nums tracking-tight">
                             {{ pct(readingAverage) }}
                         </p>
-                        <p class="mt-1.5 text-sm font-medium">{{ stats.primary.short_label }}</p>
+                        <p class="mt-1.5 text-sm font-medium">{{ readingLabel }}</p>
                     </div>
 
                     <p class="max-w-sm text-xs leading-relaxed text-muted-foreground">
@@ -1631,7 +1705,7 @@ const studentRows = computed(() => {
                             que a classificação se decide.
                         </template>
                         <template v-else>
-                            Leitura isolada: só os elementos realizados neste período.
+                            {{ readingCaption }} Leitura suplementar — a classificação acompanha o acumulado.
                         </template>
                     </p>
 
@@ -1656,18 +1730,22 @@ const studentRows = computed(() => {
                                 class="fill-emerald-600 dark:fill-emerald-400"
                             />
                         </svg>
-                        <p class="mt-1 text-center text-[10px] text-muted-foreground">Ao longo do ano</p>
+                        <p class="mt-1 text-center text-[10px] text-muted-foreground">{{ trendLabel }}</p>
                     </div>
 
-                    <!-- The other reading, deliberately small (§23). -->
+                    <!-- The other reading, deliberately small (§23) — and named
+                         in full, so a number is never left to be guessed at. -->
                     <div
                         v-if="stats.primary.has_supplementary"
                         class="rounded-2xl bg-background/70 px-4 py-3 dark:bg-background/30"
                     >
-                        <p class="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                        <p class="text-[10px] font-semibold uppercase leading-tight tracking-[0.1em] text-muted-foreground">
                             {{ supplementaryLabel }}
                         </p>
                         <p class="mt-1 text-xl font-semibold tabular-nums">{{ pct(supplementaryAverage) }}</p>
+                        <p v-if="readingGap !== null" class="mt-0.5 text-[10px] tabular-nums text-muted-foreground">
+                            {{ readingGapCaption }}
+                        </p>
                     </div>
                 </div>
             </section>
@@ -2065,7 +2143,7 @@ const studentRows = computed(() => {
                     <section class="mt-6">
                         <h3 class="mb-1 text-sm font-semibold">Como evoluiu ao longo do ano</h3>
                         <p class="mb-3 text-[11px] text-muted-foreground">
-                            O resultado que respondia em cada momento — no 2.º período, o acumulado.
+                            O resultado que respondia em cada momento — a partir do segundo, o acumulado.
                         </p>
 
                         <!-- ONE MOMENT IS A NUMBER, NOT A TREND. Two get the

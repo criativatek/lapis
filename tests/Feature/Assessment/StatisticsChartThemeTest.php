@@ -92,13 +92,75 @@ class StatisticsChartThemeTest extends TestCase
 
         // Not «the period's own average» by default. Which figure answers was
         // decided server-side from the profile's own continuity (§1, §9).
-        $this->assertStringContainsString(':label="stats.primary.short_label"', $page);
+        $this->assertStringContainsString(':label="readingLabel"', $page);
         $this->assertStringContainsString(':value="pct(readingAverage)"', $page);
         $this->assertStringContainsString("stats.value.primary.kind === 'accumulated' && continuousView.value", $page);
 
         // And the other reading is present, smaller, and named (§5, §23).
         $this->assertStringContainsString('stats.primary.has_supplementary', $page);
         $this->assertStringContainsString('supplementaryLabel', $page);
+    }
+
+    #[Test]
+    public function the_words_beside_the_headline_follow_the_reading_it_shows(): void
+    {
+        $page = $this->page();
+
+        // The figure follows the switch, so the label has to: «66,8%» under
+        // «Média acumulada da turma» is a contradiction the reader would have
+        // to resolve on the application's behalf (§1, §2, §17).
+        $this->assertStringContainsString(':label="readingLabel"', $page);
+        $this->assertStringContainsString(':context="readingCaption"', $page);
+        $this->assertStringContainsString(':help="readingHelp"', $page);
+
+        $this->assertStringContainsString("usingAccumulated.value ? 'Média acumulada da turma' : `Média ponderada do \${periodName.value}`", $page);
+        $this->assertStringContainsString('Considera a avaliação realizada ao longo do ano letivo até este momento.', $page);
+        $this->assertStringContainsString('Considera apenas os elementos realizados no ${periodName.value}.', $page);
+    }
+
+    #[Test]
+    public function the_second_reading_is_named_in_full_and_never_as_a_bare_acumulado(): void
+    {
+        $page = $this->page();
+
+        $this->assertStringContainsString('Média acumulada ao longo do ano letivo', $page);
+        $this->assertStringContainsString('Só no ${periodName.value}', $page);
+        $this->assertStringNotContainsString("'Acumulado do ano'", $page);
+
+        // And the gap between the two is stated, from the two figures that are
+        // already on the page — no third number is computed. It names what it
+        // is measured against, so «+6,5 p.p.» is never left hanging (§4, §10).
+        $this->assertStringContainsString('p.p. face ao acumulado', $page);
+        $this->assertStringContainsString('p.p. face ao desempenho só deste período', $page);
+        $this->assertStringContainsString('Number(primary).toFixed(1)', $page);
+    }
+
+    #[Test]
+    public function the_period_is_named_by_the_academic_period_and_never_hardcoded(): void
+    {
+        $page = $this->page();
+
+        $this->assertStringContainsString("stats.value.selected_period?.label ?? 'período'", $page);
+
+        // «2.º Semestre» must never be written into the interface: a school on
+        // trimesters would read a lie. Checked against the TEMPLATE alone — the
+        // docblock above the rule names examples on purpose (§3).
+        preg_match('/<template>(.*)<\/template>/s', $page, $rendered);
+        $this->assertNotEmpty($rendered);
+
+        $this->assertDoesNotMatchRegularExpression('/\d\.º\s*(Semestre|Trimestre|Período)/ui', $rendered[1]);
+    }
+
+    #[Test]
+    public function the_sparkline_says_which_line_it_is_drawing(): void
+    {
+        $page = $this->page();
+
+        // A label reading «ao longo do ano» over a line of period figures
+        // describes the wrong thing (§5).
+        $this->assertStringContainsString("usingAccumulated.value ? 'Evolução da média acumulada' : 'Média de cada período'", $page);
+        $this->assertStringContainsString('usingAccumulated.value ? row.primary_average : row.class_average', $page);
+        $this->assertStringContainsString(':aria-label="trendSummary"', $page);
     }
 
     #[Test]
