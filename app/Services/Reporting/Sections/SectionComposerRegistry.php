@@ -41,6 +41,12 @@ class SectionComposerRegistry
         StudentSelfAssessmentComposer::class,
         StudentRecordsComposer::class,
 
+        // Registos — the logbook, counted. Two units, never merged.
+        RecordsScopeComposer::class,
+        RecordsSummaryComposer::class,
+        RecordsDistributionComposer::class,
+        RecordsTimelineComposer::class,
+
         // Shared across types.
         PlanningComplianceComposer::class,
         InterventionsSummaryComposer::class,

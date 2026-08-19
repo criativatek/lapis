@@ -9,8 +9,10 @@ use App\Domain\Reporting\LearningAttitude;
 use App\Domain\Reporting\PlanningCompliance;
 use App\Http\Controllers\Controller;
 use App\Models\AcademicPeriod;
+use App\Models\AcademicYear;
 use App\Models\Domain;
 use App\Models\Enrollment;
+use App\Models\EvidenceKind;
 use App\Models\InterimAssessment;
 use App\Models\Report;
 use App\Models\ReportSection;
@@ -29,6 +31,7 @@ use App\Services\Reporting\ReportListing;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -117,6 +120,16 @@ class ReportController extends Controller
                 ],
                 $this->capabilities->availableTones(),
             ),
+            // §21: the filters a Registos report is built with. Sent for every
+            // type — the form only shows them for the one that uses them.
+            'recordKinds' => array_map(
+                fn (EvidenceKind $kind) => [
+                    'value' => $kind->value,
+                    'label' => $kind->label(),
+                    'group' => $kind->group()->label(),
+                ],
+                EvidenceKind::cases(),
+            ),
         ]);
     }
 
@@ -169,7 +182,20 @@ class ReportController extends Controller
             'type' => ['required', Rule::enum(ReportType::class)],
             // BelongsToCurrentOrganization, never a bare `exists:` — that rule
             // runs on the query builder and never sees the tenant scope.
-            'class_id' => ['required', new BelongsToCurrentOrganization(SchoolClass::class)],
+            // A Registos report may span every class this teacher has, so its
+            // class is optional; every other type needs one.
+            'class_id' => [
+                Rule::requiredIf(fn () => $request->input('type') !== ReportType::Records->value),
+                'nullable',
+                new BelongsToCurrentOrganization(SchoolClass::class),
+            ],
+            'academic_year_id' => ['nullable', new BelongsToCurrentOrganization(AcademicYear::class)],
+            // §21: the filters a Registos report is built with.
+            'kinds' => ['nullable', 'array'],
+            'kinds.*' => [Rule::enum(EvidenceKind::class)],
+            'starts_on' => ['nullable', 'date'],
+            'ends_on' => ['nullable', 'date', 'after_or_equal:starts_on'],
+            'detailed' => ['nullable', 'boolean'],
             'academic_period_id' => ['nullable', new BelongsToCurrentOrganization(AcademicPeriod::class)],
             'enrollment_id' => ['nullable', new BelongsToCurrentOrganization(Enrollment::class)],
             'interim_assessment_id' => ['nullable', new BelongsToCurrentOrganization(InterimAssessment::class)],
@@ -183,11 +209,16 @@ class ReportController extends Controller
         ]);
 
         $type = ReportType::from($data['type']);
+
         // Cast to int before finding: an array id would resolve a collection,
         // which is a different (and unauthorised) thing to hand a policy.
-        $class = SchoolClass::findOrFail((int) $data['class_id']);
+        $class = ($data['class_id'] ?? null) === null
+            ? null
+            : SchoolClass::findOrFail((int) $data['class_id']);
 
-        Gate::authorize('view', $class);
+        if ($class !== null) {
+            Gate::authorize('view', $class);
+        }
 
         $period = ($data['academic_period_id'] ?? null) === null
             ? null
@@ -197,14 +228,16 @@ class ReportController extends Controller
             ? null
             : InterimAssessment::findOrFail((int) $data['interim_assessment_id']);
 
-        $this->guardBelongsToClass($class, $period, $interim);
+        if ($class !== null) {
+            $this->guardBelongsToClass($class, $period, $interim);
+        }
 
         $tone = ReportTone::tryFrom((string) ($data['tone'] ?? '')) ?? ReportTone::Objective;
         $options = ['name_students' => (bool) ($data['name_students'] ?? false)];
 
         $report = match ($type) {
             ReportType::Student => $this->creator->forStudent(
-                enrollment: $this->enrollmentIn($class, $data['enrollment_id'] ?? null),
+                enrollment: $this->enrollmentIn($this->requireClass($class), $data['enrollment_id'] ?? null),
                 author: $this->user(),
                 period: $period,
                 sectionKeys: $data['sections'] ?? null,
@@ -212,8 +245,27 @@ class ReportController extends Controller
                 options: $options,
                 title: $data['title'] ?? null,
             ),
-            default => $this->creator->forClass(
+            ReportType::Records => $this->creator->forRecords(
+                year: $this->yearFor($class, $data['academic_year_id'] ?? null),
+                author: $this->user(),
                 class: $class,
+                enrollment: ($data['enrollment_id'] ?? null) === null || $class === null
+                    ? null
+                    : $this->enrollmentIn($class, $data['enrollment_id']),
+                period: $period,
+                startsOn: ($data['starts_on'] ?? null) === null ? null : Carbon::parse($data['starts_on']),
+                endsOn: ($data['ends_on'] ?? null) === null ? null : Carbon::parse($data['ends_on']),
+                sectionKeys: $data['sections'] ?? null,
+                tone: $tone,
+                options: [
+                    ...$options,
+                    'kinds' => array_values($data['kinds'] ?? []),
+                    'detailed' => (bool) ($data['detailed'] ?? false),
+                ],
+                title: $data['title'] ?? null,
+            ),
+            default => $this->creator->forClass(
+                class: $this->requireClass($class),
                 author: $this->user(),
                 period: $period,
                 interim: $interim,
@@ -504,6 +556,30 @@ class ReportController extends Controller
                 'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
             ])
             ->all());
+    }
+
+    /**
+     * The year a Registos report belongs to.
+     *
+     * Taken from the chosen class when there is one, so the two can never
+     * disagree; asked for explicitly only when the report spans every class.
+     */
+    protected function yearFor(?SchoolClass $class, mixed $yearId): AcademicYear
+    {
+        if ($class !== null) {
+            return AcademicYear::findOrFail((int) $class->academic_year_id);
+        }
+
+        abort_if($yearId === null, 422, 'Um relatório por registos precisa de um ano letivo.');
+
+        return AcademicYear::findOrFail((int) $yearId);
+    }
+
+    protected function requireClass(?SchoolClass $class): SchoolClass
+    {
+        abort_if($class === null, 422, 'Este tipo de relatório precisa de uma turma.');
+
+        return $class;
     }
 
     protected function guardBelongsToClass(SchoolClass $class, ?AcademicPeriod $period, ?InterimAssessment $interim): void

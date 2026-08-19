@@ -43,6 +43,15 @@ const domainRows = computed<Row[]>(() =>
     props.sectionKey === 'domain_results' && Array.isArray(props.data?.domains) ? (props.data.domains as Row[]) : [],
 );
 
+const timelineRows = computed<Row[]>(() =>
+    props.sectionKey === 'records_timeline' && Array.isArray(props.data?.rows) ? (props.data.rows as Row[]) : [],
+);
+
+// The student column exists only when the teacher authorised identification —
+// and then the names are in the data. When they did not, the key is absent
+// rather than blank, so there is nothing here to leak.
+const timelineNames = computed(() => timelineRows.value.some((row) => row.student !== undefined));
+
 const recordRows = computed<Row[]>(() =>
     (props.sectionKey === 'class_records' || props.sectionKey === 'student_records') && Array.isArray(props.data?.kinds)
         ? (props.data.kinds as Row[])
@@ -95,6 +104,27 @@ const recordRows = computed<Row[]>(() =>
                     <td class="py-1.5 text-right tabular-nums text-muted-foreground">
                         {{ Number(row.students_without_result) > 0 ? row.students_without_result : '—' }}
                     </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div v-if="timelineRows.length > 0" class="mt-3 overflow-x-auto">
+        <table class="w-full min-w-[30rem] text-sm">
+            <thead>
+                <tr class="border-b border-border text-left text-xs text-muted-foreground">
+                    <th class="py-1.5 pr-3 font-medium">Data</th>
+                    <th v-if="timelineNames" class="py-1.5 pr-3 font-medium">Aluno</th>
+                    <th class="py-1.5 pr-3 font-medium">Tipo</th>
+                    <th class="py-1.5 font-medium">Descrição</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr v-for="(row, index) in timelineRows" :key="index" class="border-b border-border/50 last:border-0 align-top">
+                    <td class="py-1.5 pr-3 whitespace-nowrap tabular-nums">{{ row.occurred_on }}</td>
+                    <td v-if="timelineNames" class="py-1.5 pr-3">{{ row.student ?? '—' }}</td>
+                    <td class="py-1.5 pr-3">{{ row.kind_label }}</td>
+                    <td class="py-1.5">{{ row.description }}</td>
                 </tr>
             </tbody>
         </table>

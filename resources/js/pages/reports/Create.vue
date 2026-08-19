@@ -27,17 +27,21 @@ type ContextPayload = {
     interimAssessments: { id: number; name: string; reference_date: string }[];
 };
 
+type RecordKind = { value: string; label: string; group: string };
+
 const props = defineProps<{
     type: string;
     availableTypes: Option[];
     classes: ClassRow[];
     catalogue: CatalogueRow[];
     tones: Option[];
+    recordKinds: RecordKind[];
 }>();
 
 const form = useForm({
     type: props.type,
     class_id: props.classes[0]?.id ?? null,
+    academic_year_id: null as number | null,
     academic_period_id: null as number | null,
     enrollment_id: null as number | null,
     interim_assessment_id: null as number | null,
@@ -45,6 +49,11 @@ const form = useForm({
     title: '',
     sections: props.catalogue.filter((row) => row.default_included).map((row) => row.key),
     name_students: false,
+    // Registos only.
+    kinds: [] as string[],
+    starts_on: '',
+    ends_on: '',
+    detailed: false,
 });
 
 const context = ref<ContextPayload>({ periods: [], enrollments: [], interimAssessments: [] });
@@ -99,6 +108,34 @@ watch(
 );
 
 const isStudentReport = computed(() => form.type === 'student');
+const isRecordsReport = computed(() => form.type === 'records');
+
+// The detailed chronology is the section that lists records one by one, so the
+// checkbox and the section have to agree — ticking one without the other would
+// produce a report that promises a listing and prints none.
+watch(
+    () => form.detailed,
+    (detailed) => {
+        const key = 'records_timeline';
+        const index = form.sections.indexOf(key);
+
+        if (detailed && index === -1) {
+            form.sections.push(key);
+        } else if (!detailed && index !== -1) {
+            form.sections.splice(index, 1);
+        }
+    },
+);
+
+function toggleKind(value: string) {
+    const index = form.kinds.indexOf(value);
+
+    if (index === -1) {
+        form.kinds.push(value);
+    } else {
+        form.kinds.splice(index, 1);
+    }
+}
 
 // A report built on a photograph reads the photograph and never reconstructs it
 // from today's numbers, so the two choices are mutually exclusive.
@@ -235,6 +272,54 @@ function submit() {
                         dos números de hoje.
                     </p>
                 </div>
+
+                <!-- §21: an interval is what a logbook question is really
+                     about. Offered instead of a period, not beside it. -->
+                <template v-if="isRecordsReport">
+                    <div class="grid gap-4 sm:grid-cols-2">
+                        <div class="grid gap-2">
+                            <Label for="starts-on">De (opcional)</Label>
+                            <Input id="starts-on" v-model="form.starts_on" type="date" />
+                        </div>
+                        <div class="grid gap-2">
+                            <Label for="ends-on">Até (opcional)</Label>
+                            <Input id="ends-on" v-model="form.ends_on" type="date" />
+                        </div>
+                    </div>
+
+                    <div class="grid gap-2">
+                        <Label>Tipos de registo</Label>
+                        <p class="text-xs text-muted-foreground">
+                            Sem seleção, o relatório inclui todos os tipos.
+                        </p>
+                        <div class="grid gap-1.5 sm:grid-cols-2">
+                            <label
+                                v-for="kind in recordKinds"
+                                :key="kind.value"
+                                class="flex items-center gap-2 text-sm"
+                            >
+                                <input
+                                    type="checkbox"
+                                    class="size-4"
+                                    :checked="form.kinds.includes(kind.value)"
+                                    @change="toggleKind(kind.value)"
+                                />
+                                <span>{{ kind.label }}</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <label class="flex items-start gap-2 text-sm">
+                        <input v-model="form.detailed" type="checkbox" class="mt-0.5 size-4" />
+                        <span>
+                            <span class="block font-medium">Incluir cronologia detalhada</span>
+                            <span class="block text-xs text-muted-foreground">
+                                Lista cada registo com data e descrição. Sem isto, o relatório apresenta apenas a
+                                síntese.
+                            </span>
+                        </span>
+                    </label>
+                </template>
 
                 <div class="grid gap-2">
                     <Label for="title">Título (opcional)</Label>

@@ -4,6 +4,7 @@ namespace App\Services\Reporting;
 
 use App\Domain\Reporting\SectionDefinition;
 use App\Models\AcademicPeriod;
+use App\Models\AcademicYear;
 use App\Models\Enrollment;
 use App\Models\InterimAssessment;
 use App\Models\Report;
@@ -14,6 +15,7 @@ use App\Models\ReportType;
 use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Audit\AuditLog;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -109,6 +111,95 @@ class CreateReport
             sectionKeys: $sectionKeys,
             options: $options,
         );
+    }
+
+    /**
+     * A Registos report (§21).
+     *
+     * ITS SCOPE IS DATES, NOT A PERIOD. A logbook question is «o que aconteceu
+     * entre estas duas datas», and the report says so in words rather than
+     * borrowing a period name that only approximates the interval. Where the
+     * teacher picked a period instead, the period's own dates become the
+     * interval and the label is the period's — one scope, stated once.
+     *
+     * @param  list<string>|null  $sectionKeys
+     * @param  array<string, mixed>  $options
+     */
+    public function forRecords(
+        AcademicYear $year,
+        User $author,
+        ?SchoolClass $class = null,
+        ?Enrollment $enrollment = null,
+        ?AcademicPeriod $period = null,
+        ?CarbonInterface $startsOn = null,
+        ?CarbonInterface $endsOn = null,
+        ?array $sectionKeys = null,
+        ReportTone $tone = ReportTone::Objective,
+        array $options = [],
+        ?string $title = null,
+    ): Report {
+        $scope = $this->recordsScope($year, $period, $startsOn, $endsOn);
+
+        return $this->create(
+            type: ReportType::Records,
+            author: $author,
+            attributes: [
+                'class_id' => $class?->id,
+                'enrollment_id' => $enrollment?->id,
+                'academic_year_id' => $year->id,
+                'academic_period_id' => $period?->id,
+                ...$scope,
+            ],
+            title: $title ?? ReportType::Records->label().' · '
+                .($class === null ? 'Todas as turmas' : $class->label).' · '.$scope['scope_label'],
+            tone: $tone,
+            sectionKeys: $sectionKeys,
+            options: $options,
+        );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function recordsScope(
+        AcademicYear $year,
+        ?AcademicPeriod $period,
+        ?CarbonInterface $startsOn,
+        ?CarbonInterface $endsOn,
+    ): array {
+        if ($period !== null) {
+            return [
+                'scope_kind' => ReportScopeKind::Period,
+                'scope_label' => (string) $period->label,
+                'starts_on' => $period->starts_on,
+                'ends_on' => $period->ends_on,
+            ];
+        }
+
+        if ($startsOn !== null || $endsOn !== null) {
+            return [
+                'scope_kind' => ReportScopeKind::DateRange,
+                'scope_label' => $this->rangeLabel($startsOn, $endsOn),
+                'starts_on' => $startsOn,
+                'ends_on' => $endsOn,
+            ];
+        }
+
+        return [
+            'scope_kind' => ReportScopeKind::Year,
+            'scope_label' => 'Ano letivo '.$year->label,
+            'starts_on' => null,
+            'ends_on' => null,
+        ];
+    }
+
+    protected function rangeLabel(?CarbonInterface $startsOn, ?CarbonInterface $endsOn): string
+    {
+        return match (true) {
+            $startsOn !== null && $endsOn !== null => 'De '.$startsOn->format('d/m/Y').' a '.$endsOn->format('d/m/Y'),
+            $startsOn !== null => 'A partir de '.$startsOn->format('d/m/Y'),
+            default => 'Até '.$endsOn?->format('d/m/Y'),
+        };
     }
 
     /**
