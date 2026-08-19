@@ -17,7 +17,7 @@ use Illuminate\Support\Str;
  *
  * THE CHECKS, AND WHAT EACH ONE IS FOR:
  *
- *   markers      every figure left as [[F1]] and has to come back as [[F1]], the
+ *   markers      every figure left as [[FA]] and has to come back as [[FA]], the
  *                same number of times, with no marker that never existed. This is
  *                what makes «60,3% became 61,3%» impossible rather than unlikely.
  *
@@ -73,6 +73,17 @@ class RewriteGuard
         // Characterisations of behaviour nobody made (§36).
         'disciplinad', 'exemplar', 'irrepreensivel', 'respeitador', 'comportad', 'perturbador',
         'empenhad', 'motivad', 'responsavel',
+
+        // The evaluative adjectives, separately.
+        //
+        // A TEST FOUND THIS GAP. «A turma apresenta comportamento excelente»
+        // walked past a list that refused «disciplinada» and «comportada»,
+        // because the noun «comportamento» is neutral — it is the heading of a
+        // whole section — and the judgement was carried entirely by the
+        // adjective beside it. Characterising a class is a thing a teacher does
+        // in a form, and no adjective may arrive without one.
+        'excelente', 'otimo', 'excecional', 'notavel', 'brilhante', 'louvavel', 'meritorio',
+        'lamentavel', 'preocupante', 'insuficiente', 'deficiente', 'inaceitavel',
 
         // Strategies and measures nobody chose (§38).
         'tutoria', 'apoio individual', 'apoio educativo', 'avaliacao diferenciada',
