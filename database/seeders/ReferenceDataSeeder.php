@@ -18,6 +18,7 @@ class ReferenceDataSeeder extends Seeder
             SystemScalesSeeder::class,
             InstrumentTypesSeeder::class,
             ReportLibrarySeeder::class,
+            ReportTemplatesSeeder::class,
         ]);
     }
 }

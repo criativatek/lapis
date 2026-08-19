@@ -49,6 +49,7 @@ use Illuminate\Support\Carbon;
  * @property int $teacher_input_version
  * @property int|null $based_on_report_id
  * @property string|null $template_key
+ * @property array<string, mixed>|null $template_snapshot
  * @property array<string, mixed>|null $document
  * @property int|null $document_version
  * @property string|null $document_hash
@@ -74,7 +75,7 @@ use Illuminate\Support\Carbon;
     'class_id', 'enrollment_id', 'academic_year_id', 'academic_period_id', 'interim_assessment_id',
     'scope_kind', 'starts_on', 'ends_on', 'scope_label',
     'options', 'teacher_input', 'teacher_input_version',
-    'based_on_report_id', 'template_key',
+    'based_on_report_id', 'template_key', 'template_snapshot',
     'document', 'document_version', 'document_hash', 'finalized_at', 'finalized_by',
     'created_by',
 ])]
@@ -155,6 +156,7 @@ class Report extends Model
             'options' => 'array',
             'teacher_input' => 'array',
             'teacher_input_version' => 'integer',
+            'template_snapshot' => 'array',
             'document' => 'array',
             'document_version' => 'integer',
             'finalized_at' => 'datetime',

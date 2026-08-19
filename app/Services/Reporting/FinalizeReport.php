@@ -139,6 +139,10 @@ class FinalizeReport
             // half the content of an analytical report (§8).
             'teacher_input' => $report->teacher_input,
             'options' => $report->options,
+            // §30: which template this started from and exactly what it said,
+            // so a finished report is still reproducible after the template has
+            // been edited, deactivated or removed.
+            'template' => $report->template_snapshot,
             'based_on' => $report->basedOn === null ? null : [
                 'ulid' => $report->basedOn->ulid,
                 'title' => $report->basedOn->title,

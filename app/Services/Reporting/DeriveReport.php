@@ -80,7 +80,14 @@ class DeriveReport
                 'teacher_input' => $source->teacher_input,
                 'teacher_input_version' => $source->teacher_input_version,
                 'based_on_report_id' => $source->getKey(),
+                // §29: WHERE THE TWO MECHANISMS MEET. A derived report inherits
+                // its structure from the report it came from, not from a
+                // template — the source's arrangement is already a person's
+                // work, and a template applied on top would silently undo it.
+                // The provenance travels so «criado a partir de» can still name
+                // the template the chain started with.
                 'template_key' => $source->template_key,
+                'template_snapshot' => $source->template_snapshot,
                 'created_by' => $author->id,
             ]);
 

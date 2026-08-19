@@ -2,7 +2,7 @@
 
 namespace App\Services\Reporting;
 
-use App\Domain\Reporting\SectionDefinition;
+use App\Domain\Reporting\SectionPlan;
 use App\Models\AcademicPeriod;
 use App\Models\AcademicYear;
 use App\Models\Enrollment;
@@ -10,6 +10,7 @@ use App\Models\InterimAssessment;
 use App\Models\Report;
 use App\Models\ReportScopeKind;
 use App\Models\ReportStatus;
+use App\Models\ReportTemplate;
 use App\Models\ReportTone;
 use App\Models\ReportType;
 use App\Models\SchoolClass;
@@ -58,6 +59,7 @@ class CreateReport
         ReportTone $tone = ReportTone::Objective,
         array $options = [],
         ?string $title = null,
+        ?ReportTemplate $template = null,
     ): Report {
         return $this->create(
             type: ReportType::SchoolClass,
@@ -73,6 +75,7 @@ class CreateReport
             tone: $tone,
             sectionKeys: $sectionKeys,
             options: $options,
+            template: $template,
         );
     }
 
@@ -88,6 +91,7 @@ class CreateReport
         ReportTone $tone = ReportTone::Objective,
         array $options = [],
         ?string $title = null,
+        ?ReportTemplate $template = null,
     ): Report {
         $class = $enrollment->schoolClass;
 
@@ -110,6 +114,7 @@ class CreateReport
             tone: $tone,
             sectionKeys: $sectionKeys,
             options: $options,
+            template: $template,
         );
     }
 
@@ -137,6 +142,7 @@ class CreateReport
         ReportTone $tone = ReportTone::Objective,
         array $options = [],
         ?string $title = null,
+        ?ReportTemplate $template = null,
     ): Report {
         $scope = $this->recordsScope($year, $period, $startsOn, $endsOn);
 
@@ -155,6 +161,7 @@ class CreateReport
             tone: $tone,
             sectionKeys: $sectionKeys,
             options: $options,
+            template: $template,
         );
     }
 
@@ -221,6 +228,7 @@ class CreateReport
         ReportTone $tone = ReportTone::Objective,
         array $options = [],
         ?string $title = null,
+        ?ReportTemplate $template = null,
     ): Report {
         $label = $period === null
             ? 'Ano letivo '.$year->label
@@ -241,8 +249,10 @@ class CreateReport
             tone: $tone,
             sectionKeys: $sectionKeys,
             // A school-wide report is aggregate by definition and never names a
-            // student (§28). Not offered as a choice.
+            // student (§28). Not offered as a choice, and no template may turn
+            // it on — this runs after the template's own options are merged.
             options: [...$options, 'name_students' => false],
+            template: $template,
         );
     }
 
@@ -259,18 +269,31 @@ class CreateReport
         ReportTone $tone = ReportTone::Objective,
         ?array $sectionKeys = null,
         array $options = [],
+        ?ReportTemplate $template = null,
     ): Report {
         if (! $this->capabilities->allowsType($type)) {
             throw new \RuntimeException('O plano desta organização não inclui este tipo de relatório.');
         }
 
+        // THE TEMPLATE IS A STARTING POINT (§13). Its tone and options apply
+        // only where the caller did not state one — a teacher who picked a tone
+        // on the creation screen meant it.
+        if ($template !== null) {
+            $tone = $this->toneFrom($template, $tone, $sectionKeys === null);
+            $options = array_replace($template->options(), $options);
+        }
+
         // A tone the plan does not allow silently becomes the one it does,
         // rather than refusing the whole report over a presentation choice.
+        // This runs AFTER the template, so a template cannot grant a register
+        // the school is not entitled to (§28).
         if (! $this->capabilities->allowsTone($tone)) {
             $tone = ReportTone::Objective;
         }
 
-        $report = DB::transaction(function () use ($type, $author, $attributes, $title, $tone, $sectionKeys, $options): Report {
+        $plan = $this->planFor($type, $sectionKeys, $template);
+
+        $report = DB::transaction(function () use ($type, $author, $attributes, $title, $tone, $plan, $options, $template): Report {
             $report = Report::create([
                 'type' => $type,
                 'status' => ReportStatus::Draft,
@@ -279,10 +302,15 @@ class CreateReport
                 'options' => $options === [] ? null : $options,
                 'teacher_input_version' => Report::CURRENT_TEACHER_INPUT_VERSION,
                 'created_by' => $author->id,
+                'template_key' => $template?->key,
+                // §15, §30: what the template said AT THIS MOMENT. Taken once
+                // and never read back, so editing the template afterwards
+                // changes nothing here (§14).
+                'template_snapshot' => $template?->snapshot(),
                 ...$attributes,
             ]);
 
-            $this->buildSections($report, $sectionKeys);
+            $this->buildSections($report, $plan);
 
             return $report;
         });
@@ -301,32 +329,64 @@ class CreateReport
     }
 
     /**
+     * WHICH SECTIONS, IN WHAT ORDER — the three sources, in precedence order.
+     *
+     * An explicit list from the creation form wins: the teacher just ticked
+     * those boxes. A template comes next, bringing its own order with it. The
+     * catalogue's defaults are the floor.
+     *
      * @param  list<string>|null  $chosen
      */
-    protected function buildSections(Report $report, ?array $chosen): void
+    protected function planFor(ReportType $type, ?array $chosen, ?ReportTemplate $template): SectionPlan
     {
-        $available = $this->capabilities->sectionsFor($report->type);
+        if ($template !== null) {
+            $plan = SectionPlan::fromTemplate($type, $this->capabilities, $template->sections());
 
-        // Null means «the defaults»; an explicit list is honoured but still
-        // filtered — a key the plan does not allow never becomes a row.
-        $wanted = $chosen === null
-            ? array_map(fn (SectionDefinition $definition) => $definition->key->value,
-                array_filter($available, fn (SectionDefinition $definition) => $definition->defaultIncluded))
-            : $chosen;
+            // The template arranges; an explicit checklist decides what prints.
+            // Letting either one win outright would throw the other away.
+            return $chosen === null ? $plan : $plan->withInclusion($chosen);
+        }
+
+        if ($chosen !== null) {
+            return SectionPlan::fromChosenKeys($type, $this->capabilities, $chosen);
+        }
+
+        return SectionPlan::defaultFor($type, $this->capabilities);
+    }
+
+    /**
+     * A template's tone applies only where the caller did not state one.
+     *
+     * `$callerWasSilent` is true when no explicit section list was posted,
+     * which is the same signal: the creation form sends both together, so a
+     * form that named sections also named a tone.
+     */
+    protected function toneFrom(ReportTemplate $template, ReportTone $tone, bool $callerWasSilent): ReportTone
+    {
+        return $callerWasSilent ? ($template->tone() ?? $tone) : $tone;
+    }
+
+    protected function buildSections(Report $report, SectionPlan $plan): void
+    {
+        $headings = [];
+
+        foreach ($this->capabilities->sectionsFor($report->type) as $definition) {
+            $headings[$definition->key->value] = $definition->heading;
+        }
 
         $position = 0;
 
-        foreach ($available as $definition) {
+        foreach ($plan->entries as $entry) {
             $position += 10;
 
             $report->sections()->create([
-                'key' => $definition->key->value,
-                'heading' => $definition->heading,
+                'key' => $entry['key']->value,
+                'heading' => $headings[$entry['key']->value] ?? $entry['key']->value,
                 'position' => $position,
                 // Every allowed section gets a row; `included` is what decides
                 // whether it prints. Keeping the row means a teacher can turn a
-                // section back on without losing what was in it (§45).
-                'included' => in_array($definition->key->value, $wanted, strict: true),
+                // section back on without losing what was in it (§45, §36).
+                'included' => $entry['included'],
             ]);
         }
     }
