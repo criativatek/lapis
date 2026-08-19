@@ -26,9 +26,9 @@ use Illuminate\Support\Facades\DB;
  * leak by being forgotten:
  *
  *   carried    which sections exist, whether each prints, the order the teacher
- *              put them in, the tone, and the two structural options
- *              (`name_students`, `detailed`, and the Registos kind filter,
- *              which is a filter and not data).
+ *              put them in, the tone, and the three structural options —
+ *              `name_students`, `detailed`, and the Registos `kinds` filter,
+ *              which chooses what to look at and is not itself data.
  *
  *   refused    every section body, generated or edited. The teacher's
  *              characterisation. Validated difficulties and the strategies
