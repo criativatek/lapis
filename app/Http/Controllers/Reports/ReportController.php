@@ -7,6 +7,7 @@ use App\Domain\Reporting\ComplementaryIndicator;
 use App\Domain\Reporting\IndicatorStanding;
 use App\Domain\Reporting\LearningAttitude;
 use App\Domain\Reporting\PlanningCompliance;
+use App\Domain\Reporting\SectionKey;
 use App\Http\Controllers\Controller;
 use App\Models\AcademicPeriod;
 use App\Models\AcademicYear;
@@ -624,16 +625,32 @@ class ReportController extends Controller
      */
     protected function characterisationOptions(Report $report): ?array
     {
+        // WHICH QUESTIONS THIS REPORT WOULD ACTUALLY PRINT. A school-wide
+        // report has no «comportamento da turma» section, so asking its author
+        // to characterise one would be collecting an answer nothing uses — and
+        // they would reasonably expect to see it in the document.
+        $keys = array_map(
+            fn ($definition) => $definition->key,
+            $this->capabilities->sectionsFor($report->type),
+        );
+
+        $asks = fn (SectionKey $key): bool => in_array($key, $keys, strict: true);
+
         if (! $this->capabilities->allowsPedagogicalAnalysis()) {
             return [
                 'available' => false,
                 // Planning is Base: it is transcription, not analysis (§18).
+                'asks_planning' => $asks(SectionKey::PlanningCompliance),
                 'planning' => PlanningCompliance::options(),
             ];
         }
 
         return [
             'available' => true,
+            'asks_behaviour' => $asks(SectionKey::BehaviourAttitude),
+            'asks_difficulties' => $asks(SectionKey::Difficulties),
+            'asks_attention' => $asks(SectionKey::StudentsRequiringAttention),
+            'asks_planning' => $asks(SectionKey::PlanningCompliance),
             'behaviour' => BehaviourRating::options(),
             'attitude' => LearningAttitude::options(),
             'indicators' => ComplementaryIndicator::options(),

@@ -57,6 +57,11 @@ type Identity = {
 
 type Characterisation = {
     available: boolean;
+    // Which questions this report type would actually print an answer to.
+    asks_behaviour?: boolean;
+    asks_difficulties?: boolean;
+    asks_attention?: boolean;
+    asks_planning: boolean;
     behaviour?: Option[];
     attitude?: Option[];
     indicators?: Option[];
@@ -444,7 +449,7 @@ function derive() {
                     </p>
                 </div>
 
-                <template v-if="characterisation.available">
+                <template v-if="characterisation.available && characterisation.asks_behaviour">
                     <div class="grid gap-4 sm:grid-cols-2">
                         <div class="grid gap-2">
                             <Label for="behaviour">Comportamento</Label>
@@ -512,7 +517,7 @@ function derive() {
                     </div>
 
                     <!-- §14: dificuldade → estratégia → objetivo. -->
-                    <div v-if="library" class="space-y-2 border-t border-border pt-4">
+                    <div v-if="library && characterisation.asks_difficulties" class="space-y-2 border-t border-border pt-4">
                         <Label>Dificuldades identificadas</Label>
                         <p class="text-xs text-muted-foreground">
                             O LÁPIS não infere dificuldades a partir dos resultados. Estas são as que validar — e
@@ -527,7 +532,10 @@ function derive() {
                     </div>
 
                     <!-- §57: two separate decisions, and both are the teacher's. -->
-                    <div v-if="enrollments.length > 0" class="space-y-2 border-t border-border pt-4">
+                    <div
+                        v-if="enrollments.length > 0 && characterisation.asks_attention"
+                        class="space-y-2 border-t border-border pt-4"
+                    >
                         <Label>Alunos que requerem acompanhamento particular</Label>
                         <p class="text-xs text-muted-foreground">
                             Assinalar não é o mesmo que identificar. Sem a autorização abaixo, o relatório diz
@@ -569,13 +577,16 @@ function derive() {
                     </div>
                 </template>
 
-                <p v-else class="rounded-md bg-muted/50 p-3 text-sm text-muted-foreground">
+                <p
+                    v-else-if="!characterisation.available"
+                    class="rounded-md bg-muted/50 p-3 text-sm text-muted-foreground"
+                >
                     A caracterização de comportamento, atitude e dificuldades faz parte do plano Pro. As secções
                     descritivas do relatório não dependem dela.
                 </p>
 
                 <!-- Planning is Base: transcription, not analysis. -->
-                <div class="space-y-4 border-t border-border pt-4">
+                <div v-if="characterisation.asks_planning" class="space-y-4 border-t border-border pt-4">
                     <div class="grid gap-2">
                         <Label for="compliance">Cumprimento da planificação</Label>
                         <select
