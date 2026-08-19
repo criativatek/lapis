@@ -1,12 +1,27 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { Check, Copy, Eye, FileDown, Lock, Pencil, RefreshCw, RotateCcw, Trash2, X } from '@lucide/vue';
+import {
+    ArrowUpDown,
+    Check,
+    Copy,
+    Eye,
+    FileDown,
+    Lock,
+    Pencil,
+    RefreshCw,
+    RotateCcw,
+    Save,
+    Trash2,
+    X,
+} from '@lucide/vue';
 import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import type { ChosenDifficulty } from '@/components/reports/DifficultyPicker.vue';
 import DifficultyPicker from '@/components/reports/DifficultyPicker.vue';
 import ReportLetterhead from '@/components/reports/ReportLetterhead.vue';
 import ReportSectionData from '@/components/reports/ReportSectionData.vue';
+import type { OrderableSection } from '@/components/reports/SectionOrderList.vue';
+import SectionOrderList from '@/components/reports/SectionOrderList.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -94,6 +109,7 @@ const props = defineProps<{
     enrollments: EnrollmentRow[];
     comparison: Comparison | null;
     can: { update: boolean; finalize: boolean; delete: boolean; export: boolean; derive: boolean };
+    canSaveTemplate: { personal: boolean; institutional: boolean };
 }>();
 
 // A finalized report opens on the document, because that is all it is now.
@@ -293,6 +309,80 @@ function restoreSection(section: SectionPayload) {
 
 function regenerateAll() {
     router.post(`/reports/${props.report.ulid}/gerar`, {}, { preserveScroll: true });
+}
+
+// ----------------------------------------------------------------- reordering
+
+const reordering = ref(false);
+const savingOrder = ref(false);
+
+// A working copy. Nothing is written until the teacher saves, so abandoning the
+// panel leaves the report exactly as it was (§50, §51 — no autosave).
+const draftOrder = ref<OrderableSection[]>([]);
+
+function openReorder() {
+    draftOrder.value = props.sections.map((section) => ({
+        key: section.key,
+        heading: section.heading,
+        included: section.included,
+    }));
+    reordering.value = true;
+}
+
+const orderIsDirty = computed(() => {
+    if (!reordering.value) {
+        return false;
+    }
+
+    return draftOrder.value.some((section, index) => section.key !== props.sections[index]?.key);
+});
+
+function saveOrder() {
+    savingOrder.value = true;
+
+    router.put(
+        `/reports/${props.report.ulid}/seccoes/ordem`,
+        // The server matches by ulid; the working copy carries keys, so they
+        // are mapped back here rather than shipped as indices (§8).
+        {
+            order: draftOrder.value
+                .map((section) => props.sections.find((row) => row.key === section.key)?.ulid)
+                .filter((ulid): ulid is string => typeof ulid === 'string'),
+        },
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                reordering.value = false;
+            },
+            onFinish: () => {
+                savingOrder.value = false;
+            },
+        },
+    );
+}
+
+function cancelReorder() {
+    reordering.value = false;
+    draftOrder.value = [];
+}
+
+// ------------------------------------------------------- save as template
+
+const savingTemplate = ref(false);
+
+const templateForm = useForm({
+    kind: props.canSaveTemplate.institutional ? 'institutional' : 'personal',
+    name: `${props.report.type_label} — ${props.report.subject_label}`,
+    description: '',
+    is_default: false,
+});
+
+function saveAsTemplate() {
+    templateForm.post(`/reports/${props.report.ulid}/guardar-modelo`, {
+        onSuccess: () => {
+            savingTemplate.value = false;
+        },
+    });
 }
 
 function destroyReport() {
@@ -649,10 +739,45 @@ function derive() {
             <section class="space-y-3">
                 <div class="flex flex-wrap items-center justify-between gap-2">
                     <h2 class="font-medium">Secções</h2>
-                    <Button v-if="can.update" variant="outline" size="sm" @click="regenerateAll">
-                        <RefreshCw class="size-3.5" />
-                        Regenerar tudo
-                    </Button>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <Button
+                            v-if="can.update && !reordering"
+                            variant="outline"
+                            size="sm"
+                            @click="openReorder"
+                        >
+                            <ArrowUpDown class="size-3.5" />
+                            Reordenar
+                        </Button>
+                        <Button v-if="can.update" variant="outline" size="sm" @click="regenerateAll">
+                            <RefreshCw class="size-3.5" />
+                            Regenerar tudo
+                        </Button>
+                    </div>
+                </div>
+
+                <!-- §9, §10: mouse and keyboard, and nothing is written until
+                     the teacher saves (§50, §51). -->
+                <div v-if="reordering" class="space-y-3 rounded-lg border border-border p-4">
+                    <div>
+                        <h3 class="text-sm font-medium">Ordem das secções</h3>
+                        <p class="mt-1 text-xs text-muted-foreground">
+                            Arraste, ou use as setas de cada linha. A ordem escolhida é a ordem do documento, da
+                            pré-visualização e das exportações. Alterar a ordem não toca no texto.
+                        </p>
+                    </div>
+
+                    <SectionOrderList v-model="draftOrder" />
+
+                    <div class="flex flex-wrap items-center gap-2">
+                        <Button size="sm" :disabled="!orderIsDirty || savingOrder" @click="saveOrder">
+                            Guardar ordem
+                        </Button>
+                        <Button variant="ghost" size="sm" @click="cancelReorder">Cancelar</Button>
+                        <span v-if="orderIsDirty" class="text-xs text-amber-700 dark:text-amber-400">
+                            Alterações por guardar.
+                        </span>
+                    </div>
                 </div>
 
                 <p class="text-xs text-muted-foreground">
@@ -728,6 +853,64 @@ function derive() {
                         <ReportSectionData :section-key="section.key" :data="section.data" />
                     </template>
                 </article>
+            </section>
+
+            <!-- ------------------------------------- guardar como modelo -->
+            <section
+                v-if="can.update && (canSaveTemplate.personal || canSaveTemplate.institutional)"
+                class="space-y-3 rounded-lg border border-border p-4"
+            >
+                <div>
+                    <h2 class="font-medium">Guardar estrutura como modelo</h2>
+                    <p class="mt-1 text-sm text-muted-foreground">
+                        Guarda apenas a organização deste relatório — que secções entram, por que ordem e com que
+                        registo. Nenhum número, nome ou texto deste relatório vai para o modelo.
+                    </p>
+                </div>
+
+                <template v-if="savingTemplate">
+                    <div class="grid gap-3 sm:grid-cols-2">
+                        <div class="grid gap-2 sm:col-span-2">
+                            <Label for="template-name">Nome</Label>
+                            <Input id="template-name" v-model="templateForm.name" />
+                            <InputError :message="templateForm.errors.name" />
+                        </div>
+
+                        <div class="grid gap-2 sm:col-span-2">
+                            <Label for="template-description">Descrição (opcional)</Label>
+                            <Input id="template-description" v-model="templateForm.description" />
+                        </div>
+
+                        <div v-if="canSaveTemplate.institutional" class="grid gap-2">
+                            <Label for="template-kind">Disponível para</Label>
+                            <select
+                                id="template-kind"
+                                v-model="templateForm.kind"
+                                class="h-9 rounded-md border border-border bg-background px-2 text-sm"
+                            >
+                                <option v-if="canSaveTemplate.personal" value="personal">Apenas para mim</option>
+                                <option value="institutional">Toda a escola</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <label class="flex items-center gap-2 text-sm">
+                        <input v-model="templateForm.is_default" type="checkbox" class="size-4" />
+                        Usar por omissão em novos relatórios deste tipo
+                    </label>
+
+                    <div class="flex flex-wrap items-center gap-2">
+                        <Button size="sm" :disabled="templateForm.processing" @click="saveAsTemplate">
+                            Guardar modelo
+                        </Button>
+                        <Button variant="ghost" size="sm" @click="savingTemplate = false">Cancelar</Button>
+                    </div>
+                </template>
+
+                <Button v-else variant="outline" size="sm" @click="savingTemplate = true">
+                    <Save class="size-3.5" />
+                    Guardar como modelo
+                </Button>
             </section>
 
             <!-- ---------------------------------------------- finalização -->

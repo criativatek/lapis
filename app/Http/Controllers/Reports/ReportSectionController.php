@@ -100,14 +100,34 @@ class ReportSectionController extends Controller
         ]);
 
         DB::transaction(function () use ($report, $data): void {
+            $sections = $report->sections()->orderBy('position')->get();
+
+            // EVERY SECTION IS RENUMBERED, not only the ones named.
+            //
+            // Renumbering just the listed ones from 10 upwards makes them
+            // collide with the untouched ones, which still hold 10, 20, 30 —
+            // and a tie resolves by insertion order, so a partial request
+            // produces an order nobody asked for. The named ones lead, in the
+            // order given; the rest follow, keeping theirs.
+            $named = array_values(array_filter(
+                array_map(
+                    fn (string $ulid) => $sections->firstWhere('ulid', $ulid),
+                    array_values($data['order']),
+                ),
+            ));
+
+            $rest = $sections->reject(
+                fn (ReportSection $section) => collect($named)->contains(fn (ReportSection $row) => $row->is($section)),
+            );
+
             $position = 0;
 
-            foreach ($data['order'] as $ulid) {
-                $section = $report->sections()->where('ulid', $ulid)->first();
+            foreach ([...$named, ...$rest->all()] as $section) {
+                $position += 10;
 
-                if ($section !== null) {
-                    $section->update(['position' => $position += 10]);
-                }
+                // Only `position`. Nothing here touches the text, the automatic
+                // text underneath it, the edited flag or the provenance (§11).
+                $section->update(['position' => $position]);
             }
         });
 
