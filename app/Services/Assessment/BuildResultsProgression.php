@@ -56,15 +56,41 @@ class BuildResultsProgression
     ) {}
 
     /**
+     * What a progression was built FOR, so a reader can tell whether the one it
+     * holds answers the question it is about to ask.
+     *
+     * TWO THINGS AND ONLY TWO DECIDE THE ANSWER: the class, and the cutoff. The
+     * period does not — a progression covers the whole year and callers pick a
+     * period out of it afterwards.
+     *
+     * It exists because BuildClassStatistics may now be HANDED a progression
+     * instead of building one, and a progression built «até 15 de novembro»
+     * placed beside a screen that says «hoje» would be a photograph presented as
+     * the present. Stamping the context is what turns that from a documented
+     * risk into an impossible one.
+     *
+     * @return array{class_id: int, cutoff: string|null}
+     */
+    public static function contextFor(SchoolClass $class, ?AssessmentCutoff $cutoff = null): array
+    {
+        return [
+            'class_id' => (int) $class->getKey(),
+            'cutoff' => ($cutoff ?? AssessmentCutoff::none())->toIso(),
+        ];
+    }
+
+    /**
      * @return array{
      *     periods: list<array<string, mixed>>,
      *     domains: list<array{id: int, name: string}>,
      *     students: list<array<string, mixed>>,
+     *     context: array{class_id: int, cutoff: string|null},
      * }
      */
     public function for(SchoolClass $class, ?AssessmentCutoff $cutoff = null): array
     {
         $cutoff ??= AssessmentCutoff::none();
+        $context = self::contextFor($class, $cutoff);
 
         $periods = AcademicPeriod::query()
             ->where('academic_year_id', $class->academic_year_id)
@@ -72,7 +98,7 @@ class BuildResultsProgression
             ->get();
 
         if ($periods->isEmpty()) {
-            return ['periods' => [], 'domains' => [], 'students' => []];
+            return ['periods' => [], 'domains' => [], 'students' => [], 'context' => $context];
         }
 
         // One pass per period for each scope. The calculator is the canonical
@@ -144,6 +170,9 @@ class BuildResultsProgression
             'periods' => $periodRows,
             'domains' => $domainRows,
             'students' => $students,
+            // Additive, and read by nobody who does not need it: what this
+            // particular build is an answer about.
+            'context' => $context,
         ];
     }
 

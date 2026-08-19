@@ -8,6 +8,7 @@ use App\Models\Scale;
 use App\Models\ScaleLevel;
 use App\Models\SchoolClass;
 use App\Support\Assessment\AssessmentCutoff;
+use InvalidArgumentException;
 
 /**
  * The class read as a whole, instead of student by student.
@@ -34,6 +35,13 @@ use App\Support\Assessment\AssessmentCutoff;
  *
  * Rounded to the same precision the rest of the application shows, so that
  * «72,4%» on Resultados is «72,4%» here (§38).
+ *
+ * IT NORMALLY BUILDS ITS OWN PROGRESSION, and every screen but one lets it. A
+ * caller that already holds one — because it needs the longitudinal model in its
+ * own right, which is Evolução do Aluno's whole situation — may hand it over
+ * instead, and the second walk over the class's year simply does not happen. The
+ * progression must be one built for the SAME class and cutoff; it says which,
+ * and one from anywhere else is refused rather than used.
  */
 class BuildClassStatistics
 {
@@ -47,14 +55,64 @@ class BuildClassStatistics
     ) {}
 
     /**
+     * The progression this build reads — asked for, or accepted from a caller
+     * that already has it.
+     *
+     * NORMALLY IT BUILDS ITS OWN, and every existing caller still does. The
+     * parameter exists for the one case where building it again would be doing
+     * the same work twice: Evolução do Aluno needs the longitudinal model in its
+     * own right — the per-period classifications and self-assessments are only
+     * there — and then needs this aggregate layer on top of it. Before the
+     * parameter, that page ran the progression twice and paid for the class's
+     * whole year twice with it.
+     *
+     * IT IS REUSE, NOT A CACHE. Nothing is remembered between calls, no state is
+     * held, and there is no key to invalidate. The caller has the array in hand
+     * and hands it over; that is the entire mechanism.
+     *
+     * A PROGRESSION FROM ANOTHER CONTEXT IS REFUSED, LOUDLY. It is stamped by
+     * BuildResultsProgression with the class and cutoff it answers about, and a
+     * mismatch throws rather than being quietly rebuilt. Silently recovering
+     * would hide the bug; quietly accepting would put a photograph's numbers
+     * under a screen that says «hoje», which is the one failure this whole
+     * module is built to avoid.
+     *
+     * @param  array<string, mixed>|null  $supplied
      * @return array<string, mixed>
      */
-    public function for(SchoolClass $class, ?AcademicPeriod $period = null, ?AssessmentCutoff $cutoff = null): array
+    protected function progressionFor(SchoolClass $class, ?AssessmentCutoff $cutoff, ?array $supplied): array
     {
-        // THE ONE CALL. Everything below is arithmetic over its output — no
-        // further queries, whatever the size of the class (§39). The cutoff, if
-        // there is one, was already applied to the evidence in there.
-        $progression = $this->progression->for($class, $cutoff);
+        if ($supplied === null) {
+            return $this->progression->for($class, $cutoff);
+        }
+
+        $expected = BuildResultsProgression::contextFor($class, $cutoff);
+
+        if (($supplied['context'] ?? null) !== $expected) {
+            throw new InvalidArgumentException(
+                'The supplied results progression was built for a different class or cutoff.',
+            );
+        }
+
+        return $supplied;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $progression  a progression this caller
+     *                                                  already built for the SAME class and cutoff. Null — the ordinary
+     *                                                  case — builds one here.
+     * @return array<string, mixed>
+     */
+    public function for(
+        SchoolClass $class,
+        ?AcademicPeriod $period = null,
+        ?AssessmentCutoff $cutoff = null,
+        ?array $progression = null,
+    ): array {
+        // THE ONE CALL, still. Everything below is arithmetic over its output —
+        // no further queries, whatever the size of the class (§39). The cutoff,
+        // if there is one, was already applied to the evidence in there.
+        $progression = $this->progressionFor($class, $cutoff, $progression);
 
         $periods = $progression['periods'];
         $domains = $progression['domains'];

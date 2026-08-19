@@ -818,17 +818,21 @@ class StudentProgressTest extends TestCase
 
         $this->actingAs($this->teacher)->get("/classes/{$class->ulid}/evolucao/{$enrollment->ulid}")->assertOk();
 
-        // NOT A TARGET, A CEILING. The read model makes two aggregate passes
-        // over the class — the longitudinal one and the statistical one — plus
-        // a fixed handful of lookups, and measures around 120 on the demo
-        // class. Estatística, which makes one pass, measures around 67.
+        // NOT A TARGET, A CEILING. The read model makes ONE aggregate pass over
+        // the class — the progression — and hands it to the statistics rather
+        // than letting it walk the year again. That plus a fixed handful of
+        // lookups measures 72 on the demo class; Estatística, which does the
+        // same single pass with less on top, measures 67. It was 121 before the
+        // progression was handed over instead of built twice.
         //
-        // What this guards against is not the number, it is the SHAPE: a query
-        // per domain, per period, per record or per intervention would push
-        // straight through this ceiling on any real class, and that is the
-        // regression worth catching (§56, §79).
+        // The ceiling is deliberately loose against the measurement. What it
+        // guards is not the number but the SHAPE: a query per domain, per
+        // period, per record or per intervention would push straight through it
+        // on any real class, and so would reintroducing the second aggregate
+        // pass. That the pass happens exactly once is asserted directly in
+        // ProgressionReuseTest, where it belongs (§56, §79).
         $this->assertLessThan(
-            150,
+            100,
             $queries,
             'The student progress page is making more queries than a bounded read should.',
         );

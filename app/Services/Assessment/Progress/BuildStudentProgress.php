@@ -28,14 +28,17 @@ use Illuminate\Support\Collection;
  * their moments in order, and placing beside them the records, the interventions
  * and the photographs that were never part of a results model.
  *
- * TWO CANONICAL READS, AND EACH ANSWERS SOMETHING THE OTHER CANNOT.
+ * TWO CANONICAL LAYERS, ONE PASS OVER THE CLASS.
  * BuildResultsProgression holds the per-period classification and the per-period
  * self-assessment, which is what «3 → 4» and «Auto 3 | Atribuída 4» are made of.
  * BuildClassStatistics holds the aggregate layer — which reading answers, how the
  * continuous assessment moved, what the class averaged — and none of that may be
  * re-derived here without becoming a second answer to a question that has one.
- * The cost is that the progression runs twice; that is written down rather than
- * traded for a private mean (§56).
+ *
+ * The progression is therefore built ONCE and handed to the statistics rather
+ * than left to be built again inside it. Both layers are still canonical and
+ * neither is reimplemented; what disappeared is the second walk over the same
+ * year (§56).
  *
  * WHAT THIS REFUSES TO DO, throughout:
  *
@@ -68,8 +71,12 @@ class BuildStudentProgress
      */
     public function for(SchoolClass $class, Enrollment $enrollment, ?string $reading = null): array
     {
+        // ONE PASS OVER THE CLASS, and both layers read from it. The
+        // longitudinal model is needed here in its own right — the per-period
+        // classification and self-assessment live only there — and the
+        // aggregate layer is built ON it rather than beside it.
         $progression = $this->progression->for($class);
-        $statistics = $this->statistics->for($class);
+        $statistics = $this->statistics->for($class, progression: $progression);
 
         $periods = $this->periodsOf($class);
         $scopes = $this->scope->forClass($class, $progression['periods']);
