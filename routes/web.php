@@ -22,6 +22,7 @@ use App\Http\Controllers\PublicSelfAssessmentController;
 use App\Http\Controllers\Reports\ReportController;
 use App\Http\Controllers\Reports\ReportExportController;
 use App\Http\Controllers\Reports\ReportSectionController;
+use App\Http\Controllers\Reports\ReportTemplateController;
 use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\ResultsController;
 use App\Http\Controllers\RosterImportController;
@@ -245,6 +246,14 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::post('reports', [ReportController::class, 'store'])->name('reports.store');
         Route::get('reports/contexto/{class}', [ReportController::class, 'context'])->name('reports.context');
 
+        // Modelos (§25). Declared before `reports/{report}`, or «modelos» would
+        // be swallowed as an (invalid) report ulid.
+        Route::get('reports/modelos', [ReportTemplateController::class, 'index'])->name('reports.templates.index');
+        Route::post('reports/modelos', [ReportTemplateController::class, 'store'])->name('reports.templates.store');
+        Route::get('reports/modelos/{template}', [ReportTemplateController::class, 'edit'])->name('reports.templates.edit');
+        Route::put('reports/modelos/{template}', [ReportTemplateController::class, 'update'])->name('reports.templates.update');
+        Route::post('reports/modelos/{template}/duplicar', [ReportTemplateController::class, 'duplicate'])->name('reports.templates.duplicate');
+
         // The pauta.
         Route::get('reports/pautas', [ReportsController::class, 'index'])->name('pautas.index');
         Route::get('classes/{class}/report', [ReportsController::class, 'show'])->name('pautas.show');
@@ -262,6 +271,9 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // correcting a finished report means deriving a new one (§32).
         Route::post('reports/{report}/finalizar', [ReportController::class, 'finalize'])->name('reports.finalize');
         Route::post('reports/{report}/derivar', [ReportController::class, 'derive'])->name('reports.derive');
+        // §18: the draft's arrangement, kept for next time. Structure only.
+        Route::post('reports/{report}/guardar-modelo', [ReportTemplateController::class, 'storeFromReport'])
+            ->name('reports.templates.from-report');
         // The logo frozen INTO this report — served from the private disk by an
         // authorizing controller, exactly as the live one is (§39, §65).
         Route::get('reports/{report}/logotipo', [ReportController::class, 'logo'])->name('reports.logo');

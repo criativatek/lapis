@@ -31,6 +31,16 @@ type RecordKind = { value: string; label: string; group: string };
 
 type AcademicYearRow = { id: number; label: string };
 
+type TemplateRow = {
+    ulid: string;
+    name: string;
+    description: string | null;
+    kind: string;
+    kind_label: string;
+    is_default: boolean;
+    included: string[];
+};
+
 const props = defineProps<{
     type: string;
     availableTypes: Option[];
@@ -39,6 +49,8 @@ const props = defineProps<{
     tones: Option[];
     academicYears: AcademicYearRow[];
     recordKinds: RecordKind[];
+    templates: TemplateRow[];
+    preferredTemplate: string | null;
 }>();
 
 const form = useForm({
@@ -52,6 +64,8 @@ const form = useForm({
     title: '',
     sections: props.catalogue.filter((row) => row.default_included).map((row) => row.key),
     name_students: false,
+    // §17: pre-selected, so the common case needs no choice.
+    template: props.preferredTemplate ?? '',
     // Registos only.
     kinds: [] as string[],
     starts_on: '',
@@ -166,6 +180,25 @@ function toggleSection(key: string, available: boolean) {
         form.sections.splice(index, 1);
     }
 }
+
+const chosenTemplate = computed(() => props.templates.find((row) => row.ulid === form.template) ?? null);
+
+// Picking a template moves the checklist to what it turns on, so the screen
+// shows what the report will actually contain. Only sections this plan allows
+// survive — the server filters again regardless (§23).
+watch(
+    () => form.template,
+    () => {
+        const template = chosenTemplate.value;
+
+        form.sections = template === null
+            ? props.catalogue.filter((row) => row.default_included).map((row) => row.key)
+            : props.catalogue
+                .filter((row) => row.available && template.included.includes(row.key))
+                .map((row) => row.key);
+    },
+    { immediate: true },
+);
 
 const namesStudentsSections = computed(() =>
     props.catalogue.filter((row) => row.may_name_students && form.sections.includes(row.key)),
@@ -348,9 +381,36 @@ function submit() {
                 </div>
             </section>
 
-            <!-- 3 --------------------------------------------------- secções -->
+            <!-- 3 ---------------------------------------------------- modelo -->
+            <section v-if="templates.length > 0" class="space-y-3">
+                <h2 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">3. Modelo</h2>
+
+                <div class="grid gap-2">
+                    <select
+                        v-model="form.template"
+                        class="h-9 rounded-md border border-border bg-background px-2 text-sm"
+                        aria-label="Modelo de relatório"
+                    >
+                        <option value="">Sem modelo — estrutura padrão</option>
+                        <option v-for="template in templates" :key="template.ulid" :value="template.ulid">
+                            {{ template.name }} ({{ template.kind_label }})
+                        </option>
+                    </select>
+                    <p v-if="chosenTemplate?.description" class="text-xs text-muted-foreground">
+                        {{ chosenTemplate.description }}
+                    </p>
+                    <p class="text-xs text-muted-foreground">
+                        O modelo define a estrutura inicial. Depois de criado, pode reorganizar este relatório sem
+                        alterar o modelo.
+                    </p>
+                </div>
+            </section>
+
+            <!-- 4 --------------------------------------------------- secções -->
             <section class="space-y-3">
-                <h2 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">3. Secções</h2>
+                <h2 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    {{ templates.length > 0 ? '4.' : '3.' }} Secções
+                </h2>
 
                 <ul class="divide-y divide-border overflow-hidden rounded-lg border border-border">
                     <li
@@ -411,9 +471,11 @@ function submit() {
                 </div>
             </section>
 
-            <!-- 4 ---------------------------------------------------- registo -->
+            <!-- 5 ---------------------------------------------------- registo -->
             <section v-if="tones.length > 1" class="space-y-3">
-                <h2 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">4. Registo</h2>
+                <h2 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    {{ templates.length > 0 ? '5.' : '4.' }} Registo
+                </h2>
 
                 <div class="grid gap-2">
                     <label

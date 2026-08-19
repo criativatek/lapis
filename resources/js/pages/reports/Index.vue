@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
-import { ChevronRight, FileSpreadsheet, FileText, Plus } from '@lucide/vue';
+import { ChevronRight, FileSpreadsheet, FileText, LayoutTemplate, Plus } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
@@ -84,6 +84,22 @@ function formatDate(value: string): string {
                 </Link>
             </Button>
         </div>
+
+        <Link
+            href="/reports/modelos"
+            class="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 hover:bg-muted/30"
+        >
+            <span class="flex items-center gap-3">
+                <LayoutTemplate class="size-5 shrink-0 text-muted-foreground" />
+                <span>
+                    <span class="block font-medium">Modelos de relatório</span>
+                    <span class="block text-sm text-muted-foreground">
+                        A organização de um relatório, guardada para a próxima vez.
+                    </span>
+                </span>
+            </span>
+            <ChevronRight class="size-4 shrink-0 text-muted-foreground" />
+        </Link>
 
         <!-- The pauta lives in this module too, but it is a different artifact:
              a table of decided grades, not a document with sections. Linked, not

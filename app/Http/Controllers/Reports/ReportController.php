@@ -17,6 +17,8 @@ use App\Models\EvidenceKind;
 use App\Models\InterimAssessment;
 use App\Models\Report;
 use App\Models\ReportSection;
+use App\Models\ReportTemplate;
+use App\Models\ReportTemplateKind;
 use App\Models\ReportTone;
 use App\Models\ReportType;
 use App\Models\SchoolClass;
@@ -33,6 +35,7 @@ use App\Services\Reporting\ReportCapabilities;
 use App\Services\Reporting\ReportComparison;
 use App\Services\Reporting\ReportLibraryProvider;
 use App\Services\Reporting\ReportListing;
+use App\Services\Reporting\Templates\TemplateResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -66,6 +69,7 @@ class ReportController extends Controller
         protected ComposeReport $composer,
         protected DocumentIdentity $identity,
         protected ReportLibraryProvider $library,
+        protected TemplateResolver $templates,
         protected AuditLog $audit,
     ) {}
 
@@ -144,6 +148,10 @@ class ReportController extends Controller
                 ],
                 EvidenceKind::cases(),
             ),
+            // §16, §17: which arrangements this teacher may start from, and
+            // which one is pre-selected so a common case needs no choice.
+            'templates' => $this->templates->optionsFor($this->user(), $type),
+            'preferredTemplate' => $this->templates->preferredFor($this->user(), $type)?->ulid,
         ]);
     }
 
@@ -214,6 +222,10 @@ class ReportController extends Controller
             'starts_on' => ['nullable', 'date'],
             'ends_on' => ['nullable', 'date', 'after_or_equal:starts_on'],
             'detailed' => ['nullable', 'boolean'],
+            // §16: a template is a starting point. Resolved against what this
+            // teacher may actually use, so a ulid from elsewhere is ignored
+            // rather than trusted.
+            'template' => ['nullable', 'string', 'max:40'],
             'academic_period_id' => ['nullable', new BelongsToCurrentOrganization(AcademicPeriod::class)],
             'enrollment_id' => ['nullable', new BelongsToCurrentOrganization(Enrollment::class)],
             'interim_assessment_id' => ['nullable', new BelongsToCurrentOrganization(InterimAssessment::class)],
@@ -252,6 +264,7 @@ class ReportController extends Controller
 
         $tone = ReportTone::tryFrom((string) ($data['tone'] ?? '')) ?? ReportTone::Objective;
         $options = ['name_students' => (bool) ($data['name_students'] ?? false)];
+        $template = $this->templates->resolve($this->user(), $type, $data['template'] ?? null);
 
         $report = match ($type) {
             ReportType::Student => $this->creator->forStudent(
@@ -262,6 +275,7 @@ class ReportController extends Controller
                 tone: $tone,
                 options: $options,
                 title: $data['title'] ?? null,
+                template: $template,
             ),
             ReportType::School => $this->creator->forSchool(
                 year: $this->yearFor($class, $data['academic_year_id'] ?? null),
@@ -270,6 +284,7 @@ class ReportController extends Controller
                 sectionKeys: $data['sections'] ?? null,
                 tone: $tone,
                 title: $data['title'] ?? null,
+                template: $template,
             ),
             ReportType::Records => $this->creator->forRecords(
                 year: $this->yearFor($class, $data['academic_year_id'] ?? null),
@@ -289,6 +304,7 @@ class ReportController extends Controller
                     'detailed' => (bool) ($data['detailed'] ?? false),
                 ],
                 title: $data['title'] ?? null,
+                template: $template,
             ),
             default => $this->creator->forClass(
                 class: $this->requireClass($class),
@@ -299,6 +315,7 @@ class ReportController extends Controller
                 tone: $tone,
                 options: $options,
                 title: $data['title'] ?? null,
+                template: $template,
             ),
         };
 
@@ -348,6 +365,12 @@ class ReportController extends Controller
                 'delete' => Gate::allows('delete', $report),
                 'export' => Gate::allows('export', $report),
                 'derive' => Gate::allows('derive', $report),
+            ],
+            // §18: which kinds of template this teacher may save the draft's
+            // arrangement into. Both false on Base, where the panel is hidden.
+            'canSaveTemplate' => [
+                'personal' => Gate::allows('createKind', [ReportTemplate::class, ReportTemplateKind::Personal]),
+                'institutional' => Gate::allows('createKind', [ReportTemplate::class, ReportTemplateKind::Institutional]),
             ],
         ]);
     }
