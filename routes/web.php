@@ -30,6 +30,7 @@ use App\Http\Controllers\RosterImportController;
 use App\Http\Controllers\ScaleController;
 use App\Http\Controllers\SelfAssessmentController;
 use App\Http\Controllers\StudentPhotoController;
+use App\Http\Controllers\StudentProgressController;
 use App\Http\Controllers\SubjectController;
 use Illuminate\Support\Facades\Route;
 
@@ -298,6 +299,17 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::post('reports/{report}/seccoes/{section}/aperfeicoar', [ReportRewriteController::class, 'store'])
             ->middleware('throttle:report-writing-assistant')
             ->name('reports.sections.rewrite');
+    });
+
+    // Evolução do Aluno — one student's year, read forwards. A VIEW, not a
+    // document: Relatórios already produces the document, and this feeds it
+    // without replacing it (§3 do brief).
+    Route::middleware('module:student_progress')->group(function () {
+        Route::get('evolucao', [StudentProgressController::class, 'index'])->name('student-progress.index');
+        Route::get('classes/{class}/evolucao', [StudentProgressController::class, 'show'])->name('student-progress.class');
+        // Through the ENROLMENT, never a student id: a result belongs to the
+        // (student, class) pair, and a student who left still has a year (§58).
+        Route::get('classes/{class}/evolucao/{enrollment}', [StudentProgressController::class, 'student'])->name('student-progress.student');
     });
 
     // Records — the teacher's logbook (§14). Qualitative evidence, never a grade.
