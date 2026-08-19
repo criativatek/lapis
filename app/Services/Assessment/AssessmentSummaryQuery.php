@@ -25,7 +25,7 @@ class AssessmentSummaryQuery
     /**
      * The teacher's own instruments, across every class, most recent first —
      * mirrors InstrumentController::index()'s own scoping so the two lists
-     * (Instrumentos vs Avaliações) never disagree about which rows a teacher
+     * (Elementos de Avaliação vs Avaliações) never disagree about which rows a teacher
      * can see.
      *
      * @return array<int, array<string, mixed>>
@@ -361,7 +361,7 @@ class AssessmentSummaryQuery
 
     /**
      * The Avaliações module's own label table — distinct from
-     * InstrumentStatus::label() (used by Instrumentos), both in wording
+     * InstrumentStatus::label() (used by Elementos de Avaliação), both in wording
      * ("prepared" splits by whether applied_on has arrived) and in gender
      * ("avaliação" is feminine; "instrumento" is not). Completed and
      * published deliberately collapse into the same "Concluída": from this

@@ -9,10 +9,10 @@ defineProps<{ classes: ClassRow[] }>();
 </script>
 
 <template>
-    <Head title="Intervenções" />
+    <Head title="Estratégias e Medidas" />
 
     <div class="mx-auto w-full max-w-3xl space-y-6 p-4">
-        <Heading title="Intervenções" description="Medidas de apoio e acompanhamento pedagógico, por turma." />
+        <Heading title="Estratégias e Medidas" description="Estratégias, medidas de apoio e acompanhamento pedagógico, por turma." />
 
         <div v-if="classes.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
             <HeartHandshake class="mx-auto mb-3 size-8 text-muted-foreground" />

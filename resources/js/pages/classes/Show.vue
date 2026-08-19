@@ -424,7 +424,7 @@ function submitPhotos(): void {
 
         <section class="space-y-3">
             <div class="flex items-center justify-between">
-                <h2 class="text-sm font-semibold">Instrumentos de avaliação</h2>
+                <h2 class="text-sm font-semibold">Elementos de avaliação</h2>
                 <Button as-child variant="outline" size="sm">
                     <Link
                         :href="`/classes/${schoolClass.ulid}/instruments/create`"
@@ -437,7 +437,7 @@ function submitPhotos(): void {
                 v-if="instruments.length === 0"
                 class="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground"
             >
-                Ainda não há instrumentos nesta turma.
+                Ainda não há elementos de avaliação nesta turma.
             </p>
             <ul
                 v-else

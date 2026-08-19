@@ -96,7 +96,7 @@ function hasNoApplicableStudents(assessment: Assessment): boolean {
 
     <div class="mx-auto w-full max-w-5xl space-y-6 p-4">
         <div class="flex flex-wrap items-start justify-between gap-3">
-            <Heading title="Avaliações" description="Os instrumentos já criados, com o estado e o progresso da correção." />
+            <Heading title="Avaliações" description="Os elementos de avaliação já criados, com o estado e o progresso da correção." />
             <select
                 v-if="classOptions.length"
                 value=""

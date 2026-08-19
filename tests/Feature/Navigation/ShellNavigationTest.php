@@ -150,12 +150,12 @@ class ShellNavigationTest extends TestCase
             $expected = [
                 'classes' => ['Turmas e alunos', 'Turmas'],
                 'students' => ['Turmas e alunos', 'Alunos'],
-                'instruments' => ['Avaliação', 'Instrumentos'],
+                'instruments' => ['Avaliação', 'Elementos de Avaliação'],
                 'assessments' => ['Avaliação', 'Registo de Avaliações'],
                 'self-assessments' => ['Avaliação', 'Autoavaliações'],
                 'class-analysis' => ['Acompanhamento', 'Turma'],
                 'student-progress' => ['Acompanhamento', 'Aluno'],
-                'interventions' => ['Ação pedagógica', 'Intervenções'],
+                'interventions' => ['Ação pedagógica', 'Estratégias e Medidas'],
                 'records' => ['Ação pedagógica', 'Registos'],
                 'reports' => ['Documentos', 'Relatórios'],
                 'calendar' => ['Organização do ano', 'Agenda do Ano Letivo'],
@@ -187,6 +187,8 @@ class ShellNavigationTest extends TestCase
                 'Evolução do Aluno',  // → Acompanhamento > Aluno
                 'Desempenho',         // never an entry: it is a word inside pages
                 'Acompanhamento',     // a heading, never a link
+                'Instrumentos',       // → Elementos de Avaliação
+                'Intervenções',       // → Estratégias e Medidas
             ] as $gone) {
                 $this->assertNotContains($gone, $labels, "«{$gone}» should not be a menu entry.");
             }
@@ -227,6 +229,13 @@ class ShellNavigationTest extends TestCase
             $this->assertSame('Gerir e aceder às suas turmas.', $items['classes']['description']);
             $this->assertSame('Desempenho e evolução da turma.', $items['class-analysis']['description']);
             $this->assertSame('Percurso individual ao longo do ano.', $items['student-progress']['description']);
+
+            // The renamed areas: the description is the tooltip and the
+            // accessible name, so it must speak the new language too — a link
+            // reading «Estratégias e Medidas» announced as «Intervenções» is
+            // the divergence this asserts against (§17).
+            $this->assertSame('Criar e gerir elementos usados na avaliação.', $items['instruments']['description']);
+            $this->assertSame('Registar estratégias, medidas e ações pedagógicas.', $items['interventions']['description']);
 
             foreach ($items as $key => $item) {
                 if ($key !== 'dashboard') {
@@ -318,6 +327,13 @@ class ShellNavigationTest extends TestCase
             $this->assertStringEndsWith('/results', (string) $items['class-analysis']['href']);
             $this->assertStringEndsWith('/evolucao', (string) $items['student-progress']['href']);
             $this->assertStringEndsWith('/assessment-profiles', (string) $items['assessment-profiles']['href']);
+
+            // Renamed in the menu, unmoved on the wire: «Elementos de
+            // Avaliação» is still /instruments and «Estratégias e Medidas» is
+            // still /interventions. Every bookmark, CTA and deep link into
+            // Student Progress keeps working (§13).
+            $this->assertStringEndsWith('/instruments', (string) $items['instruments']['href']);
+            $this->assertStringEndsWith('/interventions', (string) $items['interventions']['href']);
         });
     }
 

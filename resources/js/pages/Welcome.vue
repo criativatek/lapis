@@ -107,10 +107,10 @@ const pillars = [
                     O seu LÁPIS digital para avaliar, organizar e ensinar.
                 </p>
                 <p class="mt-6 max-w-2xl text-lg text-muted-foreground">
-                    O LÁPIS reúne perfis de avaliação, turmas, instrumentos e
-                    grelhas de correção, e propõe classificações de forma
-                    determinística e explicável — mantendo a decisão pedagógica
-                    sempre consigo.
+                    O LÁPIS reúne perfis de avaliação, turmas, elementos de
+                    avaliação e grelhas de correção, e propõe classificações
+                    de forma determinística e explicável — mantendo a decisão
+                    pedagógica sempre consigo.
                 </p>
                 <div class="mt-8 flex flex-wrap items-center gap-3">
                     <Link

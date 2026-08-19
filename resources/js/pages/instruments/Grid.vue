@@ -25,7 +25,7 @@ import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTon
 
 // Preserves where the teacher came from without a general-purpose breadcrumb:
 // arriving from assessments/Show.vue (via ?from=assessments) returns there;
-// every other entry point (Instrumentos, the class page) keeps today's
+// every other entry point (Elementos de Avaliação, the class page) keeps today's
 // unchanged "voltar à turma".
 const cameFromAssessments = new URLSearchParams(window.location.search).get('from') === 'assessments';
 

@@ -649,15 +649,15 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
 </script>
 
 <template>
-    <Head :title="`Intervenções — ${schoolClass.label}`" />
+    <Head :title="`Estratégias e Medidas — ${schoolClass.label}`" />
 
     <div class="mx-auto w-full max-w-3xl space-y-5 p-4">
         <div>
-            <Heading :title="`Intervenções — ${schoolClass.label}`" :description="schoolClass.subject" />
+            <Heading :title="`Estratégias e Medidas — ${schoolClass.label}`" :description="schoolClass.subject" />
             <Link href="/interventions" class="text-sm text-muted-foreground hover:underline">← Todas as turmas</Link>
         </div>
 
-        <p class="text-xs text-muted-foreground">As intervenções apoiam o acompanhamento pedagógico e não alteram automaticamente a classificação.</p>
+        <p class="text-xs text-muted-foreground">As estratégias e medidas apoiam o acompanhamento pedagógico e não alteram automaticamente a classificação.</p>
 
         <form class="space-y-3 rounded-lg border border-border p-4" @submit.prevent="submit">
             <label class="block text-sm">
@@ -993,7 +993,7 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
         </button>
 
         <div v-if="interventions.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
-            <p class="text-sm text-muted-foreground">Ainda não existem intervenções registadas.</p>
+            <p class="text-sm text-muted-foreground">Ainda não existem estratégias ou medidas registadas.</p>
             <p class="mt-1 text-xs text-muted-foreground">
                 Use o formulário acima para registar a primeira.
             </p>

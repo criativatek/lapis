@@ -69,7 +69,11 @@ return [
             // screens (§30).
             'label' => 'Avaliação',
             'items' => [
-                ['key' => 'instruments', 'label' => 'Instrumentos', 'icon' => 'ClipboardList', 'module' => 'instruments', 'phase' => 2, 'route' => 'instruments.index', 'built' => true, 'description' => 'Preparar instrumentos de avaliação.'],
+                // «Elementos de Avaliação» is what the area is FOR — a test, a
+                // worksheet, a presentation, a piece of writing. The key, the
+                // route, the module and the whole Instrument* codebase are
+                // untouched: a label is not a rename (§17).
+                ['key' => 'instruments', 'label' => 'Elementos de Avaliação', 'icon' => 'ClipboardList', 'module' => 'instruments', 'phase' => 2, 'route' => 'instruments.index', 'built' => true, 'description' => 'Criar e gerir elementos usados na avaliação.'],
                 // «Registo de Avaliações», because that is the act. The route,
                 // the controller and the capability are all still `assessments`
                 // — a label is not a rename (§17).
@@ -102,7 +106,10 @@ return [
             // INTERVIR — what the teacher did, and what the teacher saw.
             'label' => 'Ação pedagógica',
             'items' => [
-                ['key' => 'interventions', 'label' => 'Intervenções', 'icon' => 'HeartHandshake', 'module' => 'interventions', 'phase' => 3, 'route' => 'interventions.index', 'built' => true, 'description' => 'Ações pedagógicas e acompanhamento.'],
+                // «Estratégias e Medidas», because the area is wider than the
+                // formal measures: differentiation, study support, help reading
+                // a prompt, self-regulation. Same key, same route, same module.
+                ['key' => 'interventions', 'label' => 'Estratégias e Medidas', 'icon' => 'HeartHandshake', 'module' => 'interventions', 'phase' => 3, 'route' => 'interventions.index', 'built' => true, 'description' => 'Registar estratégias, medidas e ações pedagógicas.'],
                 ['key' => 'records', 'label' => 'Registos', 'icon' => 'NotebookPen', 'module' => 'records', 'phase' => 3, 'route' => 'records.index', 'built' => true, 'description' => 'Observações e ocorrências.'],
             ],
         ],

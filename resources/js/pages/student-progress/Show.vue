@@ -836,7 +836,7 @@ const hasAnything = computed(
                     <div>
                         <h2 id="intervencoes" class="flex items-center gap-2 text-sm font-semibold">
                             <HeartHandshake class="size-4" />
-                            Intervenções e medidas
+                            Estratégias e Medidas
                         </h2>
                         <p class="mt-0.5 text-xs text-muted-foreground">
                             Inclui as já concluídas — a evolução precisa da história.
@@ -852,7 +852,7 @@ const hasAnything = computed(
                         </Button>
                         <Button variant="ghost" size="sm" as-child>
                             <a :href="links.interventions">
-                                Abrir Intervenções
+                                Abrir Estratégias e Medidas
                                 <ExternalLink class="size-3.5" />
                             </a>
                         </Button>
@@ -905,7 +905,7 @@ const hasAnything = computed(
                 </ol>
 
                 <p v-else class="mt-4 text-sm text-muted-foreground">
-                    Ainda não existem intervenções registadas para este aluno.
+                    Ainda não existem estratégias ou medidas registadas para este aluno.
                 </p>
             </section>
 
