@@ -3,6 +3,9 @@
 namespace App\Providers;
 
 use App\Models\PlatformSetting;
+use App\Services\Ai\AiTextProviders;
+use App\Services\Ai\Providers\ChatCompletionsProvider;
+use App\Services\Ai\Providers\FakeAiTextProvider;
 use App\Services\Import\Correction\CorrectionGridParserRegistry;
 use App\Services\Import\Correction\GenericSpreadsheetParser;
 use App\Services\Import\Correction\IntuitivoXlsxParser;
@@ -11,13 +14,16 @@ use App\Support\Entitlements\Entitlements;
 use App\Support\Release\BuildStamp;
 use App\Support\Tenancy\CurrentOrganization;
 use Carbon\CarbonImmutable;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Console\AboutCommand;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 
@@ -43,6 +49,35 @@ class AppServiceProvider extends ServiceProvider
             // the parser that understands it rather than mapped by hand.
             $app->make(GenericSpreadsheetParser::class),
         ]));
+
+        $this->registerWritingAssistant();
+    }
+
+    /**
+     * The optional layer that rephrases text LÁPIS already wrote.
+     *
+     * Singletons, so a single request always talks to the same engine — which is
+     * what lets a test script a sequence of answers and have them arrive in
+     * order. Neither is CONSTRUCTED here: nothing is built until something asks
+     * AiTextProviders for one, and on a fresh installation nothing ever does,
+     * because no driver is configured (§8).
+     *
+     * The key is read at construction from config, which reads it from the
+     * environment. It is never stored, never shared with the frontend, and the
+     * provider that holds it never puts it in an exception (§47).
+     */
+    protected function registerWritingAssistant(): void
+    {
+        $this->app->singleton(AiTextProviders::class);
+
+        $this->app->singleton(ChatCompletionsProvider::class, fn (): ChatCompletionsProvider => new ChatCompletionsProvider(
+            endpoint: (string) config('lapis.ai.endpoint'),
+            key: (string) config('lapis.ai.key'),
+            model: (string) config('lapis.ai.model'),
+            timeout: (int) config('lapis.ai.timeout'),
+        ));
+
+        $this->app->singleton(FakeAiTextProvider::class);
     }
 
     /**
@@ -53,6 +88,37 @@ class AppServiceProvider extends ServiceProvider
         $this->configureDefaults();
         $this->applyPlatformMailSettings();
         $this->describeRelease();
+        $this->limitWritingAssistant();
+    }
+
+    /**
+     * Two ceilings, and a request has to pass both (§28).
+     *
+     * PER USER, so one teacher holding down a button cannot spend the school's
+     * budget. PER ORGANIZATION, so thirty teachers each within their own limit
+     * still cannot. The second is the one that actually protects the bill; the
+     * first is the one that catches the accident.
+     *
+     * A request with no resolved tenant gets no organization bucket rather than
+     * sharing a global one — an unauthenticated caller cannot reach this route
+     * at all, so there is nothing to fall back to.
+     */
+    protected function limitWritingAssistant(): void
+    {
+        RateLimiter::for('report-writing-assistant', function (Request $request): array {
+            $organization = app(CurrentOrganization::class);
+
+            $limits = [
+                Limit::perMinute((int) config('lapis.ai.per_minute'))->by('user:'.$request->user()?->getKey()),
+            ];
+
+            if ($organization->isResolved()) {
+                $limits[] = Limit::perMinute((int) config('lapis.ai.organization_per_minute'))
+                    ->by('organization:'.$organization->get()->getKey());
+            }
+
+            return $limits;
+        });
     }
 
     /**
