@@ -27,10 +27,10 @@ versão em [CHANGELOG.md](../CHANGELOG.md); o "porquê" das decisões em [docs/a
 | **Auditoria (§22.4)** | ✅ | `audit_events` imutável, tenant-scoped; página «Registo de atividade». |
 | **Registos / Evidências (§14)** | ✅ | Diário de bordo qualitativo; nunca no cálculo. |
 | **Autoavaliação (§15)** | ✅ | Por domínio, comparada com o cálculo, nunca somada. |
-| **Intervenções (§14)** | ✅ | Ciclo de vida + apreciações de eficácia. |
+| **Intervenções (§14)** | ✅ | O raciocínio pedagógico do professor: **porquê** (situação/dificuldade), **o quê** (estratégia), **para quê** (objetivo) e **o que se observou depois** (acompanhamentos datados, com avaliação do efeito pelo professor). Âmbito individual/grupo/turma, «rever em» e revisão pendente. Reutiliza a biblioteca `report_library_entries` dos Relatórios — dificuldade → estratégia → objetivo — e guarda cópia do texto escolhido, nunca uma FK. Nada é inferido: um resultado que sobe não avalia nada. |
 | **Backoffice de plataforma** | ✅ | `/admin` super-admin: gestão de contas, criar/provisionar, SMTP na BD (sobrepõe `.env`), impersonar. Guia: [backoffice.md](backoffice.md). |
 
-Suite: 1940 testes verdes (1 skipped) · Pint/Larastan/vue-tsc limpos. **Em produção** em
+Suite: 1962 testes verdes (1 skipped) · Pint/Larastan/vue-tsc limpos. **Em produção** em
 [lapis.criativatek.com](https://lapis.criativatek.com) (versão 0.19.x).
 
 ## Regras pedagógicas (5 questões que bloqueavam a Fase 1)
