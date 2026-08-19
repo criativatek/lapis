@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { CheckCircle2, FileText, Pencil, Trash2 } from '@lucide/vue';
+import { CalendarClock, CheckCircle2, FileText, Pencil, Trash2 } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import Heading from '@/components/Heading.vue';
 
@@ -31,10 +31,30 @@ type Review = {
     notes: string | null;
 };
 
+/** A library entry, or the teacher's own words with no code. */
+type LibraryEntry = { code: string | null; label: string; objective: string | null; related_code: string | null; is_system: boolean };
+
 type Intervention = {
     ulid: string;
     title: string;
     description: string | null;
+    /** PORQUÊ — the situation the teacher identified. Null on older rows. */
+    motive_code: string | null;
+    motive: string | null;
+    /** O QUÊ — how the teacher named what they did. */
+    strategy_code: string | null;
+    strategy: string | null;
+    /** PARA QUÊ. */
+    objective: string | null;
+    review_on: string | null;
+    needs_review: boolean;
+    /** Derived from the follow-ups — what the teacher last observed. */
+    effectiveness: string | null;
+    effectiveness_label: string | null;
+    effectiveness_short: string | null;
+    last_followup_on: string | null;
+    followup_count: number;
+    intervention_type_label: string | null;
     intervention_type: string | null;
     context: string | null;
     context_label: string | null;
@@ -81,7 +101,14 @@ const props = defineProps<{
     targetTypes: { value: string; label: string }[];
     supportMeasureLevels: { value: string; label: string; measures: { value: string; label: string }[] }[];
     evaluationAdaptations: { value: string; label: string }[];
-    effectivenessOptions: { value: string; label: string }[];
+    effectivenessOptions: { value: string; label: string; short_label: string }[];
+    statusOptions: { value: string; label: string }[];
+    /**
+     * The SAME library Relatórios uses, not a second one. Possibly empty — a
+     * school that never seeded one types its own words and the module works
+     * exactly as well (§74).
+     */
+    library: { difficulties: LibraryEntry[]; strategies: Record<string, LibraryEntry[]> };
     filters: {
         enrollment_id?: number | null;
         intervention_type?: string | null;
@@ -90,8 +117,12 @@ const props = defineProps<{
         period_id?: number | null;
         available_for_reports?: boolean | null;
         support_measure_level?: string | null;
+        status?: string | null;
+        needs_review?: boolean | null;
     };
     interventions: Intervention[];
+    /** Arriving from a student's page, with that student already chosen (§17). */
+    prefill: { target_type: TargetType; enrollment_ids: number[]; name: string | null } | null;
 }>();
 
 const today = new Date().toISOString().slice(0, 10);
@@ -102,6 +133,17 @@ type FormData = {
     intervention_type: string;
     domain_relation: DomainRelation;
     domain_id?: number | null;
+    /**
+     * The teacher's reasoning. A code when it came from the library, and the
+     * words either way — what gets stored is the words, so rewording the
+     * library later cannot rewrite this intervention (§56).
+     */
+    motive_code: string | null;
+    motive_label: string;
+    strategy_code: string | null;
+    strategy_label: string;
+    objective: string;
+    review_on: string;
     description: string;
     started_on: string;
     available_for_reports: boolean;
@@ -113,11 +155,17 @@ type FormData = {
 };
 
 const form = useForm<FormData>({
-    target_type: 'student',
-    enrollment_ids: props.enrollments[0] ? [props.enrollments[0].id] : [],
+    target_type: props.prefill?.target_type ?? 'student',
+    enrollment_ids: props.prefill?.enrollment_ids ?? (props.enrollments[0] ? [props.enrollments[0].id] : []),
     intervention_type: props.types[0]?.value ?? '',
     domain_relation: 'none',
     domain_id: null,
+    motive_code: null,
+    motive_label: '',
+    strategy_code: null,
+    strategy_label: '',
+    objective: '',
+    review_on: '',
     description: '',
     started_on: today,
     available_for_reports: true,
@@ -144,6 +192,52 @@ const typeGroups = computed(() => {
 
     return groups;
 });
+
+/**
+ * The strategies that answer the difficulty the teacher chose.
+ *
+ * NARROWED BY THE LIBRARY'S OWN `related_code`, and by nothing else. Offering
+ * every strategy under every difficulty is what makes a module read like a form
+ * letter, and — more importantly — nothing here is inferred: «guiões de
+ * planificação» appears because somebody wrote down that it answers
+ * «planificação da escrita», not because a result was low (§13, §65).
+ *
+ * A difficulty the teacher typed themselves has no code and therefore no
+ * suggestions, which is the honest answer: the library has nothing to say about
+ * a formulation it has never seen.
+ */
+const suggestedStrategies = computed<LibraryEntry[]>(() =>
+    form.motive_code === null ? [] : (props.library.strategies[form.motive_code] ?? []),
+);
+
+/** Whether the library has anything at all to offer here (§74). */
+const hasLibrary = computed(() => props.library.difficulties.length > 0);
+
+function chooseMotive(entry: LibraryEntry | null): void {
+    form.motive_code = entry?.code ?? null;
+    form.motive_label = entry?.label ?? '';
+
+    // Choosing a different situation invalidates a strategy picked for the
+    // previous one. The teacher's own words are left alone.
+    if (form.strategy_code !== null) {
+        form.strategy_code = null;
+        form.strategy_label = '';
+    }
+}
+
+/**
+ * Picking a strategy also OFFERS its objective — and only offers it. The text
+ * lands in an editable field, and what is stored is what the teacher left there
+ * (§14, §55).
+ */
+function chooseStrategy(entry: LibraryEntry): void {
+    form.strategy_code = entry.code;
+    form.strategy_label = entry.label;
+
+    if (form.objective.trim() === '' && entry.objective) {
+        form.objective = entry.objective;
+    }
+}
 
 const selectedType = computed(() => props.types.find((type) => type.value === form.intervention_type) ?? null);
 const selectedMapping = computed(() => selectedType.value?.legal_mapping ?? null);
@@ -355,6 +449,15 @@ function edit(intervention: Intervention): void {
     form.intervention_type = intervention.intervention_type ?? props.types[0]?.value ?? '';
     form.domain_relation = intervention.domain_relation;
     form.domain_id = intervention.domain_id;
+    // The reasoning as it was RECORDED, not as the library reads today: what is
+    // loaded back is the snapshot, so editing a date does not silently adopt a
+    // reworded entry (§56).
+    form.motive_code = intervention.motive_code;
+    form.motive_label = intervention.motive ?? '';
+    form.strategy_code = intervention.strategy_code;
+    form.strategy_label = intervention.strategy ?? '';
+    form.objective = intervention.objective ?? '';
+    form.review_on = intervention.review_on ?? '';
     form.description = intervention.description ?? '';
     form.started_on = intervention.started_on.slice(0, 10);
     form.available_for_reports = intervention.available_for_reports;
@@ -430,17 +533,33 @@ function remove(intervention: Intervention): void {
     }
 }
 
+/**
+ * Adding to the history is NOT editing the intervention (§42).
+ *
+ * A teacher who observed something in March opens this, writes it, and leaves —
+ * they never have to go through the edit form, and the edit form never touches
+ * what earlier follow-ups said.
+ */
 const openReview = ref<string | null>(null);
-const reviewForm = useForm<{ reviewed_on: string; effectiveness: string | null; notes: string }>({
+const reviewForm = useForm<{
+    reviewed_on: string;
+    effectiveness: string | null;
+    notes: string;
+    review_on: string;
+}>({
     reviewed_on: today,
     effectiveness: null,
     notes: '',
+    review_on: '',
 });
 
 function openReviewFor(intervention: Intervention): void {
     openReview.value = intervention.ulid;
     reviewForm.reset();
     reviewForm.reviewed_on = today;
+    // Recording what was seen is the natural moment to decide when to look
+    // again, so the current date is offered rather than a blank field.
+    reviewForm.review_on = intervention.review_on ?? '';
 }
 
 function submitReview(intervention: Intervention): void {
@@ -468,8 +587,14 @@ const statusClasses: Record<string, string> = {
     new: 'bg-muted text-muted-foreground',
     in_progress: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
     concluded: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+    suspended: 'bg-muted text-muted-foreground',
     cancelled: 'bg-muted text-muted-foreground line-through',
 };
+
+/** «Rever em 25 de setembro», the way a person says it (§82). */
+function reviewWhen(date: string): string {
+    return new Date(date).toLocaleDateString('pt-PT', { day: 'numeric', month: 'long' });
+}
 
 const filterEnrollmentId = ref<number | null>(props.filters.enrollment_id ?? null);
 const filterInterventionType = ref<string | null>(props.filters.intervention_type ?? null);
@@ -478,6 +603,8 @@ const filterDomainId = ref<number | null>(props.filters.domain_id ?? null);
 const filterPeriodId = ref<number | null>(props.filters.period_id ?? null);
 const filterAvailableForReports = ref<boolean | null>(props.filters.available_for_reports ?? null);
 const filterSupportMeasureLevel = ref<string | null>(props.filters.support_measure_level ?? null);
+const filterStatus = ref<string | null>(props.filters.status ?? null);
+const filterNeedsReview = ref<boolean>(props.filters.needs_review === true);
 
 function applyFilters(): void {
     router.get(
@@ -490,6 +617,8 @@ function applyFilters(): void {
             period_id: filterPeriodId.value,
             available_for_reports: filterAvailableForReports.value,
             support_measure_level: filterSupportMeasureLevel.value,
+            status: filterStatus.value,
+            needs_review: filterNeedsReview.value ? 1 : null,
         },
         { preserveState: true, preserveScroll: true, replace: true },
     );
@@ -503,8 +632,13 @@ function clearFilters(): void {
     filterPeriodId.value = null;
     filterAvailableForReports.value = null;
     filterSupportMeasureLevel.value = null;
+    filterStatus.value = null;
+    filterNeedsReview.value = false;
     applyFilters();
 }
+
+/** How many of the listed interventions the teacher said they would revisit by now. */
+const pendingCount = computed(() => props.interventions.filter((row) => row.needs_review).length);
 </script>
 
 <template>
@@ -591,6 +725,118 @@ function clearFilters(): void {
                     <p v-if="form.errors.domain_id" class="mt-1 text-xs text-red-600">{{ form.errors.domain_id }}</p>
                 </label>
             </div>
+
+            <!-- ------------------------------------- o raciocínio pedagógico
+                 PORQUÊ → O QUÊ → PARA QUÊ. Every field optional: registering
+                 something small has to stay as fast as it was, and a teacher
+                 who only wants to note what they did is never stopped by a
+                 required objective (§5, §16). -->
+            <fieldset class="space-y-3 rounded-lg border border-border p-3">
+                <legend class="px-1 text-xs font-medium text-muted-foreground">
+                    Raciocínio pedagógico <span class="font-normal">(opcional)</span>
+                </legend>
+
+                <div class="space-y-1.5">
+                    <label for="motive" class="block text-xs text-muted-foreground">
+                        Situação ou dificuldade que motivou
+                    </label>
+
+                    <!-- The library is offered as chips, never as the only way
+                         in: the text field below takes whatever the teacher
+                         wants to write, with or without a library entry behind
+                         it (§53). -->
+                    <div v-if="hasLibrary" class="flex flex-wrap gap-1.5">
+                        <button
+                            v-for="entry in library.difficulties"
+                            :key="entry.code ?? entry.label"
+                            type="button"
+                            class="rounded-full border px-3 py-1 text-xs"
+                            :class="form.motive_code === entry.code
+                                ? 'border-primary bg-primary/10'
+                                : 'border-border text-muted-foreground hover:bg-muted/40'"
+                            :aria-pressed="form.motive_code === entry.code"
+                            @click="chooseMotive(form.motive_code === entry.code ? null : entry)"
+                        >
+                            {{ entry.label }}
+                        </button>
+                    </div>
+
+                    <input
+                        id="motive"
+                        v-model="form.motive_label"
+                        type="text"
+                        maxlength="300"
+                        class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                        placeholder="Ex.: dificuldade na planificação da escrita"
+                        @input="form.motive_code = null"
+                    />
+                    <p v-if="form.errors.motive_label" class="text-xs text-red-600">{{ form.errors.motive_label }}</p>
+                </div>
+
+                <div class="space-y-1.5">
+                    <label for="strategy" class="block text-xs text-muted-foreground">Estratégia adotada</label>
+
+                    <!-- Only the strategies that answer the chosen situation.
+                         They appear because somebody wrote down that they answer
+                         it, not because a result was low (§13). -->
+                    <div v-if="suggestedStrategies.length > 0" class="flex flex-wrap gap-1.5">
+                        <button
+                            v-for="entry in suggestedStrategies"
+                            :key="entry.code ?? entry.label"
+                            type="button"
+                            class="rounded-full border px-3 py-1 text-xs"
+                            :class="form.strategy_code === entry.code
+                                ? 'border-primary bg-primary/10'
+                                : 'border-border text-muted-foreground hover:bg-muted/40'"
+                            :aria-pressed="form.strategy_code === entry.code"
+                            @click="chooseStrategy(entry)"
+                        >
+                            {{ entry.label }}
+                        </button>
+                    </div>
+
+                    <input
+                        id="strategy"
+                        v-model="form.strategy_label"
+                        type="text"
+                        maxlength="300"
+                        class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                        placeholder="Ex.: escrita orientada com guião de planificação"
+                        @input="form.strategy_code = null"
+                    />
+                    <p v-if="form.errors.strategy_label" class="text-xs text-red-600">{{ form.errors.strategy_label }}</p>
+                </div>
+
+                <div class="space-y-1.5">
+                    <label for="objective" class="block text-xs text-muted-foreground">Objetivo</label>
+                    <textarea
+                        id="objective"
+                        v-model="form.objective"
+                        rows="2"
+                        maxlength="1000"
+                        class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                        placeholder="Ex.: melhorar a organização e a estruturação do texto escrito."
+                    ></textarea>
+                    <p class="text-xs text-muted-foreground">
+                        O que se pretende alcançar — não um resultado numérico.
+                    </p>
+                    <p v-if="form.errors.objective" class="text-xs text-red-600">{{ form.errors.objective }}</p>
+                </div>
+
+                <div class="space-y-1.5">
+                    <label for="review-on" class="block text-xs text-muted-foreground">Rever em (opcional)</label>
+                    <input
+                        id="review-on"
+                        v-model="form.review_on"
+                        type="date"
+                        class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm sm:w-56"
+                    />
+                    <p class="text-xs text-muted-foreground">
+                        A partir desta data a intervenção aparece como «revisão pendente».
+                    </p>
+                    <p v-if="form.errors.review_on" class="text-xs text-red-600">{{ form.errors.review_on }}</p>
+                </div>
+            </fieldset>
 
             <label class="block text-sm">
                 <span class="mb-1 block text-xs text-muted-foreground">
@@ -722,8 +968,28 @@ function clearFilters(): void {
             <button type="button" class="text-xs text-primary hover:underline" @click="clearFilters">Limpar filtros</button>
         </div>
 
+        <!-- «A acompanhar»: the ones whose own review date has arrived. No rule
+             invents a deadline from elapsed time — this counts only dates the
+             teacher chose (§37, §80). -->
+        <button
+            v-if="pendingCount > 0 && !filterNeedsReview"
+            type="button"
+            class="flex w-full items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-left text-sm hover:bg-muted/50"
+            @click="filterNeedsReview = true; applyFilters()"
+        >
+            <CalendarClock class="size-4 shrink-0 text-muted-foreground" />
+            <span>
+                {{ pendingCount }}
+                {{ pendingCount === 1 ? 'intervenção com revisão pendente' : 'intervenções com revisão pendente' }}
+            </span>
+            <span class="ml-auto text-xs text-muted-foreground">Ver só estas</span>
+        </button>
+
         <div v-if="interventions.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
-            <p class="text-sm text-muted-foreground">Ainda não há intervenções nesta turma.</p>
+            <p class="text-sm text-muted-foreground">Ainda não existem intervenções registadas.</p>
+            <p class="mt-1 text-xs text-muted-foreground">
+                Use o formulário acima para registar a primeira.
+            </p>
         </div>
 
         <ul v-else class="space-y-2">
@@ -736,8 +1002,35 @@ function clearFilters(): void {
                             <span class="text-sm">— {{ intervention.title }}</span>
                             <span class="ml-auto text-xs text-muted-foreground tabular-nums">{{ when(intervention.started_on) }}</span>
                         </div>
+                        <!-- PORQUÊ e PARA QUÊ, quando o professor os registou.
+                             Uma intervenção antiga não tem nenhum dos dois e não
+                             mostra nenhum — nunca «objetivo geral» (§4). -->
+                        <p v-if="intervention.motive" class="mt-1 text-sm text-muted-foreground">
+                            <span class="text-xs uppercase tracking-wide">Situação:</span>
+                            {{ intervention.motive }}
+                        </p>
+                        <p v-if="intervention.objective" class="text-sm text-muted-foreground">
+                            <span class="text-xs uppercase tracking-wide">Objetivo:</span>
+                            {{ intervention.objective }}
+                        </p>
+
                         <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                             <span v-if="intervention.domain">{{ intervention.domain }}</span>
+                            <!-- What the TEACHER observed, never derived from a
+                                 result that moved (§26). -->
+                            <span v-if="intervention.effectiveness_short" class="rounded-full bg-muted px-2 py-0.5">
+                                {{ intervention.effectiveness_short }}
+                            </span>
+                            <!-- The badge carries an icon and words, never colour
+                                 alone (§48, §80). -->
+                            <span v-if="intervention.needs_review" class="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-amber-800 dark:text-amber-400">
+                                <CalendarClock class="size-3.5" />
+                                Revisão pendente
+                            </span>
+                            <span v-else-if="intervention.review_on" class="inline-flex items-center gap-1">
+                                <CalendarClock class="size-3.5" />
+                                Rever em {{ reviewWhen(intervention.review_on) }}
+                            </span>
                             <span v-if="intervention.legal_framing" class="rounded-full bg-accent px-2 py-0.5 text-accent-foreground">{{ framingLabel(intervention) }}</span>
                             <span v-if="intervention.available_for_reports" class="inline-flex items-center gap-1"><FileText class="size-3.5 text-emerald-500" /> Disponível para relatórios</span>
                         </div>
@@ -753,26 +1046,76 @@ function clearFilters(): void {
                     <template v-if="!intervention.is_closed">
                         <button v-if="intervention.status === 'new'" type="button" class="rounded-md border border-border px-2.5 py-1 hover:bg-muted/40" @click="setStatus(intervention, 'in_progress')">Marcar em curso</button>
                         <button type="button" class="rounded-md border border-emerald-600 px-2.5 py-1 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950" @click="setStatus(intervention, 'concluded')">Concluir</button>
-                        <button type="button" class="rounded-md border border-border px-2.5 py-1 text-muted-foreground hover:bg-muted/40" @click="setStatus(intervention, 'cancelled')">Cancelar</button>
+                        <!-- «Suspender», não «cancelar»: uma intervenção que
+                             deixou de ser adequada continua a fazer parte do
+                             ano (§45). -->
+                        <button v-if="intervention.status !== 'suspended'" type="button" class="rounded-md border border-border px-2.5 py-1 text-muted-foreground hover:bg-muted/40" @click="setStatus(intervention, 'suspended')">Suspender</button>
                     </template>
-                    <button v-if="openReview !== intervention.ulid" type="button" class="text-primary hover:underline" @click="openReviewFor(intervention)">+ Apreciação</button>
+                    <!-- Reabrir preserva a conclusão anterior no histórico (§44). -->
+                    <button v-else type="button" class="rounded-md border border-border px-2.5 py-1 text-muted-foreground hover:bg-muted/40" @click="setStatus(intervention, 'in_progress')">Reabrir</button>
+                    <!-- Acrescentar história nunca obriga a editar a intervenção
+                         (§42). -->
+                    <button v-if="openReview !== intervention.ulid" type="button" class="text-primary hover:underline" @click="openReviewFor(intervention)">+ Acompanhamento</button>
                 </div>
 
                 <div class="border-t border-border pt-3">
-                    <div v-if="intervention.reviews.length" class="mb-2 space-y-1.5">
-                        <div v-for="review in intervention.reviews" :key="review.ulid" class="text-sm">
-                            <span class="text-xs text-muted-foreground tabular-nums">{{ when(review.reviewed_on) }}</span>
-                            <span v-if="review.effectiveness_label" class="ml-2 rounded-full bg-accent px-2 py-0.5 text-xs text-accent-foreground">{{ review.effectiveness_label }}</span>
-                            <p v-if="review.notes" class="text-muted-foreground">{{ review.notes }}</p>
-                        </div>
-                    </div>
+                    <!-- A pequena narrativa temporal: começou, foi acompanhada,
+                         foi avaliada. Lida para a frente, do início para o
+                         presente (§29, §97). -->
+                    <ol v-if="intervention.reviews.length" class="mb-3 space-y-2">
+                        <li class="flex gap-3 text-sm">
+                            <span class="w-20 shrink-0 text-xs text-muted-foreground tabular-nums">{{ when(intervention.started_on) }}</span>
+                            <span class="border-l border-border pl-3 text-muted-foreground">Intervenção iniciada</span>
+                        </li>
+                        <li v-for="review in [...intervention.reviews].reverse()" :key="review.ulid" class="flex gap-3 text-sm">
+                            <span class="w-20 shrink-0 text-xs text-muted-foreground tabular-nums">{{ when(review.reviewed_on) }}</span>
+                            <span class="min-w-0 flex-1 border-l border-border pl-3">
+                                <span v-if="review.effectiveness_label" class="block text-xs font-medium">{{ review.effectiveness_label }}</span>
+                                <span v-else class="block text-xs text-muted-foreground">Acompanhamento</span>
+                                <span v-if="review.notes" class="mt-0.5 block text-muted-foreground">{{ review.notes }}</span>
+                            </span>
+                        </li>
+                        <li v-if="intervention.concluded_on" class="flex gap-3 text-sm">
+                            <span class="w-20 shrink-0 text-xs text-muted-foreground tabular-nums">{{ when(intervention.concluded_on) }}</span>
+                            <span class="border-l border-border pl-3 text-muted-foreground">Concluída</span>
+                        </li>
+                    </ol>
 
-                    <div v-if="openReview === intervention.ulid" class="flex flex-wrap items-end gap-2">
-                        <label class="text-sm"><span class="mb-1 block text-xs text-muted-foreground">Data</span><input v-model="reviewForm.reviewed_on" type="date" class="rounded-md border border-border bg-background px-2 py-1" /></label>
-                        <label class="text-sm"><span class="mb-1 block text-xs text-muted-foreground">Eficácia</span><select v-model="reviewForm.effectiveness" class="rounded-md border border-border bg-background px-2 py-1"><option :value="null">—</option><option v-for="option in effectivenessOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
-                        <input v-model="reviewForm.notes" type="text" maxlength="2000" class="min-w-40 flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm" placeholder="Notas…" />
-                        <button type="button" class="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50" :disabled="reviewForm.processing" @click="submitReview(intervention)">Guardar</button>
-                        <button type="button" class="rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:underline" @click="openReview = null">Cancelar</button>
+                    <p v-else-if="openReview !== intervention.ulid" class="mb-2 text-xs text-muted-foreground">
+                        Ainda não existem registos de acompanhamento.
+                    </p>
+
+                    <!-- Uma coluna em telemóvel, lado a lado a partir de sm:
+                         estes campos são preenchidos de pé, num corredor (§76). -->
+                    <div v-if="openReview === intervention.ulid" class="space-y-2">
+                        <div class="grid gap-2 sm:grid-cols-2">
+                            <label class="text-sm">
+                                <span class="mb-1 block text-xs text-muted-foreground">Data da observação</span>
+                                <input v-model="reviewForm.reviewed_on" type="date" class="w-full rounded-md border border-border bg-background px-2 py-1.5" />
+                            </label>
+                            <label class="text-sm">
+                                <span class="mb-1 block text-xs text-muted-foreground">O que observou</span>
+                                <select v-model="reviewForm.effectiveness" class="w-full rounded-md border border-border bg-background px-2 py-1.5">
+                                    <option :value="null">Ainda não avaliado</option>
+                                    <option v-for="option in effectivenessOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                                </select>
+                            </label>
+                        </div>
+                        <textarea
+                            v-model="reviewForm.notes"
+                            rows="2"
+                            maxlength="2000"
+                            class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                            placeholder="Ex.: passou a utilizar o guião de planificação de forma mais autónoma."
+                        ></textarea>
+                        <label class="block text-sm">
+                            <span class="mb-1 block text-xs text-muted-foreground">Rever novamente em (opcional)</span>
+                            <input v-model="reviewForm.review_on" type="date" class="w-full rounded-md border border-border bg-background px-2 py-1.5 sm:w-56" />
+                        </label>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" class="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50" :disabled="reviewForm.processing" @click="submitReview(intervention)">Guardar acompanhamento</button>
+                            <button type="button" class="rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:underline" @click="openReview = null">Cancelar</button>
+                        </div>
                     </div>
                 </div>
             </li>
