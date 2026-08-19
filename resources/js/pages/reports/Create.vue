@@ -29,19 +29,22 @@ type ContextPayload = {
 
 type RecordKind = { value: string; label: string; group: string };
 
+type AcademicYearRow = { id: number; label: string };
+
 const props = defineProps<{
     type: string;
     availableTypes: Option[];
     classes: ClassRow[];
     catalogue: CatalogueRow[];
     tones: Option[];
+    academicYears: AcademicYearRow[];
     recordKinds: RecordKind[];
 }>();
 
 const form = useForm({
     type: props.type,
     class_id: props.classes[0]?.id ?? null,
-    academic_year_id: null as number | null,
+    academic_year_id: props.academicYears[0]?.id ?? null,
     academic_period_id: null as number | null,
     enrollment_id: null as number | null,
     interim_assessment_id: null as number | null,
@@ -109,6 +112,8 @@ watch(
 
 const isStudentReport = computed(() => form.type === 'student');
 const isRecordsReport = computed(() => form.type === 'records');
+// A school-wide report has no class: it aggregates across all of them (§24).
+const isSchoolReport = computed(() => form.type === 'school');
 
 // The detailed chronology is the section that lists records one by one, so the
 // checkbox and the section have to agree — ticking one without the other would
@@ -204,13 +209,29 @@ function submit() {
             <section class="space-y-4">
                 <h2 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">2. Contexto</h2>
 
-                <div class="grid gap-2">
+                <div v-if="isSchoolReport" class="grid gap-2">
+                    <Label for="year">Ano letivo</Label>
+                    <select
+                        id="year"
+                        v-model.number="form.academic_year_id"
+                        class="h-9 rounded-md border border-border bg-background px-2 text-sm"
+                    >
+                        <option v-for="year in academicYears" :key="year.id" :value="year.id">{{ year.label }}</option>
+                    </select>
+                    <p class="text-xs text-muted-foreground">
+                        Um relatório de escola é sempre agregado: não identifica alunos nem ordena turmas,
+                        disciplinas ou docentes por desempenho.
+                    </p>
+                </div>
+
+                <div v-else class="grid gap-2">
                     <Label for="class">Turma</Label>
                     <select
                         id="class"
                         v-model.number="form.class_id"
                         class="h-9 rounded-md border border-border bg-background px-2 text-sm"
                     >
+                        <option v-if="isRecordsReport" :value="null">Todas as minhas turmas</option>
                         <option v-for="schoolClass in classes" :key="schoolClass.id" :value="schoolClass.id">
                             {{ schoolClass.label }} · {{ schoolClass.subject }} · {{ schoolClass.academic_year }}
                         </option>
@@ -236,7 +257,7 @@ function submit() {
                     </select>
                 </div>
 
-                <div class="grid gap-2">
+                <div v-if="!isSchoolReport" class="grid gap-2">
                     <Label for="period">Período</Label>
                     <select
                         id="period"
@@ -411,7 +432,13 @@ function submit() {
             </section>
 
             <div class="flex items-center gap-3 border-t border-border pt-6">
-                <Button type="submit" :disabled="form.processing || form.class_id === null">
+                <Button
+                    type="submit"
+                    :disabled="
+                        form.processing ||
+                        (isSchoolReport ? form.academic_year_id === null : !isRecordsReport && form.class_id === null)
+                    "
+                >
                     Gerar rascunho
                 </Button>
                 <Button variant="ghost" as-child>

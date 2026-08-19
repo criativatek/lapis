@@ -18,7 +18,8 @@ versão em [CHANGELOG.md](../CHANGELOG.md); o "porquê" das decisões em [docs/a
 | **Resultado acumulado (§6.3, Q4)** | ✅ | Reprocessa elementos brutos do ano, não média de médias. |
 | **Migração de perfil (§10.2, A4)** | ✅ | Pré-visualização antes/depois + motivo + registo imutável; histórico não recalcula. |
 | **Painel do Professor** | ✅ | Pendências por confirmar/publicar por turma. |
-| **Relatórios — pauta** | ✅ | Só notas decididas; imprimível + CSV. |
+| **Relatórios — pauta** | ✅ | Só notas decididas; imprimível + CSV. Vive agora em `pautas.*`, dentro do módulo Relatórios. |
+| **Relatórios — documentos** | ✅ | Turma, individual, por registos e de escola. Lê os read models canónicos (uma chamada), escreve frases em pt-PT, o professor edita, finaliza (congela texto + números + identidade + logótipo) e exporta PDF/DOCX da mesma estrutura. Base descreve; `report_pedagogical_analysis` (Pro) interpreta. Ver [ADR-0005](adr/0005-reports-are-documents-not-downloads.md). |
 | **Auditoria (§22.4)** | ✅ | `audit_events` imutável, tenant-scoped; página «Registo de atividade». |
 | **Registos / Evidências (§14)** | ✅ | Diário de bordo qualitativo; nunca no cálculo. |
 | **Autoavaliação (§15)** | ✅ | Por domínio, comparada com o cálculo, nunca somada. |

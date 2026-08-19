@@ -174,7 +174,7 @@ class OverallAssessmentComposer implements SectionComposer
         // sentence invented: `is_negative` decided it upstream.
         return Phrase::sentence(
             'Das classificações atribuídas,',
-            Phrase::outOfTotal($succeeded, $placed, 'foi positiva', 'foram positivas'),
+            Phrase::howMany($succeeded, $placed, 'foi positiva', 'foram positivas'),
             $rate === null ? null : '— uma taxa de sucesso de '.$rate,
         );
     }

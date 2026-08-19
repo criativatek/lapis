@@ -231,10 +231,14 @@ class Phrase
     }
 
     /**
-     * «24 dos 26 alunos», or «os 26 alunos» when it is all of them.
+     * «24 de 26 alunos», or «os 26 alunos» when it is all of them.
      *
      * Saying «26 dos 26» is technically true and reads as a hedge; a report
      * that means «todos» should say so.
+     *
+     * MASCULINE, because its subject is «aluno». A feminine noun needs
+     * count() plus its own sentence — bending this one with an article
+     * parameter produces «os 26 turmas» the first time somebody forgets.
      */
     public static function outOfTotal(int $part, int $total, string $singular = 'aluno', string $plural = 'alunos'): string
     {
@@ -243,5 +247,33 @@ class Phrase
         }
 
         return $part.' de '.$total.' '.($total === 1 ? $singular : $plural);
+    }
+
+    /**
+     * The same proportion, but where the thing being counted is a VERB rather
+     * than a noun: «todas foram positivas», «4 de 6 foram positivas».
+     *
+     * Separate from outOfTotal because «os 6 foram positivas» — which is what
+     * you get by passing a verb to a helper that prepends an article — is
+     * exactly the kind of small wrongness that makes a document look
+     * machine-made. Here the «all» word is the caller's, so gender agrees.
+     */
+    public static function howMany(
+        int $part,
+        int $total,
+        string $singular,
+        string $plural,
+        string $all = 'todas',
+        string $onlyOne = 'a única',
+    ): string {
+        if ($total === 0) {
+            return '';
+        }
+
+        if ($part === $total) {
+            return $total === 1 ? $onlyOne.' '.$singular : $all.' '.$plural;
+        }
+
+        return $part.' de '.$total.' '.($part === 1 ? $singular : $plural);
     }
 }

@@ -203,6 +203,50 @@ class CreateReport
     }
 
     /**
+     * The school-wide report (§24).
+     *
+     * ITS SCOPE IS A YEAR, or one period inside it. There is no «acumulado» at
+     * school level: what is aggregated are classifications teachers assigned at
+     * a moment, and an accumulated reading across classes on different scales
+     * would be a figure with no meaning (§26).
+     *
+     * @param  list<string>|null  $sectionKeys
+     * @param  array<string, mixed>  $options
+     */
+    public function forSchool(
+        AcademicYear $year,
+        User $author,
+        ?AcademicPeriod $period = null,
+        ?array $sectionKeys = null,
+        ReportTone $tone = ReportTone::Objective,
+        array $options = [],
+        ?string $title = null,
+    ): Report {
+        $label = $period === null
+            ? 'Ano letivo '.$year->label
+            : (string) $period->label.' · '.$year->label;
+
+        return $this->create(
+            type: ReportType::School,
+            author: $author,
+            attributes: [
+                'academic_year_id' => $year->id,
+                'academic_period_id' => $period?->id,
+                'scope_kind' => $period === null ? ReportScopeKind::Year : ReportScopeKind::Period,
+                'scope_label' => $label,
+                'starts_on' => $period?->starts_on,
+                'ends_on' => $period?->ends_on,
+            ],
+            title: $title ?? ReportType::School->label().' · '.$label,
+            tone: $tone,
+            sectionKeys: $sectionKeys,
+            // A school-wide report is aggregate by definition and never names a
+            // student (§28). Not offered as a choice.
+            options: [...$options, 'name_students' => false],
+        );
+    }
+
+    /**
      * @param  array<string, mixed>  $attributes
      * @param  list<string>|null  $sectionKeys
      * @param  array<string, mixed>  $options

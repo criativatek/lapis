@@ -8,6 +8,7 @@ use App\Services\Documents\DocumentIdentity;
 use App\Services\Reporting\Source\ClassReportSource;
 use App\Services\Reporting\Source\RecordsReportSource;
 use App\Services\Reporting\Source\ReportSource;
+use App\Services\Reporting\Source\SchoolReportSource;
 use App\Services\Reporting\Source\StudentReportSource;
 
 /**
@@ -28,6 +29,7 @@ class ReportContextFactory
         protected ClassReportSource $classSource,
         protected StudentReportSource $studentSource,
         protected RecordsReportSource $recordsSource,
+        protected SchoolReportSource $schoolSource,
         protected DocumentIdentity $identity,
         protected ReportCapabilities $capabilities,
     ) {}
@@ -51,9 +53,7 @@ class ReportContextFactory
             // from the same single read, and must agree.
             ReportType::Student => $this->studentSource,
             ReportType::Records => $this->recordsSource,
-            // Its own source arrives with its phase; until then a report of that
-            // type generates nothing rather than guessing.
-            ReportType::School => new NullReportSource,
+            ReportType::School => $this->schoolSource,
         };
     }
 }

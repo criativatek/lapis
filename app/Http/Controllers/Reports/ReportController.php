@@ -126,6 +126,13 @@ class ReportController extends Controller
                 ],
                 $this->capabilities->availableTones(),
             ),
+            // A school-wide report has no class to take its year from, so the
+            // year is chosen directly (§24).
+            'academicYears' => array_values(AcademicYear::query()
+                ->orderByDesc('starts_on')
+                ->get()
+                ->map(fn (AcademicYear $year) => ['id' => $year->id, 'label' => $year->label])
+                ->all()),
             // §21: the filters a Registos report is built with. Sent for every
             // type — the form only shows them for the one that uses them.
             'recordKinds' => array_map(
@@ -188,10 +195,14 @@ class ReportController extends Controller
             'type' => ['required', Rule::enum(ReportType::class)],
             // BelongsToCurrentOrganization, never a bare `exists:` — that rule
             // runs on the query builder and never sees the tenant scope.
-            // A Registos report may span every class this teacher has, so its
-            // class is optional; every other type needs one.
+            // A Registos report may span every class this teacher has, and a
+            // school-wide one has no class at all. Every other type needs one.
             'class_id' => [
-                Rule::requiredIf(fn () => $request->input('type') !== ReportType::Records->value),
+                Rule::requiredIf(fn () => ! in_array(
+                    $request->input('type'),
+                    [ReportType::Records->value, ReportType::School->value],
+                    strict: true,
+                )),
                 'nullable',
                 new BelongsToCurrentOrganization(SchoolClass::class),
             ],
@@ -249,6 +260,14 @@ class ReportController extends Controller
                 sectionKeys: $data['sections'] ?? null,
                 tone: $tone,
                 options: $options,
+                title: $data['title'] ?? null,
+            ),
+            ReportType::School => $this->creator->forSchool(
+                year: $this->yearFor($class, $data['academic_year_id'] ?? null),
+                author: $this->user(),
+                period: $period,
+                sectionKeys: $data['sections'] ?? null,
+                tone: $tone,
                 title: $data['title'] ?? null,
             ),
             ReportType::Records => $this->creator->forRecords(

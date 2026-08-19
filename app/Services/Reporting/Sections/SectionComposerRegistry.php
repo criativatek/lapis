@@ -47,6 +47,17 @@ class SectionComposerRegistry
         RecordsDistributionComposer::class,
         RecordsTimelineComposer::class,
 
+        // Escola — counts of decisions, never a re-derived result, and never
+        // pooled across incompatible scales.
+        SchoolScopeComposer::class,
+        SchoolCoverageComposer::class,
+        SchoolOverviewComposer::class,
+        SchoolResultsComposer::class,
+        SchoolByYearComposer::class,
+        SchoolBySubjectComposer::class,
+        SchoolCharacterizationComposer::class,
+        SchoolComparabilityComposer::class,
+
         // Shared across types.
         PlanningComplianceComposer::class,
         InterventionsSummaryComposer::class,
