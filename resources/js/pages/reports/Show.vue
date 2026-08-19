@@ -14,14 +14,18 @@ import {
     Trash2,
     X,
 } from '@lucide/vue';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import Heading from '@/components/Heading.vue';
 import type { ChosenDifficulty } from '@/components/reports/DifficultyPicker.vue';
 import DifficultyPicker from '@/components/reports/DifficultyPicker.vue';
 import ReportLetterhead from '@/components/reports/ReportLetterhead.vue';
 import ReportSectionData from '@/components/reports/ReportSectionData.vue';
+import type { RewriteSuggestion } from '@/components/reports/RewritePreview.vue';
+import RewritePreview from '@/components/reports/RewritePreview.vue';
 import type { OrderableSection } from '@/components/reports/SectionOrderList.vue';
 import SectionOrderList from '@/components/reports/SectionOrderList.vue';
+import type { WritingModeOption } from '@/components/reports/SectionRewrite.vue';
+import SectionRewrite from '@/components/reports/SectionRewrite.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -60,6 +64,8 @@ type SectionPayload = {
     has_content: boolean;
     sources: string[];
     data: Record<string, unknown> | null;
+    can_rewrite?: boolean;
+    may_name_students?: boolean;
 };
 
 type Identity = {
@@ -110,6 +116,9 @@ const props = defineProps<{
     comparison: Comparison | null;
     can: { update: boolean; finalize: boolean; delete: boolean; export: boolean; derive: boolean };
     canSaveTemplate: { personal: boolean; institutional: boolean };
+    ai: { available: boolean; reason: string | null; modes: WritingModeOption[] };
+    rewrite?: RewriteSuggestion | null;
+    rewriteError?: { section: string; message: string } | null;
 }>();
 
 // A finalized report opens on the document, because that is all it is now.
@@ -309,6 +318,81 @@ function restoreSection(section: SectionPayload) {
 
 function regenerateAll() {
     router.post(`/reports/${props.report.ulid}/gerar`, {}, { preserveScroll: true });
+}
+
+// ------------------------------------------------------- aperfeiçoar redação
+
+// The suggestion is a transient answer to one click. It arrives flashed in the
+// props, lives here until the teacher decides, and is gone the moment anything
+// else happens — because nothing about it was ever written (§19, §51).
+const suggestion = ref<RewriteSuggestion | null>(props.rewrite ?? null);
+const rewriteError = ref<{ section: string; message: string } | null>(props.rewriteError ?? null);
+const rewritingSection = ref<string | null>(null);
+const lastMode = ref<string | null>(null);
+
+watch(
+    () => props.rewrite,
+    (value) => {
+        suggestion.value = value ?? null;
+    },
+);
+
+watch(
+    () => props.rewriteError,
+    (value) => {
+        rewriteError.value = value ?? null;
+    },
+);
+
+function requestRewrite(section: SectionPayload, mode: string) {
+    lastMode.value = mode;
+    rewritingSection.value = section.ulid;
+    suggestion.value = null;
+    rewriteError.value = null;
+
+    router.post(
+        `/reports/${props.report.ulid}/seccoes/${section.ulid}/aperfeicoar`,
+        { mode },
+        {
+            preserveScroll: true,
+            onFinish: () => {
+                rewritingSection.value = null;
+            },
+        },
+    );
+}
+
+function retryRewrite(section: SectionPayload) {
+    requestRewrite(section, lastMode.value ?? props.ai.modes[0]?.value ?? 'same_tone');
+}
+
+// The one place that writes a body is the section editor, which is where this
+// goes too. `assisted` changes nothing about what is stored — only what the
+// audit trail records (§20, §21).
+function acceptSuggestion(section: SectionPayload, text: string) {
+    rewritingSection.value = section.ulid;
+
+    router.put(
+        `/reports/${props.report.ulid}/seccoes/${section.ulid}`,
+        { body: text, assisted: true },
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                suggestion.value = null;
+            },
+            onFinish: () => {
+                rewritingSection.value = null;
+            },
+        },
+    );
+}
+
+function suggestionFor(section: SectionPayload): RewriteSuggestion | null {
+    return suggestion.value?.section === section.ulid ? suggestion.value : null;
+}
+
+function errorFor(section: SectionPayload): string | null {
+    return rewriteError.value?.section === section.ulid ? rewriteError.value.message : null;
 }
 
 // ----------------------------------------------------------------- reordering
@@ -803,6 +887,15 @@ function derive() {
                         </div>
 
                         <div v-if="can.update" class="flex items-center gap-1">
+                            <SectionRewrite
+                                :can-rewrite="section.can_rewrite === true"
+                                :may-name-students="section.may_name_students === true"
+                                :available="ai.available"
+                                :reason="ai.reason"
+                                :modes="ai.modes"
+                                :busy="rewritingSection === section.ulid"
+                                @request="(mode) => requestRewrite(section, mode)"
+                            />
                             <Button variant="ghost" size="sm" @click="toggleIncluded(section)">
                                 {{ section.included ? 'Excluir' : 'Incluir' }}
                             </Button>
@@ -852,6 +945,22 @@ function derive() {
 
                         <ReportSectionData :section-key="section.key" :data="section.data" />
                     </template>
+
+                    <p
+                        v-if="errorFor(section)"
+                        class="mt-3 rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm text-amber-800 dark:text-amber-400"
+                    >
+                        {{ errorFor(section) }}
+                    </p>
+
+                    <RewritePreview
+                        v-if="suggestionFor(section)"
+                        :suggestion="suggestionFor(section)!"
+                        :busy="rewritingSection === section.ulid"
+                        @accept="(text) => acceptSuggestion(section, text)"
+                        @retry="retryRewrite(section)"
+                        @dismiss="suggestion = null"
+                    />
                 </article>
             </section>
 

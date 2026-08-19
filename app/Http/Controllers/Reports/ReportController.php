@@ -7,6 +7,7 @@ use App\Domain\Reporting\ComplementaryIndicator;
 use App\Domain\Reporting\IndicatorStanding;
 use App\Domain\Reporting\LearningAttitude;
 use App\Domain\Reporting\PlanningCompliance;
+use App\Domain\Reporting\SectionCatalogue;
 use App\Domain\Reporting\SectionKey;
 use App\Http\Controllers\Controller;
 use App\Models\AcademicPeriod;
@@ -36,6 +37,8 @@ use App\Services\Reporting\ReportComparison;
 use App\Services\Reporting\ReportLibraryProvider;
 use App\Services\Reporting\ReportListing;
 use App\Services\Reporting\Templates\TemplateResolver;
+use App\Services\Reporting\Writing\ReportWritingAssistant;
+use App\Services\Reporting\Writing\WritingMode;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -70,6 +73,7 @@ class ReportController extends Controller
         protected DocumentIdentity $identity,
         protected ReportLibraryProvider $library,
         protected TemplateResolver $templates,
+        protected ReportWritingAssistant $assistant,
         protected AuditLog $audit,
     ) {}
 
@@ -326,7 +330,7 @@ class ReportController extends Controller
      * The report itself: the editor for a draft, the frozen document for a
      * finalized one.
      */
-    public function show(Report $report, ReportComparison $comparison): Response
+    public function show(Request $request, Report $report, ReportComparison $comparison): Response
     {
         Gate::authorize('view', $report);
 
@@ -372,6 +376,18 @@ class ReportController extends Controller
                 'personal' => Gate::allows('createKind', [ReportTemplate::class, ReportTemplateKind::Personal]),
                 'institutional' => Gate::allows('createKind', [ReportTemplate::class, ReportTemplateKind::Institutional]),
             ],
+            // The writing assistant, and why it is off when it is off. A button
+            // that can only fail is never shown (§41 of the IA brief).
+            'ai' => [
+                'available' => $this->assistant->isAvailable(),
+                'reason' => $this->assistant->unavailableReason(),
+                'modes' => WritingMode::options(),
+            ],
+            // A suggestion is a transient answer to one click, so it travels in
+            // the session and is gone on the next visit. It is never stored on
+            // the report: nothing is written until the teacher accepts (§19).
+            'rewrite' => $request->session()->get('rewrite'),
+            'rewriteError' => $request->session()->get('rewriteError'),
         ]);
     }
 
@@ -415,7 +431,34 @@ class ReportController extends Controller
             'has_content' => $section->hasContent(),
             'sources' => $section->sources ?? [],
             'data' => $section->data,
+            // Per section, because the answer differs per section: an
+            // identification block, a scope statement and a chronological
+            // listing are not prose to be reworded, and one with no text yet has
+            // nothing to reword (§34 of the IA brief).
+            'can_rewrite' => $this->assistant->mayRewrite($report, $section),
+            // Names in this section leave as «Aluno A» — said out loud on the
+            // screen, because sending them has to be a decision somebody made
+            // (§10).
+            'may_name_students' => $this->mayNameStudents($report, $section),
         ])->all());
+    }
+
+    /**
+     * Whether this section is one of the two that can put a name on a document.
+     *
+     * Read from the catalogue rather than by looking for names in the text: the
+     * question is what the section IS ALLOWED to contain, not what it happens to
+     * contain today.
+     */
+    protected function mayNameStudents(Report $report, ReportSection $section): bool
+    {
+        $key = SectionKey::tryFrom($section->key);
+
+        if ($key === null) {
+            return false;
+        }
+
+        return SectionCatalogue::find($report->type, $key)->mayNameStudents ?? false;
     }
 
     /**

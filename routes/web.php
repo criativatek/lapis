@@ -21,6 +21,7 @@ use App\Http\Controllers\InterventionController;
 use App\Http\Controllers\PublicSelfAssessmentController;
 use App\Http\Controllers\Reports\ReportController;
 use App\Http\Controllers\Reports\ReportExportController;
+use App\Http\Controllers\Reports\ReportRewriteController;
 use App\Http\Controllers\Reports\ReportSectionController;
 use App\Http\Controllers\Reports\ReportTemplateController;
 use App\Http\Controllers\ReportsController;
@@ -289,6 +290,14 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::put('reports/{report}/seccoes/{section}', [ReportSectionController::class, 'update'])->name('reports.sections.update');
         Route::post('reports/{report}/seccoes/{section}/gerar', [ReportSectionController::class, 'regenerate'])->name('reports.sections.regenerate');
         Route::post('reports/{report}/seccoes/{section}/restaurar', [ReportSectionController::class, 'restore'])->name('reports.sections.restore');
+
+        // «Aperfeiçoar redação» (§4 do brief de IA). Rate limited per user AND
+        // per organization: one teacher holding down a button cannot spend the
+        // school's budget, and thirty teachers each within their own limit still
+        // cannot (§28).
+        Route::post('reports/{report}/seccoes/{section}/aperfeicoar', [ReportRewriteController::class, 'store'])
+            ->middleware('throttle:report-writing-assistant')
+            ->name('reports.sections.rewrite');
     });
 
     // Records — the teacher's logbook (§14). Qualitative evidence, never a grade.

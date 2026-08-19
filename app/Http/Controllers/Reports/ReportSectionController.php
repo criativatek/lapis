@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Report;
 use App\Models\ReportSection;
 use App\Services\Reporting\ComposeReport;
+use App\Services\Reporting\Writing\ReportWritingAssistant;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -25,7 +26,10 @@ use Illuminate\Support\Facades\Gate;
  */
 class ReportSectionController extends Controller
 {
-    public function __construct(protected ComposeReport $composer) {}
+    public function __construct(
+        protected ComposeReport $composer,
+        protected ReportWritingAssistant $assistant,
+    ) {}
 
     /** The teacher's own text. From here on the section is theirs. */
     public function update(Request $request, Report $report, ReportSection $section): RedirectResponse
@@ -36,6 +40,12 @@ class ReportSectionController extends Controller
             'body' => ['nullable', 'string', 'max:20000'],
             'heading' => ['sometimes', 'string', 'max:200'],
             'included' => ['sometimes', 'boolean'],
+            // Whether this save is a teacher accepting a rewrite. It changes
+            // nothing about what is written — only what the audit trail records
+            // (§20 of the IA brief). Deliberately a flag on the ONE endpoint
+            // that writes a body, rather than a second endpoint that would have
+            // to duplicate how «edited» is decided.
+            'assisted' => ['sometimes', 'boolean'],
         ]);
 
         $attributes = [];
@@ -59,6 +69,18 @@ class ReportSectionController extends Controller
 
         if ($attributes !== []) {
             $section->update($attributes);
+        }
+
+        // The provenance, not the text. What was accepted may have been edited
+        // by hand before saving, which is exactly why the hash of what was
+        // actually stored is the thing worth keeping.
+        if (($data['assisted'] ?? false) && array_key_exists('body', $attributes)) {
+            $this->assistant->recordAcceptance(
+                $report,
+                $section,
+                $request->user(),
+                (string) $attributes['body'],
+            );
         }
 
         return back();
