@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { Check, Copy, Eye, Lock, Pencil, RefreshCw, RotateCcw, Trash2, X } from '@lucide/vue';
+import { Check, Copy, Eye, FileDown, Lock, Pencil, RefreshCw, RotateCcw, Trash2, X } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import type { ChosenDifficulty } from '@/components/reports/DifficultyPicker.vue';
@@ -335,6 +335,23 @@ function derive() {
                 >
                     {{ report.status_label }}
                 </span>
+
+                <!-- Plain links, not Inertia visits: a binary response cannot
+                     come back through one. -->
+                <div v-if="can.export" class="flex items-center gap-1">
+                    <Button variant="outline" size="sm" as-child>
+                        <a :href="`/reports/${report.ulid}/pdf`">
+                            <FileDown class="size-3.5" />
+                            PDF
+                        </a>
+                    </Button>
+                    <Button variant="outline" size="sm" as-child>
+                        <a :href="`/reports/${report.ulid}/word`">
+                            <FileDown class="size-3.5" />
+                            Word
+                        </a>
+                    </Button>
+                </div>
 
                 <div class="flex overflow-hidden rounded-md border border-border">
                     <button

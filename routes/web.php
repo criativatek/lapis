@@ -20,6 +20,7 @@ use App\Http\Controllers\InterimAssessmentController;
 use App\Http\Controllers\InterventionController;
 use App\Http\Controllers\PublicSelfAssessmentController;
 use App\Http\Controllers\Reports\ReportController;
+use App\Http\Controllers\Reports\ReportExportController;
 use App\Http\Controllers\Reports\ReportSectionController;
 use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\ResultsController;
@@ -264,6 +265,11 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // The logo frozen INTO this report — served from the private disk by an
         // authorizing controller, exactly as the live one is (§39, §65).
         Route::get('reports/{report}/logotipo', [ReportController::class, 'logo'])->name('reports.logo');
+
+        // §47: two formats, one content. GETs the browser can follow on its
+        // own — a binary response cannot come back through an Inertia visit.
+        Route::get('reports/{report}/pdf', [ReportExportController::class, 'pdf'])->name('reports.export.pdf');
+        Route::get('reports/{report}/word', [ReportExportController::class, 'docx'])->name('reports.export.docx');
 
         // One section at a time (§44) — edit, regenerate from today's data,
         // restore the last automatic text, reorder.
