@@ -26,8 +26,13 @@ import { card, INSET } from '@/lib/surfaces';
 const StatChart = defineAsyncComponent(() => import('@/components/charts/StatChart.vue'));
 
 /**
- * Evolução do Aluno — one student's year, told as a story rather than as a
- * dashboard (§45).
+ * Acompanhamento do Aluno — one student's year, told as a story rather than as
+ * a dashboard (§45).
+ *
+ * The route, the controller and the read model are all still named
+ * StudentProgress: only what the teacher reads changed. «Evolução» survives
+ * inside the page, on the chart and the sentences about results moving over
+ * time, because there it means the trajectory and not the page.
  *
  * ONDE ESTÁ → COMO EVOLUIU → EM QUÊ → O QUE ACONTECEU. The order of the sections
  * is the order of the questions a teacher actually asks, and every section
@@ -412,7 +417,7 @@ const hasAnything = computed(
 </script>
 
 <template>
-    <Head :title="`Evolução — ${student.name}`" />
+    <Head :title="`Acompanhamento — ${student.name}`" />
 
     <div class="mx-auto w-full max-w-5xl space-y-6 p-4">
         <!-- ------------------------------------------------ 1. quem, e onde -->

@@ -18,6 +18,20 @@
 | database/seeders/EntitlementsSeeder.php.
 | phase: which build phase delivers the real page. Until then the route renders
 | a placeholder; this is shown to the teacher as an "em breve" hint.
+| description: one line saying what the page is FOR, shown in the sidebar's
+| tooltip. Optional — the core items are self-explanatory and carry none.
+|
+| THE `key` IS AN IDENTIFIER AND THE `label` IS COPY. Renaming a label changes
+| what a teacher reads; renaming a key would change a route, because
+| routes/app.php registers one placeholder route per key. They move
+| independently on purpose: «Evolução do Aluno» became «Acompanhamento do Aluno»
+| without a single route, controller, service or capability changing name.
+|
+| THE GROUPING ANSWERS «PARA QUE SERVE ISTO?» BEFORE THE TEACHER CLICKS. The
+| core assessment workflow — turmas, perfis, instrumentos, avaliações,
+| resultados — stays as one unlabelled run, because it is one sequence a teacher
+| walks in order. What follows are three different KINDS of work, and they read
+| as three because they are: understanding, acting, and producing a document.
 |
 */
 
@@ -36,11 +50,43 @@ return [
                 ['key' => 'assessments', 'label' => 'Avaliações', 'icon' => 'PenLine', 'module' => 'assessments', 'phase' => 2, 'route' => 'assessments.index', 'built' => true],
                 ['key' => 'results', 'label' => 'Resultados', 'icon' => 'BarChart3', 'module' => 'results', 'phase' => 2, 'route' => 'results.index', 'built' => true],
                 ['key' => 'self-assessments', 'label' => 'Autoavaliações', 'icon' => 'UserCheck', 'module' => 'self_assessments', 'phase' => 3, 'route' => 'self-assessments.index', 'built' => true],
-                ['key' => 'records', 'label' => 'Registos', 'icon' => 'NotebookPen', 'module' => 'records', 'phase' => 3, 'route' => 'records.index', 'built' => true],
-                ['key' => 'interventions', 'label' => 'Intervenções', 'icon' => 'HeartHandshake', 'module' => 'interventions', 'phase' => 3, 'route' => 'interventions.index', 'built' => true],
-                ['key' => 'student-progress', 'label' => 'Evolução do Aluno', 'icon' => 'TrendingUp', 'module' => 'student_progress', 'phase' => 3, 'route' => 'student-progress.index', 'built' => true],
-                ['key' => 'class-analysis', 'label' => 'Análise da Turma', 'icon' => 'PieChart', 'module' => 'class_analysis', 'phase' => 3],
-                ['key' => 'reports', 'label' => 'Relatórios', 'icon' => 'FileText', 'module' => 'reports', 'phase' => 3, 'route' => 'reports.index', 'built' => true],
+            ],
+        ],
+
+        [
+            // COMPREENDER. The collective reading and the individual one, side
+            // by side — «como está a turma» and «como está este aluno» are the
+            // same question asked of two subjects, and putting six menus between
+            // them hid that.
+            'label' => 'Análise',
+            'items' => [
+                ['key' => 'class-analysis', 'label' => 'Análise da Turma', 'icon' => 'PieChart', 'module' => 'class_analysis', 'phase' => 3, 'description' => 'Resultados e evolução da turma.'],
+                // «Acompanhamento», not «Evolução»: what this page does is
+                // follow one student through the year. «Evolução» stays where it
+                // belongs — on the chart inside it, which is a reading of
+                // results over time and not the page's purpose (§2, §11).
+                ['key' => 'student-progress', 'label' => 'Acompanhamento do Aluno', 'icon' => 'Footprints', 'module' => 'student_progress', 'phase' => 3, 'route' => 'student-progress.index', 'built' => true, 'description' => 'Percurso individual ao longo do ano.'],
+            ],
+        ],
+
+        [
+            // AGIR. What the teacher did, and what the teacher saw. Two
+            // different acts, which is why they are two entries and not one.
+            'label' => 'Ação pedagógica',
+            'items' => [
+                ['key' => 'interventions', 'label' => 'Intervenções', 'icon' => 'HeartHandshake', 'module' => 'interventions', 'phase' => 3, 'route' => 'interventions.index', 'built' => true, 'description' => 'Ações pedagógicas e acompanhamento.'],
+                ['key' => 'records', 'label' => 'Registos', 'icon' => 'NotebookPen', 'module' => 'records', 'phase' => 3, 'route' => 'records.index', 'built' => true, 'description' => 'Observações e ocorrências.'],
+            ],
+        ],
+
+        [
+            // RELATAR. A report is an artifact with a life of its own —
+            // editable, finalizable, exportable — and the only thing here that
+            // leaves the application. It sits alone because it is a different
+            // kind of thing from everything above it.
+            'label' => 'Documentos',
+            'items' => [
+                ['key' => 'reports', 'label' => 'Relatórios', 'icon' => 'FileText', 'module' => 'reports', 'phase' => 3, 'route' => 'reports.index', 'built' => true, 'description' => 'Criar, finalizar e exportar documentos.'],
             ],
         ],
 

@@ -30,11 +30,11 @@ const former = computed(() => props.students.filter((student) => !student.is_cur
 </script>
 
 <template>
-    <Head :title="`Evolução — ${schoolClass.label}`" />
+    <Head :title="`Acompanhamento — ${schoolClass.label}`" />
 
     <div class="mx-auto w-full max-w-3xl space-y-6 p-4">
         <Heading
-            :title="`Evolução do Aluno — ${schoolClass.label}`"
+            :title="`Acompanhamento do Aluno — ${schoolClass.label}`"
             :description="`${schoolClass.subject} · ${schoolClass.academic_year}. Escolha o aluno.`"
         />
 

@@ -18,11 +18,11 @@ defineProps<{
 </script>
 
 <template>
-    <Head title="Evolução do Aluno" />
+    <Head title="Acompanhamento do Aluno" />
 
     <div class="mx-auto w-full max-w-3xl space-y-6 p-4">
         <Heading
-            title="Evolução do Aluno"
+            title="Acompanhamento do Aluno"
             description="O percurso individual ao longo do ano letivo. Escolha a turma e depois o aluno."
         />
 

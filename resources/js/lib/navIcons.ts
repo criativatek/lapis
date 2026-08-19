@@ -5,6 +5,7 @@ import {
     CalendarDays,
     ClipboardList,
     FileText,
+    Footprints,
     GraduationCap,
     HeartHandshake,
     LayoutGrid,
@@ -36,6 +37,11 @@ const icons: Record<string, LucideIcon> = {
     UserCheck,
     NotebookPen,
     HeartHandshake,
+    // A path one person walked. Deliberately not another chart: «Acompanhamento
+    // do Aluno» sits directly under «Análise da Turma», and two graph icons
+    // side by side would say the two pages do the same thing to different data
+    // — which is exactly the confusion this menu is being fixed to remove.
+    Footprints,
     TrendingUp,
     PieChart,
     FileText,

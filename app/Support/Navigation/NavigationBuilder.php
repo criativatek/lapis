@@ -56,6 +56,9 @@ class NavigationBuilder
             $allowed[] = [
                 'key' => $item['key'],
                 'label' => $item['label'],
+                // One line saying what the page is for, shown in the sidebar
+                // tooltip. Null on the core items, which need no explaining.
+                'description' => $item['description'] ?? null,
                 'icon' => $item['icon'],
                 'phase' => $item['phase'],
                 // Not-yet-built pages still resolve — routes/app.php registers a

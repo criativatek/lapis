@@ -11,11 +11,25 @@ import { useCurrentUrl } from '@/composables/useCurrentUrl';
 import { navIcon } from '@/lib/navIcons';
 import type { SharedNavSection } from '@/types';
 
+import type { SharedNavItem } from '@/types';
+
 defineProps<{
     section: SharedNavSection;
 }>();
 
 const { isCurrentUrl } = useCurrentUrl();
+
+/**
+ * What the sidebar says about an item when there is room to say more.
+ *
+ * NO SECOND VISUAL LINE. A description under every label would double the
+ * sidebar's height for something a teacher reads once and then never again, so
+ * it travels in the tooltip and in the accessible name instead — available when
+ * wanted, invisible when not (§7).
+ */
+function hint(item: SharedNavItem): string {
+    return item.description ? `${item.label} — ${item.description}` : item.label;
+}
 </script>
 
 <template>
@@ -30,16 +44,24 @@ const { isCurrentUrl } = useCurrentUrl();
                     v-if="item.href"
                     as-child
                     :is-active="isCurrentUrl(item.href)"
-                    :tooltip="item.label"
+                    :tooltip="hint(item)"
                 >
-                    <Link :href="item.href">
+                    <!-- The accessible name carries the description too, so a
+                         screen reader hears what the page is for without the
+                         sidebar having to show it (§14). `title` covers the
+                         expanded sidebar, where the tooltip does not appear. -->
+                    <Link
+                        :href="item.href"
+                        :title="item.description ?? undefined"
+                        :aria-label="item.description ? hint(item) : undefined"
+                    >
                         <component :is="navIcon(item.icon)" />
                         <span>{{ item.label }}</span>
                     </Link>
                 </SidebarMenuButton>
                 <SidebarMenuButton
                     v-else
-                    :tooltip="`${item.label} — em breve`"
+                    :tooltip="`${hint(item)} — em breve`"
                     class="cursor-default opacity-55"
                     aria-disabled="true"
                 >

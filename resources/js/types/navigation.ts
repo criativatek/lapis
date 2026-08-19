@@ -21,6 +21,8 @@ export type NavItem = {
 export type SharedNavItem = {
     key: string;
     label: string;
+    /** One line on what the page is for. Null on items that need no explaining. */
+    description: string | null;
     icon: string;
     phase: number;
     href: string | null;
