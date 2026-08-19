@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToOrganization;
 use App\Support\Interventions\InterventionLegalFramework;
 use App\Support\Interventions\LegalMapping;
+use App\Support\Interventions\PedagogicalText;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -222,23 +223,61 @@ class Intervention extends Model
     }
 
     /**
-     * How this intervention should be named on a screen.
+     * How this intervention should be named on a screen, or NULL when it has no
+     * name of its own.
      *
      * THE STRATEGY FIRST, because that is what the teacher did and what they
      * will recognise in a list. The catalogue type is a classification and the
      * title is what older rows have; each is used only when the one before it
-     * has nothing to say. Nothing here ever produces «legado», «null» or a code
-     * (§35).
+     * has nothing to say.
+     *
+     * EVERY CANDIDATE GOES THROUGH PedagogicalText. A stored title is not
+     * automatically content: one real row carries «Legado sem dominio», written
+     * by an old process to fill a NOT NULL column, and putting it after a
+     * student's name reads as a category somebody chose. When nothing survives,
+     * the answer is null — the row is named by its participants and its date,
+     * which is all it ever actually said (§1, §3).
      */
-    public function displayTitle(): string
+    public function pedagogicalTitle(): ?string
     {
         foreach ([$this->strategy_label, $this->title, $this->intervention_type?->label()] as $candidate) {
-            if (is_string($candidate) && trim($candidate) !== '') {
-                return trim($candidate);
+            $meaningful = PedagogicalText::meaningful($candidate);
+
+            if ($meaningful !== null) {
+                return $meaningful;
             }
         }
 
-        return __('Intervenção');
+        return null;
+    }
+
+    /**
+     * The same name, for the places that need a string rather than a gap — an
+     * audit summary, a log line. A screen uses pedagogicalTitle() and renders
+     * nothing when it is null.
+     */
+    public function displayTitle(): string
+    {
+        return $this->pedagogicalTitle() ?? __('Intervenção');
+    }
+
+    /**
+     * What to write about domains in a compact list, or nothing.
+     *
+     * «Sem domínio específico» is a truthful sentence and still the wrong thing
+     * to print: in a list it occupies the place a domain name would, and reads
+     * as one. «Todos os domínios» is different — it is a statement the teacher
+     * made, and it stays (§5).
+     */
+    public function domainLabel(): ?string
+    {
+        if ($this->domain_relation === InterventionDomainRelation::All) {
+            return __('Todos os domínios');
+        }
+
+        return $this->domain_relation === InterventionDomainRelation::Specific
+            ? $this->domain?->name
+            : null;
     }
 
     /**

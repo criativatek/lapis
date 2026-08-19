@@ -26,6 +26,7 @@ use App\Services\Audit\AuditLog;
 use App\Services\Reporting\ReportLibraryProvider;
 use App\Support\Interventions\InterventionLegalFramework;
 use App\Support\Interventions\LegalFrameworkResolver;
+use App\Support\Interventions\PedagogicalText;
 use App\Support\Tenancy\CurrentOrganization;
 use Carbon\CarbonInterface;
 use Illuminate\Http\RedirectResponse;
@@ -819,17 +820,21 @@ class InterventionController extends Controller
     {
         return [
             'ulid' => $intervention->ulid,
-            // What the teacher will recognise, never a code and never «legado»
-            // (§35).
-            'title' => $intervention->displayTitle(),
-            'description' => $intervention->description,
+            // NULLABLE ON PURPOSE. A row whose only name is a label an old
+            // process generated has no name, and the screen renders nothing
+            // rather than «Legado sem dominio» after a student's name (§1, §3).
+            'title' => $intervention->pedagogicalTitle(),
+            // Every free-text field goes through the same reading: «x» is a
+            // character somebody typed to get past a required field, not an
+            // observation about a child (§6).
+            'description' => PedagogicalText::meaningful($intervention->description),
             // The four questions. Null is shown as an absence — «sem objetivo
             // registado», never «objetivo geral» (§4).
             'motive_code' => $intervention->motive_code,
-            'motive' => $intervention->motive_label,
+            'motive' => PedagogicalText::meaningful($intervention->motive_label),
             'strategy_code' => $intervention->strategy_code,
-            'strategy' => $intervention->strategy_label,
-            'objective' => $intervention->objective,
+            'strategy' => PedagogicalText::meaningful($intervention->strategy_label),
+            'objective' => PedagogicalText::meaningful($intervention->objective),
             'review_on' => $intervention->review_on?->toDateString(),
             'needs_review' => $intervention->needsReview(),
             // Derived from the follow-ups, never stored beside them (§59).
@@ -848,6 +853,11 @@ class InterventionController extends Controller
             'domain_relation' => $intervention->domain_relation->value,
             'domain_id' => $intervention->domain_id,
             'domain' => $intervention->domain?->name,
+            // What a compact list should print about domains: a real name, «Todos
+            // os domínios», or nothing. «Sem domínio específico» is true and
+            // still wrong to print — in a list it sits where a domain name would
+            // and reads as one (§5).
+            'domain_label' => $intervention->domainLabel(),
             'status' => $intervention->status->value,
             'status_label' => $intervention->status->label(),
             'is_closed' => $intervention->status->isClosed(),

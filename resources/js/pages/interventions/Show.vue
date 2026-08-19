@@ -36,7 +36,12 @@ type LibraryEntry = { code: string | null; label: string; objective: string | nu
 
 type Intervention = {
     ulid: string;
-    title: string;
+    /**
+     * Null when the row has no name of its own — an old record whose only
+     * «title» was a label an old process generated. The list then names it by
+     * its participants and its date, which is all it ever said.
+     */
+    title: string | null;
     description: string | null;
     /** PORQUÊ — the situation the teacher identified. Null on older rows. */
     motive_code: string | null;
@@ -64,6 +69,8 @@ type Intervention = {
     domain_relation: DomainRelation;
     domain_id: number | null;
     domain: string | null;
+    /** A real domain name, «Todos os domínios», or nothing at all (§5). */
+    domain_label: string | null;
     status: string;
     status_label: string;
     is_closed: boolean;
@@ -999,7 +1006,10 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
                         <div class="flex flex-wrap items-center gap-2">
                             <span class="rounded-full px-2 py-0.5 text-xs" :class="statusClasses[intervention.status]">{{ intervention.status_label }}</span>
                             <span class="text-sm font-medium">{{ intervention.target_label }}</span>
-                            <span class="text-sm">— {{ intervention.title }}</span>
+                            <!-- Só quando há nome. Sem nome, o cartão fica
+                                 «Álvaro Simões» e mais nada — que é tudo o que o
+                                 registo alguma vez disse (§1, §10). -->
+                            <span v-if="intervention.title" class="text-sm">— {{ intervention.title }}</span>
                             <span class="ml-auto text-xs text-muted-foreground tabular-nums">{{ when(intervention.started_on) }}</span>
                         </div>
                         <!-- PORQUÊ e PARA QUÊ, quando o professor os registou.
@@ -1015,7 +1025,7 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
                         </p>
 
                         <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                            <span v-if="intervention.domain">{{ intervention.domain }}</span>
+                            <span v-if="intervention.domain_label">{{ intervention.domain_label }}</span>
                             <!-- What the TEACHER observed, never derived from a
                                  result that moved (§26). -->
                             <span v-if="intervention.effectiveness_short" class="rounded-full bg-muted px-2 py-0.5">

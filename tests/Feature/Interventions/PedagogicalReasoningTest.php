@@ -3,6 +3,7 @@
 namespace Tests\Feature\Interventions;
 
 use App\Models\AuditEvent;
+use App\Models\Domain;
 use App\Models\Enrollment;
 use App\Models\EnrollmentStatus;
 use App\Models\Intervention;
@@ -463,6 +464,101 @@ class PedagogicalReasoningTest extends TestCase
         foreach (['legacy', 'Legado', 'unknown', 'Sem domínio'] as $forbidden) {
             $this->assertStringNotContainsString($forbidden, $encoded);
         }
+    }
+
+    #[Test]
+    public function the_generated_legacy_row_is_named_by_nothing_at_all(): void
+    {
+        $class = $this->schoolClass();
+
+        // THE EXACT SHAPE OF THE ROW THAT PROMPTED THIS. An import before the
+        // module had types wrote «Legado sem dominio» into a NOT NULL title, and
+        // somebody typed «x» to get past a required description. Both are
+        // stored, both are history, and neither is a fact about a child.
+        $legacy = $this->asTenant(fn (): Intervention => Intervention::create([
+            'class_id' => $class->getKey(),
+            'enrollment_id' => $this->enrollment()->getKey(),
+            'target_type' => InterventionTargetType::Student,
+            'intervention_type' => null,
+            'title' => 'Legado sem dominio',
+            'description' => 'x',
+            'status' => InterventionStatus::InProgress,
+            'started_on' => '2026-10-05',
+            'created_by' => $this->teacher->getKey(),
+        ]));
+
+        $this->asTenant(fn () => $legacy->participants()->sync([$this->enrollment()->getKey()]));
+
+        $row = collect($this->actingAs($this->teacher)
+            ->get("/classes/{$class->ulid}/interventions")
+            ->viewData('page')['props']['interventions'])
+            ->firstWhere('ulid', $legacy->ulid);
+
+        // The card reads «Álvaro Simões» and nothing else. No name, no ghost
+        // second line, no «x» (§1, §6, §10).
+        $this->assertNull($row['title']);
+        $this->assertNull($row['description']);
+        $this->assertNull($row['domain_label']);
+
+        // AND THE DATABASE STILL SAYS WHAT IT SAID. This is a reading rule, not
+        // a rewrite: the row is history and history is not edited to make a
+        // screen tidier (§4).
+        $this->assertSame('Legado sem dominio', $this->asTenant(fn () => $legacy->fresh()->title));
+        $this->assertSame('x', $this->asTenant(fn () => $legacy->fresh()->description));
+    }
+
+    #[Test]
+    public function a_real_title_survives_and_a_strategy_wins_over_it(): void
+    {
+        $class = $this->schoolClass();
+
+        $historic = $this->asTenant(fn (): Intervention => Intervention::create([
+            'class_id' => $class->getKey(),
+            'enrollment_id' => $this->enrollment()->getKey(),
+            'target_type' => InterventionTargetType::Student,
+            'title' => 'Acompanhamento combinado com a diretora de turma',
+            'status' => InterventionStatus::Concluded,
+            'started_on' => '2026-11-10',
+            'created_by' => $this->teacher->getKey(),
+        ]));
+
+        $this->assertSame(
+            'Acompanhamento combinado com a diretora de turma',
+            $this->asTenant(fn () => $historic->fresh()->pedagogicalTitle()),
+        );
+
+        // A strategy the teacher named later takes precedence over the older
+        // free-text title (§3).
+        $this->asTenant(fn () => $historic->forceFill(['strategy_label' => 'Escrita orientada'])->save());
+
+        $this->assertSame('Escrita orientada', $this->asTenant(fn () => $historic->fresh()->pedagogicalTitle()));
+    }
+
+    #[Test]
+    public function the_domain_line_prints_a_name_or_nothing(): void
+    {
+        $class = $this->schoolClass();
+
+        $domain = $this->asTenant(fn (): Domain => Domain::where('subject_id', $class->subject_id)->firstOrFail());
+
+        $specific = $this->create([
+            'domain_relation' => 'specific',
+            'domain_id' => $domain->getKey(),
+        ]);
+        $all = $this->create(['domain_relation' => 'all']);
+        $none = $this->create(['domain_relation' => 'none']);
+
+        $rows = collect($this->actingAs($this->teacher)
+            ->get("/classes/{$class->ulid}/interventions")
+            ->viewData('page')['props']['interventions'])
+            ->keyBy('ulid');
+
+        $this->assertSame($domain->name, $rows[$specific->ulid]['domain_label']);
+        // A statement the teacher made, so it stays.
+        $this->assertSame('Todos os domínios', $rows[$all->ulid]['domain_label']);
+        // «Sem domínio específico» is true and still the wrong thing to print:
+        // in a list it sits where a domain name would (§5).
+        $this->assertNull($rows[$none->ulid]['domain_label']);
     }
 
     // ------------------------------------------------------- §17 pré-seleção
