@@ -20,13 +20,15 @@ versão em [CHANGELOG.md](../CHANGELOG.md); o "porquê" das decisões em [docs/a
 | **Painel do Professor** | ✅ | Pendências por confirmar/publicar por turma. |
 | **Relatórios — pauta** | ✅ | Só notas decididas; imprimível + CSV. Vive agora em `pautas.*`, dentro do módulo Relatórios. |
 | **Relatórios — documentos** | ✅ | Turma, individual, por registos e de escola. Lê os read models canónicos (uma chamada), escreve frases em pt-PT, o professor edita, finaliza (congela texto + números + identidade + logótipo) e exporta PDF/DOCX da mesma estrutura. Base descreve; `report_pedagogical_analysis` (Pro) interpreta. Ver [ADR-0005](adr/0005-reports-are-documents-not-downloads.md). |
+| **Relatórios — modelos** | ✅ | `report_templates` (sistema / pessoal / escola). Um modelo guarda estrutura, ordem, registo e opções — nunca dados. O relatório guarda um snapshot do modelo: editar o modelo não altera relatórios existentes. Pessoais exigem `template_sharing` (Pro), institucionais `institution_library` (Institucional). |
+| **Relatórios — reordenar secções** | ✅ | Rascunho apenas. Rato e teclado, com anúncio aria-live; só `position` muda. A ordem sobrevive a regenerar/restaurar/excluir e chega à pré-visualização, ao PDF, ao DOCX e ao documento congelado. |
 | **Auditoria (§22.4)** | ✅ | `audit_events` imutável, tenant-scoped; página «Registo de atividade». |
 | **Registos / Evidências (§14)** | ✅ | Diário de bordo qualitativo; nunca no cálculo. |
 | **Autoavaliação (§15)** | ✅ | Por domínio, comparada com o cálculo, nunca somada. |
 | **Intervenções (§14)** | ✅ | Ciclo de vida + apreciações de eficácia. |
 | **Backoffice de plataforma** | ✅ | `/admin` super-admin: gestão de contas, criar/provisionar, SMTP na BD (sobrepõe `.env`), impersonar. Guia: [backoffice.md](backoffice.md). |
 
-Suite: ~223 testes verdes · Pint/Larastan/vue-tsc limpos. **Em produção** em
+Suite: 1820 testes verdes (1 skipped) · Pint/Larastan/vue-tsc limpos. **Em produção** em
 [lapis.criativatek.com](https://lapis.criativatek.com) (versão 0.19.x).
 
 ## Regras pedagógicas (5 questões que bloqueavam a Fase 1)
