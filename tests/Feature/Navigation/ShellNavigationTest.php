@@ -9,10 +9,19 @@ use App\Models\User;
 use App\Support\Entitlements\Entitlements;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Route;
 use Inertia\Testing\AssertableInertia;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
+/**
+ * The sidebar as the teacher reads it (§40, §41, §42).
+ *
+ * THE MENU IS A CLAIM ABOUT THE PRODUCT, and these tests hold it to it: that
+ * «Resultados» is no longer somewhere a teacher goes, that «Acompanhamento» is a
+ * heading and never a page, and — the part that matters most — that
+ * reorganizing information changed nothing about what any plan may reach.
+ */
 class ShellNavigationTest extends TestCase
 {
     use RefreshDatabase;
@@ -30,65 +39,11 @@ class ShellNavigationTest extends TestCase
      */
     protected function navKeys(AssertableInertia $page): array
     {
-        $keys = [];
-
-        foreach ($page->toArray()['props']['nav']['sections'] as $section) {
-            foreach ($section['items'] as $item) {
-                $keys[] = $item['key'];
-            }
-        }
-
-        return $keys;
-    }
-
-    #[Test]
-    public function a_base_teacher_sees_the_core_menu_but_not_the_pro_or_institutional_items(): void
-    {
-        $user = User::factory()->create();
-
-        $this->actingAs($user)->get('/dashboard')->assertInertia(function (AssertableInertia $page) {
-            $keys = $this->navKeys($page);
-
-            // The 13 Base items from the navigation doc are all present...
-            $this->assertContains('classes', $keys);
-            $this->assertContains('assessment-profiles', $keys);
-            $this->assertContains('reports', $keys);
-
-            // ...and the Pro / institutional ones are filtered out entirely.
-            $this->assertNotContains('calendar', $keys);
-            $this->assertNotContains('lessons', $keys);
-            $this->assertNotContains('institution', $keys);
-        });
-    }
-
-    #[Test]
-    public function a_pro_teacher_gains_the_organization_of_the_year_items(): void
-    {
-        $user = User::factory()->create();
-        $this->upgrade($user, 'pro');
-
-        $this->actingAs($user)->get('/dashboard')->assertInertia(function (AssertableInertia $page) {
-            $keys = $this->navKeys($page);
-
-            $this->assertContains('calendar', $keys);
-            $this->assertContains('lessons', $keys);
-            $this->assertNotContains('institution', $keys);
-        });
-    }
-
-    #[Test]
-    public function an_institutional_teacher_gains_the_administration_item(): void
-    {
-        $user = User::factory()->create();
-        $this->upgrade($user, 'institutional');
-
-        $this->actingAs($user)->get('/dashboard')->assertInertia(function (AssertableInertia $page) {
-            $this->assertContains('institution', $this->navKeys($page));
-        });
+        return array_column($this->navItems($page), 'key');
     }
 
     /**
-     * @return list<array{key: string, label: string, section: ?string, href: ?string, description: ?string}>
+     * @return list<array<string, mixed>>
      */
     protected function navItems(AssertableInertia $page): array
     {
@@ -96,122 +51,303 @@ class ShellNavigationTest extends TestCase
 
         foreach ($page->toArray()['props']['nav']['sections'] as $section) {
             foreach ($section['items'] as $item) {
-                $items[] = [
-                    'key' => $item['key'],
-                    'label' => $item['label'],
-                    'section' => $section['label'],
-                    'href' => $item['href'],
-                    'description' => $item['description'],
-                ];
+                $items[] = [...$item, 'section' => $section['label']];
             }
         }
 
         return $items;
     }
 
+    /**
+     * @return list<string>
+     */
+    protected function sectionLabels(AssertableInertia $page): array
+    {
+        return array_values(array_filter(array_map(
+            fn (array $section): ?string => $section['label'],
+            $page->toArray()['props']['nav']['sections'],
+        )));
+    }
+
+    /**
+     * The whole menu of a plan, as {key: section} — the shape the plan
+     * comparisons below are written against.
+     *
+     * @return array<string, string|null>
+     */
+    protected function menuFor(string $planKey): array
+    {
+        $user = User::factory()->create();
+
+        if ($planKey !== 'base') {
+            $this->upgrade($user, $planKey);
+        }
+
+        $menu = [];
+
+        $this->actingAs($user)->get('/dashboard')->assertInertia(function (AssertableInertia $page) use (&$menu): void {
+            foreach ($this->navItems($page) as $item) {
+                $menu[$item['key']] = $item['section'];
+            }
+        });
+
+        return $menu;
+    }
+
+    // ------------------------------------------------------- §40 a estrutura
+
     #[Test]
-    public function the_menu_distinguishes_the_class_reading_from_the_student_one(): void
+    public function the_teacher_still_lands_somewhere_and_it_heads_no_group(): void
     {
         $user = User::factory()->create();
 
         $this->actingAs($user)->get('/dashboard')->assertInertia(function (AssertableInertia $page) {
-            $items = collect($this->navItems($page))->keyBy('key');
+            $dashboard = collect($this->navItems($page))->firstWhere('key', 'dashboard');
 
-            $this->assertSame('Análise da Turma', $items['class-analysis']['label']);
-            // «Evolução do Aluno» said what the page draws; «Acompanhamento do
-            // Aluno» says what it is for, which is the distinction a teacher
-            // needs before clicking (§2).
-            $this->assertSame('Acompanhamento do Aluno', $items['student-progress']['label']);
-
-            $labels = collect($this->navItems($page))->pluck('label');
-            $this->assertNotContains('Evolução do Aluno', $labels);
-
-            // Both readings of the same question, under one heading and next to
-            // each other (§5).
-            $this->assertSame('Análise', $items['class-analysis']['section']);
-            $this->assertSame('Análise', $items['student-progress']['section']);
+            $this->assertSame('Painel do Professor', $dashboard['label']);
+            $this->assertNull($dashboard['section']);
         });
     }
 
     #[Test]
-    public function the_menu_groups_the_five_areas_by_what_they_are_for(): void
+    public function the_groups_follow_the_teachers_work_and_none_is_empty(): void
     {
         $user = User::factory()->create();
+        $this->upgrade($user, 'institutional');
 
         $this->actingAs($user)->get('/dashboard')->assertInertia(function (AssertableInertia $page) {
-            $items = collect($this->navItems($page))->keyBy('key');
+            $labels = $this->sectionLabels($page);
 
-            $this->assertSame('Ação pedagógica', $items['interventions']['section']);
-            $this->assertSame('Ação pedagógica', $items['records']['section']);
-            $this->assertSame('Documentos', $items['reports']['section']);
+            // Organizar → avaliar → acompanhar → intervir → documentar, and the
+            // transversal ones after.
+            $this->assertSame([
+                'Turmas e alunos',
+                'Avaliação',
+                'Acompanhamento',
+                'Ação pedagógica',
+                'Documentos',
+                'Organização do ano',
+                'Instituição',
+                'Configuração',
+            ], $labels);
 
-            // Each of the five says what it is for, so the menu explains the
-            // application without documentation beside it (§7, §17).
-            foreach (['class-analysis', 'student-progress', 'interventions', 'records', 'reports'] as $key) {
-                $this->assertNotNull($items[$key]['description'], "«{$key}» should say what it is for.");
+            // A heading with nothing under it is a heading about nothing (§23).
+            foreach ($page->toArray()['props']['nav']['sections'] as $section) {
+                $this->assertNotEmpty($section['items'], "«{$section['label']}» has no entries.");
             }
         });
     }
 
     #[Test]
-    public function renaming_the_label_moved_no_route(): void
+    public function each_area_sits_where_the_teacher_would_look_for_it(): void
     {
         $user = User::factory()->create();
+        $this->upgrade($user, 'institutional');
 
         $this->actingAs($user)->get('/dashboard')->assertInertia(function (AssertableInertia $page) {
             $items = collect($this->navItems($page))->keyBy('key');
 
-            // The key, the route and everything behind them are untouched: this
-            // was copy, and copy moves on its own (§2, §10).
-            $this->assertStringEndsWith('/evolucao', (string) $items['student-progress']['href']);
-            $this->assertStringEndsWith('/interventions', (string) $items['interventions']['href']);
-            $this->assertStringEndsWith('/records', (string) $items['records']['href']);
-            $this->assertStringEndsWith('/reports', (string) $items['reports']['href']);
+            $expected = [
+                'classes' => ['Turmas e alunos', 'Turmas'],
+                'students' => ['Turmas e alunos', 'Alunos'],
+                'instruments' => ['Avaliação', 'Instrumentos'],
+                'assessments' => ['Avaliação', 'Registo de Avaliações'],
+                'self-assessments' => ['Avaliação', 'Autoavaliações'],
+                'class-analysis' => ['Acompanhamento', 'Turma'],
+                'student-progress' => ['Acompanhamento', 'Aluno'],
+                'interventions' => ['Ação pedagógica', 'Intervenções'],
+                'records' => ['Ação pedagógica', 'Registos'],
+                'reports' => ['Documentos', 'Relatórios'],
+                'calendar' => ['Organização do ano', 'Agenda do Ano Letivo'],
+                'assessment-profiles' => ['Configuração', 'Perfis de Avaliação'],
+                'settings' => ['Configuração', 'Configurações'],
+            ];
+
+            foreach ($expected as $key => [$section, $label]) {
+                $this->assertSame($section, $items[$key]['section'], "«{$key}» is in the wrong group.");
+                $this->assertSame($label, $items[$key]['label'], "«{$key}» reads wrong.");
+            }
         });
     }
 
     #[Test]
-    public function each_menu_entry_appears_exactly_once(): void
+    public function the_labels_that_named_the_code_are_gone(): void
+    {
+        $user = User::factory()->create();
+        $this->upgrade($user, 'institutional');
+
+        $this->actingAs($user)->get('/dashboard')->assertInertia(function (AssertableInertia $page) {
+            $labels = collect($this->navItems($page))->pluck('label');
+
+            foreach ([
+                'As Minhas Turmas',   // → Turmas
+                'Avaliações',         // → Registo de Avaliações
+                'Resultados',         // no longer a place a teacher goes
+                'Análise da Turma',   // → Acompanhamento > Turma
+                'Evolução do Aluno',  // → Acompanhamento > Aluno
+                'Desempenho',         // never an entry: it is a word inside pages
+                'Acompanhamento',     // a heading, never a link
+            ] as $gone) {
+                $this->assertNotContains($gone, $labels, "«{$gone}» should not be a menu entry.");
+            }
+        });
+    }
+
+    #[Test]
+    public function acompanhamento_is_a_heading_and_holds_exactly_two_entries(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->get('/dashboard')->assertInertia(function (AssertableInertia $page) {
+            $section = collect($page->toArray()['props']['nav']['sections'])
+                ->firstWhere('label', 'Acompanhamento');
+
+            $this->assertNotNull($section);
+            $this->assertSame(['Turma', 'Aluno'], array_column($section['items'], 'label'));
+
+            // A heading is not a link: there is no href on the group, and no
+            // entry called «Acompanhamento» to click (§15).
+            $this->assertArrayNotHasKey('href', $section);
+        });
+    }
+
+    #[Test]
+    public function every_entry_appears_once_and_says_what_it_is_for(): void
     {
         $user = User::factory()->create();
         $this->upgrade($user, 'institutional');
 
         $this->actingAs($user)->get('/dashboard')->assertInertia(function (AssertableInertia $page) {
             $keys = $this->navKeys($page);
-
-            // Grouping must not duplicate an item, and a group heading is never
-            // itself a link (§9).
             $this->assertSame(array_values(array_unique($keys)), $keys);
-        });
-    }
 
-    #[Test]
-    public function grouping_did_not_change_what_each_plan_sees(): void
-    {
-        $base = User::factory()->create();
+            // «Turmas» and «Turma» differ by a group and a letter, so the
+            // description is doing real work here (§54, §55).
+            $items = collect($this->navItems($page))->keyBy('key');
+            $this->assertSame('Gerir e aceder às suas turmas.', $items['classes']['description']);
+            $this->assertSame('Desempenho e evolução da turma.', $items['class-analysis']['description']);
+            $this->assertSame('Percurso individual ao longo do ano.', $items['student-progress']['description']);
 
-        $this->actingAs($base)->get('/dashboard')->assertInertia(function (AssertableInertia $page) {
-            $keys = $this->navKeys($page);
-
-            // The five regrouped items are all Base, and still are.
-            foreach (['class-analysis', 'student-progress', 'interventions', 'records', 'reports'] as $key) {
-                $this->assertContains($key, $keys);
+            foreach ($items as $key => $item) {
+                if ($key !== 'dashboard') {
+                    $this->assertNotNull($item['description'], "«{$key}» should say what it is for.");
+                }
             }
-
-            $this->assertNotContains('calendar', $keys);
-            $this->assertNotContains('institution', $keys);
         });
     }
 
+    // -------------------------------------------------- §36 estado ativo
+
     #[Test]
-    public function the_footer_always_carries_settings(): void
+    public function one_entry_answers_for_the_routes_that_page_absorbed(): void
     {
         $user = User::factory()->create();
 
         $this->actingAs($user)->get('/dashboard')->assertInertia(function (AssertableInertia $page) {
-            $footerKeys = array_column($page->toArray()['props']['nav']['footer'], 'key');
-            $this->assertContains('settings', $footerKeys);
+            $items = collect($this->navItems($page))->keyBy('key');
+
+            // «Turma» is one entry over three historical routes: the reading,
+            // the grid and the synthesis. All of them contain «/results».
+            $this->assertContains('/results', $items['class-analysis']['match']);
+            $this->assertContains('/evolucao', $items['student-progress']['match']);
+            // Deciding a classification is an act of AVALIAÇÃO (§30).
+            $this->assertContains('/classifications', $items['assessments']['match']);
         });
+    }
+
+    // ------------------------------------------------------ §41 os planos
+
+    #[Test]
+    public function reorganizing_changed_nothing_about_what_base_may_reach(): void
+    {
+        $menu = $this->menuFor('base');
+
+        // Exactly the Base keys, and no more. The list is spelled out so a
+        // capability quietly appearing or vanishing fails here.
+        $this->assertSame([
+            'dashboard', 'classes', 'students', 'instruments', 'assessments',
+            'self-assessments', 'class-analysis', 'student-progress',
+            'interventions', 'records', 'reports', 'assessment-profiles', 'settings',
+        ], array_keys($menu));
+    }
+
+    #[Test]
+    public function pro_still_gains_the_year_organisation_and_nothing_else(): void
+    {
+        $gained = array_diff(array_keys($this->menuFor('pro')), array_keys($this->menuFor('base')));
+
+        $this->assertSame(['calendar', 'lessons'], array_values($gained));
+    }
+
+    #[Test]
+    public function institutional_still_gains_only_the_administration(): void
+    {
+        $gained = array_diff(array_keys($this->menuFor('institutional')), array_keys($this->menuFor('pro')));
+
+        $this->assertSame(['institution'], array_values($gained));
+    }
+
+    #[Test]
+    public function a_group_disappears_rather_than_standing_empty(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->get('/dashboard')->assertInertia(function (AssertableInertia $page) {
+            // Base has neither the calendar nor institutional administration, so
+            // the two groups that would hold them are simply not sent.
+            $labels = $this->sectionLabels($page);
+
+            $this->assertNotContains('Organização do ano', $labels);
+            $this->assertNotContains('Instituição', $labels);
+        });
+    }
+
+    // -------------------------------------------------- §42 as rotas antigas
+
+    #[Test]
+    public function the_routes_behind_the_new_labels_did_not_move(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->get('/dashboard')->assertInertia(function (AssertableInertia $page) {
+            $items = collect($this->navItems($page))->keyBy('key');
+
+            // A label is copy and a route is an address. None of these moved.
+            $this->assertStringEndsWith('/classes', (string) $items['classes']['href']);
+            $this->assertStringEndsWith('/assessments', (string) $items['assessments']['href']);
+            $this->assertStringEndsWith('/results', (string) $items['class-analysis']['href']);
+            $this->assertStringEndsWith('/evolucao', (string) $items['student-progress']['href']);
+            $this->assertStringEndsWith('/assessment-profiles', (string) $items['assessment-profiles']['href']);
+        });
+    }
+
+    #[Test]
+    public function every_screen_that_resultados_used_to_reach_still_answers(): void
+    {
+        $user = User::factory()->create();
+
+        // Nothing was deleted to make «Resultados» disappear from the menu (§6).
+        // The picker still answers, and now opens the class reading.
+        $this->actingAs($user)->get('/results')->assertOk();
+
+        // And every screen it used to lead to is still registered. Asserted on
+        // the route table rather than by rendering: what this test claims is
+        // that no address was removed, and rendering a class would drag in a
+        // profile, a scale and a period that have nothing to do with it.
+        foreach ([
+            'results.index',
+            'results.show',
+            'results.statistics',
+            'results.summary',
+            'classifications.show',
+            'classifications.decide',
+            'classifications.propose',
+            'classifications.publish',
+            'student-progress.index',
+            'student-progress.student',
+        ] as $name) {
+            $this->assertTrue(Route::has($name), "The route «{$name}» disappeared.");
+        }
     }
 
     #[Test]
@@ -219,14 +355,12 @@ class ShellNavigationTest extends TestCase
     {
         $user = User::factory()->create();
 
-        // Class analysis is still a placeholder (Fase 3); much of the chain
-        // (classes … records, self-assessments, interventions, student
-        // progress) is built.
-        $this->actingAs($user)->get('/class-analysis')->assertInertia(
+        // Alunos is still a placeholder (Fase 1); everything around it is built.
+        $this->actingAs($user)->get('/students')->assertInertia(
             fn (AssertableInertia $page) => $page
                 ->component('Placeholder')
-                ->where('title', 'Análise da Turma')
-                ->where('phase', 3)
+                ->where('title', 'Alunos')
+                ->where('phase', 1)
         );
     }
 
