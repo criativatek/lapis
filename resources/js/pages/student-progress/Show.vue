@@ -6,6 +6,7 @@ import {
     FileText,
     HeartHandshake,
     NotebookPen,
+    Plus,
     UserMinus,
 } from '@lucide/vue';
 import type { ChartConfiguration } from 'chart.js';
@@ -117,6 +118,11 @@ type InterventionRow = {
     ulid: string;
     title: string;
     type: string | null;
+    motive: string | null;
+    objective: string | null;
+    effectiveness: string | null;
+    last_followup_on: string | null;
+    followup_count: number;
     status: string;
     is_concluded: boolean;
     started_on: string;
@@ -194,7 +200,15 @@ const props = defineProps<{
     records: { total: number; kinds: { value: string; label: string; count: number }[]; rows: RecordRow[] };
     interventions: { total: number; individual: number; rows: InterventionRow[] };
     narrative: string | null;
-    links: { records: string; interventions: string; reports: string; statistics: string };
+    links: {
+        records: string;
+        interventions: string;
+        // Absent for a student who has left: a new intervention is about the
+        // class as it stands (§20).
+        newIntervention: string | null;
+        reports: string;
+        statistics: string;
+    };
 }>();
 
 const CARD = `${card('plain')} p-5`;
@@ -824,12 +838,20 @@ const hasAnything = computed(
                         </p>
                     </div>
 
-                    <Button variant="ghost" size="sm" as-child>
-                        <a :href="links.interventions">
-                            Abrir Intervenções
-                            <ExternalLink class="size-3.5" />
-                        </a>
-                    </Button>
+                    <div class="flex flex-wrap gap-1">
+                        <Button v-if="links.newIntervention" variant="outline" size="sm" as-child>
+                            <a :href="links.newIntervention">
+                                <Plus class="size-3.5" />
+                                Registar intervenção
+                            </a>
+                        </Button>
+                        <Button variant="ghost" size="sm" as-child>
+                            <a :href="links.interventions">
+                                Abrir Intervenções
+                                <ExternalLink class="size-3.5" />
+                            </a>
+                        </Button>
+                    </div>
                 </div>
 
                 <ol v-if="interventions.rows.length > 0" class="mt-4 space-y-3">
@@ -839,6 +861,17 @@ const hasAnything = computed(
                         </span>
                         <span class="min-w-0 flex-1 border-l border-border pl-3">
                             <span class="block text-sm font-medium">{{ row.title }}</span>
+
+                            <!-- Why it was created and what for, when the teacher
+                                 said. An older intervention has neither, and shows
+                                 neither — never «objetivo geral» (§4). -->
+                            <span v-if="row.motive" class="mt-0.5 block text-xs text-muted-foreground">
+                                Situação: {{ row.motive }}
+                            </span>
+                            <span v-if="row.objective" class="block text-xs text-muted-foreground">
+                                Objetivo: {{ row.objective }}
+                            </span>
+
                             <span class="mt-0.5 block text-xs text-muted-foreground">
                                 <!-- An untyped row shows no type. Never `legacy`,
                                      never a code (§33). -->
@@ -846,6 +879,21 @@ const hasAnything = computed(
                                 {{ row.status }}
                                 <template v-if="row.domain"> · {{ row.domain }}</template>
                                 · {{ row.is_individual ? 'dirigida a este aluno' : 'dirigida à turma' }}
+                            </span>
+
+                            <!-- What the TEACHER observed. Placed beside the
+                                 intervention and never beside a result: a rise in
+                                 April and an intervention in March are two facts,
+                                 and this page joins them with a date and nothing
+                                 else (§31, §35). -->
+                            <span v-if="row.effectiveness || row.followup_count > 0" class="mt-1 block text-xs">
+                                <span v-if="row.effectiveness" class="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+                                    {{ row.effectiveness }}
+                                </span>
+                                <span v-if="row.followup_count > 0" class="ml-1 text-muted-foreground">
+                                    {{ row.followup_count }}
+                                    {{ row.followup_count === 1 ? 'acompanhamento' : 'acompanhamentos' }}
+                                </span>
                             </span>
                         </span>
                     </li>

@@ -905,7 +905,7 @@ class BuildStudentProgress
             ->where(fn ($query) => $query
                 ->where('enrollment_id', $enrollment->getKey())
                 ->orWhereNull('enrollment_id'))
-            ->with('domain')
+            ->with(['domain', 'reviews'])
             ->orderByDesc('started_on')
             ->orderByDesc('id')
             ->get();
@@ -915,10 +915,21 @@ class BuildStudentProgress
         foreach ($interventions as $intervention) {
             $rows[] = [
                 'ulid' => $intervention->ulid,
-                'title' => $intervention->title,
+                // The strategy the teacher named, falling back to the title and
+                // then to the catalogue type. Never a code (§35).
+                'title' => $intervention->displayTitle(),
                 // Absent rather than falsified when the row predates the type
                 // column.
                 'type' => $intervention->intervention_type?->label(),
+                // The three questions the timeline can show without becoming a
+                // second detail screen: what motivated it, what it was for, and
+                // what the teacher has observed so far. All null-safe — an older
+                // intervention has none of them, and shows none (§4, §30).
+                'motive' => $intervention->motive_label,
+                'objective' => $intervention->objective,
+                'effectiveness' => $intervention->currentEffectiveness()?->shortLabel(),
+                'last_followup_on' => $intervention->reviews->first()?->reviewed_on->toDateString(),
+                'followup_count' => $intervention->reviews->count(),
                 'status' => $intervention->status->label(),
                 'is_concluded' => $intervention->status->value === 'concluded',
                 'started_on' => $intervention->started_on->toDateString(),

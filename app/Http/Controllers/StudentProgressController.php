@@ -147,7 +147,20 @@ class StudentProgressController extends Controller
             // never a second form for the same thing (§64, §65, §66).
             'links' => [
                 'records' => route('records.show', ['class' => $class->ulid]),
-                'interventions' => route('interventions.index', ['turma' => $class->ulid]),
+                // The class's own interventions, filtered to this student.
+                // Previously this pointed at the module index with a `turma`
+                // query parameter no route ever read, so «Abrir Intervenções»
+                // landed on the class picker.
+                'interventions' => route('interventions.show', [
+                    'class' => $class->ulid,
+                    'enrollment_id' => $enrollment->getKey(),
+                ]),
+                // «Registar intervenção», with this student already chosen. The
+                // form is the one that already exists — the link only says who
+                // it should open on (§17).
+                'newIntervention' => $enrollment->status->isCurrent()
+                    ? route('interventions.show', ['class' => $class->ulid, 'aluno' => $enrollment->ulid])
+                    : null,
                 'reports' => route('reports.index', ['type' => 'student']),
                 'statistics' => route('results.statistics', ['class' => $class->ulid]),
             ],

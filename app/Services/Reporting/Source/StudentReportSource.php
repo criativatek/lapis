@@ -149,7 +149,7 @@ class StudentReportSource extends ClassReportSource
                 ->where(fn ($inner) => $inner
                     ->where('academic_period_id', $report->academic_period_id)
                     ->orWhereNull('academic_period_id')))
-            ->with('domain')
+            ->with(['domain', 'reviews'])
             ->orderBy('started_on')
             ->get();
 
@@ -184,11 +184,24 @@ class StudentReportSource extends ClassReportSource
                 ->filter(fn (Intervention $intervention) => $intervention->include_in_report
                     && $intervention->intervention_type !== null)
                 ->map(fn (Intervention $intervention) => [
-                    'title' => $intervention->title,
+                    'title' => $intervention->displayTitle(),
                     'type' => $intervention->intervention_type?->label(),
                     'domain' => $intervention->domain?->name,
                     'status' => $intervention->status->label(),
                     'started_on' => $intervention->started_on->toDateString(),
+                    // THE TEACHER'S REASONING, WHEN THERE IS ONE (§32). Each of
+                    // these is null on an intervention recorded before the
+                    // module asked for it, and a composer that finds a null
+                    // writes nothing rather than a placeholder.
+                    'motive' => $intervention->motive_label,
+                    'objective' => $intervention->objective,
+                    // What the teacher OBSERVED, in their words. Never derived
+                    // from a result that moved: «no acompanhamento efetuado, o
+                    // professor registou uma evolução parcial» is reportable
+                    // because somebody wrote it; «a intervenção melhorou a
+                    // escrita» is not (§26, §34).
+                    'appraisal' => $intervention->currentEffectiveness()?->label(),
+                    'followups' => $intervention->reviews->count(),
                 ])->all()),
         ];
     }
