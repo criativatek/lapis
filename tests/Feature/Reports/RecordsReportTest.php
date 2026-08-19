@@ -150,18 +150,98 @@ class RecordsReportTest extends TestCase
     #[Test]
     public function homework_is_reported_in_records_and_the_denominator_is_stated(): void
     {
+        // Ten checks over two students: the two numbers differ, so a reader
+        // could take «80%» for a share of students. This is the case the note
+        // exists for.
         $this->homework(done: 8, notDone: 2, students: 2);
 
         $body = (string) $this->bodyOf($this->report(), SectionKey::RecordsSummary);
 
         $this->assertStringContainsString('dez verificações', $body);
         $this->assertStringContainsString('80%', $body);
-        $this->assertStringContainsString('contam verificações e não alunos', $body);
-        $this->assertStringContainsString('dois alunos', $body);
+        $this->assertStringContainsString('envolvendo dois alunos', $body);
+        $this->assertStringContainsString('refere-se ao número de registos efetuados', $body);
 
         // The conversion that must never happen.
         $this->assertStringNotContainsString('20% dos alunos', $body);
         $this->assertStringNotContainsString('dos alunos não', $body);
+        // And the old formulation, which said what was counted rather than what
+        // could be misread.
+        $this->assertStringNotContainsString('contam verificações e não alunos', $body);
+    }
+
+    #[Test]
+    public function nothing_is_explained_when_the_two_counts_are_the_same(): void
+    {
+        // Six checks over six students. There is nothing to disambiguate: the
+        // numbers are equal and the reader cannot go wrong, so a note about the
+        // difference would introduce a distinction the data does not have.
+        $this->homework(done: 2, notDone: 4, students: 6);
+
+        $body = (string) $this->bodyOf($this->report(), SectionKey::RecordsSummary);
+
+        $this->assertStringContainsString('seis verificações', $body);
+        $this->assertStringContainsString('envolvendo seis alunos', $body);
+        $this->assertStringContainsString('33,3%', $body);
+
+        $this->assertStringNotContainsString('refere-se ao número de registos', $body);
+        $this->assertStringNotContainsString('contam verificações e não alunos', $body);
+    }
+
+    #[Test]
+    public function one_check_on_one_student_reads_in_the_singular(): void
+    {
+        $this->homework(done: 1, notDone: 0, students: 1);
+
+        $body = (string) $this->bodyOf($this->report(), SectionKey::RecordsSummary);
+
+        $this->assertStringContainsString('Foi realizada uma verificação', $body);
+        $this->assertStringContainsString('envolvendo um aluno', $body);
+        $this->assertStringContainsString('em um registo', $body);
+
+        $this->assertStringNotContainsString('Foram realizadas uma', $body);
+        $this->assertStringNotContainsString('refere-se ao número de registos', $body);
+    }
+
+    #[Test]
+    public function several_checks_on_one_student_say_one_student_and_explain_the_share(): void
+    {
+        // Three checks, one student. «envolvendo um aluno» is the whole point:
+        // the module must never turn three records into three people.
+        $this->homework(done: 2, notDone: 1, students: 1);
+
+        $body = (string) $this->bodyOf($this->report(), SectionKey::RecordsSummary);
+
+        $this->assertStringContainsString('três verificações', $body);
+        $this->assertStringContainsString('envolvendo um aluno', $body);
+        // Three events, one person — the share really is over records here.
+        $this->assertStringContainsString('refere-se ao número de registos efetuados', $body);
+
+        $this->assertStringNotContainsString('três alunos', $body);
+    }
+
+    #[Test]
+    public function the_percentage_is_the_same_whatever_the_wording_does(): void
+    {
+        // The arithmetic belongs to the source and was not touched: 2 of 6 is
+        // 33,3% with the note and without it.
+        $this->homework(done: 2, notDone: 4, students: 6);
+        $same = (string) $this->bodyOf($this->report(), SectionKey::RecordsSummary);
+        $this->assertStringContainsString('33,3%', $same);
+
+        $this->refreshDatabaseForDifferentSpread();
+
+        $this->homework(done: 2, notDone: 4, students: 3);
+        $fewer = (string) $this->bodyOf($this->report(), SectionKey::RecordsSummary);
+        $this->assertStringContainsString('33,3%', $fewer);
+        // Same figure, and now the note — because now the counts differ.
+        $this->assertStringContainsString('refere-se ao número de registos efetuados', $fewer);
+    }
+
+    /** Clears the homework records so a second spread can be laid down in one test. */
+    private function refreshDatabaseForDifferentSpread(): void
+    {
+        $this->asTenant(fn () => EvidenceRecord::query()->where('kind', EvidenceKind::Homework)->forceDelete());
     }
 
     #[Test]

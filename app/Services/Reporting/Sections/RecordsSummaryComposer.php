@@ -27,6 +27,8 @@ use Illuminate\Support\Carbon;
  */
 class RecordsSummaryComposer implements SectionComposer
 {
+    use DescribesHomeworkChecks;
+
     public function key(): SectionKey
     {
         return SectionKey::RecordsSummary;
@@ -113,30 +115,9 @@ class RecordsSummaryComposer implements SectionComposer
             return null;
         }
 
-        $checks = (int) ($homework['checks'] ?? 0);
+        $sentences = $this->homeworkSentences($homework);
 
-        if ($checks === 0) {
-            return null;
-        }
-
-        $done = (int) ($homework['done'] ?? 0);
-        $rate = Phrase::percentage($homework['done_rate'] ?? null);
-
-        return Phrase::paragraph([
-            Phrase::sentence(
-                'Foram realizadas',
-                Phrase::count($checks, 'verificação', 'verificações', feminine: true),
-                'de trabalho de casa, sobre',
-                Phrase::students((int) ($homework['students_involved'] ?? 0)),
-            ),
-            Phrase::sentence(
-                'O trabalho encontrava-se realizado em',
-                Phrase::records($done),
-                $rate === null ? null : '('.$rate.')',
-            ),
-            // THE SENTENCE THAT STOPS THE MISREADING (§70).
-            'Estes valores contam verificações e não alunos.',
-        ]);
+        return $sentences === [] ? null : Phrase::paragraph($sentences);
     }
 
     protected function monthsSentence(ReportContext $context): ?string

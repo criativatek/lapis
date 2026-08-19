@@ -29,6 +29,8 @@ use App\Services\Reporting\ReportContext;
  */
 class ClassRecordsComposer implements SectionComposer
 {
+    use DescribesHomeworkChecks;
+
     public function key(): SectionKey
     {
         return SectionKey::ClassRecords;
@@ -144,25 +146,8 @@ class ClassRecordsComposer implements SectionComposer
             return null;
         }
 
-        $done = (int) ($homework['done'] ?? 0);
-        $rate = Phrase::percentage($homework['done_rate'] ?? null);
+        $sentences = $this->homeworkSentences($homework);
 
-        return Phrase::paragraph([
-            Phrase::sentence(
-                'Foram realizadas',
-                Phrase::count($checks, 'verificação', 'verificações', feminine: true),
-                'de trabalho de casa, sobre',
-                Phrase::students((int) ($homework['students_involved'] ?? 0)),
-            ),
-            Phrase::sentence(
-                'O trabalho encontrava-se realizado em',
-                Phrase::records($done),
-                $rate === null ? null : '('.$rate.')',
-            ),
-            // THE DENOMINATOR, stated so nobody converts records into people
-            // (§70, §71). It is a fact about what was counted, not a note about
-            // how LÁPIS works, so it stays in the body.
-            'Estes valores contam verificações e não alunos.',
-        ]);
+        return $sentences === [] ? null : Phrase::paragraph($sentences);
     }
 }

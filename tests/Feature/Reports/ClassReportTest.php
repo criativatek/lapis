@@ -435,8 +435,47 @@ class ClassReportTest extends TestCase
 
         $this->assertStringContainsString('dez verificações', $body);
         $this->assertStringContainsString('80%', $body);
-        // §70: the denominator is stated, and it is records — not people.
-        $this->assertStringContainsString('contam verificações e não alunos', $body);
+        $this->assertStringContainsString('envolvendo dois alunos', $body);
+        // Ten checks over two students: the counts differ, so the share really
+        // could be misread and the note earns its place.
+        $this->assertStringContainsString('refere-se ao número de registos efetuados', $body);
         $this->assertStringNotContainsString('20% dos alunos', $body);
+        $this->assertStringNotContainsString('contam verificações e não alunos', $body);
+    }
+
+    #[Test]
+    public function the_class_report_explains_nothing_when_every_check_is_a_different_student(): void
+    {
+        $this->givePlan('base');
+
+        $this->asTenant(function (): void {
+            $class = $this->schoolClass();
+            $period = $this->period(1);
+            $enrollments = $class->enrollments()->orderBy('class_number')->take(6)->get();
+
+            // One check each: six checks, six students.
+            foreach ($enrollments as $index => $enrollment) {
+                EvidenceRecord::create([
+                    'class_id' => $class->id,
+                    'enrollment_id' => $enrollment->id,
+                    'academic_period_id' => $period->id,
+                    'occurred_at' => $period->starts_on->copy()->addDays($index + 1),
+                    'kind' => EvidenceKind::Homework,
+                    'homework_status' => $index < 2 ? HomeworkStatus::Done : HomeworkStatus::NotDone,
+                    'description' => 'Verificação de TPC.',
+                    'created_by' => $this->teacher->id,
+                ]);
+            }
+        });
+
+        $body = (string) $this->bodyOf($this->report(1), SectionKey::ClassRecords);
+
+        $this->assertStringContainsString('seis verificações', $body);
+        $this->assertStringContainsString('envolvendo seis alunos', $body);
+        $this->assertStringContainsString('33,3%', $body);
+
+        // Nothing to disambiguate, so nothing is said about it.
+        $this->assertStringNotContainsString('refere-se ao número de registos', $body);
+        $this->assertStringNotContainsString('contam verificações e não alunos', $body);
     }
 }
