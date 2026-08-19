@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToOrganization;
 use App\Support\Interventions\InterventionLegalFramework;
 use App\Support\Interventions\LegalMapping;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
@@ -36,6 +37,12 @@ use Illuminate\Support\Carbon;
  * @property int|null $domain_id
  * @property InterventionTargetType $target_type
  * @property InterventionType|null $intervention_type
+ * @property string|null $motive_code
+ * @property string|null $motive_label
+ * @property string|null $strategy_code
+ * @property string|null $strategy_label
+ * @property string|null $objective
+ * @property Carbon|null $review_on
  * @property InterventionDomainRelation $domain_relation
  * @property string $title
  * @property string|null $description
@@ -55,8 +62,9 @@ use Illuminate\Support\Carbon;
 #[Fillable([
     'class_id', 'enrollment_id', 'academic_period_id', 'domain_id',
     'target_type', 'intervention_type', 'domain_relation',
+    'motive_code', 'motive_label', 'strategy_code', 'strategy_label', 'objective',
     'title', 'description', 'description_source',
-    'status', 'started_on', 'expected_end_on', 'concluded_on',
+    'status', 'started_on', 'expected_end_on', 'review_on', 'concluded_on',
     'include_in_report', 'available_for_reports',
     'support_measure_level', 'support_measure_code', 'evaluation_adaptation_code',
     'legal_mapping_source', 'created_by',
@@ -88,6 +96,7 @@ class Intervention extends Model
             'status' => InterventionStatus::class,
             'started_on' => 'date',
             'expected_end_on' => 'date',
+            'review_on' => 'date',
             'concluded_on' => 'date',
             'include_in_report' => 'boolean',
             'available_for_reports' => 'boolean',
@@ -140,11 +149,96 @@ class Intervention extends Model
     }
 
     /**
+     * The follow-ups, newest first.
+     *
+     * A HISTORY, NOT A FIELD. Each one is what was observed on a day, and a
+     * later one never replaces an earlier one — «continua a precisar de apoio na
+     * revisão» in March and «maior autonomia» in April are both true, of
+     * different days, and an intervention that kept only the latest would have
+     * thrown away the part that shows movement (§23, §28, §97).
+     *
      * @return HasMany<InterventionReview, $this>
      */
     public function reviews(): HasMany
     {
-        return $this->hasMany(InterventionReview::class)->orderByDesc('reviewed_on');
+        return $this->hasMany(InterventionReview::class)
+            ->orderByDesc('reviewed_on')
+            ->orderByDesc('id');
+    }
+
+    /**
+     * The appraisal that stands right now: the most recent follow-up that made
+     * one.
+     *
+     * DERIVED, NEVER STORED (§59). A second column holding «the current rating»
+     * is a second answer to a question the follow-ups already answer, and the
+     * two would disagree the first time somebody corrected an old note. A
+     * follow-up that only observed and did not judge is skipped rather than
+     * treated as «no longer rated».
+     */
+    public function currentEffectiveness(): ?InterventionEffectiveness
+    {
+        foreach ($this->reviews as $review) {
+            if ($review->effectiveness !== null) {
+                return $review->effectiveness;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether the teacher's own review date has arrived on something still open.
+     *
+     * THE DATE IS THE TEACHER'S AND THE ONLY SOURCE OF PENDENCY. There is no
+     * «thirty days without a follow-up» rule anywhere in this module: an
+     * intervention that has run quietly since October is not neglected, and a
+     * number nobody chose would put a badge on it saying otherwise (§22, §37).
+     *
+     * A concluded, suspended or cancelled intervention is never pending — its
+     * review date is history like the rest of it.
+     */
+    public function needsReview(?CarbonInterface $on = null): bool
+    {
+        if ($this->review_on === null || ! $this->status->isOpen()) {
+            return false;
+        }
+
+        return ! $this->review_on->isAfter(($on ?? Carbon::now())->startOfDay());
+    }
+
+    /**
+     * Interventions whose review date has come and gone, and that are still
+     * running.
+     *
+     * @param  Builder<Intervention>  $query
+     */
+    public function scopeNeedingReview(Builder $query, ?CarbonInterface $on = null): void
+    {
+        $query
+            ->whereNotNull('review_on')
+            ->whereDate('review_on', '<=', ($on ?? Carbon::now())->startOfDay())
+            ->whereIn('status', [InterventionStatus::New->value, InterventionStatus::InProgress->value]);
+    }
+
+    /**
+     * How this intervention should be named on a screen.
+     *
+     * THE STRATEGY FIRST, because that is what the teacher did and what they
+     * will recognise in a list. The catalogue type is a classification and the
+     * title is what older rows have; each is used only when the one before it
+     * has nothing to say. Nothing here ever produces «legado», «null» or a code
+     * (§35).
+     */
+    public function displayTitle(): string
+    {
+        foreach ([$this->strategy_label, $this->title, $this->intervention_type?->label()] as $candidate) {
+            if (is_string($candidate) && trim($candidate) !== '') {
+                return trim($candidate);
+            }
+        }
+
+        return __('Intervenção');
     }
 
     /**

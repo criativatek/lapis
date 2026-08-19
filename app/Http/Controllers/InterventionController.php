@@ -17,10 +17,13 @@ use App\Models\InterventionTargetType;
 use App\Models\InterventionType;
 use App\Models\LegalMappingMode;
 use App\Models\LegalMappingSource;
+use App\Models\ReportLibraryEntry;
 use App\Models\SchoolClass;
 use App\Models\SupportMeasureCode;
 use App\Models\SupportMeasureLevel;
 use App\Models\User;
+use App\Services\Audit\AuditLog;
+use App\Services\Reporting\ReportLibraryProvider;
 use App\Support\Interventions\InterventionLegalFramework;
 use App\Support\Interventions\LegalFrameworkResolver;
 use App\Support\Tenancy\CurrentOrganization;
@@ -45,7 +48,76 @@ use Inertia\Response;
  */
 class InterventionController extends Controller
 {
-    public function __construct(protected LegalFrameworkResolver $frameworks) {}
+    public function __construct(
+        protected LegalFrameworkResolver $frameworks,
+        protected ReportLibraryProvider $library,
+        protected AuditLog $audit,
+    ) {}
+
+    /**
+     * The teacher's reasoning, resolved into what will be KEPT.
+     *
+     * THE LIBRARY IS COPIED, NOT REFERENCED. Exactly as Relatórios already does
+     * it: a chosen entry's own words are read from the library now and stored on
+     * the intervention, so rewording it next September leaves this February's
+     * intervention saying what the teacher chose in February. The code travels
+     * beside the words, so provenance survives too (§56, §57).
+     *
+     * A CODE THAT NAMES NOTHING IS NOT A CODE. If the library has no such entry
+     * — another organization's, or one since removed — the code is dropped and
+     * whatever the teacher typed is kept. Storing an unresolvable pointer would
+     * be storing a claim about an entry nobody can read.
+     *
+     * @param  array<string, mixed>  $validated
+     * @return array<string, string|null>
+     */
+    protected function resolveReasoning(array $validated): array
+    {
+        $motive = $this->fromLibrary(
+            ReportLibraryEntry::KIND_DIFFICULTY,
+            $validated['motive_code'] ?? null,
+            $validated['motive_label'] ?? null,
+        );
+
+        $strategy = $this->fromLibrary(
+            ReportLibraryEntry::KIND_STRATEGY,
+            $validated['strategy_code'] ?? null,
+            $validated['strategy_label'] ?? null,
+        );
+
+        $objective = is_string($validated['objective'] ?? null) ? trim($validated['objective']) : '';
+
+        return [
+            'motive_code' => $motive['code'],
+            'motive_label' => $motive['label'],
+            'strategy_code' => $strategy['code'],
+            'strategy_label' => $strategy['label'],
+            // Free text, always. A library objective may be suggested and then
+            // edited, and what is kept is what was applied (§55).
+            'objective' => $objective === '' ? null : $objective,
+        ];
+    }
+
+    /**
+     * @return array{code: string|null, label: string|null}
+     */
+    protected function fromLibrary(string $kind, ?string $code, ?string $typed): array
+    {
+        $typed = is_string($typed) ? trim($typed) : '';
+
+        if (is_string($code) && $code !== '') {
+            $entry = ReportLibraryEntry::query()->ofKind($kind)->where('code', $code)->first();
+
+            if ($entry !== null) {
+                return ['code' => $entry->code, 'label' => $entry->label];
+            }
+        }
+
+        // The teacher's own words, with no code: a formulation the library does
+        // not have is still a formulation, and the module has to work for a
+        // school that never seeded one (§53, §54, §74).
+        return ['code' => null, 'label' => $typed === '' ? null : $typed];
+    }
 
     /**
      * The framework that applies to an intervention: the current
@@ -94,6 +166,9 @@ class InterventionController extends Controller
             // forms keeps the filter working without silently accepting junk.
             'available_for_reports' => ['nullable', Rule::in(['0', '1', 'true', 'false'])],
             'support_measure_level' => ['nullable', Rule::enum(SupportMeasureLevel::class)],
+            'status' => ['nullable', Rule::enum(InterventionStatus::class)],
+            // «A acompanhar»: the ones whose own review date has arrived (§37).
+            'needs_review' => ['nullable', Rule::in(['0', '1', 'true', 'false'])],
         ]);
 
         $period = ($filters['period_id'] ?? null) !== null
@@ -123,6 +198,12 @@ class InterventionController extends Controller
                 ))
             ->when($filters['support_measure_level'] ?? null,
                 fn ($query, $level) => $query->bySupportMeasureLevel(SupportMeasureLevel::from($level)))
+            ->when($filters['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
+            ->when(filter_var($filters['needs_review'] ?? null, FILTER_VALIDATE_BOOLEAN),
+                fn ($query) => $query->needingReview())
+            // Eager-loaded in one go: the list presents participants, the
+            // domain and the follow-up history for every row, and a page that
+            // asked per intervention would be a query per row (§78).
             ->with(['participants.student.identity', 'domain', 'reviews'])
             ->orderByDesc('started_on')
             ->orderByDesc('id')
@@ -168,13 +249,58 @@ class InterventionController extends Controller
             'legalFramework' => $framework->hasLegalTaxonomy() ? ['code' => $framework->code()] : null,
             'supportMeasureLevels' => $framework->supportMeasureLevels(),
             'evaluationAdaptations' => $framework->evaluationAdaptations(),
-            'effectivenessOptions' => array_map(
-                fn (InterventionEffectiveness $option) => ['value' => $option->value, 'label' => $option->label()],
-                InterventionEffectiveness::cases(),
-            ),
+            'effectivenessOptions' => InterventionEffectiveness::options(),
+            'statusOptions' => InterventionStatus::options(),
+            // THE SAME LIBRARY RELATÓRIOS USES, not a second one. A difficulty
+            // carries the strategies that answer IT, and each strategy states
+            // the objective it serves — which is what lets the form suggest
+            // without anything being inferred (§8, §12, §13, §49).
+            //
+            // Possibly empty, and the module works either way: a school that
+            // never seeded a library types its own words (§74).
+            'library' => [
+                'difficulties' => $this->library->difficulties($class->subject_id),
+                'strategies' => $this->library->strategiesByDifficulty(),
+            ],
             'filters' => $filters,
             'interventions' => $interventions,
+            // Arriving from a student's page: the class is in the URL and the
+            // student is named here, so the form opens on them (§17).
+            'prefill' => $this->prefillFrom($request, $class),
         ]);
+    }
+
+    /**
+     * Opening the form on somebody, when the link said who (§17).
+     *
+     * VALIDATED AGAINST THE CLASS AS IT STANDS, and silently ignored otherwise.
+     * A query parameter is a suggestion from a link, not an instruction: an
+     * enrolment from another class, or one that has since left, simply does not
+     * prefill — the page still opens, on nobody in particular, rather than
+     * refusing to load or naming somebody who should not be named in a new
+     * record (§19, §20).
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function prefillFrom(Request $request, SchoolClass $class): ?array
+    {
+        $ulid = $request->query('aluno');
+
+        if (! is_string($ulid) || $ulid === '') {
+            return null;
+        }
+
+        $enrollment = $class->activeEnrollments()->where('ulid', $ulid)->first();
+
+        if ($enrollment === null) {
+            return null;
+        }
+
+        return [
+            'target_type' => InterventionTargetType::Student->value,
+            'enrollment_ids' => [$enrollment->id],
+            'name' => optional($enrollment->student->identity)->display_name,
+        ];
     }
 
     public function store(Request $request, SchoolClass $class): RedirectResponse
@@ -189,11 +315,15 @@ class InterventionController extends Controller
         $framework = $this->frameworkFor(Carbon::parse($validated['started_on']));
         $framing = $this->resolveLegalFraming($framework, $type, $validated);
 
-        DB::transaction(function () use ($class, $validated, $type, $framing): void {
+        $reasoning = $this->resolveReasoning($validated);
+
+        $intervention = DB::transaction(function () use ($class, $validated, $type, $framing, $reasoning): Intervention {
             $participantIds = $validated['enrollment_ids'] ?? [];
 
             $intervention = Intervention::create([
                 'class_id' => $class->id,
+                ...$reasoning,
+                'review_on' => $validated['review_on'] ?? null,
                 // Kept in step with the pivot for the single-student case, so
                 // the pre-existing column never goes stale (see the model).
                 'enrollment_id' => $validated['target_type'] === InterventionTargetType::Student->value
@@ -205,9 +335,10 @@ class InterventionController extends Controller
                 'target_type' => $validated['target_type'],
                 'intervention_type' => $type,
                 'domain_relation' => $validated['domain_relation'],
-                // The type's own label is the title: the teacher is never asked
-                // to invent one (§3.1).
-                'title' => $type->label(),
+                // The strategy the teacher named, when they named one; the
+                // type's own label otherwise. Either way they are never asked to
+                // invent a title (§3.1, §11).
+                'title' => $reasoning['strategy_label'] ?? $type->label(),
                 'description' => $validated['description'] ?? null,
                 'description_source' => InterventionDescriptionSource::Manual,
                 'status' => InterventionStatus::New,
@@ -221,11 +352,48 @@ class InterventionController extends Controller
             ]);
 
             $intervention->participants()->sync($participantIds);
+
+            return $intervention;
         });
+
+        $this->record('intervention.created', $intervention);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Intervenção registada.')]);
 
         return back();
+    }
+
+    /**
+     * The trail (§83, §84).
+     *
+     * IDS AND SHAPE, NEVER THE WORDS. A follow-up may say that a child is
+     * struggling at home; copying that sentence into a second table would double
+     * the number of places it has to be protected, for no gain an auditor could
+     * use. What is recorded is that something happened, to which intervention,
+     * by whom, and — where it is a decision rather than prose — what was
+     * decided.
+     *
+     * @param  array<string, mixed>  $properties
+     */
+    protected function record(string $event, Intervention $intervention, array $properties = []): void
+    {
+        $this->audit->record(
+            $event,
+            $intervention,
+            $this->user(),
+            summary: __('Intervenção «:title» — :class', [
+                'title' => $intervention->displayTitle(),
+                'class' => $intervention->schoolClass->label,
+            ]),
+            properties: [
+                ...$properties,
+                'class_id' => (int) $intervention->class_id,
+                'target_type' => $intervention->target_type->value,
+                'participants' => $intervention->participants()->count(),
+                'intervention_type' => $intervention->intervention_type?->value,
+                'status' => $intervention->status->value,
+            ],
+        );
     }
 
     /**
@@ -248,10 +416,14 @@ class InterventionController extends Controller
 
         $framing = $this->resolveLegalFraming($framework, $type, $validated, $intervention);
 
-        DB::transaction(function () use ($intervention, $validated, $type, $framing): void {
+        $reasoning = $this->resolveReasoning($validated);
+
+        DB::transaction(function () use ($intervention, $validated, $type, $framing, $reasoning): void {
             $participantIds = $validated['enrollment_ids'] ?? [];
 
             $intervention->fill([
+                ...$reasoning,
+                'review_on' => $validated['review_on'] ?? null,
                 'enrollment_id' => $validated['target_type'] === InterventionTargetType::Student->value
                     ? $participantIds[0]
                     : null,
@@ -261,7 +433,7 @@ class InterventionController extends Controller
                 'target_type' => $validated['target_type'],
                 'intervention_type' => $type,
                 'domain_relation' => $validated['domain_relation'],
-                'title' => $type->label(),
+                'title' => $reasoning['strategy_label'] ?? $type->label(),
                 'description' => $validated['description'] ?? null,
                 'started_on' => $validated['started_on'],
                 'available_for_reports' => $validated['available_for_reports'] ?? true,
@@ -271,6 +443,8 @@ class InterventionController extends Controller
 
             $intervention->participants()->sync($participantIds);
         });
+
+        $this->record('intervention.updated', $intervention->refresh());
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Intervenção atualizada.')]);
 
@@ -288,16 +462,52 @@ class InterventionController extends Controller
 
         $validated = $request->validate([
             'status' => ['required', Rule::enum(InterventionStatus::class)],
+            // Offered when concluding, never required: a teacher who cannot yet
+            // say what they observed concludes «sem avaliação registada», which
+            // is an honest answer and the only alternative to inventing one
+            // (§43).
+            'effectiveness' => ['nullable', Rule::enum(InterventionEffectiveness::class)],
+            'notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
         $status = InterventionStatus::from($validated['status']);
+        $was = $intervention->status;
 
-        $intervention->fill([
-            'status' => $status,
-            // Stamp the conclusion date the moment it is concluded; clear it if
-            // the intervention is reopened or cancelled.
-            'concluded_on' => $status === InterventionStatus::Concluded ? now()->toDateString() : null,
-        ])->save();
+        DB::transaction(function () use ($intervention, $status, $validated): void {
+            $intervention->fill([
+                'status' => $status,
+                // Stamp the conclusion date the moment it is concluded; clear it
+                // when it reopens, so a reopened intervention does not carry a
+                // date saying it ended.
+                'concluded_on' => $status === InterventionStatus::Concluded ? now()->toDateString() : null,
+                // A closed intervention has nothing left to review. The date is
+                // cleared rather than left to sit in the pending list forever —
+                // and it is the teacher's to set again if they reopen it.
+                'review_on' => $status->isOpen() ? $intervention->review_on : null,
+            ])->save();
+
+            // An appraisal given while concluding is a follow-up like any other,
+            // dated today and kept in the history. It never overwrites an
+            // earlier one (§28).
+            if (($validated['effectiveness'] ?? null) !== null || ($validated['notes'] ?? null) !== null) {
+                $intervention->reviews()->create([
+                    'reviewed_on' => now()->toDateString(),
+                    'effectiveness' => $validated['effectiveness'] ?? null,
+                    'notes' => $validated['notes'] ?? null,
+                    'reviewed_by' => $this->user()->getKey(),
+                ]);
+            }
+        });
+
+        // REOPENING IS ITS OWN EVENT, and the previous conclusion is not erased
+        // from the trail by it (§44).
+        $this->record(
+            $was === InterventionStatus::Concluded && $status->isOpen()
+                ? 'intervention.reopened'
+                : 'intervention.status_changed',
+            $intervention->refresh(),
+            ['from' => $was->value, 'to' => $status->value],
+        );
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Estado atualizado.')]);
 
@@ -312,16 +522,37 @@ class InterventionController extends Controller
             'reviewed_on' => ['required', 'date'],
             'effectiveness' => ['nullable', Rule::enum(InterventionEffectiveness::class)],
             'notes' => ['nullable', 'string', 'max:2000'],
+            // Recording what was observed is also the natural moment to decide
+            // when to look again. Absent means «leave it as it was»; an explicit
+            // empty string clears it.
+            'review_on' => ['nullable', 'date'],
+            'clear_review' => ['sometimes', 'boolean'],
         ]);
 
-        $intervention->reviews()->create([
+        DB::transaction(function () use ($intervention, $validated): void {
+            $intervention->reviews()->create([
+                'reviewed_on' => $validated['reviewed_on'],
+                'effectiveness' => $validated['effectiveness'] ?? null,
+                'notes' => $validated['notes'] ?? null,
+                'reviewed_by' => $this->user()->getKey(),
+            ]);
+
+            if (($validated['clear_review'] ?? false) === true) {
+                $intervention->forceFill(['review_on' => null])->save();
+            } elseif (($validated['review_on'] ?? null) !== null) {
+                $intervention->forceFill(['review_on' => $validated['review_on']])->save();
+            }
+        });
+
+        // The rating is a decision and travels; the note is prose about a child
+        // and does not (§84).
+        $this->record('intervention.followup_added', $intervention->refresh(), [
             'reviewed_on' => $validated['reviewed_on'],
             'effectiveness' => $validated['effectiveness'] ?? null,
-            'notes' => $validated['notes'] ?? null,
-            'reviewed_by' => $this->user()->getKey(),
+            'has_note' => ($validated['notes'] ?? null) !== null,
         ]);
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('Apreciação adicionada.')]);
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Acompanhamento registado.')]);
 
         return back();
     }
@@ -367,6 +598,18 @@ class InterventionController extends Controller
                 'nullable', 'string', 'max:5000',
             ],
             'started_on' => ['required', 'date'],
+            // «Rever em». Never required — an intervention a teacher does not
+            // plan to revisit is a complete intervention (§38).
+            'review_on' => ['nullable', 'date'],
+            // PORQUÊ, O QUÊ, PARA QUÊ. All optional: registering something small
+            // has to stay as fast as it was (§5, §16). A code names a library
+            // entry; the label is what the teacher saw when they picked it, and
+            // is what gets kept (§56).
+            'motive_code' => ['nullable', 'string', 'max:64'],
+            'motive_label' => ['nullable', 'string', 'max:300'],
+            'strategy_code' => ['nullable', 'string', 'max:64'],
+            'strategy_label' => ['nullable', 'string', 'max:300'],
+            'objective' => ['nullable', 'string', 'max:1000'],
             'available_for_reports' => ['boolean'],
             // How the legal framing should be settled. Never the framing's
             // source — that is the server's to decide (see resolveLegalFraming).
@@ -576,9 +819,27 @@ class InterventionController extends Controller
     {
         return [
             'ulid' => $intervention->ulid,
-            'title' => $intervention->title,
+            // What the teacher will recognise, never a code and never «legado»
+            // (§35).
+            'title' => $intervention->displayTitle(),
             'description' => $intervention->description,
+            // The four questions. Null is shown as an absence — «sem objetivo
+            // registado», never «objetivo geral» (§4).
+            'motive_code' => $intervention->motive_code,
+            'motive' => $intervention->motive_label,
+            'strategy_code' => $intervention->strategy_code,
+            'strategy' => $intervention->strategy_label,
+            'objective' => $intervention->objective,
+            'review_on' => $intervention->review_on?->toDateString(),
+            'needs_review' => $intervention->needsReview(),
+            // Derived from the follow-ups, never stored beside them (§59).
+            'effectiveness' => $intervention->currentEffectiveness()?->value,
+            'effectiveness_label' => $intervention->currentEffectiveness()?->label(),
+            'effectiveness_short' => $intervention->currentEffectiveness()?->shortLabel(),
+            'last_followup_on' => $intervention->reviews->first()?->reviewed_on->toDateString(),
+            'followup_count' => $intervention->reviews->count(),
             'intervention_type' => $intervention->intervention_type?->value,
+            'intervention_type_label' => $intervention->intervention_type?->label(),
             'context' => $intervention->context()?->value,
             'context_label' => $intervention->context()?->label(),
             'target_type' => $intervention->target_type->value,
@@ -604,6 +865,8 @@ class InterventionController extends Controller
                 'source' => $intervention->legal_mapping_source?->value,
                 'source_label' => $intervention->legal_mapping_source?->label(),
             ] : null,
+            // Newest first, which is how the model orders them. The detail
+            // screen reverses it to read the story forwards (§29).
             'reviews' => $intervention->reviews->map(fn (InterventionReview $review) => [
                 'ulid' => $review->ulid,
                 'reviewed_on' => $review->reviewed_on->toDateString(),
