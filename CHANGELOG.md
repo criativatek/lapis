@@ -2,6 +2,62 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.37.0] — 2026-08-20
+
+Três módulos novos — Relatórios, Acompanhamento do Aluno e a área de ação
+pedagógica reescrita — mais a reorganização da navegação que os passou a
+arrumar. Nenhuma fórmula de avaliação mudou.
+
+### Added
+
+#### Relatórios
+
+- **Um relatório passa a ser um objeto da aplicação, não um download.** É criado, editado, finalizado, exportado, listado e reutilizado. Um relatório derivado de outro herda o que já foi escrito e mantém a referência ao original.
+- **Relatório de turma**, com as secções que descrevem os dados: quem é a turma, a leitura principal, a distribuição das classificações atribuídas, os domínios, a evolução, o diário de bordo, o que o professor declarou sobre a planificação, as intervenções registadas e um fecho. Cada frase nomeia a leitura de que fala — uma percentagem sem a sua base não é um facto.
+- **Relatório individual**, construído a partir da mesma leitura da turma. O número do aluno e o da turma saem do mesmo cálculo, por isso «72,1%, acima da média da turma (66,4%)» são dois números do mesmo momento e não podem discordar entre si.
+- **Relatório por registo de diário**, com a unidade nunca convertida. «10 verificações de trabalho de casa, realizadas em 8 registos» é uma afirmação sobre verificações; transformá-la numa percentagem de alunos seria dizer outra coisa. Cada contagem leva o seu denominador em texto.
+- **Relatório institucional** (plano Institucional), que se recusa a juntar escalas incompatíveis. «1 a 5» e «0 a 20» não são um eixo comum: as classificações são agrupadas por escala, cada grupo tem o seu parágrafo e a sua taxa, e não há total nenhum na página. As «Notas de comparabilidade» dizem sempre o que não pôde ser comparado.
+- **Camada pedagógica — perguntada, nunca inferida.** O LÁPIS guarda ocorrências disciplinares e registos de mérito; não guarda comportamento nem atitude. As secções que caracterizam comportamento, nomeiam dificuldades ou propõem medidas escrevem a partir das respostas do professor, e de nenhum dado.
+- **Finalizar congela o documento.** Ao finalizar, texto, estrutura, números, timbre, âmbito temporal e as respostas do professor são copiados para dentro do relatório e selados. Uma nota corrigida em maio, um logótipo trocado ou o nome oficial do agrupamento reescrito não alteram o relatório assinado em fevereiro — reimprimi-lo não corre uma única consulta.
+- **Exportação em PDF e Word**, as duas a partir da mesma estrutura final. Um rascunho sai carimbado RASCUNHO em ambos os formatos.
+- **Modelos de relatório.** Um modelo guarda a organização de um documento — que secções entram, por que ordem, com que tom — e nunca o seu conteúdo. Há modelos do sistema, da escola e pessoais; um relatório pode começar a partir de um, e um rascunho pode ser guardado como modelo.
+- **Reordenar as secções de um rascunho**, com o rato ou pelo teclado.
+- **Biblioteca pedagógica** de dificuldades, estratégias e objetivos, que sugere sem preencher: o que o professor escolhe é copiado no momento da escolha, por isso reescrever uma entrada em setembro não muda o que um relatório de fevereiro diz.
+- **Análise Pedagógica nos Relatórios** é uma capacidade nova dos planos Pro e Institucional. As secções descritivas continuam no plano Base — o que distingue os planos é o relatório poder *interpretar*.
+
+#### Acompanhamento do Aluno
+
+- **O ano de um aluno contado como uma história, não como um painel.** Onde está → como evoluiu → em quê → o que aconteceu, que é a ordem das perguntas que um professor faz. Quatro indicadores no topo e nem mais um, cada um a dizer a que leitura pertence.
+- **Nada é recalculado.** A página lê os números canónicos que já existem, junta o percurso por período e as autoavaliações, e escolhe — não há motor de cálculo novo, logo não há forma de discordar do resto da aplicação.
+- **A ficha do aluno mostra as suas intervenções** e permite abrir uma nova sobre o aluno que está a ser lido, sem procurar a turma.
+
+#### Estratégias e Medidas
+
+- **Uma intervenção passa a registar o raciocínio, não só a ação:** porquê, o quê, para quê, e o que se observou depois. Nada disto é obrigatório — registar algo pequeno continua tão rápido como era, e uma intervenção antiga mostra «sem objetivo registado» em vez de um objetivo inventado.
+- **Acompanhar uma intervenção ao longo do tempo.** «+ Acompanhamento» acrescenta ao histórico sem editar a intervenção: cada entrada é datada e lida para a frente — iniciada, acompanhada, avaliada, concluída. Funciona no telemóvel.
+- **«Rever em»**, a data do próprio professor, e a única coisa que torna uma intervenção pendente. Nenhuma regra a inventa a partir do tempo decorrido.
+- **Dois estados novos:** «suspensa» (pausada, pode retomar) é diferente de «cancelada» (abandonada), e uma apreciação pode dizer «necessita de reformulação».
+
+#### Apoio à redação (opcional, por configurar)
+
+- **Um botão que oferece dizer melhor uma secção, e não escreve nada de novo.** Diz «Aperfeiçoar redação» e não «Gerar com IA», porque as frases foram escritas a partir de dados verificados antes de alguém clicar. Uma secção de cada vez, a proposta aparece ao lado do parágrafo que substituiria, e «Manter atual» é um botão a sério.
+- **Sem fornecedor escolhido, deliberadamente.** O LÁPIS é instalado com esta camada desligada e sem nenhuma empresa nomeada: não há motor, endereço nem modelo por omissão. Enquanto não for configurada por quem administra a instalação, a funcionalidade anuncia-se como indisponível — e os Relatórios funcionam inteiramente sem ela. Os factos nunca vêm daqui: só a redação.
+
+### Changed
+
+- **O menu passou a estar ordenado pelo trabalho do professor** — organizar, avaliar, acompanhar, intervir, documentar — e não pela ordem em que foi construído. As áreas transversais ficam em baixo.
+- **«Instrumentos» é agora «Elementos de Avaliação»** e **«Intervenções» é agora «Estratégias e Medidas»**: a segunda área é mais larga do que as medidas formais — abrange diferenciação, apoio ao estudo, apoio à interpretação de enunciados e estratégias de autorregulação. Os endereços não mudaram.
+- **Cada entrada do menu diz para que serve**, em tooltip e no nome lido por um leitor de ecrã, antes de o professor clicar.
+- **«Resultados» deixou de ser um sítio para onde se navega.** A pergunta é «como está esta turma?»: o seletor abre agora a leitura da turma, e a grelha operacional onde se decide uma classificação está a um clique dela. Nenhuma rota foi removida.
+- **Os títulos das secções da barra lateral usam o amarelo da marca**, discreto e mais legível do que o cinzento que substituem.
+
+### Fixed
+
+- **Intervenções importadas antes de o módulo ter tipos deixam de imprimir o que a importação deixou para trás.** Um título «Legado sem dominio» e uma descrição «x» estão genuinamente guardados, mas numa lista leem-se como uma categoria e uma observação pedagógicas, que não são.
+- **Um relatório só explica a diferença entre registos e alunos quando ela existe.** Dizer «8 registos sobre 8 alunos» é ruído; dizer «10 verificações em 8 registos» é informação.
+- **A pré-visualização da identidade da escola deixa de ser espremida** para uma coluna estreita nas Definições.
+- Os relatórios deixaram de fazer perguntas cujas respostas nunca chegariam a ser impressas.
+
 ## [0.36.0] — 2026-08-19
 
 ### Definições → Identidade da escola

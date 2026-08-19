@@ -33,13 +33,15 @@ Duas condições têm de estar satisfeitas para um deploy correr, e **as duas j�
 falharam em produção**: a chave tem de estar em `authorized_keys2` (armadilha 6)
 e o `lapis-deploy` tem de ser **dono** dos ficheiros da aplicação (armadilha 8).
 
-**Versão em produção: 0.29.0** desde 2026-08-14 (Intervenções + preparação
-multijurisdição; duas migrations aditivas). Antes disso, 0.28.0 desde 2026-08-13
-— esse deploy apanhou três versões de uma vez (0.26.0 Registos, 0.27.0 ligações
-de autoavaliação, 0.28.0 Avaliações) porque a produção tinha ficado na 0.25.0.
+**Versão em produção: 0.37.0** desde 2026-08-20 (Relatórios, Acompanhamento do
+Aluno, Estratégias e Medidas, reorganização da navegação; três migrations
+aditivas, e duas dependências novas — `dompdf/dompdf` e `phpoffice/phpword` —
+que tornam o `composer install` do passo 5 obrigatório e não opcional). Antes
+disso, 0.36.0 desde 2026-08-18 (Identidade da escola).
 **Confirmar sempre a versão real no servidor (`grep version config/app.php`)
 antes de assumir de onde parte o deploy**, já que o servidor não tem `.git` e
-nada indica de fora qual o commit que lá está.
+nada indica de fora qual o commit que lá está — o `build.json` do pacote e o
+`lapis:release-check` respondem-no sem depender de memória.
 
 ## Atualizações (redeploy de código) — o fluxo que funciona
 
