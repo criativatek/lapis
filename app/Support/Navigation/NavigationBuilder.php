@@ -59,6 +59,10 @@ class NavigationBuilder
                 // One line saying what the page is for, shown in the sidebar
                 // tooltip. Null on the core items, which need no explaining.
                 'description' => $item['description'] ?? null,
+                // Extra paths this entry answers for. «Turma» is one menu item
+                // over three historical routes — the reading, the grid and the
+                // synthesis — and all three should light it up (§36).
+                'match' => $item['match'] ?? [],
                 'icon' => $item['icon'],
                 'phase' => $item['phase'],
                 // Not-yet-built pages still resolve — routes/app.php registers a

@@ -10,8 +10,19 @@
 | same list, and NavigationBuilder filters it by the organization's entitlements.
 | One list drives both, so a menu item and its route can never disagree.
 |
-| Order and grouping come from "Estrutura de menus e submenus da aplicação.docx"
-| (the canonical navigation — the .png mockups are exploratory and disagree).
+| THE ORDER IS THE TEACHER'S WORK, NOT THE BUILD ORDER:
+|
+|     organizar → avaliar → acompanhar → intervir → documentar
+|
+| Everything else — the year's calendar, the configuration — is transversal and
+| sits below, because it is visited occasionally and not in sequence.
+|
+| «RESULTADOS» IS NOT AN ENTRY ANY MORE, and no code was deleted for it. The
+| routes, the controller, the services and the page all remain: what changed is
+| that a teacher no longer navigates to «resultados» as a place. They ask «como
+| está esta turma?» and land on the reading; the operational grid where a
+| classification is decided is reached from there and from the dashboard, and is
+| still the same screen it always was.
 |
 | icon: a @lucide/vue component name, resolved in resources/js/lib/navIcons.ts.
 | module: the entitlement key gating it (null = always available). Keys match
@@ -19,19 +30,15 @@
 | phase: which build phase delivers the real page. Until then the route renders
 | a placeholder; this is shown to the teacher as an "em breve" hint.
 | description: one line saying what the page is FOR, shown in the sidebar's
-| tooltip. Optional — the core items are self-explanatory and carry none.
+| tooltip and in the accessible name.
+| match: extra path fragments that should light this item up. Needed where one
+| entry answers for several historical routes — the active state is an exact
+| path match otherwise.
 |
 | THE `key` IS AN IDENTIFIER AND THE `label` IS COPY. Renaming a label changes
 | what a teacher reads; renaming a key would change a route, because
 | routes/app.php registers one placeholder route per key. They move
-| independently on purpose: «Evolução do Aluno» became «Acompanhamento do Aluno»
-| without a single route, controller, service or capability changing name.
-|
-| THE GROUPING ANSWERS «PARA QUE SERVE ISTO?» BEFORE THE TEACHER CLICKS. The
-| core assessment workflow — turmas, perfis, instrumentos, avaliações,
-| resultados — stays as one unlabelled run, because it is one sequence a teacher
-| walks in order. What follows are three different KINDS of work, and they read
-| as three because they are: understanding, acting, and producing a document.
+| independently on purpose.
 |
 */
 
@@ -40,38 +47,59 @@ return [
     'sections' => [
 
         [
-            'label' => null, // The teacher's core work carries no section heading.
+            'label' => null, // Where the teacher lands. It heads no category.
             'items' => [
                 ['key' => 'dashboard', 'label' => 'Painel do Professor', 'icon' => 'LayoutGrid', 'module' => null, 'phase' => 0],
-                ['key' => 'classes', 'label' => 'As Minhas Turmas', 'icon' => 'Users', 'module' => 'classes', 'phase' => 1, 'route' => 'classes.index', 'built' => true],
-                ['key' => 'students', 'label' => 'Alunos', 'icon' => 'GraduationCap', 'module' => 'students', 'phase' => 1],
-                ['key' => 'assessment-profiles', 'label' => 'Perfis de Avaliação', 'icon' => 'SlidersHorizontal', 'module' => 'assessment_profiles', 'phase' => 1, 'route' => 'assessment-profiles.index', 'built' => true],
-                ['key' => 'instruments', 'label' => 'Instrumentos', 'icon' => 'ClipboardList', 'module' => 'instruments', 'phase' => 2, 'route' => 'instruments.index', 'built' => true],
-                ['key' => 'assessments', 'label' => 'Avaliações', 'icon' => 'PenLine', 'module' => 'assessments', 'phase' => 2, 'route' => 'assessments.index', 'built' => true],
-                ['key' => 'results', 'label' => 'Resultados', 'icon' => 'BarChart3', 'module' => 'results', 'phase' => 2, 'route' => 'results.index', 'built' => true],
-                ['key' => 'self-assessments', 'label' => 'Autoavaliações', 'icon' => 'UserCheck', 'module' => 'self_assessments', 'phase' => 3, 'route' => 'self-assessments.index', 'built' => true],
             ],
         ],
 
         [
-            // COMPREENDER. The collective reading and the individual one, side
-            // by side — «como está a turma» and «como está este aluno» are the
-            // same question asked of two subjects, and putting six menus between
-            // them hid that.
-            'label' => 'Análise',
+            // ORGANIZAR — who the year is about.
+            'label' => 'Turmas e alunos',
             'items' => [
-                ['key' => 'class-analysis', 'label' => 'Análise da Turma', 'icon' => 'PieChart', 'module' => 'class_analysis', 'phase' => 3, 'description' => 'Resultados e evolução da turma.'],
-                // «Acompanhamento», not «Evolução»: what this page does is
-                // follow one student through the year. «Evolução» stays where it
-                // belongs — on the chart inside it, which is a reading of
-                // results over time and not the page's purpose (§2, §11).
-                ['key' => 'student-progress', 'label' => 'Acompanhamento do Aluno', 'icon' => 'Footprints', 'module' => 'student_progress', 'phase' => 3, 'route' => 'student-progress.index', 'built' => true, 'description' => 'Percurso individual ao longo do ano.'],
+                ['key' => 'classes', 'label' => 'Turmas', 'icon' => 'Users', 'module' => 'classes', 'phase' => 1, 'route' => 'classes.index', 'built' => true, 'description' => 'Gerir e aceder às suas turmas.'],
+                ['key' => 'students', 'label' => 'Alunos', 'icon' => 'GraduationCap', 'module' => 'students', 'phase' => 1, 'description' => 'Consultar os alunos.'],
             ],
         ],
 
         [
-            // AGIR. What the teacher did, and what the teacher saw. Two
-            // different acts, which is why they are two entries and not one.
+            // AVALIAR — recolher, registar e decidir. Every act that WRITES
+            // assessment information belongs to this group, including the
+            // classification decision, which is reached from the class's own
+            // screens (§30).
+            'label' => 'Avaliação',
+            'items' => [
+                ['key' => 'instruments', 'label' => 'Instrumentos', 'icon' => 'ClipboardList', 'module' => 'instruments', 'phase' => 2, 'route' => 'instruments.index', 'built' => true, 'description' => 'Preparar instrumentos de avaliação.'],
+                // «Registo de Avaliações», because that is the act. The route,
+                // the controller and the capability are all still `assessments`
+                // — a label is not a rename (§17).
+                ['key' => 'assessments', 'label' => 'Registo de Avaliações', 'icon' => 'PenLine', 'module' => 'assessments', 'phase' => 2, 'route' => 'assessments.index', 'built' => true, 'description' => 'Registar avaliações dos alunos.', 'match' => ['/classifications']],
+                ['key' => 'self-assessments', 'label' => 'Autoavaliações', 'icon' => 'UserCheck', 'module' => 'self_assessments', 'phase' => 3, 'route' => 'self-assessments.index', 'built' => true, 'description' => 'Gerir as autoavaliações.'],
+            ],
+        ],
+
+        [
+            // ACOMPANHAR — consultar e interpretar. The heading is a heading and
+            // never a link: there is no «Acompanhamento» page, because the
+            // question is always about a class or about a student and never
+            // about the category (§15).
+            'label' => 'Acompanhamento',
+            'items' => [
+                // «Turma», and the group is half the meaning: «Turmas» above
+                // manages them, this one reads one of them (§54). The key stays
+                // `class-analysis` because that is what this concept has always
+                // been called in this file.
+                //
+                // Gated by `results`, which is what its destination actually
+                // enforces. Both keys are Base and always travel together, so no
+                // plan sees a different menu than it saw before (§23).
+                ['key' => 'class-analysis', 'label' => 'Turma', 'icon' => 'PieChart', 'module' => 'results', 'phase' => 3, 'route' => 'results.index', 'built' => true, 'description' => 'Desempenho e evolução da turma.', 'match' => ['/results']],
+                ['key' => 'student-progress', 'label' => 'Aluno', 'icon' => 'Footprints', 'module' => 'student_progress', 'phase' => 3, 'route' => 'student-progress.index', 'built' => true, 'description' => 'Percurso individual ao longo do ano.', 'match' => ['/evolucao']],
+            ],
+        ],
+
+        [
+            // INTERVIR — what the teacher did, and what the teacher saw.
             'label' => 'Ação pedagógica',
             'items' => [
                 ['key' => 'interventions', 'label' => 'Intervenções', 'icon' => 'HeartHandshake', 'module' => 'interventions', 'phase' => 3, 'route' => 'interventions.index', 'built' => true, 'description' => 'Ações pedagógicas e acompanhamento.'],
@@ -80,10 +108,7 @@ return [
         ],
 
         [
-            // RELATAR. A report is an artifact with a life of its own —
-            // editable, finalizable, exportable — and the only thing here that
-            // leaves the application. It sits alone because it is a different
-            // kind of thing from everything above it.
+            // DOCUMENTAR — the only thing here that leaves the application.
             'label' => 'Documentos',
             'items' => [
                 ['key' => 'reports', 'label' => 'Relatórios', 'icon' => 'FileText', 'module' => 'reports', 'phase' => 3, 'route' => 'reports.index', 'built' => true, 'description' => 'Criar, finalizar e exportar documentos.'],
@@ -93,23 +118,40 @@ return [
         [
             'label' => 'Organização do ano',
             'items' => [
-                ['key' => 'calendar', 'label' => 'Agenda do Ano Letivo', 'icon' => 'CalendarDays', 'module' => 'calendar', 'phase' => 5],
-                ['key' => 'lessons', 'label' => 'Aulas e Sumários', 'icon' => 'BookOpen', 'module' => 'lessons', 'phase' => 5],
+                ['key' => 'calendar', 'label' => 'Agenda do Ano Letivo', 'icon' => 'CalendarDays', 'module' => 'calendar', 'phase' => 5, 'description' => 'Organizar o ano letivo.'],
+                // KEPT DELIBERATELY. The approved structure did not enumerate
+                // it, and removing it would take a Pro entry — and its
+                // placeholder route — away from organizations that have the
+                // capability today. Changing what a plan sees is the one thing
+                // this reorganization must not do (§23, §41).
+                ['key' => 'lessons', 'label' => 'Aulas e Sumários', 'icon' => 'BookOpen', 'module' => 'lessons', 'phase' => 5, 'description' => 'Registar aulas e sumários.'],
             ],
         ],
 
         [
             'label' => 'Instituição',
             'items' => [
-                ['key' => 'institution', 'label' => 'Administração Institucional', 'icon' => 'Building2', 'module' => 'institution_admin', 'phase' => 7],
+                ['key' => 'institution', 'label' => 'Administração Institucional', 'icon' => 'Building2', 'module' => 'institution_admin', 'phase' => 7, 'description' => 'Gerir a instituição.'],
+            ],
+        ],
+
+        [
+            // TRANSVERSAL — set up once, revisited rarely. The assessment
+            // profile decides how everything above is calculated, which is
+            // exactly why it belongs to configuration and not to the daily run.
+            'label' => 'Configuração',
+            'items' => [
+                ['key' => 'assessment-profiles', 'label' => 'Perfis de Avaliação', 'icon' => 'SlidersHorizontal', 'module' => 'assessment_profiles', 'phase' => 1, 'route' => 'assessment-profiles.index', 'built' => true, 'description' => 'Definir critérios, domínios, pesos e escalas.'],
+                ['key' => 'settings', 'label' => 'Configurações', 'icon' => 'Settings', 'module' => null, 'route' => 'profile.edit', 'phase' => 0, 'description' => 'Configurar a aplicação e a escola.', 'match' => ['/settings']],
             ],
         ],
 
     ],
 
-    // Sits at the foot of the sidebar, below the sections. Always available.
-    'footer' => [
-        ['key' => 'settings', 'label' => 'Configurações', 'icon' => 'Settings', 'module' => null, 'route' => 'profile.edit', 'phase' => 0],
-    ],
+    // Empty on purpose: «Configurações» moved up into its own group, beside the
+    // assessment profile it sits next to conceptually. The sidebar's footer
+    // still carries the user menu, and renders no navigation block when there is
+    // nothing here.
+    'footer' => [],
 
 ];

@@ -17,7 +17,25 @@ defineProps<{
     section: SharedNavSection;
 }>();
 
-const { isCurrentUrl } = useCurrentUrl();
+const { isCurrentUrl, currentUrl } = useCurrentUrl();
+
+/**
+ * Whether this entry is the page being looked at.
+ *
+ * THE EXACT HREF IS NOT ENOUGH ANY MORE. «Turma» is one menu entry over three
+ * historical routes — the class reading, the results grid and the synthesis —
+ * and a teacher who followed a link into any of them should still see where
+ * they are. The extra fragments come from the navigation config, so the
+ * relationship between an entry and the paths it answers for is written down
+ * once, next to the entry itself (§36).
+ */
+function isActive(item: SharedNavItem): boolean {
+    if (item.href && isCurrentUrl(item.href)) {
+        return true;
+    }
+
+    return item.match.some((fragment) => currentUrl.value.includes(fragment));
+}
 
 /**
  * What the sidebar says about an item when there is room to say more.
@@ -33,8 +51,17 @@ function hint(item: SharedNavItem): string {
 </script>
 
 <template>
+    <!-- Eight groups where there used to be three, so the vertical budget got
+         tighter. The gap between groups comes down and the heading gets shorter
+         and quieter — a heading is a signpost and must not compete with the
+         links under it. Nothing was removed to buy the room (§32, §33). -->
     <SidebarGroup class="px-2 py-0">
-        <SidebarGroupLabel v-if="section.label">{{ section.label }}</SidebarGroupLabel>
+        <SidebarGroupLabel
+            v-if="section.label"
+            class="h-6 text-[11px] font-medium tracking-wide text-sidebar-foreground/55 uppercase"
+        >
+            {{ section.label }}
+        </SidebarGroupLabel>
         <SidebarMenu>
             <SidebarMenuItem v-for="item in section.items" :key="item.key">
                 <!-- Built pages link. Pages a later phase will deliver render as
@@ -43,7 +70,7 @@ function hint(item: SharedNavItem): string {
                 <SidebarMenuButton
                     v-if="item.href"
                     as-child
-                    :is-active="isCurrentUrl(item.href)"
+                    :is-active="isActive(item)"
                     :tooltip="hint(item)"
                 >
                     <!-- The accessible name carries the description too, so a

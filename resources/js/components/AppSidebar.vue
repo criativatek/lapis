@@ -37,7 +37,10 @@ const footerSection = computed(() => ({ label: null, items: nav.value.footer }))
             </SidebarMenu>
         </SidebarHeader>
 
-        <SidebarContent>
+        <!-- gap-1 rather than the default gap-2: eight headings cost real
+             height, and the space between groups is the cheapest place to find
+             it without shrinking a touch target (§33). -->
+        <SidebarContent class="gap-1">
             <NavProfessor
                 v-for="(section, index) in nav.sections"
                 :key="index"

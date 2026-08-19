@@ -23,6 +23,8 @@ export type SharedNavItem = {
     label: string;
     /** One line on what the page is for. Null on items that need no explaining. */
     description: string | null;
+    /** Extra path fragments that should mark this entry as the current one. */
+    match: string[];
     icon: string;
     phase: number;
     href: string | null;
