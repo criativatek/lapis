@@ -23,13 +23,14 @@ versão em [CHANGELOG.md](../CHANGELOG.md); o "porquê" das decisões em [docs/a
 | **Relatórios — modelos** | ✅ | `report_templates` (sistema / pessoal / escola). Um modelo guarda estrutura, ordem, registo e opções — nunca dados. O relatório guarda um snapshot do modelo: editar o modelo não altera relatórios existentes. Pessoais exigem `template_sharing` (Pro), institucionais `institution_library` (Institucional). |
 | **Relatórios — reordenar secções** | ✅ | Rascunho apenas. Rato e teclado, com anúncio aria-live; só `position` muda. A ordem sobrevive a regenerar/restaurar/excluir e chega à pré-visualização, ao PDF, ao DOCX e ao documento congelado. |
 | **Relatórios — aperfeiçoar redação** | ✅ (desligado) | Camada de IA que **reescreve** uma secção; nunca é fonte de facto. Números e datas saem como marcadores, nomes saem como «Aluno A», e um guarda recusa o que voltar alterado ou inventado. `ai_assistance` (Pro). **Sem fornecedor escolhido**: `LAPIS_AI_DRIVER` vazio = indisponível, e o módulo funciona na mesma. Ver [ADR-0006](adr/0006-ai-rewrites-text-it-is-never-the-source.md). |
+| **Evolução do Aluno** | ✅ | Vista longitudinal individual: resultado atual com a leitura nomeada, linha de momentos reais (períodos + intercalares lidas do snapshot), domínios, classificações, autoavaliação, registos e intervenções. Consome `BuildResultsProgression` e `BuildClassStatistics` — não calcula nada. Base, sem paywall interno. |
 | **Auditoria (§22.4)** | ✅ | `audit_events` imutável, tenant-scoped; página «Registo de atividade». |
 | **Registos / Evidências (§14)** | ✅ | Diário de bordo qualitativo; nunca no cálculo. |
 | **Autoavaliação (§15)** | ✅ | Por domínio, comparada com o cálculo, nunca somada. |
 | **Intervenções (§14)** | ✅ | Ciclo de vida + apreciações de eficácia. |
 | **Backoffice de plataforma** | ✅ | `/admin` super-admin: gestão de contas, criar/provisionar, SMTP na BD (sobrepõe `.env`), impersonar. Guia: [backoffice.md](backoffice.md). |
 
-Suite: 1890 testes verdes (1 skipped) · Pint/Larastan/vue-tsc limpos. **Em produção** em
+Suite: 1924 testes verdes (1 skipped) · Pint/Larastan/vue-tsc limpos. **Em produção** em
 [lapis.criativatek.com](https://lapis.criativatek.com) (versão 0.19.x).
 
 ## Regras pedagógicas (5 questões que bloqueavam a Fase 1)
@@ -44,10 +45,16 @@ formato. Tabelas de suporte (`import_jobs`) desenhadas em `domain-model.md`.
 
 ## O que falta
 
-- **Fase 3 restante:** Evolução do Aluno, Análise da Turma (distribuição/estatística).
+- **Fase 3 restante:** Análise da Turma (distribuição/estatística) — o único
+  placeholder que resta da Fase 3.
 - **Resultados persistidos (§6.2):** `student_overall_results` / `student_domain_results`
-  / `instrument_student_results`. Hoje tudo é calculado on-the-fly; as vistas de
-  análise/evolução vão precisar de persistência. (Deixado por YAGNI até existirem essas vistas.)
+  / `instrument_student_results`. Continua tudo calculado on-the-fly. A Evolução do
+  Aluno mostra o custo disso: faz duas passagens agregadas sobre a turma (~120
+  queries na turma de demonstração, contra ~67 da Estatística) porque precisa da
+  linha longitudinal E da camada estatística. Persistir resultados, ou dar a
+  `BuildClassStatistics::for()` um parâmetro opcional com a progressão já
+  construída, resolve-o — e o segundo é uma alteração a um serviço canónico, a
+  fazer de propósito e não de passagem.
 - **Páginas ainda placeholder:** Alunos (gestão), Avaliações (workspace).
 - **Fluxos avulsos:** encerramento de período (§13.6 — o trigger `period_closed` existe
   no enum, falta o fluxo), anulação de instrumento.
@@ -55,7 +62,7 @@ formato. Tabelas de suporte (`import_jobs`) desenhadas em `domain-model.md`.
 
 ## Próximo candidato sem bloqueio, por valor
 
-1. **Análise da Turma** ou **Evolução do Aluno** — precisam primeiro de decidir a
-   persistência de resultados (§6.2) ou calcular on-the-fly como o resto.
+1. **Análise da Turma** — o último placeholder da Fase 3. Lê os mesmos read models
+   que a Evolução do Aluno já consome, pelo que não fica bloqueada por nada.
 2. **Alunos** (página de gestão) — fecha um placeholder da Fase 1.
 3. **Q5 Intuitivo** — assim que houver o ficheiro real.
