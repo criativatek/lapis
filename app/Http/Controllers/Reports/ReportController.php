@@ -23,9 +23,13 @@ use App\Models\User;
 use App\Rules\BelongsToCurrentOrganization;
 use App\Services\Audit\AuditLog;
 use App\Services\Documents\DocumentIdentity;
+use App\Services\Documents\SchoolLogoService;
 use App\Services\Reporting\ComposeReport;
 use App\Services\Reporting\CreateReport;
+use App\Services\Reporting\DeriveReport;
+use App\Services\Reporting\FinalizeReport;
 use App\Services\Reporting\ReportCapabilities;
+use App\Services\Reporting\ReportComparison;
 use App\Services\Reporting\ReportLibraryProvider;
 use App\Services\Reporting\ReportListing;
 use Illuminate\Http\JsonResponse;
@@ -33,9 +37,11 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Relatórios — the module's own home (§53, §54, §60).
@@ -283,7 +289,7 @@ class ReportController extends Controller
      * The report itself: the editor for a draft, the frozen document for a
      * finalized one.
      */
-    public function show(Report $report): Response
+    public function show(Report $report, ReportComparison $comparison): Response
     {
         Gate::authorize('view', $report);
 
@@ -291,20 +297,15 @@ class ReportController extends Controller
 
         return Inertia::render('reports/Show', [
             'report' => $this->payload($report),
-            'sections' => $report->sections->map(fn (ReportSection $section) => [
-                'ulid' => $section->ulid,
-                'key' => $section->key,
-                'heading' => $section->heading,
-                'position' => $section->position,
-                'included' => $section->included,
-                'body' => $section->body,
-                'edited' => $section->edited,
-                'can_restore' => $section->canRestore(),
-                'has_content' => $section->hasContent(),
-                'sources' => $section->sources ?? [],
-                'data' => $section->data,
-            ])->all(),
-            'identity' => $this->identity->forCurrentOrganization(),
+            'sections' => $this->sectionsPayload($report),
+            // A FINALIZED REPORT SHOWS ITS OWN LETTERHEAD, not the school's
+            // current one. That is the whole point of freezing it (§39).
+            'identity' => $report->isFinalized()
+                ? (array) data_get($report->document, 'identity', [])
+                : $this->identity->forCurrentOrganization(),
+            // §35: what moved since the report this one started from. Facts, and
+            // no causation.
+            'comparison' => $comparison->for($report),
             'characterisation' => $this->characterisationOptions($report),
             // §14: what a difficulty can be, and which strategies answer each
             // one. Only sent when the plan includes the sections that use it.
@@ -326,8 +327,52 @@ class ReportController extends Controller
                 'finalize' => Gate::allows('finalize', $report),
                 'delete' => Gate::allows('delete', $report),
                 'export' => Gate::allows('export', $report),
+                'derive' => Gate::allows('derive', $report),
             ],
         ]);
+    }
+
+    /**
+     * The sections a screen should show.
+     *
+     * A DRAFT SHOWS ITS ROWS; A FINALIZED REPORT SHOWS ITS DOCUMENT. Reading
+     * the rows of a finished report would put today's regenerated text on a
+     * page that was signed months ago — the rows are how it was assembled, the
+     * document is what it says (§37).
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function sectionsPayload(Report $report): array
+    {
+        if ($report->isFinalized()) {
+            return array_values(array_map(fn ($section): array => [
+                'ulid' => null,
+                'key' => (string) ($section['key'] ?? ''),
+                'heading' => (string) ($section['heading'] ?? ''),
+                'position' => (int) ($section['position'] ?? 0),
+                'included' => true,
+                'body' => $section['body'] ?? null,
+                'edited' => (bool) ($section['edited'] ?? false),
+                'can_restore' => false,
+                'has_content' => true,
+                'sources' => $section['sources'] ?? [],
+                'data' => $section['data'] ?? null,
+            ], (array) data_get($report->document, 'sections', [])));
+        }
+
+        return array_values($report->sections->map(fn (ReportSection $section) => [
+            'ulid' => $section->ulid,
+            'key' => $section->key,
+            'heading' => $section->heading,
+            'position' => $section->position,
+            'included' => $section->included,
+            'body' => $section->body,
+            'edited' => $section->edited,
+            'can_restore' => $section->canRestore(),
+            'has_content' => $section->hasContent(),
+            'sources' => $section->sources ?? [],
+            'data' => $section->data,
+        ])->all());
     }
 
     /**
@@ -439,6 +484,71 @@ class ReportController extends Controller
         $this->composer->generate($report);
 
         return back();
+    }
+
+    /**
+     * Finalize (§37). From here the report holds its own copy of everything it
+     * said, and no later change to a grade or a logo rewrites it.
+     */
+    public function finalize(Report $report, FinalizeReport $finalizer): RedirectResponse
+    {
+        Gate::authorize('finalize', $report);
+
+        $finalizer->finalize($report, $this->user());
+
+        return back();
+    }
+
+    /**
+     * Derive a new draft from this report (§31, §32). The original is never
+     * touched — what comes out is the reader's own document.
+     */
+    public function derive(Request $request, Report $report, DeriveReport $deriver): RedirectResponse
+    {
+        Gate::authorize('derive', $report);
+
+        $data = $request->validate([
+            'academic_period_id' => ['nullable', new BelongsToCurrentOrganization(AcademicPeriod::class)],
+            'interim_assessment_id' => ['nullable', new BelongsToCurrentOrganization(InterimAssessment::class)],
+        ]);
+
+        $period = ($data['academic_period_id'] ?? null) === null
+            ? null
+            : AcademicPeriod::findOrFail((int) $data['academic_period_id']);
+
+        $interim = ($data['interim_assessment_id'] ?? null) === null
+            ? null
+            : InterimAssessment::findOrFail((int) $data['interim_assessment_id']);
+
+        if ($report->schoolClass !== null) {
+            $this->guardBelongsToClass($report->schoolClass, $period, $interim);
+        }
+
+        $draft = $deriver->derive($report, $this->user(), $period, $interim);
+
+        return redirect()->route('reports.show', $draft);
+    }
+
+    /**
+     * The logo frozen into a finalized report (§39).
+     *
+     * Served by an authorizing controller from the private disk, exactly as the
+     * live one is: a file whose URL is its filename is a file anybody can
+     * enumerate.
+     */
+    public function logo(Report $report): StreamedResponse
+    {
+        Gate::authorize('view', $report);
+
+        $path = data_get($report->document, 'identity.logo_path');
+
+        abort_if(! is_string($path), 404);
+
+        $disk = Storage::disk(SchoolLogoService::DISK);
+
+        abort_unless($disk->exists($path), 404);
+
+        return $disk->response($path);
     }
 
     public function destroy(Report $report): RedirectResponse

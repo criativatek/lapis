@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { Check, Eye, Pencil, RefreshCw, RotateCcw, Trash2, X } from '@lucide/vue';
+import { Check, Copy, Eye, Lock, Pencil, RefreshCw, RotateCcw, Trash2, X } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import type { ChosenDifficulty } from '@/components/reports/DifficultyPicker.vue';
@@ -74,6 +74,12 @@ type Library = {
 
 type EnrollmentRow = { id: number; class_number: number | null; name: string };
 
+type Comparison = {
+    base: { ulid: string; title: string; scope_label: string; status: string };
+    rows: { label: string; from: string; to: string }[];
+    caveat: string;
+};
+
 const props = defineProps<{
     report: ReportPayload;
     sections: SectionPayload[];
@@ -81,16 +87,28 @@ const props = defineProps<{
     characterisation: Characterisation;
     library: Library | null;
     enrollments: EnrollmentRow[];
-    can: { update: boolean; finalize: boolean; delete: boolean; export: boolean };
+    comparison: Comparison | null;
+    can: { update: boolean; finalize: boolean; delete: boolean; export: boolean; derive: boolean };
 }>();
 
-const mode = ref<'edit' | 'preview'>('edit');
+// A finalized report opens on the document, because that is all it is now.
+const mode = ref<'edit' | 'preview'>(props.report.status === 'draft' ? 'edit' : 'preview');
 const editing = ref<string | null>(null);
 const draftBody = ref('');
 
 const printable = computed(() => props.sections.filter((section) => section.included && section.has_content));
 
 const isDraft = computed(() => props.report.status === 'draft');
+
+const dateTimeFormatter = new Intl.DateTimeFormat('pt-PT', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+});
+
+function formatDate(value: string): string {
+    return dateTimeFormatter.format(new Date(value));
+}
 
 // ------------------------------------------------------------------ envelope
 
@@ -275,6 +293,23 @@ function regenerateAll() {
 function destroyReport() {
     router.delete(`/reports/${props.report.ulid}`);
 }
+
+// ------------------------------------------------------------- finalization
+
+const confirmingFinalize = ref(false);
+
+function finalize() {
+    router.post(`/reports/${props.report.ulid}/finalizar`, {}, {
+        preserveScroll: true,
+        onFinish: () => {
+            confirmingFinalize.value = false;
+        },
+    });
+}
+
+function derive() {
+    router.post(`/reports/${props.report.ulid}/derivar`, {});
+}
 </script>
 
 <template>
@@ -303,6 +338,7 @@ function destroyReport() {
 
                 <div class="flex overflow-hidden rounded-md border border-border">
                     <button
+                        v-if="isDraft"
                         type="button"
                         class="flex items-center gap-1.5 px-3 py-1.5 text-xs"
                         :class="mode === 'edit' ? 'bg-muted font-medium' : ''"
@@ -324,8 +360,53 @@ function destroyReport() {
             </div>
         </div>
 
+        <!-- A finalized report is a document, and says so before anything else
+             on the page suggests it can still be worked on (§37). -->
+        <div
+            v-if="!isDraft"
+            class="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4 text-sm"
+        >
+            <p class="font-medium">Relatório finalizado</p>
+            <p class="mt-1 text-muted-foreground">
+                O conteúdo está fixado — o texto, os números e a identidade da escola são os que existiam quando
+                foi finalizado, a
+                {{ report.finalized_at ? formatDate(report.finalized_at) : '—' }}
+                <template v-if="report.finalized_by"> por {{ report.finalized_by }}</template>.
+                Alterações posteriores aos dados não o reescrevem.
+            </p>
+            <Button v-if="can.derive" variant="outline" size="sm" class="mt-3" @click="derive">
+                <Copy class="size-3.5" />
+                Criar novo a partir deste
+            </Button>
+        </div>
+
+        <!-- §35: what moved since the report this one started from. -->
+        <section v-if="comparison" class="space-y-3 rounded-lg border border-border p-4">
+            <div>
+                <h2 class="font-medium">Desde «{{ comparison.base.title }}»</h2>
+                <p class="mt-1 text-xs text-muted-foreground">{{ comparison.base.scope_label }}</p>
+            </div>
+
+            <ul class="divide-y divide-border overflow-hidden rounded-md border border-border">
+                <li
+                    v-for="row in comparison.rows"
+                    :key="row.label"
+                    class="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm"
+                >
+                    <span>{{ row.label }}</span>
+                    <span class="tabular-nums">
+                        <span class="text-muted-foreground">{{ row.from }}</span>
+                        <span class="mx-2 text-muted-foreground">→</span>
+                        <span class="font-medium">{{ row.to }}</span>
+                    </span>
+                </li>
+            </ul>
+
+            <p class="text-xs text-muted-foreground">{{ comparison.caveat }}</p>
+        </section>
+
         <!-- ============================================================ EDIT -->
-        <template v-if="mode === 'edit'">
+        <template v-if="mode === 'edit' && isDraft">
             <section v-if="can.update" class="space-y-3 rounded-lg border border-border p-4">
                 <div class="grid gap-2">
                     <Label for="title">Título</Label>
@@ -619,6 +700,27 @@ function destroyReport() {
                         <ReportSectionData :section-key="section.key" :data="section.data" />
                     </template>
                 </article>
+            </section>
+
+            <!-- ---------------------------------------------- finalização -->
+            <section v-if="can.finalize" class="space-y-3 rounded-lg border border-border p-4">
+                <div>
+                    <h2 class="font-medium">Finalizar</h2>
+                    <p class="mt-1 text-sm text-muted-foreground">
+                        Fixa o conteúdo. A partir daí, alterações às classificações, ao logótipo ou ao nome da
+                        escola deixam de afetar este documento. Não é reversível — para o corrigir, cria-se um
+                        novo a partir dele.
+                    </p>
+                </div>
+
+                <div v-if="confirmingFinalize" class="flex flex-wrap items-center gap-2">
+                    <Button size="sm" @click="finalize">Sim, finalizar</Button>
+                    <Button variant="ghost" size="sm" @click="confirmingFinalize = false">Cancelar</Button>
+                </div>
+                <Button v-else variant="outline" size="sm" @click="confirmingFinalize = true">
+                    <Lock class="size-3.5" />
+                    Finalizar relatório
+                </Button>
             </section>
 
             <div v-if="can.delete" class="border-t border-border pt-6">

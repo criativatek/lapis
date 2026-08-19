@@ -257,6 +257,13 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::put('reports/{report}', [ReportController::class, 'update'])->name('reports.update');
         Route::delete('reports/{report}', [ReportController::class, 'destroy'])->name('reports.destroy');
         Route::post('reports/{report}/gerar', [ReportController::class, 'regenerate'])->name('reports.regenerate');
+        // §37: after this the document is fixed. There is no route back —
+        // correcting a finished report means deriving a new one (§32).
+        Route::post('reports/{report}/finalizar', [ReportController::class, 'finalize'])->name('reports.finalize');
+        Route::post('reports/{report}/derivar', [ReportController::class, 'derive'])->name('reports.derive');
+        // The logo frozen INTO this report — served from the private disk by an
+        // authorizing controller, exactly as the live one is (§39, §65).
+        Route::get('reports/{report}/logotipo', [ReportController::class, 'logo'])->name('reports.logo');
 
         // One section at a time (§44) — edit, regenerate from today's data,
         // restore the last automatic text, reorder.
