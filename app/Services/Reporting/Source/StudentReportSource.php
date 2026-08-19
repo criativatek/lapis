@@ -159,11 +159,12 @@ class StudentReportSource extends ClassReportSource
         $byType = [];
 
         foreach ($individual as $intervention) {
-            $key = $intervention->intervention_type->value ?? 'other';
+            $key = $intervention->intervention_type->value ?? 'uncategorised';
 
             $byType[$key] ??= [
                 'type' => $key,
-                'label' => $intervention->intervention_type?->label() ?? $intervention->title,
+                // Never the title — see ClassReportSource::interventionFacts.
+                'label' => $intervention->intervention_type?->label(),
                 'count' => 0,
             ];
 
@@ -179,7 +180,9 @@ class StudentReportSource extends ClassReportSource
             'types' => $byType,
             'concluded' => $individual->filter(fn (Intervention $intervention) => $intervention->status->value === 'concluded')->count(),
             'highlighted' => array_values($individual
-                ->filter(fn (Intervention $intervention) => $intervention->include_in_report)
+                // Typed only — see ClassReportSource::interventionFacts.
+                ->filter(fn (Intervention $intervention) => $intervention->include_in_report
+                    && $intervention->intervention_type !== null)
                 ->map(fn (Intervention $intervention) => [
                     'title' => $intervention->title,
                     'type' => $intervention->intervention_type?->label(),

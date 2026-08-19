@@ -40,9 +40,9 @@ class SchoolDimension
 
             $rate = Phrase::percentage($row['success_rate'] ?? null);
 
-            $parts[] = (string) $row['label'].' — '
+            $parts[] = (string) $row['label'].' ('
                 .($row['succeeded'] ?? 0).' de '.$placed
-                .($rate === null ? '' : ' ('.$rate.')');
+                .($rate === null ? '' : ', '.$rate).')';
         }
 
         if ($parts === []) {

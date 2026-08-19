@@ -56,16 +56,16 @@ class DomainResultsComposer implements SectionComposer
             );
         }
 
+        // THE TEXT INTERPRETS; THE TABLE DOCUMENTS (§15, §16). Reciting every
+        // domain and its average in a sentence, immediately above a table
+        // holding exactly that, is a table read aloud.
         return ComposedSection::of(
             Phrase::body([
                 Phrase::paragraph([
-                    $this->openingSentence($withValue),
                     $this->extremesSentence($withValue),
-                ]),
-                Phrase::paragraph([
                     $this->successSentence($withValue),
-                    $this->coverageSentence($rows),
                 ]),
+                $this->coverageSentence($rows),
             ]),
             [ContentSource::Statistics, ContentSource::Results],
             ['domains' => $rows],
@@ -126,28 +126,26 @@ class DomainResultsComposer implements SectionComposer
     }
 
     /**
-     * @param  list<array<string, mixed>>  $rows
-     */
-    protected function openingSentence(array $rows): string
-    {
-        return Phrase::sentence(
-            'Foram apurados resultados em',
-            Phrase::count(count($rows), 'domínio', 'domínios'),
-            ':',
-            Phrase::items(array_map(
-                fn (array $row) => $row['label'].' ('.Phrase::percentage($row['value']).')',
-                $rows,
-            )),
-        );
-    }
-
-    /**
+     * The two domains worth naming, and their figures.
+     *
+     * NO ARTICLE IN FRONT OF A DOMAIN NAME. «a Leitura» and «o Cálculo» differ
+     * in gender, and a school names its own domains — so the sentence is built
+     * to work without one, rather than guessing (§15).
+     *
      * @param  list<array<string, mixed>>  $rows
      */
     protected function extremesSentence(array $rows): ?string
     {
-        if (count($rows) < 2) {
+        if ($rows === []) {
             return null;
+        }
+
+        if (count($rows) === 1) {
+            return Phrase::sentence(
+                'O resultado médio registou-se em',
+                (string) $rows[0]['label'],
+                '('.Phrase::percentage($rows[0]['value']).')',
+            );
         }
 
         $sorted = $rows;
@@ -167,19 +165,21 @@ class DomainResultsComposer implements SectionComposer
         }
 
         return Phrase::sentence(
-            'O domínio com resultado médio mais elevado foi',
-            $highest['label'],
+            'O resultado médio mais elevado registou-se em',
+            (string) $highest['label'],
             '('.Phrase::percentage($highest['value']).')',
-            ', e o mais baixo',
-            $lowest['label'],
+            'e o mais baixo em',
+            (string) $lowest['label'],
             '('.Phrase::percentage($lowest['value']).')',
         );
     }
 
     /**
-     * Success within each domain — «5 de 6» — so a teacher can see which domain
-     * is carrying the class and which is holding it back, without the report
-     * concluding anything about why.
+     * Where the positive mentions are concentrated, and where they are not.
+     *
+     * NOT A LIST OF EVERY DOMAIN (§16). The table carries «5 / 6» for each one;
+     * the sentence names only the domain where the fewest students reached a
+     * positive mention, which is the thing a teacher acts on.
      *
      * @param  list<array<string, mixed>>  $rows
      */
@@ -187,18 +187,33 @@ class DomainResultsComposer implements SectionComposer
     {
         $withPlaced = array_values(array_filter($rows, fn (array $row) => $row['placed'] > 0));
 
-        if ($withPlaced === []) {
+        if (count($withPlaced) < 2) {
             return null;
         }
 
-        $parts = array_map(
-            fn (array $row) => $row['label'].' — '.$row['succeeded'].' de '.$row['placed'],
-            $withPlaced,
-        );
+        $sorted = $withPlaced;
+        usort($sorted, fn (array $a, array $b) => bccomp(
+            $this->comparable($a['success_rate']),
+            $this->comparable($b['success_rate']),
+            4,
+        ));
+
+        $weakest = $sorted[0];
+
+        // Everywhere the same: naming one domain would invent a difference.
+        if (bccomp(
+            $this->comparable($weakest['success_rate']),
+            $this->comparable($sorted[count($sorted) - 1]['success_rate']),
+            4,
+        ) === 0) {
+            return null;
+        }
 
         return Phrase::sentence(
-            'Quanto às menções positivas por domínio:',
-            Phrase::items($parts),
+            'Foi em',
+            (string) $weakest['label'],
+            'que menos alunos alcançaram menção positiva:',
+            Phrase::ratio((int) $weakest['succeeded'], (int) $weakest['placed']),
         );
     }
 
@@ -218,14 +233,14 @@ class DomainResultsComposer implements SectionComposer
             return null;
         }
 
-        $parts = array_map(
-            fn (array $row) => $row['label'].' ('.Phrase::students($row['students_without_result']).')',
-            $gaps,
-        );
-
+        // The table already carries the counts; what it cannot say is that
+        // those students are absent from the averages rather than low in them.
         return Phrase::sentence(
-            'Nos seguintes domínios existem alunos sem resultado apurado, que não entram nas respetivas médias:',
-            Phrase::items($parts),
+            count($gaps) === 1
+                ? 'Existem alunos sem resultado apurado no domínio de'
+                : 'Existem alunos sem resultado apurado nos domínios de',
+            Phrase::items(array_map(fn (array $row) => (string) $row['label'], $gaps)),
+            ', pelo que não entram nas respetivas médias',
         );
     }
 }

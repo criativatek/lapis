@@ -158,7 +158,7 @@ class ClassReportTest extends TestCase
         $body = (string) $this->bodyOf($this->report(1), SectionKey::ClassIdentification);
 
         $this->assertStringContainsString('7.º A', $body);
-        $this->assertStringContainsString('6 alunos', $body);
+        $this->assertStringContainsString('seis alunos', $body);
         // §29: never temporally ambiguous.
         $this->assertStringContainsString('1.º Semestre', $body);
     }
@@ -433,10 +433,10 @@ class ClassReportTest extends TestCase
 
         $body = (string) $this->bodyOf($this->report(1), SectionKey::ClassRecords);
 
-        $this->assertStringContainsString('10 verificações', $body);
+        $this->assertStringContainsString('dez verificações', $body);
         $this->assertStringContainsString('80%', $body);
         // §70: the denominator is stated, and it is records — not people.
-        $this->assertStringContainsString('registos de verificação e não a alunos', $body);
+        $this->assertStringContainsString('contam verificações e não alunos', $body);
         $this->assertStringNotContainsString('20% dos alunos', $body);
     }
 }

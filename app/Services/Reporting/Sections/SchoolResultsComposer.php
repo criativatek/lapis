@@ -6,6 +6,7 @@ use App\Domain\Reporting\ContentSource;
 use App\Domain\Reporting\SectionKey;
 use App\Services\Reporting\ComposedSection;
 use App\Services\Reporting\Narrative\Absence;
+use App\Services\Reporting\Narrative\Grade;
 use App\Services\Reporting\Narrative\Phrase;
 use App\Services\Reporting\ReportContext;
 
@@ -63,8 +64,10 @@ class SchoolResultsComposer extends SchoolSectionComposer
 
             $percentage = Phrase::percentage($band['percentage'] ?? null);
 
-            $bands[] = (string) $band['label'].' — '.$band['count']
-                .($percentage === null ? '' : ' ('.$percentage.')');
+            // Grade::cell, so a numbered scale leads with the number the
+            // teacher wrote rather than with the word the scale calls it (§6).
+            $bands[] = Grade::cell($band).' ('.$band['count']
+                .($percentage === null ? '' : ', '.$percentage).')';
         }
 
         return Phrase::paragraph([
@@ -82,7 +85,7 @@ class SchoolResultsComposer extends SchoolSectionComposer
                 : Phrase::sentence(
                     'Destas,',
                     Phrase::howMany((int) ($group['succeeded'] ?? 0), $placed, 'foi positiva', 'foram positivas'),
-                    '— uma taxa de sucesso de '.$rate,
+                    ', o que corresponde a uma taxa de sucesso de '.$rate,
                 ),
             $bands === [] ? null : Phrase::sentence('Distribuição:', Phrase::items($bands)),
         ]);

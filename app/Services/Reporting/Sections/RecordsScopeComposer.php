@@ -41,8 +41,8 @@ class RecordsScopeComposer implements SectionComposer
                     Phrase::sentence(
                         'O presente relatório reúne os registos',
                         is_array($class) ? 'da turma '.$class['label'] : 'de todas as turmas',
-                        'no período de',
-                        $context->scopeLabel(),
+                        'e reporta-se',
+                        $context->scopeClause(),
                     ),
                     $this->kindsSentence($filters),
                 ]),

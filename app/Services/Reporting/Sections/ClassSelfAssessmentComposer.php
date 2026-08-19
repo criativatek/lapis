@@ -16,19 +16,23 @@ use App\Services\Reporting\ReportContext;
  * self-assessment is what the student said about themselves. It has no weight,
  * it never enters an average, and it never moves a classification. What it is
  * good for is the comparison: where a class systematically rates itself above
- * or below what was decided, that gap is worth a teacher's attention, and
- * stating it is description.
+ * or below what was decided, that gap is worth a teacher's attention.
  *
- * THE COMPARISON IS ONLY MADE WHERE IT MEANS SOMETHING. Both readings have to
- * be on the same levelled scale for «acima» and «abaixo» to have any content;
- * where they are not, the section reports coverage and stops rather than
- * comparing incomparables.
+ * THE COMPARISON IS DESCRIBED, NOT DIAGNOSED. «Três alunos autoavaliaram-se
+ * abaixo da classificação atribuída» counts two recorded values. Whether that
+ * says anything about confidence, motivation or self-esteem is a claim about
+ * children's inner lives, and this module does not make those (§17, §78).
  *
- * OFF BY DEFAULT in a class report. It is the students' voice, and whether it
- * belongs in a document about the class is the teacher's decision (§45).
+ * NO METHODOLOGICAL NOTE IN THE BODY (§3). That a self-assessment does not
+ * enter the calculation is true, obvious to the reader of a school report, and
+ * a sentence about how LÁPIS works rather than about the class. It belongs in a
+ * manual, not in the document a parent reads.
  */
 class ClassSelfAssessmentComposer implements SectionComposer
 {
+    /** Below this many comparable readings, a «tendency» is noise (§17). */
+    protected const TENDENCY_MINIMUM = 3;
+
     public function key(): SectionKey
     {
         return SectionKey::ClassSelfAssessment;
@@ -80,17 +84,10 @@ class ClassSelfAssessmentComposer implements SectionComposer
         return ComposedSection::of(
             Phrase::body([
                 Phrase::paragraph([
-                    Phrase::sentence(
-                        'Registaram autoavaliação',
-                        Phrase::outOfTotal($answered, $total),
-                    ),
-                    $this->comparisonSentence($comparable, $above, $aligned, $below),
+                    $this->participationSentence($answered, $total),
+                    $this->comparisonSentence($above, $aligned, $below),
                 ]),
-                // The reminder is not padding: a reader who sees two readings
-                // side by side will otherwise assume one influenced the other.
-                $comparable > 0
-                    ? 'A autoavaliação é o registo da apreciação do próprio aluno e não entra no cálculo dos resultados nem na classificação atribuída.'
-                    : null,
+                $this->tendencySentence($comparable, $above, $below),
             ]),
             [ContentSource::SelfAssessment, ContentSource::Classification],
             [
@@ -104,21 +101,108 @@ class ClassSelfAssessmentComposer implements SectionComposer
         );
     }
 
-    protected function comparisonSentence(int $comparable, int $above, int $aligned, int $below): ?string
+    /**
+     * «Os seis alunos que constituem a turma realizaram a sua autoavaliação.»
+     *
+     * Two shapes rather than one counter, because «Registaram autoavaliação os
+     * 6 alunos» is a sentence assembled around a number instead of around a
+     * class (§2).
+     */
+    protected function participationSentence(int $answered, int $total): string
     {
-        if ($comparable === 0) {
-            return null;
+        if ($answered === $total) {
+            return $total === 1
+                ? 'O único aluno da turma realizou a sua autoavaliação.'
+                : Phrase::sentence(
+                    'Os',
+                    Phrase::spelled($total),
+                    'alunos que constituem a turma realizaram a sua autoavaliação',
+                );
         }
 
         return Phrase::sentence(
-            'Comparando com a classificação atribuída, e entre os',
-            (string) $comparable,
-            'alunos com ambos os registos,',
-            Phrase::items(array_values(array_filter([
-                $aligned > 0 ? Phrase::students($aligned).' '.($aligned === 1 ? 'coincidiu' : 'coincidiram').' com a decisão do professor' : null,
-                $above > 0 ? Phrase::students($above).' '.($above === 1 ? 'situou-se' : 'situaram-se').' acima' : null,
-                $below > 0 ? Phrase::students($below).' '.($below === 1 ? 'situou-se' : 'situaram-se').' abaixo' : null,
-            ]))),
+            'Dos',
+            Phrase::students($total),
+            'da turma,',
+            Phrase::spelled($answered),
+            $answered === 1 ? 'realizou a sua autoavaliação' : 'realizaram a sua autoavaliação',
         );
+    }
+
+    /**
+     * «Um aluno autoavaliou-se acima da classificação atribuída, três abaixo e
+     * dois coincidiram com a decisão do professor.»
+     *
+     * The first group carries the verb and the object; the ones after it are
+     * elided, as a person writing would elide them.
+     */
+    protected function comparisonSentence(int $above, int $aligned, int $below): ?string
+    {
+        if ($above + $aligned + $below === 0) {
+            return null;
+        }
+
+        $parts = [];
+
+        if ($above > 0) {
+            $parts[] = Phrase::studentsDid($above, 'autoavaliou-se', 'autoavaliaram-se')
+                .' acima da classificação atribuída';
+        }
+
+        if ($below > 0) {
+            $parts[] = $parts === []
+                ? Phrase::studentsDid($below, 'autoavaliou-se', 'autoavaliaram-se').' abaixo da classificação atribuída'
+                : Phrase::spelled($below).' abaixo';
+        }
+
+        if ($aligned > 0) {
+            $parts[] = ($parts === [] ? Phrase::students($aligned).' ' : Phrase::spelled($aligned).' ')
+                .($aligned === 1 ? 'coincidiu' : 'coincidiram')
+                .' com a decisão do professor';
+        }
+
+        return Phrase::sentence(Phrase::items($parts));
+    }
+
+    /**
+     * A tendency, and only where the numbers carry one.
+     *
+     * TWO CONDITIONS, BOTH NECESSARY (§17). One side has to outnumber the
+     * other — «dois acima, dois abaixo» is a spread, not a lean — and it has to
+     * account for at least half of the comparable readings, so that a plurality
+     * of three out of nine does not get called a tendency. Never below three
+     * readings at all: two students out of three is a coincidence with a
+     * percentage attached.
+     *
+     * And the sentence describes the positions, never what they might mean
+     * about the students (§78).
+     */
+    protected function tendencySentence(int $comparable, int $above, int $below): ?string
+    {
+        if ($comparable < self::TENDENCY_MINIMUM) {
+            return null;
+        }
+
+        if ($below > $above && $below * 2 >= $comparable) {
+            return Phrase::sentence(
+                'Observa-se uma tendência para uma autoavaliação mais baixa do que a classificação atribuída, uma vez que',
+                Phrase::spelled($below),
+                'dos',
+                Phrase::spelled($comparable),
+                'alunos se posicionaram abaixo',
+            );
+        }
+
+        if ($above > $below && $above * 2 >= $comparable) {
+            return Phrase::sentence(
+                'Observa-se uma tendência para uma autoavaliação mais elevada do que a classificação atribuída, uma vez que',
+                Phrase::spelled($above),
+                'dos',
+                Phrase::spelled($comparable),
+                'alunos se posicionaram acima',
+            );
+        }
+
+        return null;
     }
 }

@@ -6,26 +6,28 @@ use App\Domain\Reporting\ContentSource;
 use App\Domain\Reporting\SectionKey;
 use App\Services\Reporting\ComposedSection;
 use App\Services\Reporting\Narrative\Absence;
+use App\Services\Reporting\Narrative\Grade;
 use App\Services\Reporting\Narrative\Phrase;
 use App\Services\Reporting\ReportContext;
 
 /**
  * «Distribuição das classificações atribuídas».
  *
- * THE GRADES THE TEACHER WROTE, counted. Not where the averages landed — that
- * is a different reading, and one the report does not print here precisely
- * because the two would then be confusable. If the teacher assigned a 2, this
- * section says 2.
+ * THE GRADES THE TEACHER WROTE, counted — and named as they were written. On a
+ * 1–5 scale a 4 is a 4; printing «Bom» in the classification column answers a
+ * question nobody asked, because the mention is what the scale calls that
+ * number and not what the teacher assigned (§6). Grade decides which of the two
+ * leads, from what was recorded rather than from how the scale is configured.
  *
  * ON A NUMERIC SCALE THE VALUE IS THE ANSWER. A 0–20 has twenty-one possible
- * grades; grouping them into «Insuficiente / Suficiente / Bom» would answer with
- * the mention rather than with the grade, and would invent bands a school may
- * not use. The read model already makes that distinction (`mode`), and this
- * follows it rather than deciding again.
+ * grades; grouping them into «Insuficiente / Suficiente / Bom» would invent
+ * bands a school may not use. The read model already makes that distinction
+ * (`mode`), and this follows it rather than deciding again.
  *
- * THE DENOMINATOR IS THE GRADED STUDENTS. Dividing by the whole class would let
- * students nobody has classified yet shrink every band without appearing
- * anywhere — so they are counted, separately, in a sentence of their own.
+ * THE PROSE DOES NOT RECITE THE TABLE (§8, §16). Levels nobody was given are in
+ * the table, where a zero is informative, and out of the sentence, where it is
+ * noise. The paragraph says who was classified and how the classifications
+ * fell; the table documents the rest.
  */
 class ClassDistributionComposer implements SectionComposer
 {
@@ -60,17 +62,13 @@ class ClassDistributionComposer implements SectionComposer
         return ComposedSection::of(
             Phrase::body([
                 Phrase::paragraph([
-                    Phrase::sentence(
-                        'Foram atribuídas classificações a',
-                        Phrase::students($classified),
-                        ', com a seguinte distribuição',
-                    ),
-                    $this->inlineDistribution($rows),
+                    $this->openingSentence($context, $classified),
+                    $this->distributionSentence($rows),
                 ]),
-                Phrase::paragraph([
-                    $this->pendingSentence($distribution),
-                    $this->outsideScaleSentence($rows),
-                ]),
+                // No «pending» sentence here: the opening already states the
+                // denominator, and «Síntese da avaliação global» has already
+                // explained why those students are outside the rate.
+                $this->outsideScaleSentence($rows),
             ]),
             [ContentSource::Classification, ContentSource::Statistics],
             [
@@ -86,9 +84,9 @@ class ClassDistributionComposer implements SectionComposer
     /**
      * The bands, whatever the scale calls them.
      *
-     * A LEVEL NOBODY IS IN STILL GETS ITS ROW on a levelled scale: «Nível 2: 0»
-     * is an answer and a missing row is not. A numeric scale lists only the
-     * values actually assigned, because twenty-one mostly-empty rows are not a
+     * A LEVEL NOBODY IS IN STILL GETS ITS ROW on a levelled scale: «2: 0» is an
+     * answer and a missing row is not. A numeric scale lists only the values
+     * actually assigned, because twenty-one mostly-empty rows are not a
      * distribution.
      *
      * @param  array<string, mixed>  $distribution
@@ -98,49 +96,67 @@ class ClassDistributionComposer implements SectionComposer
     {
         $rows = $distribution['bands'] ?? $distribution['values'] ?? [];
 
-        return is_array($rows) ? array_values($rows) : [];
+        return is_array($rows) ? array_values(array_filter($rows, 'is_array')) : [];
     }
 
     /**
+     * Who was classified, with the denominator inside the same sentence.
+     *
+     * «Foi atribuída classificação a cinco alunos» followed by «Um aluno não
+     * tem ainda classificação atribuída» says one thing in two sentences, and
+     * the second one repeats verbatim what the overall assessment already said
+     * two paragraphs above (§20).
+     */
+    protected function openingSentence(ReportContext $context, int $classified): string
+    {
+        $total = (int) $context->fact('summary.students_total', 0);
+
+        if ($total === 0 || $classified === $total) {
+            return Phrase::sentence(
+                'Foi atribuída classificação',
+                $total === 1 ? 'ao único aluno da turma' : 'aos '.Phrase::spelled($total ?: $classified).' alunos da turma',
+            );
+        }
+
+        return Phrase::sentence(
+            'Foi atribuída classificação a',
+            Phrase::ratio($classified, $total),
+            'alunos da turma',
+        );
+    }
+
+    /**
+     * «Um aluno obteve nível 2, um nível 3 e quatro nível 4.»
+     *
+     * Only the levels somebody was given. Reciting «nenhum aluno obteve nível
+     * 1» before that is how a paragraph turns into a table read aloud (§8).
+     *
      * @param  list<array<string, mixed>>  $rows
      */
-    protected function inlineDistribution(array $rows): ?string
+    protected function distributionSentence(array $rows): ?string
     {
         $parts = [];
+        $first = true;
 
         foreach ($rows as $row) {
             $count = (int) ($row['count'] ?? 0);
 
-            // Zero-count bands belong in the table, not in the prose: a
-            // sentence that recites every empty level is unreadable.
             if ($count === 0) {
                 continue;
             }
 
-            $label = (string) ($row['label'] ?? $row['value'] ?? $row['code'] ?? '');
-            $percentage = Phrase::percentage($row['percentage'] ?? null);
+            $grade = Grade::inProse($row);
 
-            $parts[] = $label.' — '.Phrase::students($count)
-                .($percentage === null ? '' : ' ('.$percentage.')');
+            // The verb appears once and is elided afterwards, as a person
+            // writing this sentence would elide it.
+            $parts[] = $first
+                ? Phrase::studentsDid($count, 'obteve', 'obtiveram').' '.$grade
+                : Phrase::spelled($count).' '.$grade;
+
+            $first = false;
         }
 
-        return $parts === [] ? null : Phrase::sentence(Phrase::items($parts, 'e'));
-    }
-
-    /**
-     * @param  array<string, mixed>  $distribution
-     */
-    protected function pendingSentence(array $distribution): ?string
-    {
-        $without = (int) ($distribution['without_classification'] ?? 0);
-
-        if ($without === 0) {
-            return null;
-        }
-
-        return $without === 1
-            ? '1 aluno não tem ainda classificação atribuída no período analisado.'
-            : $without.' alunos não têm ainda classificação atribuída no período analisado.';
+        return $parts === [] ? null : Phrase::sentence(Phrase::items($parts));
     }
 
     /**

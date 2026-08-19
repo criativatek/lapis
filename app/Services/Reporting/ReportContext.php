@@ -6,6 +6,7 @@ use App\Domain\Reporting\SectionCatalogue;
 use App\Domain\Reporting\SectionKey;
 use App\Models\Report;
 use App\Models\ReportTone;
+use App\Services\Reporting\Narrative\Scope;
 
 /**
  * Everything a composer is allowed to look at, gathered once.
@@ -24,12 +25,14 @@ readonly class ReportContext
     /**
      * @param  array<string, mixed>  $facts  What a ReportSource read.
      * @param  array<string, mixed>  $identity  The school's letterhead (§39).
+     * @param  \DateTimeInterface  $generatedOn  The day this text speaks from (§5).
      */
     public function __construct(
         public Report $report,
         public array $facts,
         public array $identity,
         public ReportCapabilities $capabilities,
+        public \DateTimeInterface $generatedOn,
     ) {}
 
     /**
@@ -87,12 +90,32 @@ readonly class ReportContext
     }
 
     /**
-     * The temporal scope, in the words the report was created with (§29). Every
-     * section that states a figure may reach for this rather than reconstruct
-     * a period name.
+     * The temporal scope as a LABEL — «2.º Semestre», «Ano letivo até ao
+     * momento». Right for a listing column and for a table caption.
+     *
+     * WRONG INSIDE A SENTENCE. «reporta-se a Ano letivo até ao momento» is
+     * what pasting a label into prose produces. Use scopeClause() there (§4).
      */
     public function scopeLabel(): string
     {
         return $this->report->scope_label;
+    }
+
+    /**
+     * The object of «O presente relatório reporta-se …», with its article and
+     * with a real date where the scope has an open end (§4, §5).
+     */
+    public function scopeClause(): string
+    {
+        return Scope::clause($this->report, $this->generatedOn);
+    }
+
+    /**
+     * The same stretch of time as a short adverbial, for sentences further
+     * down: «no 2.º Semestre», «no período analisado».
+     */
+    public function whenClause(): string
+    {
+        return Scope::shortClause($this->report);
     }
 }

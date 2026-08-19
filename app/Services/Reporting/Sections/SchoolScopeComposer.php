@@ -39,10 +39,10 @@ class SchoolScopeComposer extends SchoolSectionComposer
                 // is the teacher's own — and a school-wide report naming a
                 // teacher is precisely what it must not do (§25).
                 Phrase::sentence(
-                    'O presente relatório reporta-se a',
-                    $context->scopeLabel(),
+                    'O presente relatório reporta-se',
+                    $context->scopeClause(),
                     'e abrange',
-                    Phrase::count((int) ($overview['classes'] ?? 0), 'turma', 'turmas'),
+                    Phrase::count((int) ($overview['classes'] ?? 0), 'turma', 'turmas', feminine: true),
                 ),
                 'Os dados apresentados resultam das classificações atribuídas pelos docentes e das caracterizações que validaram nos respetivos relatórios de turma.',
             ]),

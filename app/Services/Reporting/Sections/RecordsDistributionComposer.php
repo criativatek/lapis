@@ -3,6 +3,7 @@
 namespace App\Services\Reporting\Sections;
 
 use App\Domain\Reporting\ContentSource;
+use App\Domain\Reporting\RecordValence;
 use App\Domain\Reporting\SectionKey;
 use App\Services\Reporting\ComposedSection;
 use App\Services\Reporting\Narrative\Absence;
@@ -54,20 +55,41 @@ class RecordsDistributionComposer implements SectionComposer
     }
 
     /**
+     * The kind that accounts for most of the logbook.
+     *
+     * THE TABLE CARRIES THE BREAKDOWN (§16). Reciting ten kinds with two counts
+     * each, above a table holding exactly that, is a table read aloud.
+     *
      * @param  list<array<string, mixed>>  $kinds
      */
     protected function kindsSentence(array $kinds): string
     {
-        $parts = array_map(function (array $kind): string {
-            $text = (string) $kind['label'].' — '.Phrase::records((int) $kind['records']);
-            $students = (int) ($kind['students_involved'] ?? 0);
+        $total = 0;
 
-            // Both units, on every row.
-            return $students > 0 ? $text.' ('.Phrase::students($students).')' : $text;
-        }, $kinds);
+        foreach ($kinds as $kind) {
+            $total += (int) ($kind['records'] ?? 0);
+        }
 
-        // Phrase::items already drops anything blank.
-        return Phrase::sentence('Por tipo de registo:', Phrase::items($parts));
+        // Already ordered by count by the source.
+        $leading = $kinds[0];
+        $count = (int) ($leading['records'] ?? 0);
+        $students = (int) ($leading['students_involved'] ?? 0);
+
+        if (count($kinds) === 1) {
+            return Phrase::sentence(
+                'Todos os registos dizem respeito a',
+                mb_strtolower((string) $leading['label']),
+                $students > 0 ? '('.Phrase::students($students).')' : null,
+            );
+        }
+
+        $detail = Phrase::records($count).($students > 0 ? ', '.Phrase::students($students) : '');
+
+        return Phrase::sentence(
+            $count * 2 > $total ? 'A maioria diz respeito a' : 'O tipo mais frequente é',
+            mb_strtolower((string) $leading['label']),
+            '('.$detail.')',
+        );
     }
 
     protected function groupsSentence(ReportContext $context): ?string
@@ -79,7 +101,7 @@ class RecordsDistributionComposer implements SectionComposer
         }
 
         $parts = array_map(
-            fn ($group) => is_array($group) ? (string) $group['label'].' — '.Phrase::records((int) $group['records']) : '',
+            fn ($group) => is_array($group) ? (string) $group['label'].' ('.Phrase::records((int) $group['records']).')' : '',
             $groups,
         );
 
@@ -94,15 +116,32 @@ class RecordsDistributionComposer implements SectionComposer
             return null;
         }
 
-        $parts = array_map(
-            fn ($valence) => is_array($valence) ? (string) $valence['label'].' — '.Phrase::records((int) $valence['records']) : '',
-            $valences,
-        );
+        $parts = [];
+
+        foreach ($valences as $valence) {
+            if (! is_array($valence)) {
+                continue;
+            }
+
+            $count = (int) ($valence['records'] ?? 0);
+            $case = is_string($valence['valence'] ?? null) ? RecordValence::tryFrom($valence['valence']) : null;
+
+            if ($count === 0 || $case === null) {
+                continue;
+            }
+
+            $parts[] = Phrase::spelled($count).' '.$case->clause($count);
+        }
+
+        if ($parts === []) {
+            return null;
+        }
 
         return Phrase::paragraph([
-            Phrase::sentence('Quanto ao sentido do registo:', Phrase::items(array_values(array_filter($parts)))),
-            // The caveat is part of the finding, not a footnote to it.
-            'O sentido só é atribuído aos registos cujo tipo o comporta; os restantes são contabilizados sem sentido definido.',
+            Phrase::sentence('Destes registos,', Phrase::items($parts)),
+            // The caveat is part of the finding, not a footnote to it: a
+            // direction is only attributed where the kind carries one.
+            'O sentido só é atribuído aos registos cujo tipo o comporta.',
         ]);
     }
 }

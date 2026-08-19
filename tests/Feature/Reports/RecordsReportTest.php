@@ -154,10 +154,10 @@ class RecordsReportTest extends TestCase
 
         $body = (string) $this->bodyOf($this->report(), SectionKey::RecordsSummary);
 
-        $this->assertStringContainsString('10 verificações', $body);
+        $this->assertStringContainsString('dez verificações', $body);
         $this->assertStringContainsString('80%', $body);
-        $this->assertStringContainsString('registos de verificação e não a alunos', $body);
-        $this->assertStringContainsString('2 alunos', $body);
+        $this->assertStringContainsString('contam verificações e não alunos', $body);
+        $this->assertStringContainsString('dois alunos', $body);
 
         // The conversion that must never happen.
         $this->assertStringNotContainsString('20% dos alunos', $body);
@@ -190,9 +190,9 @@ class RecordsReportTest extends TestCase
         $summary = (string) $this->bodyOf($this->report(), SectionKey::RecordsSummary);
         $distribution = (string) $this->bodyOf($this->report(), SectionKey::RecordsDistribution);
 
-        $this->assertStringContainsString('5 registos', $summary);
-        $this->assertStringContainsString('envolvendo 3 alunos', $summary);
-        $this->assertStringContainsString('Ocorrência disciplinar — 5 registos (3 alunos)', $distribution);
+        $this->assertStringContainsString('cinco registos', $summary);
+        $this->assertStringContainsString('envolvendo três alunos', $summary);
+        $this->assertStringContainsString('Todos os registos dizem respeito a ocorrência disciplinar (três alunos)', $distribution);
     }
 
     // ------------------------------------------------------------- valence
@@ -219,9 +219,9 @@ class RecordsReportTest extends TestCase
 
         $body = (string) $this->bodyOf($this->report(), SectionKey::RecordsDistribution);
 
-        $this->assertStringContainsString('Sem sentido definido — 3 registos', $body);
+        $this->assertStringContainsString('três não têm sentido definido', $body);
         $this->assertStringContainsString('só é atribuído aos registos cujo tipo o comporta', $body);
-        $this->assertStringNotContainsString('Neutro — 3', $body);
+        $this->assertStringNotContainsString('sentido neutro', $body);
     }
 
     // ------------------------------------------------------------- privacy
@@ -318,8 +318,8 @@ class RecordsReportTest extends TestCase
             SectionKey::RecordsSummary,
         );
 
-        $this->assertStringContainsString('4 registos', $all);
-        $this->assertStringContainsString('3 registos', $onlyHomework);
+        $this->assertStringContainsString('quatro registos', $all);
+        $this->assertStringContainsString('três registos', $onlyHomework);
     }
 
     // -------------------------------------------------------------- tenancy
@@ -373,7 +373,7 @@ class RecordsReportTest extends TestCase
         $body = (string) $this->bodyOf($report, SectionKey::RecordsSummary);
 
         // Mine only. «Todas as turmas» means mine, never the school's.
-        $this->assertStringContainsString('2 registos', $body);
-        $this->assertStringNotContainsString('9 registos', $body);
+        $this->assertStringContainsString('dois registos', $body);
+        $this->assertStringNotContainsString('nove registos', $body);
     }
 }

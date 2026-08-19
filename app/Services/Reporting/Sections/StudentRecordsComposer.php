@@ -82,8 +82,8 @@ class StudentRecordsComposer implements SectionComposer
             return null;
         }
 
-        return Phrase::sentence('Por tipo:', Phrase::items(array_map(
-            fn (array $kind) => (string) $kind['label'].' — '.Phrase::records((int) $kind['records']),
+        return Phrase::sentence('Distribuem-se por', Phrase::items(array_map(
+            fn (array $kind) => mb_strtolower((string) $kind['label']).' ('.Phrase::records((int) $kind['records']).')',
             $kinds,
         )));
     }

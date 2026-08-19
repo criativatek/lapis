@@ -48,7 +48,8 @@ class SchoolComparabilityComposer extends SchoolSectionComposer
         }
 
         $parts = array_map(
-            fn (array $scale): string => (string) $scale['name'].' — '.Phrase::count((int) $scale['classes'], 'turma', 'turmas'),
+            fn (array $scale): string => (string) $scale['name']
+                .' ('.Phrase::count((int) $scale['classes'], 'turma', 'turmas', feminine: true).')',
             $scales,
         );
 

@@ -51,7 +51,7 @@ class StudentIdentificationComposer implements SectionComposer
                         ', na disciplina de',
                         (string) $class['subject'],
                     ),
-                    Phrase::sentence('O presente relatório reporta-se a', $context->scopeLabel()),
+                    Phrase::sentence('O presente relatório reporta-se', $context->scopeClause()),
                 ]),
                 Phrase::paragraph([
                     $this->lateEntrySentence($enrollment),
@@ -72,7 +72,7 @@ class StudentIdentificationComposer implements SectionComposer
             return null;
         }
 
-        return 'Integrou a turma após o início do ano letivo, pelo que não realizou os instrumentos anteriores à sua entrada — ausência que não é considerada como resultado.';
+        return 'Integrou a turma após o início do ano letivo, pelo que não realizou os instrumentos anteriores à sua entrada. Essa ausência não é considerada como resultado.';
     }
 
     /**

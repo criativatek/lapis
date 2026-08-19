@@ -102,13 +102,15 @@ class StudentDomainPerformanceComposer implements SectionComposer
         }
 
         $parts = array_map(function (array $row): string {
-            $text = $row['label'].' — '.Phrase::percentage($row['value']);
+            $value = Phrase::percentage($row['value']);
 
             // The mention rides along beside the figure, never in its place.
-            return $row['mention'] === null ? $text : $text.' ('.$row['mention'].')';
+            return $row['mention'] === null
+                ? $row['label'].' ('.$value.')'
+                : $row['label'].' ('.$value.', '.$row['mention'].')';
         }, $rows);
 
-        return Phrase::sentence('Por domínio:', Phrase::items($parts));
+        return Phrase::sentence('Os resultados por domínio foram os seguintes:', Phrase::items($parts));
     }
 
     /**

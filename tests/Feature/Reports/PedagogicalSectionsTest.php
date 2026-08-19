@@ -245,7 +245,7 @@ class PedagogicalSectionsTest extends TestCase
 
         $body = (string) $this->bodyOf($report, SectionKey::ImprovementProposals);
 
-        $this->assertStringContainsString('Planificação da escrita — propõe-se', $body);
+        $this->assertStringContainsString('Para a dificuldade «Planificação da escrita», propõe-se', $body);
         $this->assertStringContainsString('guiões de planificação prévia e revisão orientada', $body);
         $this->assertStringContainsString('com o objetivo de melhorar a organização', $body);
         // No stray space before the comma that joins the objective clause.

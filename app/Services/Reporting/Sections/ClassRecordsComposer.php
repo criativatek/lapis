@@ -48,13 +48,15 @@ class ClassRecordsComposer implements SectionComposer
             return ComposedSection::of(Absence::noRecords(), [ContentSource::Records]);
         }
 
-        $kinds = is_array($records['kinds'] ?? null) ? array_values($records['kinds']) : [];
+        $kinds = is_array($records['kinds'] ?? null)
+            ? array_values(array_filter($records['kinds'], 'is_array'))
+            : [];
 
         return ComposedSection::of(
             Phrase::body([
                 Phrase::paragraph([
-                    $this->openingSentence($records, $total),
-                    $this->kindsSentence($kinds),
+                    $this->openingSentence($context, $records, $total),
+                    $this->kindsSentence($kinds, $total),
                 ]),
                 Phrase::paragraph([$this->homeworkParagraph($records)]),
             ]),
@@ -71,12 +73,15 @@ class ClassRecordsComposer implements SectionComposer
     /**
      * @param  array<string, mixed>  $records
      */
-    protected function openingSentence(array $records, int $total): string
+    protected function openingSentence(ReportContext $context, array $records, int $total): string
     {
         $students = (int) ($records['students_involved'] ?? 0);
 
+        // «efetuados», not «registados … registos»: the echo is small and it is
+        // the kind of thing a person would not write.
         return Phrase::sentence(
-            'No período analisado foram registados',
+            Phrase::capitalise($context->whenClause()),
+            'foram efetuados',
             Phrase::records($total),
             $students === 0
                 // Records with no student attached are about the class as a
@@ -87,26 +92,37 @@ class ClassRecordsComposer implements SectionComposer
     }
 
     /**
+     * The kind that accounts for most of the logbook, and nothing more.
+     *
+     * THE TABLE CARRIES THE BREAKDOWN (§16). A sentence that recites every kind
+     * with its two counts, directly above a table holding exactly that, is a
+     * table read aloud — and with ten kinds it is unreadable.
+     *
      * @param  list<array<string, mixed>>  $kinds
      */
-    protected function kindsSentence(array $kinds): ?string
+    protected function kindsSentence(array $kinds, int $total): ?string
     {
-        if ($kinds === []) {
+        if (count($kinds) < 2) {
             return null;
         }
 
-        $parts = array_map(function (array $kind): string {
-            $count = (int) ($kind['records'] ?? 0);
-            $students = (int) ($kind['students_involved'] ?? 0);
+        // Already ordered by count by the source.
+        $leading = $kinds[0];
+        $count = (int) ($leading['records'] ?? 0);
 
-            $text = (string) $kind['label'].' — '.Phrase::records($count);
+        // Nothing dominates: naming a leader would invent an emphasis.
+        if ($count * 2 <= $total) {
+            return null;
+        }
 
-            return $students > 0
-                ? $text.' ('.Phrase::students($students).')'
-                : $text;
-        }, $kinds);
+        $students = (int) ($leading['students_involved'] ?? 0);
+        $detail = Phrase::records($count).($students > 0 ? ', '.Phrase::students($students) : '');
 
-        return Phrase::sentence('Por tipo:', Phrase::items($parts));
+        return Phrase::sentence(
+            'A maioria diz respeito a',
+            mb_strtolower((string) $leading['label']),
+            '('.$detail.')',
+        );
     }
 
     /**
@@ -134,18 +150,19 @@ class ClassRecordsComposer implements SectionComposer
         return Phrase::paragraph([
             Phrase::sentence(
                 'Foram realizadas',
-                Phrase::count($checks, 'verificação', 'verificações'),
-                'de trabalho de casa',
-                '. Em '.$done.' '.($done === 1 ? 'registo' : 'registos'),
-                $rate === null ? null : '('.$rate.')',
-                ', o trabalho encontrava-se realizado',
-            ),
-            // The denominator, stated so nobody converts records into people.
-            Phrase::sentence(
-                'Os valores acima referem-se a registos de verificação e não a alunos:',
-                'as verificações incidiram sobre',
+                Phrase::count($checks, 'verificação', 'verificações', feminine: true),
+                'de trabalho de casa, sobre',
                 Phrase::students((int) ($homework['students_involved'] ?? 0)),
             ),
+            Phrase::sentence(
+                'O trabalho encontrava-se realizado em',
+                Phrase::records($done),
+                $rate === null ? null : '('.$rate.')',
+            ),
+            // THE DENOMINATOR, stated so nobody converts records into people
+            // (§70, §71). It is a fact about what was counted, not a note about
+            // how LÁPIS works, so it stays in the body.
+            'Estes valores contam verificações e não alunos.',
         ]);
     }
 }

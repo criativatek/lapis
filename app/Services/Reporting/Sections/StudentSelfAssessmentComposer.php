@@ -43,13 +43,12 @@ class StudentSelfAssessmentComposer implements SectionComposer
             return ComposedSection::of(Absence::noSelfAssessment(), [ContentSource::SelfAssessment]);
         }
 
+        // No methodological note (§3): that a self-assessment does not enter
+        // the calculation is a fact about LÁPIS, not about the student.
         return ComposedSection::of(
-            Phrase::body([
-                Phrase::paragraph([
-                    Phrase::sentence('Na autoavaliação, o aluno situou o seu desempenho global em', (string) $self['label']),
-                    $this->comparisonSentence($student, $self),
-                ]),
-                'A autoavaliação é o registo da apreciação do próprio aluno e não entra no cálculo dos resultados nem na classificação atribuída.',
+            Phrase::paragraph([
+                Phrase::sentence('Na sua autoavaliação, o aluno apreciou o desempenho global como', (string) $self['label']),
+                $this->comparisonSentence($student, $self),
             ]),
             [ContentSource::SelfAssessment, ContentSource::Classification],
             ['self_assessment' => $self, 'assigned' => $student['assigned'] ?? null],
@@ -70,13 +69,15 @@ class StudentSelfAssessmentComposer implements SectionComposer
             return null;
         }
 
+        $grade = (string) ($assigned['code'] ?? $assigned['label'] ?? '');
+
         return Phrase::sentence(
             match ((int) $self['sequence'] <=> (int) $assigned['sequence']) {
-                1 => 'Esta apreciação situa-se acima da classificação atribuída',
-                -1 => 'Esta apreciação situa-se abaixo da classificação atribuída',
-                default => 'Esta apreciação coincide com a classificação atribuída',
+                1 => 'Trata-se de uma apreciação mais elevada do que a classificação atribuída',
+                -1 => 'Trata-se de uma apreciação mais baixa do que a classificação atribuída',
+                default => 'A apreciação coincide com a classificação atribuída',
             },
-            '('.(string) ($assigned['label'] ?? '—').')',
+            $grade === '' ? null : 'de '.$grade,
         );
     }
 }

@@ -83,14 +83,16 @@ class ClassEvolutionComposer implements SectionComposer
         $stable = (int) ($evolution['stable'] ?? 0);
         $regressed = (int) ($evolution['regressed'] ?? 0);
 
+        // studentsDid, not a hand-rolled ternary: with zero, «nenhum aluno
+        // mantiveram» is what a count-based ternary produces (§18).
         return Phrase::sentence(
             'Comparativamente ao',
             $previous,
-            ', e considerando o trabalho realizado em cada período isoladamente,',
+            ', considerando o trabalho realizado em cada período isoladamente,',
             Phrase::items([
-                Phrase::students($progressed).' '.($progressed === 1 ? 'progrediu' : 'progrediram'),
-                Phrase::students($stable).' '.($stable === 1 ? 'manteve o seu resultado' : 'mantiveram o seu resultado'),
-                Phrase::students($regressed).' '.($regressed === 1 ? 'regrediu' : 'regrediram'),
+                Phrase::studentsDid($progressed, 'progrediu', 'progrediram'),
+                Phrase::studentsDid($stable, 'manteve o seu resultado', 'mantiveram o seu resultado'),
+                Phrase::studentsDid($regressed, 'regrediu', 'regrediram'),
             ]),
         );
     }
@@ -136,9 +138,10 @@ class ClassEvolutionComposer implements SectionComposer
             return null;
         }
 
-        return $none === 1
-            ? '1 aluno não dispõe de resultado nos dois momentos, pelo que não é possível apurar a sua evolução.'
-            : $none.' alunos não dispõem de resultado nos dois momentos, pelo que não é possível apurar a sua evolução.';
+        return Phrase::sentence(
+            Phrase::studentsDid($none, 'não dispõe', 'não dispõem'),
+            'de resultado nos dois momentos, pelo que não é possível apurar a sua evolução',
+        );
     }
 
     /**
@@ -165,12 +168,17 @@ class ClassEvolutionComposer implements SectionComposer
         $stable = (int) ($continuous['stable'] ?? 0);
         $regressed = (int) ($continuous['regressed'] ?? 0);
 
+        // NO PARENTHETICAL DASHES (§1). The previous shape explained the method
+        // inside the sentence it was making — «Na leitura contínua — comparando
+        // o resultado que respondia por cada aluno em cada momento — …» — which
+        // is a footnote wearing a sentence's clothes. The reading is named once
+        // and the sentence gets on with what it has to say.
         return Phrase::sentence(
-            'Na leitura contínua — comparando o resultado que respondia por cada aluno em cada momento —',
+            'Na avaliação contínua, que considera o percurso acumulado de cada aluno até ao momento,',
             Phrase::items([
-                Phrase::students($progressed).' '.($progressed === 1 ? 'progrediu' : 'progrediram'),
-                Phrase::students($stable).' '.($stable === 1 ? 'manteve-se' : 'mantiveram-se'),
-                Phrase::students($regressed).' '.($regressed === 1 ? 'regrediu' : 'regrediram'),
+                Phrase::studentsDid($progressed, 'progrediu', 'progrediram'),
+                Phrase::studentsDid($stable, 'manteve-se', 'mantiveram-se'),
+                Phrase::studentsDid($regressed, 'regrediu', 'regrediram'),
             ]),
         );
     }
@@ -205,17 +213,17 @@ class ClassEvolutionComposer implements SectionComposer
         $parts = [];
 
         if ($recovered > 0) {
-            $parts[] = Phrase::students($recovered).' '
-                .($recovered === 1 ? 'passou de negativa a positiva' : 'passaram de negativa a positiva');
+            $parts[] = Phrase::studentsDid($recovered, 'recuperou', 'recuperaram')
+                .' uma classificação positiva';
         }
 
         if ($fell > 0) {
-            $parts[] = Phrase::students($fell).' '
-                .($fell === 1 ? 'passou de positiva a negativa' : 'passaram de positiva a negativa');
+            $parts[] = Phrase::studentsDid($fell, 'passou', 'passaram')
+                .' a ter classificação negativa';
         }
 
         return Phrase::sentence(
-            'Quanto à classificação atribuída, e entre os alunos com decisão nos dois momentos,',
+            'Entre os alunos com classificação atribuída nos dois momentos,',
             Phrase::items($parts),
         );
     }

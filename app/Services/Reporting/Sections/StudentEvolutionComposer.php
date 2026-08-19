@@ -76,7 +76,7 @@ class StudentEvolutionComposer implements SectionComposer
 
         return Phrase::sentence(
             $previous === null ? 'Face ao momento anterior' : 'Face ao '.$previous,
-            ', e considerando o trabalho realizado em cada período isoladamente, o resultado',
+            ', considerando o trabalho realizado em cada período isoladamente, o resultado',
             $this->direction((string) ($evolution['direction'] ?? 'stable')),
             $this->magnitude((string) ($evolution['direction'] ?? 'stable'), $points),
         );
@@ -94,8 +94,9 @@ class StudentEvolutionComposer implements SectionComposer
             return null;
         }
 
+        // No parenthetical dashes explaining the method mid-sentence (§1).
         return Phrase::sentence(
-            'Na leitura contínua — comparando o resultado que respondia por si em cada momento — o desempenho',
+            'Na avaliação contínua, que considera o percurso acumulado até ao momento, o desempenho',
             $this->direction((string) ($continuous['direction'] ?? 'stable')),
             $this->magnitude((string) ($continuous['direction'] ?? 'stable'), $points),
         );
@@ -148,6 +149,6 @@ class StudentEvolutionComposer implements SectionComposer
             $parts[] = (string) ($entry['period_label'] ?? '—').': '.($value ?? 'sem resultado');
         }
 
-        return $parts === [] ? null : Phrase::sentence('Ao longo do ano letivo —', Phrase::items($parts, 'e'));
+        return $parts === [] ? null : Phrase::sentence('Ao longo do ano letivo:', Phrase::items($parts, 'e'));
     }
 }

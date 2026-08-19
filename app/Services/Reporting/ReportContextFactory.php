@@ -41,6 +41,12 @@ class ReportContextFactory
             facts: $this->sourceFor($report->type)->factsFor($report),
             identity: $this->identity->forCurrentOrganization(),
             capabilities: $this->capabilities,
+            // THE DAY THE TEXT SPEAKS FROM (§5). A finalized report says the
+            // day it was signed; a draft says today, because «até ao momento»
+            // means until this moment and regenerating tomorrow legitimately
+            // moves the end. Resolved here so composers stay pure with respect
+            // to their context and never reach for the clock themselves.
+            generatedOn: $report->finalized_at ?? now(),
         );
     }
 

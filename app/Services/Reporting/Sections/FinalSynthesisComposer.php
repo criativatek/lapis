@@ -82,11 +82,12 @@ class FinalSynthesisComposer implements SectionComposer
         }
 
         return Phrase::sentence(
-            'Em síntese, e no que respeita a',
-            $context->scopeLabel().',',
-            $average === null ? null : 'o resultado apurado situou-se em '.$average,
+            'Em síntese,',
+            $context->whenClause(),
+            'o aluno alcançou',
+            $average === null ? null : 'um resultado de '.$average,
             $average !== null && $grade !== null ? 'e' : null,
-            $grade === null ? null : 'a classificação atribuída foi '.$grade,
+            $grade === null ? null : 'a classificação de '.$grade,
         );
     }
 
@@ -110,15 +111,15 @@ class FinalSynthesisComposer implements SectionComposer
         }
 
         return Phrase::sentence(
-            'Em síntese, e no que respeita a',
-            $context->scopeLabel().',',
+            'Em síntese,',
+            $context->whenClause(),
             $average === null
                 ? null
-                : 'o resultado médio da turma situou-se em '.$average,
+                : 'a turma alcançou um resultado médio de '.$average,
             $average !== null && $placed > 0 ? 'e' : null,
             $placed === 0 || $rate === null
                 ? null
-                : 'a taxa de sucesso, apurada sobre as classificações atribuídas, foi de '.$rate,
+                : 'uma taxa de sucesso de '.$rate,
         );
     }
 

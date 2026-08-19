@@ -39,6 +39,39 @@ const distributionRows = computed<Row[]>(() =>
     props.sectionKey === 'class_distribution' && Array.isArray(props.data?.rows) ? (props.data.rows as Row[]) : [],
 );
 
+/**
+ * Which of the two values a classification row leads with (§6).
+ *
+ * The PHP twin is Narrative\Grade, and the rule is the same: on a scale coded
+ * 1…5 the teacher assigned a 4, so the column reads 4 and «Bom» rides along
+ * beside it. On a scale coded NA/A/S the words ARE the classification.
+ */
+function gradeCode(row: Row): string | null {
+    const raw = row.value ?? row.code;
+
+    if (raw === null || raw === undefined || raw === '') {
+        return null;
+    }
+
+    return String(raw);
+}
+
+function gradeLead(row: Row): string {
+    const code = gradeCode(row);
+
+    if (code !== null && !Number.isNaN(Number(code))) {
+        return code;
+    }
+
+    return String(row.label ?? code ?? '—');
+}
+
+function gradeMention(row: Row): string | null {
+    const label = row.label === null || row.label === undefined ? null : String(row.label);
+
+    return label === null || label === gradeLead(row) ? null : label;
+}
+
 const domainRows = computed<Row[]>(() =>
     props.sectionKey === 'domain_results' && Array.isArray(props.data?.domains) ? (props.data.domains as Row[]) : [],
 );
@@ -73,7 +106,10 @@ const recordRows = computed<Row[]>(() =>
             <tbody>
                 <tr v-for="(row, index) in distributionRows" :key="index" class="border-b border-border/50 last:border-0">
                     <td class="py-1.5 pr-3">
-                        {{ row.label ?? row.value ?? row.code }}
+                        <span class="font-medium tabular-nums">{{ gradeLead(row) }}</span>
+                        <span v-if="gradeMention(row)" class="ml-1.5 text-xs text-muted-foreground">
+                            {{ gradeMention(row) }}
+                        </span>
                         <span v-if="row.outside_scale" class="ml-1 text-xs text-muted-foreground">(fora da escala atual)</span>
                     </td>
                     <td class="py-1.5 pr-3 text-right tabular-nums">{{ row.count }}</td>

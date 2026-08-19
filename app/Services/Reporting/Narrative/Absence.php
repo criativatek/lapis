@@ -40,17 +40,20 @@ class Absence
      */
     public static function noRecords(?string $kind = null): string
     {
+        // The product's name is not in the sentence. A report is about a class,
+        // not about the software that printed it (§21), and «registos» already
+        // carries the distinction that matters: what was written down.
         return Phrase::sentence(
             'Não foram encontrados registos',
             $kind === null ? null : 'de '.$kind,
-            'no LÁPIS para o período analisado',
+            'relativos ao período analisado',
         );
     }
 
     /** No intervention was registered. Not: none was needed. */
     public static function noInterventions(): string
     {
-        return 'Não foram registadas intervenções no LÁPIS para o período analisado.';
+        return 'Não foram registadas intervenções no período analisado.';
     }
 
     /** Nobody has been graded yet. Not: everybody failed. */

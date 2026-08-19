@@ -23,32 +23,100 @@ namespace App\Services\Reporting\Narrative;
 class Phrase
 {
     /**
-     * «26 alunos», «1 aluno», «nenhum aluno».
+     * Small numbers, written out, as prose does.
+     *
+     * Up to ten, because that is where Portuguese editorial practice puts the
+     * line and where the digit starts to look like a data field rather than a
+     * sentence. «vinte e seis alunos» would be worse than «26 alunos», so
+     * beyond ten the numeral stays.
+     *
+     * NOT USED FOR PERCENTAGES, LEVELS, DATES OR TABLE CELLS. Those are values,
+     * and a value written out is harder to scan, not easier.
+     *
+     * @var array<int, array{0: string, 1: string}> masculine, feminine
+     */
+    protected const SPELLED = [
+        1 => ['um', 'uma'],
+        2 => ['dois', 'duas'],
+        3 => ['três', 'três'],
+        4 => ['quatro', 'quatro'],
+        5 => ['cinco', 'cinco'],
+        6 => ['seis', 'seis'],
+        7 => ['sete', 'sete'],
+        8 => ['oito', 'oito'],
+        9 => ['nove', 'nove'],
+        10 => ['dez', 'dez'],
+    ];
+
+    public static function spelled(int $number, bool $feminine = false): string
+    {
+        $words = self::SPELLED[$number] ?? null;
+
+        return $words === null ? (string) $number : $words[$feminine ? 1 : 0];
+    }
+
+    /**
+     * «vinte e seis alunos», «um aluno», «nenhum aluno».
      *
      * The zero case takes a word rather than a digit because «0 alunos
      * obtiveram classificação positiva» reads as a result and «nenhum aluno
      * obteve classificação positiva» reads as a fact — and where zero means
      * «não há dados» the caller should not be using this at all (§41).
      */
-    public static function count(int $number, string $singular, string $plural, string $none = 'nenhum'): string
-    {
+    public static function count(
+        int $number,
+        string $singular,
+        string $plural,
+        string $none = 'nenhum',
+        bool $feminine = false,
+    ): string {
         return match (true) {
             $number === 0 => $none.' '.$singular,
-            $number === 1 => '1 '.$singular,
-            default => $number.' '.$plural,
+            $number === 1 => self::spelled(1, $feminine).' '.$singular,
+            default => self::spelled($number, $feminine).' '.$plural,
         };
     }
 
-    /** «26 alunos» / «1 aluno». */
+    /** «26 alunos» / «seis alunos» / «um aluno» / «nenhum aluno». */
     public static function students(int $number): string
     {
         return self::count($number, 'aluno', 'alunos');
     }
 
-    /** «18 registos» / «1 registo». */
+    /** «18 registos» / «seis registos» / «um registo». */
     public static function records(int $number): string
     {
         return self::count($number, 'registo', 'registos');
+    }
+
+    /**
+     * A group of students AND what they did, agreeing in number.
+     *
+     * THE ZERO CASE IS SINGULAR. «nenhum aluno mantiveram» is the single most
+     * visible grammatical failure this module can produce, and it happens
+     * because zero feels plural to a counter and reads singular in Portuguese.
+     * Handled once, here, rather than in every composer that counts something.
+     */
+    public static function studentsDid(int $number, string $singularVerb, string $pluralVerb): string
+    {
+        return self::students($number).' '.($number === 1 || $number === 0 ? $singularVerb : $pluralVerb);
+    }
+
+    /**
+     * A date as it is written inside a Portuguese sentence: «19 de agosto de
+     * 2026». The short form belongs in a footer or a table, not in prose (§5).
+     */
+    public static function date(\DateTimeInterface $date): string
+    {
+        // Spelled out rather than taken from the locale: the month name inside a
+        // Portuguese sentence is lower-case, and Intl gives it capitalised on
+        // some platforms and not on others.
+        $months = [
+            1 => 'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+            'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
+        ];
+
+        return ((int) $date->format('j')).' de '.$months[(int) $date->format('n')].' de '.$date->format('Y');
     }
 
     /**
@@ -265,6 +333,7 @@ class Phrase
         string $plural,
         string $all = 'todas',
         string $onlyOne = 'a única',
+        bool $feminine = true,
     ): string {
         if ($total === 0) {
             return '';
@@ -274,6 +343,18 @@ class Phrase
             return $total === 1 ? $onlyOne.' '.$singular : $all.' '.$plural;
         }
 
-        return $part.' de '.$total.' '.($part === 1 ? $singular : $plural);
+        return self::ratio($part, $total, $feminine).' '.($part === 1 ? $singular : $plural);
+    }
+
+    /**
+     * «quatro de cinco», «12 de 26».
+     *
+     * A ratio inside a sentence is prose, not a figure, so it follows the same
+     * rule as any other small number (§19). Percentages, levels and table cells
+     * are figures and stay in digits.
+     */
+    public static function ratio(int $part, int $total, bool $feminine = false): string
+    {
+        return self::spelled($part, $feminine).' de '.self::spelled($total, $feminine);
     }
 }

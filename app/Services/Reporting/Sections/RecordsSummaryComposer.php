@@ -8,6 +8,7 @@ use App\Services\Reporting\ComposedSection;
 use App\Services\Reporting\Narrative\Absence;
 use App\Services\Reporting\Narrative\Phrase;
 use App\Services\Reporting\ReportContext;
+use Illuminate\Support\Carbon;
 
 /**
  * «Síntese» — the headline counts of a Registos report (§22).
@@ -70,13 +71,15 @@ class RecordsSummaryComposer implements SectionComposer
         }
 
         if ($classWide > 0) {
-            $parts[] = $classWide === 1
-                ? '1 relativo à turma no seu conjunto'
-                : $classWide.' relativos à turma no seu conjunto';
+            $parts[] = Phrase::spelled($classWide)
+                .($classWide === 1 ? ' relativo' : ' relativos')
+                .' à turma no seu conjunto';
         }
 
+        // «foram efetuados … registos», not «foram registados … registos»: the
+        // echo is small and it is the kind of thing a person would not write.
         return Phrase::sentence(
-            'No âmbito analisado foram registados',
+            'No âmbito analisado foram efetuados',
             Phrase::records($total),
             $parts === [] ? null : ', '.Phrase::items($parts),
         );
@@ -91,9 +94,15 @@ class RecordsSummaryComposer implements SectionComposer
             return null;
         }
 
+        // The long form, because these are inside a sentence (§5).
         return $first === $last
-            ? Phrase::sentence('Todos os registos têm a data de', $this->readable($first))
-            : Phrase::sentence('O primeiro tem data de', $this->readable($first), 'e o último de', $this->readable($last));
+            ? Phrase::sentence('Todos têm a data de', Phrase::date(Carbon::parse($first)))
+            : Phrase::sentence(
+                'O primeiro data de',
+                Phrase::date(Carbon::parse($first)),
+                'e o último de',
+                Phrase::date(Carbon::parse($last)),
+            );
     }
 
     protected function homeworkParagraph(ReportContext $context): ?string
@@ -116,17 +125,17 @@ class RecordsSummaryComposer implements SectionComposer
         return Phrase::paragraph([
             Phrase::sentence(
                 'Foram realizadas',
-                Phrase::count($checks, 'verificação', 'verificações'),
-                'de trabalho de casa. Em',
-                $done.' '.($done === 1 ? 'registo' : 'registos'),
-                $rate === null ? null : '('.$rate.')',
-                ', o trabalho encontrava-se realizado',
-            ),
-            // THE SENTENCE THAT STOPS THE MISREADING.
-            Phrase::sentence(
-                'Estes valores referem-se a registos de verificação e não a alunos: as verificações incidiram sobre',
+                Phrase::count($checks, 'verificação', 'verificações', feminine: true),
+                'de trabalho de casa, sobre',
                 Phrase::students((int) ($homework['students_involved'] ?? 0)),
             ),
+            Phrase::sentence(
+                'O trabalho encontrava-se realizado em',
+                Phrase::records($done),
+                $rate === null ? null : '('.$rate.')',
+            ),
+            // THE SENTENCE THAT STOPS THE MISREADING (§70).
+            'Estes valores contam verificações e não alunos.',
         ]);
     }
 
@@ -139,7 +148,7 @@ class RecordsSummaryComposer implements SectionComposer
         }
 
         $parts = array_map(
-            fn ($month) => is_array($month) ? (string) $month['label'].' — '.Phrase::records((int) $month['records']) : '',
+            fn ($month) => is_array($month) ? (string) $month['label'].' ('.Phrase::records((int) $month['records']).')' : '',
             $months,
         );
 
@@ -147,13 +156,5 @@ class RecordsSummaryComposer implements SectionComposer
             'Distribuição ao longo do tempo:',
             Phrase::items(array_values(array_filter($parts))),
         );
-    }
-
-    /** «2027-01-15» reads as «15/01/2027» in a Portuguese document. */
-    protected function readable(string $date): string
-    {
-        $parts = explode('-', $date);
-
-        return count($parts) === 3 ? $parts[2].'/'.$parts[1].'/'.$parts[0] : $date;
     }
 }

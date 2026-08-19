@@ -83,14 +83,16 @@ class ImprovementProposalsComposer implements SectionComposer
     }
 
     /**
-     * «Planificação da escrita — propõem-se guiões de planificação prévia e
-     * revisão orientada, com o objetivo de melhorar a organização, a coerência
-     * e a clareza textual.»
+     * «Para a dificuldade «Planificação da escrita», propõem-se guiões de
+     * planificação prévia e revisão orientada, com o objetivo de melhorar a
+     * organização, a coerência e a clareza textual.»
      *
-     * THE DIFFICULTY LEADS, UNBENT. «Para a planificação da escrita» would need
-     * the correct article for every noun a teacher might type — and a report
-     * that writes «Para o planificação» has lost the reader before the measure
-     * is even read. The label as written, then a dash, is right for all of them.
+     * THE LABEL IS QUOTED RATHER THAN BENT INTO THE SENTENCE. «Para a
+     * planificação da escrita» needs the right article for every noun a teacher
+     * might type, and a report that writes «Para o planificação» has lost the
+     * reader before the measure is read. The article agrees with «dificuldade»,
+     * which is always feminine, and the label sits inside quotation marks where
+     * its own gender is nobody's problem.
      *
      * @param  array<int|string, mixed>  $strategies
      */
@@ -132,6 +134,6 @@ class ImprovementProposalsComposer implements SectionComposer
             $measures .= ', com o objetivo de '.Phrase::items($objectives);
         }
 
-        return Phrase::sentence($difficulty, '—', $measures);
+        return Phrase::sentence('Para a dificuldade «'.$difficulty.'»,', $measures);
     }
 }

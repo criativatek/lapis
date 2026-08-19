@@ -48,12 +48,12 @@ class ClassIdentificationComposer implements SectionComposer
             Phrase::students($active),
         );
 
+        // The scope as a clause with its article and, where the end is open, a
+        // real date. Pasting `scope_label` in produced «reporta-se a Ano letivo
+        // até ao momento» (§4).
         $scope = Phrase::sentence(
-            'O presente relatório reporta-se a',
-            $context->scopeLabel(),
-            $context->readsSnapshot()
-                ? 'e tem por base a avaliação intercalar registada nessa data'
-                : null,
+            'O presente relatório reporta-se',
+            $context->scopeClause(),
         );
 
         return ComposedSection::of(

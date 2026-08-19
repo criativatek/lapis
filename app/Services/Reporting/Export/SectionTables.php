@@ -3,6 +3,7 @@
 namespace App\Services\Reporting\Export;
 
 use App\Domain\Reporting\SectionKey;
+use App\Services\Reporting\Narrative\Grade;
 use App\Services\Reporting\Narrative\Phrase;
 
 /**
@@ -53,7 +54,8 @@ class SectionTables
 
         foreach (self::listOf($data, 'rows') as $row) {
             $rows[] = [
-                (string) ($row['label'] ?? $row['value'] ?? $row['code'] ?? '—')
+                // THE CLASSIFICATION LEADS, the mention follows it (§6).
+                Grade::cell($row)
                     .(($row['outside_scale'] ?? false) === true ? ' (fora da escala atual)' : ''),
                 (string) ($row['count'] ?? 0),
                 Phrase::percentage($row['percentage'] ?? null) ?? '—',

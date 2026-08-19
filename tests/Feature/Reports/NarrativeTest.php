@@ -23,11 +23,48 @@ class NarrativeTest extends TestCase
     public function it_agrees_in_number(): void
     {
         $this->assertSame('nenhum aluno', Phrase::students(0));
-        $this->assertSame('1 aluno', Phrase::students(1));
+        $this->assertSame('um aluno', Phrase::students(1));
+        $this->assertSame('seis alunos', Phrase::students(6));
+        // Beyond ten the numeral is easier to read than the words.
         $this->assertSame('26 alunos', Phrase::students(26));
 
-        $this->assertSame('1 registo', Phrase::records(1));
+        $this->assertSame('um registo', Phrase::records(1));
         $this->assertSame('18 registos', Phrase::records(18));
+    }
+
+    #[Test]
+    public function a_group_of_zero_takes_a_singular_verb(): void
+    {
+        // «nenhum aluno mantiveram» is the single most visible grammatical
+        // failure this module can produce (§18).
+        $this->assertSame('nenhum aluno manteve', Phrase::studentsDid(0, 'manteve', 'mantiveram'));
+        $this->assertSame('um aluno manteve', Phrase::studentsDid(1, 'manteve', 'mantiveram'));
+        $this->assertSame('quatro alunos mantiveram', Phrase::studentsDid(4, 'manteve', 'mantiveram'));
+    }
+
+    #[Test]
+    public function small_numbers_are_written_out_and_agree_in_gender(): void
+    {
+        $this->assertSame('um', Phrase::spelled(1));
+        $this->assertSame('uma', Phrase::spelled(1, feminine: true));
+        $this->assertSame('dois', Phrase::spelled(2));
+        $this->assertSame('duas', Phrase::spelled(2, feminine: true));
+        $this->assertSame('dez', Phrase::spelled(10));
+        $this->assertSame('11', Phrase::spelled(11));
+    }
+
+    #[Test]
+    public function a_date_inside_a_sentence_is_written_out_in_lower_case(): void
+    {
+        $this->assertSame(
+            '19 de agosto de 2026',
+            Phrase::date(new \DateTimeImmutable('2026-08-19')),
+        );
+
+        $this->assertSame(
+            '1 de março de 2027',
+            Phrase::date(new \DateTimeImmutable('2027-03-01')),
+        );
     }
 
     #[Test]

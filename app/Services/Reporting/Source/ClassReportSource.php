@@ -380,11 +380,16 @@ class ClassReportSource implements ReportSource
         foreach ($interventions as $intervention) {
             // `->` rather than `?->`: the left side of ?? already tolerates a
             // null object, and the nullsafe would be dead weight.
-            $key = $intervention->intervention_type->value ?? 'other';
+            $key = $intervention->intervention_type->value ?? 'uncategorised';
 
             $byType[$key] ??= [
                 'type' => $key,
-                'label' => $intervention->intervention_type?->label() ?? $intervention->title,
+                // NEVER THE TITLE. A title is the teacher's words about ONE
+                // intervention; using it as a category label is how «Legado sem
+                // dominio» — the title of a row that predates the type column —
+                // ended up printed as a kind of pedagogical action. A record
+                // with no type is reported as having none (§10, §11).
+                'label' => $intervention->intervention_type?->label(),
                 'count' => 0,
             ];
 
@@ -403,7 +408,13 @@ class ClassReportSource implements ReportSource
             // Marked by the teacher for inclusion in the document itself, as
             // opposed to merely counted.
             'highlighted' => array_values($interventions
-                ->filter(fn (Intervention $intervention) => $intervention->include_in_report)
+                // A TYPE IS THE PROOF THAT SOMEBODY CURATED THIS ROW (§10).
+                // `include_in_report` predates the type column, so a legacy row
+                // can carry the flag and a placeholder title — which is how
+                // «Legado sem dominio» reached a printed document. A row with
+                // no type is counted, never quoted.
+                ->filter(fn (Intervention $intervention) => $intervention->include_in_report
+                    && $intervention->intervention_type !== null)
                 ->map(fn (Intervention $intervention) => [
                     'title' => $intervention->title,
                     'type' => $intervention->intervention_type?->label(),

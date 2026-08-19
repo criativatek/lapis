@@ -6,6 +6,7 @@ use App\Domain\Reporting\ContentSource;
 use App\Domain\Reporting\SectionKey;
 use App\Services\Reporting\ComposedSection;
 use App\Services\Reporting\Narrative\Absence;
+use App\Services\Reporting\Narrative\Grade;
 use App\Services\Reporting\Narrative\Phrase;
 use App\Services\Reporting\ReportContext;
 
@@ -59,7 +60,7 @@ class OverallAssessmentComposer implements SectionComposer
                     $this->partialCoverage($summary),
                 ]),
                 Phrase::paragraph([
-                    $this->successSentence($summary),
+                    $this->successSentence($context, $summary),
                     $this->unclassifiedSentence($summary),
                 ]),
             ]),
@@ -94,7 +95,8 @@ class OverallAssessmentComposer implements SectionComposer
         }
 
         return Phrase::sentence(
-            'No período analisado, a',
+            Phrase::capitalise($context->whenClause()).',',
+            'a',
             $label,
             'da turma foi de',
             $value,
@@ -146,14 +148,14 @@ class OverallAssessmentComposer implements SectionComposer
         }
 
         return $partial === 1
-            ? 'O resultado de 1 aluno assenta em parte dos instrumentos previstos.'
-            : 'Os resultados de '.$partial.' alunos assentam em parte dos instrumentos previstos.';
+            ? 'O resultado de um aluno assenta em parte dos instrumentos previstos.'
+            : 'Os resultados de '.Phrase::spelled($partial).' alunos assentam em parte dos instrumentos previstos.';
     }
 
     /**
      * @param  array<string, mixed>  $summary
      */
-    protected function successSentence(array $summary): ?string
+    protected function successSentence(ReportContext $context, array $summary): ?string
     {
         $success = $summary['success'] ?? null;
 
@@ -170,13 +172,43 @@ class OverallAssessmentComposer implements SectionComposer
         $succeeded = (int) ($success['succeeded'] ?? 0);
         $rate = Phrase::percentage($success['rate'] ?? null);
 
-        // «positiva» is the scale's own word for the side, not a threshold this
-        // sentence invented: `is_negative` decided it upstream.
+        // THE THRESHOLD, WHERE THE SCALE HAS ONE (§9). «iguais ou superiores a
+        // 3» is what a teacher says; «positivas» is the abstraction. The 3 is
+        // read from the scale's own `is_negative`, never written down here — a
+        // school whose 1–5 treats 2 as sufficient gets «superiores a 2».
+        $bands = $this->bandsOf($context);
+        $threshold = Grade::threshold($bands);
+
+        $clause = $threshold === null
+            ? Phrase::howMany($succeeded, $placed, 'foi positiva', 'foram positivas')
+            : Phrase::howMany(
+                $succeeded,
+                $placed,
+                'foi igual ou superior a '.$threshold,
+                'foram iguais ou superiores a '.$threshold,
+            );
+
         return Phrase::sentence(
             'Das classificações atribuídas,',
-            Phrase::howMany($succeeded, $placed, 'foi positiva', 'foram positivas'),
-            $rate === null ? null : '— uma taxa de sucesso de '.$rate,
+            $clause,
+            $rate === null ? null : ', o que corresponde a uma taxa de sucesso de '.$rate,
         );
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    protected function bandsOf(ReportContext $context): array
+    {
+        $distribution = $context->fact('assigned_distribution');
+
+        if (! is_array($distribution)) {
+            return [];
+        }
+
+        $bands = $distribution['bands'] ?? $distribution['values'] ?? [];
+
+        return is_array($bands) ? array_values(array_filter($bands, 'is_array')) : [];
     }
 
     /**
@@ -198,15 +230,16 @@ class OverallAssessmentComposer implements SectionComposer
         if ($without > 0) {
             // NEVER counted as failures, and the sentence says why they are not
             // in the rate rather than leaving the reader to assume (§41).
-            $parts[] = $without === 1
-                ? '1 aluno não tem ainda classificação atribuída, pelo que não é considerado no cálculo da taxa de sucesso'
-                : $without.' alunos não têm ainda classificação atribuída, pelo que não são considerados no cálculo da taxa de sucesso';
+            $parts[] = Phrase::studentsDid($without, 'não tem', 'não têm')
+                .' ainda classificação atribuída, pelo que '
+                .($without === 1 ? 'não é considerado' : 'não são considerados')
+                .' no cálculo da taxa de sucesso';
         }
 
         if ($unplaced > 0) {
-            $parts[] = $unplaced === 1
-                ? '1 classificação atribuída não é posicionável na escala em uso'
-                : $unplaced.' classificações atribuídas não são posicionáveis na escala em uso';
+            $parts[] = Phrase::count($unplaced, 'classificação atribuída', 'classificações atribuídas', feminine: true)
+                .' '.($unplaced === 1 ? 'não é posicionável' : 'não são posicionáveis')
+                .' na escala em uso';
         }
 
         return $parts === [] ? null : Phrase::sentence(Phrase::items($parts));

@@ -44,6 +44,26 @@ enum RecordValence: string
     }
 
     /**
+     * The predicate this valence takes inside a sentence: «cinco têm sentido
+     * negativo», «três não têm sentido definido».
+     *
+     * Separate from label(), which is a column heading. The fourth case takes a
+     * negative predicate because that is what it means — nobody recorded a
+     * direction — and «têm sentido sem sentido definido» is not a sentence.
+     */
+    public function clause(int $count): string
+    {
+        $verb = $count === 1 ? 'tem' : 'têm';
+
+        return match ($this) {
+            self::Positive => $verb.' sentido positivo',
+            self::Negative => $verb.' sentido negativo',
+            self::Neutral => $verb.' sentido neutro',
+            self::Undetermined => ($count === 1 ? 'não tem' : 'não têm').' sentido definido',
+        };
+    }
+
+    /**
      * The direction of one record, read from what was actually recorded.
      *
      * The type-specific field wins over the kind, because it is the more
