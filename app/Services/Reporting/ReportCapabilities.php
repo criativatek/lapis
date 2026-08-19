@@ -30,12 +30,35 @@ use App\Support\Entitlements\Entitlements;
  */
 class ReportCapabilities
 {
+    /** The plan capability behind «Aperfeiçoar redação». Pro and Institucional; never Base. */
+    public const WRITING_ASSISTANT_MODULE = 'ai_assistance';
+
     public function __construct(protected Entitlements $entitlements) {}
 
     /** Whether the pedagogical (interpretive) layer is available at all. */
     public function allowsPedagogicalAnalysis(): bool
     {
         return $this->entitlements->allows(SectionCatalogue::PEDAGOGICAL_MODULE);
+    }
+
+    /**
+     * Whether this school's plan includes the writing assistant.
+     *
+     * NO NEW CAPABILITY WAS INVENTED FOR THIS. `ai_assistance` has existed in
+     * the module catalogue since the entitlements seeder was written, sits in
+     * Pro and Institucional and not in Base, and had no feature behind it —
+     * which is exactly the plan split the brief asks for. Adding a second key
+     * would have meant either changing the commercial composition of the plans
+     * (on the ask-first list in CLAUDE.md §31) or shipping two capabilities that
+     * always answer the same thing.
+     *
+     * This answers the PLAN question only. Whether an engine is configured at
+     * all is a separate question with a separate answer, because the two fail
+     * for different reasons and a teacher deserves to be told which (§41).
+     */
+    public function allowsWritingAssistance(): bool
+    {
+        return $this->entitlements->allows(self::WRITING_ASSISTANT_MODULE);
     }
 
     public function allowsType(ReportType $type): bool

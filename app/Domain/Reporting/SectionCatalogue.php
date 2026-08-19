@@ -32,6 +32,62 @@ class SectionCatalogue
     public const PEDAGOGICAL_MODULE = 'report_pedagogical_analysis';
 
     /**
+     * Sections the writing assistant is not allowed near (§34 of the IA brief).
+     *
+     * NOT «SECTIONS WITH TABLES». Almost every section carries structured data
+     * beside its text, and that data is never sent anywhere and never touched —
+     * the tables are safe by construction. What is listed here is text that is
+     * not prose in the first place:
+     *
+     *   identification   states who and what the document is about. Rewording
+     *                    the sentence that fixes the subject of a report is a
+     *                    change of identity, not of style.
+     *
+     *   scope            states the stretch of time everything below is true
+     *                    of. §3 forbids changing the temporal scope, and the
+     *                    safest way to honour that is not to offer it.
+     *
+     *   timeline         is a listing, and its lead sentence exists to say how
+     *                    many rows follow and whether they name anybody. Its
+     *                    rows are the teacher's own words about a child, which
+     *                    this module has never been allowed to rephrase.
+     *
+     * A key not on this list is rewritable. The list is short because the
+     * question «is this prose?» has an obvious answer for everything else.
+     *
+     * @var list<SectionKey>
+     */
+    protected const NOT_REWRITABLE = [
+        SectionKey::ClassIdentification,
+        SectionKey::StudentIdentification,
+        SectionKey::RecordsScope,
+        SectionKey::SchoolScope,
+        SectionKey::RecordsTimeline,
+    ];
+
+    /** Whether the writing assistant may be offered for this section at all. */
+    public static function isRewritable(SectionKey $key): bool
+    {
+        return ! in_array($key, self::NOT_REWRITABLE, strict: true);
+    }
+
+    /**
+     * The keys of every section of this type that may be reworded.
+     *
+     * @return list<string>
+     */
+    public static function rewritableKeysFor(ReportType $type): array
+    {
+        return array_values(array_map(
+            fn (SectionDefinition $definition): string => $definition->key->value,
+            array_filter(
+                self::for($type),
+                fn (SectionDefinition $definition): bool => self::isRewritable($definition->key),
+            ),
+        ));
+    }
+
+    /**
      * @return list<SectionDefinition>
      */
     public static function for(ReportType $type): array
