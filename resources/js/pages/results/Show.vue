@@ -207,14 +207,20 @@ function post(row: Row, data: { final_scale_level_id: number | null; final_value
 </script>
 
 <template>
-    <Head :title="`Resultados — ${schoolClass.label}`" />
+    <Head :title="`Grelha de resultados — ${schoolClass.label}`" />
 
     <div class="space-y-4 p-4">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
-                <Heading :title="`Resultados — ${schoolClass.label}`" :description="schoolClass.subject" />
-                <div class="flex gap-3 text-sm">
+                <Heading :title="`Grelha de resultados — ${schoolClass.label}`" :description="schoolClass.subject" />
+                <div class="flex flex-wrap gap-x-3 gap-y-1 text-sm">
                     <Link :href="`/classes/${schoolClass.ulid}`" class="text-muted-foreground hover:underline">← Voltar à turma</Link>
+                    <!-- Back up to the reading. This grid is where a decision is
+                         taken student by student; «Acompanhamento da Turma» is
+                         where the class is read as a whole. -->
+                    <Link :href="`/classes/${schoolClass.ulid}/results/estatistica`" class="text-primary hover:underline">
+                        Acompanhamento da turma →
+                    </Link>
                     <!-- The decision is taken here; that page is where it is
                          formalised — the pauta, the states, the publication. -->
                     <Link :href="`/classes/${schoolClass.ulid}/classifications`" class="text-primary hover:underline">

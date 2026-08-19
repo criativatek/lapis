@@ -171,4 +171,43 @@
     body {
         @apply bg-background text-foreground;
     }
+
+    /*
+     * A scrollbar that works and does not compete.
+     *
+     * The sidebar's own scrollbar was drawn at the platform default width and
+     * contrast, which put a hard vertical bar beside a column of quiet labels —
+     * the loudest thing in the panel was the thing you use least.
+     *
+     * IT IS NOT HIDDEN. `scrollbar-width: thin` and a low-contrast thumb keep it
+     * visible, hoverable and draggable, which a pointer user with limited
+     * precision still needs; `overlay`/`none` would have taken that away for a
+     * cosmetic gain (§34).
+     *
+     * Firefox reads the two `scrollbar-*` properties and ignores the
+     * pseudo-elements; Chromium and WebKit do the opposite. Both are declared
+     * once, here, rather than as classes each scrolling panel has to remember.
+     */
+    [data-slot='sidebar-content'] {
+        scrollbar-width: thin;
+        scrollbar-color: var(--color-sidebar-border) transparent;
+    }
+
+    [data-slot='sidebar-content']::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    [data-slot='sidebar-content']::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    [data-slot='sidebar-content']::-webkit-scrollbar-thumb {
+        background-color: var(--color-sidebar-border);
+        border-radius: 9999px;
+    }
+
+    /* Enough contrast to grab, only while the pointer is in the panel. */
+    [data-slot='sidebar-content']:hover::-webkit-scrollbar-thumb {
+        background-color: color-mix(in oklch, var(--color-sidebar-foreground) 30%, transparent);
+    }
 }

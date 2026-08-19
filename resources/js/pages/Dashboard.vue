@@ -102,8 +102,11 @@ const summary = computed(() => [
                         <Link :href="`/classes/${schoolClass.ulid}/classifications`" class="inline-flex items-center gap-1 text-primary hover:underline">
                             <ClipboardList class="size-3.5" /> Classificações
                         </Link>
-                        <Link :href="`/classes/${schoolClass.ulid}/results`" class="inline-flex items-center gap-1 text-muted-foreground hover:underline">
-                            <BarChart3 class="size-3.5" /> Resultados
+                        <!-- The class read as a whole. «Resultados» is no longer
+                             a place a teacher goes to; «como está esta turma?»
+                             is the question, and this is where it is answered. -->
+                        <Link :href="`/classes/${schoolClass.ulid}/results/estatistica`" class="inline-flex items-center gap-1 text-muted-foreground hover:underline">
+                            <BarChart3 class="size-3.5" /> Acompanhamento
                         </Link>
                     </div>
                 </div>

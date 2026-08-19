@@ -21,11 +21,11 @@ defineProps<{
 </script>
 
 <template>
-    <Head title="As Minhas Turmas" />
+    <Head title="Turmas" />
 
     <div class="mx-auto w-full max-w-4xl space-y-6 p-4">
         <div class="flex items-center justify-between">
-            <Heading title="As Minhas Turmas" description="As turmas que leciona neste ano letivo." />
+            <Heading title="Turmas" description="As turmas que leciona neste ano letivo." />
             <Button as-child>
                 <Link href="/classes/create"><Plus class="size-4" /> Nova turma</Link>
             </Button>

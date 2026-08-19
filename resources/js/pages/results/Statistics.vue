@@ -1210,18 +1210,31 @@ const studentRows = computed(() => {
 </script>
 
 <template>
-    <Head :title="`Estatística — ${schoolClass.label}`" />
+    <Head :title="`Acompanhamento — ${schoolClass.label}`" />
 
     <div :class="PAGE" class="min-h-full space-y-5 p-4 sm:p-5">
         <!-- ================================================== cabeçalho -->
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
                 <Heading
-                    title="Visão geral de desempenho"
+                    title="Acompanhamento da Turma"
                     :description="`${schoolClass.label} · ${schoolClass.subject} — o desempenho e a evolução da turma nas avaliações realizadas.`"
                 />
-                <div class="flex flex-wrap gap-3 text-sm">
+                <!-- READING HERE, DECIDING THERE.
+                     This page answers «como está esta turma?». The grid where a
+                     classification is actually decided, and the batch screen
+                     where proposals are made and published, are one click away
+                     and unchanged — they are acts of AVALIAÇÃO, and hiding the
+                     way to them behind a menu entry that no longer exists is
+                     the one thing this reorganization had to avoid (§7, §30). -->
+                <div class="flex flex-wrap gap-x-3 gap-y-1 text-sm">
                     <Link :href="`/classes/${schoolClass.ulid}`" class="text-muted-foreground hover:underline">← Voltar à turma</Link>
+                    <Link :href="`/classes/${schoolClass.ulid}/results`" class="text-primary hover:underline">
+                        Grelha de resultados →
+                    </Link>
+                    <Link :href="`/classes/${schoolClass.ulid}/classifications`" class="text-primary hover:underline">
+                        Classificações →
+                    </Link>
                     <Link :href="`/classes/${schoolClass.ulid}/results/quadro-sintese`" class="text-primary hover:underline">
                         Quadro Síntese →
                     </Link>
