@@ -54,11 +54,18 @@ function hint(item: SharedNavItem): string {
     <!-- Eight groups where there used to be three, so the vertical budget got
          tighter. The gap between groups comes down and the heading gets shorter
          and quieter — a heading is a signpost and must not compete with the
-         links under it. Nothing was removed to buy the room (§32, §33). -->
+         links under it. Nothing was removed to buy the room (§32, §33).
+
+         THE HEADING CARRIES THE BRAND, NOT THE EMPHASIS. `--brand-amber` is
+         the pencil body in the mark and the sidebar's ring and primary; reusing
+         it here threads the identity down the panel for free. It is held at 80%
+         so the signpost stays quieter than the links it labels — 6.5:1 on the
+         navy panel, above AA and in fact clearer than the 4.1:1 grey it
+         replaces. Size, weight and spacing are untouched. -->
     <SidebarGroup class="px-2 py-0">
         <SidebarGroupLabel
             v-if="section.label"
-            class="h-6 text-[11px] font-medium tracking-wide text-sidebar-foreground/55 uppercase"
+            class="h-6 text-[11px] font-medium tracking-wide text-(--brand-amber)/80 uppercase"
         >
             {{ section.label }}
         </SidebarGroupLabel>
