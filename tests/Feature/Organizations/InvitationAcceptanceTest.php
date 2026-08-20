@@ -225,6 +225,28 @@ class InvitationAcceptanceTest extends TestCase
         $this->assertNotNull($user->email_verified_at);
     }
 
+    /**
+     * The exact incognito scenario: a valid, current, uncancelled, unexpired
+     * token, reached with no session at all — no auth, no resolved
+     * organization. A bare GET must only ever present a page; it must never
+     * accept on the visitor's behalf.
+     */
+    #[Test]
+    public function a_bare_get_with_no_session_never_accepts_the_invitation(): void
+    {
+        Mail::fake();
+        [$organization, $owner] = $this->institutionalOrganization();
+        $token = $this->inviteAndCaptureToken($organization, $owner, 'teste.convite@example.test');
+        $invitation = OrganizationInvitation::withoutGlobalScope('organization')->firstOrFail();
+
+        $this->get("/invitations/{$token}")->assertRedirect(route('register'));
+
+        $invitation->refresh();
+        $this->assertNull($invitation->accepted_at);
+        $this->assertNull($invitation->cancelled_at);
+        $this->assertFalse(User::where('email', 'teste.convite@example.test')->exists());
+    }
+
     #[Test]
     public function registering_with_a_different_email_than_invited_does_not_silently_accept(): void
     {

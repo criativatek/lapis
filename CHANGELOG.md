@@ -2,6 +2,16 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.41.1] — 2026-08-20
+
+### Investigado
+
+- **Suposta regressão no fluxo público de convites (Fatia 3).** Reportado um convite válido a ser recusado num `GET /invitations/{token}` sem sessão. Auditados a rota, o controller, `AcceptOrganizationInvitation::findByToken()` e o scope de tenancy em `OrganizationInvitation` — sem defeito encontrado: o lookup por `token_hash` já ignora corretamente o scope de organização antes de qualquer tenant estar resolvido, e um `GET` simples nunca aceita o convite (confirmado ao vivo: o token efetivamente enviado resolveu corretamente e o registo ficou por aceitar). A causa foi um erro de transcrição do token de 64 carateres no relato (`0`↔`O`, `M`↔`m`), não um bug de código.
+
+### Added
+
+- Teste de regressão explícito (`a_bare_get_with_no_session_never_accepts_the_invitation`) que fixa em código o comportamento verificado: um `GET` sem sessão a um convite válido nunca marca `accepted_at`/`cancelled_at` nem cria conta ou membership.
+
 ## [0.41.0] — 2026-08-20
 
 ### Added
