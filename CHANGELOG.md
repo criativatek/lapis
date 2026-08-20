@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.38.2] — 2026-08-20
+
+### Fixed
+
+- **O formulário de editar utilizador ganha um rótulo próprio e feedback ao guardar.** O código já existia desde a Fatia 0, mas os assets de produção em `public/build` tinham sido compilados antes desse commit — quem validasse em `http://lapis.test` via build estático via a versão anterior, sem nenhuma das alterações da Fatia 0. Corrigido reconstruindo os assets. Aproveitado para tornar o controlo explícito («Editar utilizador», acima dos campos, em vez de inputs soltos) e para o guardar deixar de ser mudo: passa a mostrar a mesma notificação de sucesso que criar ou apagar uma conta já mostram.
+
 ## [0.38.1] — 2026-08-20
 
 ### Fixed

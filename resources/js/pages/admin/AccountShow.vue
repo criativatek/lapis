@@ -105,27 +105,28 @@ function destroy(): void {
                 </span>
             </div>
 
-            <form class="grid gap-3 sm:grid-cols-2" @submit.prevent="saveUser">
-                <label class="block text-sm">
-                    <span class="mb-1 block font-medium">Nome</span>
-                    <input v-model="userForm.name" type="text" class="w-full rounded-md border border-border bg-background px-3 py-2" />
-                    <span v-if="userForm.errors.name" class="mt-1 block text-xs text-red-600">{{ userForm.errors.name }}</span>
-                </label>
-                <label class="block text-sm">
-                    <span class="mb-1 block font-medium">Email</span>
-                    <input v-model="userForm.email" type="email" class="w-full rounded-md border border-border bg-background px-3 py-2" />
-                    <span v-if="userForm.errors.email" class="mt-1 block text-xs text-red-600">{{ userForm.errors.email }}</span>
-                    <span class="mt-1 block text-xs text-muted-foreground">Mudar o email obriga a nova verificação.</span>
-                </label>
-                <div class="sm:col-span-2">
-                    <button
-                        type="submit"
-                        class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                        :disabled="userForm.processing || !userForm.isDirty"
-                    >
-                        Guardar dados
-                    </button>
+            <form class="space-y-3" @submit.prevent="saveUser">
+                <h3 class="text-sm font-medium">Editar utilizador</h3>
+                <div class="grid gap-3 sm:grid-cols-2">
+                    <label class="block text-sm">
+                        <span class="mb-1 block font-medium">Nome</span>
+                        <input v-model="userForm.name" type="text" class="w-full rounded-md border border-border bg-background px-3 py-2" />
+                        <span v-if="userForm.errors.name" class="mt-1 block text-xs text-red-600">{{ userForm.errors.name }}</span>
+                    </label>
+                    <label class="block text-sm">
+                        <span class="mb-1 block font-medium">Email</span>
+                        <input v-model="userForm.email" type="email" class="w-full rounded-md border border-border bg-background px-3 py-2" />
+                        <span v-if="userForm.errors.email" class="mt-1 block text-xs text-red-600">{{ userForm.errors.email }}</span>
+                        <span class="mt-1 block text-xs text-muted-foreground">Mudar o email obriga a nova verificação.</span>
+                    </label>
                 </div>
+                <button
+                    type="submit"
+                    class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                    :disabled="userForm.processing || !userForm.isDirty"
+                >
+                    Guardar dados
+                </button>
             </form>
 
             <div class="flex flex-wrap gap-2 border-t border-border pt-3">

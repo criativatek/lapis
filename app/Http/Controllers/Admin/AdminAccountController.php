@@ -276,6 +276,10 @@ class AdminAccountController extends Controller
             ['email_changed' => $emailChanged],
         );
 
+        Inertia::flash('toast', ['type' => 'success', 'message' => $emailChanged
+            ? __('Dados guardados. O novo email fica por verificar.')
+            : __('Dados guardados.')]);
+
         return back();
     }
 

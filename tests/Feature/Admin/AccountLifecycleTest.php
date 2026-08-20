@@ -153,6 +153,23 @@ class AccountLifecycleTest extends TestCase
     // ---------------------------------------------------------------- editing
 
     #[Test]
+    public function the_account_page_carries_the_data_the_edit_control_renders_from(): void
+    {
+        // Nothing here exercises Vue directly — PHPUnit cannot render a template.
+        // What it CAN prove is that the Inertia payload the "Editar utilizador"
+        // form binds to (name, email) actually reaches the page, which is the
+        // half of "the control is visible" that a backend test can hold.
+        [$teacher, $organization] = $this->targetAccount();
+
+        $this->actingAs($this->admin())->get("/admin/accounts/{$organization->ulid}")->assertInertia(
+            fn ($page) => $page
+                ->component('admin/AccountShow')
+                ->where('account.owner.name', $teacher->name)
+                ->where('account.owner.email', $teacher->email),
+        );
+    }
+
+    #[Test]
     public function editing_the_name_and_email_saves_and_audits(): void
     {
         [$teacher, $organization] = $this->targetAccount();
@@ -166,6 +183,22 @@ class AccountLifecycleTest extends TestCase
         $this->assertSame('Maria Silva', $teacher->name);
         $this->assertSame('maria.silva@escola.pt', $teacher->email);
         $this->assertTrue($this->trailHas($organization, 'admin.user_updated'));
+    }
+
+    #[Test]
+    public function saving_flashes_a_success_toast(): void
+    {
+        // The same flash mechanism `store` and `destroy` already use — a page
+        // that redirects with `back()` and no visible confirmation is a save
+        // that looks like it silently did nothing.
+        [$teacher, $organization] = $this->targetAccount();
+
+        $response = $this->actingAs($this->admin())->put("/admin/accounts/{$organization->ulid}/user", [
+            'name' => $teacher->name,
+            'email' => $teacher->email,
+        ]);
+
+        $response->assertSessionHas('inertia.flash_data', fn ($flash) => ($flash['toast']['type'] ?? null) === 'success');
     }
 
     #[Test]
