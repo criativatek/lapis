@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.42.6] — 2026-08-20
+
+### Fixed
+
+- **Criação de turma pouco descoberta na validação manual.** A página Turmas já tinha "Nova turma" como botão principal no topo — mas o estado vazio ("ainda sem turmas") mostrava só texto, sem ação clicável. Passa a ter também um botão "Criar a primeira turma", reutilizando exatamente a mesma rota/formulário/validação/action que "Nova turma" já usa — nenhum fluxo novo. Auditado o seletor de contexto no topo (Ano letivo/Disciplina/Ano/Turma/Período): não tem nenhuma ação de criação — os seletores "Ano", "Turma" e "Período" estão simplesmente desativados (fase futura), nada a remover aí.
+
 ## [0.42.5] — 2026-08-20
 
 ### Changed

@@ -32,7 +32,10 @@ defineProps<{
         </div>
 
         <div v-if="classes.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
-            <p class="text-sm text-muted-foreground">Ainda não tem turmas. Crie a primeira.</p>
+            <p class="text-sm text-muted-foreground">Ainda não tem turmas.</p>
+            <Button as-child class="mt-3">
+                <Link href="/classes/create"><Plus class="size-4" /> Criar a primeira turma</Link>
+            </Button>
         </div>
 
         <div v-else class="grid gap-3 sm:grid-cols-2">
