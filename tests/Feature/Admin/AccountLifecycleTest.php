@@ -156,9 +156,10 @@ class AccountLifecycleTest extends TestCase
     public function the_account_page_carries_the_data_the_edit_control_renders_from(): void
     {
         // Nothing here exercises Vue directly — PHPUnit cannot render a template.
-        // What it CAN prove is that the Inertia payload the "Editar utilizador"
-        // form binds to (name, email) actually reaches the page, which is the
-        // half of "the control is visible" that a backend test can hold.
+        // What it CAN prove is that the Inertia payload the "Dados do
+        // utilizador" form binds to (name, email) actually reaches the page,
+        // which is the half of "the control is visible" that a backend test
+        // can hold.
         [$teacher, $organization] = $this->targetAccount();
 
         $this->actingAs($this->admin())->get("/admin/accounts/{$organization->ulid}")->assertInertia(

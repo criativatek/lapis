@@ -2,6 +2,13 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.38.3] — 2026-08-20
+
+### Changed
+
+- **A ficha da conta no backoffice separa visualmente o que é da pessoa, o que é administrativo e o que é da organização.** No bloco «Dono», os campos de nome/email passam a ter o seu próprio subtítulo («Dados do utilizador»), e as ações de suporte — verificar email, promover a admin, aceder como utilizador, desativar — ficam num bloco «Ações administrativas» separado, em vez de tudo misturado sob um único título. Sem alteração a rotas, validação, `email_verified_at`, `deactivated_at`, guardas ou lógica de subscrição — só layout e texto.
+- **Nomes de botão mais precisos sobre o que cada ação afeta.** «Guardar dados» → «Guardar alterações»; «Impersonar (suporte)» → «Aceder como utilizador» (com explicação em tooltip); «Desativar conta» / «Reativar conta» → «Desativar utilizador» / «Reativar utilizador»; «Suspender» / «Reativar» da subscrição → «Suspender subscrição» / «Reativar subscrição». A distinção que já existia — desativar tira o acesso a uma pessoa, suspender tira o produto à organização — fica explícita nos próprios rótulos, não só no texto de apoio por baixo.
+
 ## [0.38.2] — 2026-08-20
 
 ### Fixed

@@ -105,72 +105,79 @@ function destroy(): void {
                 </span>
             </div>
 
-            <form class="space-y-3" @submit.prevent="saveUser">
-                <h3 class="text-sm font-medium">Editar utilizador</h3>
-                <div class="grid gap-3 sm:grid-cols-2">
-                    <label class="block text-sm">
-                        <span class="mb-1 block font-medium">Nome</span>
-                        <input v-model="userForm.name" type="text" class="w-full rounded-md border border-border bg-background px-3 py-2" />
-                        <span v-if="userForm.errors.name" class="mt-1 block text-xs text-red-600">{{ userForm.errors.name }}</span>
-                    </label>
-                    <label class="block text-sm">
-                        <span class="mb-1 block font-medium">Email</span>
-                        <input v-model="userForm.email" type="email" class="w-full rounded-md border border-border bg-background px-3 py-2" />
-                        <span v-if="userForm.errors.email" class="mt-1 block text-xs text-red-600">{{ userForm.errors.email }}</span>
-                        <span class="mt-1 block text-xs text-muted-foreground">Mudar o email obriga a nova verificação.</span>
-                    </label>
-                </div>
-                <button
-                    type="submit"
-                    class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                    :disabled="userForm.processing || !userForm.isDirty"
-                >
-                    Guardar dados
-                </button>
-            </form>
-
-            <div class="flex flex-wrap gap-2 border-t border-border pt-3">
-                <button
-                    v-if="!account.owner.verified"
-                    type="button"
-                    class="rounded-md border border-emerald-600 px-3 py-1.5 text-sm text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
-                    @click="post('/verify-email')"
-                >
-                    Verificar email
-                </button>
-                <button type="button" class="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40" @click="post('/toggle-admin')">
-                    {{ account.owner.is_platform_admin ? 'Revogar admin da plataforma' : 'Tornar admin da plataforma' }}
-                </button>
-                <button
-                    v-if="!account.owner.is_platform_admin && account.owner.active"
-                    type="button"
-                    class="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
-                    @click="post('/impersonate')"
-                >
-                    Impersonar (suporte)
-                </button>
-
-                <button
-                    v-if="account.owner.active"
-                    type="button"
-                    class="rounded-md border border-red-600 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950"
-                    :disabled="account.deactivation_refusal !== null"
-                    :title="account.deactivation_refusal ?? 'Impede o acesso sem tocar na subscrição.'"
-                    @click="post('/deactivate')"
-                >
-                    Desativar conta
-                </button>
-                <button
-                    v-else
-                    type="button"
-                    class="rounded-md border border-emerald-600 px-3 py-1.5 text-sm text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
-                    @click="post('/activate')"
-                >
-                    Reativar conta
-                </button>
+            <div class="space-y-3">
+                <h3 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Dados do utilizador</h3>
+                <form class="space-y-3" @submit.prevent="saveUser">
+                    <div class="grid gap-3 sm:grid-cols-2">
+                        <label class="block text-sm">
+                            <span class="mb-1 block font-medium">Nome</span>
+                            <input v-model="userForm.name" type="text" class="w-full rounded-md border border-border bg-background px-3 py-2" />
+                            <span v-if="userForm.errors.name" class="mt-1 block text-xs text-red-600">{{ userForm.errors.name }}</span>
+                        </label>
+                        <label class="block text-sm">
+                            <span class="mb-1 block font-medium">Email</span>
+                            <input v-model="userForm.email" type="email" class="w-full rounded-md border border-border bg-background px-3 py-2" />
+                            <span v-if="userForm.errors.email" class="mt-1 block text-xs text-red-600">{{ userForm.errors.email }}</span>
+                            <span class="mt-1 block text-xs text-muted-foreground">Mudar o email obriga a nova verificação.</span>
+                        </label>
+                    </div>
+                    <button
+                        type="submit"
+                        class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                        :disabled="userForm.processing || !userForm.isDirty"
+                    >
+                        Guardar alterações
+                    </button>
+                </form>
             </div>
 
-            <p v-if="account.deactivation_refusal" class="text-xs text-muted-foreground">{{ account.deactivation_refusal }}</p>
+            <div class="space-y-3 border-t border-border pt-3">
+                <h3 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Ações administrativas</h3>
+
+                <div class="flex flex-wrap gap-2">
+                    <button
+                        v-if="!account.owner.verified"
+                        type="button"
+                        class="rounded-md border border-emerald-600 px-3 py-1.5 text-sm text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                        @click="post('/verify-email')"
+                    >
+                        Verificar email
+                    </button>
+                    <button type="button" class="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40" @click="post('/toggle-admin')">
+                        {{ account.owner.is_platform_admin ? 'Revogar admin da plataforma' : 'Tornar admin da plataforma' }}
+                    </button>
+                    <button
+                        v-if="!account.owner.is_platform_admin && account.owner.active"
+                        type="button"
+                        class="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
+                        title="Apenas para suporte. Permite visualizar a aplicação com o contexto deste utilizador."
+                        @click="post('/impersonate')"
+                    >
+                        Aceder como utilizador
+                    </button>
+
+                    <button
+                        v-if="account.owner.active"
+                        type="button"
+                        class="rounded-md border border-red-600 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950"
+                        :disabled="account.deactivation_refusal !== null"
+                        :title="account.deactivation_refusal ?? 'Impede o acesso desta pessoa, sem tocar na subscrição da organização.'"
+                        @click="post('/deactivate')"
+                    >
+                        Desativar utilizador
+                    </button>
+                    <button
+                        v-else
+                        type="button"
+                        class="rounded-md border border-emerald-600 px-3 py-1.5 text-sm text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                        @click="post('/activate')"
+                    >
+                        Reativar utilizador
+                    </button>
+                </div>
+
+                <p v-if="account.deactivation_refusal" class="text-xs text-muted-foreground">{{ account.deactivation_refusal }}</p>
+            </div>
         </section>
 
         <!-- Subscrição -->
@@ -215,7 +222,7 @@ function destroy(): void {
                     class="rounded-md border border-red-600 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
                     @click="post('/suspend')"
                 >
-                    Suspender
+                    Suspender subscrição
                 </button>
                 <button
                     v-else
@@ -223,11 +230,12 @@ function destroy(): void {
                     class="rounded-md border border-emerald-600 px-3 py-1.5 text-sm text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
                     @click="post('/reactivate')"
                 >
-                    Reativar
+                    Reativar subscrição
                 </button>
             </div>
             <p class="text-xs text-muted-foreground">
-                Suspender retira o produto a toda a organização. Desativar, acima, retira o acesso a uma pessoa.
+                Desativar o utilizador (acima) retira o acesso apenas a esta pessoa. Suspender a subscrição retira o acesso ao produto a toda a
+                organização.
             </p>
         </section>
 
