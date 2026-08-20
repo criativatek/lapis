@@ -29,6 +29,7 @@ versão em [CHANGELOG.md](../CHANGELOG.md); o "porquê" das decisões em [docs/a
 | **Autoavaliação (§15)** | ✅ | Por domínio, comparada com o cálculo, nunca somada. |
 | **Intervenções (§14)** | ✅ | O raciocínio pedagógico do professor: **porquê** (situação/dificuldade), **o quê** (estratégia), **para quê** (objetivo) e **o que se observou depois** (acompanhamentos datados, com avaliação do efeito pelo professor). Âmbito individual/grupo/turma, «rever em» e revisão pendente. Reutiliza a biblioteca `report_library_entries` dos Relatórios — dificuldade → estratégia → objetivo — e guarda cópia do texto escolhido, nunca uma FK. Nada é inferido: um resultado que sobe não avalia nada. |
 | **Backoffice de plataforma** | ✅ | `/admin` super-admin: gestão de contas, criar/provisionar, SMTP na BD (sobrepõe `.env`), impersonar. Guia: [backoffice.md](backoffice.md). |
+| **Organizações — Fatia 4** | ✅ | Sair/remover membros, transferir responsabilidade e reatribuir turmas órfãs como estado derivado; isolamento tenant, auditoria e autoria histórica preservados. Exportação pessoal ("os meus dados") em ZIP, síncrona, expira em 24h; arquitetura de política de retenção (`config/retention.php`) documentada, sem purga automática. Ver [membership-lifecycle.md](membership-lifecycle.md) e [data-lifecycle.md](data-lifecycle.md). |
 
 Suite: 1986 testes verdes (1 skipped) · Pint/Larastan/vue-tsc limpos. **Em produção** em
 [lapis.criativatek.com](https://lapis.criativatek.com) (versão 0.19.x).

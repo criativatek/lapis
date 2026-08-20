@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
-import { Mail, X } from '@lucide/vue';
+import { ArrowLeftRight, Mail, UserMinus, X } from '@lucide/vue';
 import Heading from '@/components/Heading.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 type Member = {
+    id: number;
     name: string;
     email: string;
     is_owner: boolean;
@@ -22,6 +23,10 @@ type Invitation = {
     expired: boolean;
 };
 
+// Reaching this page at all already means the viewer is the owner — Equipa
+// is gated by OrganizationInvitationPolicy::viewAny, owner-only. Any OTHER
+// row is therefore someone the owner may remove or transfer responsibility
+// to; the owner's own row never shows those actions.
 const props = defineProps<{ members: Member[]; invitations: Invitation[] }>();
 
 const form = useForm({ email: '' });
@@ -39,6 +44,26 @@ function cancel(invitation: Invitation): void {
     }
 
     useForm({}).delete(`/team/invitations/${invitation.ulid}`, { preserveScroll: true });
+}
+
+function remove(member: Member): void {
+    if (!confirm(`Remover ${member.name} da organização? Deixa de ter acesso; os dados que já registou permanecem na organização.`)) {
+        return;
+    }
+
+    useForm({ member: member.id }).delete('/team/members', { preserveScroll: true });
+}
+
+function transferOwnership(member: Member): void {
+    if (
+        !confirm(
+            `Transferir a responsabilidade da organização para ${member.name}? Deixa de ser o responsável e passa a membro; ${member.name} passa a decidir por esta organização.`,
+        )
+    ) {
+        return;
+    }
+
+    useForm({ member: member.id }).post('/team/members/transfer-ownership');
 }
 </script>
 
@@ -58,6 +83,7 @@ function cancel(invitation: Invitation): void {
                             <th class="px-3 py-2 font-medium">Email</th>
                             <th class="px-3 py-2 font-medium">Papel</th>
                             <th class="px-3 py-2 font-medium">Estado</th>
+                            <th class="px-3 py-2 text-right font-medium">Ações</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-border">
@@ -72,6 +98,16 @@ function cancel(invitation: Invitation): void {
                             <td class="px-3 py-2">
                                 <span v-if="!member.active" class="text-xs text-red-600">desativado</span>
                                 <span v-else class="text-xs text-emerald-600">ativo</span>
+                            </td>
+                            <td class="px-3 py-2 text-right">
+                                <div v-if="!member.is_owner" class="flex justify-end gap-1">
+                                    <Button variant="ghost" size="icon" aria-label="Transferir responsabilidade" @click="transferOwnership(member)">
+                                        <ArrowLeftRight class="size-4" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" aria-label="Remover da organização" @click="remove(member)">
+                                        <UserMinus class="size-4" />
+                                    </Button>
+                                </div>
                             </td>
                         </tr>
                     </tbody>
