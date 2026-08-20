@@ -12,6 +12,8 @@ import { store } from '@/routes/register';
 
 defineProps<{
     passwordRules: string;
+    status?: string;
+    prefillEmail?: string | null;
 }>();
 
 defineOptions({
@@ -24,6 +26,13 @@ defineOptions({
 
 <template>
     <Head title="Criar conta" />
+
+    <div
+        v-if="status"
+        class="mb-4 text-center text-sm font-medium text-green-600"
+    >
+        {{ status }}
+    </div>
 
     <Form
         v-bind="store.form()"
@@ -57,6 +66,7 @@ defineOptions({
                     autocomplete="email"
                     name="email"
                     placeholder="email@example.com"
+                    :value="prefillEmail ?? undefined"
                 />
                 <InputError :message="errors.email" />
             </div>

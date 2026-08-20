@@ -2,7 +2,10 @@
 
 namespace App\Support\Navigation;
 
+use App\Models\User;
 use App\Support\Entitlements\Entitlements;
+use App\Support\Tenancy\CurrentOrganization;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
 /**
@@ -12,10 +15,16 @@ use Illuminate\Support\Facades\Route;
  * Base teacher is never even sent the Pro items. This is presentation — the real
  * gate is the `module:` middleware on each route (§8.2) — but it uses the same
  * Entitlements service, so the two cannot disagree.
+ *
+ * `owner_only` items (Fatia 3's Equipa) go a step further: entitlement is a
+ * property of the ORGANIZATION's plan, not of who is asking, so it cannot by
+ * itself keep a member from seeing a link only the owner may use. Same
+ * caveat as the module gate — this is presentation. TeamController's own
+ * Policy check is the actual authority.
  */
 class NavigationBuilder
 {
-    public function __construct(protected Entitlements $entitlements) {}
+    public function __construct(protected Entitlements $entitlements, protected CurrentOrganization $currentOrganization) {}
 
     /**
      * @return array{sections: list<array{label: ?string, items: list<array<string, mixed>>}>, footer: list<array<string, mixed>>}
@@ -51,6 +60,10 @@ class NavigationBuilder
                 continue;
             }
 
+            if (! empty($item['owner_only']) && ! $this->isOwnerOfCurrentOrganization()) {
+                continue;
+            }
+
             $routeName = $item['route'] ?? $item['key'];
 
             $allowed[] = [
@@ -73,5 +86,14 @@ class NavigationBuilder
         }
 
         return $allowed;
+    }
+
+    protected function isOwnerOfCurrentOrganization(): bool
+    {
+        $user = Auth::user();
+
+        return $user instanceof User
+            && $this->currentOrganization->isResolved()
+            && $user->owns($this->currentOrganization->get());
     }
 }

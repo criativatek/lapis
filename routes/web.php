@@ -18,6 +18,7 @@ use App\Http\Controllers\InovarExportController;
 use App\Http\Controllers\InstrumentController;
 use App\Http\Controllers\InterimAssessmentController;
 use App\Http\Controllers\InterventionController;
+use App\Http\Controllers\InvitationAcceptanceController;
 use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\PublicSelfAssessmentController;
 use App\Http\Controllers\Reports\ReportController;
@@ -33,6 +34,7 @@ use App\Http\Controllers\SelfAssessmentController;
 use App\Http\Controllers\StudentPhotoController;
 use App\Http\Controllers\StudentProgressController;
 use App\Http\Controllers\SubjectController;
+use App\Http\Controllers\TeamController;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'Welcome')->name('home');
@@ -55,6 +57,15 @@ Route::middleware(['signed', 'throttle:120,1'])->group(function () {
     Route::post('auto/{classUlid}/{periodUlid}/{enrollmentUlid}', [PublicSelfAssessmentController::class, 'store'])
         ->name('self-assessments.public.store');
 });
+
+// An invitation into an institutional organization (Fatia 3): no `auth`, no
+// `organization` — reached by a guest as often as by someone already signed
+// in, and the token itself (looked up by hash, never by a guessable id) is
+// the access control, the same shape password-reset tokens already use. Not
+// `signed`: this is not a Laravel-signed URL, it is this app's own
+// single-use, expirable, hash-stored token.
+Route::middleware('throttle:60,1')->get('invitations/{token}', [InvitationAcceptanceController::class, 'show'])
+    ->name('invitations.show');
 
 // Teacher-facing area. Everything here reads tenant-owned data, so an
 // organization must be resolved before the request reaches a controller.
@@ -354,6 +365,17 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::patch('interventions/{intervention}', [InterventionController::class, 'updateStatus'])->name('interventions.status.update');
         Route::post('interventions/{intervention}/reviews', [InterventionController::class, 'addReview'])->name('interventions.reviews.store');
         Route::delete('interventions/{intervention}', [InterventionController::class, 'destroy'])->name('interventions.destroy');
+    });
+
+    // Equipa (Fatia 3) — an institutional organization's members and pending
+    // invitations, owner-only (TeamController, OrganizationInvitationPolicy).
+    // The module gate keeps a Base/Pro organization out; it cannot check WHO
+    // is asking or the organization's actual TYPE, which is why the policy
+    // still runs on every action underneath it.
+    Route::middleware('module:institution_admin')->group(function () {
+        Route::get('team', [TeamController::class, 'index'])->name('team.index');
+        Route::post('team/invitations', [TeamController::class, 'store'])->name('team.invitations.store');
+        Route::delete('team/invitations/{invitation}', [TeamController::class, 'destroy'])->name('team.invitations.destroy');
     });
 });
 

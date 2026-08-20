@@ -99,8 +99,13 @@ class FortifyServiceProvider extends ServiceProvider
             'status' => $request->session()->get('status'),
         ]));
 
-        Fortify::registerView(fn () => Inertia::render('auth/Register', [
+        Fortify::registerView(fn (Request $request) => Inertia::render('auth/Register', [
             'passwordRules' => Password::defaults()->toPasswordRulesString(),
+            'status' => $request->session()->get('status'),
+            // Set by InvitationAcceptanceController when the invited address
+            // has no account yet — prefilled, never locked, so someone free
+            // to use a different address for their account still can.
+            'prefillEmail' => $request->session()->get('invitation_email'),
         ]));
 
         Fortify::twoFactorChallengeView(fn () => Inertia::render('auth/TwoFactorChallenge'));

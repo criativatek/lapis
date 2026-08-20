@@ -138,6 +138,11 @@ return [
         [
             'label' => 'Instituição',
             'items' => [
+                // Fatia 3. `owner_only` is read by NavigationBuilder alone — a
+                // member of the school is entitled to the module (the plan
+                // grants it to the ORGANIZATION) but never sees this link,
+                // because TeamController is the responsável's alone.
+                ['key' => 'team', 'label' => 'Equipa', 'icon' => 'Users', 'module' => 'institution_admin', 'owner_only' => true, 'phase' => 3, 'route' => 'team.index', 'built' => true, 'description' => 'Convidar e gerir os membros da organização.'],
                 ['key' => 'institution', 'label' => 'Administração Institucional', 'icon' => 'Building2', 'module' => 'institution_admin', 'phase' => 7, 'description' => 'Gerir a instituição.'],
             ],
         ],

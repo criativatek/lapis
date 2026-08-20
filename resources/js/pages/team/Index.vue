@@ -1,0 +1,137 @@
+<script setup lang="ts">
+import { useForm } from '@inertiajs/vue3';
+import { Mail, X } from '@lucide/vue';
+import Heading from '@/components/Heading.vue';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+
+type Member = {
+    name: string;
+    email: string;
+    is_owner: boolean;
+    active: boolean;
+};
+
+type Invitation = {
+    ulid: string;
+    email: string;
+    created_at: string | null;
+    expires_at: string;
+    expired: boolean;
+};
+
+const props = defineProps<{ members: Member[]; invitations: Invitation[] }>();
+
+const form = useForm({ email: '' });
+
+function invite(): void {
+    form.post('/team/invitations', {
+        preserveScroll: true,
+        onSuccess: () => form.reset(),
+    });
+}
+
+function cancel(invitation: Invitation): void {
+    if (!confirm(`Cancelar o convite para ${invitation.email}?`)) {
+        return;
+    }
+
+    useForm({}).delete(`/team/invitations/${invitation.ulid}`, { preserveScroll: true });
+}
+</script>
+
+<template>
+    <div class="mx-auto w-full max-w-3xl space-y-6 p-4">
+        <Heading title="Equipa" description="Quem trabalha nesta organização, e quem ainda não respondeu ao convite." />
+
+        <!-- Membros -->
+        <section class="space-y-3 rounded-lg border border-border p-4">
+            <h2 class="text-sm font-medium">Membros ({{ props.members.length }})</h2>
+
+            <div class="overflow-x-auto rounded-lg border border-border">
+                <table class="w-full text-sm">
+                    <thead class="bg-muted/50 text-left text-xs text-muted-foreground">
+                        <tr>
+                            <th class="px-3 py-2 font-medium">Nome</th>
+                            <th class="px-3 py-2 font-medium">Email</th>
+                            <th class="px-3 py-2 font-medium">Papel</th>
+                            <th class="px-3 py-2 font-medium">Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border">
+                        <tr v-for="member in props.members" :key="member.email">
+                            <td class="px-3 py-2 font-medium">{{ member.name }}</td>
+                            <td class="px-3 py-2 text-muted-foreground">{{ member.email }}</td>
+                            <td class="px-3 py-2">
+                                <Badge :variant="member.is_owner ? 'default' : 'secondary'">
+                                    {{ member.is_owner ? 'Responsável' : 'Membro' }}
+                                </Badge>
+                            </td>
+                            <td class="px-3 py-2">
+                                <span v-if="!member.active" class="text-xs text-red-600">desativado</span>
+                                <span v-else class="text-xs text-emerald-600">ativo</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Convidar -->
+        <section class="space-y-3 rounded-lg border border-border p-4">
+            <h2 class="text-sm font-medium">Convidar</h2>
+            <form class="flex items-end gap-2" @submit.prevent="invite">
+                <label class="block flex-1 text-sm">
+                    <Label for="invite-email" class="mb-1 block font-medium">Email</Label>
+                    <Input id="invite-email" v-model="form.email" type="email" placeholder="colega@escola.pt" />
+                    <span v-if="form.errors.email" class="mt-1 block text-xs text-red-600">{{ form.errors.email }}</span>
+                </label>
+                <Button type="submit" :disabled="form.processing || form.email === ''">
+                    <Mail class="size-4" /> Enviar convite
+                </Button>
+            </form>
+        </section>
+
+        <!-- Convites pendentes -->
+        <section class="space-y-3 rounded-lg border border-border p-4">
+            <h2 class="text-sm font-medium">Convites pendentes ({{ props.invitations.length }})</h2>
+
+            <p v-if="props.invitations.length === 0" class="text-sm text-muted-foreground">Sem convites por responder.</p>
+
+            <div v-else class="overflow-x-auto rounded-lg border border-border">
+                <table class="w-full text-sm">
+                    <thead class="bg-muted/50 text-left text-xs text-muted-foreground">
+                        <tr>
+                            <th class="px-3 py-2 font-medium">Email</th>
+                            <th class="px-3 py-2 font-medium">Convidado em</th>
+                            <th class="px-3 py-2 font-medium">Expira em</th>
+                            <th class="px-3 py-2 font-medium">Estado</th>
+                            <th class="px-3 py-2 text-right font-medium">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border">
+                        <tr v-for="invitation in props.invitations" :key="invitation.ulid">
+                            <td class="px-3 py-2 font-medium">{{ invitation.email }}</td>
+                            <td class="px-3 py-2 text-muted-foreground tabular-nums">{{ invitation.created_at }}</td>
+                            <td class="px-3 py-2 text-muted-foreground tabular-nums">{{ invitation.expires_at }}</td>
+                            <td class="px-3 py-2">
+                                <span v-if="invitation.expired" class="text-xs text-amber-600">expirado</span>
+                                <span v-else class="text-xs text-muted-foreground">pendente</span>
+                            </td>
+                            <td class="px-3 py-2 text-right">
+                                <Button variant="ghost" size="icon" aria-label="Cancelar convite" @click="cancel(invitation)">
+                                    <X class="size-4" />
+                                </Button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="text-xs text-muted-foreground">
+                Convidar de novo o mesmo email renova o convite existente — o link anterior deixa de funcionar.
+            </p>
+        </section>
+    </div>
+</template>
