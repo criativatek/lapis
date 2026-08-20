@@ -2,6 +2,31 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.42.1] — 2026-08-20
+
+### Added
+
+- **Fatia 4 — UI de governação de membros e exportação.** Página Equipa ganha "Remover da organização" e "Transferir responsabilidade" por membro, com confirmação forte; página de definições de perfil ganha "Sair da organização" (ou a instrução para transferir primeiro, se for o responsável) e a ligação para "Exportar os meus dados"; nova página "Turmas a Reatribuir" no grupo Instituição, com seleção de um membro atual por turma órfã.
+
+## [0.42.0] — 2026-08-20
+
+### Added
+
+- **Fatia 4 — saída e governação de membros.** Um membro pode sair de uma organização institucional, o responsável pode remover outro membro e pode transferir a responsabilidade para um membro atual. As três mutações de governação recusam sessões de suporte impersonadas e deixam rasto de auditoria.
+- **Reatribuição de turmas sem professor.** Turmas em preparação ou ativas sem qualquer linha em `class_teachers` são detetadas como estado derivado, sem coluna nem migração, e podem ser atribuídas pelo responsável a um membro atual da mesma organização.
+- **Exportar os meus dados.** Qualquer conta, em qualquer plano, pode pedir uma cópia ZIP dos dados a que tem acesso — as próprias turmas e o que lhes está associado, nunca o trabalho pedagógico de colegas. Um responsável institucional recebe adicionalmente a lista da equipa e o registo de auditoria a que já tinha acesso, nunca dados pedagógicos nominais extra. Gerado de forma síncrona para `storage/app/private`, nunca público; fica disponível 24 horas e é depois removido por `data-exports:prune` (agendado a cada hora). Inclui `manifest.json` e um `README.txt` que enumera o que nunca é incluído (password, 2FA, passkeys, tokens de sessão/convite, segredos de configuração).
+- **Arquitetura de política de conservação de dados.** `config/retention.php` fixa os alvos de retenção (dados pedagógicos: ano letivo atual + 3 anteriores; conta pessoal encerrada: 60 dias; organização institucional encerrada: 90 dias; logs técnicos: 90 dias; auditoria: 3 anos; backups técnicos: 30–60 dias; exportações: 24 horas), lidos por `App\Support\Retention\RetentionPolicy`. `AcademicYearRetentionClassifier` conta sempre em anos letivos (ordenação por `starts_on`), nunca por `created_at`, e nunca marca nada como "elegível para eliminação" — só `within_retention`. `ClosureRetention` implementa a fronteira de recuperabilidade (estritamente "menor que"), pronta a ligar a um futuro fluxo real de encerramento — nenhuma coluna nova foi criada para isso.
+- Cobertura feature explícita para isolamento entre organizações, manutenção de contas e memberships não relacionadas, transferência imediata de autoridade, reatribuição com e sem co-docente, preservação de alunos/inscrições/evidências/autoria histórica, segurança da exportação (ficheiro privado, sem segredos, negado a quem não pediu) e fronteiras exatas da política de retenção.
+
+### Security
+
+- Saída e remoção retiram apenas as atribuições atuais em `class_teachers` da organização afetada. Nenhum aluno, inscrição ou registo pedagógico é apagado e nenhum campo histórico `*_by`/`causer_id` é reescrito.
+- `DataExportPolicy` nega o download a qualquer pessoa que não seja quem pediu a exportação, mesmo dentro da mesma organização — o responsável institucional não pode descarregar a exportação de outro membro.
+
+### Não incluído nesta fatia
+
+- Nenhum job de purga, anonimização ou eliminação de dados reais além da limpeza do próprio ZIP de exportação expirado. Nenhuma coluna de encerramento de conta/organização. Nenhuma role intermédia, resolução de duplicados de alunos, ou alteração a fórmulas/resultados/planos.
+
 ## [0.41.1] — 2026-08-20
 
 ### Investigado

@@ -23,3 +23,8 @@ Schedule::command('correction-imports:prune')->hourly();
 // holds names, process numbers and marks. See
 // App\Console\Commands\PruneInovarExportTempStorage.
 Schedule::command('inovar-exports:prune')->hourly();
+
+// "Exportar os meus dados" ZIPs (Fatia 4, §27) — a convenience artifact, not
+// a technical backup, kept only for the configured availability window
+// (default 24h). See App\Console\Commands\PruneDataExports.
+Schedule::command('data-exports:prune')->hourly();

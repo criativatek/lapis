@@ -4,8 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Actions\Organizations\CancelOrganizationInvitation;
 use App\Actions\Organizations\CreateOrRenewOrganizationInvitation;
+use App\Actions\Organizations\RemoveOrganizationMember;
+use App\Actions\Organizations\TransferOrganizationOwnership;
+use App\Http\Controllers\Concerns\RefusesDuringImpersonation;
+use App\Models\Organization;
 use App\Models\OrganizationInvitation;
 use App\Models\User;
+use App\Support\Organizations\MembershipException;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -14,18 +19,21 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * Equipa (Fatia 3) — the organization's own members and pending invitations,
- * for its owner only. `module:institution_admin` (route middleware) already
- * keeps a non-institutional plan out; OrganizationInvitationPolicy adds the
- * two checks a plan gate cannot make — the organization's actual TYPE, and
- * whether THIS user owns it.
+ * Equipa (Fatia 3) — an institutional organization's members and pending
+ * invitations, owner-only (OrganizationInvitationPolicy). Extended in Fatia 4
+ * with removing a member and transferring ownership; both still owner-only,
+ * both still refused during impersonation.
  */
 class TeamController extends Controller
 {
+    use RefusesDuringImpersonation;
+
     public function __construct(
         protected CurrentOrganization $currentOrganization,
         protected CreateOrRenewOrganizationInvitation $createInvitation,
         protected CancelOrganizationInvitation $cancelInvitation,
+        protected RemoveOrganizationMember $removeOrganizationMember,
+        protected TransferOrganizationOwnership $transferOrganizationOwnership,
     ) {}
 
     public function index(): Response
@@ -38,6 +46,7 @@ class TeamController extends Controller
 
         return Inertia::render('team/Index', [
             'members' => $organization->members()->get()->map(fn (User $member): array => [
+                'id' => $member->getKey(),
                 'name' => $member->name,
                 'email' => $member->email,
                 'is_owner' => $member->is($organization->owner),
@@ -63,13 +72,9 @@ class TeamController extends Controller
         $organization = $this->currentOrganization->get();
 
         Gate::authorize('create', [OrganizationInvitation::class, $organization]);
-
         $this->refuseDuringImpersonation($request);
 
-        $validated = $request->validate([
-            'email' => ['required', 'email', 'max:255'],
-        ]);
-
+        $validated = $request->validate(['email' => ['required', 'email', 'max:255']]);
         $this->createInvitation->invite($organization, $this->user($request), $validated['email']);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Convite enviado.')]);
@@ -80,9 +85,7 @@ class TeamController extends Controller
     public function destroy(Request $request, OrganizationInvitation $invitation): RedirectResponse
     {
         Gate::authorize('cancel', $invitation);
-
         $this->refuseDuringImpersonation($request);
-
         $this->cancelInvitation->cancel($invitation, $this->user($request));
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Convite cancelado.')]);
@@ -90,16 +93,42 @@ class TeamController extends Controller
         return back();
     }
 
-    /**
-     * Team management is a governance action taken ON BEHALF of the person
-     * being impersonated — support has no business sending invitations that
-     * will look, to everyone else in the school, like the owner sent them.
-     */
-    protected function refuseDuringImpersonation(Request $request): void
+    public function removeMember(Request $request): RedirectResponse
     {
-        if ($request->session()->has('impersonator_id')) {
-            abort(403, __('Não é possível gerir a equipa durante uma sessão de suporte.'));
+        $organization = $this->currentOrganization->get();
+
+        Gate::authorize('remove', $organization);
+        $this->refuseDuringImpersonation($request);
+
+        try {
+            $member = $this->targetMember($request, $organization);
+            $this->removeOrganizationMember->remove($organization, $this->user($request), $member);
+        } catch (MembershipException $exception) {
+            return back()->withErrors(['organization' => $exception->getMessage()]);
         }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Membro removido da organização.')]);
+
+        return back();
+    }
+
+    public function transferOwnership(Request $request): RedirectResponse
+    {
+        $organization = $this->currentOrganization->get();
+
+        Gate::authorize('transferOwnership', $organization);
+        $this->refuseDuringImpersonation($request);
+
+        try {
+            $member = $this->targetMember($request, $organization);
+            $this->transferOrganizationOwnership->transfer($organization, $this->user($request), $member);
+        } catch (MembershipException $exception) {
+            return back()->withErrors(['organization' => $exception->getMessage()]);
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Responsabilidade da organização transferida.')]);
+
+        return to_route('team.index');
     }
 
     protected function user(Request $request): User
@@ -108,5 +137,29 @@ class TeamController extends Controller
         $user = $request->user();
 
         return $user;
+    }
+
+    /**
+     * `User` has no `ulid` — nothing has ever needed to address one directly
+     * in a URL before this fatia. Rather than retrofit the identifier scheme
+     * of the app's most sensitive table for two owner-only actions, the
+     * target travels in the request body (like `ClassReassignmentController`
+     * already does) and is resolved through THIS organization's own members
+     * only. A cross-organization or nonexistent id surfaces through the exact
+     * same `MembershipException` → session-error path as every other guard
+     * in this feature, not a bare 404 — one consistent failure shape for
+     * "this operation is not valid," regardless of which check caught it.
+     */
+    protected function targetMember(Request $request, Organization $organization): User
+    {
+        $validated = $request->validate(['member' => ['required', 'integer']]);
+
+        $member = $organization->members()->whereKey((int) $validated['member'])->first();
+
+        if ($member === null) {
+            throw MembershipException::notAMember();
+        }
+
+        return $member;
     }
 }

@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToOrganization;
 use Database\Factories\SchoolClassFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -54,6 +55,20 @@ class SchoolClass extends Model
             'status' => ClassStatus::class,
             'include_evidence_in_report' => 'boolean',
         ];
+    }
+
+    /**
+     * Derived rather than stored: teacher pivots are the source of truth, so
+     * reassignment state cannot drift and needs no risky migration.
+     *
+     * @param  Builder<SchoolClass>  $query
+     * @return Builder<SchoolClass>
+     */
+    public function scopeNeedingReassignment(Builder $query): Builder
+    {
+        return $query
+            ->whereDoesntHave('teachers')
+            ->whereIn('status', [ClassStatus::Preparation, ClassStatus::Active]);
     }
 
     /**

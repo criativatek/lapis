@@ -41,6 +41,12 @@ class SchoolClassPolicy
             && $class->enrollments()->doesntExist();
     }
 
+    public function assignTeacher(User $user, SchoolClass $class): bool
+    {
+        return $user->ownsCurrentOrganization()
+            && $class->teachers()->doesntExist();
+    }
+
     protected function teaches(User $user, SchoolClass $class): bool
     {
         return $class->teachers()->whereKey($user->getKey())->exists();

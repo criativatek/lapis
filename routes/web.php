@@ -9,9 +9,11 @@ use App\Http\Controllers\ClassController;
 use App\Http\Controllers\ClassificationController;
 use App\Http\Controllers\ClassPhotoImportController;
 use App\Http\Controllers\ClassProfileMigrationController;
+use App\Http\Controllers\ClassReassignmentController;
 use App\Http\Controllers\ClassStatisticsController;
 use App\Http\Controllers\CorrectionImportController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DataExportController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\EvidenceController;
 use App\Http\Controllers\InovarExportController;
@@ -20,6 +22,7 @@ use App\Http\Controllers\InterimAssessmentController;
 use App\Http\Controllers\InterventionController;
 use App\Http\Controllers\InvitationAcceptanceController;
 use App\Http\Controllers\OrganizationController;
+use App\Http\Controllers\OrganizationMembershipController;
 use App\Http\Controllers\PublicSelfAssessmentController;
 use App\Http\Controllers\Reports\ReportController;
 use App\Http\Controllers\Reports\ReportExportController;
@@ -117,6 +120,12 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
 
     // Classes — the teacher's own turmas (gated by the classes module). Students
     // are enrolled from the class detail page.
+    Route::middleware('module:institution_admin')->group(function () {
+        // Must precede `classes/{class}` so "reassignment" is not consumed as a class ULID.
+        Route::get('classes/reassignment', [ClassReassignmentController::class, 'index'])->name('classes.reassignment.index');
+        Route::post('classes/reassignment/{class}/assign', [ClassReassignmentController::class, 'assign'])->name('classes.reassignment.assign');
+    });
+
     Route::middleware('module:classes')->group(function () {
         Route::get('classes', [ClassController::class, 'index'])->name('classes.index');
         Route::get('classes/create', [ClassController::class, 'create'])->name('classes.create');
@@ -367,15 +376,37 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::delete('interventions/{intervention}', [InterventionController::class, 'destroy'])->name('interventions.destroy');
     });
 
+    // Leaving is not an "Equipa" action — any member, on any plan, must be
+    // able to leave any institutional organization they belong to, so this
+    // sits outside the `module:institution_admin` group below (which exists
+    // to keep a Base/Pro organization out of governance features it hasn't
+    // paid for; leaving isn't one of those).
+    Route::post('organizations/leave', [OrganizationMembershipController::class, 'leave'])
+        ->name('organizations.leave');
+
+    // "Exportar os meus dados" (Fatia 4, §20/§52) — every plan, not gated by
+    // any module: this is portability, not a paid feature.
+    Route::get('data-exports', [DataExportController::class, 'index'])->name('data-exports.index');
+    Route::post('data-exports', [DataExportController::class, 'store'])->name('data-exports.store');
+    Route::get('data-exports/{data_export}', [DataExportController::class, 'download'])->name('data-exports.download');
+
     // Equipa (Fatia 3) — an institutional organization's members and pending
     // invitations, owner-only (TeamController, OrganizationInvitationPolicy).
-    // The module gate keeps a Base/Pro organization out; it cannot check WHO
-    // is asking or the organization's actual TYPE, which is why the policy
-    // still runs on every action underneath it.
+    // Fatia 4 adds removing a member, transferring ownership, and reassigning
+    // orphaned classes — still owner-only. The module gate keeps a Base/Pro
+    // organization out; it cannot check WHO is asking or the organization's
+    // actual TYPE, which is why the policy still runs on every action
+    // underneath it.
     Route::middleware('module:institution_admin')->group(function () {
         Route::get('team', [TeamController::class, 'index'])->name('team.index');
         Route::post('team/invitations', [TeamController::class, 'store'])->name('team.invitations.store');
         Route::delete('team/invitations/{invitation}', [TeamController::class, 'destroy'])->name('team.invitations.destroy');
+        // No {member} route parameter: `User` carries no `ulid` (nothing has
+        // ever needed to address one in a URL before this fatia), so the
+        // target travels in the request body instead of exposing a raw
+        // sequential id in the path — see TeamController::targetMember().
+        Route::delete('team/members', [TeamController::class, 'removeMember'])->name('team.members.destroy');
+        Route::post('team/members/transfer-ownership', [TeamController::class, 'transferOwnership'])->name('team.members.transfer-ownership');
     });
 });
 

@@ -1,0 +1,97 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Actions\DataExports\GenerateDataExport;
+use App\Models\DataExport;
+use App\Models\User;
+use App\Support\Tenancy\CurrentOrganization;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Storage;
+use Inertia\Inertia;
+use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+
+/**
+ * "Exportar os meus dados" (Fatia 4, §20). Available on every plan — this is
+ * portability, not a paid feature (§52). Content is always the requester's
+ * OWN accessible scope; see `GenerateDataExport`'s docblock for why an
+ * institutional owner does not get more pedagogical data through this door.
+ *
+ * `download()` streams binary bytes, which an Inertia XHR response cannot
+ * represent — so this page never triggers it via `router.post()`. Generating
+ * (`store`) redirects back to `index`, which lists ready exports as plain
+ * `<a href>` links, the same "native navigation, not an Inertia visit"
+ * pattern the existing report PDF/DOCX export already uses.
+ */
+class DataExportController extends Controller
+{
+    public function __construct(
+        protected CurrentOrganization $currentOrganization,
+        protected GenerateDataExport $generateDataExport,
+    ) {}
+
+    public function index(): Response
+    {
+        $organization = $this->currentOrganization->get();
+        $user = $this->user();
+
+        return Inertia::render('data-exports/Index', [
+            'exports' => DataExport::query()
+                ->where('requested_by', $user->getKey())
+                ->orderByDesc('created_at')
+                ->limit(10)
+                ->get()
+                ->map(fn (DataExport $export): array => [
+                    'ulid' => $export->ulid,
+                    'created_at' => $export->created_at?->toDateTimeString(),
+                    'expires_at' => $export->expires_at?->toDateTimeString(),
+                    'ready' => $export->isReady() && ! $export->isExpired(),
+                ]),
+            'organizationName' => $organization->name,
+        ]);
+    }
+
+    public function store(): RedirectResponse
+    {
+        $organization = $this->currentOrganization->get();
+        $user = $this->user();
+
+        try {
+            $export = $this->generateDataExport->generate($organization, $user);
+        } catch (\Throwable) {
+            return back()->withErrors(['export' => __('Não foi possível gerar a exportação. Tente novamente.')]);
+        }
+
+        if (! $export->isReady()) {
+            return back()->withErrors(['export' => __('Não foi possível gerar a exportação. Tente novamente.')]);
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Exportação gerada. O transferível fica disponível durante 24 horas.')]);
+
+        return to_route('data-exports.index');
+    }
+
+    public function download(DataExport $dataExport): StreamedResponse
+    {
+        Gate::authorize('download', $dataExport);
+
+        if ($dataExport->downloaded_at === null) {
+            $dataExport->update(['downloaded_at' => now()]);
+        }
+
+        $organizationSlug = str($dataExport->organization->name)->slug()->limit(40, '')->value();
+        $filename = 'LAPIS-exportacao-'.$organizationSlug.'-'.$dataExport->created_at->toDateString().'.zip';
+
+        return Storage::disk('local')->download($dataExport->disk_path, $filename);
+    }
+
+    protected function user(): User
+    {
+        /** @var User $user */
+        $user = auth()->user();
+
+        return $user;
+    }
+}

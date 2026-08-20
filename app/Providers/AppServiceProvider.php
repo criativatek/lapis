@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\PlatformSetting;
+use App\Policies\OrganizationMembershipPolicy;
 use App\Services\Ai\AiTextProviders;
 use App\Services\Ai\Providers\ChatCompletionsProvider;
 use App\Services\Ai\Providers\FakeAiTextProvider;
@@ -23,6 +24,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
@@ -85,10 +87,18 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->registerOrganizationMembershipAbilities();
         $this->configureDefaults();
         $this->applyPlatformMailSettings();
         $this->describeRelease();
         $this->limitWritingAssistant();
+    }
+
+    protected function registerOrganizationMembershipAbilities(): void
+    {
+        Gate::define('remove', [OrganizationMembershipPolicy::class, 'remove']);
+        Gate::define('transferOwnership', [OrganizationMembershipPolicy::class, 'transferOwnership']);
+        Gate::define('viewReassignments', [OrganizationMembershipPolicy::class, 'viewReassignments']);
     }
 
     /**
