@@ -2,6 +2,24 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.41.0] — 2026-08-20
+
+### Added
+
+- **Fatia 3 — convites e equipa institucional.** O responsável de uma organização institucional passa a convidar pessoas por email para a organização, em vez de precisar do backoffice do platform admin para cada membro.
+- **Página Equipa**, só para o responsável — lista os membros atuais e os convites pendentes, e tem o formulário para convidar. Convidar o mesmo email outra vez renova o convite existente em vez de duplicar; o link anterior deixa de funcionar. Cancelar um convite pendente marca-o, não o apaga — fica no histórico.
+- **O link do convite funciona com conta existente ou nova, sem duplicar o registo.** Alguém já com conta é levado a entrar; alguém sem conta é levado a criá-la — reutilizando o registo do Fortify tal como está, com a password sempre escolhida pela própria pessoa e nunca enviada por email. Nos dois casos, ao terminar, a pessoa junta-se automaticamente à organização e é levada ao Painel do Professor já nesse contexto.
+- **A prova de acesso ao email não se pede duas vezes.** Quem chega pelo link do convite já demonstrou controlar essa caixa de correio; a verificação de email do Fortify é dada como cumprida nesse preciso caso, em vez de pedida de novo.
+- Um utilizador autenticado com um email diferente do convidado nunca aceita em silêncio — vê uma página clara a explicar a situação, com a opção de terminar sessão para abrir o link com a conta certa.
+
+### Changed
+
+- A organização institucional passa a ter membros para além do responsável através deste caminho — o backoffice da Fatia 2 mantém-se disponível para o platform admin, mas deixa de ser o único.
+
+### Não incluído nesta fatia
+
+Remover membro, sair da organização, transferir propriedade, coordenador/direção ou qualquer papel intermédio — ficam para a Fatia 4.
+
 ## [0.40.0] — 2026-08-20
 
 ### Added

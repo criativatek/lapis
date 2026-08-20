@@ -293,7 +293,11 @@ class ShellNavigationTest extends TestCase
     {
         $gained = array_diff(array_keys($this->menuFor('institutional')), array_keys($this->menuFor('pro')));
 
-        $this->assertSame(['institution'], array_values($gained));
+        // Fatia 3 adds "Equipa" alongside "Administração Institucional" — same
+        // module gate (institution_admin), plus owner_only, which a personal
+        // organization's owner (this helper never creates an institutional-type
+        // one) always trivially satisfies over their own organization.
+        $this->assertSame(['team', 'institution'], array_values($gained));
     }
 
     #[Test]
