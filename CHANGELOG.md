@@ -2,6 +2,19 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.42.5] — 2026-08-20
+
+### Changed
+
+- **A exportação de dados passa a produzir um workbook Excel legível, em vez de CSVs técnicos.** Validação manual encontrou os CSV difíceis de interpretar no Excel — colunas com ids técnicos, sem formatação. `Exportacao-LAPIS.xlsx` substitui os CSV: uma folha "Resumo" (sempre presente) mais uma folha por domínio com dados (Turmas, Alunos, Elementos de Avaliação, Avaliações, Classificações, Autoavaliações, Estratégias e Medidas, Registos, Relatórios) — só as que fizerem sentido para os dados existentes. Cabeçalhos em PT-PT, primeira linha fixa, filtro automático, larguras ajustadas, datas como datas Excel, números como números.
+- **Nomes em vez de identificadores técnicos.** Nenhuma folha mostra `organization_id`, `class_id`, `student_id` ou equivalente como coluna principal — os dados são resolvidos para Organização, Turma, Aluno, Disciplina, Ano letivo, etc.
+- **Terminologia igual à do resto do LÁPIS.** "Elementos de Avaliação", "Estratégias e Medidas", "Média Ponderada", "Proposta", "Classificação atribuída" — os mesmos termos já usados nas páginas de Classificações e Estratégias, nunca "Instrumentos", "Intervenções" ou "Resultado" genérico. A Média Ponderada e a Proposta são lidas dos mesmos serviços que a página de Classificações já usa (`BuildResultsProgression`, `ScaleProposalResolver`), chamados uma vez por turma — nunca recalculadas nem uma fórmula paralela.
+- **`backup-lapis.json` substitui `manifest.json`** como o backup técnico estruturado (ids estáveis, relações, pronto para uma futura importação) — não se destina a leitura direta; o XLSX é o documento para isso.
+
+### Security
+
+- Sem alteração de scope: o XLSX só contém o que o utilizador já podia exportar — as próprias turmas (`class_teachers`), nunca o trabalho pedagógico de colegas, mesmo para o responsável institucional.
+
 ## [0.42.4] — 2026-08-20
 
 ### Fixed

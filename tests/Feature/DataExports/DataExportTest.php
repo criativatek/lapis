@@ -17,6 +17,8 @@ use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 use ZipArchive;
@@ -77,6 +79,26 @@ class DataExportTest extends TestCase
         return $zip;
     }
 
+    /**
+     * Pulls the XLSX bytes out of the zip, writes them to a real temp file
+     * (PhpSpreadsheet's reader needs a path, not a string), and loads it —
+     * proving the workbook actually opens, not just that bytes exist.
+     */
+    private function openWorkbook(ZipArchive $zip): Spreadsheet
+    {
+        $bytes = $zip->getFromName('Exportacao-LAPIS.xlsx');
+        $this->assertNotFalse($bytes, 'Exportacao-LAPIS.xlsx tem de existir no ZIP.');
+
+        $tempPath = tempnam(sys_get_temp_dir(), 'lapis_export_test_');
+        file_put_contents($tempPath, $bytes);
+
+        try {
+            return IOFactory::createReader('Xlsx')->load($tempPath);
+        } finally {
+            @unlink($tempPath);
+        }
+    }
+
     #[Test]
     public function a_personal_organization_owner_can_export_their_own_data(): void
     {
@@ -94,7 +116,53 @@ class DataExportTest extends TestCase
     }
 
     #[Test]
-    public function an_institutional_member_exports_only_their_own_classes(): void
+    public function the_zip_contains_exactly_the_expected_top_level_files(): void
+    {
+        Storage::fake('local');
+        [$organization, $owner] = $this->institutionalOrganization();
+        $this->classWithEvidence($organization, $owner);
+
+        $this->actingAs($owner)->withSession(['organization_id' => $organization->id])
+            ->post('/data-exports')->assertRedirect();
+        $export = DataExport::withoutGlobalScope('organization')->where('requested_by', $owner->id)->firstOrFail();
+        $zip = $this->extractZip(Storage::disk('local')->path($export->disk_path));
+
+        $this->assertNotFalse($zip->locateName('Exportacao-LAPIS.xlsx'));
+        $this->assertNotFalse($zip->locateName('backup-lapis.json'));
+        $this->assertNotFalse($zip->locateName('README.txt'));
+    }
+
+    #[Test]
+    public function the_workbook_opens_and_always_has_a_resumo_sheet(): void
+    {
+        Storage::fake('local');
+        $user = User::factory()->create();
+        $personal = $user->personalOrganization();
+
+        $this->actingAs($user)->withSession(['organization_id' => $personal->id])
+            ->post('/data-exports')->assertRedirect();
+        $export = DataExport::withoutGlobalScope('organization')->firstOrFail();
+        $zip = $this->extractZip(Storage::disk('local')->path($export->disk_path));
+
+        $spreadsheet = $this->openWorkbook($zip);
+
+        $this->assertTrue($spreadsheet->sheetNameExists('Resumo'));
+
+        $resumo = $spreadsheet->getSheetByName('Resumo');
+        $labels = [];
+
+        for ($row = 2; $row <= $resumo->getHighestRow(); $row++) {
+            $labels[] = $resumo->getCell("A{$row}")->getValue();
+        }
+
+        $this->assertContains('Utilizador', $labels);
+        $this->assertContains('Organização', $labels);
+        $this->assertContains('Versão do LÁPIS', $labels);
+        $this->assertContains('Nº de turmas', $labels);
+    }
+
+    #[Test]
+    public function an_institutional_member_exports_only_their_own_classes_with_human_readable_names(): void
     {
         Storage::fake('local');
         [$organization, $owner] = $this->institutionalOrganization();
@@ -107,10 +175,24 @@ class DataExportTest extends TestCase
 
         $export = DataExport::withoutGlobalScope('organization')->where('requested_by', $member->id)->firstOrFail();
         $zip = $this->extractZip(Storage::disk('local')->path($export->disk_path));
+        $spreadsheet = $this->openWorkbook($zip);
 
-        $classesCsv = $zip->getFromName('dados/turmas.csv');
-        $this->assertStringContainsString($ownClass->label, $classesCsv);
-        $this->assertStringNotContainsString($ownersClass->label, $classesCsv);
+        $turmas = $spreadsheet->getSheetByName('Turmas');
+        $this->assertNotNull($turmas);
+
+        $headerRow = [];
+        foreach (range('A', 'F') as $column) {
+            $headerRow[] = $turmas->getCell("{$column}1")->getValue();
+        }
+        $this->assertSame(['Ano letivo', 'Disciplina', 'Ano', 'Turma', 'Estado', 'Professor(es)'], $headerRow);
+
+        $labels = [];
+        for ($row = 2; $row <= $turmas->getHighestRow(); $row++) {
+            $labels[] = $turmas->getCell("D{$row}")->getValue();
+        }
+
+        $this->assertContains($ownClass->label, $labels);
+        $this->assertNotContains($ownersClass->label, $labels);
 
         // A member never gets the owner-only governance extras.
         $this->assertSame(false, $zip->locateName('configuracao/equipa.csv'));
@@ -134,9 +216,61 @@ class DataExportTest extends TestCase
         $this->assertNotFalse($zip->locateName('configuracao/equipa.csv'));
         $this->assertNotFalse($zip->locateName('configuracao/auditoria.csv'));
 
-        // The owner does not teach the member's class — it must not appear.
-        $classesCsv = $zip->getFromName('dados/turmas.csv');
-        $this->assertStringNotContainsString($membersClass->label, $classesCsv);
+        // The owner does not teach the member's class — it must not appear,
+        // and there is no "Turmas" sheet at all since the owner teaches none.
+        $spreadsheet = $this->openWorkbook($zip);
+        $this->assertFalse($spreadsheet->sheetNameExists('Turmas'));
+        $this->assertFalse($spreadsheet->sheetNameExists('Alunos'));
+
+        $backup = json_decode((string) $zip->getFromName('backup-lapis.json'), true);
+        $classLabels = array_column($backup['classes'], 'label');
+        $this->assertNotContains($membersClass->label, $classLabels);
+    }
+
+    #[Test]
+    public function technical_ids_are_not_the_primary_columns_in_the_workbook(): void
+    {
+        Storage::fake('local');
+        [$organization, $owner] = $this->institutionalOrganization();
+        $this->classWithEvidence($organization, $owner);
+
+        $this->actingAs($owner)->withSession(['organization_id' => $organization->id])
+            ->post('/data-exports')->assertRedirect();
+        $export = DataExport::withoutGlobalScope('organization')->where('requested_by', $owner->id)->firstOrFail();
+        $zip = $this->extractZip(Storage::disk('local')->path($export->disk_path));
+        $spreadsheet = $this->openWorkbook($zip);
+
+        $forbiddenHeaders = ['organization_id', 'user_id', 'student_id', 'class_id', 'academic_year_id', 'subject_id', 'instrument_id'];
+
+        foreach ($spreadsheet->getSheetNames() as $sheetName) {
+            $sheet = $spreadsheet->getSheetByName($sheetName);
+            $highestColumn = $sheet->getHighestColumn();
+
+            foreach ($sheet->rangeToArray("A1:{$highestColumn}1")[0] as $header) {
+                foreach ($forbiddenHeaders as $forbidden) {
+                    $this->assertNotSame($forbidden, $header, "«{$forbidden}» não pode ser um cabeçalho de coluna em «{$sheetName}».");
+                }
+            }
+        }
+    }
+
+    #[Test]
+    public function dates_and_numbers_keep_their_native_excel_type(): void
+    {
+        Storage::fake('local');
+        [$organization, $owner] = $this->institutionalOrganization();
+        $this->classWithEvidence($organization, $owner);
+
+        $this->actingAs($owner)->withSession(['organization_id' => $organization->id])
+            ->post('/data-exports')->assertRedirect();
+        $export = DataExport::withoutGlobalScope('organization')->where('requested_by', $owner->id)->firstOrFail();
+        $zip = $this->extractZip(Storage::disk('local')->path($export->disk_path));
+        $spreadsheet = $this->openWorkbook($zip);
+
+        $registos = $spreadsheet->getSheetByName('Registos');
+        $this->assertNotNull($registos);
+        $this->assertTrue(is_numeric($registos->getCell('D2')->getValue()), 'A data em «Registos» tem de ser um valor numérico Excel, não uma string.');
+        $this->assertTrue($registos->getStyle('D2')->getNumberFormat()->getFormatCode() !== 'General');
     }
 
     #[Test]
@@ -188,7 +322,7 @@ class DataExportTest extends TestCase
     }
 
     #[Test]
-    public function the_export_never_contains_secrets_and_has_a_valid_manifest_and_csv(): void
+    public function the_export_never_contains_secrets_and_has_a_valid_backup_json(): void
     {
         Storage::fake('local');
         [$organization, $owner] = $this->institutionalOrganization();
@@ -199,21 +333,20 @@ class DataExportTest extends TestCase
         $export = DataExport::withoutGlobalScope('organization')->where('requested_by', $owner->id)->firstOrFail();
         $zip = $this->extractZip(Storage::disk('local')->path($export->disk_path));
 
-        $manifestRaw = $zip->getFromName('manifest.json');
-        $this->assertNotFalse($manifestRaw);
-        $manifest = json_decode($manifestRaw, true);
-        $this->assertIsArray($manifest);
-        $this->assertArrayHasKey('schema_version', $manifest);
-        $this->assertArrayHasKey('app_version', $manifest);
-        $this->assertSame($organization->ulid, $manifest['organization']['ulid']);
-
-        $classesCsv = $zip->getFromName('dados/turmas.csv');
-        $this->assertNotFalse($classesCsv);
-        $this->assertStringContainsString('ulid,label,disciplina,ano_letivo,estado', str_replace('"', '', explode("\n", (string) $classesCsv)[0]));
+        $backupRaw = $zip->getFromName('backup-lapis.json');
+        $this->assertNotFalse($backupRaw);
+        $backup = json_decode($backupRaw, true);
+        $this->assertIsArray($backup);
+        $this->assertArrayHasKey('schema_version', $backup);
+        $this->assertArrayHasKey('app_version', $backup);
+        $this->assertSame($organization->ulid, $backup['organization']['ulid']);
 
         // README.txt is explanatory copy that legitimately NAMES what is
         // excluded ("Não inclui... password...") — scanning it for these
         // words would flag the exact sentence that promises they're absent.
+        // Exportacao-LAPIS.xlsx is a binary format; a raw substring scan on
+        // it is still meaningful (these words would never legitimately
+        // appear in the compressed XML either) and costs nothing extra.
         $forbidden = ['password', 'remember_token', 'two_factor', 'token_hash', 'recovery_code'];
         for ($i = 0; $i < $zip->numFiles; $i++) {
             $name = $zip->getNameIndex($i);
