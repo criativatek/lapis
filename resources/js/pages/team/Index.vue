@@ -5,6 +5,16 @@ import { ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
@@ -69,16 +79,17 @@ function remove(member: Member): void {
     });
 }
 
-function transferOwnership(member: Member): void {
-    if (processingMemberId.value !== null) {
-        return;
-    }
+// Which row's confirmation dialog is open, if any — a plain browser confirm()
+// is too easy to blow through by accident for something this consequential
+// (§48 of the Fatia 4 brief calls for "confirmação forte"), so this uses the
+// project's own Dialog component instead, the same one DeleteUser.vue and
+// OrganizationMembership.vue already use for their own irreversible actions.
+const transferDialogMemberId = ref<number | null>(null);
 
-    if (
-        !confirm(
-            `Transferir a responsabilidade da organização para ${member.name}? Deixa de ser o responsável e passa a membro; ${member.name} passa a decidir por esta organização.`,
-        )
-    ) {
+function submitTransferOwnership(member: Member): void {
+    transferDialogMemberId.value = null;
+
+    if (processingMemberId.value !== null) {
         return;
     }
 
@@ -123,15 +134,35 @@ function transferOwnership(member: Member): void {
                             </td>
                             <td class="px-3 py-2 text-right">
                                 <div v-if="!member.is_owner" class="flex justify-end gap-1">
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        aria-label="Transferir responsabilidade"
-                                        :disabled="processingMemberId !== null"
-                                        @click="transferOwnership(member)"
-                                    >
-                                        <ArrowLeftRight class="size-4" />
-                                    </Button>
+                                    <Dialog :open="transferDialogMemberId === member.id" @update:open="(open) => (transferDialogMemberId = open ? member.id : null)">
+                                        <DialogTrigger as-child>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                aria-label="Transferir responsabilidade"
+                                                :disabled="processingMemberId !== null"
+                                            >
+                                                <ArrowLeftRight class="size-4" />
+                                            </Button>
+                                        </DialogTrigger>
+                                        <DialogContent>
+                                            <DialogHeader class="space-y-3">
+                                                <DialogTitle>Transferir responsabilidade para {{ member.name }}?</DialogTitle>
+                                                <DialogDescription>
+                                                    {{ member.name }} passa a ser o responsável por esta organização. Deixa de o ser e
+                                                    passa a membro — continua com acesso à organização, mas sem a poder gerir.
+                                                </DialogDescription>
+                                            </DialogHeader>
+                                            <DialogFooter class="gap-2">
+                                                <DialogClose as-child>
+                                                    <Button variant="secondary">Cancelar</Button>
+                                                </DialogClose>
+                                                <Button :disabled="processingMemberId !== null" @click="submitTransferOwnership(member)">
+                                                    Transferir responsabilidade
+                                                </Button>
+                                            </DialogFooter>
+                                        </DialogContent>
+                                    </Dialog>
                                     <Button
                                         variant="ghost"
                                         size="icon"

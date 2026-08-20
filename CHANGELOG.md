@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.42.3] — 2026-08-20
+
+### Fixed
+
+- **"Transferir responsabilidade" na página Equipa não tinha confirmação forte.** Substituído o `confirm()` genérico do browser pelo componente `Dialog` já usado em "Sair da organização" e "Delete account" — indica o nome de quem vai passar a responsável, que o utilizador atual deixa de o ser e continua como membro. Clicar no ícone só abre o diálogo; só o botão "Transferir responsabilidade" dentro dele envia o pedido. Proteção contra duplo-clique preservada.
+
 ## [0.42.2] — 2026-08-20
 
 ### Fixed
