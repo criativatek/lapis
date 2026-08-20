@@ -3,10 +3,8 @@
 namespace App\Actions\Organizations;
 
 use App\Models\Organization;
-use App\Models\OrganizationSubscription;
 use App\Models\OrganizationType;
 use App\Models\Plan;
-use App\Models\SubscriptionStatus;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 
@@ -27,6 +25,8 @@ use Illuminate\Support\Carbon;
  */
 class CreatePersonalOrganization
 {
+    public function __construct(protected SubscribeOrganization $subscribe) {}
+
     public function create(User $user, ?Plan $initialPlan = null): Organization
     {
         $organization = Organization::create([
@@ -37,29 +37,8 @@ class CreatePersonalOrganization
 
         $organization->members()->attach($user, ['joined_at' => Carbon::now()]);
 
-        $this->subscribe($organization, $initialPlan ?? Plan::where('key', 'base')->first());
+        $this->subscribe->subscribe($organization, $initialPlan ?? Plan::where('key', 'base')->first());
 
         return $organization;
-    }
-
-    protected function subscribe(Organization $organization, ?Plan $plan): void
-    {
-        // ponytail: no payment provider in the MVP (§8.2), so the plan is granted
-        // outright with no end date. When billing arrives, this is where a trial
-        // window and a real ends_at come from.
-        if ($plan === null) {
-            return;
-        }
-
-        // Deliberately a direct write and not ChangeOrganizationPlan: this is the
-        // FIRST subscription of an organization that did not exist a line ago, so
-        // there is nothing in force to close and nothing to serialize against.
-        // Every LATER change goes through the service.
-        OrganizationSubscription::withoutGlobalScope('organization')->create([
-            'organization_id' => $organization->getKey(),
-            'plan_id' => $plan->getKey(),
-            'status' => SubscriptionStatus::Active,
-            'starts_at' => Carbon::now(),
-        ]);
     }
 }

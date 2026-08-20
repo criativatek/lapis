@@ -2,6 +2,13 @@
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 
+type Member = {
+    name: string;
+    email: string;
+    is_owner: boolean;
+    active: boolean;
+};
+
 type Account = {
     ulid: string;
     name: string;
@@ -16,6 +23,7 @@ type Account = {
         deactivated_at: string | null;
     };
     members_count: number;
+    members: Member[];
     plan: string | null;
     plan_key: string | null;
     status: string | null;
@@ -29,7 +37,8 @@ const props = defineProps<{ account: Account; plans: { key: string; name: string
 const base = computed(() => `/admin/accounts/${props.account.ulid}`);
 
 // Every guard in the controller writes its refusal to the same `account` key,
-// so there is one place to render them all.
+// so there is one place to render them all — except adding a member, which
+// writes to `member` so its error does not clobber this one mid-form.
 const refusal = computed(() => (usePage().props.errors as Record<string, string>)?.account ?? null);
 
 const blockingEntries = computed(() => Object.entries(props.account.blocking));
@@ -42,6 +51,8 @@ const userForm = useForm({
     email: props.account.owner.email ?? '',
 });
 
+const memberForm = useForm({ email: '' });
+
 function post(path: string, data: Record<string, string> = {}): void {
     router.post(`${base.value}${path}`, data, { preserveScroll: true });
 }
@@ -49,6 +60,15 @@ function post(path: string, data: Record<string, string> = {}): void {
 function saveUser(): void {
     userForm.put(`${base.value}/user`, { preserveScroll: true });
 }
+
+function addMember(): void {
+    memberForm.post(`${base.value}/members`, {
+        preserveScroll: true,
+        onSuccess: () => memberForm.reset(),
+    });
+}
+
+const memberRefusal = computed(() => (usePage().props.errors as Record<string, string>)?.member ?? null);
 
 function destroy(): void {
     if (!confirm(`Apagar definitivamente a conta de ${props.account.owner.email}? Esta ação não pode ser anulada.`)) {
@@ -178,6 +198,59 @@ function destroy(): void {
 
                 <p v-if="account.deactivation_refusal" class="text-xs text-muted-foreground">{{ account.deactivation_refusal }}</p>
             </div>
+        </section>
+
+        <!-- Membros (só institucional — uma organização pessoal tem sempre um único membro) -->
+        <section v-if="account.type === 'institutional'" class="space-y-3 rounded-lg border border-border p-4">
+            <h2 class="text-sm font-medium">Membros ({{ account.members.length }})</h2>
+
+            <ul class="divide-y divide-border overflow-hidden rounded-lg border border-border">
+                <li v-for="member in account.members" :key="member.email" class="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                    <div class="min-w-0">
+                        <div class="truncate font-medium">{{ member.name }}</div>
+                        <div class="truncate text-xs text-muted-foreground">{{ member.email }}</div>
+                    </div>
+                    <div class="flex shrink-0 items-center gap-1.5">
+                        <span
+                            v-if="!member.active"
+                            class="rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-800 dark:bg-red-950 dark:text-red-300"
+                        >
+                            desativado
+                        </span>
+                        <span
+                            class="rounded-full px-2 py-0.5 text-xs"
+                            :class="member.is_owner ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'"
+                        >
+                            {{ member.is_owner ? 'Responsável' : 'Membro' }}
+                        </span>
+                    </div>
+                </li>
+            </ul>
+
+            <p v-if="memberRefusal" class="text-xs text-red-600">{{ memberRefusal }}</p>
+
+            <form class="flex items-end gap-2" @submit.prevent="addMember">
+                <label class="block flex-1 text-sm">
+                    <span class="mb-1 block font-medium">Adicionar membro existente</span>
+                    <input
+                        v-model="memberForm.email"
+                        type="email"
+                        placeholder="email@escola.pt"
+                        class="w-full rounded-md border border-border bg-background px-3 py-2"
+                    />
+                    <span v-if="memberForm.errors.email" class="mt-1 block text-xs text-red-600">{{ memberForm.errors.email }}</span>
+                </label>
+                <button
+                    type="submit"
+                    class="rounded-md border border-border px-3 py-2 text-sm hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50"
+                    :disabled="memberForm.processing || memberForm.email === ''"
+                >
+                    Adicionar
+                </button>
+            </form>
+            <p class="text-xs text-muted-foreground">
+                Tem de já ter conta no LÁPIS. Continua também na sua própria organização pessoal, se tiver uma.
+            </p>
         </section>
 
         <!-- Subscrição -->

@@ -44,6 +44,11 @@ Route::middleware(['auth', 'verified', 'platform-admin'])
         // account that never became anything.
         Route::delete('accounts/{organization}', [AdminAccountController::class, 'destroy'])->name('accounts.destroy');
 
+        // Fatia 2: the minimum needed to build and test an institutional
+        // organization with more than one member — attaching an EXISTING user.
+        // Not an invitation; that is Fatia 3.
+        Route::post('accounts/{organization}/members', [AdminAccountController::class, 'addMember'])->name('accounts.members.add');
+
         // System email (SMTP) settings.
         Route::get('settings', [AdminSettingsController::class, 'edit'])->name('settings.edit');
         Route::put('settings', [AdminSettingsController::class, 'update'])->name('settings.update');

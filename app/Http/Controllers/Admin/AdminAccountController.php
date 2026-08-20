@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Actions\Organizations\AddOrganizationMember;
+use App\Actions\Organizations\CreateInstitutionalOrganization;
 use App\Actions\Organizations\CreatePersonalOrganization;
 use App\Actions\Users\DeleteUserAccount;
 use App\Http\Controllers\Controller;
@@ -13,6 +15,7 @@ use App\Models\Instrument;
 use App\Models\Intervention;
 use App\Models\Organization;
 use App\Models\OrganizationSubscription;
+use App\Models\OrganizationType;
 use App\Models\Plan;
 use App\Models\Report;
 use App\Models\SchoolClass;
@@ -25,6 +28,7 @@ use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -47,6 +51,8 @@ class AdminAccountController extends Controller
         // subscription in force at a time — lives in one place and is not
         // restated at each call site.
         protected ChangeOrganizationPlan $planChange,
+        protected CreateInstitutionalOrganization $createInstitutional,
+        protected AddOrganizationMember $addOrganizationMember,
     ) {}
 
     public function index(Request $request): Response
@@ -95,6 +101,13 @@ class AdminAccountController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        return $request->input('type') === 'institutional'
+            ? $this->storeInstitutional($request)
+            : $this->storePersonal($request);
+    }
+
+    protected function storePersonal(Request $request): RedirectResponse
+    {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
@@ -131,6 +144,68 @@ class AdminAccountController extends Controller
         return redirect()->route('admin.accounts.show', $organization);
     }
 
+    /**
+     * A school's workspace, with an owner from the first instant — either
+     * someone who already has an account, or someone provisioned for it here.
+     *
+     * A NEW owner gets the exact same treatment `storePersonal` gives anyone
+     * else: their own personal organization on Base, so a school's owner is
+     * never a person with nowhere to work of their own (§58 of the multi-user
+     * brief — a teacher may hold a personal workspace and an institutional one
+     * at once). The institutional organization is a SECOND workspace on top of
+     * that, never a replacement for it. One transaction: a school is never
+     * left half-created because a later step failed.
+     */
+    protected function storeInstitutional(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'organization_name' => ['required', 'string', 'max:255'],
+            'owner_mode' => ['required', Rule::in(['existing', 'new'])],
+            'plan_key' => ['required', Rule::exists('plans', 'key')],
+            'owner_email' => ['required_if:owner_mode,existing', 'nullable', 'email', Rule::exists('users', 'email')],
+            'name' => ['required_if:owner_mode,new', 'nullable', 'string', 'max:255'],
+            'email' => ['required_if:owner_mode,new', 'nullable', 'email', 'max:255', 'unique:users,email'],
+            'password' => ['nullable', 'string', 'min:8'],
+        ], [
+            'owner_email.exists' => __('Não existe nenhum utilizador com este email.'),
+        ]);
+
+        $plan = Plan::where('key', $validated['plan_key'])->firstOrFail();
+
+        return DB::transaction(function () use ($validated, $plan): RedirectResponse {
+            $generated = null;
+
+            if ($validated['owner_mode'] === 'existing') {
+                $owner = User::where('email', $validated['owner_email'])->firstOrFail();
+            } else {
+                $generated = ($validated['password'] ?? '') === '' ? Str::password(14) : null;
+
+                $owner = User::create([
+                    'name' => $validated['name'],
+                    'email' => $validated['email'],
+                    'password' => $generated ?? $validated['password'],
+                ]);
+                $owner->forceFill(['email_verified_at' => now()])->save();
+
+                app(CreatePersonalOrganization::class)->create($owner, Plan::where('key', 'base')->first());
+            }
+
+            $organization = $this->createInstitutional->create($validated['organization_name'], $owner, $plan);
+
+            $this->entitlements->flush();
+
+            $this->log(
+                $organization,
+                'admin.account_created',
+                "Organização institucional criada: {$organization->name}, responsável {$owner->email} ({$plan->key}).",
+            );
+
+            Inertia::flash('toast', ['type' => 'success', 'message' => __('Organização criada.').($generated !== null ? " Password temporária: {$generated}" : '')]);
+
+            return redirect()->route('admin.accounts.show', $organization);
+        });
+    }
+
     public function show(Request $request, Organization $organization): Response
     {
         $organization->load(['owner', 'members']);
@@ -163,6 +238,14 @@ class AdminAccountController extends Controller
                 'modules' => $this->entitlements->modulesFor($organization),
                 'deactivation_refusal' => $owner === null ? __('Esta organização não tem dono.') : $this->deactivationRefusal($request, $owner),
                 'blocking' => $blocking,
+                // Institutional only, in practice — a personal organization has
+                // exactly one member and the page does not need a roster for it.
+                'members' => $organization->members->map(fn (User $member): array => [
+                    'name' => $member->name,
+                    'email' => $member->email,
+                    'is_owner' => $owner !== null && $member->is($owner),
+                    'active' => $member->isActive(),
+                ])->sortByDesc('is_owner')->values(),
             ],
             'plans' => Plan::orderBy('id')->get(['key', 'name']),
         ]);
@@ -320,6 +403,42 @@ class AdminAccountController extends Controller
         if ($owner !== null && $owner->isDeactivated()) {
             $owner->forceFill(['deactivated_at' => null])->save();
             $this->log($organization, 'admin.account_activated', "Conta reativada: {$owner->email}.");
+        }
+
+        return back();
+    }
+
+    /**
+     * Attaches an existing user to this organization (Fatia 2).
+     *
+     * Not an invitation — the platform admin is vouching for the person
+     * directly here, in the backoffice, which is the minimum needed to build
+     * and test an institutional organization with more than one member before
+     * Fatia 3 builds the real invite flow. Only institutional organizations
+     * gain members this way; a personal organization's one-member shape is
+     * definitional, not a rule this action polices.
+     */
+    public function addMember(Request $request, Organization $organization): RedirectResponse
+    {
+        if ($organization->type !== OrganizationType::Institutional) {
+            return back()->withErrors(['member' => __('Só uma organização institucional pode ter mais do que um membro.')]);
+        }
+
+        $validated = $request->validate([
+            'email' => ['required', 'email', Rule::exists('users', 'email')],
+        ], [
+            'email.exists' => __('Não existe nenhum utilizador com este email.'),
+        ]);
+
+        $user = User::where('email', $validated['email'])->firstOrFail();
+
+        $added = $this->addOrganizationMember->add($organization, $user);
+
+        if ($added) {
+            $this->log($organization, 'admin.member_added', "Membro adicionado: {$user->email}.");
+            Inertia::flash('toast', ['type' => 'success', 'message' => __('Membro adicionado.')]);
+        } else {
+            Inertia::flash('toast', ['type' => 'success', 'message' => __('Já era membro desta organização.')]);
         }
 
         return back();
