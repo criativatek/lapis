@@ -2,6 +2,24 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.40.0] — 2026-08-20
+
+### Added
+
+- **Fatia 2 — organização institucional e multiutilizador base.** Infraestrutura mínima para uma organização ter mais do que um utilizador, sem ainda construir convites, página Equipa ou papéis intermédios.
+- **O backoffice cria organizações institucionais.** A mesma página «Nova conta» ganha a escolha entre Pessoal e Institucional. O responsável pode ser um utilizador novo (que fica também com a sua própria organização pessoal, como qualquer conta nova) ou um utilizador já existente (a sua organização pessoal mantém-se intocada). Criação atómica: organização, dono no `owner_id` **e** no pivot de membership, e subscrição — nunca um dono sem membership, que é o que impedia a Fatia 1 de ter algo real para gerir.
+- **Gestão mínima de membros no backoffice.** A ficha de uma organização institucional ganha um bloco «Membros» — nome, email, Responsável/Membro, estado — e um formulário para o platform admin adicionar um utilizador já existente por email. Não é um convite: sem token, sem aceitação. Pertencer à organização pessoal e a uma institucional ao mesmo tempo é o suporte para isto.
+- **Seletor de organização.** Quem pertence a mais do que uma organização vê, no menu do utilizador, a lista de organizações com um indicador da atual; quem só tem uma continua sem ver nada de novo. Trocar (`POST /organizations/switch`) exige pertencer à organização alvo — verificado no servidor, nunca só pela UI — e leva sempre ao Painel do Professor, nunca a uma página com um id da organização anterior.
+
+### Changed
+
+- **Módulos e plano passam a acompanhar a organização selecionada, não a sessão de login.** Ao trocar de organização, os `modules` e o menu lateral recalculam-se a partir da subscrição da organização atual — confirmado sem logout entre uma organização Base e uma Pro/Institucional.
+- O predicado de subscrição inicial (`CreatePersonalOrganization`) foi extraído para `SubscribeOrganization`, partilhado agora com a criação institucional — a mesma regra escrita uma só vez, não duplicada.
+
+### Não incluído nesta fatia
+
+Convites por email, página Equipa, remoção ou saída de membro, transferência de propriedade, papéis coordenador/direção — ficam para as Fatias 3 e 4.
+
 ## [0.39.0] — 2026-08-20
 
 ### Added

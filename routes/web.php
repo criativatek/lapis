@@ -18,6 +18,7 @@ use App\Http\Controllers\InovarExportController;
 use App\Http\Controllers\InstrumentController;
 use App\Http\Controllers\InterimAssessmentController;
 use App\Http\Controllers\InterventionController;
+use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\PublicSelfAssessmentController;
 use App\Http\Controllers\Reports\ReportController;
 use App\Http\Controllers\Reports\ReportExportController;
@@ -59,6 +60,11 @@ Route::middleware(['signed', 'throttle:120,1'])->group(function () {
 // organization must be resolved before the request reaches a controller.
 Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     Route::get('dashboard', DashboardController::class)->name('dashboard');
+
+    // Which organization the session is acting for (Fatia 2). The membership
+    // check lives in the controller, not a route param binding — a stranger's
+    // ulid must 403, never a clean 404 that confirms it exists.
+    Route::post('organizations/switch', [OrganizationController::class, 'switch'])->name('organizations.switch');
 
     // Audit trail (§22.4) — read-only view of the organization's recorded events.
     Route::get('activity', [ActivityController::class, 'index'])->name('activity.index');

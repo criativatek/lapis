@@ -40,17 +40,32 @@ class HandleInertiaRequests extends Middleware
     {
         $currentOrganization = app(CurrentOrganization::class);
         $hasOrganization = $currentOrganization->isResolved();
+        $user = $request->user();
 
         return [
             ...parent::share($request),
             'name' => config('app.name'),
             'appVersion' => config('app.version'),
             'auth' => [
-                'user' => $request->user(),
+                'user' => $user,
                 'organization' => $hasOrganization ? [
+                    'ulid' => $currentOrganization->get()->ulid,
                     'name' => $currentOrganization->get()->name,
                     'type' => $currentOrganization->get()->type->value,
+                    'is_owner' => $user !== null && $user->owns($currentOrganization->get()),
                 ] : null,
+                // Every organization this person can switch into (Fatia 2) — one
+                // indexed query on the pivot, not per-page N+1. A user with just
+                // the one organization everybody starts with gets a one-item list;
+                // the switcher itself decides whether that is worth showing.
+                'organizations' => $user === null
+                    ? []
+                    : $user->organizations()->orderBy('organization_memberships.joined_at')->get()->map(fn ($organization) => [
+                        'ulid' => $organization->ulid,
+                        'name' => $organization->name,
+                        'type' => $organization->type->value,
+                        'is_owner' => $user->owns($organization),
+                    ])->values(),
             ],
             // Menu already filtered by entitlements, and the module keys the org
             // holds, so the client can gate presentation without re-deriving it.

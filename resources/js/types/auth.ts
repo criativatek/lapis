@@ -11,13 +11,16 @@ export type User = {
 };
 
 export type Organization = {
+    ulid: string;
     name: string;
     type: 'personal' | 'institutional';
+    is_owner: boolean;
 };
 
 export type Auth = {
     user: User;
     organization: Organization | null;
+    organizations: Organization[];
 };
 
 /* @chisel-passkeys */
