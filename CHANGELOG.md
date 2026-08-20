@@ -2,6 +2,13 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.42.4] — 2026-08-20
+
+### Fixed
+
+- **Ações da página Equipa eram só ícones, sem explicação.** Na validação manual foi preciso adivinhar o que "Transferir responsabilidade" e "Remover da organização" faziam. Os dois botões passam a mostrar o texto completo junto do ícone (com `aria-label` e `title` PT-PT), em vez de depender só do ícone — não fica dependente de hover, funciona em ecrãs táteis, e não obriga a adivinhar.
+- Copy do diálogo de confirmação de transferência ajustada ao texto sugerido: "Vai transferir a responsabilidade da organização para {Nome}. Deixará de ser responsável e continuará como membro da organização."
+
 ## [0.42.3] — 2026-08-20
 
 ### Fixed

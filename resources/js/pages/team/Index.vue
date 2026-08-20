@@ -133,24 +133,26 @@ function submitTransferOwnership(member: Member): void {
                                 <span v-else class="text-xs text-emerald-600">ativo</span>
                             </td>
                             <td class="px-3 py-2 text-right">
-                                <div v-if="!member.is_owner" class="flex justify-end gap-1">
+                                <div v-if="!member.is_owner" class="flex flex-wrap justify-end gap-2">
                                     <Dialog :open="transferDialogMemberId === member.id" @update:open="(open) => (transferDialogMemberId = open ? member.id : null)">
                                         <DialogTrigger as-child>
                                             <Button
-                                                variant="ghost"
-                                                size="icon"
+                                                variant="outline"
+                                                size="sm"
                                                 aria-label="Transferir responsabilidade"
+                                                title="Transferir responsabilidade"
                                                 :disabled="processingMemberId !== null"
                                             >
                                                 <ArrowLeftRight class="size-4" />
+                                                Transferir responsabilidade
                                             </Button>
                                         </DialogTrigger>
                                         <DialogContent>
                                             <DialogHeader class="space-y-3">
-                                                <DialogTitle>Transferir responsabilidade para {{ member.name }}?</DialogTitle>
+                                                <DialogTitle>Transferir responsabilidade</DialogTitle>
                                                 <DialogDescription>
-                                                    {{ member.name }} passa a ser o responsável por esta organização. Deixa de o ser e
-                                                    passa a membro — continua com acesso à organização, mas sem a poder gerir.
+                                                    Vai transferir a responsabilidade da organização para <strong>{{ member.name }}</strong>.
+                                                    Deixará de ser responsável e continuará como membro da organização.
                                                 </DialogDescription>
                                             </DialogHeader>
                                             <DialogFooter class="gap-2">
@@ -164,13 +166,15 @@ function submitTransferOwnership(member: Member): void {
                                         </DialogContent>
                                     </Dialog>
                                     <Button
-                                        variant="ghost"
-                                        size="icon"
+                                        variant="outline"
+                                        size="sm"
                                         aria-label="Remover da organização"
+                                        title="Remover da organização"
                                         :disabled="processingMemberId !== null"
                                         @click="remove(member)"
                                     >
                                         <UserMinus class="size-4" />
+                                        Remover da organização
                                     </Button>
                                 </div>
                             </td>
