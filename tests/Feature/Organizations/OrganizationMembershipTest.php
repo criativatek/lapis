@@ -2,8 +2,10 @@
 
 namespace Tests\Feature\Organizations;
 
+use App\Actions\Organizations\CreateOrRenewOrganizationInvitation;
 use App\Actions\Organizations\LeaveOrganization;
 use App\Actions\Organizations\TransferOrganizationOwnership;
+use App\Mail\OrganizationInvitationMail;
 use App\Models\AuditEvent;
 use App\Models\Organization;
 use App\Models\OrganizationSubscription;
@@ -14,6 +16,7 @@ use App\Support\Organizations\MembershipException;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Route;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -183,7 +186,7 @@ class OrganizationMembershipTest extends TestCase
 
         $this->actingAs($owner)->withSession(['organization_id' => $organization->id])
             ->post('/team/members/transfer-ownership', ['member' => $member->id])
-            ->assertRedirect(route('team.index'));
+            ->assertRedirect(route('dashboard'));
 
         $fresh = $organization->fresh();
         $this->assertSame($member->id, $fresh->owner_id);
@@ -198,10 +201,61 @@ class OrganizationMembershipTest extends TestCase
             fn () => AuditEvent::where('event', 'organization.ownership_transferred')->exists(),
         ));
 
+        // The former owner correctly loses /team (owner-only) — and correctly
+        // does NOT get redirected there: the redirect target above already
+        // proved this by landing on dashboard instead, which the assertion
+        // below confirms is actually reachable for them, unlike /team.
         $this->actingAs($owner)->withSession(['organization_id' => $fresh->id])
             ->get('/team')->assertForbidden();
+        $this->actingAs($owner)->withSession(['organization_id' => $fresh->id])
+            ->get(route('dashboard'))->assertOk();
         $this->actingAs($member)->withSession(['organization_id' => $fresh->id])
             ->get('/team')->assertOk();
+    }
+
+    /**
+     * Regression: a real production report. AECM's owner (Nelson) transferred
+     * responsibility to a member who had joined through the Fatia 3
+     * invitation flow (Joaquim) — the transfer itself succeeded (confirmed in
+     * the audit log), but the controller redirected the NOW-FORMER owner
+     * straight to `/team`, a page `OrganizationInvitationPolicy::viewAny`
+     * only grants its OWNER — which Nelson, one instant earlier, had just
+     * stopped being. The very next request 403'd with Laravel's raw
+     * "This action is unauthorized.", making a successful transfer look like
+     * a failed one. This test reproduces the exact real path: invite →
+     * accept → transfer, over real HTTP, and follows the redirect.
+     */
+    #[Test]
+    public function transferring_ownership_to_a_member_who_joined_by_invitation_redirects_somewhere_the_former_owner_can_still_reach(): void
+    {
+        [$organization, $owner] = $this->institutionalOrganization();
+
+        Mail::fake();
+        app(CurrentOrganization::class)->runFor(
+            $organization,
+            fn () => app(CreateOrRenewOrganizationInvitation::class)->invite($organization, $owner, 'joaquim@escola.pt'),
+        );
+        $token = null;
+        Mail::assertSent(OrganizationInvitationMail::class, function ($mail) use (&$token) {
+            $token = $mail->token;
+
+            return true;
+        });
+
+        $invitedMember = User::factory()->create(['email' => 'joaquim@escola.pt']);
+        $this->actingAs($invitedMember)->get("/invitations/{$token}")->assertRedirect(route('dashboard'));
+        $this->assertTrue($organization->members()->whereKey($invitedMember->id)->exists());
+
+        $response = $this->actingAs($owner)->withSession(['organization_id' => $organization->id])
+            ->post('/team/members/transfer-ownership', ['member' => $invitedMember->id]);
+
+        $response->assertRedirect(route('dashboard'));
+        $this->assertSame($invitedMember->id, $organization->fresh()->owner_id);
+
+        // Following the controller's own redirect, as the very user it just
+        // sent there, must not 403 — this is the exact bug: the transfer had
+        // already succeeded, but the destination page hadn't.
+        $this->followRedirects($response)->assertOk();
     }
 
     #[Test]

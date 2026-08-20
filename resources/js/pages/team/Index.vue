@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
 import { ArrowLeftRight, Mail, UserMinus, X } from '@lucide/vue';
+import { ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -46,15 +47,33 @@ function cancel(invitation: Invitation): void {
     useForm({}).delete(`/team/invitations/${invitation.ulid}`, { preserveScroll: true });
 }
 
+// A double-click (or an impatient second click while the first request is
+// still in flight) must not fire the mutation twice — the backend already
+// guards this correctly under a row lock, but a confusing extra "não
+// autorizado" from a stale second click is worth preventing here too.
+const processingMemberId = ref<number | null>(null);
+
 function remove(member: Member): void {
+    if (processingMemberId.value !== null) {
+        return;
+    }
+
     if (!confirm(`Remover ${member.name} da organização? Deixa de ter acesso; os dados que já registou permanecem na organização.`)) {
         return;
     }
 
-    useForm({ member: member.id }).delete('/team/members', { preserveScroll: true });
+    processingMemberId.value = member.id;
+    useForm({ member: member.id }).delete('/team/members', {
+        preserveScroll: true,
+        onFinish: () => (processingMemberId.value = null),
+    });
 }
 
 function transferOwnership(member: Member): void {
+    if (processingMemberId.value !== null) {
+        return;
+    }
+
     if (
         !confirm(
             `Transferir a responsabilidade da organização para ${member.name}? Deixa de ser o responsável e passa a membro; ${member.name} passa a decidir por esta organização.`,
@@ -63,7 +82,10 @@ function transferOwnership(member: Member): void {
         return;
     }
 
-    useForm({ member: member.id }).post('/team/members/transfer-ownership');
+    processingMemberId.value = member.id;
+    useForm({ member: member.id }).post('/team/members/transfer-ownership', {
+        onFinish: () => (processingMemberId.value = null),
+    });
 }
 </script>
 
@@ -101,10 +123,22 @@ function transferOwnership(member: Member): void {
                             </td>
                             <td class="px-3 py-2 text-right">
                                 <div v-if="!member.is_owner" class="flex justify-end gap-1">
-                                    <Button variant="ghost" size="icon" aria-label="Transferir responsabilidade" @click="transferOwnership(member)">
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        aria-label="Transferir responsabilidade"
+                                        :disabled="processingMemberId !== null"
+                                        @click="transferOwnership(member)"
+                                    >
                                         <ArrowLeftRight class="size-4" />
                                     </Button>
-                                    <Button variant="ghost" size="icon" aria-label="Remover da organização" @click="remove(member)">
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        aria-label="Remover da organização"
+                                        :disabled="processingMemberId !== null"
+                                        @click="remove(member)"
+                                    >
                                         <UserMinus class="size-4" />
                                     </Button>
                                 </div>

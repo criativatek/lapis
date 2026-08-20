@@ -128,7 +128,16 @@ class TeamController extends Controller
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Responsabilidade da organização transferida.')]);
 
-        return to_route('team.index');
+        // Never back to `team.index`: the acting owner just gave up the very
+        // privilege that page requires (OrganizationInvitationPolicy::viewAny
+        // is owner-only), so redirecting them there is a guaranteed 403 on
+        // the very next request — the transfer itself already succeeded, but
+        // it would look like it failed. Same reasoning as
+        // OrganizationController::switch() and
+        // OrganizationMembershipController::leave(): after anything that can
+        // change what the CURRENT user is allowed to see, land on `dashboard`,
+        // never a page whose access this exact request may have just revoked.
+        return to_route('dashboard');
     }
 
     protected function user(Request $request): User

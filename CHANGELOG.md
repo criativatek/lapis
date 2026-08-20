@@ -2,6 +2,13 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.42.2] — 2026-08-20
+
+### Fixed
+
+- **Transferência de responsabilidade redirecionava o antigo responsável para uma página que já não podia ver.** A transferência em si sempre funcionou corretamente (confirmado pelo próprio registo de auditoria de produção) — o bug estava no destino do redirecionamento: `TeamController::transferOwnership` enviava sempre para `/team`, uma página só para o responsável (`OrganizationInvitationPolicy::viewAny`). Quem acabou de transferir a responsabilidade deixa de o ser nesse preciso instante, por isso a página seguinte devolvia sempre 403 — uma transferência bem-sucedida parecia ter falhado. Corrigido para redirecionar para `dashboard`, o mesmo destino já usado por `OrganizationController::switch()` e `OrganizationMembershipController::leave()` exatamente por esta razão.
+- Botões "Transferir responsabilidade" e "Remover da organização" na página Equipa ganham proteção contra duplo clique.
+
 ## [0.42.1] — 2026-08-20
 
 ### Added
