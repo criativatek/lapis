@@ -1,18 +1,19 @@
 <script setup lang="ts">
 import { Form, Head } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import InputError from '@/components/InputError.vue';
 import PasswordInput from '@/components/PasswordInput.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
+import { describePasswordRules } from '@/lib/passwordRules';
 import { update } from '@/routes/password';
 
 defineOptions({
     layout: {
-        title: 'Reset password',
-        description: 'Please enter your new password below',
+        title: 'Definir nova palavra-passe',
+        description: 'Escreva abaixo a palavra-passe que passa a usar',
     },
 });
 
@@ -23,10 +24,13 @@ const props = defineProps<{
 }>();
 
 const inputEmail = ref(props.email);
+
+// Shown before the teacher submits, not discovered one rejection at a time.
+const requirements = computed(() => describePasswordRules(props.passwordRules));
 </script>
 
 <template>
-    <Head title="Reset password" />
+    <Head title="Definir nova palavra-passe" />
 
     <Form
         v-bind="update.form()"
@@ -50,27 +54,37 @@ const inputEmail = ref(props.email);
             </div>
 
             <div class="grid gap-2">
-                <Label for="password">Password</Label>
+                <Label for="password">Nova palavra-passe</Label>
                 <PasswordInput
                     id="password"
                     name="password"
                     autocomplete="new-password"
                     class="mt-1 block w-full"
                     autofocus
-                    placeholder="Password"
+                    placeholder="Nova palavra-passe"
                     :passwordrules="passwordRules"
+                    aria-describedby="password-requirements"
                 />
+                <ul
+                    v-if="requirements.length"
+                    id="password-requirements"
+                    class="mt-1 space-y-0.5 text-xs text-muted-foreground"
+                >
+                    <li v-for="requirement in requirements" :key="requirement">
+                        {{ requirement }}
+                    </li>
+                </ul>
                 <InputError :message="errors.password" />
             </div>
 
             <div class="grid gap-2">
-                <Label for="password_confirmation"> Confirm password </Label>
+                <Label for="password_confirmation">Confirmar palavra-passe</Label>
                 <PasswordInput
                     id="password_confirmation"
                     name="password_confirmation"
                     autocomplete="new-password"
                     class="mt-1 block w-full"
-                    placeholder="Confirm password"
+                    placeholder="Repita a palavra-passe"
                     :passwordrules="passwordRules"
                 />
                 <InputError :message="errors.password_confirmation" />
@@ -83,7 +97,7 @@ const inputEmail = ref(props.email);
                 data-test="reset-password-button"
             >
                 <Spinner v-if="processing" />
-                Reset password
+                Guardar palavra-passe
             </Button>
         </div>
     </Form>

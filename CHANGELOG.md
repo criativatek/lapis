@@ -2,6 +2,14 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.37.1] — 2026-08-20
+
+### Fixed
+
+- **As mensagens de erro das palavras-passe deixam de ser códigos.** Quem definia uma palavra-passe via «validation.password.mixed» ou «validation.password.uncompromised» — o identificador interno da mensagem, não a mensagem. Faltavam ao ficheiro de português **47 mensagens de validação**, entre elas todas as das regras de palavra-passe. Agora dizem o que corrigir: «A palavra-passe tem de conter pelo menos uma letra maiúscula e uma minúscula», ou «Esta palavra-passe já apareceu numa fuga de dados pública e não pode ser usada. Escolha outra — de preferência várias palavras sem relação entre si.»
+- **Os requisitos aparecem antes de falhar, não depois.** As páginas de criar conta e de definir nova palavra-passe passam a listar o que é exigido — comprimento, maiúsculas e minúsculas, algarismo, símbolo — em vez de os revelar uma recusa de cada vez. A lista é gerada a partir das regras reais do servidor, por isso não pode divergir delas.
+- **As sete páginas de autenticação passam a estar em português.** Entrar, criar conta, recuperar e definir palavra-passe, confirmar palavra-passe, autenticação em dois passos e verificação de e-mail estavam em inglês, como vieram do template original.
+
 ## [0.37.0] — 2026-08-20
 
 Três módulos novos — Relatórios, Acompanhamento do Aluno e a área de ação
