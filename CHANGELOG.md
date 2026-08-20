@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.38.1] — 2026-08-20
+
+### Fixed
+
+- **A lista de contas não tinha botão para criar uma conta.** A rota `/admin/accounts/create` sempre existiu, mas só se lá chegava a escrever o URL à mão — a página nunca teve o link. `/admin` ganha "Nova conta".
+
 ## [0.38.0] — 2026-08-20
 
 ### Added

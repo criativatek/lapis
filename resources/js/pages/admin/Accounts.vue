@@ -45,14 +45,22 @@ const statusClasses: Record<string, string> = {
                 <h1 class="text-xl font-semibold tracking-tight">Contas</h1>
                 <p class="text-sm text-muted-foreground">{{ organizations.total }} organizações</p>
             </div>
-            <form @submit.prevent="doSearch">
-                <input
-                    v-model="term"
-                    type="search"
-                    placeholder="Procurar por nome ou email…"
-                    class="w-64 rounded-md border border-border bg-background px-3 py-2 text-sm"
-                />
-            </form>
+            <div class="flex items-center gap-3">
+                <form @submit.prevent="doSearch">
+                    <input
+                        v-model="term"
+                        type="search"
+                        placeholder="Procurar por nome ou email…"
+                        class="w-64 rounded-md border border-border bg-background px-3 py-2 text-sm"
+                    />
+                </form>
+                <Link
+                    href="/admin/accounts/create"
+                    class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+                >
+                    Nova conta
+                </Link>
+            </div>
         </div>
 
         <div class="overflow-x-auto rounded-lg border border-border">
