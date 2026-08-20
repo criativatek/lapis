@@ -2,6 +2,15 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.38.0] — 2026-08-20
+
+### Added
+
+- **O backoffice passa a gerir contas, não só a criá-las.** Até aqui o Superadmin provisionava uma conta e ficava sem forma de a editar. `/admin/accounts/{organização}` ganha um formulário para corrigir nome e email — mudar o email repõe a verificação a zero, e a conta segue o fluxo normal a partir daí. Fica registado em auditoria (`admin.user_updated`).
+- **Desativar uma conta é diferente de suspender uma subscrição, e agora ambos existem.** Suspender (já existia) tira o plano à organização inteira; desativar (novo) tira a uma pessoa a capacidade de entrar, sem tocar no plano — a distinção que passa a fazer sentido no dia em que uma organização tiver mais do que um membro. Nova coluna `users.deactivated_at`. O bloqueio corre por middleware (`EnsureUserIsActive`) e por `Fortify::authenticateUsing`, para apanhar as três portas de entrada: o formulário de login, uma sessão já aberta no momento da desativação, e passkeys/"lembrar-me". Um administrador não se consegue desativar a si próprio nem ao último admin da plataforma ainda ativo.
+- **Remoção definitiva, excecional e protegida.** `DELETE /admin/accounts/{organização}` só avança numa organização pessoal, sem dados pedagógicos associados (turmas, alunos, inscrições, elementos de avaliação, registos, intervenções, relatórios, perfis de avaliação) e sem rasto de auditoria — o que, na prática, só acontece numa conta que nunca chegou a ser usada. Havendo qualquer coisa, recusa com a lista do que bloqueia; nunca apaga histórico para o delete passar. Uma organização institucional nunca é apagada por aqui.
+- A lista de contas (`/admin`) e a ficha de cada uma passam a mostrar o estado de acesso da pessoa — separado do estado da subscrição, que já lá estava.
+
 ## [0.37.1] — 2026-08-20
 
 ### Fixed

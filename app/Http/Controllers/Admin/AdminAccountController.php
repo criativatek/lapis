@@ -3,10 +3,20 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Actions\Organizations\CreatePersonalOrganization;
+use App\Actions\Users\DeleteUserAccount;
 use App\Http\Controllers\Controller;
+use App\Models\AssessmentProfile;
+use App\Models\AuditEvent;
+use App\Models\Enrollment;
+use App\Models\EvidenceRecord;
+use App\Models\Instrument;
+use App\Models\Intervention;
 use App\Models\Organization;
 use App\Models\OrganizationSubscription;
 use App\Models\Plan;
+use App\Models\Report;
+use App\Models\SchoolClass;
+use App\Models\Student;
 use App\Models\User;
 use App\Services\Audit\AuditLog;
 use App\Services\Organizations\ChangeOrganizationPlan;
@@ -61,6 +71,10 @@ class AdminAccountController extends Controller
             'owner' => $organization->owner?->name,
             'owner_email' => $organization->owner?->email,
             'verified' => $organization->owner?->email_verified_at !== null,
+            // Two different states travel side by side on purpose: `status` is
+            // the subscription's and `active` is the person's. An account can be
+            // paid up and shut out, or free and perfectly able to sign in.
+            'active' => $organization->owner === null || $organization->owner->isActive(),
             'plan' => $current->get($organization->id)?->plan?->name,
             'status' => $current->get($organization->id)?->status?->value,
             'created_at' => $organization->created_at?->toDateString(),
@@ -117,10 +131,16 @@ class AdminAccountController extends Controller
         return redirect()->route('admin.accounts.show', $organization);
     }
 
-    public function show(Organization $organization): Response
+    public function show(Request $request, Organization $organization): Response
     {
         $organization->load(['owner', 'members']);
         $subscription = $this->currentSubscriptions(collect([$organization->id]))->get($organization->id);
+        $owner = $organization->owner;
+
+        // Computed here rather than discovered by pressing the button: an
+        // operator should be able to see that an account cannot be deleted, and
+        // why, without attempting it.
+        $blocking = $owner === null ? [] : $this->blockingDependencies($organization, $owner);
 
         return Inertia::render('admin/AccountShow', [
             'account' => [
@@ -129,16 +149,20 @@ class AdminAccountController extends Controller
                 'type' => $organization->type->value,
                 'created_at' => $organization->created_at?->toDateString(),
                 'owner' => [
-                    'name' => $organization->owner?->name,
-                    'email' => $organization->owner?->email,
-                    'verified' => $organization->owner?->email_verified_at !== null,
-                    'is_platform_admin' => (bool) ($organization->owner?->is_platform_admin),
+                    'name' => $owner?->name,
+                    'email' => $owner?->email,
+                    'verified' => $owner?->email_verified_at !== null,
+                    'is_platform_admin' => (bool) ($owner?->is_platform_admin),
+                    'active' => $owner === null || $owner->isActive(),
+                    'deactivated_at' => $owner?->deactivated_at?->toDateTimeString(),
                 ],
                 'members_count' => $organization->members->count(),
                 'plan' => $subscription?->plan?->name,
                 'plan_key' => $subscription?->plan?->key,
                 'status' => $subscription?->status?->value,
                 'modules' => $this->entitlements->modulesFor($organization),
+                'deactivation_refusal' => $owner === null ? __('Esta organização não tem dono.') : $this->deactivationRefusal($request, $owner),
+                'blocking' => $blocking,
             ],
             'plans' => Plan::orderBy('id')->get(['key', 'name']),
         ]);
@@ -206,6 +230,231 @@ class AdminAccountController extends Controller
         }
 
         return back();
+    }
+
+    /**
+     * The person's own details — the only block on this screen that belongs to a
+     * human being rather than to an organization.
+     *
+     * A CHANGED ADDRESS LOSES ITS VERIFICATION. The email on file is a claim
+     * that a mailbox exists and answers; the moment an operator rewrites it,
+     * nobody has shown that of the new one. Carrying the old confirmation across
+     * would be asserting something no one checked, so the account goes back
+     * through the ordinary verification flow — which the operator can still
+     * short-circuit with «Verificar email» if there is no mailbox to reach.
+     */
+    public function updateUser(Request $request, Organization $organization): RedirectResponse
+    {
+        $owner = $organization->owner;
+
+        if ($owner === null) {
+            return back()->withErrors(['account' => __('Esta organização não tem dono.')]);
+        }
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($owner->getKey())],
+        ]);
+
+        $previousEmail = $owner->email;
+        $emailChanged = $validated['email'] !== $previousEmail;
+
+        $owner->fill($validated);
+
+        if ($emailChanged) {
+            $owner->forceFill(['email_verified_at' => null]);
+        }
+
+        $owner->save();
+
+        $this->log(
+            $organization,
+            'admin.user_updated',
+            $emailChanged
+                ? "Dados atualizados: {$previousEmail} passou a {$owner->email}, por verificar."
+                : "Dados atualizados: {$owner->email}.",
+            ['email_changed' => $emailChanged],
+        );
+
+        return back();
+    }
+
+    /**
+     * Shuts the person out. The subscription is untouched.
+     *
+     * That separation is the point: the organization keeps its plan, its data
+     * and its history, and what ends is one person's ability to sign in. It is
+     * also what will let this act on a single member of a school without
+     * touching the school.
+     */
+    public function deactivate(Request $request, Organization $organization): RedirectResponse
+    {
+        $owner = $organization->owner;
+
+        if ($owner === null) {
+            return back()->withErrors(['account' => __('Esta organização não tem dono.')]);
+        }
+
+        $refusal = $this->deactivationRefusal($request, $owner);
+
+        if ($refusal !== null) {
+            return back()->withErrors(['account' => $refusal]);
+        }
+
+        if ($owner->isActive()) {
+            $owner->forceFill(['deactivated_at' => now()])->save();
+            $this->log($organization, 'admin.account_deactivated', "Conta desativada: {$owner->email}.");
+        }
+
+        return back();
+    }
+
+    public function activate(Organization $organization): RedirectResponse
+    {
+        $owner = $organization->owner;
+
+        if ($owner !== null && $owner->isDeactivated()) {
+            $owner->forceFill(['deactivated_at' => null])->save();
+            $this->log($organization, 'admin.account_activated', "Conta reativada: {$owner->email}.");
+        }
+
+        return back();
+    }
+
+    /**
+     * Exceptional, and refuses far more often than it proceeds.
+     *
+     * Deactivating is how an account is removed operationally. This exists only
+     * for one that never became anything — a provisioning mistake, a duplicate,
+     * a test account — and every other case is a refusal with the reason
+     * spelled out.
+     *
+     * IT IS NOT «DELETE THE ORGANIZATION» UNDER ANOTHER NAME. An institutional
+     * organization is never deleted here whatever its state, and neither is a
+     * user who belongs to a second organization: those are exactly the
+     * situations where «remove this person» and «remove this workspace» stop
+     * meaning the same thing, and the safe answer is to refuse rather than to
+     * guess which was meant.
+     */
+    public function destroy(Request $request, Organization $organization): RedirectResponse
+    {
+        $owner = $organization->owner;
+
+        if ($owner === null) {
+            return back()->withErrors(['account' => __('Esta organização não tem dono.')]);
+        }
+
+        if ($owner->is($request->user())) {
+            return back()->withErrors(['account' => __('Não pode apagar a sua própria conta.')]);
+        }
+
+        if ($owner->isPlatformAdmin()) {
+            return back()->withErrors(['account' => __('Não é possível apagar um administrador da plataforma. Revogue-lhe o acesso primeiro.')]);
+        }
+
+        if (! $organization->isPersonal()) {
+            return back()->withErrors(['account' => __('Só uma organização pessoal pode ser apagada por aqui.')]);
+        }
+
+        $blocking = $this->blockingDependencies($organization, $owner);
+
+        if ($blocking !== []) {
+            $detail = collect($blocking)->map(fn (int $total, string $label): string => mb_strtolower($label).": {$total}")->implode(', ');
+
+            return back()->withErrors([
+                'account' => __('Esta conta tem dados associados e não pode ser apagada').
+                    " ({$detail}). ".__('Desative-a em vez de a apagar.'),
+            ]);
+        }
+
+        $email = $owner->email;
+
+        // Audited BEFORE the delete, and deliberately not through log(): the
+        // organization this event would be stamped with is about to stop
+        // existing, and audit_events.organization_id is RESTRICT — writing it
+        // here would be writing the row that then refuses the delete. An account
+        // with nothing behind it leaves no trail, which is the honest record of
+        // an account that never became anything.
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Conta apagada.')." ({$email})"]);
+
+        app(DeleteUserAccount::class)->delete($owner);
+
+        $this->entitlements->flush();
+
+        return redirect()->route('admin.accounts.index');
+    }
+
+    /**
+     * Why this account may not be shut out, or null when it may.
+     *
+     * Two refusals, and both are about not locking the operator out of their own
+     * backoffice: their own account, and the last platform admin still standing.
+     * Nothing here is about the subscription.
+     */
+    protected function deactivationRefusal(Request $request, User $owner): ?string
+    {
+        if ($owner->is($request->user())) {
+            return __('Não pode desativar a sua própria conta.');
+        }
+
+        if ($owner->isPlatformAdmin() && $this->isLastActiveAdmin($owner)) {
+            return __('Não é possível desativar o último administrador da plataforma ativo.');
+        }
+
+        return null;
+    }
+
+    protected function isLastActiveAdmin(User $owner): bool
+    {
+        return User::query()
+            ->where('is_platform_admin', true)
+            ->whereNull('deactivated_at')
+            ->whereKeyNot($owner->getKey())
+            ->doesntExist();
+    }
+
+    /**
+     * Everything that stands between this account and a hard delete, counted.
+     *
+     * The audit trail counts, and counts deliberately. Every account provisioned
+     * from this backoffice is born with an `admin.account_created` event, so in
+     * practice a provisioned account can only be deleted while it is still
+     * untouched — which is precisely the window this action is for. The
+     * alternative was deleting history to make a delete succeed, and that is not
+     * on the table (§22.4, §31).
+     *
+     * @return array<string, int> label => count, only non-zero entries
+     */
+    protected function blockingDependencies(Organization $organization, User $owner): array
+    {
+        $counts = $this->currentOrganization->runFor($organization, fn (): array => [
+            'Turmas' => SchoolClass::query()->count(),
+            'Alunos' => Student::query()->count(),
+            'Inscrições' => Enrollment::query()->count(),
+            'Elementos de avaliação' => Instrument::query()->count(),
+            'Registos' => EvidenceRecord::query()->count(),
+            'Intervenções' => Intervention::query()->count(),
+            'Relatórios' => Report::query()->count(),
+            'Perfis de avaliação' => AssessmentProfile::query()->count(),
+            'Registo de atividade' => AuditEvent::query()->count(),
+        ]);
+
+        // Across every organization, not just this one: audit_events.causer_id is
+        // RESTRICT, so a person who has acted anywhere cannot be deleted at all,
+        // and saying so up front beats a foreign-key error at the end.
+        $counts['Ações registadas noutras organizações'] = AuditEvent::query()
+            ->withoutGlobalScope('organization')
+            ->where('causer_id', $owner->getKey())
+            ->whereNot('organization_id', $organization->getKey())
+            ->count();
+
+        // A second organization means «remove the person» and «remove the
+        // workspace» are no longer the same request.
+        $counts['Outras organizações'] = $owner->organizations()
+            ->whereKeyNot($organization->getKey())
+            ->count();
+
+        return array_filter($counts, fn (int $total): bool => $total > 0);
     }
 
     /**

@@ -4,12 +4,15 @@ namespace App\Providers;
 
 use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
+use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Laravel\Fortify\Features;
 use Laravel\Fortify\Fortify;
@@ -41,6 +44,35 @@ class FortifyServiceProvider extends ServiceProvider
     {
         Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
         Fortify::createUsersUsing(CreateNewUser::class);
+
+        /*
+         * A deactivated account never completes a login.
+         *
+         * EnsureUserIsActive already ends the session of anyone deactivated
+         * while inside, and covers passkeys and the "remember me" cookie. This
+         * closes the front door too, so the form does not appear to succeed for
+         * one request before bouncing them.
+         *
+         * The password is checked FIRST and the refusal comes after: someone who
+         * does not know the password learns nothing about whether the address
+         * exists, while the person who does know it gets told plainly what
+         * happened instead of being left to guess at "credenciais inválidas".
+         */
+        Fortify::authenticateUsing(function (Request $request): ?User {
+            $user = User::where('email', $request->input(Fortify::username()))->first();
+
+            if ($user === null || ! Hash::check((string) $request->input('password'), $user->password)) {
+                return null;
+            }
+
+            if ($user->isDeactivated()) {
+                throw ValidationException::withMessages([
+                    Fortify::username() => __('A sua conta foi desativada. Contacte o suporte do LÁPIS.'),
+                ]);
+            }
+
+            return $user;
+        });
     }
 
     /**

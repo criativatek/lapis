@@ -31,6 +31,19 @@ Route::middleware(['auth', 'verified', 'platform-admin'])
         Route::post('accounts/{organization}/reactivate', [AdminAccountController::class, 'reactivate'])->name('accounts.reactivate');
         Route::post('accounts/{organization}/toggle-admin', [AdminAccountController::class, 'toggleAdmin'])->name('accounts.toggle-admin');
 
+        // The person, not the subscription. `suspend`/`reactivate` above answer
+        // "does this account still have a product"; these answer "may this
+        // person sign in", which is a different question with a different blast
+        // radius once an organization has more than one member.
+        Route::put('accounts/{organization}/user', [AdminAccountController::class, 'updateUser'])->name('accounts.user.update');
+        Route::post('accounts/{organization}/deactivate', [AdminAccountController::class, 'deactivate'])->name('accounts.deactivate');
+        Route::post('accounts/{organization}/activate', [AdminAccountController::class, 'activate'])->name('accounts.activate');
+
+        // Exceptional, and refuses far more often than it proceeds. Deactivating
+        // is the normal way to remove somebody operationally; this is only for an
+        // account that never became anything.
+        Route::delete('accounts/{organization}', [AdminAccountController::class, 'destroy'])->name('accounts.destroy');
+
         // System email (SMTP) settings.
         Route::get('settings', [AdminSettingsController::class, 'edit'])->name('settings.edit');
         Route::put('settings', [AdminSettingsController::class, 'update'])->name('settings.update');

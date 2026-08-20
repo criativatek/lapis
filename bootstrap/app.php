@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnsurePlatformAdmin;
+use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\RequireModule;
@@ -24,6 +25,9 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->web(append: [
             HandleAppearance::class,
+            // Before ResolveOrganization: a deactivated account is shown the door
+            // rather than given a tenant.
+            EnsureUserIsActive::class,
             ResolveOrganization::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,

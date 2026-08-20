@@ -9,6 +9,7 @@ type Row = {
     owner: string | null;
     owner_email: string | null;
     verified: boolean;
+    active: boolean;
     plan: string | null;
     status: string | null;
     created_at: string | null;
@@ -62,6 +63,7 @@ const statusClasses: Record<string, string> = {
                         <th class="px-3 py-2 font-medium">Dono</th>
                         <th class="px-3 py-2 font-medium">Plano</th>
                         <th class="px-3 py-2 font-medium">Estado</th>
+                        <th class="px-3 py-2 font-medium">Acesso</th>
                         <th class="px-3 py-2 font-medium">Email</th>
                         <th class="px-3 py-2 font-medium">Criada</th>
                     </tr>
@@ -82,12 +84,15 @@ const statusClasses: Record<string, string> = {
                             <span v-else class="text-xs text-muted-foreground">sem subscrição</span>
                         </td>
                         <td class="px-3 py-2">
+                            <span :class="org.active ? 'text-emerald-600' : 'text-red-600'">{{ org.active ? 'ativa' : 'desativada' }}</span>
+                        </td>
+                        <td class="px-3 py-2">
                             <span :class="org.verified ? 'text-emerald-600' : 'text-amber-600'">{{ org.verified ? 'verificado' : 'por verificar' }}</span>
                         </td>
                         <td class="px-3 py-2 text-muted-foreground tabular-nums">{{ org.created_at }}</td>
                     </tr>
                     <tr v-if="organizations.data.length === 0">
-                        <td colspan="6" class="px-3 py-10 text-center text-sm text-muted-foreground">Sem contas.</td>
+                        <td colspan="7" class="px-3 py-10 text-center text-sm text-muted-foreground">Sem contas.</td>
                     </tr>
                 </tbody>
             </table>
