@@ -252,8 +252,8 @@ function destroy(): void {
         <section class="space-y-3 rounded-lg border border-red-200 p-4 dark:border-red-900">
             <h2 class="text-sm font-medium text-red-700 dark:text-red-400">Apagar definitivamente</h2>
             <p class="text-sm text-muted-foreground">
-                A forma normal de remover uma conta é <strong>desativá-la</strong>: o acesso acaba e os dados ficam. Apagar é
-                excecional e só é possível numa conta pessoal que nunca chegou a ter nada.
+                A forma normal de impedir o acesso de um utilizador é <strong>desativá-lo</strong>: o acesso termina, mas os dados
+                são preservados. A eliminação definitiva é excecional e só é possível quando não existem dados associados.
             </p>
 
             <div v-if="blockingEntries.length > 0" class="space-y-1">

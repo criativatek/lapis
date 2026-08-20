@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.38.4] — 2026-08-20
+
+### Changed
+
+- **A secção «Apagar definitivamente» deixa de falar em desativar "a conta".** Depois de separar utilizador, subscrição e eliminação no resto da ficha (0.38.3), esta frase continuava a misturar os três sob um único "conta". Passa a nomear as duas peças certas: desativar um **utilizador** bloqueia a pessoa; a eliminação definitiva é a exceção, só possível sem dados associados. Sem alteração à regra de bloqueio, ao endpoint `DELETE` ou ao que conta como dependência.
+
 ## [0.38.3] — 2026-08-20
 
 ### Changed
