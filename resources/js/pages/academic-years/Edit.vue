@@ -27,6 +27,7 @@ const props = defineProps<{
     };
     statuses: Option[];
     periodKinds: Option[];
+    canManage: boolean;
 }>();
 
 const initial = {
@@ -51,6 +52,13 @@ const initial = {
             class="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
         >
             Este ano letivo está encerrado e não pode ser alterado.
+        </p>
+
+        <p
+            v-else-if="!canManage"
+            class="rounded-md border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
+        >
+            O ano letivo é gerido pelo responsável da organização.
         </p>
 
         <Form

@@ -18,6 +18,7 @@ type Profile = {
 
 defineProps<{
     profiles: Profile[];
+    canManage: boolean;
 }>();
 
 function activate(profile: Profile): void {
@@ -37,7 +38,7 @@ function destroy(profile: Profile): void {
     <div class="mx-auto w-full max-w-4xl space-y-6 p-4">
         <div class="flex items-center justify-between">
             <Heading title="Perfis de Avaliação" description="Como cada disciplina e ano são avaliados." />
-            <Button as-child>
+            <Button v-if="canManage" as-child>
                 <Link href="/assessment-profiles/create"><Plus class="size-4" /> Novo perfil</Link>
             </Button>
         </div>
@@ -70,7 +71,7 @@ function destroy(profile: Profile): void {
                         <td class="px-4 py-3">
                             <div class="flex items-center justify-end gap-1">
                                 <Button
-                                    v-if="profile.has_draft"
+                                    v-if="canManage && profile.has_draft"
                                     variant="ghost"
                                     size="sm"
                                     class="text-emerald-700 hover:text-emerald-800"
@@ -82,7 +83,7 @@ function destroy(profile: Profile): void {
                                     <Link :href="`/assessment-profiles/${profile.ulid}/edit`"><Pencil class="size-4" /></Link>
                                 </Button>
                                 <Button
-                                    v-if="!profile.is_active"
+                                    v-if="canManage && !profile.is_active"
                                     variant="ghost"
                                     size="icon"
                                     aria-label="Eliminar"

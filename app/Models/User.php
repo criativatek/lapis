@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Tenancy\CurrentOrganization;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -106,5 +107,38 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
             ->where('organizations.type', OrganizationType::Personal)
             ->where('organizations.owner_id', $this->getKey())
             ->first();
+    }
+
+    /**
+     * Whether this user is THE owner of the given organization.
+     *
+     * The one authority this schema actually has above "a teacher who belongs
+     * here" (§9, §78 of the module brief) — no role column, no invented
+     * permission matrix. Every policy that needs "may govern this
+     * organization's shared configuration" reads this single predicate, so the
+     * definition of owner cannot drift between OrganizationPolicy,
+     * ReportTemplatePolicy and whichever policy is written next.
+     *
+     * Deliberately NOT `is_platform_admin`. A platform admin administers the
+     * SaaS; an organization owner governs one workspace. Conflating the two
+     * would let the operator's backoffice flag double as institutional
+     * authority inside the pedagogical app, which is a different capability
+     * this schema was told never to invent.
+     */
+    public function owns(Organization $organization): bool
+    {
+        return (int) $organization->owner_id === (int) $this->getKey();
+    }
+
+    /**
+     * Whether this user owns the RESOLVED TENANT — never an organization read
+     * off the user, since a user may belong to several (ADR-0002). False when
+     * no tenant is resolved at all.
+     */
+    public function ownsCurrentOrganization(): bool
+    {
+        $tenant = app(CurrentOrganization::class);
+
+        return $tenant->isResolved() && $this->owns($tenant->get());
     }
 }

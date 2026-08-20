@@ -2,6 +2,19 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.39.0] — 2026-08-20
+
+### Added
+
+- **Fatia 1 — segurança multiutilizador.** Prepara o que acontece no dia em que uma organização tiver mais do que um membro, sem ainda construir convites, equipa ou seletor de organização — só as duas regras de fronteira que têm de existir antes de qualquer uma dessas coisas.
+- **Registo de atividade: um membro vê só os seus próprios eventos; o responsável da organização vê o registo inteiro.** Até aqui `/activity` mostrava os últimos 100 eventos da organização a qualquer pessoa autenticada, sem filtro. Passa a aplicar `causer_id = utilizador` para um membro normal, e sem filtro para quem é dono (`organizations.owner_id`) — porque o registo de atividade é uma função de segurança institucional, não um diário pessoal. Numa organização pessoal o resultado não muda: há sempre uma só pessoa, por isso as duas regras devolvem os mesmos eventos.
+- **Configuração partilhada passa a ter dono.** Anos letivos, disciplinas, perfis de avaliação e escalas não têm variante "pessoal" — pertencem sempre à organização inteira. Um membro continua a lê-los e a usá-los (uma turma precisa de um perfil de avaliação para ser avaliada); só o responsável da organização os cria, edita ou apaga. Numa organização pessoal, o dono é a única pessoa que lá está — nada muda para quem usa o LÁPIS sozinho hoje.
+- Nas páginas afetadas, os controlos de criar/editar/apagar deixam de aparecer a um membro sem essa permissão, em vez de aparecerem e falharem com 403 ao serem usados. A autorização em si continua só no servidor — a UI só evita o percurso morto.
+
+### Changed
+
+- `OrganizationPolicy`, `ReportPolicy` e `ReportTemplatePolicy` já implementavam exatamente esta regra (ler é de todos, escrever é do dono); o predicado que cada uma duplicava à sua maneira foi extraído para `User::owns()`/`ownsCurrentOrganization()`, para as quatro policies novas apontarem ao mesmo sítio.
+
 ## [0.38.4] — 2026-08-20
 
 ### Changed

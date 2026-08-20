@@ -6,7 +6,6 @@ use App\Models\Report;
 use App\Models\ReportType;
 use App\Models\SchoolClass;
 use App\Models\User;
-use App\Support\Tenancy\CurrentOrganization;
 
 /**
  * Who may read, write, finish and export a report (§63, §64).
@@ -120,16 +119,8 @@ class ReportPolicy
             && $class->teachers()->whereKey($user->getKey())->exists();
     }
 
-    /**
-     * The organization being asked about is the RESOLVED TENANT, not one read
-     * off the user: a user may belong to several, and the only one this request
-     * is about is the one in the container (ADR-0002).
-     */
     protected function ownsOrganization(User $user): bool
     {
-        $tenant = app(CurrentOrganization::class);
-
-        return $tenant->isResolved()
-            && (int) $tenant->get()->owner_id === (int) $user->getKey();
+        return $user->ownsCurrentOrganization();
     }
 }

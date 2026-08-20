@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
 import { CheckCircle2, FileDown, GitBranch, PencilLine, Send, ShieldCheck, SlidersHorizontal } from '@lucide/vue';
+import { computed } from 'vue';
 import Heading from '@/components/Heading.vue';
 
 type Event = {
@@ -12,7 +13,13 @@ type Event = {
     at: string;
 };
 
-defineProps<{ events: Event[] }>();
+const props = defineProps<{ events: Event[]; scope: 'own' | 'organization' }>();
+
+const description = computed(() =>
+    props.scope === 'organization'
+        ? 'Quem fez o quê, e quando — toda a atividade da organização. O registo é imutável.'
+        : 'Quem fez o quê, e quando — a sua atividade. O registo é imutável.',
+);
 
 const meta: Record<string, { label: string; icon: unknown }> = {
     'classification.confirmed': { label: 'Classificação confirmada', icon: CheckCircle2 },
@@ -40,7 +47,7 @@ function when(iso: string): string {
     <Head title="Registo de atividade" />
 
     <div class="mx-auto w-full max-w-3xl space-y-6 p-4">
-        <Heading title="Registo de atividade" description="Quem fez o quê, e quando — o registo é imutável." />
+        <Heading title="Registo de atividade" :description="description" />
 
         <div v-if="events.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
             <ShieldCheck class="mx-auto mb-3 size-8 text-muted-foreground" />

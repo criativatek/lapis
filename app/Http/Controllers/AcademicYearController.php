@@ -36,6 +36,9 @@ class AcademicYearController extends Controller
                 ]),
             'statuses' => $this->statusOptions(),
             'periodKinds' => $this->periodKindOptions(),
+            // A member reads and picks a year to work in; only the
+            // organization's owner shapes the calendar itself (Fatia 1).
+            'canManage' => Gate::allows('create', AcademicYear::class),
         ]);
     }
 
@@ -85,6 +88,10 @@ class AcademicYearController extends Controller
             ],
             'statuses' => $this->statusOptions(),
             'periodKinds' => $this->periodKindOptions(),
+            // Ownership alone — kept separate from `editable` (the year's own
+            // pedagogical state) so the page can tell the two refusal reasons
+            // apart instead of collapsing them into one silent blank form.
+            'canManage' => Gate::allows('create', AcademicYear::class),
         ]);
     }
 

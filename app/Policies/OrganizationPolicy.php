@@ -31,12 +31,12 @@ class OrganizationPolicy
 
     public function updateIdentity(User $user, Organization $organization): bool
     {
-        return (int) $organization->owner_id === (int) $user->getKey();
+        return $user->owns($organization);
     }
 
     protected function belongsTo(User $user, Organization $organization): bool
     {
-        return (int) $organization->owner_id === (int) $user->getKey()
+        return $user->owns($organization)
             || $organization->members()->whereKey($user->getKey())->exists();
     }
 }

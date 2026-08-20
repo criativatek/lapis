@@ -38,6 +38,9 @@ class AssessmentProfileController extends Controller
                     'status_label' => $profile->currentVersion?->status->label() ?? __('Rascunho'),
                     'has_draft' => $profile->draftVersion() !== null,
                 ]),
+            // A member reads and uses a profile to teach; only the
+            // organization's owner defines how grades are calculated (Fatia 1).
+            'canManage' => Gate::allows('create', AssessmentProfile::class),
         ]);
     }
 
@@ -84,6 +87,9 @@ class AssessmentProfileController extends Controller
                     'weight' => (float) $pvd->weight_percent,
                 ]) ?? [],
             ],
+            // A member still opens this page to see what they grade by —
+            // `view` above stays true for that. Only the owner may change it.
+            'canManage' => Gate::allows('update', $assessmentProfile),
         ]);
     }
 

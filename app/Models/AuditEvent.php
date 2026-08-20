@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -68,5 +69,35 @@ class AuditEvent extends Model
     public function causer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'causer_id');
+    }
+
+    /**
+     * The audit trail as this user is allowed to read it (Fatia 1, §22.4).
+     *
+     * The organization owner reads the trail whole — the audit log is an
+     * institutional security function, not a personal diary, and the owner is
+     * the one authority this schema has above "a teacher who belongs here".
+     * Everyone else reads only what THEY caused: `causer_id = $user->id`. A
+     * system-caused row (`causer_id` null) never equals anyone's id, so a
+     * plain equality already excludes it for a member without a special case
+     * — and the owner still sees it, because the unscoped branch above
+     * doesn't filter at all.
+     *
+     * On a personal organization the owner IS the only person who ever acts
+     * there, so the two branches return the same rows — this is not
+     * special-cased for organization type, on purpose: the rule is uniform,
+     * and personal organizations get the "owner sees everything" answer for
+     * free because there is only ever one everything to see.
+     *
+     * @param  Builder<AuditEvent>  $query
+     * @return Builder<AuditEvent>
+     */
+    public function scopeVisibleTo(Builder $query, User $user): Builder
+    {
+        if ($user->ownsCurrentOrganization()) {
+            return $query;
+        }
+
+        return $query->where('causer_id', $user->getKey());
     }
 }

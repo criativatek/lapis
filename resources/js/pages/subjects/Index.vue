@@ -20,6 +20,7 @@ type Subject = { ulid: string; name: string; code: string };
 
 defineProps<{
     subjects: Subject[];
+    canManage: boolean;
 }>();
 
 const open = ref(false);
@@ -69,14 +70,17 @@ function destroy(subject: Subject): void {
 
     <div class="mx-auto w-full max-w-3xl space-y-6 p-4">
         <div class="flex items-center justify-between">
-            <Heading title="Disciplinas" description="As disciplinas que leciona." />
-            <Button @click="openCreate">
+            <Heading
+                title="Disciplinas"
+                :description="canManage ? 'As disciplinas da organização.' : 'As disciplinas da organização. Geridas pelo responsável.'"
+            />
+            <Button v-if="canManage" @click="openCreate">
                 <BookPlus class="size-4" /> Nova disciplina
             </Button>
         </div>
 
         <div v-if="subjects.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
-            <p class="text-sm text-muted-foreground">Ainda não tem disciplinas. Crie a primeira.</p>
+            <p class="text-sm text-muted-foreground">Ainda não há disciplinas.</p>
         </div>
 
         <div v-else class="overflow-hidden rounded-lg border border-border">
@@ -85,14 +89,14 @@ function destroy(subject: Subject): void {
                     <tr>
                         <th class="px-4 py-2.5 font-medium">Disciplina</th>
                         <th class="px-4 py-2.5 font-medium">Código</th>
-                        <th class="px-4 py-2.5 text-right font-medium">Ações</th>
+                        <th v-if="canManage" class="px-4 py-2.5 text-right font-medium">Ações</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-border">
                     <tr v-for="subject in subjects" :key="subject.ulid">
                         <td class="px-4 py-3 font-medium">{{ subject.name }}</td>
                         <td class="px-4 py-3 text-muted-foreground">{{ subject.code }}</td>
-                        <td class="px-4 py-3">
+                        <td v-if="canManage" class="px-4 py-3">
                             <div class="flex items-center justify-end gap-1">
                                 <Button variant="ghost" size="icon" aria-label="Editar" @click="openEdit(subject)">
                                     <Pencil class="size-4" />

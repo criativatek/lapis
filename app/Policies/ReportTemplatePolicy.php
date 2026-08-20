@@ -145,19 +145,12 @@ class ReportTemplatePolicy
 
         $organization = $tenant->get();
 
-        return (int) $organization->owner_id === (int) $user->getKey()
+        return $user->owns($organization)
             || $organization->members()->whereKey($user->getKey())->exists();
     }
 
-    /**
-     * The organization being asked about is the RESOLVED TENANT, never one read
-     * off the user: a user may belong to several (ADR-0002).
-     */
     protected function ownsOrganization(User $user): bool
     {
-        $tenant = app(CurrentOrganization::class);
-
-        return $tenant->isResolved()
-            && (int) $tenant->get()->owner_id === (int) $user->getKey();
+        return $user->ownsCurrentOrganization();
     }
 }

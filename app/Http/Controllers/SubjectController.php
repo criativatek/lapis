@@ -21,6 +21,9 @@ class SubjectController extends Controller
                 'name' => $subject->name,
                 'code' => $subject->code,
             ]),
+            // A member still reads the catalogue every class depends on; only
+            // the organization's owner manages it (Fatia 1).
+            'canManage' => Gate::allows('create', Subject::class),
         ]);
     }
 

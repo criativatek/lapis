@@ -36,14 +36,21 @@ type ProfileData = {
     domains: DomainRow[];
 };
 
-const props = defineProps<{
-    academicYears: Option[];
-    subjects: Option[];
-    scales: Option[];
-    initial?: ProfileData;
-    submitUrl: string;
-    method: 'post' | 'put';
-}>();
+const props = withDefaults(
+    defineProps<{
+        academicYears: Option[];
+        subjects: Option[];
+        scales: Option[];
+        initial?: ProfileData;
+        submitUrl: string;
+        method: 'post' | 'put';
+        // True on Create (only the owner ever reaches that route) and passed
+        // explicitly on Edit, where a member may still be VIEWING a profile
+        // they did not write, to see the domains and weights they grade by.
+        canManage?: boolean;
+    }>(),
+    { canManage: true },
+);
 
 const form = useForm<ProfileData>(
     props.initial ?? {
@@ -127,6 +134,7 @@ function submit(): void {
                     id="name"
                     v-model="form.name"
                     placeholder="Português – 7.º Ano – Escala 1 a 5"
+                    :disabled="!canManage"
                 />
                 <InputError :message="form.errors.name" />
             </div>
@@ -136,6 +144,7 @@ function submit(): void {
                     id="academic_year_id"
                     v-model.number="form.academic_year_id"
                     class="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+                    :disabled="!canManage"
                 >
                     <option :value="null" disabled>Escolher…</option>
                     <option
@@ -154,6 +163,7 @@ function submit(): void {
                     id="subject_id"
                     v-model.number="form.subject_id"
                     class="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+                    :disabled="!canManage"
                 >
                     <option :value="null" disabled>Escolher…</option>
                     <option
@@ -172,6 +182,7 @@ function submit(): void {
                     id="grade_level"
                     v-model="form.grade_level"
                     placeholder="7.º"
+                    :disabled="!canManage"
                 />
                 <InputError :message="form.errors.grade_level" />
             </div>
@@ -179,6 +190,7 @@ function submit(): void {
                 <div class="flex items-center justify-between gap-3">
                     <Label for="scale_id">Escala</Label>
                     <Button
+                        v-if="canManage"
                         type="button"
                         variant="outline"
                         size="sm"
@@ -191,6 +203,7 @@ function submit(): void {
                     id="scale_id"
                     v-model.number="form.scale_id"
                     class="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+                    :disabled="!canManage"
                 >
                     <option :value="null" disabled>Escolher…</option>
                     <optgroup label="Escalas do sistema">
@@ -232,6 +245,7 @@ function submit(): void {
                     </p>
                 </div>
                 <Button
+                    v-if="canManage"
                     type="button"
                     variant="outline"
                     size="sm"
@@ -256,6 +270,7 @@ function submit(): void {
                             :id="`domain-name-${index}`"
                             v-model="domain.name"
                             placeholder="Leitura"
+                            :disabled="!canManage"
                         />
                         <InputError :message="domainError(index, 'name')" />
                     </div>
@@ -270,10 +285,12 @@ function submit(): void {
                             min="0"
                             max="100"
                             step="0.5"
+                            :disabled="!canManage"
                         />
                         <InputError :message="domainError(index, 'weight')" />
                     </div>
                     <Button
+                        v-if="canManage"
                         type="button"
                         variant="ghost"
                         size="icon"
@@ -302,7 +319,7 @@ function submit(): void {
             </div>
         </section>
 
-        <div class="flex items-center gap-3">
+        <div v-if="canManage" class="flex items-center gap-3">
             <Button type="submit" :disabled="form.processing"
                 >Guardar perfil</Button
             >
@@ -311,9 +328,12 @@ function submit(): void {
                 lista.</span
             >
         </div>
+        <p v-else class="rounded-md border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+            Este perfil é gerido pelo responsável da organização.
+        </p>
     </form>
 
-    <Dialog v-model:open="scaleDialogOpen">
+    <Dialog v-if="canManage" v-model:open="scaleDialogOpen">
         <DialogContent>
             <form @submit.prevent="submitScale">
                 <DialogHeader>

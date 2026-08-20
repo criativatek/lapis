@@ -18,6 +18,7 @@ type AcademicYear = {
 
 defineProps<{
     academicYears: AcademicYear[];
+    canManage: boolean;
 }>();
 
 const statusVariant: Record<string, 'default' | 'secondary' | 'outline'> = {
@@ -40,7 +41,7 @@ function destroy(year: AcademicYear): void {
     <div class="mx-auto w-full max-w-4xl space-y-6 p-4">
         <div class="flex items-center justify-between">
             <Heading title="Anos letivos" description="O ano letivo é a base de todo o trabalho de avaliação." />
-            <Button as-child>
+            <Button v-if="canManage" as-child>
                 <Link href="/academic-years/create">
                     <CalendarPlus class="size-4" /> Novo ano letivo
                 </Link>
@@ -78,7 +79,7 @@ function destroy(year: AcademicYear): void {
                                     <Link :href="`/academic-years/${year.ulid}/edit`"><Pencil class="size-4" /></Link>
                                 </Button>
                                 <Button
-                                    v-if="year.status === 'draft'"
+                                    v-if="canManage && year.status === 'draft'"
                                     variant="ghost"
                                     size="icon"
                                     aria-label="Eliminar"

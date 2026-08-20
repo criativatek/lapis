@@ -28,6 +28,7 @@ const props = defineProps<{
     academicYears: Option[];
     subjects: Option[];
     scales: Option[];
+    canManage: boolean;
 }>();
 
 const initial = {
@@ -68,6 +69,7 @@ const initial = {
             :initial="initial"
             :submit-url="`/assessment-profiles/${profile.ulid}`"
             method="put"
+            :can-manage="canManage"
         />
     </div>
 </template>
