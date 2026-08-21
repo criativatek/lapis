@@ -117,17 +117,52 @@ nunca um id. Na importação, a única correspondência segura é "o autor desta
 linha é literalmente quem está a confirmar esta importação" — o email do
 `$actor` comparado sem distinguir maiúsculas/minúsculas
 (`App\Services\Import\Backup\Concerns\ResolvesBackupReferences::resolveAuthor()`).
-Qualquer outro email:
+**Nunca por nome** — dois utilizadores com o mesmo nome e emails diferentes
+são, para este efeito, duas pessoas diferentes. Qualquer email que não seja
+o de quem confirma:
 
-- Num campo de autoria que aceita `null` na base de dados → fica vazio; o
-  facto sobrevive, a proveniência não.
-- Num campo `NOT NULL` (por exemplo `interim_assessments.created_by`,
-  `reports.finalized_by`) → a linha inteira fica `invalid`, em vez de
-  inventar um autor.
+- Num campo de autoria que aceita `null` na base de dados (`assessed_by`,
+  `overridden_by`, `confirmed_by`, `reviewed_by` de autoavaliação,
+  `finalized_by` de relatório) → fica vazio; o facto sobrevive, a
+  proveniência não.
+- Num campo `NOT NULL` (`interim_assessments.created_by`,
+  `evidence_records.created_by`, `interventions.created_by`,
+  `intervention_reviews.reviewed_by`, `reports.created_by`) → a linha
+  inteira fica `invalid`, em vez de inventar um autor.
 
 Nunca há correspondência contra outros utilizadores da organização de
 destino por email — isso seria atribuir uma linha à conta de um
 desconhecido.
+
+### Restauro próprio vs clonagem para outro professor (Fatia 6.2.1)
+
+Esta regra tem uma implicação de produto deliberada, auditada e decidida
+— não uma lacuna: **um backup só restaura por inteiro (incluindo registos
+pedagógicos, estratégias/medidas e relatórios) quando é confirmado pela
+mesma conta que originalmente escreveu esses registos.** Um professor pode:
+
+- **Restaurar a sua própria conta** para uma organização nova ou vazia,
+  desde que confirme com o mesmo login/email com que os registos foram
+  criados — nesse caso, todo o grafo pedagógico, incluindo os domínios de
+  autoria obrigatória, resolve para `new` e é restaurado por inteiro.
+- **Clonar materiais para outro professor** (uma conta genuinamente
+  diferente) — nesse caso, a estrutura e a avaliação sem exigência de
+  autoria pessoal (turmas, alunos, elementos, pontuações, classificações,
+  autoavaliações) clonam-se normalmente, mas registos pedagógicos,
+  estratégias/medidas e relatórios ficam `invalid`: são, por natureza,
+  o testemunho profissional identificado de quem os escreveu, e atribuí-los
+  a outra pessoa seria inventar autoria.
+
+Isto foi auditado explicitamente (ver `App\Actions\DataExports\
+GenerateDataExport::technicalBackup()`, chave de topo `exported_by`): o
+backup já regista o nome/email de quem o exportou, mas esse campo é só
+proveniência do *ficheiro* — nunca é usado para atribuir a autoria de uma
+linha individual a ninguém, incluindo ao próprio exportador quando a conta
+que confirma é outra. A única prova de autoria aceite continua a ser o
+email de cada linha comparado com quem confirma, linha a linha — mesmo
+dentro da mesma organização, uma organização institucional pode ter várias
+contas a escrever registos, e "quem exportou" nunca é garantia de "quem
+escreveu esta linha".
 
 ## O que nunca é importado
 
