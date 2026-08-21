@@ -16,23 +16,26 @@ import { computed } from 'vue';
  * "Seletores de contexto no cabeçalho" section of the navigation doc), so this
  * is an architectural element, not decoration.
  *
- * Every selector is empty until the academic model lands in Fase 1. It renders
- * the structure with an em-dash and stays disabled rather than inventing schools
- * or classes that do not exist.
+ * SELECTS, NEVER CREATES (Fatia 5, §47-§50): clicking academicYear/subject
+ * navigates to their management page under Configuração — it does not open a
+ * creation form here. Ano/Turma/Período stay disabled until there is a
+ * canonical "current" one to read (turma's own creation already lives under
+ * Turmas e Alunos, unaffected by this fatia — §50).
  */
 const page = usePage();
 const scope = computed(() => page.props.scope);
 
-type Selector = { key: string; icon: LucideIcon; label: string; value: string | null; href: string | null };
+type Selector = { key: string; icon: LucideIcon; label: string; value: string | null; href: string | null; emptyLabel: string };
 
-// Only the year selector is live in this phase — it opens the year manager. The
-// rest stay disabled until subjects, classes and periods exist (Fase 1+).
+// Only academicYear/subject are live — both navigate to Configuração → Estrutura
+// do Ano Letivo (AcademicStructureTabs.vue), never a dropdown creation form.
+// The rest stay disabled until class/period have a canonical "current" one.
 const selectors = computed<Selector[]>(() => [
-    { key: 'academicYear', icon: CalendarRange, label: 'Ano letivo', value: scope.value.academicYear, href: '/academic-years' },
-    { key: 'subject', icon: BookOpen, label: 'Disciplina', value: scope.value.subject, href: '/subjects' },
-    { key: 'gradeLevel', icon: GraduationCap, label: 'Ano', value: scope.value.gradeLevel, href: null },
-    { key: 'class', icon: Users, label: 'Turma', value: scope.value.class, href: null },
-    { key: 'period', icon: Layers, label: 'Período', value: scope.value.period, href: null },
+    { key: 'academicYear', icon: CalendarRange, label: 'Ano letivo', value: scope.value.academicYear, href: '/academic-years', emptyLabel: 'Sem ano letivo configurado' },
+    { key: 'subject', icon: BookOpen, label: 'Disciplina', value: scope.value.subject, href: '/subjects', emptyLabel: 'Sem disciplinas configuradas' },
+    { key: 'gradeLevel', icon: GraduationCap, label: 'Ano', value: scope.value.gradeLevel, href: null, emptyLabel: '—' },
+    { key: 'class', icon: Users, label: 'Turma', value: scope.value.class, href: null, emptyLabel: '—' },
+    { key: 'period', icon: Layers, label: 'Período', value: scope.value.period, href: null, emptyLabel: '—' },
 ]);
 
 const chipClass =
@@ -50,7 +53,7 @@ const chipClass =
             >
                 <component :is="selector.icon" class="size-3.5 shrink-0 opacity-70" />
                 <span class="hidden font-medium text-foreground/70 sm:inline">{{ selector.label }}:</span>
-                <span class="whitespace-nowrap">{{ selector.value ?? '—' }}</span>
+                <span class="whitespace-nowrap">{{ selector.value ?? selector.emptyLabel }}</span>
             </Link>
             <button
                 v-else
@@ -61,7 +64,7 @@ const chipClass =
             >
                 <component :is="selector.icon" class="size-3.5 shrink-0 opacity-70" />
                 <span class="hidden font-medium text-foreground/70 sm:inline">{{ selector.label }}:</span>
-                <span class="whitespace-nowrap">{{ selector.value ?? '—' }}</span>
+                <span class="whitespace-nowrap">{{ selector.value ?? selector.emptyLabel }}</span>
             </button>
         </template>
     </div>

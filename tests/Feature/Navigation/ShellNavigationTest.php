@@ -276,7 +276,7 @@ class ShellNavigationTest extends TestCase
         $this->assertSame([
             'dashboard', 'classes', 'students', 'instruments', 'assessments',
             'self-assessments', 'class-analysis', 'student-progress',
-            'interventions', 'records', 'reports', 'assessment-profiles', 'settings',
+            'interventions', 'records', 'reports', 'academic-structure', 'assessment-profiles', 'settings',
         ], array_keys($menu));
     }
 

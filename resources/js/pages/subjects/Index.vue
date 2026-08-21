@@ -2,6 +2,7 @@
 import { Head, useForm } from '@inertiajs/vue3';
 import { BookPlus, Pencil, Trash2 } from '@lucide/vue';
 import { ref } from 'vue';
+import AcademicStructureTabs from '@/components/AcademicStructureTabs.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
@@ -69,6 +70,8 @@ function destroy(subject: Subject): void {
     <Head title="Disciplinas" />
 
     <div class="mx-auto w-full max-w-3xl space-y-6 p-4">
+        <AcademicStructureTabs />
+
         <div class="flex items-center justify-between">
             <Heading
                 title="Disciplinas"

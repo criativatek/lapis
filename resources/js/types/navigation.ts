@@ -42,8 +42,10 @@ export type SharedNav = {
 };
 
 /**
- * The header context selectors. Every field is null until the academic model
- * lands in Fase 1 — the structure ships, the data is not invented.
+ * The header context selectors. `academicYear` reflects the organization's
+ * current academic year once one exists (AcademicYearRetentionClassifier);
+ * the rest stay null until there is a canonical "current" one to read
+ * instead of inventing one.
  */
 export type WorkScope = {
     academicYear: string | null;

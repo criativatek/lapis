@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
 import { CalendarPlus, Pencil, Trash2 } from '@lucide/vue';
+import AcademicStructureTabs from '@/components/AcademicStructureTabs.vue';
 import Heading from '@/components/Heading.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -39,6 +40,8 @@ function destroy(year: AcademicYear): void {
     <Head title="Anos letivos" />
 
     <div class="mx-auto w-full max-w-4xl space-y-6 p-4">
+        <AcademicStructureTabs />
+
         <div class="flex items-center justify-between">
             <Heading title="Anos letivos" description="O ano letivo é a base de todo o trabalho de avaliação." />
             <Button v-if="canManage" as-child>

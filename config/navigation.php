@@ -155,8 +155,18 @@ return [
             // TRANSVERSAL — set up once, revisited rarely. The assessment
             // profile decides how everything above is calculated, which is
             // exactly why it belongs to configuration and not to the daily run.
+            //
+            // «Estrutura do Ano Letivo» first (Fatia 5, §43-§53): academic
+            // years and subjects are STRUCTURE — defined here — never
+            // something the header's context selectors create. The header
+            // (ContextBar.vue) still SELECTS an academic year or subject; it
+            // has not built one since Fase 1, and this entry is simply the
+            // discoverable path to the pages that already did the building
+            // (academic-years.index, subjects.index — unchanged routes,
+            // unchanged controllers, unchanged policies).
             'label' => 'Configuração',
             'items' => [
+                ['key' => 'academic-structure', 'label' => 'Estrutura do Ano Letivo', 'icon' => 'CalendarRange', 'module' => null, 'phase' => 1, 'route' => 'academic-years.index', 'built' => true, 'description' => 'Definir anos letivos, disciplinas e períodos.', 'match' => ['/subjects']],
                 ['key' => 'assessment-profiles', 'label' => 'Perfis de Avaliação', 'icon' => 'SlidersHorizontal', 'module' => 'assessment_profiles', 'phase' => 1, 'route' => 'assessment-profiles.index', 'built' => true, 'description' => 'Definir critérios, domínios, pesos e escalas.'],
                 ['key' => 'settings', 'label' => 'Configurações', 'icon' => 'Settings', 'module' => null, 'route' => 'profile.edit', 'phase' => 0, 'description' => 'Configurar a aplicação e a escola.', 'match' => ['/settings']],
             ],
