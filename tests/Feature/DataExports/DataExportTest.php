@@ -363,6 +363,34 @@ class DataExportTest extends TestCase
         }
     }
 
+    /**
+     * Fatia 6: enrolled_on is the one field a restore cannot safely invent
+     * (NOT NULL, drives late-entry handling, §11.4) — schema_version bumped
+     * to 3 specifically to carry it. Regression against reopening that gap.
+     */
+    #[Test]
+    public function the_backup_json_carries_enrollment_dates_for_restore(): void
+    {
+        Storage::fake('local');
+        [$organization, $owner] = $this->institutionalOrganization();
+        $this->classWithEvidence($organization, $owner);
+
+        $this->actingAs($owner)->withSession(['organization_id' => $organization->id])
+            ->post('/data-exports')->assertRedirect();
+        $export = DataExport::withoutGlobalScope('organization')->where('requested_by', $owner->id)->firstOrFail();
+        $zip = $this->extractZip(Storage::disk('local')->path($export->disk_path));
+        $backup = json_decode((string) $zip->getFromName('backup-lapis.json'), true);
+
+        $this->assertSame(3, $backup['schema_version']);
+        $this->assertNotEmpty($backup['enrollments']);
+        foreach ($backup['enrollments'] as $enrollment) {
+            $this->assertArrayHasKey('enrolled_on', $enrollment);
+            $this->assertArrayHasKey('left_on', $enrollment);
+            $this->assertArrayHasKey('class_number', $enrollment);
+            $this->assertNotNull($enrollment['enrolled_on']);
+        }
+    }
+
     #[Test]
     public function the_exported_zip_is_never_web_reachable(): void
     {

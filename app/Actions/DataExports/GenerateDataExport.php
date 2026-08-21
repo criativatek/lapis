@@ -803,6 +803,15 @@ class GenerateDataExport
      * import/restore. Deliberately not meant to be comfortable reading: the
      * XLSX is the document for that.
      *
+     * schema_version 3 (Fatia 6): enrollments now carry `enrolled_on` (and
+     * `left_on`/`class_number`) — the one field genuinely blocking a safe
+     * restore. `enrolled_on` is NOT NULL on the enrollments table and the
+     * calculation engine depends on it for late-entry handling (§11.4); a
+     * schema_version 2 backup simply cannot recreate a new enrollment
+     * correctly, only match an existing one by ulid. Everything else about
+     * the v2 shape is unchanged and stays readable by anything already
+     * consuming it — this is additive, not a break (docs/data-import.md).
+     *
      * @param  Collection<int, SchoolClass>  $classes
      * @param  Collection<int, Student>  $students
      * @param  Collection<int, Enrollment>  $enrollments
@@ -819,7 +828,7 @@ class GenerateDataExport
         Collection $classifications,
     ): string {
         return json_encode([
-            'schema_version' => 2,
+            'schema_version' => 3,
             'app_version' => (string) config('app.version'),
             'generated_at' => Carbon::now()->toIso8601String(),
             'organization' => ['ulid' => $organization->ulid, 'name' => $organization->name, 'type' => $organization->type->value],
@@ -841,6 +850,9 @@ class GenerateDataExport
                 'class_ulid' => $classes->firstWhere('id', $enrollment->class_id)?->ulid,
                 'student_ulid' => $enrollment->student?->ulid,
                 'status' => $enrollment->status->value,
+                'enrolled_on' => $enrollment->enrolled_on->toDateString(),
+                'left_on' => $enrollment->left_on?->toDateString(),
+                'class_number' => $enrollment->class_number,
             ])->values(),
             'instruments' => $instruments->map(fn (Instrument $instrument): array => [
                 'ulid' => $instrument->ulid,
