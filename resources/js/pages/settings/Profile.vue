@@ -101,9 +101,15 @@ const user = computed(() => page.props.auth.user);
             </div>
         </Form>
 
-        <div class="rounded-lg border border-border p-4 text-sm">
-            <Link href="/data-exports" class="font-medium text-primary hover:underline">Exportar os meus dados</Link>
-            <p class="mt-1 text-muted-foreground">Uma cópia dos dados a que a sua conta tem acesso.</p>
+        <div class="grid gap-3 sm:grid-cols-2">
+            <div class="rounded-lg border border-border p-4 text-sm">
+                <Link href="/data-exports" class="font-medium text-primary hover:underline">Exportar os meus dados</Link>
+                <p class="mt-1 text-muted-foreground">Uma cópia dos dados a que a sua conta tem acesso.</p>
+            </div>
+            <div class="rounded-lg border border-border p-4 text-sm">
+                <Link href="/data-imports/create" class="font-medium text-primary hover:underline">Importar dados</Link>
+                <p class="mt-1 text-muted-foreground">Restaure dados a partir de uma exportação criada pelo LÁPIS.</p>
+            </div>
         </div>
     </div>
 

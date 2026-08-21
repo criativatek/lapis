@@ -14,6 +14,7 @@ use App\Http\Controllers\ClassStatisticsController;
 use App\Http\Controllers\CorrectionImportController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DataExportController;
+use App\Http\Controllers\DataImportController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\EvidenceController;
 use App\Http\Controllers\InovarExportController;
@@ -389,6 +390,16 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     Route::get('data-exports', [DataExportController::class, 'index'])->name('data-exports.index');
     Route::post('data-exports', [DataExportController::class, 'store'])->name('data-exports.store');
     Route::get('data-exports/{data_export}', [DataExportController::class, 'download'])->name('data-exports.download');
+
+    // "Importar dados" (Fatia 6) — restoring a backup this same export
+    // produces. Deliberately absent from EnsureAccountIsOperational's
+    // allow-list: unlike export, a restore is never permitted while the
+    // account or the current organization is winding down (§37-38).
+    Route::get('data-imports/create', [DataImportController::class, 'create'])->name('data-imports.create');
+    Route::post('data-imports', [DataImportController::class, 'store'])->name('data-imports.store');
+    Route::get('data-imports/{data_import}', [DataImportController::class, 'edit'])->name('data-imports.edit');
+    Route::post('data-imports/{data_import}/confirm', [DataImportController::class, 'confirm'])->name('data-imports.confirm');
+    Route::delete('data-imports/{data_import}', [DataImportController::class, 'destroy'])->name('data-imports.destroy');
 
     // Equipa (Fatia 3) — an institutional organization's members and pending
     // invitations, owner-only (TeamController, OrganizationInvitationPolicy).
