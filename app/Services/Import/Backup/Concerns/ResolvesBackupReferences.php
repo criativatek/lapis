@@ -120,6 +120,24 @@ trait ResolvesBackupReferences
     }
 
     /**
+     * The reason shown when a `NOT NULL` author column can't be resolved
+     * (§30-31): spells out that this is about WHOSE account is confirming,
+     * not a generic failure — a teacher cloning a colleague's materials
+     * into their own organization should read this as "some of what you
+     * exported has personal authorship and needs to be restored from your
+     * own account", not as an unexplained block. Never names the original
+     * author here — the backup's own `exported_by` is provenance about the
+     * file, not something this message repeats to a different importer.
+     */
+    private function unmappableAuthorReason(string $domain): string
+    {
+        return $this->t(
+            'A autoria :domain é obrigatória e só pode ser confirmada com a conta que a criou — inicia sessão com essa conta para o recuperar, ou prossegue sem este registo para clonar apenas os restantes dados.',
+            ['domain' => $domain],
+        );
+    }
+
+    /**
      * @param  array<int, array<string, mixed>>  $rows
      * @param  iterable<array{domain: string, ulid: string|null, reason: string}>  $issues
      * @return array<int, array<string, mixed>>

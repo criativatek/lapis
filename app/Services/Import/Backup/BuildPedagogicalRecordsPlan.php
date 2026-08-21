@@ -118,7 +118,7 @@ class BuildPedagogicalRecordsPlan
             }
 
             if ($authorId === null) {
-                return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->t('A autoria desta avaliação intercalar não pode ser confirmada com segurança.')];
+                return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->unmappableAuthorReason('desta avaliação intercalar')];
             }
 
             if ($lookups['elsewhere']->has($row['ulid']) && $class['classification'] === 'existing') {
@@ -180,7 +180,7 @@ class BuildPedagogicalRecordsPlan
             }
 
             if ($authorId === null) {
-                return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->t('A autoria deste registo não pode ser confirmada com segurança.')];
+                return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->unmappableAuthorReason('deste registo')];
             }
 
             if ($lookups['elsewhere']->has($row['ulid']) && $class['classification'] === 'existing'
@@ -256,7 +256,7 @@ class BuildPedagogicalRecordsPlan
             }
 
             if ($authorId === null) {
-                return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->t('A autoria desta estratégia não pode ser confirmada com segurança.')];
+                return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->unmappableAuthorReason('desta estratégia')];
             }
 
             if ($lookups['elsewhere']->has($row['ulid']) && $class['classification'] === 'existing'
@@ -330,7 +330,7 @@ class BuildPedagogicalRecordsPlan
             }
 
             if ($authorId === null) {
-                return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->t('A autoria desta revisão não pode ser confirmada com segurança.')];
+                return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->unmappableAuthorReason('desta revisão')];
             }
 
             if ($lookups['elsewhere']->has($row['ulid']) && $intervention['classification'] === 'existing') {
@@ -399,7 +399,7 @@ class BuildPedagogicalRecordsPlan
             }
 
             if ($authorId === null) {
-                return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->t('A autoria deste relatório não pode ser confirmada com segurança.')];
+                return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->unmappableAuthorReason('deste relatório')];
             }
 
             if ($lookups['elsewhere']->has($row['ulid']) && ($class === null || $class['classification'] === 'existing')) {
