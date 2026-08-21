@@ -138,13 +138,13 @@ class DataImportController extends Controller
      * created (or the backup imported) by someone else in the meantime is
      * never missed (§13, §53).
      */
-    public function edit(DataImport $dataImport): Response
+    public function edit(Request $request, DataImport $dataImport): Response
     {
         Gate::authorize('view', $dataImport);
 
         $organization = $this->currentOrganization->get();
         $plan = $dataImport->status === DataImportStatus::Validated
-            ? $this->planner->build($dataImport->canonical_snapshot ?? [], $organization, [])
+            ? $this->planner->build($dataImport->canonical_snapshot ?? [], $organization, $request->user(), [])
             : null;
 
         return Inertia::render('imports/data/Preview', [
