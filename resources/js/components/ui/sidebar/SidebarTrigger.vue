@@ -23,6 +23,6 @@ const { isMobile, state, toggleSidebar } = useSidebar()
   >
     <PanelLeftOpen v-if="isMobile || state === 'collapsed'" />
     <PanelLeftClose v-else />
-    <span class="sr-only">Toggle sidebar</span>
+    <span class="sr-only">Alternar barra lateral</span>
   </Button>
 </template>

@@ -83,7 +83,7 @@ function openPrintWindow(): void {
 <h1>${escapeHtml(`Ligações para os alunos — ${props.schoolClass.label}`)}</h1>
 <p class="meta">${escapeHtml(props.schoolClass.subject)} · ${escapeHtml(props.period.label)}</p>
 <p class="meta">Gerado em ${escapeHtml(generatedAt)}</p>
-<p class="note">Cada ligação é individual e válida durante 7 dias (até ${escapeHtml(expiresLabel(props.expiresAt))}) — não é preciso conta nem password.</p>
+<p class="note">Cada ligação é individual e válida durante 7 dias (até ${escapeHtml(expiresLabel(props.expiresAt))}) — não é preciso conta nem palavra-passe.</p>
 <ul>${rowsHtml}</ul>
 </body>
 </html>`;
@@ -117,7 +117,7 @@ function openPrintWindow(): void {
         </div>
 
         <p class="text-xs text-muted-foreground">
-            Cada aluno tem a sua própria ligação — não precisa de conta nem password, mas deixa de funcionar a partir de {{ expiresLabel(expiresAt) }}.
+            Cada aluno tem a sua própria ligação — não precisa de conta nem palavra-passe, mas deixa de funcionar a partir de {{ expiresLabel(expiresAt) }}.
             Partilha-a como preferires: projetada, colada no Teams, ou enviada individualmente.
         </p>
 

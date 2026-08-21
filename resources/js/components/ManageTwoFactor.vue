@@ -31,8 +31,8 @@ onUnmounted(() => clearTwoFactorAuthData());
     <div v-if="canManageTwoFactor" class="space-y-6">
         <Heading
             variant="small"
-            title="Two-factor authentication"
-            description="Manage your two-factor authentication settings"
+            title="Autenticação de dois fatores"
+            description="Gerir as definições de autenticação de dois fatores"
         />
 
         <div
@@ -40,14 +40,14 @@ onUnmounted(() => clearTwoFactorAuthData());
             class="flex flex-col items-start justify-start space-y-4"
         >
             <p class="text-sm text-muted-foreground">
-                When you enable two-factor authentication, you will be prompted
-                for a secure pin during login. This pin can be retrieved from a
-                TOTP-supported application on your phone.
+                Ao ativar a autenticação de dois fatores, ser-lhe-á pedido um
+                código seguro ao iniciar sessão. Pode obter este código numa
+                aplicação compatível com TOTP no seu telemóvel.
             </p>
 
             <div>
                 <Button v-if="hasSetupData" @click="showSetupModal = true">
-                    <ShieldCheck />Continue setup
+                    <ShieldCheck />Continuar configuração
                 </Button>
                 <Form
                     v-else
@@ -56,7 +56,7 @@ onUnmounted(() => clearTwoFactorAuthData());
                     #default="{ processing }"
                 >
                     <Button type="submit" :disabled="processing">
-                        Enable 2FA
+                        Ativar 2FA
                     </Button>
                 </Form>
             </div>
@@ -64,9 +64,8 @@ onUnmounted(() => clearTwoFactorAuthData());
 
         <div v-else class="flex flex-col items-start justify-start space-y-4">
             <p class="text-sm text-muted-foreground">
-                You will be prompted for a secure, random pin during login,
-                which you can retrieve from the TOTP-supported application on
-                your phone.
+                Ser-lhe-á pedido um código seguro ao iniciar sessão, que pode
+                obter na aplicação compatível com TOTP no seu telemóvel.
             </p>
 
             <div class="relative inline">
@@ -76,7 +75,7 @@ onUnmounted(() => clearTwoFactorAuthData());
                         type="submit"
                         :disabled="processing"
                     >
-                        Disable 2FA
+                        Desativar 2FA
                     </Button>
                 </Form>
             </div>

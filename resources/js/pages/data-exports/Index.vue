@@ -34,7 +34,7 @@ function requestExport(): void {
         <section class="space-y-3 rounded-lg border border-border p-4">
             <p class="text-sm text-muted-foreground">
                 Inclui as suas turmas e o que lhes está associado. Não inclui trabalho pedagógico de colegas, nem
-                password, autenticação de dois fatores ou outros dados de acesso à conta.
+                palavra-passe, autenticação de dois fatores ou outros dados de acesso à conta.
             </p>
             <Button :disabled="form.processing" @click="requestExport">
                 Pedir exportação

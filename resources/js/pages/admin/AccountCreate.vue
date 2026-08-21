@@ -34,7 +34,7 @@ function submit(): void {
             <Link href="/admin" class="text-sm text-muted-foreground hover:underline">← Contas</Link>
             <h1 class="mt-1 text-xl font-semibold tracking-tight">Nova conta</h1>
             <p class="text-sm text-muted-foreground">
-                Provisiona um professor ou uma organização institucional. O email fica verificado; se deixares a password em
+                Provisiona um professor ou uma organização institucional. O email fica verificado; se deixares a palavra-passe em
                 branco, é gerada uma temporária.
             </p>
         </div>
@@ -118,7 +118,7 @@ function submit(): void {
                 </label>
 
                 <label class="block text-sm">
-                    <span class="mb-1 block font-medium">Password <span class="text-muted-foreground">(opcional)</span></span>
+                    <span class="mb-1 block font-medium">Palavra-passe <span class="text-muted-foreground">(opcional)</span></span>
                     <input
                         v-model="form.password"
                         type="text"

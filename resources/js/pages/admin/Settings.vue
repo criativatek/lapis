@@ -41,7 +41,7 @@ function sendTest(): void {
     <div class="mx-auto w-full max-w-xl space-y-5 p-6">
         <div>
             <h1 class="text-xl font-semibold tracking-tight">Email do sistema (SMTP)</h1>
-            <p class="text-sm text-muted-foreground">Usado para verificação de conta, reset de password e convites. Sobrepõe o <code>.env</code>.</p>
+            <p class="text-sm text-muted-foreground">Usado para verificação de conta, reposição da palavra-passe e convites. Sobrepõe o <code>.env</code>.</p>
         </div>
 
         <form class="space-y-4 rounded-lg border border-border p-4" @submit.prevent="save">
@@ -67,7 +67,7 @@ function sendTest(): void {
                     <input v-model="form.mail_username" type="text" autocomplete="off" class="w-full rounded-md border border-border bg-background px-3 py-2" />
                 </label>
                 <label class="text-sm">
-                    <span class="mb-1 block font-medium">Password</span>
+                    <span class="mb-1 block font-medium">Palavra-passe</span>
                     <input v-model="form.mail_password" type="password" autocomplete="new-password" :placeholder="settings.password_set ? '•••• definida (deixa em branco para manter)' : ''" class="w-full rounded-md border border-border bg-background px-3 py-2" />
                 </label>
                 <label class="text-sm">

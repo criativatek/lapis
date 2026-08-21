@@ -39,7 +39,7 @@ export const useTwoFactorAuth = (): UseTwoFactorAuthReturn => {
 
             qrCodeSvg.value = svg;
         } catch {
-            errors.value.push('Failed to fetch QR code');
+            errors.value.push('Não foi possível obter o código QR.');
             qrCodeSvg.value = null;
         }
     };
@@ -52,7 +52,7 @@ export const useTwoFactorAuth = (): UseTwoFactorAuthReturn => {
 
             manualSetupKey.value = key;
         } catch {
-            errors.value.push('Failed to fetch a setup key');
+            errors.value.push('Não foi possível obter a chave de configuração.');
             manualSetupKey.value = null;
         }
     };
@@ -80,7 +80,7 @@ export const useTwoFactorAuth = (): UseTwoFactorAuthReturn => {
                 recoveryCodes(),
             )) as string[];
         } catch {
-            errors.value.push('Failed to fetch recovery codes');
+            errors.value.push('Não foi possível obter os códigos de recuperação.');
             recoveryCodesList.value = [];
         }
     };

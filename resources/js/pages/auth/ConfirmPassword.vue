@@ -29,9 +29,9 @@ defineOptions({
             options: confirmOptions(),
             submit: confirmStore(),
         }"
-        label="Confirm with passkey"
-        loading-label="Confirming..."
-        separator="Or confirm with password"
+        label="Confirmar com uma chave de acesso"
+        loading-label="A confirmar…"
+        separator="Ou confirmar com palavra-passe"
     />
 
     <Form

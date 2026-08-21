@@ -69,7 +69,7 @@ defineProps<{
                         class="text-sm"
                         :tabindex="5"
                     >
-                        Forgot your password?
+                        Esqueceu-se da palavra-passe?
                     </TextLink>
                 </div>
                 <PasswordInput
