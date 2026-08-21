@@ -99,26 +99,28 @@ lista de permissões própria para cada uma das coleções descritas em
 
 ## O que é efetivamente restaurado
 
-Desde a Fatia 6.1, praticamente todo o grafo pedagógico — turmas, alunos,
-inscrições, períodos letivos, escalas, tipos de elemento, domínios, perfis
-de avaliação e as suas versões, elementos de avaliação e itens, pontuações,
-classificações, autoavaliações, registos pedagógicos, estratégias e
-medidas, e relatórios finalizados. A referência coleção a coleção — o que
-cada uma transporta e as regras de correspondência — está em
-[docs/backup-schema.md](backup-schema.md); este documento mantém-se ao
+Desde a Fatia 6.2, todo o grafo pedagógico — anos letivos, disciplinas,
+turmas, alunos, inscrições, períodos letivos, escalas, tipos de elemento,
+domínios, perfis de avaliação e as suas versões, elementos de avaliação e
+itens, pontuações, classificações, autoavaliações, registos pedagógicos,
+estratégias e medidas, e relatórios finalizados. A referência coleção a
+coleção — o que cada uma transporta e as regras de correspondência — está
+em [docs/backup-schema.md](backup-schema.md); este documento mantém-se ao
 nível do mecanismo.
 
-Duas exceções permanecem deliberadas:
+Uma exceção permanece deliberada:
 
 | Domínio | Comportamento |
 |---|---|
-| Anos letivos, disciplinas | **Nunca criados.** Só correspondidos por rótulo/nome à organização de destino; em falta, tudo o que os referencia fica `invalid` até o professor os configurar primeiro |
 | Resultados calculados (médias, evolução, estatísticas) | **Nunca exportados nem importados.** São sempre recalculados depois do restauro pelos serviços canónicos — ver o princípio em [docs/backup-schema.md](backup-schema.md) |
 
-Anos letivos e disciplinas são só correspondência porque o backup só
-transporta o rótulo/nome como texto — sem `starts_on`/`ends_on` de um ano,
-sem código de uma disciplina — e inventar esses dados violaria a mesma regra
-que proíbe inventar formulas de avaliação.
+Anos letivos e disciplinas foram só correspondência até à Fatia 6.2, porque
+o backup só transportava o rótulo/nome como texto — sem `starts_on`/
+`ends_on` de um ano, sem código de uma disciplina — e inventar esses dados
+violaria a mesma regra que proíbe inventar fórmulas de avaliação. A Fatia
+6.2 estendeu primeiro o exportador com os dados reais, e só depois deixou
+o importador criá-los: hoje seguem exatamente o mesmo padrão de identidade
+e clonagem que qualquer outro domínio (secção seguinte).
 
 ## Identidade e o `ulid` global
 
