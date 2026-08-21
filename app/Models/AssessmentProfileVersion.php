@@ -28,6 +28,7 @@ use Illuminate\Support\Carbon;
  * @property string $domain_weight_mode
  * @property Carbon|null $activated_at
  * @property Carbon|null $frozen_at
+ * @property Carbon|null $superseded_at
  */
 #[Fillable([
     'assessment_profile_id', 'version_number', 'status', 'scale_id',
