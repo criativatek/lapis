@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.45.4] — 2026-08-21
+
+### Fixed
+
+- **O encerramento da organização institucional (Fatia 5) não tinha caminho de UI próprio.** A ação, a janela de recuperação de 90 dias, a reativação e toda a proteção de autorização já existiam e estavam testadas desde a Fatia 5 — mas a única forma de lhes aceder era a secção "Encerrar organização" no fundo de `team/Index.vue` (Equipa), enquanto o item de menu "Administração Institucional" mostrava um placeholder genérico da Fase 7, sem qualquer ligação ao encerramento. Sem alterar a ação, as rotas, a política ou a janela de retenção, a secção passou para uma página própria e mínima em Instituição → Administração Institucional (`institution.index`, `InstitutionAdminController`, componente reutilizável `ClosureCard.vue`), com uma frase explícita a distinguir esta ação — que afeta só a organização institucional — do encerramento da conta pessoal do próprio responsável (Configurações, 60 dias). "Equipa" mantém-se dedicada à gestão de membros e convites.
+
 ## [0.45.3] — 2026-08-21
 
 ### Changed
