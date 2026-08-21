@@ -127,23 +127,19 @@ Cada linha nova preserva o `ulid` original do backup (`forceFill()` antes de
 vazio). É isto que torna o mesmo backup idempotente: importado duas vezes, a
 segunda vez encontra tudo como `existing` e não escreve nada.
 
-**Limitação conhecida e documentada**: `classes.ulid`, `students.ulid` e
-`enrollments.ulid` têm uma restrição de unicidade **global**, não por
-organização — a base de dados nunca aceita o mesmo `ulid` em duas
-organizações ao mesmo tempo. Por isso, `BuildImportPlan` verifica,
-cross-tenant (`withoutGlobalScope('organization')`, o mesmo padrão já usado
-em relatórios administrativos), se o `ulid` de cada turma/aluno/inscrição já
-pertence a **outra** organização antes de o classificar como `new`. Se
-pertencer, a linha é `invalid` com uma mensagem explícita — nunca uma
-tentativa de escrita que falharia com um erro SQL bruto.
+Os `ulid` restauráveis têm unicidade **global**, não por organização. Quando
+o `ulid` do backup continua a existir noutra organização, o plano faz uma
+leitura cross-tenant apenas para detetar essa origem e procura, exclusivamente
+no destino, uma linha com a chave natural ou de conteúdo documentada no
+esquema. Uma correspondência idêntica é `existing`; dados divergentes são
+`conflict`; sem correspondência, a linha é `new` mas o writer deixa o atributo
+`ulid` vazio para o Laravel gerar uma identidade nova. A referência ao `ulid`
+de origem existe apenas no plano em memória para ligar o grafo nessa execução.
 
-Na prática, isto significa que restaurar um backup para uma organização
-diferente daquela que o gerou **só cria registos novos se a organização de
-origem já não os tiver** (foram apagados, ou nunca existiram nela). Reimportar
-para a **mesma** organização de origem, depois de os dados terem sido
-genuinamente perdidos, é o cenário para o qual este mecanismo foi desenhado.
-Mover dados pedagógicos de uma organização para outra enquanto a origem
-continua a existir não é uma operação suportada por esta fatia.
+Assim, um backup pode ser clonado para outra organização enquanto a origem
+permanece intacta. A segunda importação no mesmo destino é idempotente pelas
+chaves naturais/conteúdo, sem tabela persistida de mapeamento. Nenhuma linha da
+organização de origem é atualizada, apagada ou reutilizada como destino.
 
 ## Conflitos — nunca merge silencioso
 
@@ -256,8 +252,6 @@ Deliberadamente fora do âmbito desta fatia (ver §101 do briefing original):
 - Criação automática de contas de utilizador
 - Importação de backups de terceiros fora do formato do LÁPIS
 - Assinatura criptográfica do backup
-- Mover dados pedagógicos entre organizações quando a origem ainda existe
-  (ver a limitação do `ulid` global acima)
 
 Dívida futura específica do esquema pedagógico (`ReportTemplate`,
 `calculation_snapshot_id` histórico, `enrollment_instrument_applicability`)
