@@ -3,7 +3,12 @@ import { Link, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import AppLogoIcon from '@/components/AppLogoIcon.vue';
 import { dashboard, login, register } from '@/routes';
-import { CHROME_BORDER, CHROME_SURFACE } from './chrome';
+import {
+    CHROME_BORDER,
+    CHROME_LINK,
+    CHROME_MUTED,
+    CHROME_SURFACE,
+} from './chrome';
 import { LANDING_NAV } from './navigation';
 
 /**
@@ -37,13 +42,15 @@ const version = computed(() => usePage().props.appVersion);
                             >LÁPIS</span
                         >
                         <span
-                            class="mt-0.5 block text-[11px] leading-none text-muted-foreground"
+                            class="mt-0.5 block text-[11px] leading-none"
+                            :class="CHROME_MUTED"
                             >Mais tempo para ensinar</span
                         >
                     </span>
                 </span>
                 <p
-                    class="mt-5 max-w-sm text-sm leading-relaxed text-muted-foreground"
+                    class="mt-5 max-w-sm text-sm leading-relaxed"
+                    :class="CHROME_MUTED"
                 >
                     Laboratório de Apoio ao Professor, Informação e
                     Simplificação. Feito para professores portugueses.
@@ -53,7 +60,8 @@ const version = computed(() => usePage().props.appVersion);
             <nav aria-labelledby="footer-product">
                 <h2
                     id="footer-product"
-                    class="text-[11px] font-semibold tracking-[0.14em] text-muted-foreground uppercase"
+                    class="text-[11px] font-semibold tracking-[0.14em] uppercase"
+                    :class="CHROME_MUTED"
                 >
                     Produto
                 </h2>
@@ -61,7 +69,8 @@ const version = computed(() => usePage().props.appVersion);
                     <li v-for="item in LANDING_NAV" :key="item.href">
                         <a
                             :href="item.href"
-                            class="inline-block rounded text-muted-foreground transition-all duration-300 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-safe:hover:translate-x-0.5"
+                            class="inline-block rounded transition-all duration-300 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-safe:hover:translate-x-0.5"
+                            :class="CHROME_LINK"
                             >{{ item.label }}</a
                         >
                     </li>
@@ -71,7 +80,8 @@ const version = computed(() => usePage().props.appVersion);
             <nav aria-labelledby="footer-account">
                 <h2
                     id="footer-account"
-                    class="text-[11px] font-semibold tracking-[0.14em] text-muted-foreground uppercase"
+                    class="text-[11px] font-semibold tracking-[0.14em] uppercase"
+                    :class="CHROME_MUTED"
                 >
                     Conta
                 </h2>
@@ -79,21 +89,24 @@ const version = computed(() => usePage().props.appVersion);
                     <li v-if="!authenticated">
                         <Link
                             :href="login()"
-                            class="inline-block rounded text-muted-foreground transition-all duration-300 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-safe:hover:translate-x-0.5"
+                            class="inline-block rounded transition-all duration-300 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-safe:hover:translate-x-0.5"
+                            :class="CHROME_LINK"
                             >Entrar</Link
                         >
                     </li>
                     <li v-if="!authenticated">
                         <Link
                             :href="register()"
-                            class="inline-block rounded text-muted-foreground transition-all duration-300 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-safe:hover:translate-x-0.5"
+                            class="inline-block rounded transition-all duration-300 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-safe:hover:translate-x-0.5"
+                            :class="CHROME_LINK"
                             >Criar conta</Link
                         >
                     </li>
                     <li v-if="authenticated">
                         <Link
                             :href="dashboard()"
-                            class="inline-block rounded text-muted-foreground transition-all duration-300 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-safe:hover:translate-x-0.5"
+                            class="inline-block rounded transition-all duration-300 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-safe:hover:translate-x-0.5"
+                            :class="CHROME_LINK"
                             >Painel do Professor</Link
                         >
                     </li>
@@ -103,7 +116,8 @@ const version = computed(() => usePage().props.appVersion);
 
         <div class="border-t" :class="CHROME_BORDER">
             <div
-                class="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 px-6 py-5 text-xs text-muted-foreground sm:px-8"
+                class="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 px-6 py-5 text-xs sm:px-8"
+                :class="CHROME_MUTED"
             >
                 <span>LÁPIS v{{ version }}</span>
                 <span>Mais tempo para ensinar.</span>

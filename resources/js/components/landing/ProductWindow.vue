@@ -18,11 +18,18 @@ import AppTour from './AppTour.vue';
  * branding — so the frame reads as "this is the product" without pretending to
  * be a screenshot of any particular browser.
  *
- * IT OPENS. Every mock on the page is a door into the same guided view of the
- * shell, because a visitor who is interested enough to point at the picture is
- * exactly the visitor worth showing the application to. The trigger is a real
- * button laid over the frame rather than the frame itself: the mocks contain
- * tables, and a button that wraps a table is neither valid HTML nor usable.
+ * IT OPENS — ON A POINTER DEVICE ONLY. Every mock is a door into the same
+ * guided view of the shell, because a visitor interested enough to point at the
+ * picture is exactly the one worth showing the application to. The trigger is a
+ * real button laid over the frame rather than the frame itself: the mocks
+ * contain tables, and a button that wraps a table is neither valid HTML nor
+ * usable.
+ *
+ * Below `lg` the door is not there at all. The tour is a wide two-column view
+ * whose whole point is that pointing at a region lights its explanation — on a
+ * phone it collapses into a long scroll with no hover to drive it, which is a
+ * worse answer than the mock the visitor already had. `display: none` also
+ * takes the button out of the tab order, so nothing invisible is reachable.
  *
  * The frame lifts under the pointer and the traffic lights take colour, which
  * is the affordance — the frame answers before it is clicked.
@@ -67,7 +74,7 @@ const open = ref(false);
             <DialogTrigger as-child>
                 <button
                     type="button"
-                    class="absolute inset-0 z-10 cursor-pointer rounded-2xl focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
+                    class="absolute inset-0 z-10 hidden cursor-pointer rounded-2xl focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none lg:block"
                 >
                     <span class="sr-only">Ver o LÁPIS por dentro</span>
                 </button>
@@ -75,7 +82,7 @@ const open = ref(false);
 
             <span
                 aria-hidden="true"
-                class="pointer-events-none absolute right-3 bottom-3 z-20 inline-flex translate-y-1 items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-[11px] font-medium text-primary-foreground opacity-0 shadow-lg transition-all duration-300 group-focus-within/window:translate-y-0 group-focus-within/window:opacity-100 group-hover/window:translate-y-0 group-hover/window:opacity-100"
+                class="pointer-events-none absolute right-3 bottom-3 z-20 hidden translate-y-1 items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-[11px] font-medium text-primary-foreground opacity-0 shadow-lg transition-all duration-300 group-focus-within/window:translate-y-0 group-focus-within/window:opacity-100 group-hover/window:translate-y-0 group-hover/window:opacity-100 lg:inline-flex"
             >
                 <Maximize2 class="size-3" />
                 Ver o LÁPIS por dentro

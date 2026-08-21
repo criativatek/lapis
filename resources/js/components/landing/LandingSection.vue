@@ -35,7 +35,7 @@ withDefaults(
 <template>
     <section
         :id="id"
-        class="scroll-mt-20 border-t border-border/60 py-20 sm:py-28"
+        class="scroll-mt-[4.5rem] border-t border-border/60 pt-12 pb-16 sm:py-24 lg:py-28"
         :class="tinted ? 'bg-muted/40 dark:bg-muted/10' : undefined"
         :aria-labelledby="id && title ? `${id}-title` : undefined"
     >

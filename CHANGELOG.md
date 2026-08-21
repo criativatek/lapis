@@ -2,6 +2,20 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.43.1] — 2026-08-21
+
+### Fixed
+
+- **As âncoras do menu pareciam não funcionar em telemóvel, e a culpa era do scroll suave.** A página tem cerca de 13000px num ecrã pequeno; com `scroll-behavior: smooth`, um salto do hero para «Perguntas» animava durante mais de três segundos. Medido com toque emulado, aos 2,5s a página ainda ia a meio caminho (7430 de 8326) — o que quem toca no menu lê como «está partido», não como elegância. Tocar outra vez cancelava a animação a meio, o que explica aterrar «no meio das secções». O scroll suave foi removido: um salto instantâneo é o que uma âncora deve fazer, é igual em todos os browsers incluindo o Safari do iOS, e são menos vinte linhas de código.
+- **A gaveta do menu fecha antes de a página rolar.** Enquanto está aberta, o reka-ui põe `overflow: hidden` no body e um scroll pedido nesse momento é simplesmente ignorado. Esperar um número fixo de milissegundos era adivinhação — a animação de fecho não dura o mesmo em todo o lado. Passa a esperar que o painel saia mesmo do DOM, com desistência ao fim de ~1,5s para nenhuma ligação ficar morta.
+- **Ao saltar para uma secção, o título ficava a 190px do topo** de um ecrã de 844 — quase um quarto vazio antes de se ler alguma coisa. Ritmo vertical mais apertado no telemóvel e margem de scroll colada ao cabeçalho: passa a 150px, com o topo da secção a 72px.
+
+### Changed
+
+- **O tour «O LÁPIS por dentro» deixa de existir abaixo de `lg`.** É uma vista de duas colunas cujo objetivo é apontar para uma zona e acender a explicação; num telemóvel colapsa num scroll longo sem nada que o conduza, que é pior do que a maqueta que o visitante já estava a ver. `display: none` tira também o botão da ordem de tabulação, para não ficar nada invisível alcançável. (Os efeitos de hover já não disparavam ao toque — o Tailwind v4 envolve todos os `hover:` em `@media (hover:hover)`.)
+- **O tom do cabeçalho e do rodapé passa de azul para o âmbar da marca**, e mais saturado do que a primeira tentativa: `hsl(36 75% 93%)` em claro e `hsl(28 55% 13%)` em escuro, contra os `hsl(38 88% 65%)` do lápis do logótipo. Mesma família, um à luminosidade de papel e outro à de tinta.
+- **O tom do texto teve de acompanhar o fundo.** O `text-muted-foreground` é um cinzento escolhido contra branco; sobre o creme novo mede 4,21:1, abaixo dos 4,5:1 que texto normal exige. Saturar o fundo sem mexer no texto teria tornado o rodapé discretamente ilegível. As duas cores de texto do chrome são quentes e medidas — 4,90:1 em claro, 6,77:1 em escuro. O botão «Entrar» ganhou hover próprio pela mesma razão: o token `accent` partilhado é um âmbar pálido escolhido contra branco e, neste fundo, o hover lia-se como não ter acontecido nada.
+
 ## [0.43.0] — 2026-08-21
 
 ### Added

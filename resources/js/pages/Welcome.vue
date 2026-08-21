@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, usePage } from '@inertiajs/vue3';
-import { computed, onBeforeUnmount, onMounted } from 'vue';
+import { computed } from 'vue';
 import LandingBenefits from '@/components/landing/LandingBenefits.vue';
 import LandingCustomEvaluation from '@/components/landing/LandingCustomEvaluation.vue';
 import LandingFaq from '@/components/landing/LandingFaq.vue';
@@ -34,23 +34,16 @@ defineProps<{ plans: LandingPlan[] }>();
 const page = usePage();
 const authenticated = computed(() => page.props.auth.user !== null);
 
-/**
- * Smooth scrolling for the header's anchors, set on the scrolling element
- * itself and only while this page is mounted — a global `scroll-behavior`
- * would follow the teacher into the application, where long grids are paged
- * through with the keyboard and an animated jump is a nuisance.
+/*
+ * THERE IS NO SMOOTH SCROLLING HERE, and that is deliberate.
+ *
+ * It was tried and removed: the page is roughly 13000px tall on a phone, so a
+ * jump from the hero to «Perguntas» animated for over three seconds. Measured
+ * on a touch-emulated viewport, the page was still travelling at 2.5s — which
+ * a visitor reads as «the menu is broken», not as «this is elegant». A native,
+ * instant jump is what an anchor is supposed to do, and it is the same on
+ * every browser including Safari on iOS.
  */
-onMounted(() => {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        return;
-    }
-
-    document.documentElement.style.scrollBehavior = 'smooth';
-});
-
-onBeforeUnmount(() => {
-    document.documentElement.style.removeProperty('scroll-behavior');
-});
 </script>
 
 <template>

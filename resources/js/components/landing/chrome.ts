@@ -4,30 +4,49 @@
  * They used to be the page's own background with a border, which on a dark
  * screen meant three shades of black stacked on each other — the chrome
  * disappeared into the content. These are a step off the page in both themes:
- * a cool paper in light, and a navy-tinted charcoal in dark that is visibly not
- * the near-black the body uses.
+ * warm paper in light, and warm brown-black in dark.
  *
- * IT IS THE BRAND HUE, and deliberately not a token. The dark tone is
- * hsl(221 42% 9%) against the sidebar's own hsl(219 41% 14%) — the same navy,
- * pushed darker. But the application DROPS that navy in dark mode: its sidebar
- * becomes a neutral hsl(0 0% 7%). So the landing is a little bluer in the dark
- * than the product is, on purpose: this page has no sidebar to carry the brand,
- * and three neutral blacks stacked on each other made the chrome vanish into
- * the content. Approved as a landing-only decision (2026-08-21) — do not
- * "fix" it by copying it back into app.css.
+ * IT IS THE BRAND AMBER, carried far enough to be read as a colour rather than
+ * as a tint. The mark's pencil body is hsl(38 88% 65%); the light ground is
+ * hsl(36 75% 93%) and the dark one hsl(28 55% 13%) — same family, one at paper
+ * lightness and one at ink darkness. The fully saturated amber stays where it
+ * means something: the logo, the accent rules, the highlight in the tour.
  *
- * Written as class strings in a module, the same way `@/lib/surfaces` does it,
- * so the header and the footer cannot drift apart — and so Tailwind still sees
- * the literals when it scans the source.
+ * Not a token, and not in app.css: the application's own chrome is neutral in
+ * dark mode, and this warmth is a landing-only decision (2026-08-21). Do not
+ * "fix" it by copying it back into the design system.
+ *
+ * THE TEXT TONE TRAVELS WITH THE GROUND. `text-muted-foreground` is a neutral
+ * grey chosen against white; on a peach ground it falls to 4.2:1, under the
+ * 4.5:1 that normal text needs. CHROME_MUTED is warm, matches the ground, and
+ * measures 4.9:1 in light and 6.8:1 in dark. Saturating the chrome without
+ * moving the text would have made the footer quietly unreadable.
  */
-export const CHROME_SURFACE = 'bg-[#f6f7f9] dark:bg-[#0d1320]';
+export const CHROME_SURFACE = 'bg-[#fbf0e0] dark:bg-[#33200f]';
 
 /**
  * The same tone for the sticky header, which sits over the page and blurs what
  * passes under it — an opaque colour would make the backdrop filter pointless.
  */
 export const CHROME_SURFACE_STICKY =
-    'bg-[#f6f7f9]/85 backdrop-blur-md dark:bg-[#0d1320]/85';
+    'bg-[#fbf0e0]/85 backdrop-blur-md dark:bg-[#33200f]/85';
 
-/** The chrome's own border, a shade harder than the page's. */
-export const CHROME_BORDER = 'border-[#e4e7ec] dark:border-[#1b2434]';
+/** The chrome's own border, a shade harder than the ground. */
+export const CHROME_BORDER = 'border-[#ebddcb] dark:border-[#47321f]';
+
+/** Secondary text on the chrome. Warm, and above 4.5:1 in both themes. */
+export const CHROME_MUTED = 'text-[#72675a] dark:text-[#b4aa9c]';
+
+/** Primary text on the chrome. */
+export const CHROME_FOREGROUND = 'text-[#2a2118] dark:text-[#f5efe6]';
+
+/** A secondary link on the chrome: muted at rest, primary under the pointer. */
+export const CHROME_LINK =
+    'text-[#72675a] hover:text-[#2a2118] dark:text-[#b4aa9c] dark:hover:text-[#f5efe6]';
+
+/**
+ * The ghost button's own hover, because the shared `accent` token is a pale
+ * amber picked against white — on this ground the two are within a hair of
+ * each other and the hover reads as nothing happening.
+ */
+export const CHROME_GHOST_HOVER = 'hover:bg-[#f3e3cc] dark:hover:bg-[#432c16]';

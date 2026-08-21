@@ -16,7 +16,7 @@ defineProps<{ authenticated: boolean }>();
         />
 
         <div
-            class="mx-auto w-full max-w-3xl px-6 py-24 text-center sm:px-8 sm:py-32"
+            class="mx-auto w-full max-w-3xl px-6 py-20 text-center sm:px-8 sm:py-28"
         >
             <RevealOnScroll>
                 <h2

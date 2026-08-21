@@ -29,7 +29,7 @@ const gains = [
 </script>
 
 <template>
-    <section class="bg-sidebar py-20 text-sidebar-foreground sm:py-28">
+    <section class="bg-sidebar py-16 text-sidebar-foreground sm:py-24 lg:py-28">
         <div class="mx-auto w-full max-w-6xl px-6 sm:px-8">
             <RevealOnScroll v-slot="{ shown }">
                 <p
