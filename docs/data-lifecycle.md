@@ -1,9 +1,14 @@
 # Ciclo de vida dos dados — retenção, encerramento, backups
 
-Fatia 4. Este documento descreve a **política técnica de conservação de dados**
-do LÁPIS: durante quanto tempo cada tipo de dado permanece identificável,
-recuperável, ou é alvo de limpeza técnica — e o que, desta fatia, está
-efetivamente implementado versus apenas configurado/documentado.
+Fatia 4, estendido na Fatia 5. Este documento descreve a **política técnica de
+conservação de dados** do LÁPIS: durante quanto tempo cada tipo de dado
+permanece identificável, recuperável, ou é alvo de limpeza técnica — e o que
+está efetivamente implementado versus apenas configurado/documentado.
+
+O fluxo real de pedido/cancelamento de encerramento (contas pessoais e
+organizações institucionais) está descrito em detalhe em
+[docs/account-closure.md](account-closure.md) — este documento mantém a
+política de retenção; aquele descreve o mecanismo.
 
 ## O que esta política cobre e o que não cobre
 
@@ -55,19 +60,19 @@ pseudonimizar, apagar) é uma decisão de produto ainda não tomada.
 Quando uma conta pessoal é encerrada, os dados permanecem totalmente
 recuperáveis e exportáveis durante 60 dias
 (`config('retention.personal_account_closure_days')`). A partir do dia 60,
-deixam de estar recuperáveis.
+deixam de estar recuperáveis e a conta passa a **elegível para eliminação**
+(nunca eliminada automaticamente — ver "O que NÃO é apagado" abaixo).
 
 `App\Support\Retention\ClosureRetention::isPersonalAccountRecoverable()`
 implementa esta fronteira com precisão: dia 59 ainda é recuperável (`true`);
 dia 60 já não é (`false`) — a comparação é estritamente "menor que", nunca
 "menor ou igual".
 
-**Esta fatia não implementa um fluxo real de pedido de encerramento nem
-qualquer apagamento automático.** Não existe coluna `closure_requested_at` em
-`users` nem em `organizations` — seria esquema morto sem uma funcionalidade
-real a escrevê-lo. `ClosureRetention` recebe o instante de encerramento como
-parâmetro, pronta para ser ligada a uma funcionalidade futura de encerramento
-de conta quando essa existir.
+**Fatia 5 liga esta lógica a um fluxo real** — `users.closure_requested_at` /
+`scheduled_deletion_at`, pedido e cancelamento em `/settings/account-closure`.
+Detalhe completo, incluindo a guarda de ownership institucional e o bloqueio
+de atividade normal durante a janela, em
+[docs/account-closure.md](account-closure.md).
 
 ## Organização institucional encerrada: 90 dias
 
@@ -75,9 +80,12 @@ Mesma lógica, janela maior — 90 dias
 (`config('retention.institutional_closure_days')`) — porque mais pessoas
 dependem dos dados de uma organização institucional do que de uma conta
 pessoal. `ClosureRetention::isInstitutionalOrganizationRecoverable()` aplica a
-mesma fronteira estrita: dia 89 recuperável, dia 90 já não. Também aqui, sem
-fluxo de encerramento real implementado — apenas a lógica de fronteira,
-pronta a ser usada.
+mesma fronteira estrita: dia 89 recuperável, dia 90 já não.
+
+**Fatia 5 liga esta lógica a um fluxo real**, simétrico ao da conta pessoal —
+`organizations.closure_requested_at` / `scheduled_deletion_at`, pedido e
+cancelamento restritos ao responsável (owner), em `/team/closure`. Detalhe
+completo em [docs/account-closure.md](account-closure.md).
 
 ## Logs técnicos: 90 dias / Auditoria de segurança/institucional: 3 anos
 
@@ -87,11 +95,25 @@ segurança/institucional (`audit_events`) durante 3 anos
 (`config('retention.security_audit_years')`) — mais tempo do que os logs
 técnicos, por ser o registo de quem fez o quê, não um detalhe operacional.
 
-**Nenhum dos dois está atualmente aplicado em código.** Não existe rotação de
-logs nem job de limpeza de `audit_events` no LÁPIS a esta data. Isto é uma
-lacuna documentada e trabalho futuro — não algo já em execução. Os valores em
-`config/retention.php` são o alvo a implementar, não uma descrição do
-comportamento atual do sistema.
+**Nenhum dos dois está atualmente aplicado em código — e a Fatia 5
+deliberadamente não muda isto.** Não existe rotação de logs nem job de
+limpeza de `audit_events` no LÁPIS a esta data; nenhum foi adicionado. Isto é
+uma lacuna documentada e trabalho futuro — não algo já em execução. Os
+valores em `config/retention.php` são o alvo a implementar, não uma descrição
+do comportamento atual do sistema.
+
+Os logs técnicos do Laravel (`storage/logs`) são infraestrutura operacional
+fora da aplicação (rotação de ficheiros, logrotate ou equivalente ao nível do
+servidor) — não algo que este código deva gerir sozinho; alterar essa
+infraestrutura está fora do âmbito de qualquer fatia funcional. `audit_events`
+é o registo de segurança/auditoria institucional: a Fatia 5 acrescenta uma
+**contagem de pré-visualização**, cross-tenant deliberadamente (o mesmo
+`withoutGlobalScope('organization')` já usado nos relatórios administrativos
+existentes), de quantos eventos têm mais de 3 anos
+(`App\Support\Retention\DeletionEligibility::auditEventsOutsideRetention()`,
+exposta em `php artisan retention:status`, só de leitura) — mas **nunca purga
+um único evento**. O trail de auditoria é crítico para segurança e permanece
+intocado; não existe comando de purga para `audit_events` nesta fatia.
 
 ## Backups técnicos: 30–60 dias
 
@@ -127,15 +149,22 @@ As únicas afirmações válidas são "eliminado" (o registo deixou de existir) 
 continuam ligáveis), e só quando forem verdadeiramente verdade. Anonimização
 real fica marcada como dívida técnica explícita, para trabalho futuro.
 
-## O que NÃO é apagado automaticamente por esta fatia
+## O que NÃO é apagado automaticamente
 
-- Esta fatia não apaga nada. É arquitetura de classificação e configuração —
-  não introduz nenhum job de purga, anonimização ou eliminação de dados reais.
+- Nenhuma fatia até esta apaga dados pedagógicos, de conta, ou institucionais.
+  É arquitetura de classificação, configuração e — desde a Fatia 5 — de
+  pedido/cancelamento de encerramento. Continua sem existir nenhum job de
+  purga, anonimização ou eliminação real de dados.
 - Sair de uma organização ou ser removido de uma turma nunca apaga dados
-  pedagógicos — ver a funcionalidade de ciclo de vida de membros (implementada
-  em paralelo a esta fatia) para o que acontece à associação de uma pessoa a
-  uma organização/turma; os dados de avaliação em si não são tocados por isso.
-- A única limpeza automática introduzida por esta fatia é a de ficheiros ZIP
+  pedagógicos — ver [docs/membership-lifecycle.md](membership-lifecycle.md)
+  para o que acontece à associação de uma pessoa a uma organização/turma; os
+  dados de avaliação em si não são tocados por isso.
+- Pedir o encerramento de uma conta pessoal ou de uma organização
+  institucional (Fatia 5) também não apaga nada — ver
+  [docs/account-closure.md](account-closure.md). O único efeito imediato é
+  bloquear escrita pedagógica nova; ao fim da janela de recuperação, o registo
+  fica **elegível**, nunca eliminado automaticamente.
+- A única limpeza automática de ficheiros que este produto executa é a de ZIPs
   de exportação de dados expirados — um artefacto de conveniência gerado
   para o utilizador, nunca o dado de origem. `app/Console/Commands/PruneDataExports.php`
   remove o ficheiro do disco privado depois de `expires_at` e limpa o
@@ -144,6 +173,18 @@ real fica marcada como dívida técnica explícita, para trabalho futuro.
   em `routes/console.php` (`data-exports:prune`, a cada hora, junto dos
   restantes prune commands do produto). Não apaga nem toca em nenhum dado de
   origem — só o ZIP gerado.
+
+  A Fatia 5 corrigiu um bug real neste comando: ao correr a partir do
+  scheduler (sem pedido HTTP), nenhuma organização está resolvida no
+  container, e a query batch (`update(['disk_path' => null])`) sobre
+  `DataExport` — tenant-scoped por natureza — lançava
+  `TenantNotResolvedException` a cada execução, silenciosamente, desde que a
+  Fatia 4 o agendou. O teste existente não apanhou isto porque corria logo a
+  seguir a um pedido HTTP simulado, que deixava um tenant "preso" no
+  container. Corrigido com `withoutGlobalScope('organization')` — o mesmo
+  padrão já usado nos relatórios administrativos cross-tenant — e coberto por
+  um teste que força `CurrentOrganization::forget()` antes de correr o
+  comando, replicando exatamente a condição real do scheduler.
 
 ## Configuração de retenção
 
