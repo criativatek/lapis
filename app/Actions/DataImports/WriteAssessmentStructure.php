@@ -96,7 +96,7 @@ class WriteAssessmentStructure
             if ($row['classification'] === 'new') {
                 $period = new AcademicPeriod;
                 $period->forceFill([
-                    'ulid' => $row['ulid'], 'academic_year_id' => $row['academic_year_id'], 'label' => $row['label'],
+                    'ulid' => $this->writableUlid($row), 'academic_year_id' => $row['academic_year_id'], 'label' => $row['label'],
                     'kind' => $row['kind'], 'sequence' => $row['sequence'], 'starts_on' => $row['starts_on'],
                     'ends_on' => $row['ends_on'], 'status' => $row['status'],
                 ]);
@@ -125,7 +125,7 @@ class WriteAssessmentStructure
 
             if ($row['classification'] === 'new') {
                 $scale = new Scale;
-                $scale->forceFill(['ulid' => $row['ulid'], 'name' => $row['name'], 'kind' => $row['kind'], 'min_value' => $row['min_value'], 'max_value' => $row['max_value']]);
+                $scale->forceFill(['ulid' => $this->writableUlid($row), 'name' => $row['name'], 'kind' => $row['kind'], 'min_value' => $row['min_value'], 'max_value' => $row['max_value']]);
                 $scale->save();
                 $scalesByRef[$refKey] = $scale->getKey();
 
@@ -166,7 +166,7 @@ class WriteAssessmentStructure
 
             if ($row['classification'] === 'new') {
                 $type = new InstrumentType;
-                $type->forceFill(['ulid' => $row['ulid'], 'name' => $row['name'], 'code' => $row['code'], 'default_purpose' => $row['default_purpose'], 'is_active' => $row['is_active']]);
+                $type->forceFill(['ulid' => $this->writableUlid($row), 'name' => $row['name'], 'code' => $row['code'], 'default_purpose' => $row['default_purpose'], 'is_active' => $row['is_active']]);
                 $type->save();
                 $byRef[$refKey] = $type->getKey();
                 $created++;
@@ -196,7 +196,7 @@ class WriteAssessmentStructure
         foreach ($rows as $row) {
             if ($row['classification'] === 'new') {
                 $domain = new Domain;
-                $domain->forceFill(['ulid' => $row['ulid'], 'name' => $row['name'], 'code' => $row['code'], 'subject_id' => $row['subject_id'], 'sequence' => $row['sequence'], 'is_active' => $row['is_active']]);
+                $domain->forceFill(['ulid' => $this->writableUlid($row), 'name' => $row['name'], 'code' => $row['code'], 'subject_id' => $row['subject_id'], 'sequence' => $row['sequence'], 'is_active' => $row['is_active']]);
                 $domain->save();
                 $byUlid[$row['ulid']] = $domain->getKey();
                 $created++;
@@ -234,7 +234,7 @@ class WriteAssessmentStructure
             if ($row['classification'] === 'new') {
                 $profile = new AssessmentProfile;
                 $profile->forceFill([
-                    'ulid' => $row['ulid'], 'name' => $row['name'], 'description' => $row['description'],
+                    'ulid' => $this->writableUlid($row), 'name' => $row['name'], 'description' => $row['description'],
                     'academic_year_id' => $row['academic_year_id'], 'subject_id' => $row['subject_id'],
                     'grade_level' => $row['grade_level'], 'is_institutional_template' => $row['is_institutional_template'],
                 ]);
@@ -284,7 +284,7 @@ class WriteAssessmentStructure
 
                 $version = new AssessmentProfileVersion;
                 $version->forceFill([
-                    'ulid' => $row['ulid'], 'assessment_profile_id' => $profileId, 'version_number' => $row['version_number'],
+                    'ulid' => $this->writableUlid($row), 'assessment_profile_id' => $profileId, 'version_number' => $row['version_number'],
                     'status' => $row['status'], 'scale_id' => $this->resolveScaleId($row['scale'], $scalesByRef),
                     'domain_weight_mode' => $row['domain_weight_mode'], 'period_result_mode' => $row['period_result_mode'],
                     'accumulated_mode' => $row['accumulated_mode'], 'absence_mode' => $row['absence_mode'],

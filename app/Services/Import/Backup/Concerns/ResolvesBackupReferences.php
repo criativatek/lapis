@@ -54,9 +54,18 @@ trait ResolvesBackupReferences
      * `ulid` is unique across the WHOLE table, not per-organization — the
      * database will refuse a second row with a ulid another organization's
      * row already holds. Checked up front, cross-tenant on purpose
-     * (`withoutGlobalScope`, the same legitimate pattern already used for
-     * admin reports), so this surfaces as an `invalid` row in the preview
-     * instead of a raw constraint violation at write time.
+     * (`withoutGlobalScopes()`, the same legitimate pattern already used for
+     * admin reports), so classifiers can match a destination business key
+     * or clone with a fresh ULID instead of attempting the source identity.
+     *
+     * Every scope is stripped, not just one named `organization` — several
+     * models restorable here (`Scale`, `InstrumentType`) register their
+     * tenant-visibility scope under a different name (`scaleVisibility`,
+     * `typeVisibility`) precisely because a system row has no organization
+     * of its own. Removing only a scope literally named `organization`
+     * would leave those two filtering to "mine or system" even here,
+     * silently hiding another organization's row and letting its ulid
+     * collide at write time instead of being caught in the plan.
      *
      * @param  class-string<Model>  $modelClass
      * @param  Collection<int, string>  $ulids
@@ -69,7 +78,7 @@ trait ResolvesBackupReferences
         }
 
         return $modelClass::query()
-            ->withoutGlobalScope('organization')
+            ->withoutGlobalScopes()
             ->whereIn('ulid', $ulids)
             ->where('organization_id', '!=', $destinationOrganizationId)
             ->pluck('organization_id', 'ulid');

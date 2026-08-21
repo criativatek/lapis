@@ -160,7 +160,7 @@ class ExecuteDataImport
 
                 $class = new SchoolClass;
                 $class->forceFill([
-                    'ulid' => $row['ulid'],
+                    'ulid' => $this->writableUlid($row),
                     'academic_year_id' => $row['academic_year_id'],
                     'subject_id' => $row['subject_id'],
                     'label' => $row['label'],
@@ -197,7 +197,7 @@ class ExecuteDataImport
         foreach ($rows as $row) {
             if ($row['classification'] === 'new') {
                 $student = new Student;
-                $student->forceFill(['ulid' => $row['ulid'], 'pseudonym_code' => $row['pseudonym_code']]);
+                $student->forceFill(['ulid' => $this->writableUlid($row), 'pseudonym_code' => $row['pseudonym_code']]);
                 $student->save();
 
                 if ($row['display_name'] !== null) {
@@ -242,7 +242,7 @@ class ExecuteDataImport
 
             $enrollment = new Enrollment;
             $enrollment->forceFill([
-                'ulid' => $row['ulid'],
+                'ulid' => $this->writableUlid($row),
                 'class_id' => $classId,
                 'student_id' => $studentId,
                 'status' => $row['status'],

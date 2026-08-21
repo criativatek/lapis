@@ -13,6 +13,12 @@ namespace App\Actions\DataImports\Concerns;
  */
 trait ResolvesWrittenReferences
 {
+    /** @param array<string, mixed> $row */
+    private function writableUlid(array $row): ?string
+    {
+        return ($row['preserve_ulid'] ?? true) === false ? null : (string) $row['ulid'];
+    }
+
     /**
      * @param  array<string, int>  $byUlid
      */

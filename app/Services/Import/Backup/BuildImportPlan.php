@@ -280,8 +280,10 @@ class BuildImportPlan
         $ulids = collect($classesIn)->pluck('ulid');
         $existingByUlid = SchoolClass::query()->where('organization_id', $destination->getKey())->whereIn('ulid', $ulids)->get()->keyBy('ulid');
         $elsewhere = $this->ulidOrganizationsElsewhere(SchoolClass::class, $ulids, $destination->getKey());
+        $byBusinessKey = SchoolClass::query()->where('organization_id', $destination->getKey())->get()
+            ->keyBy(fn (SchoolClass $class): string => "{$class->academic_year_id}:".($class->subject_id ?? 'null').":{$class->label}");
 
-        return collect($classesIn)->map(function (array $row) use ($academicYearsByLabel, $subjectsByName, $profileVersionsByUlid, $existingByUlid, $elsewhere, $destination): array {
+        return collect($classesIn)->map(function (array $row) use ($academicYearsByLabel, $subjectsByName, $profileVersionsByUlid, $existingByUlid, $elsewhere, $byBusinessKey): array {
             $existing = $existingByUlid->get($row['ulid']);
             $profileVersionUlid = $row['assessment_profile_version_ulid'] ?? null;
             $profileVersion = $profileVersionUlid !== null ? $profileVersionsByUlid->get($profileVersionUlid) : null;
@@ -295,15 +297,6 @@ class BuildImportPlan
                     'classification' => $diverges ? 'conflict' : 'existing',
                     'reason' => $diverges ? $this->t('Já existe uma turma com esta identidade, mas os dados diferem.') : null,
                     'existing_id' => $existing->getKey(),
-                ];
-            }
-
-            if ($elsewhere->has($row['ulid'])) {
-                return [
-                    'ulid' => $row['ulid'],
-                    'label' => $row['label'],
-                    'classification' => 'invalid',
-                    'reason' => $this->t('Esta turma pertence a outra organização e não pode ser restaurada aqui.'),
                 ];
             }
 
@@ -321,14 +314,20 @@ class BuildImportPlan
                 ];
             }
 
-            $businessKeyConflict = SchoolClass::query()
-                ->where('organization_id', $destination->getKey())
-                ->where('academic_year_id', $academicYear->getKey())
-                ->where('subject_id', $subject?->getKey())
-                ->where('label', $row['label'])
-                ->exists();
+            $businessKeyConflict = $byBusinessKey->get("{$academicYear->getKey()}:".($subject?->getKey() ?? 'null').":{$row['label']}");
 
-            if ($businessKeyConflict) {
+            if ($businessKeyConflict !== null) {
+                if ($elsewhere->has($row['ulid'])) {
+                    $diverges = $businessKeyConflict->label !== $row['label'] || $businessKeyConflict->status->value !== $row['status'];
+
+                    return [
+                        'ulid' => $row['ulid'], 'label' => $row['label'],
+                        'classification' => $diverges ? 'conflict' : 'existing',
+                        'reason' => $diverges ? $this->conflictReason() : null,
+                        'existing_id' => $businessKeyConflict->getKey(),
+                    ];
+                }
+
                 return [
                     'ulid' => $row['ulid'],
                     'label' => $row['label'],
@@ -351,6 +350,7 @@ class BuildImportPlan
                 'label' => $row['label'],
                 'classification' => 'new',
                 'reason' => null,
+                'preserve_ulid' => ! $elsewhere->has($row['ulid']),
                 'academic_year_id' => $academicYear->getKey(),
                 'subject_id' => $subject?->getKey(),
                 'status' => $row['status'],
@@ -371,7 +371,7 @@ class BuildImportPlan
         $elsewhere = $this->ulidOrganizationsElsewhere(Student::class, $ulids, $destination->getKey());
 
         $codes = collect($studentsIn)->pluck('pseudonym_code');
-        $existingByCode = Student::query()->where('organization_id', $destination->getKey())->whereIn('pseudonym_code', $codes)->get()->keyBy('pseudonym_code');
+        $existingByCode = Student::query()->where('organization_id', $destination->getKey())->whereIn('pseudonym_code', $codes)->with('identity')->get()->keyBy('pseudonym_code');
 
         return collect($studentsIn)->map(function (array $row) use ($existingByUlid, $existingByCode, $elsewhere): array {
             $existing = $existingByUlid->get($row['ulid']);
@@ -389,18 +389,21 @@ class BuildImportPlan
                 ];
             }
 
-            if ($elsewhere->has($row['ulid'])) {
-                return [
-                    'ulid' => $row['ulid'],
-                    'pseudonym_code' => $row['pseudonym_code'],
-                    'classification' => 'invalid',
-                    'reason' => $this->t('Este aluno pertence a outra organização e não pode ser restaurado aqui.'),
-                ];
-            }
-
             $codeConflict = $existingByCode->get($row['pseudonym_code']);
 
             if ($codeConflict !== null) {
+                if ($elsewhere->has($row['ulid'])) {
+                    $diverges = $codeConflict->pseudonym_code !== $row['pseudonym_code']
+                        || $codeConflict->identity?->display_name !== $row['display_name'];
+
+                    return [
+                        'ulid' => $row['ulid'], 'pseudonym_code' => $row['pseudonym_code'],
+                        'classification' => $diverges ? 'conflict' : 'existing',
+                        'reason' => $diverges ? $this->conflictReason() : null,
+                        'existing_id' => $codeConflict->getKey(),
+                    ];
+                }
+
                 return [
                     'ulid' => $row['ulid'],
                     'pseudonym_code' => $row['pseudonym_code'],
@@ -414,6 +417,7 @@ class BuildImportPlan
                 'pseudonym_code' => $row['pseudonym_code'],
                 'classification' => 'new',
                 'reason' => null,
+                'preserve_ulid' => ! $elsewhere->has($row['ulid']),
                 'display_name' => $row['display_name'],
             ];
         })->values()->all();
@@ -430,8 +434,11 @@ class BuildImportPlan
         $ulids = collect($enrollmentsIn)->pluck('ulid');
         $existingByUlid = Enrollment::query()->where('organization_id', $destination->getKey())->whereIn('ulid', $ulids)->get()->keyBy('ulid');
         $elsewhere = $this->ulidOrganizationsElsewhere(Enrollment::class, $ulids, $destination->getKey());
+        $classIds = $classesByUlid->pluck('existing_id')->filter();
+        $byBusinessKey = $classIds->isEmpty() ? collect() : Enrollment::query()->where('organization_id', $destination->getKey())->whereIn('class_id', $classIds)->get()
+            ->keyBy(fn (Enrollment $enrollment): string => "{$enrollment->class_id}:{$enrollment->student_id}:".$enrollment->enrolled_on->toDateString());
 
-        return collect($enrollmentsIn)->map(function (array $row) use ($existingByUlid, $classesByUlid, $studentsByUlid, $elsewhere): array {
+        return collect($enrollmentsIn)->map(function (array $row) use ($existingByUlid, $classesByUlid, $studentsByUlid, $elsewhere, $byBusinessKey): array {
             $existing = $existingByUlid->get($row['ulid']);
 
             if ($existing !== null) {
@@ -442,14 +449,6 @@ class BuildImportPlan
                     'classification' => $diverges ? 'conflict' : 'existing',
                     'reason' => $diverges ? $this->t('Já existe uma inscrição com esta identidade, mas os dados diferem.') : null,
                     'existing_id' => $existing->getKey(),
-                ];
-            }
-
-            if ($elsewhere->has($row['ulid'])) {
-                return [
-                    'ulid' => $row['ulid'],
-                    'classification' => 'invalid',
-                    'reason' => $this->t('Esta inscrição pertence a outra organização e não pode ser restaurada aqui.'),
                 ];
             }
 
@@ -474,10 +473,24 @@ class BuildImportPlan
                 ];
             }
 
+            if ($elsewhere->has($row['ulid']) && $class['classification'] === 'existing' && $student['classification'] === 'existing') {
+                $businessKeyMatch = $byBusinessKey->get("{$class['existing_id']}:{$student['existing_id']}:{$row['enrolled_on']}");
+
+                if ($businessKeyMatch !== null) {
+                    $diverges = $businessKeyMatch->status->value !== $row['status'];
+
+                    return [
+                        'ulid' => $row['ulid'], 'classification' => $diverges ? 'conflict' : 'existing',
+                        'reason' => $diverges ? $this->conflictReason() : null, 'existing_id' => $businessKeyMatch->getKey(),
+                    ];
+                }
+            }
+
             return [
                 'ulid' => $row['ulid'],
                 'classification' => 'new',
                 'reason' => null,
+                'preserve_ulid' => ! $elsewhere->has($row['ulid']),
                 'class_ulid' => $row['class_ulid'],
                 'student_ulid' => $row['student_ulid'],
                 'status' => $row['status'],

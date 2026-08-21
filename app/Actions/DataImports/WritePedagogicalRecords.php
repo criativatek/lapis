@@ -92,7 +92,7 @@ class WritePedagogicalRecords
 
                 $interim = new InterimAssessment;
                 $interim->forceFill([
-                    'ulid' => $row['ulid'], 'class_id' => $classId, 'academic_period_id' => $periodId, 'name' => $row['name'],
+                    'ulid' => $this->writableUlid($row), 'class_id' => $classId, 'academic_period_id' => $periodId, 'name' => $row['name'],
                     'reference_date' => $row['reference_date'], 'note' => $row['note'], 'snapshot_version' => $row['snapshot_version'],
                     'snapshot' => $row['snapshot'], 'snapshot_hash' => $row['snapshot_hash'], 'created_by' => $row['created_by'],
                     'created_at' => now(),
@@ -134,7 +134,7 @@ class WritePedagogicalRecords
 
             $record = new EvidenceRecord;
             $record->forceFill([
-                'ulid' => $row['ulid'], 'class_id' => $classId, 'enrollment_id' => $this->resolveId($row['enrollment_ulid'], $enrollmentsByUlid),
+                'ulid' => $this->writableUlid($row), 'class_id' => $classId, 'enrollment_id' => $this->resolveId($row['enrollment_ulid'], $enrollmentsByUlid),
                 'academic_period_id' => $this->resolveId($row['academic_period_ulid'], $periodsByUlid),
                 'domain_id' => $this->resolveId($row['domain_ulid'], $domainsByUlid),
                 'quick_rating_scale_level_id' => $this->resolveScaleLevelId($row['quick_rating_scale_level'], $scalesByRef, $scaleLevelsByRef),
@@ -173,7 +173,7 @@ class WritePedagogicalRecords
 
                 $intervention = new Intervention;
                 $intervention->forceFill([
-                    'ulid' => $row['ulid'], 'class_id' => $classId, 'enrollment_id' => $this->resolveId($row['enrollment_ulid'], $enrollmentsByUlid),
+                    'ulid' => $this->writableUlid($row), 'class_id' => $classId, 'enrollment_id' => $this->resolveId($row['enrollment_ulid'], $enrollmentsByUlid),
                     'academic_period_id' => $this->resolveId($row['academic_period_ulid'], $periodsByUlid),
                     'domain_id' => $this->resolveId($row['domain_ulid'], $domainsByUlid), 'target_type' => $row['target_type'],
                     'intervention_type' => $row['intervention_type'], 'motive_code' => $row['motive_code'], 'motive_label' => $row['motive_label'],
@@ -228,7 +228,7 @@ class WritePedagogicalRecords
 
             $review = new InterventionReview;
             $review->forceFill([
-                'ulid' => $row['ulid'], 'intervention_id' => $interventionId, 'reviewed_on' => $row['reviewed_on'],
+                'ulid' => $this->writableUlid($row), 'intervention_id' => $interventionId, 'reviewed_on' => $row['reviewed_on'],
                 'effectiveness' => $row['effectiveness'], 'notes' => $row['notes'], 'reviewed_by' => $row['reviewed_by'],
             ]);
             $review->save();
@@ -265,7 +265,7 @@ class WritePedagogicalRecords
 
             $report = new Report;
             $report->forceFill([
-                'ulid' => $row['ulid'], 'type' => $row['type'], 'status' => 'finalized', 'title' => $row['title'], 'tone' => $row['tone'],
+                'ulid' => $this->writableUlid($row), 'type' => $row['type'], 'status' => 'finalized', 'title' => $row['title'], 'tone' => $row['tone'],
                 'class_id' => $this->resolveId($row['class_ulid'], $classesByUlid), 'enrollment_id' => $this->resolveId($row['enrollment_ulid'], $enrollmentsByUlid),
                 'academic_year_id' => $row['academic_year_id'], 'academic_period_id' => $this->resolveId($row['academic_period_ulid'], $periodsByUlid),
                 'interim_assessment_id' => $this->resolveId($row['interim_assessment_ulid'], $interimByUlid),

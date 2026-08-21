@@ -128,8 +128,11 @@ class BuildAssessmentDataPlan
     {
         $ulids = collect($instrumentsIn)->pluck('ulid');
         $lookups = $this->ulidLookups(Instrument::class, $ulids, $destination);
+        $classIds = $classesByUlid->pluck('existing_id')->filter();
+        $byBusinessKey = $classIds->isEmpty() ? collect() : Instrument::query()->where('organization_id', $destination->getKey())->whereIn('class_id', $classIds)->get()
+            ->keyBy(fn (Instrument $instrument): string => "{$instrument->class_id}:".($instrument->academic_period_id ?? 'null').":{$instrument->title}:".$instrument->applied_on->toDateString());
 
-        return collect($instrumentsIn)->map(function (array $row) use ($classesByUlid, $periodsByUlid, $instrumentTypeResolution, $scaleResolution, $lookups): array {
+        return collect($instrumentsIn)->map(function (array $row) use ($classesByUlid, $periodsByUlid, $instrumentTypeResolution, $scaleResolution, $lookups, $byBusinessKey): array {
             $existing = $lookups['existing']->get($row['ulid']);
 
             if ($existing !== null) {
@@ -141,10 +144,6 @@ class BuildAssessmentDataPlan
                     'reason' => $diverges ? $this->conflictReason() : null,
                     'existing_id' => $existing->getKey(),
                 ];
-            }
-
-            if ($lookups['elsewhere']->has($row['ulid'])) {
-                return ['ulid' => $row['ulid'], 'title' => $row['title'], 'classification' => 'invalid', 'reason' => $this->elsewhereReason()];
             }
 
             $class = $classesByUlid->get($row['class_ulid']);
@@ -165,8 +164,18 @@ class BuildAssessmentDataPlan
                 ];
             }
 
+            if ($lookups['elsewhere']->has($row['ulid']) && $class['classification'] === 'existing' && ($period === null || $period['classification'] === 'existing')) {
+                $match = $byBusinessKey->get("{$class['existing_id']}:".($period['existing_id'] ?? 'null').":{$row['title']}:{$row['applied_on']}");
+
+                if ($match !== null) {
+                    $diverges = $match->title !== $row['title'] || $match->status->value !== $row['status'];
+
+                    return ['ulid' => $row['ulid'], 'title' => $row['title'], 'classification' => $diverges ? 'conflict' : 'existing', 'reason' => $diverges ? $this->conflictReason() : null, 'existing_id' => $match->getKey()];
+                }
+            }
+
             return [
-                'ulid' => $row['ulid'], 'title' => $row['title'], 'classification' => 'new', 'reason' => null,
+                'ulid' => $row['ulid'], 'title' => $row['title'], 'classification' => 'new', 'reason' => null, 'preserve_ulid' => ! $lookups['elsewhere']->has($row['ulid']),
                 'class_ulid' => $row['class_ulid'], 'status' => $row['status'], 'applied_on' => $row['applied_on'],
                 'academic_period_ulid' => $row['academic_period_ulid'],
                 'instrument_type' => $row['instrument_type'], 'purpose' => $row['purpose'],
@@ -185,16 +194,15 @@ class BuildAssessmentDataPlan
     {
         $ulids = collect($groupsIn)->pluck('ulid');
         $lookups = $this->ulidLookups(InstrumentGroup::class, $ulids, $destination);
+        $instrumentIds = $instrumentsByUlid->pluck('existing_id')->filter();
+        $byBusinessKey = $instrumentIds->isEmpty() ? collect() : InstrumentGroup::query()->where('organization_id', $destination->getKey())->whereIn('instrument_id', $instrumentIds)->get()
+            ->keyBy(fn (InstrumentGroup $group): string => "{$group->instrument_id}:{$group->sequence}");
 
-        return collect($groupsIn)->map(function (array $row) use ($instrumentsByUlid, $lookups): array {
+        return collect($groupsIn)->map(function (array $row) use ($instrumentsByUlid, $lookups, $byBusinessKey): array {
             $existing = $lookups['existing']->get($row['ulid']);
 
             if ($existing !== null) {
                 return ['ulid' => $row['ulid'], 'classification' => $existing->label === $row['label'] ? 'existing' : 'conflict', 'reason' => $existing->label === $row['label'] ? null : $this->conflictReason(), 'existing_id' => $existing->getKey()];
-            }
-
-            if ($lookups['elsewhere']->has($row['ulid'])) {
-                return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->elsewhereReason()];
             }
 
             $instrument = $instrumentsByUlid->get($row['instrument_ulid']);
@@ -204,8 +212,16 @@ class BuildAssessmentDataPlan
                 return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->t('O elemento de avaliação deste grupo não pode ser restaurado.')];
             }
 
+            if ($lookups['elsewhere']->has($row['ulid']) && $instrument['classification'] === 'existing') {
+                $match = $byBusinessKey->get("{$instrument['existing_id']}:{$row['sequence']}");
+
+                if ($match !== null) {
+                    return ['ulid' => $row['ulid'], 'classification' => $match->label === $row['label'] ? 'existing' : 'conflict', 'reason' => $match->label === $row['label'] ? null : $this->conflictReason(), 'existing_id' => $match->getKey()];
+                }
+            }
+
             return [
-                'ulid' => $row['ulid'], 'classification' => 'new', 'reason' => null,
+                'ulid' => $row['ulid'], 'classification' => 'new', 'reason' => null, 'preserve_ulid' => ! $lookups['elsewhere']->has($row['ulid']),
                 'instrument_ulid' => $row['instrument_ulid'], 'label' => $row['label'], 'sequence' => $row['sequence'],
             ];
         })->values()->all();
@@ -222,18 +238,17 @@ class BuildAssessmentDataPlan
     {
         $ulids = collect($itemsIn)->pluck('ulid');
         $lookups = $this->ulidLookups(InstrumentItem::class, $ulids, $destination);
+        $instrumentIds = $instrumentsByUlid->pluck('existing_id')->filter();
+        $byBusinessKey = $instrumentIds->isEmpty() ? collect() : InstrumentItem::query()->where('organization_id', $destination->getKey())->whereIn('instrument_id', $instrumentIds)->get()
+            ->keyBy(fn (InstrumentItem $item): string => "{$item->instrument_id}:{$item->code}");
 
-        return collect($itemsIn)->map(function (array $row) use ($instrumentsByUlid, $groupsByUlid, $scaleResolution, $lookups): array {
+        return collect($itemsIn)->map(function (array $row) use ($instrumentsByUlid, $groupsByUlid, $scaleResolution, $lookups, $byBusinessKey): array {
             $existing = $lookups['existing']->get($row['ulid']);
 
             if ($existing !== null) {
                 $diverges = $existing->code !== $row['code'] || (string) $existing->points_possible !== (string) $row['points_possible'];
 
                 return ['ulid' => $row['ulid'], 'classification' => $diverges ? 'conflict' : 'existing', 'reason' => $diverges ? $this->conflictReason() : null, 'existing_id' => $existing->getKey()];
-            }
-
-            if ($lookups['elsewhere']->has($row['ulid'])) {
-                return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->elsewhereReason()];
             }
 
             $instrument = $instrumentsByUlid->get($row['instrument_ulid']);
@@ -246,8 +261,18 @@ class BuildAssessmentDataPlan
                 return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->t('O elemento de avaliação, o grupo ou a escala deste item não podem ser restaurados.')];
             }
 
+            if ($lookups['elsewhere']->has($row['ulid']) && $instrument['classification'] === 'existing') {
+                $match = $byBusinessKey->get("{$instrument['existing_id']}:{$row['code']}");
+
+                if ($match !== null) {
+                    $diverges = $match->code !== $row['code'] || (string) $match->points_possible !== (string) $row['points_possible'];
+
+                    return ['ulid' => $row['ulid'], 'classification' => $diverges ? 'conflict' : 'existing', 'reason' => $diverges ? $this->conflictReason() : null, 'existing_id' => $match->getKey()];
+                }
+            }
+
             return [
-                'ulid' => $row['ulid'], 'classification' => 'new', 'reason' => null,
+                'ulid' => $row['ulid'], 'classification' => 'new', 'reason' => null, 'preserve_ulid' => ! $lookups['elsewhere']->has($row['ulid']),
                 'instrument_ulid' => $row['instrument_ulid'], 'group_ulid' => $row['group_ulid'], 'code' => $row['code'], 'label' => $row['label'],
                 'sequence' => $row['sequence'], 'points_possible' => $row['points_possible'], 'scoring_mode' => $row['scoring_mode'],
                 'scale' => $row['scale'], 'is_bonus' => $row['is_bonus'], 'source_group_label' => $row['source_group_label'],
@@ -348,18 +373,17 @@ class BuildAssessmentDataPlan
         $ulids = collect($classificationsIn)->pluck('ulid');
         $lookups = $this->ulidLookups(Classification::class, $ulids, $destination);
         $byUlidForSelfRef = collect($classificationsIn)->keyBy('ulid');
+        $enrollmentIds = $enrollmentsByUlid->pluck('existing_id')->filter();
+        $byBusinessKey = $enrollmentIds->isEmpty() ? collect() : Classification::query()->where('organization_id', $destination->getKey())->whereIn('enrollment_id', $enrollmentIds)->whereNull('superseded_by_id')->get()
+            ->keyBy(fn (Classification $classification): string => "{$classification->enrollment_id}:".($classification->academic_period_id ?? 'null').":{$classification->scope->value}");
 
-        return collect($classificationsIn)->map(function (array $row) use ($enrollmentsByUlid, $periodsByUlid, $profileVersionsByUlid, $scaleResolution, $actor, $lookups, $byUlidForSelfRef): array {
+        return collect($classificationsIn)->map(function (array $row) use ($enrollmentsByUlid, $periodsByUlid, $profileVersionsByUlid, $scaleResolution, $actor, $lookups, $byUlidForSelfRef, $byBusinessKey): array {
             $existing = $lookups['existing']->get($row['ulid']);
 
             if ($existing !== null) {
                 $diverges = $existing->status->value !== $row['status'] || (string) $existing->final_value !== (string) $row['final_value'];
 
                 return ['ulid' => $row['ulid'], 'classification' => $diverges ? 'conflict' : 'existing', 'reason' => $diverges ? $this->conflictReason() : null, 'existing_id' => $existing->getKey()];
-            }
-
-            if ($lookups['elsewhere']->has($row['ulid'])) {
-                return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->elsewhereReason()];
             }
 
             $enrollment = $enrollmentsByUlid->get($row['enrollment_ulid']);
@@ -375,6 +399,16 @@ class BuildAssessmentDataPlan
                 return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->t('A inscrição, o período, a versão do perfil ou o nível de escala desta classificação não podem ser restaurados.')];
             }
 
+            if ($lookups['elsewhere']->has($row['ulid']) && $enrollment['classification'] === 'existing' && ($period === null || $period['classification'] === 'existing')) {
+                $match = $byBusinessKey->get("{$enrollment['existing_id']}:".($period['existing_id'] ?? 'null').":{$row['scope']}");
+
+                if ($match !== null) {
+                    $diverges = $match->status->value !== $row['status'] || (string) $match->final_value !== (string) $row['final_value'];
+
+                    return ['ulid' => $row['ulid'], 'classification' => $diverges ? 'conflict' : 'existing', 'reason' => $diverges ? $this->conflictReason() : null, 'existing_id' => $match->getKey()];
+                }
+            }
+
             // superseded_by_ulid only wires up if that other classification
             // is ALSO restorable in this same backup — never invented, and
             // never left dangling at a row that stayed out of this import.
@@ -382,7 +416,7 @@ class BuildAssessmentDataPlan
             $supersedes = $supersededByUlid !== null ? $byUlidForSelfRef->get($supersededByUlid) : null;
 
             return [
-                'ulid' => $row['ulid'], 'classification' => 'new', 'reason' => null,
+                'ulid' => $row['ulid'], 'classification' => 'new', 'reason' => null, 'preserve_ulid' => ! $lookups['elsewhere']->has($row['ulid']),
                 'enrollment_ulid' => $row['enrollment_ulid'], 'academic_period_ulid' => $row['academic_period_ulid'],
                 'assessment_profile_version_ulid' => $row['assessment_profile_version_ulid'], 'scope' => $row['scope'], 'status' => $row['status'],
                 'proposed_normalized_value' => $row['proposed_normalized_value'], 'proposed_value' => $row['proposed_value'],
@@ -405,16 +439,14 @@ class BuildAssessmentDataPlan
     {
         $ulids = collect($templatesIn)->pluck('ulid');
         $lookups = $this->ulidLookups(SelfAssessmentTemplate::class, $ulids, $destination);
+        $byBusinessKey = SelfAssessmentTemplate::query()->where('organization_id', $destination->getKey())->whereIn('name', collect($templatesIn)->pluck('name'))->get()
+            ->keyBy(fn (SelfAssessmentTemplate $template): string => ($template->assessment_profile_version_id ?? 'null').':'.($template->class_id ?? 'null').":{$template->name}");
 
-        return collect($templatesIn)->map(function (array $row) use ($profileVersionsByUlid, $classesByUlid, $lookups): array {
+        return collect($templatesIn)->map(function (array $row) use ($profileVersionsByUlid, $classesByUlid, $lookups, $byBusinessKey): array {
             $existing = $lookups['existing']->get($row['ulid']);
 
             if ($existing !== null) {
                 return ['ulid' => $row['ulid'], 'classification' => $existing->name === $row['name'] ? 'existing' : 'conflict', 'reason' => $existing->name === $row['name'] ? null : $this->conflictReason(), 'existing_id' => $existing->getKey()];
-            }
-
-            if ($lookups['elsewhere']->has($row['ulid'])) {
-                return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->elsewhereReason()];
             }
 
             $version = $row['assessment_profile_version_ulid'] !== null ? $profileVersionsByUlid->get($row['assessment_profile_version_ulid']) : null;
@@ -426,8 +458,16 @@ class BuildAssessmentDataPlan
                 return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->t('A versão de perfil ou a turma deste modelo de autoavaliação não podem ser restauradas.')];
             }
 
+            if ($lookups['elsewhere']->has($row['ulid']) && ($version === null || $version['classification'] === 'existing') && ($class === null || $class['classification'] === 'existing')) {
+                $match = $byBusinessKey->get(($version['existing_id'] ?? 'null').':'.($class['existing_id'] ?? 'null').":{$row['name']}");
+
+                if ($match !== null) {
+                    return ['ulid' => $row['ulid'], 'classification' => $match->name === $row['name'] ? 'existing' : 'conflict', 'reason' => $match->name === $row['name'] ? null : $this->conflictReason(), 'existing_id' => $match->getKey()];
+                }
+            }
+
             return [
-                'ulid' => $row['ulid'], 'classification' => 'new', 'reason' => null, 'name' => $row['name'], 'is_active' => $row['is_active'],
+                'ulid' => $row['ulid'], 'classification' => 'new', 'reason' => null, 'preserve_ulid' => ! $lookups['elsewhere']->has($row['ulid']), 'name' => $row['name'], 'is_active' => $row['is_active'],
                 'assessment_profile_version_ulid' => $row['assessment_profile_version_ulid'], 'class_ulid' => $row['class_ulid'],
             ];
         })->values()->all();
@@ -476,18 +516,17 @@ class BuildAssessmentDataPlan
     {
         $ulids = collect($assessmentsIn)->pluck('ulid');
         $lookups = $this->ulidLookups(SelfAssessment::class, $ulids, $destination);
+        $enrollmentIds = $enrollmentsByUlid->pluck('existing_id')->filter();
+        $byBusinessKey = $enrollmentIds->isEmpty() ? collect() : SelfAssessment::query()->where('organization_id', $destination->getKey())->whereIn('enrollment_id', $enrollmentIds)->get()
+            ->keyBy(fn (SelfAssessment $assessment): string => "{$assessment->enrollment_id}:{$assessment->academic_period_id}:{$assessment->self_assessment_template_id}");
 
-        return collect($assessmentsIn)->map(function (array $row) use ($enrollmentsByUlid, $periodsByUlid, $templatesByUlid, $actor, $lookups): array {
+        return collect($assessmentsIn)->map(function (array $row) use ($enrollmentsByUlid, $periodsByUlid, $templatesByUlid, $actor, $lookups, $byBusinessKey): array {
             $existing = $lookups['existing']->get($row['ulid']);
 
             if ($existing !== null) {
                 $diverges = $existing->status->value !== $row['status'] || $existing->reflection !== $row['reflection'];
 
                 return ['ulid' => $row['ulid'], 'classification' => $diverges ? 'conflict' : 'existing', 'reason' => $diverges ? $this->conflictReason() : null, 'existing_id' => $existing->getKey()];
-            }
-
-            if ($lookups['elsewhere']->has($row['ulid'])) {
-                return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->elsewhereReason()];
             }
 
             $enrollment = $enrollmentsByUlid->get($row['enrollment_ulid']);
@@ -501,8 +540,18 @@ class BuildAssessmentDataPlan
                 return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->t('A inscrição, o período ou o modelo desta autoavaliação não podem ser restaurados.')];
             }
 
+            if ($lookups['elsewhere']->has($row['ulid']) && $enrollment['classification'] === 'existing' && $period['classification'] === 'existing' && $template['classification'] === 'existing') {
+                $match = $byBusinessKey->get("{$enrollment['existing_id']}:{$period['existing_id']}:{$template['existing_id']}");
+
+                if ($match !== null) {
+                    $diverges = $match->status->value !== $row['status'] || $match->reflection !== $row['reflection'];
+
+                    return ['ulid' => $row['ulid'], 'classification' => $diverges ? 'conflict' : 'existing', 'reason' => $diverges ? $this->conflictReason() : null, 'existing_id' => $match->getKey()];
+                }
+            }
+
             return [
-                'ulid' => $row['ulid'], 'classification' => 'new', 'reason' => null, 'enrollment_ulid' => $row['enrollment_ulid'],
+                'ulid' => $row['ulid'], 'classification' => 'new', 'reason' => null, 'preserve_ulid' => ! $lookups['elsewhere']->has($row['ulid']), 'enrollment_ulid' => $row['enrollment_ulid'],
                 'academic_period_ulid' => $row['academic_period_ulid'], 'template_ulid' => $row['template_ulid'],
                 'status' => $row['status'], 'filled_by' => $row['filled_by'], 'reflection' => $row['reflection'],
                 'submitted_at' => $row['submitted_at'], 'reviewed_at' => $row['reviewed_at'],

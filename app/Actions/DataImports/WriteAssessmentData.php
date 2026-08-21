@@ -122,7 +122,7 @@ class WriteAssessmentData
 
                 $instrument = new Instrument;
                 $instrument->forceFill([
-                    'ulid' => $row['ulid'], 'class_id' => $classId, 'title' => $row['title'], 'status' => $row['status'],
+                    'ulid' => $this->writableUlid($row), 'class_id' => $classId, 'title' => $row['title'], 'status' => $row['status'],
                     'applied_on' => $row['applied_on'],
                     'academic_period_id' => $this->resolveId($row['academic_period_ulid'], $periodsByUlid),
                     'instrument_type_id' => $this->resolveInstrumentTypeId($row['instrument_type'], $instrumentTypesByRef),
@@ -160,7 +160,7 @@ class WriteAssessmentData
                 }
 
                 $group = new InstrumentGroup;
-                $group->forceFill(['ulid' => $row['ulid'], 'instrument_id' => $instrumentId, 'label' => $row['label'], 'sequence' => $row['sequence']]);
+                $group->forceFill(['ulid' => $this->writableUlid($row), 'instrument_id' => $instrumentId, 'label' => $row['label'], 'sequence' => $row['sequence']]);
                 $group->save();
                 $byUlid[$row['ulid']] = $group->getKey();
                 $created++;
@@ -195,7 +195,7 @@ class WriteAssessmentData
 
                 $item = new InstrumentItem;
                 $item->forceFill([
-                    'ulid' => $row['ulid'], 'instrument_id' => $instrumentId, 'instrument_group_id' => $groupId, 'code' => $row['code'],
+                    'ulid' => $this->writableUlid($row), 'instrument_id' => $instrumentId, 'instrument_group_id' => $groupId, 'code' => $row['code'],
                     'label' => $row['label'], 'sequence' => $row['sequence'], 'points_possible' => $row['points_possible'],
                     'scoring_mode' => $row['scoring_mode'], 'scale_id' => $this->resolveScaleId($row['scale'], $scalesByRef),
                     'is_bonus' => $row['is_bonus'], 'source_group_label' => $row['source_group_label'],
@@ -316,7 +316,7 @@ class WriteAssessmentData
 
             $classification = new Classification;
             $classification->forceFill([
-                'ulid' => $row['ulid'], 'enrollment_id' => $enrollmentId,
+                'ulid' => $this->writableUlid($row), 'enrollment_id' => $enrollmentId,
                 'academic_period_id' => $this->resolveId($row['academic_period_ulid'], $periodsByUlid),
                 'scope' => $row['scope'], 'assessment_profile_version_id' => $this->resolveId($row['assessment_profile_version_ulid'], $profileVersionsByUlid),
                 'status' => $row['status'], 'proposed_normalized_value' => $row['proposed_normalized_value'],
@@ -360,7 +360,7 @@ class WriteAssessmentData
             if ($row['classification'] === 'new') {
                 $template = new SelfAssessmentTemplate;
                 $template->forceFill([
-                    'ulid' => $row['ulid'], 'name' => $row['name'], 'is_active' => $row['is_active'],
+                    'ulid' => $this->writableUlid($row), 'name' => $row['name'], 'is_active' => $row['is_active'],
                     'assessment_profile_version_id' => $this->resolveId($row['assessment_profile_version_ulid'], $profileVersionsByUlid),
                     'class_id' => $this->resolveId($row['class_ulid'], $classesByUlid),
                 ]);
@@ -457,7 +457,7 @@ class WriteAssessmentData
 
                 $selfAssessment = new SelfAssessment;
                 $selfAssessment->forceFill([
-                    'ulid' => $row['ulid'], 'enrollment_id' => $enrollmentId, 'academic_period_id' => $periodId,
+                    'ulid' => $this->writableUlid($row), 'enrollment_id' => $enrollmentId, 'academic_period_id' => $periodId,
                     'self_assessment_template_id' => $templateId, 'status' => $row['status'], 'filled_by' => $row['filled_by'],
                     'reflection' => $row['reflection'], 'submitted_at' => $row['submitted_at'], 'reviewed_at' => $row['reviewed_at'],
                     'reviewed_by' => $row['reviewed_by'],
