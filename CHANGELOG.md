@@ -2,7 +2,18 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
-## [0.45.0] — 2026-08-21
+## [0.45.1] — 2026-08-21
+
+### Added
+
+- **Restauro pedagógico para outra organização, com a origem intacta.** Até agora, restaurar um backup para uma organização diferente da que o gerou classificava tudo como não restaurável assim que a organização de origem ainda existisse — mesmo sendo esse exatamente o cenário de copiar dados pedagógicos autorizados para outra conta. Passa a funcionar: quando o `ulid` de uma linha pertence a outra organização, o plano procura agora, só dentro do destino, uma correspondência pela identidade real dessa linha (a mesma chave que a base de dados já usa para a distinguir — ano+sequência de um período, nome de uma escala, rótulo de uma turma, código de um aluno, e por aí em diante; para o punhado de domínios sem essa chave — elementos de avaliação, registos, estratégias — usa-se a combinação de conteúdo que os identifica de forma equivalente, incluindo o hash já guardado num relatório finalizado ou numa avaliação intercalar). Havendo correspondência, é `existente` ou `conflito`, exatamente como uma linha do mesmo destino; não havendo, é `nova`, restaurada com uma identidade própria gerada de raiz — nunca a da origem. A organização de origem nunca é escrita, nunca é lida senão para esta comparação, e nunca perde nenhum dado. Reimportar o mesmo backup para o mesmo destino continua sem criar duplicados, pela mesma correspondência.
+
+### Fixed
+
+- **A verificação de "este registo já existe noutra organização" não via escalas nem tipos de elemento de outras organizações.** `Scale` e `InstrumentType` protegem a visibilidade dos seus registos de sistema com um âmbito de consulta próprio (`scaleVisibility`, `typeVisibility`), não o âmbito genérico `organization` que a verificação removia explicitamente. O resultado: uma escala ou tipo de elemento próprio de outra organização parecia não existir em lado nenhum, caía no caminho de "genuinamente novo" e tentava gravar-se com o `ulid` da origem — falhando com um erro de base de dados em vez de ser tratado como uma clonagem. Corrigido para remover todos os âmbitos da consulta, não só um nome fixo.
+- **Um domínio sem correspondência dentro da mesma organização rebentava a classificação.** A verificação da chave de negócio de um domínio (`BuildAssessmentStructurePlan::classifyDomains()`) referenciava a variável que a construía sem a capturar no closure — um erro de PHP a meio da pré-visualização sempre que havia pelo menos um domínio nessas condições.
+
+
 
 ### Added
 
