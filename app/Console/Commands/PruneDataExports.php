@@ -16,6 +16,13 @@ use Illuminate\Support\Facades\Storage;
  * this command hasn't run yet — this is the disk cleanup, not the access
  * control. It also clears `disk_path` on the row so a stale path never
  * outlives the file on disk.
+ *
+ * `withoutGlobalScope('organization')` is required, not incidental: this
+ * runs from the scheduler, where no tenant is ever resolved
+ * (CurrentOrganization::id() throws otherwise — there is nothing to scope
+ * TO), and its whole job is to sweep every organization's expired exports in
+ * one pass, the same legitimate cross-tenant case AdminAccountController's
+ * blockingDependencies() already uses this for.
  */
 class PruneDataExports extends Command
 {
@@ -32,6 +39,7 @@ class PruneDataExports extends Command
         $cutoff = now()->subMinutes($olderThanMinutes)->getTimestamp();
 
         DataExport::query()
+            ->withoutGlobalScope('organization')
             ->whereNotNull('disk_path')
             ->where('expires_at', '<', now())
             ->update(['disk_path' => null]);

@@ -394,4 +394,35 @@ class DataExportTest extends TestCase
 
         $this->assertNull($export->fresh()->disk_path);
     }
+
+    /**
+     * Regression: this command runs from the scheduler (routes/console.php,
+     * hourly), where NO organization is ever resolved — CurrentOrganization
+     * throws for any tenant-scoped query that does not explicitly say
+     * withoutGlobalScope('organization'). The test above calls
+     * $this->artisan() right after a real HTTP request, which leaves a
+     * tenant resolved in the container and would pass even if this command
+     * were broken for the one context that actually matters. This one
+     * forces app(CurrentOrganization::class)->forget() first, so it fails
+     * exactly the way the real scheduler would if the fix regressed.
+     */
+    #[Test]
+    public function the_prune_command_runs_with_no_tenant_resolved_at_all(): void
+    {
+        Storage::fake('local');
+        [$organization, $owner] = $this->institutionalOrganization();
+
+        $this->actingAs($owner)->withSession(['organization_id' => $organization->id])
+            ->post('/data-exports')->assertRedirect();
+        $export = DataExport::withoutGlobalScope('organization')->where('requested_by', $owner->id)->firstOrFail();
+        $export->forceFill(['expires_at' => now()->subDay()])->save();
+        touch(Storage::disk('local')->path($export->disk_path), now()->subDay()->getTimestamp());
+
+        app(CurrentOrganization::class)->forget();
+        $this->assertFalse(app(CurrentOrganization::class)->isResolved());
+
+        $this->artisan(PruneDataExports::class)->assertSuccessful();
+
+        $this->assertNull($export->fresh()->disk_path);
+    }
 }

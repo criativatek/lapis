@@ -9,6 +9,17 @@ type Member = {
     active: boolean;
 };
 
+// Read-only (§19 of the lifecycle brief) — this backoffice has no button
+// that acts on a closure request. The person recovers or exports it
+// themselves; an operator only needs to see it.
+type ClosureStatus = {
+    requested_at: string;
+    scheduled_deletion_at: string;
+    days_remaining: number;
+    recoverable: boolean;
+    eligible_for_deletion: boolean;
+};
+
 type Account = {
     ulid: string;
     name: string;
@@ -21,6 +32,7 @@ type Account = {
         is_platform_admin: boolean;
         active: boolean;
         deactivated_at: string | null;
+        closure: ClosureStatus | null;
     };
     members_count: number;
     members: Member[];
@@ -30,6 +42,7 @@ type Account = {
     modules: string[];
     deactivation_refusal: string | null;
     blocking: Record<string, number>;
+    closure: ClosureStatus | null;
 };
 
 const props = defineProps<{ account: Account; plans: { key: string; name: string }[] }>();
@@ -90,6 +103,19 @@ function destroy(): void {
                 {{ account.type === 'institutional' ? 'Institucional' : 'Pessoal' }} · criada {{ account.created_at }} ·
                 {{ account.members_count }} {{ account.members_count === 1 ? 'membro' : 'membros' }}
             </p>
+            <p v-if="account.closure" class="mt-1 text-sm">
+                <span
+                    class="rounded-full px-2 py-0.5 text-xs"
+                    :class="
+                        account.closure.eligible_for_deletion
+                            ? 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300'
+                            : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                    "
+                >
+                    organização em encerramento —
+                    {{ account.closure.eligible_for_deletion ? 'elegível para eliminação' : `${account.closure.days_remaining} dia(s) restantes` }}
+                </span>
+            </p>
         </div>
 
         <p
@@ -122,6 +148,18 @@ function destroy(): void {
                     class="rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-800 dark:bg-red-950 dark:text-red-300"
                 >
                     desativada em {{ account.owner.deactivated_at }}
+                </span>
+                <span
+                    v-if="account.owner.closure"
+                    class="rounded-full px-2 py-0.5 text-xs"
+                    :class="
+                        account.owner.closure.eligible_for_deletion
+                            ? 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300'
+                            : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                    "
+                >
+                    conta em encerramento —
+                    {{ account.owner.closure.eligible_for_deletion ? 'elegível para eliminação' : `${account.owner.closure.days_remaining} dia(s) restantes` }}
                 </span>
             </div>
 

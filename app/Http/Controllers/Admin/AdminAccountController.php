@@ -24,6 +24,7 @@ use App\Models\User;
 use App\Services\Audit\AuditLog;
 use App\Services\Organizations\ChangeOrganizationPlan;
 use App\Support\Entitlements\Entitlements;
+use App\Support\Retention\ClosureStatusPresenter;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -53,6 +54,7 @@ class AdminAccountController extends Controller
         protected ChangeOrganizationPlan $planChange,
         protected CreateInstitutionalOrganization $createInstitutional,
         protected AddOrganizationMember $addOrganizationMember,
+        protected ClosureStatusPresenter $closureStatus,
     ) {}
 
     public function index(Request $request): Response
@@ -230,7 +232,24 @@ class AdminAccountController extends Controller
                     'is_platform_admin' => (bool) ($owner?->is_platform_admin),
                     'active' => $owner === null || $owner->isActive(),
                     'deactivated_at' => $owner?->deactivated_at?->toDateTimeString(),
+                    // Read-only (§19 of the lifecycle brief) — this backoffice
+                    // has no button that acts on it. The owner's own personal
+                    // account, not this organization's own closure below.
+                    'closure' => $owner !== null && $owner->isClosureRequested()
+                        ? [
+                            ...$this->closureStatus->personal($owner->closure_requested_at, $owner->scheduled_deletion_at),
+                            'eligible_for_deletion' => $owner->isEligibleForDeletion(),
+                        ]
+                        : null,
                 ],
+                // The organization's OWN closure (institutional only) — distinct
+                // from owner.closure above, which is the person, not the school.
+                'closure' => $organization->isClosureRequested()
+                    ? [
+                        ...$this->closureStatus->institutional($organization->closure_requested_at, $organization->scheduled_deletion_at),
+                        'eligible_for_deletion' => $organization->isEligibleForDeletion(),
+                    ]
+                    : null,
                 'members_count' => $organization->members->count(),
                 'plan' => $subscription?->plan?->name,
                 'plan_key' => $subscription?->plan?->key,
