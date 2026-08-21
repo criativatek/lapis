@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.45.3] — 2026-08-21
+
+### Changed
+
+- **Clarificado, por auditoria, o comportamento de autoria na clonagem entre organizações (não é um bug).** Registos pedagógicos, estratégias/medidas e relatórios têm autor obrigatório na base de dados — não podem, por regra já existente, ser atribuídos a ninguém que não seja quem os escreveu. Quando o mesmo professor restaura a própria conta para uma organização nova ou vazia, a autoria mapeia-se corretamente, sem qualquer alteração de código — já funcionava. Quando o destino é uma conta genuinamente diferente, esses três domínios ficam corretamente `invalid`; a estrutura e a avaliação sem exigência de autoria pessoal continuam a clonar-se normalmente. A mensagem mostrada nesses casos passa a explicar isto diretamente — "a autoria de X é obrigatória e só pode ser confirmada com a conta que a criou" — em vez de um genérico "não pode ser confirmada com segurança". Ver `docs/backup-schema.md`.
+
 ## [0.45.2] — 2026-08-21
 
 ### Added
