@@ -26,12 +26,23 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string $name
  * @property string|null $description
  * @property int|null $current_version_id
+ * @property bool $is_institutional_template
  */
 #[Fillable(['academic_year_id', 'subject_id', 'grade_level', 'name', 'description'])]
 class AssessmentProfile extends Model
 {
     /** @use HasFactory<AssessmentProfileFactory> */
     use BelongsToOrganization, HasFactory, HasUlids, SoftDeletes;
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'is_institutional_template' => 'boolean',
+        ];
+    }
 
     /**
      * @return list<string>

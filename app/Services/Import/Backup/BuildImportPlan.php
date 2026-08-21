@@ -8,6 +8,8 @@ use App\Models\Organization;
 use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\Subject;
+use App\Models\User;
+use App\Services\Import\Backup\Concerns\ResolvesBackupReferences;
 use App\Support\Retention\AcademicYearRetentionClassifier;
 use Illuminate\Support\Collection;
 
@@ -19,62 +21,160 @@ use Illuminate\Support\Collection;
  * never disagree about what would happen.
  *
  * Academic years and subjects are matched by label/name against the
- * DESTINATION organization, never created. The backup carries them only as
- * flat strings on each class row (no starts_on/ends_on for a year, no code
- * for a subject) — inventing dates or a code to satisfy a create would be
- * exactly the "dados inexistentes" §3 forbids. A class whose year or
- * subject is missing in the destination is classified `invalid`: the
- * teacher configures it first (Configuração → Estrutura do Ano Letivo),
- * then re-runs the same backup, which is naturally idempotent.
+ * DESTINATION organization, never created — a decision already made in
+ * Fatia 6 and left untouched here (§90 of the Fatia 6.1 brief: "não abrir
+ * decisões funcionais já tomadas").
  *
- * Instruments and classifications are always `unsupported`: the current
- * backup format does not carry the foreign keys (instrument_type_id,
- * academic_period_id, assessment_profile_version_id) a valid row needs —
- * inventing them would be worse than not restoring them. They are still
- * counted and shown, never silently dropped from the teacher's view.
+ * Fatia 6.1 (schema_version 4, docs/backup-schema.md) completes the
+ * pedagogical restore that used to stop at classes/students/enrollments,
+ * with instruments and classifications always `unsupported`. They are not
+ * anymore. The classification logic for the new domains lives in three
+ * collaborators, each covering one tier and run in dependency order —
+ * split into separate classes purely because a single file this size made
+ * PHPStan's own memory footprint too large to check reliably, not for any
+ * architectural reason:
+ *
+ *   - `BuildAssessmentStructurePlan` — academic periods, scales, instrument
+ *     types, domains, assessment profiles/versions and their weights. Runs
+ *     BEFORE classes, since a class can reference a profile version.
+ *   - `BuildAssessmentDataPlan` — elements/items/scores, the full
+ *     classification record, self-assessments. Runs after classes/
+ *     students/enrollments, which it references.
+ *   - `BuildPedagogicalRecordsPlan` — interim assessments, pedagogical
+ *     records (Registos), interventions (Estratégias e Medidas) and their
+ *     reviews, finalized reports. Independent of the calculation engine;
+ *     runs last.
+ *
+ * Three shapes of "restorable" recur throughout all three collaborators:
+ *   - ulid-identified rows (a class, a scale, an instrument, a report, …):
+ *     match by ulid in the destination, else check it belongs to another
+ *     organization first (global ulid uniqueness, §10 of the Fatia 6.1
+ *     brief — never a raw SQL error), else classify new/conflict by a
+ *     business key.
+ *   - flat child rows with no ulid of their own (profile_version_domains,
+ *     item_domain_allocations, self_assessment_questions, …): always
+ *     `new` once their parent(s) resolve, matched for idempotency by
+ *     whatever natural key the database itself enforces.
+ *   - system/reference rows (a system scale, a system instrument type):
+ *     match-only by name/code, NEVER created — every database seeds its
+ *     own copy of these with its own ulid, so ulid matching would never
+ *     work across databases even for the exact same conceptual row (§12).
+ *
+ * Authorship (§30-31, `ResolvesBackupReferences::resolveAuthor()`): every
+ * author-shaped field the backup carries is an email. The only safe,
+ * non-inventive resolution is "this row's author is literally the person
+ * confirming THIS import" — their own email, compared case-insensitively.
+ * Anything else leaves a nullable author field empty (the fact survives,
+ * the provenance doesn't) or, for a NOT NULL author column, blocks the row
+ * as `invalid` rather than substituting anyone.
  */
 class BuildImportPlan
 {
-    public function __construct(private readonly AcademicYearRetentionClassifier $retentionClassifier) {}
+    use ResolvesBackupReferences;
+
+    public function __construct(
+        private readonly AcademicYearRetentionClassifier $retentionClassifier,
+        private readonly BuildAssessmentStructurePlan $structurePlan,
+        private readonly BuildAssessmentDataPlan $dataPlan,
+        private readonly BuildPedagogicalRecordsPlan $recordsPlan,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $canonical
      * @param  list<array{domain: string, ulid: string|null, reason: string}>  $rowIssues
      * @return array{rows: array<string, array<int, array<string, mixed>>>, counts: array<string, array<string, int>>, can_confirm: bool}
      */
-    public function build(array $canonical, Organization $destination, array $rowIssues): array
+    public function build(array $canonical, Organization $destination, User $actor, array $rowIssues): array
     {
         $classesIn = $canonical['classes'] ?? [];
         $studentsIn = $canonical['students'] ?? [];
         $enrollmentsIn = $canonical['enrollments'] ?? [];
-        $instrumentsIn = $canonical['instruments'] ?? [];
-        $classificationsIn = $canonical['classifications'] ?? [];
 
         $academicYears = $this->resolveAcademicYears($classesIn, $destination);
         $subjects = $this->resolveSubjects($classesIn, $destination);
 
-        $classRows = $this->classifyClasses($classesIn, $destination, $academicYears['byLabel'], $subjects['byName']);
+        $structure = $this->structurePlan->build(
+            $canonical['academic_periods'] ?? [],
+            $canonical['scales'] ?? [],
+            $canonical['instrument_types'] ?? [],
+            $canonical['domains'] ?? [],
+            $canonical['assessment_profiles'] ?? [],
+            $canonical['assessment_profile_versions'] ?? [],
+            $canonical['profile_version_domains'] ?? [],
+            $canonical['profile_version_periods'] ?? [],
+            $destination,
+            $academicYears['byLabel'],
+            $subjects['byName'],
+        );
+
+        $classRows = $this->classifyClasses($classesIn, $destination, $academicYears['byLabel'], $subjects['byName'], $structure['profileVersionsByUlid']);
         $classesByUlid = collect($classRows)->keyBy('ulid');
 
         $studentRows = $this->classifyStudents($studentsIn, $destination);
         $studentsByUlid = collect($studentRows)->keyBy('ulid');
 
         $enrollmentRows = $this->classifyEnrollments($enrollmentsIn, $destination, $classesByUlid, $studentsByUlid);
+        $enrollmentsByUlid = collect($enrollmentRows)->keyBy('ulid');
 
-        $instrumentRows = $this->classifyUnsupported($instrumentsIn, 'instruments');
-        $classificationRows = $this->classifyUnsupported($classificationsIn, 'classifications');
+        $data = $this->dataPlan->build(
+            $canonical['instruments'] ?? [],
+            $canonical['instrument_groups'] ?? [],
+            $canonical['instrument_items'] ?? [],
+            $canonical['item_domain_allocations'] ?? [],
+            $canonical['student_item_scores'] ?? [],
+            $canonical['classifications'] ?? [],
+            $canonical['self_assessment_templates'] ?? [],
+            $canonical['self_assessment_questions'] ?? [],
+            $canonical['self_assessments'] ?? [],
+            $canonical['self_assessment_responses'] ?? [],
+            $destination,
+            $actor,
+            $classesByUlid,
+            $enrollmentsByUlid,
+            $structure['periodsByUlid'],
+            $structure['domainsByUlid'],
+            $structure['profileVersionsByUlid'],
+            $structure['scaleResolution'],
+            $structure['instrumentTypeResolution'],
+        );
+
+        $records = $this->recordsPlan->build(
+            $canonical['interim_assessments'] ?? [],
+            $canonical['evidence_records'] ?? [],
+            $canonical['interventions'] ?? [],
+            $canonical['intervention_reviews'] ?? [],
+            $canonical['reports'] ?? [],
+            $destination,
+            $actor,
+            $classesByUlid,
+            $enrollmentsByUlid,
+            $structure['periodsByUlid'],
+            $structure['domainsByUlid'],
+            $academicYears['byLabel'],
+        );
 
         $issuesByDomain = collect($rowIssues)->groupBy('domain');
 
-        $rows = [
-            'academic_years' => $academicYears['rows'],
-            'subjects' => $subjects['rows'],
-            'classes' => $this->appendRowIssues($classRows, $issuesByDomain->get('classes', collect())),
-            'students' => $this->appendRowIssues($studentRows, $issuesByDomain->get('students', collect())),
-            'enrollments' => $this->appendRowIssues($enrollmentRows, $issuesByDomain->get('enrollments', collect())),
-            'instruments' => $this->appendRowIssues($instrumentRows, $issuesByDomain->get('instruments', collect())),
-            'classifications' => $this->appendRowIssues($classificationRows, $issuesByDomain->get('classifications', collect())),
-        ];
+        $rows = array_merge(
+            [
+                'academic_years' => $academicYears['rows'],
+                'subjects' => $subjects['rows'],
+                'classes' => $classRows,
+                'students' => $studentRows,
+                'enrollments' => $enrollmentRows,
+            ],
+            $structure['rows'],
+            $data['rows'],
+            $records['rows'],
+        );
+
+        $noIssueDomains = ['academic_years', 'subjects', 'profile_version_domains', 'profile_version_periods', 'item_domain_allocations', 'student_item_scores', 'self_assessment_questions', 'self_assessment_responses'];
+
+        foreach ($rows as $domain => $domainRows) {
+            if (! in_array($domain, $noIssueDomains, true)) {
+                $rows[$domain] = $this->appendRowIssues($domainRows, $issuesByDomain->get($domain, collect()));
+            }
+        }
 
         $counts = [];
         $hasNew = false;
@@ -99,39 +199,6 @@ class BuildImportPlan
             'counts' => $counts,
             'can_confirm' => $hasNew,
         ];
-    }
-
-    /**
-     * A translated string, never the string|array union __() is typed to
-     * return — every call site here passes a literal key with placeholders,
-     * which always resolves to a string.
-     *
-     * @param  array<string, string>  $replace
-     */
-    private function t(string $key, array $replace = []): string
-    {
-        return (string) __($key, $replace);
-    }
-
-    /**
-     * `ulid` is unique across the WHOLE table, not per-organization — the
-     * database will refuse a second row with a ulid another organization's
-     * row already holds. Checked up front, cross-tenant on purpose
-     * (`withoutGlobalScope`, the same legitimate pattern already used for
-     * admin reports), so this surfaces as an `invalid` row in the preview
-     * instead of a raw constraint violation at write time.
-     *
-     * @param  class-string<SchoolClass|Student|Enrollment>  $modelClass
-     * @param  Collection<int, string>  $ulids
-     * @return Collection<string, int>
-     */
-    private function ulidOrganizationsElsewhere(string $modelClass, Collection $ulids, int $destinationOrganizationId): Collection
-    {
-        return $modelClass::query()
-            ->withoutGlobalScope('organization')
-            ->whereIn('ulid', $ulids)
-            ->where('organization_id', '!=', $destinationOrganizationId)
-            ->pluck('organization_id', 'ulid');
     }
 
     /**
@@ -205,16 +272,19 @@ class BuildImportPlan
      * @param  array<int, array<string, mixed>>  $classesIn
      * @param  Collection<string, AcademicYear>  $academicYearsByLabel
      * @param  Collection<string, Subject>  $subjectsByName
+     * @param  Collection<string, array<string, mixed>>  $profileVersionsByUlid
      * @return array<int, array<string, mixed>>
      */
-    private function classifyClasses(array $classesIn, Organization $destination, Collection $academicYearsByLabel, Collection $subjectsByName): array
+    private function classifyClasses(array $classesIn, Organization $destination, Collection $academicYearsByLabel, Collection $subjectsByName, Collection $profileVersionsByUlid): array
     {
         $ulids = collect($classesIn)->pluck('ulid');
         $existingByUlid = SchoolClass::query()->where('organization_id', $destination->getKey())->whereIn('ulid', $ulids)->get()->keyBy('ulid');
         $elsewhere = $this->ulidOrganizationsElsewhere(SchoolClass::class, $ulids, $destination->getKey());
 
-        return collect($classesIn)->map(function (array $row) use ($destination, $academicYearsByLabel, $subjectsByName, $existingByUlid, $elsewhere): array {
+        return collect($classesIn)->map(function (array $row) use ($academicYearsByLabel, $subjectsByName, $profileVersionsByUlid, $existingByUlid, $elsewhere, $destination): array {
             $existing = $existingByUlid->get($row['ulid']);
+            $profileVersionUlid = $row['assessment_profile_version_ulid'] ?? null;
+            $profileVersion = $profileVersionUlid !== null ? $profileVersionsByUlid->get($profileVersionUlid) : null;
 
             if ($existing !== null) {
                 $diverges = $existing->label !== $row['label'] || $existing->status->value !== $row['status'];
@@ -267,6 +337,15 @@ class BuildImportPlan
                 ];
             }
 
+            // A profile version that itself cannot be restored (invalid) is
+            // not fatal to the class — a class without an assessment
+            // profile is still a legitimate, common state in this app; the
+            // teacher assigns one afterwards. Never inherited from a
+            // profile version otherwise resolvable this same run.
+            $profileVersionId = ($profileVersionUlid !== null && $profileVersion !== null && in_array($profileVersion['classification'], ['new', 'existing'], true))
+                ? ($profileVersion['existing_id'] ?? null)
+                : null;
+
             return [
                 'ulid' => $row['ulid'],
                 'label' => $row['label'],
@@ -275,6 +354,8 @@ class BuildImportPlan
                 'academic_year_id' => $academicYear->getKey(),
                 'subject_id' => $subject?->getKey(),
                 'status' => $row['status'],
+                'assessment_profile_version_ulid' => $profileVersionId === null ? $profileVersionUlid : null,
+                'assessment_profile_version_id' => $profileVersionId,
             ];
         })->values()->all();
     }
@@ -405,36 +486,5 @@ class BuildImportPlan
                 'class_number' => $row['class_number'],
             ];
         })->values()->all();
-    }
-
-    /**
-     * @param  array<int, array<string, mixed>>  $rows
-     * @param  iterable<array{domain: string, ulid: string|null, reason: string}>  $issues
-     * @return array<int, array<string, mixed>>
-     */
-    private function appendRowIssues(array $rows, iterable $issues): array
-    {
-        foreach ($issues as $issue) {
-            $rows[] = ['ulid' => $issue['ulid'], 'classification' => 'invalid', 'reason' => $issue['reason']];
-        }
-
-        return $rows;
-    }
-
-    /**
-     * @param  array<int, array<string, mixed>>  $rowsIn
-     * @return array<int, array<string, mixed>>
-     */
-    private function classifyUnsupported(array $rowsIn, string $reasonDomain): array
-    {
-        $reason = $reasonDomain === 'instruments'
-            ? $this->t('Este backup não inclui os campos necessários (tipo, período letivo) para restaurar elementos de avaliação nesta versão.')
-            : $this->t('Este backup não inclui os campos necessários (período letivo, versão do perfil de avaliação) para restaurar classificações nesta versão.');
-
-        return collect($rowsIn)->map(fn (array $row): array => [
-            'ulid' => $row['ulid'],
-            'classification' => 'unsupported',
-            'reason' => $reason,
-        ])->values()->all();
     }
 }
