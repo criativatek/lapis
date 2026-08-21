@@ -28,3 +28,8 @@ Schedule::command('inovar-exports:prune')->hourly();
 // a technical backup, kept only for the configured availability window
 // (default 24h). See App\Console\Commands\PruneDataExports.
 Schedule::command('data-exports:prune')->hourly();
+
+// Backup restores uploaded, previewed, and never confirmed (Fatia 6) — a
+// backup can carry real students' pseudonymised data, so it is not kept
+// indefinitely either. See App\Console\Commands\PruneDataImports.
+Schedule::command('data-imports:prune')->hourly();
