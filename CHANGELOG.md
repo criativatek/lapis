@@ -2,6 +2,16 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.44.0] — 2026-08-21
+
+### Added
+
+- **Restauro e importação segura de backup.** Um professor ou responsável pode carregar um backup gerado pelo próprio LÁPIS (o ZIP completo de uma exportação, ou apenas `backup-lapis.json`) em Configurações → Importar dados, rever uma pré-visualização de tudo o que seria criado, existente, em conflito ou não suportado, e só então confirmar — nada é escrito antes da confirmação explícita. Restaura turmas, alunos e inscrições com a identidade original (`ulid`) preservada, o que torna importar o mesmo backup duas vezes seguro (a segunda vez não cria duplicados). Nunca sobrescreve um registo existente que tenha divergido localmente — fica marcado como conflito, nunca em merge silencioso. Anos letivos e disciplinas em falta no destino bloqueiam apenas a turma que os referencia, com uma mensagem clara em vez de inventar dados; elementos de avaliação e classificações são sempre marcados como não suportados nesta versão, por o formato de backup ainda não transportar os dados necessários para os recriar em segurança. Ver `docs/data-import.md`.
+- **Segurança de ficheiro dedicada ao restauro.** O ZIP nunca é extraído para disco — só a entrada `backup-lapis.json` é lida diretamente, depois de validar todas as entradas uma a uma (limite de 500 entradas, 20 MB por entrada, 50 MB no total, e rejeição de qualquer nome de entrada com travessia de diretório ou caminho absoluto). Um leitor separado varre o conteúdo à procura de qualquer chave com forma de segredo (password, token, 2FA, passkey, SMTP, etc.) a qualquer profundidade e rejeita o ficheiro inteiro se encontrar alguma — antes mesmo de qualquer campo ser lido para a base de dados.
+- **Limitação documentada: identidade global de `ulid`.** `classes.ulid`, `students.ulid` e `enrollments.ulid` são únicos em toda a base de dados, não por organização — restaurar para uma organização diferente da de origem só cria registos novos se a origem já não os tiver. O plano de importação deteta isto na pré-visualização (classificando a linha como inválida, com uma mensagem explícita) em vez de deixar a escrita falhar com um erro SQL bruto.
+- `php artisan data-imports:prune`, agendado de hora a hora, fecha restauros por confirmar passado o prazo de expiração e limpa o ficheiro carregado e quaisquer ficheiros órfãos — nunca os dados já restaurados.
+- `GenerateDataExport` passa a `schema_version = 3`: cada linha de `enrollments` no backup transporta agora `enrolled_on`, `left_on` e `class_number`, o mínimo necessário para recriar uma inscrição sem inventar uma data. Backups `schema_version = 2` já emitidos continuam legíveis; linhas que precisariam de `enrolled_on` para serem criadas ficam marcadas como não suportadas em vez de inventarem a data em falta.
+
 ## [0.43.0] — 2026-08-21
 
 ### Added
