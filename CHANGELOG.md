@@ -2,6 +2,35 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.43.0] — 2026-08-21
+
+### Added
+
+- **Nova página pública em `/`.** A homepage deixa de ser o cartão de visita de quatro pilares e passa a ser a página comercial do produto: problema, como funciona, personalização da avaliação, funcionalidades, o produto em ecrã, o que se ganha, confiança e proteção de dados, planos, perguntas frequentes e chamada final. Cabeçalho público fixo com âncoras e menu para telemóvel, e rodapé com produto e conta.
+- **Os cartões de planos são lidos das tabelas de entitlements, não escritos no componente.** `HomeController` devolve cada plano com os módulos que carrega e, do segundo em diante, só o que ACRESCENTA ao anterior — por isso «tudo do LÁPIS Base, mais…» nunca pode divergir de `module_plan`. A tabela «Comparar os três planos» é gerada da mesma fonte. Mover um módulo entre planos no `EntitlementsSeeder` muda a página sem tocar em código de frontend.
+- **Sete maquetas fiéis de ecrãs reais** — a proposta de classificação, o perfil de avaliação versionado, a pauta importada, a grelha de correção com os estados por célula, a análise da turma, as estratégias e medidas, e o relatório por secções — construídas com os componentes e os tokens da própria aplicação, e não com imagens. A análise da turma reutiliza o `OutcomeDonut` do dashboard de Estatística: uma página que redesenha um gráfico que o produto já tem está a mostrar algo que o produto não faz. Os dados são representativos; todos os estados e colunas mostrados existem.
+- **As funcionalidades são apresentadas como as cinco etapas do ano** — organizar, avaliar, acompanhar, intervir, documentar — em separadores com um ecrã real por etapa, na mesma ordem por que `config/navigation.php` constrói o menu lateral. Uma grelha de quinze cartões iguais era a maneira óbvia de mostrar isto e a errada: quinze cartões dizem «aqui está uma lista», e ninguém lê uma lista. O `tablist` responde às setas do teclado.
+- **Uma banda curta com as três regras de cálculo** que uma folha de cálculo não tem — vazio não é zero, «não aplicável» sai da conta, chegar tarde não custa zeros (§13.3, §11.4). Um argumento vale mais numa linha do que explicado.
+- **SEO servido pelo servidor.** `description`, `canonical`, Open Graph, Twitter card e JSON-LD `SoftwareApplication` são escritos em `resources/views/app.blade.php` para a componente `Welcome`. Não podem viver no `<Head>` do Inertia: o SSR está desligado, e um robô lê a resposta antes de o bundle correr. Há um teste que fixa isto.
+
+### Changed
+
+- **A página responde ao ponteiro e ao scroll.** As maquetas levantam-se e os três pontos do cabeçalho ganham cor; os cartões de planos levantam-se com a sombra a acompanhar; as linhas das perguntas aquecem e o «+» roda; os separadores das etapas, os cartões do problema, as ligações do menu e do rodapé têm todos estado. Ao entrar em ecrã, cada secção revela-se — as maquetas em escala, o texto a subir — e o traço de acento do sobretítulo, a linha que liga os quatro passos e o traço de cada regra desenham-se da esquerda para a direita. Tudo isto é `motion-safe`: com `prefers-reduced-motion` o conteúdo aparece já colocado e nada se move.
+- **Cada maqueta abre «O LÁPIS por dentro».** Clicar numa das janelas abre um diálogo com a estrutura da aplicação — o menu lateral pela ordem real, os seletores de contexto no cabeçalho, as ações da turma e a tabela de proposta e decisão — com cinco explicações que acendem a zona a que dizem respeito. Funciona nos dois sentidos: apontar para uma zona da imagem acende a explicação, e percorrer a lista acende a zona. A lista é o caminho acessível, feita de botões reais — e é por isso que a imagem não tem interatividade própria: um ponto sensível sobre a tabela teria de ser um botão a envolver uma tabela, o que não é válido nem utilizável.
+- **O cabeçalho e o rodapé passam a ter tom próprio** — papel frio em claro, carvão azulado em escuro — em vez de serem o fundo da página com um contorno. Num ecrã escuro isso eram três pretos empilhados, e a moldura desaparecia dentro do conteúdo.
+- **Barra de progresso de leitura** no limite inferior do cabeçalho, a partir do momento em que a página desce. Decorativa — o número que codifica é o da barra de scroll, que a tecnologia de apoio já expõe.
+- **Os cartões de planos mostram no máximo seis módulos** e contam o resto. O Base carrega catorze, o que fazia um cartão mais alto do que um ecrã de portátil — e uma secção de preços que obriga a percorrer duas vezes é uma secção de preços que se salta. A tabela completa continua a um clique.
+- **As Perguntas passam a duas colunas** — título e chamada para ação à esquerda, perguntas a ocupar a largura que antes ficava vazia.
+- **Copy encurtada** em quase todas as secções. O texto anterior era exato e demasiado longo para uma página que se lê a percorrer.
+- A rota `/` passa de `Route::inertia` para `HomeController`, por precisar de ler os planos. Continua a chamar-se `home` e continua a servir a mesma componente `Welcome`.
+- Quem visita `/` já autenticado continua a ver a página — o cabeçalho e as duas chamadas para ação trocam para «Ir para o painel» em vez de redirecionar, que é o que se espera de quem chega por um link partilhado e a única forma que não pode entrar em ciclo com o painel.
+
+### Não incluído
+
+- **Preços.** Não existe nenhum preço no produto — nem em configuração, nem em base de dados — e a composição comercial dos planos está na lista do §31. Os cartões mostram o que cada plano CARREGA e dizem «Preço por anunciar» no Pro e no Institucional. O Base diz «Incluído ao criar conta», que é literalmente o que acontece hoje: o registo cria a organização já subscrita ao Base e nada pede cartão.
+- Páginas de Termos, Privacidade, Cookies, Sobre e Contacto — não existem, por isso o rodapé não as inventa como links mortos.
+- Imagem Open Graph (`og:image`) — sem asset, o cartão grande do Twitter/X renderiza uma caixa vazia, por isso ficou `summary` e não `summary_large_image`.
+
 ## [0.42.6] — 2026-08-20
 
 ### Fixed

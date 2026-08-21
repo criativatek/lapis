@@ -16,6 +16,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DataExportController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\EvidenceController;
+use App\Http\Controllers\HomeController;
 use App\Http\Controllers\InovarExportController;
 use App\Http\Controllers\InstrumentController;
 use App\Http\Controllers\InterimAssessmentController;
@@ -40,7 +41,9 @@ use App\Http\Controllers\SubjectController;
 use App\Http\Controllers\TeamController;
 use Illuminate\Support\Facades\Route;
 
-Route::inertia('/', 'Welcome')->name('home');
+// The public landing page. A GET (not Route::inertia) because the plan cards
+// are read from the entitlement tables — see HomeController.
+Route::get('/', HomeController::class)->name('home');
 
 // Not tenant data — the changelog is the same for everyone, so it stays
 // outside the 'organization' group (no tenant resolution needed).
