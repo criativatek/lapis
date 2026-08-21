@@ -3,7 +3,6 @@
 namespace App\Services\Import\Backup;
 
 use App\Models\AcademicPeriod;
-use App\Models\AcademicYear;
 use App\Models\AssessmentProfile;
 use App\Models\AssessmentProfileVersion;
 use App\Models\Domain;
@@ -11,7 +10,6 @@ use App\Models\InstrumentType;
 use App\Models\Organization;
 use App\Models\Scale;
 use App\Models\ScaleLevel;
-use App\Models\Subject;
 use App\Services\Import\Backup\Concerns\ResolvesBackupReferences;
 use Illuminate\Support\Collection;
 
@@ -44,8 +42,8 @@ class BuildAssessmentStructurePlan
      * @param  array<int, array<string, mixed>>  $profileVersionsIn
      * @param  array<int, array<string, mixed>>  $profileVersionDomainsIn
      * @param  array<int, array<string, mixed>>  $profileVersionPeriodsIn
-     * @param  Collection<string, AcademicYear>  $academicYearsByLabel
-     * @param  Collection<string, Subject>  $subjectsByName
+     * @param  Collection<string, array<string, mixed>>  $academicYearsByLabel
+     * @param  Collection<string, array<string, mixed>>  $subjectsByName
      * @return array{rows: array<string, array<int, array<string, mixed>>>, periodsByUlid: Collection<string, array<string, mixed>>, domainsByUlid: Collection<string, array<string, mixed>>, profileVersionsByUlid: Collection<string, array<string, mixed>>, scaleResolution: ScaleResolution, instrumentTypeResolution: InstrumentTypeResolution}
      */
     public function build(
@@ -102,14 +100,14 @@ class BuildAssessmentStructurePlan
 
     /**
      * @param  array<int, array<string, mixed>>  $periodsIn
-     * @param  Collection<string, AcademicYear>  $academicYearsByLabel
+     * @param  Collection<string, array<string, mixed>>  $academicYearsByLabel
      * @return array<int, array<string, mixed>>
      */
     private function classifyAcademicPeriods(array $periodsIn, Organization $destination, Collection $academicYearsByLabel): array
     {
         $ulids = collect($periodsIn)->pluck('ulid');
         $lookups = $this->ulidLookups(AcademicPeriod::class, $ulids, $destination);
-        $academicYearIds = $academicYearsByLabel->pluck('id');
+        $academicYearIds = $academicYearsByLabel->pluck('existing_id')->filter();
         $byBusinessKey = $academicYearIds->isEmpty() ? collect() : AcademicPeriod::query()
             ->where('organization_id', $destination->getKey())
             ->whereIn('academic_year_id', $academicYearIds)
@@ -132,16 +130,19 @@ class BuildAssessmentStructurePlan
             }
 
             $academicYear = $academicYearsByLabel->get($row['academic_year']);
+            $academicYearResolvable = $academicYear !== null && in_array($academicYear['classification'], ['new', 'existing'], true);
 
-            if ($academicYear === null) {
+            if (! $academicYearResolvable) {
                 return [
                     'ulid' => $row['ulid'], 'label' => $row['label'], 'classification' => 'invalid',
                     'reason' => $this->t('O ano letivo «:label» ainda não existe nesta organização.', ['label' => $row['academic_year']]),
                 ];
             }
 
+            $academicYearId = $academicYear['existing_id'] ?? null;
+
             if ($lookups['elsewhere']->has($row['ulid'])) {
-                $match = $byBusinessKey->get("{$academicYear->getKey()}:{$row['sequence']}");
+                $match = $academicYearId !== null ? $byBusinessKey->get("{$academicYearId}:{$row['sequence']}") : null;
 
                 if ($match !== null) {
                     $diverges = $match->label !== $row['label'] || $match->kind->value !== $row['kind']
@@ -152,14 +153,14 @@ class BuildAssessmentStructurePlan
 
                 return [
                     'ulid' => $row['ulid'], 'label' => $row['label'], 'classification' => 'new', 'reason' => null, 'preserve_ulid' => false,
-                    'academic_year_id' => $academicYear->getKey(), 'kind' => $row['kind'], 'sequence' => $row['sequence'],
+                    'academic_year_ulid' => $academicYear['ulid'], 'academic_year_id' => $academicYearId, 'kind' => $row['kind'], 'sequence' => $row['sequence'],
                     'starts_on' => $row['starts_on'], 'ends_on' => $row['ends_on'], 'status' => $row['status'],
                 ];
             }
 
-            $businessKeyConflict = AcademicPeriod::query()
+            $businessKeyConflict = $academicYearId !== null && AcademicPeriod::query()
                 ->where('organization_id', $destination->getKey())
-                ->where('academic_year_id', $academicYear->getKey())
+                ->where('academic_year_id', $academicYearId)
                 ->where('sequence', $row['sequence'])
                 ->exists();
 
@@ -169,7 +170,7 @@ class BuildAssessmentStructurePlan
 
             return [
                 'ulid' => $row['ulid'], 'label' => $row['label'], 'classification' => 'new', 'reason' => null,
-                'academic_year_id' => $academicYear->getKey(), 'kind' => $row['kind'], 'sequence' => $row['sequence'],
+                'academic_year_ulid' => $academicYear['ulid'], 'academic_year_id' => $academicYearId, 'kind' => $row['kind'], 'sequence' => $row['sequence'],
                 'starts_on' => $row['starts_on'], 'ends_on' => $row['ends_on'], 'status' => $row['status'],
             ];
         })->values()->all();
@@ -362,7 +363,7 @@ class BuildAssessmentStructurePlan
 
     /**
      * @param  array<int, array<string, mixed>>  $domainsIn
-     * @param  Collection<string, Subject>  $subjectsByName
+     * @param  Collection<string, array<string, mixed>>  $subjectsByName
      * @return array{rows: array<int, array<string, mixed>>}
      */
     private function classifyDomains(array $domainsIn, Organization $destination, Collection $subjectsByName): array
@@ -387,8 +388,9 @@ class BuildAssessmentStructurePlan
             }
 
             $subject = $row['subject'] !== null ? $subjectsByName->get($row['subject']) : null;
+            $subjectResolvable = $row['subject'] === null || ($subject !== null && in_array($subject['classification'], ['new', 'existing'], true));
 
-            if ($row['subject'] !== null && $subject === null) {
+            if (! $subjectResolvable) {
                 return [
                     'ulid' => $row['ulid'], 'name' => $row['name'], 'classification' => 'invalid',
                     'reason' => $this->t('A disciplina «:name» ainda não existe nesta organização.', ['name' => $row['subject']]),
@@ -396,8 +398,10 @@ class BuildAssessmentStructurePlan
                 ];
             }
 
+            $subjectId = $subject['existing_id'] ?? null;
+
             if ($lookups['elsewhere']->has($row['ulid'])) {
-                $match = $byBusinessKey->get(($subject?->getKey() ?? 'null').":{$row['code']}");
+                $match = ($row['subject'] === null || $subjectId !== null) ? $byBusinessKey->get(($subjectId ?? 'null').":{$row['code']}") : null;
 
                 if ($match !== null) {
                     $diverges = $match->name !== $row['name'] || $match->code !== $row['code'];
@@ -405,10 +409,11 @@ class BuildAssessmentStructurePlan
                     return ['ulid' => $row['ulid'], 'name' => $row['name'], 'classification' => $diverges ? 'conflict' : 'existing', 'reason' => $diverges ? $this->conflictReason() : null, 'existing_id' => $match->getKey(), 'parent_domain_ulid' => $row['parent_domain_ulid']];
                 }
 
-                return ['ulid' => $row['ulid'], 'name' => $row['name'], 'classification' => 'new', 'reason' => null, 'preserve_ulid' => false, 'code' => $row['code'], 'subject_id' => $subject?->getKey(), 'sequence' => $row['sequence'], 'is_active' => $row['is_active'], 'parent_domain_ulid' => $row['parent_domain_ulid']];
+                return ['ulid' => $row['ulid'], 'name' => $row['name'], 'classification' => 'new', 'reason' => null, 'preserve_ulid' => false, 'code' => $row['code'], 'subject_ulid' => $subject['ulid'] ?? null, 'subject_id' => $subjectId, 'sequence' => $row['sequence'], 'is_active' => $row['is_active'], 'parent_domain_ulid' => $row['parent_domain_ulid']];
             }
 
-            $businessKeyConflict = Domain::query()->where('organization_id', $destination->getKey())->where('subject_id', $subject?->getKey())->where('code', $row['code'])->exists();
+            $businessKeyConflict = ($row['subject'] === null || $subjectId !== null)
+                && Domain::query()->where('organization_id', $destination->getKey())->where('subject_id', $subjectId)->where('code', $row['code'])->exists();
 
             if ($businessKeyConflict) {
                 return ['ulid' => $row['ulid'], 'name' => $row['name'], 'classification' => 'conflict', 'reason' => $this->conflictReason(), 'parent_domain_ulid' => $row['parent_domain_ulid']];
@@ -416,7 +421,7 @@ class BuildAssessmentStructurePlan
 
             return [
                 'ulid' => $row['ulid'], 'name' => $row['name'], 'classification' => 'new', 'reason' => null,
-                'code' => $row['code'], 'subject_id' => $subject?->getKey(), 'sequence' => $row['sequence'], 'is_active' => $row['is_active'],
+                'code' => $row['code'], 'subject_ulid' => $subject['ulid'] ?? null, 'subject_id' => $subjectId, 'sequence' => $row['sequence'], 'is_active' => $row['is_active'],
                 'parent_domain_ulid' => $row['parent_domain_ulid'],
             ];
         })->values()->all();
@@ -426,8 +431,8 @@ class BuildAssessmentStructurePlan
 
     /**
      * @param  array<int, array<string, mixed>>  $profilesIn
-     * @param  Collection<string, AcademicYear>  $academicYearsByLabel
-     * @param  Collection<string, Subject>  $subjectsByName
+     * @param  Collection<string, array<string, mixed>>  $academicYearsByLabel
+     * @param  Collection<string, array<string, mixed>>  $subjectsByName
      * @return array<int, array<string, mixed>>
      */
     private function classifyProfiles(array $profilesIn, Organization $destination, Collection $academicYearsByLabel, Collection $subjectsByName): array
@@ -453,19 +458,23 @@ class BuildAssessmentStructurePlan
 
             $academicYear = $row['academic_year'] !== null ? $academicYearsByLabel->get($row['academic_year']) : null;
             $subject = $row['subject'] !== null ? $subjectsByName->get($row['subject']) : null;
+            $academicYearResolvable = $row['academic_year'] === null || ($academicYear !== null && in_array($academicYear['classification'], ['new', 'existing'], true));
+            $subjectResolvable = $row['subject'] === null || ($subject !== null && in_array($subject['classification'], ['new', 'existing'], true));
 
-            if (($row['academic_year'] !== null && $academicYear === null) || ($row['subject'] !== null && $subject === null)) {
+            if (! $academicYearResolvable || ! $subjectResolvable) {
                 return [
                     'ulid' => $row['ulid'], 'name' => $row['name'], 'classification' => 'invalid',
-                    'reason' => $academicYear === null
+                    'reason' => ! $academicYearResolvable
                         ? $this->t('O ano letivo «:label» ainda não existe nesta organização.', ['label' => (string) $row['academic_year']])
                         : $this->t('A disciplina «:name» ainda não existe nesta organização.', ['name' => (string) $row['subject']]),
                 ];
             }
 
             if ($lookups['elsewhere']->has($row['ulid'])) {
-                $key = ($academicYear?->getKey() ?? 'null').':'.($subject?->getKey() ?? 'null').":{$row['grade_level']}:{$row['name']}";
-                $match = $byBusinessKey->get($key);
+                $academicYearId = $academicYear['existing_id'] ?? null;
+                $subjectId = $subject['existing_id'] ?? null;
+                $key = ($academicYearId ?? 'null').':'.($subjectId ?? 'null').":{$row['grade_level']}:{$row['name']}";
+                $match = (($row['academic_year'] === null || $academicYearId !== null) && ($row['subject'] === null || $subjectId !== null)) ? $byBusinessKey->get($key) : null;
 
                 if ($match !== null) {
                     $diverges = $match->name !== $row['name'];
@@ -477,7 +486,8 @@ class BuildAssessmentStructurePlan
             return [
                 'ulid' => $row['ulid'], 'name' => $row['name'], 'classification' => 'new', 'reason' => null,
                 'preserve_ulid' => ! $lookups['elsewhere']->has($row['ulid']),
-                'description' => $row['description'], 'academic_year_id' => $academicYear?->getKey(), 'subject_id' => $subject?->getKey(),
+                'description' => $row['description'], 'academic_year_ulid' => $academicYear['ulid'] ?? null, 'academic_year_id' => $academicYear['existing_id'] ?? null,
+                'subject_ulid' => $subject['ulid'] ?? null, 'subject_id' => $subject['existing_id'] ?? null,
                 'grade_level' => $row['grade_level'], 'is_institutional_template' => $row['is_institutional_template'],
             ];
         })->values()->all();

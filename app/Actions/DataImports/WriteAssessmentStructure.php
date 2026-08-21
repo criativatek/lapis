@@ -4,6 +4,7 @@ namespace App\Actions\DataImports;
 
 use App\Actions\DataImports\Concerns\ResolvesWrittenReferences;
 use App\Models\AcademicPeriod;
+use App\Models\AcademicYear;
 use App\Models\AssessmentProfile;
 use App\Models\AssessmentProfileVersion;
 use App\Models\Domain;
@@ -13,6 +14,7 @@ use App\Models\ProfileVersionDomain;
 use App\Models\ProfileVersionPeriod;
 use App\Models\Scale;
 use App\Models\ScaleLevel;
+use App\Models\Subject;
 
 /**
  * Writes the assessment STRUCTURE tier a validated backup's plan already
@@ -35,6 +37,8 @@ class WriteAssessmentStructure
     use ResolvesWrittenReferences;
 
     /**
+     * @param  array<int, array<string, mixed>>  $academicYearRows
+     * @param  array<int, array<string, mixed>>  $subjectRows
      * @param  array<int, array<string, mixed>>  $periodRows
      * @param  array<int, array<string, mixed>>  $scaleRows
      * @param  array<int, array<string, mixed>>  $instrumentTypeRows
@@ -43,9 +47,11 @@ class WriteAssessmentStructure
      * @param  array<int, array<string, mixed>>  $profileVersionRows
      * @param  array<int, array<string, mixed>>  $profileVersionDomainRows
      * @param  array<int, array<string, mixed>>  $profileVersionPeriodRows
-     * @return array{periodsByUlid: array<string, int>, scalesByRef: array<string, int>, scaleLevelsByRef: array<string, int>, instrumentTypesByRef: array<string, int>, domainsByUlid: array<string, int>, profilesByUlid: array<string, int>, profileVersionsByUlid: array<string, int>, createdCounts: array<string, int>}
+     * @return array{academicYearsByUlid: array<string, int>, subjectsByUlid: array<string, int>, periodsByUlid: array<string, int>, scalesByRef: array<string, int>, scaleLevelsByRef: array<string, int>, instrumentTypesByRef: array<string, int>, domainsByUlid: array<string, int>, profilesByUlid: array<string, int>, profileVersionsByUlid: array<string, int>, createdCounts: array<string, int>}
      */
     public function write(
+        array $academicYearRows,
+        array $subjectRows,
         array $periodRows,
         array $scaleRows,
         array $instrumentTypeRows,
@@ -56,16 +62,20 @@ class WriteAssessmentStructure
         array $profileVersionPeriodRows,
         Organization $organization,
     ): array {
-        $periodsByUlid = $this->writeAcademicPeriods($periodRows);
+        $academicYearsByUlid = $this->writeAcademicYears($academicYearRows);
+        $subjectsByUlid = $this->writeSubjects($subjectRows);
+        $periodsByUlid = $this->writeAcademicPeriods($periodRows, $academicYearsByUlid);
         ['scalesByRef' => $scalesByRef, 'scaleLevelsByRef' => $scaleLevelsByRef, 'created' => $scalesCreated] = $this->writeScales($scaleRows);
         ['byRef' => $instrumentTypesByRef, 'created' => $typesCreated] = $this->writeInstrumentTypes($instrumentTypeRows);
-        ['byUlid' => $domainsByUlid, 'created' => $domainsCreated] = $this->writeDomains($domainRows);
-        ['byUlid' => $profilesByUlid, 'createdIds' => $newlyCreatedProfileIds] = $this->writeProfiles($profileRows);
+        ['byUlid' => $domainsByUlid, 'created' => $domainsCreated] = $this->writeDomains($domainRows, $subjectsByUlid);
+        ['byUlid' => $profilesByUlid, 'createdIds' => $newlyCreatedProfileIds] = $this->writeProfiles($profileRows, $academicYearsByUlid, $subjectsByUlid);
         ['byUlid' => $profileVersionsByUlid, 'created' => $versionsCreated] = $this->writeProfileVersions($profileVersionRows, $profilesByUlid, $newlyCreatedProfileIds, $scalesByRef);
         $this->writeProfileVersionDomains($profileVersionDomainRows, $profileVersionsByUlid, $domainsByUlid);
         $this->writeProfileVersionPeriods($profileVersionPeriodRows, $profileVersionsByUlid, $periodsByUlid);
 
         return [
+            'academicYearsByUlid' => $academicYearsByUlid,
+            'subjectsByUlid' => $subjectsByUlid,
             'periodsByUlid' => $periodsByUlid,
             'scalesByRef' => $scalesByRef,
             'scaleLevelsByRef' => $scaleLevelsByRef,
@@ -74,6 +84,8 @@ class WriteAssessmentStructure
             'profilesByUlid' => $profilesByUlid,
             'profileVersionsByUlid' => $profileVersionsByUlid,
             'createdCounts' => [
+                'academic_years' => count(array_filter($academicYearRows, fn (array $r): bool => $r['classification'] === 'new')),
+                'subjects' => count(array_filter($subjectRows, fn (array $r): bool => $r['classification'] === 'new')),
                 'academic_periods' => count(array_filter($periodRows, fn (array $r): bool => $r['classification'] === 'new')),
                 'scales' => $scalesCreated,
                 'instrument_types' => $typesCreated,
@@ -88,7 +100,51 @@ class WriteAssessmentStructure
      * @param  array<int, array<string, mixed>>  $rows
      * @return array<string, int>
      */
-    private function writeAcademicPeriods(array $rows): array
+    private function writeAcademicYears(array $rows): array
+    {
+        $byUlid = [];
+        foreach ($rows as $row) {
+            if ($row['classification'] === 'new') {
+                $year = new AcademicYear;
+                $year->forceFill(['ulid' => $this->writableUlid($row), 'label' => $row['label'], 'starts_on' => $row['starts_on'],
+                    'ends_on' => $row['ends_on'], 'status' => $row['status'], 'country_code' => $row['country_code'], 'region_code' => $row['region_code']]);
+                $year->save();
+                $byUlid[$row['ulid']] = $year->getKey();
+            } elseif ($row['classification'] === 'existing' && isset($row['existing_id'], $row['ulid'])) {
+                $byUlid[$row['ulid']] = (int) $row['existing_id'];
+            }
+        }
+
+        return $byUlid;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<string, int>
+     */
+    private function writeSubjects(array $rows): array
+    {
+        $byUlid = [];
+        foreach ($rows as $row) {
+            if ($row['classification'] === 'new') {
+                $subject = new Subject;
+                $subject->forceFill(['ulid' => $this->writableUlid($row), 'name' => $row['name'], 'code' => $row['code']]);
+                $subject->save();
+                $byUlid[$row['ulid']] = $subject->getKey();
+            } elseif ($row['classification'] === 'existing' && isset($row['existing_id'], $row['ulid'])) {
+                $byUlid[$row['ulid']] = (int) $row['existing_id'];
+            }
+        }
+
+        return $byUlid;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     * @param  array<string, int>  $academicYearsByUlid
+     * @return array<string, int>
+     */
+    private function writeAcademicPeriods(array $rows, array $academicYearsByUlid): array
     {
         $byUlid = [];
 
@@ -96,7 +152,7 @@ class WriteAssessmentStructure
             if ($row['classification'] === 'new') {
                 $period = new AcademicPeriod;
                 $period->forceFill([
-                    'ulid' => $this->writableUlid($row), 'academic_year_id' => $row['academic_year_id'], 'label' => $row['label'],
+                    'ulid' => $this->writableUlid($row), 'academic_year_id' => $row['academic_year_id'] ?? $this->resolveId($row['academic_year_ulid'] ?? null, $academicYearsByUlid), 'label' => $row['label'],
                     'kind' => $row['kind'], 'sequence' => $row['sequence'], 'starts_on' => $row['starts_on'],
                     'ends_on' => $row['ends_on'], 'status' => $row['status'],
                 ]);
@@ -184,9 +240,10 @@ class WriteAssessmentStructure
      * destination row in this same run.
      *
      * @param  array<int, array<string, mixed>>  $rows
+     * @param  array<string, int>  $subjectsByUlid
      * @return array{byUlid: array<string, int>, created: int}
      */
-    private function writeDomains(array $rows): array
+    private function writeDomains(array $rows, array $subjectsByUlid): array
     {
         $byUlid = [];
         $created = 0;
@@ -196,7 +253,7 @@ class WriteAssessmentStructure
         foreach ($rows as $row) {
             if ($row['classification'] === 'new') {
                 $domain = new Domain;
-                $domain->forceFill(['ulid' => $this->writableUlid($row), 'name' => $row['name'], 'code' => $row['code'], 'subject_id' => $row['subject_id'], 'sequence' => $row['sequence'], 'is_active' => $row['is_active']]);
+                $domain->forceFill(['ulid' => $this->writableUlid($row), 'name' => $row['name'], 'code' => $row['code'], 'subject_id' => $row['subject_id'] ?? $this->resolveId($row['subject_ulid'] ?? null, $subjectsByUlid), 'sequence' => $row['sequence'], 'is_active' => $row['is_active']]);
                 $domain->save();
                 $byUlid[$row['ulid']] = $domain->getKey();
                 $created++;
@@ -222,9 +279,11 @@ class WriteAssessmentStructure
 
     /**
      * @param  array<int, array<string, mixed>>  $rows
+     * @param  array<string, int>  $academicYearsByUlid
+     * @param  array<string, int>  $subjectsByUlid
      * @return array{byUlid: array<string, int>, createdIds: array<int, true>}
      */
-    private function writeProfiles(array $rows): array
+    private function writeProfiles(array $rows, array $academicYearsByUlid, array $subjectsByUlid): array
     {
         $byUlid = [];
         /** @var array<int, true> $createdIds */
@@ -235,7 +294,8 @@ class WriteAssessmentStructure
                 $profile = new AssessmentProfile;
                 $profile->forceFill([
                     'ulid' => $this->writableUlid($row), 'name' => $row['name'], 'description' => $row['description'],
-                    'academic_year_id' => $row['academic_year_id'], 'subject_id' => $row['subject_id'],
+                    'academic_year_id' => $row['academic_year_id'] ?? $this->resolveId($row['academic_year_ulid'] ?? null, $academicYearsByUlid),
+                    'subject_id' => $row['subject_id'] ?? $this->resolveId($row['subject_ulid'] ?? null, $subjectsByUlid),
                     'grade_level' => $row['grade_level'], 'is_institutional_template' => $row['is_institutional_template'],
                 ]);
                 $profile->save();

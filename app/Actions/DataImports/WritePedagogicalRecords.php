@@ -39,6 +39,7 @@ class WritePedagogicalRecords
      * @param  array<string, int>  $domainsByUlid
      * @param  array<string, int>  $scalesByRef
      * @param  array<string, int>  $scaleLevelsByRef
+     * @param  array<string, int>  $academicYearsByUlid
      * @return array<string, int>
      */
     public function write(
@@ -54,12 +55,13 @@ class WritePedagogicalRecords
         array $domainsByUlid,
         array $scalesByRef,
         array $scaleLevelsByRef,
+        array $academicYearsByUlid,
     ): array {
         ['byUlid' => $interimByUlid, 'created' => $interimCreated] = $this->writeInterimAssessments($interimRows, $classesByUlid, $periodsByUlid);
         $evidenceCreated = $this->writeEvidenceRecords($evidenceRows, $classesByUlid, $enrollmentsByUlid, $periodsByUlid, $domainsByUlid, $scalesByRef, $scaleLevelsByRef);
         ['byUlid' => $interventionsByUlid, 'created' => $interventionsCreated] = $this->writeInterventions($interventionRows, $classesByUlid, $enrollmentsByUlid, $periodsByUlid, $domainsByUlid);
         $reviewsCreated = $this->writeInterventionReviews($interventionReviewRows, $interventionsByUlid);
-        $reportsCreated = $this->writeReports($reportRows, $classesByUlid, $enrollmentsByUlid, $periodsByUlid, $interimByUlid);
+        $reportsCreated = $this->writeReports($reportRows, $classesByUlid, $enrollmentsByUlid, $periodsByUlid, $interimByUlid, $academicYearsByUlid);
 
         return [
             'interim_assessments' => $interimCreated,
@@ -249,8 +251,9 @@ class WritePedagogicalRecords
      * @param  array<string, int>  $enrollmentsByUlid
      * @param  array<string, int>  $periodsByUlid
      * @param  array<string, int>  $interimByUlid
+     * @param  array<string, int>  $academicYearsByUlid
      */
-    private function writeReports(array $rows, array $classesByUlid, array $enrollmentsByUlid, array $periodsByUlid, array $interimByUlid): int
+    private function writeReports(array $rows, array $classesByUlid, array $enrollmentsByUlid, array $periodsByUlid, array $interimByUlid, array $academicYearsByUlid): int
     {
         $created = 0;
         /** @var array<string, int> $byUlid */
@@ -267,7 +270,8 @@ class WritePedagogicalRecords
             $report->forceFill([
                 'ulid' => $this->writableUlid($row), 'type' => $row['type'], 'status' => 'finalized', 'title' => $row['title'], 'tone' => $row['tone'],
                 'class_id' => $this->resolveId($row['class_ulid'], $classesByUlid), 'enrollment_id' => $this->resolveId($row['enrollment_ulid'], $enrollmentsByUlid),
-                'academic_year_id' => $row['academic_year_id'], 'academic_period_id' => $this->resolveId($row['academic_period_ulid'], $periodsByUlid),
+                'academic_year_id' => $row['academic_year_id'] ?? $this->resolveId($row['academic_year_ulid'] ?? null, $academicYearsByUlid),
+                'academic_period_id' => $this->resolveId($row['academic_period_ulid'], $periodsByUlid),
                 'interim_assessment_id' => $this->resolveId($row['interim_assessment_ulid'], $interimByUlid),
                 'scope_kind' => $row['scope_kind'], 'starts_on' => $row['starts_on'], 'ends_on' => $row['ends_on'],
                 'scope_label' => $row['scope_label'], 'document' => $row['document'], 'document_version' => $row['document_version'],

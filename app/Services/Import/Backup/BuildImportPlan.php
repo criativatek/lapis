@@ -20,10 +20,9 @@ use Illuminate\Support\Collection;
  * only ever acts on rows classified `new`, so preview and execution can
  * never disagree about what would happen.
  *
- * Academic years and subjects are matched by label/name against the
- * DESTINATION organization, never created — a decision already made in
- * Fatia 6 and left untouched here (§90 of the Fatia 6.1 brief: "não abrir
- * decisões funcionais já tomadas").
+ * Academic years and subjects are first-class restorable rows since schema
+ * version 5. Their label/name strings remain the join keys used by older
+ * domain rows, while their ULIDs are carried forward for deferred writes.
  *
  * Fatia 6.1 (schema_version 4, docs/backup-schema.md) completes the
  * pedagogical restore that used to stop at classes/students/enrollments,
@@ -90,8 +89,15 @@ class BuildImportPlan
         $studentsIn = $canonical['students'] ?? [];
         $enrollmentsIn = $canonical['enrollments'] ?? [];
 
-        $academicYears = $this->resolveAcademicYears($classesIn, $destination);
-        $subjects = $this->resolveSubjects($classesIn, $destination);
+        $academicYearLabels = $this->pluckReferenced($classesIn, 'academic_year')
+            ->merge($this->pluckReferenced($canonical['academic_periods'] ?? [], 'academic_year'))
+            ->merge($this->pluckReferenced($canonical['assessment_profiles'] ?? [], 'academic_year'))
+            ->merge($this->pluckReferenced($canonical['reports'] ?? [], 'academic_year'))->filter()->unique()->values();
+        $subjectNames = $this->pluckReferenced($classesIn, 'subject')
+            ->merge($this->pluckReferenced($canonical['assessment_profiles'] ?? [], 'subject'))
+            ->merge($this->pluckReferenced($canonical['domains'] ?? [], 'subject'))->filter()->unique()->values();
+        $academicYears = $this->classifyAcademicYears($canonical['academic_years'] ?? [], $academicYearLabels, $destination);
+        $subjects = $this->classifySubjects($canonical['subjects'] ?? [], $subjectNames, $destination);
 
         $structure = $this->structurePlan->build(
             $canonical['academic_periods'] ?? [],
@@ -168,7 +174,7 @@ class BuildImportPlan
             $records['rows'],
         );
 
-        $noIssueDomains = ['academic_years', 'subjects', 'profile_version_domains', 'profile_version_periods', 'item_domain_allocations', 'student_item_scores', 'self_assessment_questions', 'self_assessment_responses'];
+        $noIssueDomains = ['profile_version_domains', 'profile_version_periods', 'item_domain_allocations', 'student_item_scores', 'self_assessment_questions', 'self_assessment_responses'];
 
         foreach ($rows as $domain => $domainRows) {
             if (! in_array($domain, $noIssueDomains, true)) {
@@ -202,18 +208,45 @@ class BuildImportPlan
     }
 
     /**
-     * @param  array<int, array<string, mixed>>  $classesIn
-     * @return array{rows: array<int, array<string, mixed>>, byLabel: Collection<string, AcademicYear>}
+     * `$canonical[...]` is `mixed` at the type level (the whole payload's
+     * shape is only ever a loose `array<string, mixed>` — every collection
+     * inside it comes from a different, independently validated domain),
+     * so this narrows before ever calling `collect()->pluck()` on it,
+     * rather than asking PHPStan to resolve a template type against
+     * `mixed`.
+     *
+     * @return Collection<int, string>
      */
-    private function resolveAcademicYears(array $classesIn, Organization $destination): array
+    private function pluckReferenced(mixed $rows, string $field): Collection
     {
-        $labels = collect($classesIn)->pluck('academic_year')->filter()->unique()->values();
+        if (! is_array($rows)) {
+            return collect();
+        }
 
-        $existing = AcademicYear::query()
-            ->where('organization_id', $destination->getKey())
-            ->whereIn('label', $labels)
-            ->get()
-            ->keyBy('label');
+        /** @var list<string> $values */
+        $values = [];
+
+        foreach ($rows as $row) {
+            $value = is_array($row) ? ($row[$field] ?? null) : null;
+
+            if (is_string($value)) {
+                $values[] = $value;
+            }
+        }
+
+        return collect($values);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rowsIn
+     * @param  Collection<int, non-falsy-string>  $referencedLabels
+     * @return array{rows: array<int, array<string, mixed>>, byLabel: Collection<string, array<string, mixed>>}
+     */
+    private function classifyAcademicYears(array $rowsIn, Collection $referencedLabels, Organization $destination): array
+    {
+        $lookups = $this->ulidLookups(AcademicYear::class, collect($rowsIn)->pluck('ulid'), $destination);
+        $existingByLabel = AcademicYear::query()->where('organization_id', $destination->getKey())
+            ->whereIn('label', $referencedLabels->merge(collect($rowsIn)->pluck('label'))->unique())->get()->keyBy('label');
 
         $currentYears = AcademicYear::query()->where('organization_id', $destination->getKey())->get();
         $currentYear = $this->retentionClassifier->currentYearFor($currentYears);
@@ -221,57 +254,113 @@ class BuildImportPlan
             ? collect()
             : $this->retentionClassifier->classify($currentYears, $currentYear)->keyBy(fn (array $c) => $c['year']->label);
 
-        $rows = $labels->map(function (string $label) use ($existing, $withinRetention): array {
-            $match = $existing->get($label);
+        $rows = collect($rowsIn)->map(function (array $row) use ($lookups, $existingByLabel, $withinRetention): array {
+            $existing = $lookups['existing']->get($row['ulid']);
+            $match = $existing ?? $existingByLabel->get($row['label']);
+            $diverges = $match !== null && ($match->label !== $row['label'] || $match->starts_on->toDateString() !== $row['starts_on']
+                || $match->ends_on->toDateString() !== $row['ends_on'] || $match->status->value !== $row['status']);
 
-            return [
-                'label' => $label,
-                'classification' => $match !== null ? 'existing' : 'invalid',
+            if ($existing !== null || ($lookups['elsewhere']->has($row['ulid']) && $match !== null)) {
+                return ['ulid' => $row['ulid'], 'label' => $row['label'], 'classification' => $diverges ? 'conflict' : 'existing',
+                    'reason' => $diverges ? $this->conflictReason() : null, 'existing_id' => $match->getKey(),
+                    'within_retention' => $withinRetention->get($row['label'])['within_retention'] ?? null];
+            }
+
+            if (! $lookups['elsewhere']->has($row['ulid']) && $match !== null) {
+                return ['ulid' => $row['ulid'], 'label' => $row['label'], 'classification' => 'conflict', 'reason' => $this->conflictReason()];
+            }
+
+            $new = [
+                'ulid' => $row['ulid'], 'label' => $row['label'], 'classification' => 'new', 'reason' => null,
+                'starts_on' => $row['starts_on'], 'ends_on' => $row['ends_on'], 'status' => $row['status'],
+                'country_code' => $row['country_code'], 'region_code' => $row['region_code'],
+            ];
+
+            if ($lookups['elsewhere']->has($row['ulid'])) {
+                $new['preserve_ulid'] = false;
+            }
+
+            return $new;
+        });
+
+        foreach ($referencedLabels->diff($rows->pluck('label')) as $label) {
+            $match = $existingByLabel->get($label);
+            $rows->push(['ulid' => $match?->ulid, 'label' => $label, 'classification' => $match !== null ? 'existing' : 'invalid',
                 'reason' => $match === null ? $this->t('O ano letivo «:label» ainda não existe nesta organização.', ['label' => $label]) : null,
-                'within_retention' => $match !== null ? ($withinRetention->get($label)['within_retention'] ?? null) : null,
-            ];
-        })->values()->all();
+                'existing_id' => $match?->getKey(), 'within_retention' => $match !== null ? ($withinRetention->get($label)['within_retention'] ?? null) : null]);
+        }
 
-        return ['rows' => $rows, 'byLabel' => $existing];
+        $all = $rows->values()->all();
+
+        /** @var Collection<string, array<string, mixed>> $byLabel */
+        $byLabel = collect();
+
+        foreach ($all as $row) {
+            $byLabel[$row['label']] = $row;
+        }
+
+        return ['rows' => $all, 'byLabel' => $byLabel];
     }
 
     /**
-     * @param  array<int, array<string, mixed>>  $classesIn
-     * @return array{rows: array<int, array<string, mixed>>, byName: Collection<string, Subject>}
+     * @param  array<int, array<string, mixed>>  $rowsIn
+     * @param  Collection<int, non-falsy-string>  $referencedNames
+     * @return array{rows: array<int, array<string, mixed>>, byName: Collection<string, array<string, mixed>>}
      */
-    private function resolveSubjects(array $classesIn, Organization $destination): array
+    private function classifySubjects(array $rowsIn, Collection $referencedNames, Organization $destination): array
     {
-        $names = collect($classesIn)->pluck('subject')->filter()->unique()->values();
+        $lookups = $this->ulidLookups(Subject::class, collect($rowsIn)->pluck('ulid'), $destination);
+        $existingByCode = Subject::query()->where('organization_id', $destination->getKey())
+            ->whereIn('code', collect($rowsIn)->pluck('code'))->get()->keyBy('code');
+        $existingByName = Subject::query()->where('organization_id', $destination->getKey())
+            ->whereIn('name', $referencedNames)->get()->groupBy('name');
 
-        $existing = Subject::query()
-            ->where('organization_id', $destination->getKey())
-            ->whereIn('name', $names)
-            ->get()
-            ->groupBy('name');
+        $rows = collect($rowsIn)->map(function (array $row) use ($lookups, $existingByCode): array {
+            $existing = $lookups['existing']->get($row['ulid']);
+            $match = $existing ?? $existingByCode->get($row['code']);
+            $diverges = $match !== null && ($match->name !== $row['name'] || $match->code !== $row['code']);
 
-        $rows = $names->map(function (string $name) use ($existing): array {
-            $matches = $existing->get($name, collect());
+            if ($existing !== null || ($lookups['elsewhere']->has($row['ulid']) && $match !== null)) {
+                return ['ulid' => $row['ulid'], 'name' => $row['name'], 'classification' => $diverges ? 'conflict' : 'existing',
+                    'reason' => $diverges ? $this->conflictReason() : null, 'existing_id' => $match->getKey()];
+            }
+            if (! $lookups['elsewhere']->has($row['ulid']) && $match !== null) {
+                return ['ulid' => $row['ulid'], 'name' => $row['name'], 'classification' => 'conflict', 'reason' => $this->conflictReason()];
+            }
 
-            return [
-                'name' => $name,
-                'classification' => $matches->count() === 1 ? 'existing' : 'invalid',
-                'reason' => match (true) {
-                    $matches->count() === 1 => null,
-                    $matches->count() > 1 => $this->t('Existe mais do que uma disciplina «:name» nesta organização — não é possível escolher automaticamente.', ['name' => $name]),
-                    default => $this->t('A disciplina «:name» ainda não existe nesta organização.', ['name' => $name]),
-                },
-            ];
-        })->values()->all();
+            $new = ['ulid' => $row['ulid'], 'name' => $row['name'], 'classification' => 'new', 'reason' => null, 'code' => $row['code']];
 
-        $byName = $existing->filter(fn (Collection $matches): bool => $matches->count() === 1)->map(fn (Collection $matches) => $matches->first());
+            if ($lookups['elsewhere']->has($row['ulid'])) {
+                $new['preserve_ulid'] = false;
+            }
 
-        return ['rows' => $rows, 'byName' => $byName];
+            return $new;
+        });
+
+        foreach ($referencedNames->diff($rows->pluck('name')) as $name) {
+            $matches = $existingByName->get($name, collect());
+            $match = $matches->count() === 1 ? $matches->first() : null;
+            $rows->push(['ulid' => $match?->ulid, 'name' => $name, 'classification' => $match !== null ? 'existing' : 'invalid',
+                'reason' => $match === null ? $this->t('A disciplina «:name» ainda não existe nesta organização.', ['name' => $name]) : null,
+                'existing_id' => $match?->getKey()]);
+        }
+
+        $all = $rows->values()->all();
+
+        /** @var Collection<string, array<string, mixed>> $byName */
+        $byName = collect();
+
+        foreach ($all as $row) {
+            $byName[$row['name']] = $row;
+        }
+
+        return ['rows' => $all, 'byName' => $byName];
     }
 
     /**
      * @param  array<int, array<string, mixed>>  $classesIn
-     * @param  Collection<string, AcademicYear>  $academicYearsByLabel
-     * @param  Collection<string, Subject>  $subjectsByName
+     * @param  Collection<string, array<string, mixed>>  $academicYearsByLabel
+     * @param  Collection<string, array<string, mixed>>  $subjectsByName
      * @param  Collection<string, array<string, mixed>>  $profileVersionsByUlid
      * @return array<int, array<string, mixed>>
      */
@@ -302,19 +391,25 @@ class BuildImportPlan
 
             $academicYear = $academicYearsByLabel->get($row['academic_year']);
             $subject = $row['subject'] !== null ? $subjectsByName->get($row['subject']) : null;
+            $academicYearResolvable = $academicYear !== null && in_array($academicYear['classification'], ['new', 'existing'], true);
+            $subjectResolvable = $row['subject'] === null || ($subject !== null && in_array($subject['classification'], ['new', 'existing'], true));
 
-            if ($academicYear === null || ($row['subject'] !== null && $subject === null)) {
+            if (! $academicYearResolvable || ! $subjectResolvable) {
                 return [
                     'ulid' => $row['ulid'],
                     'label' => $row['label'],
                     'classification' => 'invalid',
-                    'reason' => $academicYear === null
+                    'reason' => ! $academicYearResolvable
                         ? $this->t('O ano letivo «:label» ainda não existe nesta organização.', ['label' => $row['academic_year']])
                         : $this->t('A disciplina «:name» ainda não existe nesta organização.', ['name' => $row['subject']]),
                 ];
             }
 
-            $businessKeyConflict = $byBusinessKey->get("{$academicYear->getKey()}:".($subject?->getKey() ?? 'null').":{$row['label']}");
+            $academicYearId = $academicYear['existing_id'] ?? null;
+            $subjectId = $subject['existing_id'] ?? null;
+            $businessKeyConflict = $academicYearId !== null && ($row['subject'] === null || $subjectId !== null)
+                ? $byBusinessKey->get("{$academicYearId}:".($subjectId ?? 'null').":{$row['label']}")
+                : null;
 
             if ($businessKeyConflict !== null) {
                 if ($elsewhere->has($row['ulid'])) {
@@ -351,8 +446,10 @@ class BuildImportPlan
                 'classification' => 'new',
                 'reason' => null,
                 'preserve_ulid' => ! $elsewhere->has($row['ulid']),
-                'academic_year_id' => $academicYear->getKey(),
-                'subject_id' => $subject?->getKey(),
+                'academic_year_ulid' => $academicYear['ulid'],
+                'academic_year_id' => $academicYearId,
+                'subject_ulid' => $subject['ulid'] ?? null,
+                'subject_id' => $subjectId,
                 'status' => $row['status'],
                 'assessment_profile_version_ulid' => $profileVersionId === null ? $profileVersionUlid : null,
                 'assessment_profile_version_id' => $profileVersionId,

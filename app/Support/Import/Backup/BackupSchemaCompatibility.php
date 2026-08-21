@@ -7,8 +7,9 @@ namespace App\Support\Import\Backup;
  * (§4 of the import brief). Never inferred silently — every backup is
  * classified into exactly one of these before anything else happens.
  *
- * CURRENT (4) is what GenerateDataExport writes today — the "schema v2"
- * capability tier of Fatia 6.1 (docs/backup-schema.md): assessment
+ * CURRENT (5) is what GenerateDataExport writes today — the "schema v2"
+ * capability tier of Fatia 6.2 (docs/backup-schema.md): first-class academic
+ * years and subjects, plus the schema v4 assessment
  * structure (profiles/domains/scales), elements/items/scores, persisted
  * classifications, self-assessments, interim assessments, pedagogical
  * records and finalized reports, alongside everything schema_version 3
@@ -30,7 +31,7 @@ enum BackupSchemaCompatibility
     case UnsupportedNewer;
     case Invalid;
 
-    public const int CURRENT = 4;
+    public const int CURRENT = 5;
 
     public const int MINIMUM_SUPPORTED = 2;
 

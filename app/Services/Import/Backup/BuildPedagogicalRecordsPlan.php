@@ -2,7 +2,6 @@
 
 namespace App\Services\Import\Backup;
 
-use App\Models\AcademicYear;
 use App\Models\EvidenceRecord;
 use App\Models\InterimAssessment;
 use App\Models\Intervention;
@@ -42,7 +41,7 @@ class BuildPedagogicalRecordsPlan
      * @param  Collection<string, array<string, mixed>>  $enrollmentsByUlid
      * @param  Collection<string, array<string, mixed>>  $periodsByUlid
      * @param  Collection<string, array<string, mixed>>  $domainsByUlid
-     * @param  Collection<string, AcademicYear>  $academicYearsByLabel
+     * @param  Collection<string, array<string, mixed>>  $academicYearsByLabel
      * @return array{rows: array<string, array<int, array<string, mixed>>>}
      */
     public function build(
@@ -363,7 +362,7 @@ class BuildPedagogicalRecordsPlan
      * @param  array<int, array<string, mixed>>  $reportsIn
      * @param  Collection<string, array<string, mixed>>  $classesByUlid
      * @param  Collection<string, array<string, mixed>>  $enrollmentsByUlid
-     * @param  Collection<string, AcademicYear>  $academicYearsByLabel
+     * @param  Collection<string, array<string, mixed>>  $academicYearsByLabel
      * @param  Collection<string, array<string, mixed>>  $periodsByUlid
      * @param  Collection<string, array<string, mixed>>  $interimAssessmentsByUlid
      * @return array<int, array<string, mixed>>
@@ -388,7 +387,7 @@ class BuildPedagogicalRecordsPlan
             $enrollment = $row['enrollment_ulid'] !== null ? $enrollmentsByUlid->get($row['enrollment_ulid']) : null;
             $enrollmentResolvable = $row['enrollment_ulid'] === null || ($enrollment !== null && in_array($enrollment['classification'], ['new', 'existing'], true));
             $academicYear = $row['academic_year'] !== null ? $academicYearsByLabel->get($row['academic_year']) : null;
-            $academicYearResolvable = $row['academic_year'] === null || $academicYear !== null;
+            $academicYearResolvable = $row['academic_year'] === null || ($academicYear !== null && in_array($academicYear['classification'], ['new', 'existing'], true));
             $period = $row['academic_period_ulid'] !== null ? $periodsByUlid->get($row['academic_period_ulid']) : null;
             $periodResolvable = $row['academic_period_ulid'] === null || ($period !== null && in_array($period['classification'], ['new', 'existing'], true));
             $interim = $row['interim_assessment_ulid'] !== null ? $interimAssessmentsByUlid->get($row['interim_assessment_ulid']) : null;
@@ -418,7 +417,8 @@ class BuildPedagogicalRecordsPlan
                 'ulid' => $row['ulid'], 'classification' => 'new', 'reason' => null, 'preserve_ulid' => ! $lookups['elsewhere']->has($row['ulid']), 'type' => $row['type'], 'title' => $row['title'],
                 'tone' => $row['tone'], 'scope_kind' => $row['scope_kind'], 'scope_label' => $row['scope_label'],
                 'starts_on' => $row['starts_on'], 'ends_on' => $row['ends_on'], 'class_ulid' => $row['class_ulid'],
-                'enrollment_ulid' => $row['enrollment_ulid'], 'academic_year_id' => $academicYear?->getKey(),
+                'enrollment_ulid' => $row['enrollment_ulid'], 'academic_year_ulid' => $academicYear['ulid'] ?? null,
+                'academic_year_id' => $academicYear['existing_id'] ?? null,
                 'academic_period_ulid' => $row['academic_period_ulid'], 'interim_assessment_ulid' => $row['interim_assessment_ulid'],
                 'document' => $row['document'], 'document_version' => $row['document_version'], 'document_hash' => $row['document_hash'],
                 'finalized_at' => $row['finalized_at'], 'finalized_by' => $this->resolveAuthor($row['finalized_by_email'], $actor),

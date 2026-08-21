@@ -3,6 +3,7 @@
 namespace App\Actions\DataExports;
 
 use App\Models\AcademicPeriod;
+use App\Models\AcademicYear;
 use App\Models\AssessmentProfile;
 use App\Models\AssessmentProfileVersion;
 use App\Models\AuditEvent;
@@ -34,6 +35,7 @@ use App\Models\SelfAssessmentResponse;
 use App\Models\SelfAssessmentTemplate;
 use App\Models\Student;
 use App\Models\StudentItemScore;
+use App\Models\Subject;
 use App\Models\User;
 use App\Services\Assessment\BuildResultsProgression;
 use App\Services\Assessment\ScaleProposalResolver;
@@ -207,6 +209,11 @@ class GenerateDataExport
         $selfAssessmentResponses = SelfAssessmentResponse::query()->whereIn('self_assessment_id', $selfAssessments->pluck('id'))->get();
 
         $domains = $this->loadReferencedDomains($profileVersions, $instrumentItems, $evidenceRecords, $interventions, $selfAssessmentQuestions);
+        $academicYears = AcademicYear::query()->whereIn('id', $classes->pluck('academic_year_id')
+            ->merge($academicPeriods->pluck('academic_year_id'))->merge($profiles->pluck('academic_year_id'))
+            ->merge($reports->pluck('academic_year_id'))->filter()->unique())->get();
+        $subjects = Subject::query()->whereIn('id', $classes->pluck('subject_id')
+            ->merge($profiles->pluck('subject_id'))->merge($domains->pluck('subject_id'))->filter()->unique())->get();
 
         $scaleLevelIds = $classifications->pluck('proposed_scale_level_id')
             ->merge($classifications->pluck('final_scale_level_id'))
@@ -298,6 +305,8 @@ class GenerateDataExport
             $classes,
             $students,
             $enrollments,
+            $academicYears,
+            $subjects,
             $academicPeriods,
             $scales,
             $instrumentTypes,
@@ -1134,6 +1143,22 @@ class GenerateDataExport
     }
 
     /** @return array<string, mixed> */
+    protected function academicYearRow(AcademicYear $year): array
+    {
+        return [
+            'ulid' => $year->ulid, 'label' => $year->label,
+            'starts_on' => $year->starts_on->toDateString(), 'ends_on' => $year->ends_on->toDateString(),
+            'status' => $year->status->value, 'country_code' => $year->country_code, 'region_code' => $year->region_code,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    protected function subjectRow(Subject $subject): array
+    {
+        return ['ulid' => $subject->ulid, 'name' => $subject->name, 'code' => $subject->code];
+    }
+
+    /** @return array<string, mixed> */
     protected function scaleRow(Scale $scale): array
     {
         return [
@@ -1605,7 +1630,7 @@ class GenerateDataExport
      * import/restore. Deliberately not meant to be comfortable reading: the
      * XLSX is the document for that.
      *
-     * schema_version 4 (Fatia 6.1, docs/backup-schema.md — the "schema v2"
+     * schema_version 5 (Fatia 6.2, docs/backup-schema.md — the "schema v2"
      * capability tier): completes the pedagogical restore that schema
      * versions 2-3 left structural-only. Adds assessment structure
      * (academic periods, scales, instrument types, domains, assessment
@@ -1622,6 +1647,8 @@ class GenerateDataExport
      * @param  Collection<int, SchoolClass>  $classes
      * @param  Collection<int, Student>  $students
      * @param  Collection<int, Enrollment>  $enrollments
+     * @param  Collection<int, AcademicYear>  $academicYears
+     * @param  Collection<int, Subject>  $subjects
      * @param  Collection<int, AcademicPeriod>  $academicPeriods
      * @param  Collection<int, Scale>  $scales
      * @param  Collection<int, InstrumentType>  $instrumentTypes
@@ -1650,6 +1677,8 @@ class GenerateDataExport
         Collection $classes,
         Collection $students,
         Collection $enrollments,
+        Collection $academicYears,
+        Collection $subjects,
         Collection $academicPeriods,
         Collection $scales,
         Collection $instrumentTypes,
@@ -1685,7 +1714,7 @@ class GenerateDataExport
             'organization' => ['ulid' => $organization->ulid, 'name' => $organization->name, 'type' => $organization->type->value],
             'exported_by' => ['name' => $user->name, 'email' => $user->email],
             'capabilities' => [
-                'classes', 'students', 'enrollments', 'academic_periods', 'scales', 'instrument_types', 'domains',
+                'classes', 'students', 'enrollments', 'academic_years', 'subjects', 'academic_periods', 'scales', 'instrument_types', 'domains',
                 'assessment_profiles', 'assessment_profile_versions', 'profile_version_domains', 'profile_version_periods',
                 'instruments', 'instrument_groups', 'instrument_items', 'item_domain_allocations', 'student_item_scores',
                 'classifications', 'self_assessment_templates', 'self_assessment_questions', 'self_assessments',
@@ -1693,6 +1722,8 @@ class GenerateDataExport
                 'intervention_reviews', 'reports',
             ],
 
+            'academic_years' => $academicYears->map(fn (AcademicYear $year): array => $this->academicYearRow($year))->values(),
+            'subjects' => $subjects->map(fn (Subject $subject): array => $this->subjectRow($subject))->values(),
             'academic_periods' => $academicPeriods->map(fn (AcademicPeriod $period): array => $this->academicPeriodRow($period))->values(),
             'scales' => $scales->map(fn (Scale $scale): array => $this->scaleRow($scale))->values(),
             'instrument_types' => $instrumentTypes->map(fn (InstrumentType $type): array => $this->instrumentTypeRow($type))->values(),

@@ -4,6 +4,7 @@ namespace App\Services\Import\Backup;
 
 use App\Models\AcademicPeriodKind;
 use App\Models\AcademicPeriodStatus;
+use App\Models\AcademicYearStatus;
 use App\Models\ActivityEvaluation;
 use App\Models\ClassificationScope;
 use App\Models\ClassificationStatus;
@@ -50,7 +51,7 @@ use Illuminate\Support\Str;
  * which is what makes the secret scan defense-in-depth rather than the
  * only guard.
  *
- * Fatia 6.1 (schema_version 4, docs/backup-schema.md): one validator for
+ * Fatia 6.2 (schema_version 5, docs/backup-schema.md): one validator for
  * every schema_version this importer still reads, not a
  * BackupSchemaV1Validator/V2Validator pair (§89 of the import brief). A
  * backup older than schema_version 4 simply never HAS the newer collection
@@ -104,6 +105,12 @@ class ValidateBackupPayload
             'generated_at' => is_string($decoded['generated_at'] ?? null) ? $decoded['generated_at'] : null,
             'organization' => $organization,
 
+            'academic_years' => $this->whitelistRows($decoded, 'academic_years', ['ulid', 'label', 'starts_on', 'ends_on', 'status', 'country_code', 'region_code'], function (array $row) use (&$rowIssues): ?array {
+                return $this->validAcademicYearRow($row, $rowIssues);
+            }),
+            'subjects' => $this->whitelistRows($decoded, 'subjects', ['ulid', 'name', 'code'], function (array $row) use (&$rowIssues): ?array {
+                return $this->validSubjectRow($row, $rowIssues);
+            }),
             'academic_periods' => $this->whitelistRows($decoded, 'academic_periods', ['ulid', 'academic_year', 'label', 'kind', 'sequence', 'starts_on', 'ends_on', 'status'], function (array $row) use (&$rowIssues): ?array {
                 return $this->validAcademicPeriodRow($row, $rowIssues);
             }),
@@ -490,6 +497,54 @@ class ValidateBackupPayload
             'ends_on' => $row['ends_on'],
             'status' => $row['status'],
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  list<array{domain: string, ulid: string|null, reason: string}>  $rowIssues
+     * @return array<string, mixed>|null
+     */
+    private function validAcademicYearRow(array $row, array &$rowIssues): ?array
+    {
+        $ulid = $row['ulid'] ?? null;
+        $startsOn = $this->nullableDate($row['starts_on'] ?? null);
+        $endsOn = $this->nullableDate($row['ends_on'] ?? null);
+
+        if (! $this->isUlid($ulid) || ! is_string($row['label'] ?? null) || $row['label'] === '' || mb_strlen($row['label']) > 32
+            || $startsOn === null || $endsOn === null || $endsOn <= $startsOn
+            || AcademicYearStatus::tryFrom((string) ($row['status'] ?? '')) === null
+            || ! is_string($row['country_code'] ?? null) || mb_strlen($row['country_code']) !== 2
+            || ! (is_string($row['region_code'] ?? null) || ($row['region_code'] ?? null) === null)
+            || (is_string($row['region_code'] ?? null) && mb_strlen($row['region_code']) > 8)
+        ) {
+            $rowIssues[] = ['domain' => 'academic_years', 'ulid' => is_string($ulid) ? $ulid : null, 'reason' => $this->t('Campos obrigatórios em falta ou inválidos.')];
+
+            return null;
+        }
+
+        return [
+            'ulid' => $ulid, 'label' => $row['label'], 'starts_on' => $row['starts_on'], 'ends_on' => $row['ends_on'],
+            'status' => $row['status'], 'country_code' => $row['country_code'], 'region_code' => $row['region_code'] ?? null,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  list<array{domain: string, ulid: string|null, reason: string}>  $rowIssues
+     * @return array<string, mixed>|null
+     */
+    private function validSubjectRow(array $row, array &$rowIssues): ?array
+    {
+        $ulid = $row['ulid'] ?? null;
+
+        if (! $this->isUlid($ulid) || ! is_string($row['name'] ?? null) || $row['name'] === '' || mb_strlen($row['name']) > 120
+            || ! is_string($row['code'] ?? null) || $row['code'] === '' || mb_strlen($row['code']) > 32) {
+            $rowIssues[] = ['domain' => 'subjects', 'ulid' => is_string($ulid) ? $ulid : null, 'reason' => $this->t('Campos obrigatórios em falta ou inválidos.')];
+
+            return null;
+        }
+
+        return ['ulid' => $ulid, 'name' => $row['name'], 'code' => $row['code']];
     }
 
     /**

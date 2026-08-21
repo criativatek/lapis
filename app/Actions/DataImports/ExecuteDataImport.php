@@ -34,7 +34,7 @@ use RuntimeException;
  * `conflict`, `invalid` and `unsupported` are all skipped — never merged,
  * never overwritten (§12).
  *
- * Fatia 6.1 (schema_version 4, docs/backup-schema.md) delegates the
+ * Fatia 6.1+ (schema_version 5, docs/backup-schema.md) delegates the
  * pedagogical tiers to three collaborators, run in the same dependency
  * order the plan itself resolves in — structure, then classes/students/
  * enrollments (unchanged from Fatia 6), then assessment data, then
@@ -70,13 +70,14 @@ class ExecuteDataImport
             $rows = $plan['rows'];
 
             $structure = $this->structureWriter->write(
+                $rows['academic_years'], $rows['subjects'],
                 $rows['academic_periods'], $rows['scales'], $rows['instrument_types'], $rows['domains'],
                 $rows['assessment_profiles'], $rows['assessment_profile_versions'],
                 $rows['profile_version_domains'], $rows['profile_version_periods'],
                 $organization,
             );
 
-            $classModels = $this->writeClasses($rows['classes'], $organization, $actor, $structure['profileVersionsByUlid']);
+            $classModels = $this->writeClasses($rows['classes'], $organization, $actor, $structure['academicYearsByUlid'], $structure['subjectsByUlid'], $structure['profileVersionsByUlid']);
             $studentModels = $this->writeStudents($rows['students'], $organization);
             $enrollmentSummary = $this->writeEnrollments($rows['enrollments'], $classModels, $studentModels);
 
@@ -93,7 +94,7 @@ class ExecuteDataImport
                 $rows['interim_assessments'], $rows['evidence_records'], $rows['interventions'],
                 $rows['intervention_reviews'], $rows['reports'], $organization, $classModels['byUlid'],
                 $enrollmentSummary['byUlid'], $structure['periodsByUlid'], $structure['domainsByUlid'],
-                $structure['scalesByRef'], $structure['scaleLevelsByRef'],
+                $structure['scalesByRef'], $structure['scaleLevelsByRef'], $structure['academicYearsByUlid'],
             );
 
             $summary = [
@@ -101,6 +102,8 @@ class ExecuteDataImport
                 'students' => $this->tally($rows['students'], $studentModels['createdCount']),
                 'enrollments' => $this->tally($rows['enrollments'], $enrollmentSummary['createdCount']),
                 'classes_needing_reassignment' => $classModels['needingReassignment'],
+                'academic_years_created' => $structure['createdCounts']['academic_years'],
+                'subjects_created' => $structure['createdCounts']['subjects'],
                 'academic_periods_created' => $structure['createdCounts']['academic_periods'],
                 'scales_created' => $structure['createdCounts']['scales'],
                 'instrument_types_created' => $structure['createdCounts']['instrument_types'],
@@ -145,10 +148,12 @@ class ExecuteDataImport
 
     /**
      * @param  array<int, array<string, mixed>>  $rows
+     * @param  array<string, int>  $academicYearsByUlid
+     * @param  array<string, int>  $subjectsByUlid
      * @param  array<string, int>  $profileVersionsByUlid
      * @return array{byUlid: array<string, int>, createdCount: int, needingReassignment: int}
      */
-    private function writeClasses(array $rows, Organization $organization, User $actor, array $profileVersionsByUlid): array
+    private function writeClasses(array $rows, Organization $organization, User $actor, array $academicYearsByUlid, array $subjectsByUlid, array $profileVersionsByUlid): array
     {
         $byUlid = [];
         $created = 0;
@@ -161,8 +166,8 @@ class ExecuteDataImport
                 $class = new SchoolClass;
                 $class->forceFill([
                     'ulid' => $this->writableUlid($row),
-                    'academic_year_id' => $row['academic_year_id'],
-                    'subject_id' => $row['subject_id'],
+                    'academic_year_id' => $row['academic_year_id'] ?? $this->resolveId($row['academic_year_ulid'] ?? null, $academicYearsByUlid),
+                    'subject_id' => $row['subject_id'] ?? $this->resolveId($row['subject_ulid'] ?? null, $subjectsByUlid),
                     'label' => $row['label'],
                     'status' => $row['status'],
                     'assessment_profile_version_id' => $profileVersionId,
