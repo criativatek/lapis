@@ -333,16 +333,20 @@ class DataImportTest extends TestCase
     /**
      * A class/student ulid that still belongs to a DIFFERENT organization
      * (the export was never followed by a delete) must never reach the
-     * database as an insert attempt — `classes.ulid` is globally unique,
-     * so that insert would fail as a raw constraint violation instead of a
-     * reviewable preview row.
+     * database as an insert attempt under the SOURCE ulid — `classes.ulid`
+     * is globally unique, so that insert would fail as a raw constraint
+     * violation. Fatia 6.1's cross-organization clone correction (see
+     * docs/data-import.md) resolves this instead of blocking it: the class
+     * is classified `new`, restored under a freshly generated ulid, and the
+     * source organization is left completely untouched — a genuine clone,
+     * not a move.
      */
     #[Test]
-    public function a_backup_restored_into_a_different_organization_while_the_source_still_exists_is_invalid_not_a_database_error(): void
+    public function a_backup_restored_into_a_different_organization_while_the_source_still_exists_clones_with_a_fresh_ulid(): void
     {
         Storage::fake('local');
         [$sourceOrg, $sourceOwner] = $this->institutionalOrganization();
-        $this->classWithEnrollment($sourceOrg, $sourceOwner);
+        $sourceClass = $this->classWithEnrollment($sourceOrg, $sourceOwner);
         $file = $this->backupUpload($sourceOrg, $sourceOwner);
         // Source data deliberately left in place.
 
@@ -355,15 +359,18 @@ class DataImportTest extends TestCase
         $this->actingAs($otherUser)->withSession(['organization_id' => $otherOrg->id])
             ->get("/data-imports/{$import->ulid}")
             ->assertInertia(fn ($page) => $page
-                ->where('plan.counts.classes.invalid', 1)
-                ->where('plan.counts.classes.new', 0)
-                ->where('plan.can_confirm', false));
+                ->where('plan.counts.classes.invalid', 0)
+                ->where('plan.counts.classes.new', 1)
+                ->where('plan.can_confirm', true));
 
         $this->actingAs($otherUser)->withSession(['organization_id' => $otherOrg->id])
             ->post("/data-imports/{$import->ulid}/confirm")->assertRedirect();
 
-        $this->assertSame(0, $this->classCount($otherOrg));
+        $this->assertSame(1, $this->classCount($otherOrg));
         $this->assertSame(1, $this->classCount($sourceOrg));
+
+        $clonedClass = $this->onlyClassIn($otherOrg);
+        $this->assertNotSame($sourceClass->ulid, $clonedClass->ulid);
     }
 
     #[Test]
