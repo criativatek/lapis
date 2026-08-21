@@ -45,4 +45,19 @@ class MembershipException extends RuntimeException
     {
         return new self(__('Esta turma já tem um professor atribuído.'));
     }
+
+    public static function closureAlreadyRequested(): self
+    {
+        return new self(__('Já foi pedido o encerramento desta organização.'));
+    }
+
+    public static function closureNotRequested(): self
+    {
+        return new self(__('Esta organização não tem nenhum pedido de encerramento em curso.'));
+    }
+
+    public static function closureNoLongerRecoverable(): self
+    {
+        return new self(__('O prazo de recuperação desta organização já terminou.'));
+    }
 }

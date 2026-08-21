@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import type { ClosureStatus } from '@/types/closure';
 
 type Member = {
     id: number;
@@ -38,7 +39,20 @@ type Invitation = {
 // is gated by OrganizationInvitationPolicy::viewAny, owner-only. Any OTHER
 // row is therefore someone the owner may remove or transfer responsibility
 // to; the owner's own row never shows those actions.
-const props = defineProps<{ members: Member[]; invitations: Invitation[] }>();
+const props = defineProps<{
+    members: Member[];
+    invitations: Invitation[];
+    closure: ClosureStatus | null;
+    closureRetentionDays: number;
+}>();
+
+function requestOrganizationClosure(): void {
+    useForm({}).post('/team/closure', { preserveScroll: true });
+}
+
+function cancelOrganizationClosure(): void {
+    useForm({}).delete('/team/closure', { preserveScroll: true });
+}
 
 const form = useForm({ email: '' });
 
@@ -82,8 +96,8 @@ function remove(member: Member): void {
 // Which row's confirmation dialog is open, if any — a plain browser confirm()
 // is too easy to blow through by accident for something this consequential
 // (§48 of the Fatia 4 brief calls for "confirmação forte"), so this uses the
-// project's own Dialog component instead, the same one DeleteUser.vue and
-// OrganizationMembership.vue already use for their own irreversible actions.
+// project's own Dialog component instead, the same one AccountClosure.vue and
+// OrganizationMembership.vue already use for their own consequential actions.
 const transferDialogMemberId = ref<number | null>(null);
 
 function submitTransferOwnership(member: Member): void {
@@ -237,6 +251,58 @@ function submitTransferOwnership(member: Member): void {
             <p class="text-xs text-muted-foreground">
                 Convidar de novo o mesmo email renova o convite existente — o link anterior deixa de funcionar.
             </p>
+        </section>
+
+        <!-- Encerramento da organização -->
+        <section class="space-y-4 rounded-lg border border-red-100 bg-red-50 p-4 dark:border-red-200/10 dark:bg-red-700/10">
+            <template v-if="props.closure">
+                <div class="space-y-0.5 text-red-600 dark:text-red-100">
+                    <h2 class="text-sm font-medium">Organização em processo de encerramento</h2>
+                    <p class="text-sm">
+                        Pedido em {{ new Date(props.closure.requested_at).toLocaleDateString('pt-PT') }}. Prazo até
+                        {{ new Date(props.closure.scheduled_deletion_at).toLocaleDateString('pt-PT') }}
+                        <template v-if="props.closure.recoverable"> — {{ props.closure.days_remaining }} dia(s) para recuperar.</template>
+                        <template v-else> — o prazo de recuperação já terminou.</template>
+                    </p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <Button as-child variant="outline" size="sm">
+                        <a href="/data-exports">Exportar dados</a>
+                    </Button>
+                    <Button v-if="props.closure.recoverable" size="sm" @click="cancelOrganizationClosure">Reativar organização</Button>
+                </div>
+            </template>
+            <template v-else>
+                <div class="space-y-0.5 text-red-600 dark:text-red-100">
+                    <h2 class="text-sm font-medium">Encerrar organização</h2>
+                    <p class="text-sm">
+                        A organização ficará disponível para recuperação durante {{ props.closureRetentionDays }} dias. Os membros,
+                        o responsável e todos os dados permanecem intactos; só deixa de ser possível trabalhar normalmente. Após
+                        esse prazo, ficará elegível para eliminação.
+                    </p>
+                </div>
+                <Dialog>
+                    <DialogTrigger as-child>
+                        <Button variant="destructive" size="sm">Encerrar organização</Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                        <DialogHeader class="space-y-3">
+                            <DialogTitle>Encerrar a organização?</DialogTitle>
+                            <DialogDescription>
+                                A organização ficará disponível para recuperação durante {{ props.closureRetentionDays }} dias.
+                                Os membros, o responsável e todos os dados permanecem intactos; só deixa de ser possível
+                                trabalhar normalmente. Após esse prazo, ficará elegível para eliminação.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <DialogFooter class="gap-2">
+                            <DialogClose as-child>
+                                <Button variant="secondary">Cancelar</Button>
+                            </DialogClose>
+                            <Button variant="destructive" @click="requestOrganizationClosure">Encerrar organização</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            </template>
         </section>
     </div>
 </template>

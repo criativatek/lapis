@@ -407,6 +407,12 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // sequential id in the path — see TeamController::targetMember().
         Route::delete('team/members', [TeamController::class, 'removeMember'])->name('team.members.destroy');
         Route::post('team/members/transfer-ownership', [TeamController::class, 'transferOwnership'])->name('team.members.transfer-ownership');
+
+        // Organization closure (Fatia 5, §9-§12) — owner-only, same page
+        // (team.index already sends the current `closure` state to every
+        // member; only the owner can act on it, via OrganizationMembershipPolicy).
+        Route::post('team/closure', [TeamController::class, 'requestClosure'])->name('organization.closure.request');
+        Route::delete('team/closure', [TeamController::class, 'cancelClosure'])->name('organization.closure.cancel');
     });
 });
 

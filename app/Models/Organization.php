@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Database\Factories\OrganizationFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -25,6 +26,8 @@ use Illuminate\Support\Carbon;
  * @property string $timezone
  * @property string $locale
  * @property string|null $jurisdiction ISO 3166-1 alpha-2; NULL = never stated, not "Portugal"
+ * @property Carbon|null $closure_requested_at
+ * @property Carbon|null $scheduled_deletion_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -54,6 +57,8 @@ class Organization extends Model
     {
         return [
             'type' => OrganizationType::class,
+            'closure_requested_at' => 'datetime',
+            'scheduled_deletion_at' => 'datetime',
         ];
     }
 
@@ -96,5 +101,46 @@ class Organization extends Model
     public function invitations(): HasMany
     {
         return $this->hasMany(OrganizationInvitation::class);
+    }
+
+    /**
+     * A voluntary, recoverable closure request against the whole workspace —
+     * never a substitute for removing one member. See docs/account-closure.md.
+     */
+    public function isClosureRequested(): bool
+    {
+        return $this->closure_requested_at !== null;
+    }
+
+    /**
+     * `scheduled_deletion_at` is stamped once, at request time, from the
+     * policy days in force that moment
+     * (App\Actions\Organizations\RequestOrganizationClosure). It does not
+     * move if the policy changes later.
+     */
+    public function isEligibleForDeletion(): bool
+    {
+        return $this->closure_requested_at !== null
+            && $this->scheduled_deletion_at !== null
+            && $this->scheduled_deletion_at->isPast();
+    }
+
+    /**
+     * @param  Builder<Organization>  $query
+     * @return Builder<Organization>
+     */
+    public function scopeClosureRequested($query)
+    {
+        return $query->whereNotNull('closure_requested_at');
+    }
+
+    /**
+     * @param  Builder<Organization>  $query
+     * @return Builder<Organization>
+     */
+    public function scopeEligibleForDeletion($query)
+    {
+        return $query->whereNotNull('closure_requested_at')
+            ->where('scheduled_deletion_at', '<=', now());
     }
 }

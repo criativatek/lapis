@@ -23,6 +23,16 @@ class OrganizationMembershipPolicy
         return $this->manages($user, $organization);
     }
 
+    public function requestClosure(User $user, Organization $organization): bool
+    {
+        return $this->manages($user, $organization);
+    }
+
+    public function cancelClosure(User $user, Organization $organization): bool
+    {
+        return $this->manages($user, $organization);
+    }
+
     protected function manages(User $user, Organization $organization): bool
     {
         return $organization->type === OrganizationType::Institutional

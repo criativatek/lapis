@@ -99,6 +99,8 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('remove', [OrganizationMembershipPolicy::class, 'remove']);
         Gate::define('transferOwnership', [OrganizationMembershipPolicy::class, 'transferOwnership']);
         Gate::define('viewReassignments', [OrganizationMembershipPolicy::class, 'viewReassignments']);
+        Gate::define('requestClosure', [OrganizationMembershipPolicy::class, 'requestClosure']);
+        Gate::define('cancelClosure', [OrganizationMembershipPolicy::class, 'cancelClosure']);
     }
 
     /**
