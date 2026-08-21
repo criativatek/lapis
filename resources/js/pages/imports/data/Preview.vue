@@ -22,6 +22,7 @@ type PlanRow = {
     reason: string | null;
     label?: string;
     name?: string;
+    title?: string;
     pseudonym_code?: string;
 };
 
@@ -38,6 +39,116 @@ type Plan = {
     counts: Record<string, Counts>;
     can_confirm: boolean;
 };
+
+/**
+ * Every domain BuildImportPlan can classify, grouped the way a teacher
+ * thinks about a backup rather than the way the database is normalised
+ * (§54). Flat child rows without their own identity — profile_version_
+ * domains/periods, item_domain_allocations, self_assessment_questions/
+ * responses, instrument_groups — are deliberately left out of both lists:
+ * their counts already fold into totalNew, and any issue on them still
+ * surfaces in "Pontos a rever" (allIssueRows scans every domain, shown or
+ * not), so nothing is silently hidden — only kept off the summary table.
+ */
+const domainGroups: {
+    title: string;
+    domains: { key: string; label: string }[];
+}[] = [
+    {
+        title: 'Estrutura',
+        domains: [
+            { key: 'academic_years', label: 'Anos letivos' },
+            { key: 'subjects', label: 'Disciplinas' },
+            { key: 'classes', label: 'Turmas' },
+            { key: 'students', label: 'Alunos' },
+            { key: 'enrollments', label: 'Inscrições' },
+            { key: 'academic_periods', label: 'Períodos letivos' },
+            { key: 'scales', label: 'Escalas' },
+            { key: 'instrument_types', label: 'Tipos de elementos' },
+            { key: 'domains', label: 'Domínios' },
+            { key: 'assessment_profiles', label: 'Perfis de avaliação' },
+            { key: 'assessment_profile_versions', label: 'Versões de perfis' },
+        ],
+    },
+    {
+        title: 'Avaliação',
+        domains: [
+            { key: 'instruments', label: 'Elementos de avaliação' },
+            { key: 'instrument_items', label: 'Itens' },
+            { key: 'student_item_scores', label: 'Pontuações' },
+            { key: 'classifications', label: 'Classificações' },
+            {
+                key: 'self_assessment_templates',
+                label: 'Modelos de autoavaliação',
+            },
+            { key: 'self_assessments', label: 'Autoavaliações' },
+        ],
+    },
+    {
+        title: 'Acompanhamento',
+        domains: [
+            { key: 'interim_assessments', label: 'Avaliações intercalares' },
+            { key: 'evidence_records', label: 'Registos pedagógicos' },
+            { key: 'interventions', label: 'Estratégias e medidas' },
+            { key: 'intervention_reviews', label: 'Revisões de estratégias' },
+        ],
+    },
+    {
+        title: 'Documentos',
+        domains: [{ key: 'reports', label: 'Relatórios' }],
+    },
+];
+
+const summaryGroups: {
+    title: string;
+    items: { key: string; label: string; tally?: boolean }[];
+}[] = [
+    {
+        title: 'Estrutura',
+        items: [
+            { key: 'classes', label: 'Turmas', tally: true },
+            { key: 'students', label: 'Alunos', tally: true },
+            { key: 'enrollments', label: 'Inscrições', tally: true },
+            { key: 'academic_periods_created', label: 'Períodos letivos' },
+            { key: 'scales_created', label: 'Escalas' },
+            { key: 'instrument_types_created', label: 'Tipos de elementos' },
+            { key: 'domains_created', label: 'Domínios' },
+            {
+                key: 'assessment_profiles_created',
+                label: 'Perfis de avaliação',
+            },
+            {
+                key: 'assessment_profile_versions_created',
+                label: 'Versões de perfis',
+            },
+        ],
+    },
+    {
+        title: 'Avaliação',
+        items: [
+            { key: 'instruments_created', label: 'Elementos de avaliação' },
+            { key: 'instrument_items_created', label: 'Itens' },
+            { key: 'student_item_scores_created', label: 'Pontuações' },
+            { key: 'classifications_created', label: 'Classificações' },
+            { key: 'self_assessments_created', label: 'Autoavaliações' },
+        ],
+    },
+    {
+        title: 'Acompanhamento',
+        items: [
+            {
+                key: 'interim_assessments_created',
+                label: 'Avaliações intercalares',
+            },
+            { key: 'evidence_records_created', label: 'Registos pedagógicos' },
+            { key: 'interventions_created', label: 'Estratégias e medidas' },
+        ],
+    },
+    {
+        title: 'Documentos',
+        items: [{ key: 'reports_created', label: 'Relatórios' }],
+    },
+];
 
 const props = defineProps<{
     dataImport: {
@@ -60,15 +171,71 @@ const props = defineProps<{
     plan: Plan | null;
 }>();
 
-const domains: { key: string; label: string }[] = [
-    { key: 'academic_years', label: 'Anos letivos' },
-    { key: 'subjects', label: 'Disciplinas' },
-    { key: 'classes', label: 'Turmas' },
-    { key: 'students', label: 'Alunos' },
-    { key: 'enrollments', label: 'Inscrições' },
-    { key: 'instruments', label: 'Elementos de avaliação' },
-    { key: 'classifications', label: 'Classificações' },
-];
+/**
+ * Only groups that actually have something to show for this backup — a
+ * purely structural restore should not render an empty "Documentos"
+ * section full of zeroes.
+ */
+const visiblePlanGroups = computed(() => {
+    if (props.plan === null) {
+        return [];
+    }
+
+    const counts = props.plan.counts;
+
+    return domainGroups
+        .map((group) => ({
+            ...group,
+            domains: group.domains.filter((domain) => domain.key in counts),
+        }))
+        .filter(
+            (group) =>
+                group.domains.length > 0 &&
+                group.domains.some((domain) => {
+                    const tally = counts[domain.key];
+
+                    return (
+                        tally.new > 0 ||
+                        tally.existing > 0 ||
+                        tally.conflict > 0 ||
+                        tally.invalid > 0 ||
+                        tally.unsupported > 0
+                    );
+                }),
+        );
+});
+
+function summaryTallyOf(key: string): { created: number; skipped: number } {
+    const summary = props.dataImport.summary as Record<string, unknown> | null;
+    const value = summary?.[key] as
+        { created?: number; skipped?: number } | undefined;
+
+    return { created: value?.created ?? 0, skipped: value?.skipped ?? 0 };
+}
+
+function summaryCountOf(key: string): number {
+    const summary = props.dataImport.summary as Record<string, unknown> | null;
+    const value = summary?.[key];
+
+    return typeof value === 'number' ? value : 0;
+}
+
+const visibleSummaryGroups = computed(() => {
+    if (props.dataImport.summary === null) {
+        return [];
+    }
+
+    return summaryGroups
+        .map((group) => ({
+            ...group,
+            items: group.items.filter((item) =>
+                item.tally
+                    ? summaryTallyOf(item.key).created > 0
+                    : summaryCountOf(item.key) > 0,
+            ),
+        }))
+        .filter((group) => group.items.length > 0);
+});
 
 const totalNew = computed(() => {
     if (props.plan === null) {
@@ -104,7 +271,7 @@ function cancelImport(): void {
 }
 
 function rowLabel(row: PlanRow): string {
-    return row.label ?? row.name ?? row.pseudonym_code ?? '—';
+    return row.label ?? row.name ?? row.title ?? row.pseudonym_code ?? '—';
 }
 
 const needingReassignment = computed(() => {
@@ -147,27 +314,31 @@ const needingReassignment = computed(() => {
             >
                 Importação concluída
             </h2>
-            <div
-                v-if="dataImport.summary"
-                class="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3"
-            >
-                <div
-                    v-for="domain in ['classes', 'students', 'enrollments']"
-                    :key="domain"
-                >
-                    <p class="text-muted-foreground">
-                        {{ domains.find((d) => d.key === domain)?.label }}
-                    </p>
-                    <p class="font-medium">
-                        {{
-                            (dataImport.summary as any)[domain]?.created ?? 0
-                        }}
-                        criados ·
-                        {{
-                            (dataImport.summary as any)[domain]?.skipped ?? 0
-                        }}
-                        ignorados
-                    </p>
+            <div v-if="dataImport.summary" class="space-y-4">
+                <div v-for="group in visibleSummaryGroups" :key="group.title">
+                    <h3
+                        class="mb-1.5 text-xs font-semibold tracking-wider text-emerald-800/70 uppercase dark:text-emerald-300/70"
+                    >
+                        {{ group.title }}
+                    </h3>
+                    <div class="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+                        <div v-for="item in group.items" :key="item.key">
+                            <p class="text-muted-foreground">
+                                {{ item.label }}
+                            </p>
+                            <p class="font-medium">
+                                <template v-if="item.tally">
+                                    {{ summaryTallyOf(item.key).created }}
+                                    criados ·
+                                    {{ summaryTallyOf(item.key).skipped }}
+                                    ignorados
+                                </template>
+                                <template v-else>
+                                    {{ summaryCountOf(item.key) }} criados
+                                </template>
+                            </p>
+                        </div>
+                    </div>
                 </div>
             </div>
             <p v-if="needingReassignment > 0" class="text-sm">
@@ -307,46 +478,69 @@ const needingReassignment = computed(() => {
                             </th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-border">
-                        <tr v-for="domain in domains" :key="domain.key">
-                            <td class="px-4 py-3 font-medium">
-                                {{ domain.label }}
-                            </td>
-                            <td class="px-4 py-3 text-right tabular-nums">
-                                {{ plan.counts[domain.key]?.new ?? 0 }}
-                            </td>
-                            <td
-                                class="px-4 py-3 text-right text-muted-foreground tabular-nums"
+                    <template
+                        v-for="group in visiblePlanGroups"
+                        :key="group.title"
+                    >
+                        <tbody class="border-t border-border">
+                            <tr>
+                                <td
+                                    colspan="6"
+                                    class="bg-muted/30 px-4 py-1.5 text-xs font-semibold tracking-wider text-muted-foreground uppercase"
+                                >
+                                    {{ group.title }}
+                                </td>
+                            </tr>
+                        </tbody>
+                        <tbody class="divide-y divide-border">
+                            <tr
+                                v-for="domain in group.domains"
+                                :key="domain.key"
                             >
-                                {{ plan.counts[domain.key]?.existing ?? 0 }}
-                            </td>
-                            <td
-                                class="px-4 py-3 text-right tabular-nums"
-                                :class="
-                                    (plan.counts[domain.key]?.conflict ?? 0) > 0
-                                        ? 'text-amber-600'
-                                        : 'text-muted-foreground'
-                                "
-                            >
-                                {{ plan.counts[domain.key]?.conflict ?? 0 }}
-                            </td>
-                            <td
-                                class="px-4 py-3 text-right tabular-nums"
-                                :class="
-                                    (plan.counts[domain.key]?.invalid ?? 0) > 0
-                                        ? 'text-red-600'
-                                        : 'text-muted-foreground'
-                                "
-                            >
-                                {{ plan.counts[domain.key]?.invalid ?? 0 }}
-                            </td>
-                            <td
-                                class="px-4 py-3 text-right text-muted-foreground tabular-nums"
-                            >
-                                {{ plan.counts[domain.key]?.unsupported ?? 0 }}
-                            </td>
-                        </tr>
-                    </tbody>
+                                <td class="px-4 py-3 font-medium">
+                                    {{ domain.label }}
+                                </td>
+                                <td class="px-4 py-3 text-right tabular-nums">
+                                    {{ plan.counts[domain.key]?.new ?? 0 }}
+                                </td>
+                                <td
+                                    class="px-4 py-3 text-right text-muted-foreground tabular-nums"
+                                >
+                                    {{ plan.counts[domain.key]?.existing ?? 0 }}
+                                </td>
+                                <td
+                                    class="px-4 py-3 text-right tabular-nums"
+                                    :class="
+                                        (plan.counts[domain.key]?.conflict ??
+                                            0) > 0
+                                            ? 'text-amber-600'
+                                            : 'text-muted-foreground'
+                                    "
+                                >
+                                    {{ plan.counts[domain.key]?.conflict ?? 0 }}
+                                </td>
+                                <td
+                                    class="px-4 py-3 text-right tabular-nums"
+                                    :class="
+                                        (plan.counts[domain.key]?.invalid ??
+                                            0) > 0
+                                            ? 'text-red-600'
+                                            : 'text-muted-foreground'
+                                    "
+                                >
+                                    {{ plan.counts[domain.key]?.invalid ?? 0 }}
+                                </td>
+                                <td
+                                    class="px-4 py-3 text-right text-muted-foreground tabular-nums"
+                                >
+                                    {{
+                                        plan.counts[domain.key]?.unsupported ??
+                                        0
+                                    }}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </template>
                 </table>
             </div>
 
