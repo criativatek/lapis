@@ -1,8 +1,9 @@
 # Restauro e importação segura de backup
 
-Fatia 6. Este documento descreve o contrato do formato de backup que o LÁPIS
-consegue restaurar, o que é efetivamente escrito na base de dados, o que
-nunca é importado, e as limitações conhecidas e deliberadas do mecanismo.
+Fatia 6, estendida na Fatia 6.1. Este documento descreve o **mecanismo** do
+restauro — passos, autorização, transação, limpeza. O **esquema** do próprio
+ficheiro — que coleções existem, o que cada uma transporta, o que cada
+versão sabe restaurar — está em [docs/backup-schema.md](backup-schema.md).
 
 O fluxo simétrico — gerar o ficheiro que este documento descreve como
 restaurável — está em `App\Actions\DataExports\GenerateDataExport` e não
@@ -27,22 +28,19 @@ do conteúdo.
 
 ## Schema version
 
-| Versão | Estado | O que falta |
-|---|---|---|
-| 3 (atual) | `Supported` | — |
-| 2 | `LegacyCompatible` | `enrollments[].enrolled_on` — sem essa data, uma inscrição não pode ser **criada** em segurança; linhas que precisariam dela são classificadas `unsupported`, não inventadas |
-| < 2 | `Invalid` | ficheiro recusado por inteiro |
-| > 3 | `UnsupportedNewer` | ficheiro recusado por inteiro — backup de uma versão do LÁPIS mais recente do que este código entende |
-
+Tabela completa e razão de cada versão em
+[docs/backup-schema.md](backup-schema.md#versões-de-esquema).
 `App\Support\Import\Backup\BackupSchemaCompatibility::for()` classifica a
-versão declarada antes de mais nada acontecer. Não existe normalizador de
-versões anteriores a 2 — não há nenhuma em circulação, então não foi
-construído (§56 do briefing original foi deliberadamente deixado de fora).
+versão declarada antes de mais nada acontecer — nenhum ponto do pipeline
+ramifica com base em `schema_version`; uma coleção ausente de um backup mais
+antigo resolve simplesmente para vazia. Não existe normalizador de versões
+anteriores a 2 — não há nenhuma em circulação, então não foi construído
+(§56 do briefing original foi deliberadamente deixado de fora).
 
-A Fatia 6 subiu o `schema_version` de 2 para 3 em `GenerateDataExport`,
-acrescentando `enrolled_on`, `left_on` e `class_number` a cada linha de
-`enrollments` — o mínimo necessário para recriar uma inscrição sem inventar
-uma data. Backups v2 já emitidos continuam legíveis.
+A Fatia 6.1 subiu o `schema_version` de 3 para 4, acrescentando toda a
+estrutura e factos de avaliação e acompanhamento pedagógico — o que antes
+era sempre `unsupported` (elementos de avaliação, classificações) agora
+restaura-se de facto. Backups v2/v3 já emitidos continuam legíveis.
 
 ## Upload → pré-visualização → confirmação
 
@@ -94,18 +92,28 @@ negativo não seria.
 
 `App\Services\Import\Backup\ValidateBackupPayload` é a segunda linha de
 defesa, e a real: nunca copia uma chave não reconhecida para o
-`canonical_snapshot`. Só os campos explicitamente listados por domínio
-(`classes`, `students`, `enrollments`, `instruments`, `classifications`)
-alguma vez chegam lá — o `SecretScanner` é defesa em profundidade, não a
-única barreira.
+`canonical_snapshot`. Só os campos explicitamente listados por domínio (uma
+lista de permissões própria para cada uma das coleções descritas em
+[docs/backup-schema.md](backup-schema.md)) alguma vez chegam lá — o
+`SecretScanner` é defesa em profundidade, não a única barreira.
 
 ## O que é efetivamente restaurado
 
+Desde a Fatia 6.1, praticamente todo o grafo pedagógico — turmas, alunos,
+inscrições, períodos letivos, escalas, tipos de elemento, domínios, perfis
+de avaliação e as suas versões, elementos de avaliação e itens, pontuações,
+classificações, autoavaliações, registos pedagógicos, estratégias e
+medidas, e relatórios finalizados. A referência coleção a coleção — o que
+cada uma transporta e as regras de correspondência — está em
+[docs/backup-schema.md](backup-schema.md); este documento mantém-se ao
+nível do mecanismo.
+
+Duas exceções permanecem deliberadas:
+
 | Domínio | Comportamento |
 |---|---|
-| Turmas, alunos, inscrições | Restauro real — linhas `new` são escritas |
-| Anos letivos, disciplinas | **Nunca criados.** Só correspondidos por rótulo/nome à organização de destino; em falta, a turma que os referencia fica `invalid` até o professor os configurar primeiro |
-| Elementos de avaliação, classificações | **Sempre `unsupported`.** O formato de backup atual não transporta as chaves estrangeiras que uma linha válida precisaria (tipo de instrumento, período letivo, versão do perfil de avaliação) — inventá-las seria pior do que não as restaurar. Contadas e mostradas, nunca escondidas |
+| Anos letivos, disciplinas | **Nunca criados.** Só correspondidos por rótulo/nome à organização de destino; em falta, tudo o que os referencia fica `invalid` até o professor os configurar primeiro |
+| Resultados calculados (médias, evolução, estatísticas) | **Nunca exportados nem importados.** São sempre recalculados depois do restauro pelos serviços canónicos — ver o princípio em [docs/backup-schema.md](backup-schema.md) |
 
 Anos letivos e disciplinas são só correspondência porque o backup só
 transporta o rótulo/nome como texto — sem `starts_on`/`ends_on` de um ano,
@@ -250,7 +258,8 @@ Deliberadamente fora do âmbito desta fatia (ver §101 do briefing original):
 - Assinatura criptográfica do backup
 - Mover dados pedagógicos entre organizações quando a origem ainda existe
   (ver a limitação do `ulid` global acima)
-- Restauro de elementos de avaliação e classificações — bloqueado pelo
-  formato atual de backup, não por escolha de produto; um `schema_version`
-  futuro que transporte as chaves estrangeiras necessárias poderia
-  desbloquear isto sem quebrar compatibilidade com os backups já emitidos
+
+Dívida futura específica do esquema pedagógico (`ReportTemplate`,
+`calculation_snapshot_id` histórico, `enrollment_instrument_applicability`)
+está documentada em
+[docs/backup-schema.md](backup-schema.md#dívida-futura-fora-do-âmbito-desta-fatia-de-propósito).
