@@ -339,12 +339,13 @@ class DataImportFileSafetyTest extends TestCase
     public static function schemaCompatibilityCases(): array
     {
         return [
-            'current' => [3, BackupSchemaCompatibility::Supported],
-            'legacy minimum' => [2, BackupSchemaCompatibility::LegacyCompatible],
-            'below minimum' => [1, BackupSchemaCompatibility::Invalid],
+            'current' => [BackupSchemaCompatibility::CURRENT, BackupSchemaCompatibility::Supported],
+            'legacy minimum' => [BackupSchemaCompatibility::MINIMUM_SUPPORTED, BackupSchemaCompatibility::LegacyCompatible],
+            'legacy between minimum and current' => [BackupSchemaCompatibility::CURRENT - 1, BackupSchemaCompatibility::LegacyCompatible],
+            'below minimum' => [BackupSchemaCompatibility::MINIMUM_SUPPORTED - 1, BackupSchemaCompatibility::Invalid],
             'zero' => [0, BackupSchemaCompatibility::Invalid],
             'negative' => [-1, BackupSchemaCompatibility::Invalid],
-            'newer than current' => [4, BackupSchemaCompatibility::UnsupportedNewer],
+            'newer than current' => [BackupSchemaCompatibility::CURRENT + 1, BackupSchemaCompatibility::UnsupportedNewer],
             'non-integer string' => ['3', BackupSchemaCompatibility::Invalid],
             'non-integer null' => [null, BackupSchemaCompatibility::Invalid],
         ];

@@ -15,6 +15,7 @@ use App\Models\Student;
 use App\Models\Subject;
 use App\Models\SubscriptionStatus;
 use App\Models\User;
+use App\Support\Import\Backup\BackupSchemaCompatibility;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -173,7 +174,7 @@ class DataImportTest extends TestCase
 
         $this->assertSame('validated', $import->status->value);
         $this->assertNotNull($import->canonical_snapshot);
-        $this->assertSame(3, $import->source_schema_version);
+        $this->assertSame(BackupSchemaCompatibility::CURRENT, $import->source_schema_version);
         $this->assertSame(0, $this->classCount($sourceOrg));
         $this->assertSame(0, $this->studentCount($sourceOrg));
     }
