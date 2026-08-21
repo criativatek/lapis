@@ -77,7 +77,7 @@ class InstitutionalAccountCreationTest extends TestCase
         ]);
 
         $response->assertRedirect();
-        $response->assertSessionHas('inertia.flash_data', fn ($flash) => str_contains($flash['toast']['message'] ?? '', 'Password temporária'));
+        $response->assertSessionHas('inertia.flash_data', fn ($flash) => str_contains($flash['toast']['message'] ?? '', 'Palavra-passe temporária'));
     }
 
     #[Test]

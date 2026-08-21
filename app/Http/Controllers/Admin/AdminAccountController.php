@@ -141,7 +141,7 @@ class AdminAccountController extends Controller
 
         $this->log($organization, 'admin.account_created', "Conta criada: {$user->email} ({$validated['plan_key']}).");
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('Conta criada.').($generated !== null ? " Password temporária: {$generated}" : '')]);
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Conta criada.').($generated !== null ? " Palavra-passe temporária: {$generated}" : '')]);
 
         return redirect()->route('admin.accounts.show', $organization);
     }
@@ -202,7 +202,7 @@ class AdminAccountController extends Controller
                 "Organização institucional criada: {$organization->name}, responsável {$owner->email} ({$plan->key}).",
             );
 
-            Inertia::flash('toast', ['type' => 'success', 'message' => __('Organização criada.').($generated !== null ? " Password temporária: {$generated}" : '')]);
+            Inertia::flash('toast', ['type' => 'success', 'message' => __('Organização criada.').($generated !== null ? " Palavra-passe temporária: {$generated}" : '')]);
 
             return redirect()->route('admin.accounts.show', $organization);
         });
