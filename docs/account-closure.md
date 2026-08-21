@@ -97,8 +97,9 @@ abaixo) avisa qualquer membro, mesmo sem acesso a `/team` (owner-only).
 **Cancelar:** `DELETE /team/closure`, owner-only, mesma janela de
 recuperação.
 
-**UI:** secção "Encerrar organização" no fundo de `team/Index.vue` — a
-mesma página de governação institucional da Fatia 3/4, não uma página nova.
+**UI:** página `institution/Index.vue`, na rota `institution.index`, com a
+secção reutilizável `components/organization/ClosureCard.vue`. A página
+«Equipa» mantém apenas a gestão de membros e convites.
 
 ## O que fica bloqueado durante a janela
 
