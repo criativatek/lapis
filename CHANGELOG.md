@@ -2,6 +2,13 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.45.5] — 2026-08-21
+
+### Fixed
+
+- **Inglês residual na interface, sobretudo em Configurações.** Auditoria global ao `resources/js` confirmou que `lang/pt_PT/{auth,passwords,validation}.php` já estavam completos e ativos (`.env` já define `APP_LOCALE=pt_PT`) — o inglês encontrado era sempre copy fixa nos componentes Vue, nunca mensagens do Fortify/Laravel. Corrigidos Configurações → Perfil, Segurança, Aparência; gestão de 2FA e chaves de acesso (passkeys); páginas de autenticação (login, confirmação de password, etc.); menu do utilizador; exportação de dados; ligações de autoavaliação; e rótulos de acessibilidade (`sr-only`/`aria-label`) em diálogos, painéis laterais, breadcrumb e indicador de carregamento reutilizados em toda a aplicação. Inclui dois toasts que citavam `__('Password updated.')`/"Password temporária" sem qualquer chave `pt_PT` correspondente — ficavam literalmente em inglês em produção. Sem alterar nomes técnicos, enums, rotas, chaves de API ou colunas de base de dados; os dois erros devolvidos pelo pacote externo de passkeys (`@laravel/passkeys/vue`) continuam em inglês por não haver, no projeto, uma forma segura e já usada de lhes definir o idioma.
+- **`routes/web.php` com um import fora de ordem** (`InstitutionAdminController` depois de `InstrumentController`, introduzido em 0.45.4), apanhado só agora por `pint --test`.
+
 ## [0.45.4] — 2026-08-21
 
 ### Fixed
