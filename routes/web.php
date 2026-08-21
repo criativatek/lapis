@@ -19,6 +19,7 @@ use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\EvidenceController;
 use App\Http\Controllers\InovarExportController;
 use App\Http\Controllers\InstrumentController;
+use App\Http\Controllers\InstitutionAdminController;
 use App\Http\Controllers\InterimAssessmentController;
 use App\Http\Controllers\InterventionController;
 use App\Http\Controllers\InvitationAcceptanceController;
@@ -409,6 +410,7 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     // actual TYPE, which is why the policy still runs on every action
     // underneath it.
     Route::middleware('module:institution_admin')->group(function () {
+        Route::get('institution', [InstitutionAdminController::class, 'index'])->name('institution.index');
         Route::get('team', [TeamController::class, 'index'])->name('team.index');
         Route::post('team/invitations', [TeamController::class, 'store'])->name('team.invitations.store');
         Route::delete('team/invitations/{invitation}', [TeamController::class, 'destroy'])->name('team.invitations.destroy');
@@ -419,9 +421,8 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::delete('team/members', [TeamController::class, 'removeMember'])->name('team.members.destroy');
         Route::post('team/members/transfer-ownership', [TeamController::class, 'transferOwnership'])->name('team.members.transfer-ownership');
 
-        // Organization closure (Fatia 5, §9-§12) — owner-only, same page
-        // (team.index already sends the current `closure` state to every
-        // member; only the owner can act on it, via OrganizationMembershipPolicy).
+        // Organization closure (Fatia 5, §9-§12) — owner-only. The UI lives
+        // at institution.index; these mutation paths stay stable.
         Route::post('team/closure', [TeamController::class, 'requestClosure'])->name('organization.closure.request');
         Route::delete('team/closure', [TeamController::class, 'cancelClosure'])->name('organization.closure.cancel');
     });

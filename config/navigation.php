@@ -147,7 +147,7 @@ return [
                 // an orphaned class is a governance action, not something a
                 // regular member needs (or is authorized) to see.
                 ['key' => 'class-reassignment', 'label' => 'Turmas a Reatribuir', 'icon' => 'Shuffle', 'module' => 'institution_admin', 'owner_only' => true, 'phase' => 4, 'route' => 'classes.reassignment.index', 'built' => true, 'description' => 'Atribuir um novo professor a turmas que ficaram sem nenhum.'],
-                ['key' => 'institution', 'label' => 'Administração Institucional', 'icon' => 'Building2', 'module' => 'institution_admin', 'phase' => 7, 'description' => 'Gerir a instituição.'],
+                ['key' => 'institution', 'label' => 'Administração Institucional', 'icon' => 'Building2', 'module' => 'institution_admin', 'owner_only' => true, 'phase' => 7, 'route' => 'institution.index', 'built' => true, 'description' => 'Gerir a instituição.'],
             ],
         ],
 

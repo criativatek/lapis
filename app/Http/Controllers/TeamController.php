@@ -13,8 +13,6 @@ use App\Models\Organization;
 use App\Models\OrganizationInvitation;
 use App\Models\User;
 use App\Support\Organizations\MembershipException;
-use App\Support\Retention\ClosureStatusPresenter;
-use App\Support\Retention\RetentionPolicy;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -26,9 +24,9 @@ use Inertia\Response;
  * Equipa (Fatia 3) — an institutional organization's members and pending
  * invitations, owner-only (OrganizationInvitationPolicy). Extended in Fatia 4
  * with removing a member and transferring ownership; both still owner-only,
- * both still refused during impersonation. Extended again in Fatia 5 with the
- * organization's own recoverable closure (§9-§12) — read by every member,
- * acted on by the owner alone (OrganizationMembershipPolicy).
+ * both still refused during impersonation. The Fatia 5 organization closure
+ * mutations remain here for route compatibility; their UI lives under
+ * Administração Institucional.
  */
 class TeamController extends Controller
 {
@@ -42,8 +40,6 @@ class TeamController extends Controller
         protected TransferOrganizationOwnership $transferOrganizationOwnership,
         protected RequestOrganizationClosure $requestOrganizationClosure,
         protected CancelOrganizationClosure $cancelOrganizationClosure,
-        protected ClosureStatusPresenter $closureStatus,
-        protected RetentionPolicy $retentionPolicy,
     ) {}
 
     public function index(): Response
@@ -74,10 +70,6 @@ class TeamController extends Controller
                     'expires_at' => $invitation->expires_at->toDateString(),
                     'expired' => $invitation->isExpired(),
                 ]),
-            'closure' => $organization->isClosureRequested()
-                ? $this->closureStatus->institutional($organization->closure_requested_at, $organization->scheduled_deletion_at)
-                : null,
-            'closureRetentionDays' => $this->retentionPolicy->institutionalClosureDays(),
         ]);
     }
 
