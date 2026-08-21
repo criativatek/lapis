@@ -173,6 +173,117 @@ class CrossOrganizationCloneTest extends PedagogicalRoundTripTest
         $this->assertSame('Edição local protegida', $this->inOrganization($destination, fn (): string => $localDomain->fresh()->name));
     }
 
+    /**
+     * Option 1 of the authorship contract (§30-31): the confirming user IS
+     * the same real person who authored the pedagogical records, just
+     * restoring into a second, different organization of their own rather
+     * than the one they were originally written in. The source is left
+     * intact -- this is a clone, not a delete-then-restore -- and every
+     * personally-authored row (evidence, interventions, their reviews,
+     * reports) still maps to that same account, because its email matches
+     * every row's recorded author email directly. No new mechanism: this is
+     * `resolveAuthor()` exactly as it already stood, exercised against a
+     * genuinely different destination for the first time.
+     */
+    #[Test]
+    public function cloning_into_a_second_organization_of_the_same_exporter_maps_historical_authorship(): void
+    {
+        $teacher = $this->teacher();
+        $this->completeScenario();
+        $backup = $this->freshBackup();
+        // Source deliberately left intact.
+
+        $destination = Organization::factory()->withMember($teacher)->create(['owner_id' => $teacher->id, 'name' => 'Segunda organização pessoal']);
+        $import = $this->upload($backup, $destination, $teacher);
+
+        $preview = $this->actingAs($teacher)->withSession(['organization_id' => $destination->id])->get("/data-imports/{$import->ulid}");
+        foreach (['evidence_records', 'interventions', 'intervention_reviews', 'reports'] as $domain) {
+            $this->assertGreaterThan(0, data_get($preview->viewData('page'), "props.plan.counts.{$domain}.new", 0), $domain);
+            $this->assertSame(0, data_get($preview->viewData('page'), "props.plan.counts.{$domain}.invalid", 0), $domain);
+        }
+
+        $this->confirm($import, $destination, $teacher);
+
+        $evidence = $this->inOrganization($destination, fn (): EvidenceRecord => EvidenceRecord::firstOrFail());
+        $intervention = $this->inOrganization($destination, fn (): Intervention => Intervention::firstOrFail());
+        $review = $this->inOrganization($destination, fn (): InterventionReview => InterventionReview::firstOrFail());
+        $report = $this->inOrganization($destination, fn (): Report => Report::firstOrFail());
+
+        $this->assertSame($teacher->id, $evidence->created_by);
+        $this->assertSame($teacher->id, $intervention->created_by);
+        $this->assertSame($teacher->id, $review->reviewed_by);
+        $this->assertSame($teacher->id, $report->created_by);
+    }
+
+    /**
+     * Option 2: the confirming user is a genuinely different real person
+     * (a colleague the exporter shared the backup with). Every personally
+     * authored domain -- evidence, interventions, their reviews, reports --
+     * stays `invalid`, never invented, never silently attributed to the
+     * importer. Structural/assessment data with no personal-authorship
+     * requirement (classes, scores, classifications, ...) is unaffected --
+     * this blocks per row, not the whole import. The source organization is
+     * never written.
+     */
+    #[Test]
+    public function cloning_to_a_different_teacher_never_invents_personal_authorship(): void
+    {
+        $exporter = $this->teacher();
+        $source = $exporter->personalOrganization();
+        $this->completeScenario();
+        $backup = $this->freshBackup();
+        $sourceCounts = $this->countsByModel($source);
+        // Source deliberately left intact.
+
+        $importer = User::factory()->create(['email' => 'colega@example.test']);
+        $destination = $importer->personalOrganization();
+        $this->seedRequiredReferences($source, $destination);
+
+        $import = $this->upload($backup, $destination, $importer);
+        $preview = $this->actingAs($importer)->withSession(['organization_id' => $destination->id])->get("/data-imports/{$import->ulid}");
+
+        foreach (['evidence_records', 'interventions', 'intervention_reviews', 'reports'] as $domain) {
+            $this->assertSame(0, data_get($preview->viewData('page'), "props.plan.counts.{$domain}.new", -1), $domain);
+            $this->assertGreaterThan(0, data_get($preview->viewData('page'), "props.plan.counts.{$domain}.invalid", 0), $domain);
+        }
+        $this->assertGreaterThan(0, data_get($preview->viewData('page'), 'props.plan.counts.classifications.new', 0));
+
+        $this->confirm($import, $destination, $importer);
+
+        foreach ([EvidenceRecord::class, Intervention::class, InterventionReview::class, Report::class] as $model) {
+            $this->assertSame(0, $model::withoutGlobalScopes()->where('organization_id', $destination->id)->count(), $model);
+        }
+        $this->assertSame($sourceCounts, $this->countsByModel($source));
+    }
+
+    /**
+     * The importer sharing a display name with the exporter must never be
+     * enough -- only an exact email match resolves an author. Proves no
+     * name-based fallback exists anywhere in the pipeline.
+     */
+    #[Test]
+    public function an_author_is_never_matched_by_name_only_by_exact_email(): void
+    {
+        $exporter = $this->teacher();
+        $source = $exporter->personalOrganization();
+        $this->completeScenario();
+        $backup = $this->freshBackup();
+
+        $impostor = User::factory()->create(['name' => $exporter->name, 'email' => 'nao-e-'.$exporter->email]);
+        $destination = $impostor->personalOrganization();
+        $this->seedRequiredReferences($source, $destination);
+
+        $import = $this->upload($backup, $destination, $impostor);
+        $preview = $this->actingAs($impostor)->withSession(['organization_id' => $destination->id])->get("/data-imports/{$import->ulid}");
+
+        $this->assertSame(0, data_get($preview->viewData('page'), 'props.plan.counts.evidence_records.new', -1));
+        $this->assertGreaterThan(0, data_get($preview->viewData('page'), 'props.plan.counts.evidence_records.invalid', 0));
+
+        $this->confirm($import, $destination, $impostor);
+
+        $this->assertSame(0, EvidenceRecord::withoutGlobalScopes()->where('organization_id', $destination->id)->count());
+    }
+
     private function teacher(): User
     {
         $property = new ReflectionProperty(PedagogicalRoundTripTest::class, 'teacher');
