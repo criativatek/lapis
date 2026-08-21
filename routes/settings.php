@@ -16,6 +16,13 @@ Route::middleware(['auth'])->group(function () {
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('settings/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
+    // Recoverable closure (§5-§7) — distinct from profile.destroy above, which
+    // stays immediate and exceptional (§34). No {user} parameter on either
+    // route: both always act on the authenticated user, never a target
+    // resolved from the URL, so there is no cross-account surface to guard.
+    Route::post('settings/account-closure', [ProfileController::class, 'requestClosure'])->name('account.closure.request');
+    Route::delete('settings/account-closure', [ProfileController::class, 'cancelClosure'])->name('account.closure.cancel');
+
     Route::get('settings/security', [SecurityController::class, 'edit'])
         ->middleware(RequirePassword::class)
         ->name('security.edit');

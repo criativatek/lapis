@@ -4,6 +4,7 @@ namespace App\Actions\Users;
 
 use App\Models\OrganizationType;
 use App\Models\User;
+use App\Support\Accounts\AccountClosureException;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -15,15 +16,19 @@ use Illuminate\Support\Facades\DB;
  * owner's account must never take a school down with it, so organizations.owner_id
  * is ON DELETE RESTRICT and the database refuses that delete outright.
  *
- * ponytail: no ownership-transfer flow yet — nothing creates institutional
- * organizations before the institutional phase, so the FK is the whole guard.
- * When that phase lands, this action needs a "transfer ownership first" path
- * instead of relying on the constraint to fail.
+ * The ownership-transfer flow now exists (TeamController::transferOwnership,
+ * Fatia 4), so a caller has somewhere to send the operator: this guards
+ * explicitly and names it, rather than letting a QueryException be the first
+ * thing anyone sees (§35 of the lifecycle brief).
  */
 class DeleteUserAccount
 {
     public function delete(User $user): void
     {
+        if ($user->ownedOrganizations()->where('type', OrganizationType::Institutional)->exists()) {
+            throw AccountClosureException::ownsInstitution();
+        }
+
         DB::transaction(function () use ($user): void {
             foreach ($user->ownedOrganizations()->where('type', OrganizationType::Personal)->get() as $organization) {
                 $organization->delete();

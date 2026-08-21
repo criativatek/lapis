@@ -5,7 +5,7 @@ namespace Tests\Feature\Users;
 use App\Actions\Users\DeleteUserAccount;
 use App\Models\Organization;
 use App\Models\User;
-use Illuminate\Database\QueryException;
+use App\Support\Accounts\AccountClosureException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -44,15 +44,21 @@ class DeleteUserAccountTest extends TestCase
     }
 
     #[Test]
-    public function the_database_refuses_to_delete_an_account_that_owns_an_institution(): void
+    public function deleting_an_account_that_owns_an_institution_is_refused_with_a_clear_reason(): void
     {
         $user = User::factory()->create();
-        Organization::factory()->institutional()->withMember($user)->create(['owner_id' => $user->id]);
+        $institution = Organization::factory()->institutional()->withMember($user)->create(['owner_id' => $user->id]);
 
-        // Better a hard failure than silently taking a school's records with it.
-        // Replace with an ownership-transfer flow when the institutional phase lands.
-        $this->expectException(QueryException::class);
+        // A named domain exception, not a raw QueryException — the operator is
+        // told to transfer ownership first (TeamController::transferOwnership),
+        // rather than being handed a SQL error as the first UX (§35).
+        $this->expectException(AccountClosureException::class);
 
-        app(DeleteUserAccount::class)->delete($user);
+        try {
+            app(DeleteUserAccount::class)->delete($user);
+        } finally {
+            $this->assertDatabaseHas('users', ['id' => $user->id]);
+            $this->assertDatabaseHas('organizations', ['id' => $institution->id]);
+        }
     }
 }

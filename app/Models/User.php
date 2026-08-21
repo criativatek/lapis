@@ -7,6 +7,7 @@ use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -29,6 +30,8 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property string|null $remember_token
  * @property bool $is_platform_admin
  * @property Carbon|null $deactivated_at
+ * @property Carbon|null $closure_requested_at
+ * @property Carbon|null $scheduled_deletion_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -54,6 +57,8 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
             'two_factor_confirmed_at' => 'datetime',
             'is_platform_admin' => 'boolean',
             'deactivated_at' => 'datetime',
+            'closure_requested_at' => 'datetime',
+            'scheduled_deletion_at' => 'datetime',
         ];
     }
 
@@ -79,6 +84,29 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
     public function isActive(): bool
     {
         return ! $this->isDeactivated();
+    }
+
+    /**
+     * A voluntary, recoverable closure request — never confused with
+     * `deactivated_at`, which is an operator's administrative action. See
+     * docs/account-closure.md.
+     */
+    public function isClosureRequested(): bool
+    {
+        return $this->closure_requested_at !== null;
+    }
+
+    /**
+     * `scheduled_deletion_at` is stamped once, at request time, from the
+     * policy days in force that moment (App\Actions\Accounts\RequestPersonalAccountClosure).
+     * It does not move if the policy changes later — a request already in
+     * flight keeps the deadline it was promised.
+     */
+    public function isEligibleForDeletion(): bool
+    {
+        return $this->closure_requested_at !== null
+            && $this->scheduled_deletion_at !== null
+            && $this->scheduled_deletion_at->isPast();
     }
 
     /**
@@ -140,5 +168,27 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
         $tenant = app(CurrentOrganization::class);
 
         return $tenant->isResolved() && $this->owns($tenant->get());
+    }
+
+    /**
+     * @param  Builder<User>  $query
+     * @return Builder<User>
+     */
+    public function scopeClosureRequested($query)
+    {
+        return $query->whereNotNull('closure_requested_at');
+    }
+
+    /**
+     * Deliberately reads the stored deadline, not a fresh diffInDays against
+     * live config — see the note on isEligibleForDeletion().
+     *
+     * @param  Builder<User>  $query
+     * @return Builder<User>
+     */
+    public function scopeEligibleForDeletion($query)
+    {
+        return $query->whereNotNull('closure_requested_at')
+            ->where('scheduled_deletion_at', '<=', now());
     }
 }

@@ -2,8 +2,11 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\AcademicYear;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Navigation\NavigationBuilder;
+use App\Support\Retention\AcademicYearRetentionClassifier;
+use App\Support\Retention\ClosureStatusPresenter;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -41,6 +44,7 @@ class HandleInertiaRequests extends Middleware
         $currentOrganization = app(CurrentOrganization::class);
         $hasOrganization = $currentOrganization->isResolved();
         $user = $request->user();
+        $closureStatus = app(ClosureStatusPresenter::class);
 
         return [
             ...parent::share($request),
@@ -73,10 +77,14 @@ class HandleInertiaRequests extends Middleware
                 ? app(NavigationBuilder::class)->forCurrentOrganization()
                 : ['sections' => [], 'footer' => []],
             'modules' => fn () => app(Entitlements::class)->modules(),
-            // The header context selectors. Empty until the academic model exists
-            // (Fase 1) — the structure is shipped, the data is not invented.
-            'scope' => [
-                'academicYear' => null,
+            // The header context selectors. Academic year reads the same
+            // heuristic AcademicYearRetentionClassifier already uses and tests
+            // (single Active year, else most recent by starts_on) — never
+            // invented here. Subject/gradeLevel/class/period stay null: there
+            // is no canonical "current" one to read yet, and guessing would be
+            // exactly the kind of invented data this prop was built to avoid.
+            'scope' => fn () => [
+                'academicYear' => $hasOrganization ? $this->currentAcademicYearLabel() : null,
                 'subject' => null,
                 'gradeLevel' => null,
                 'class' => null,
@@ -87,6 +95,30 @@ class HandleInertiaRequests extends Middleware
             'impersonating' => $request->session()->has('impersonator_id')
                 ? ['name' => $request->user()?->name]
                 : null,
+            // Fatia 5 (§13-§14): the recovery-window banners. Backend decides
+            // recoverable/eligible — the client only ever displays what it is
+            // told, never recomputes the boundary.
+            'accountClosure' => $user !== null && $user->isClosureRequested()
+                ? $closureStatus->personal($user->closure_requested_at, $user->scheduled_deletion_at)
+                : null,
+            'organizationClosure' => $hasOrganization && $currentOrganization->get()->isClosureRequested()
+                ? [
+                    ...$closureStatus->institutional(
+                        $currentOrganization->get()->closure_requested_at,
+                        $currentOrganization->get()->scheduled_deletion_at,
+                    ),
+                    'is_owner' => $user !== null && $user->owns($currentOrganization->get()),
+                ]
+                : null,
         ];
+    }
+
+    protected function currentAcademicYearLabel(): ?string
+    {
+        $years = AcademicYear::query()->get();
+
+        $current = app(AcademicYearRetentionClassifier::class)->currentYearFor($years);
+
+        return $current?->label;
     }
 }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { router, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
+import ClosureBanners from '@/components/ClosureBanners.vue';
 import AppLayout from '@/layouts/app/AppSidebarLayout.vue';
 import type { BreadcrumbItem } from '@/types';
 
@@ -25,6 +26,7 @@ function stopImpersonating(): void {
             Terminar
         </button>
     </div>
+    <ClosureBanners />
     <AppLayout :breadcrumbs="breadcrumbs">
         <slot />
     </AppLayout>

@@ -3,7 +3,7 @@ import { Form, Head, usePage } from '@inertiajs/vue3';
 import { Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import ProfileController from '@/actions/App/Http/Controllers/Settings/ProfileController';
-import DeleteUser from '@/components/DeleteUser.vue';
+import AccountClosure from '@/components/AccountClosure.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import OrganizationMembership from '@/components/OrganizationMembership.vue';
@@ -109,5 +109,5 @@ const user = computed(() => page.props.auth.user);
 
     <OrganizationMembership />
 
-    <DeleteUser />
+    <AccountClosure />
 </template>

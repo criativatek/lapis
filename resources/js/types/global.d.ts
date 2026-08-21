@@ -1,4 +1,5 @@
 import type { Auth } from '@/types/auth';
+import type { ClosureStatus, OrganizationClosureStatus } from '@/types/closure';
 import type { SharedNav, WorkScope } from '@/types/navigation';
 
 // Extend ImportMeta interface for Vite...
@@ -24,6 +25,8 @@ declare module '@inertiajs/core' {
             modules: string[];
             scope: WorkScope;
             sidebarOpen: boolean;
+            accountClosure: ClosureStatus | null;
+            organizationClosure: OrganizationClosureStatus | null;
             [key: string]: unknown;
         };
     }

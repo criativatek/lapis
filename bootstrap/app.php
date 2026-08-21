@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureAccountIsOperational;
 use App\Http\Middleware\EnsurePlatformAdmin;
 use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\HandleAppearance;
@@ -29,6 +30,9 @@ return Application::configure(basePath: dirname(__DIR__))
             // rather than given a tenant.
             EnsureUserIsActive::class,
             ResolveOrganization::class,
+            // After ResolveOrganization: needs the resolved tenant (if any) to
+            // check whether IT is in closure, on top of the account itself.
+            EnsureAccountIsOperational::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
         ]);
