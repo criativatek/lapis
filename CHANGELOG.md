@@ -2,6 +2,16 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.45.2] — 2026-08-21
+
+### Added
+
+- **Anos letivos e disciplinas restauráveis (`schema_version = 5`).** O backup passa a transportar os dados reais completos dos anos letivos e das disciplinas referenciados pelo grafo pedagógico. Um restauro autorizado para uma organização vazia pode agora criá-los antes das turmas, períodos, domínios, perfis e relatórios que os referenciam, sem inventar datas, estados, país ou código e sem reutilizar um `ulid` pertencente à organização de origem.
+
+### Fixed
+
+- **A clonagem entre organizações (0.45.1) ficava parcial sempre que a organização de destino estivesse genuinamente vazia.** Turmas, inscrições, períodos letivos e domínios continuavam classificados como inválidos porque dependiam do ano letivo e da disciplina resolverem primeiro — e esses dois, até agora, nunca eram criados, só correspondidos por nome. A pré-visualização mostrava "nada novo para importar" mesmo com a clonagem em si a funcionar corretamente para os domínios que não dependiam deles. Resolvido pela mesma correção acima: turmas, inscrições, períodos e domínios já não precisaram de nenhuma alteração própria — resolvem-se corretamente assim que o ano letivo e a disciplina resolvem.
+
 ## [0.45.1] — 2026-08-21
 
 ### Added
