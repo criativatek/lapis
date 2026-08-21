@@ -2,6 +2,26 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.43.0] — 2026-08-21
+
+### Added
+
+- **Encerramento recuperável de conta pessoal (60 dias).** Um utilizador pode pedir o encerramento da própria conta em Configurações — a conta fica disponível para recuperação e exportação durante 60 dias; pode reativá-la a qualquer momento dentro desse prazo. Ao fim do prazo, fica apenas **elegível** para eliminação — nada é apagado automaticamente. Bloqueado se a pessoa for responsável por alguma organização institucional ativa, até transferir a responsabilidade primeiro. Ver `docs/account-closure.md`.
+- **Encerramento recuperável de organização institucional (90 dias).** O responsável (owner) pode pedir o encerramento da organização — membros, responsável e todos os dados pedagógicos permanecem intactos; só fica bloqueada nova atividade de escrita durante a janela. Qualquer membro vê um aviso, mesmo sem acesso à página de Equipa; só o responsável pode pedir ou cancelar.
+- **Bloqueio de atividade normal durante o encerramento.** Novo middleware que permite sempre leitura, e durante uma janela de encerramento ativa restringe escrita a um conjunto reduzido de ações seguras (cancelar o encerramento, exportar dados, terminar sessão, mudar de organização, gerir password/2FA/passkeys). Nunca afeta outras organizações da mesma pessoa nem a organização pessoal.
+- **Pré-visualização de elegibilidade para retenção, só de leitura.** `php artisan retention:status` (com `--json`) lista contas e organizações em encerramento com dias restantes, exportações expiradas por limpar, anos letivos fora da janela pedagógica por organização, e a contagem de eventos de auditoria fora da janela de segurança — nunca apaga nada. Visibilidade equivalente, também só de leitura, na ficha de conta do backoffice.
+- **Estrutura do Ano Letivo, centralizada em Configuração.** Nova entrada na barra lateral que reúne a gestão de Anos letivos e Disciplinas (já existente, sem alteração de rotas, controllers ou policies) sob um único separador. O seletor de contexto no topo continua a permitir escolher ano letivo/disciplina, mas deixa de ser o único caminho até à sua gestão — e mostra "Sem ano letivo configurado" / "Sem disciplinas configuradas" em vez de um traço vazio quando não existe nenhum. Ver `docs/academic-structure.md`.
+
+### Fixed
+
+- **`data-exports:prune` falhava sempre a partir do scheduler.** Agendado de hora a hora desde a Fatia 4, este comando lançava `TenantNotResolvedException` sempre que corria fora de um pedido HTTP — ou seja, sempre que o scheduler o disparava — porque a sua query de limpeza estava scoped à organização, mas nenhuma organização é resolvida num contexto de consola. O teste existente não apanhou isto por correr logo a seguir a um pedido HTTP simulado, que deixava um tenant "preso" na mesma execução. Corrigido para operar explicitamente entre organizações (`withoutGlobalScope('organization')`), com um novo teste que reproduz a condição real do scheduler.
+- **Eliminar a própria conta ressuscitava-a.** `ProfileController::destroy()` invalidava a sessão antes de terminar; ao mover essa ordem para acomodar a nova guarda de encerramento institucional, `Auth::logout()` — chamado sobre a mesma instância que acabara de ser apagada — voltava a inserir a linha ao ciclar o remember token num modelo já marcado como não existente. Corrigido operando sobre uma cópia distinta.
+- **Apagar a própria conta sendo responsável por uma instituição só falhava com um erro SQL cru.** `DeleteUserAccount` deixa agora uma mensagem explícita — "transfira a responsabilidade primeiro" — em vez de deixar a restrição de chave estrangeira ser a primeira UX.
+
+### Changed
+
+- O prop partilhado `scope.academicYear` (seletor de contexto no topo) deixou de estar permanentemente vazio — reflete agora o ano letivo atual da organização, pela mesma heurística já testada que os relatórios de retenção usam.
+
 ## [0.42.6] — 2026-08-20
 
 ### Fixed
