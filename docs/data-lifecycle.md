@@ -10,6 +10,11 @@ organizações institucionais) está descrito em detalhe em
 [docs/account-closure.md](account-closure.md) — este documento mantém a
 política de retenção; aquele descreve o mecanismo.
 
+A Fatia 6 acrescenta o caminho inverso da exportação — restaurar um backup
+gerado pelo próprio LÁPIS — descrito em
+[docs/data-import.md](data-import.md): o que é efetivamente restaurado, o que
+nunca é importado, e a limpeza automática do ficheiro carregado.
+
 ## O que esta política cobre e o que não cobre
 
 Este documento descreve o que o LÁPIS **se propõe** a fazer aos dados ao longo
@@ -185,6 +190,11 @@ real fica marcada como dívida técnica explícita, para trabalho futuro.
   padrão já usado nos relatórios administrativos cross-tenant — e coberto por
   um teste que força `CurrentOrganization::forget()` antes de correr o
   comando, replicando exatamente a condição real do scheduler.
+- A Fatia 6 acrescenta a mesma limpeza para o caminho inverso: `php artisan
+  data-imports:prune`, também de hora a hora, fecha qualquer restauro de
+  backup ainda por confirmar depois de expirado e remove o ficheiro
+  carregado do disco privado — nunca os dados já restaurados. Detalhe em
+  [docs/data-import.md](data-import.md).
 
 ## Configuração de retenção
 
