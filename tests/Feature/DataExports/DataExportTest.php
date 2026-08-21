@@ -368,9 +368,10 @@ class DataExportTest extends TestCase
      * (NOT NULL, drives late-entry handling, §11.4) — schema_version bumped
      * to 3 specifically to carry it. Regression against reopening that gap.
      * Fatia 6.1 bumped schema_version again, to 4, for the full pedagogical
-     * restore (docs/backup-schema.md) — enrollments themselves are
-     * untouched by that bump, so this test's assertions stay the same
-     * shape, just against the new current version.
+     * restore (docs/backup-schema.md), and Fatia 6.2 to 5, for restorable
+     * academic years/subjects — enrollments themselves are untouched by
+     * either bump, so this test's assertions stay the same shape, just
+     * against the new current version.
      */
     #[Test]
     public function the_backup_json_carries_enrollment_dates_for_restore(): void
@@ -385,7 +386,7 @@ class DataExportTest extends TestCase
         $zip = $this->extractZip(Storage::disk('local')->path($export->disk_path));
         $backup = json_decode((string) $zip->getFromName('backup-lapis.json'), true);
 
-        $this->assertSame(4, $backup['schema_version']);
+        $this->assertSame(5, $backup['schema_version']);
         $this->assertNotEmpty($backup['enrollments']);
         foreach ($backup['enrollments'] as $enrollment) {
             $this->assertArrayHasKey('enrolled_on', $enrollment);

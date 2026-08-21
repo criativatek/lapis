@@ -63,14 +63,6 @@ class DataImportTest extends TestCase
         });
     }
 
-    private function seedMatchingStructure(Organization $destination, string $yearLabel = '2026/2027', string $subjectName = 'Matemática'): void
-    {
-        app(CurrentOrganization::class)->runFor($destination, function () use ($destination, $yearLabel, $subjectName) {
-            AcademicYear::factory()->recycle($destination)->create(['label' => $yearLabel]);
-            Subject::factory()->recycle($destination)->create(['name' => $subjectName]);
-        });
-    }
-
     /**
      * Generates a real export and returns the ZIP as an upload — a
      * self-contained call that internally switches the test's "acting as"
@@ -294,8 +286,19 @@ class DataImportTest extends TestCase
         $this->assertSame(1, $this->classCount($sourceOrg));
     }
 
+    /**
+     * Since Fatia 6.2, an academic year absent from the destination is no
+     * longer a dead end on its own — `academic_years` is itself a
+     * restorable collection (real `starts_on`/`ends_on`/`status`, never
+     * invented), so a class referencing a year missing from the
+     * destination now clones the year too. What still has to fail
+     * gracefully is the genuinely unresolvable case: the year's own row
+     * dropped out of the canonical snapshot (a legacy `schema_version` 4
+     * backup predating this collection, or a row that failed its own
+     * validation) while a class still references its label.
+     */
     #[Test]
-    public function a_class_referencing_an_academic_year_absent_from_the_destination_is_invalid_and_skipped(): void
+    public function a_class_referencing_an_academic_year_missing_from_the_snapshot_is_invalid_and_skipped(): void
     {
         Storage::fake('local');
         [$sourceOrg, $sourceOwner] = $this->institutionalOrganization();
@@ -311,6 +314,13 @@ class DataImportTest extends TestCase
 
         $import = $this->uploadInto($otherOrg, $otherUser, $file);
 
+        // Simulates the year's own row never having made it into the
+        // snapshot — the same shape a pre-Fatia-6.2 backup would have, or
+        // a row `ValidateBackupPayload` itself rejected.
+        $snapshot = $import->canonical_snapshot;
+        $snapshot['academic_years'] = [];
+        $import->forceFill(['canonical_snapshot' => $snapshot])->save();
+
         // The student itself has nothing to do with academic years, so it
         // classifies as `new` on its own — the class stays `invalid` and
         // blocks only itself, not the whole import. `can_confirm` is
@@ -319,6 +329,7 @@ class DataImportTest extends TestCase
             ->get("/data-imports/{$import->ulid}")
             ->assertInertia(fn ($page) => $page
                 ->where('plan.counts.academic_years.invalid', 1)
+                ->where('plan.counts.academic_years.new', 0)
                 ->where('plan.counts.classes.invalid', 1)
                 ->where('plan.counts.students.new', 1)
                 ->where('plan.can_confirm', true));
@@ -352,7 +363,10 @@ class DataImportTest extends TestCase
 
         $otherUser = User::factory()->create();
         $otherOrg = $otherUser->personalOrganization();
-        $this->seedMatchingStructure($otherOrg);
+        // Deliberately not pre-seeded: the academic year/subject clone
+        // themselves now (Fatia 6.2), so this proves the class resolves
+        // from nothing pre-existing in the destination, not just that it
+        // can find a year someone happened to already set up.
 
         $import = $this->uploadInto($otherOrg, $otherUser, $file);
 
@@ -420,7 +434,6 @@ class DataImportTest extends TestCase
         $personal = $owner->personalOrganization();
         [$institutionA] = $this->institutionalOrganization();
         $institutionA->members()->attach($owner, ['joined_at' => now()]);
-        $this->seedMatchingStructure($institutionA);
 
         $import = $this->uploadInto($institutionA, $owner, $file);
 

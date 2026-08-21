@@ -37,6 +37,55 @@ use ReflectionProperty;
 class CrossOrganizationCloneTest extends PedagogicalRoundTripTest
 {
     #[Test]
+    public function a_complete_backup_clones_into_an_empty_organization_with_its_academic_structure(): void
+    {
+        $teacher = $this->teacher();
+        $source = $teacher->personalOrganization();
+        $sourceClass = $this->completeScenario();
+        $sourceProgression = $this->progressionFor($source, $sourceClass);
+        $sourceYear = $this->inOrganization($source, fn (): AcademicYear => AcademicYear::firstOrFail());
+        $sourceSubject = $this->inOrganization($source, fn (): Subject => Subject::firstOrFail());
+        $backup = $this->freshBackup();
+
+        $destination = Organization::factory()->withMember($teacher)->create(['owner_id' => $teacher->id, 'name' => 'Destino vazio']);
+        $import = $this->upload($backup, $destination, $teacher);
+        $preview = $this->actingAs($teacher)->withSession(['organization_id' => $destination->id])->get("/data-imports/{$import->ulid}");
+
+        $preview->assertOk();
+        foreach ([
+            'academic_years' => ['new' => 1, 'invalid' => 0],
+            'subjects' => ['new' => 1, 'invalid' => 0],
+            'classes' => ['new' => 1, 'invalid' => 0],
+            'students' => ['new' => 1],
+            'enrollments' => ['new' => 1, 'invalid' => 0],
+            'academic_periods' => ['new' => 1, 'invalid' => 0],
+            'domains' => ['new' => 1, 'invalid' => 0],
+        ] as $domain => $counts) {
+            foreach ($counts as $classification => $minimum) {
+                $actual = data_get($preview->viewData('page'), "props.plan.counts.{$domain}.{$classification}", -1);
+                $minimum === 0
+                    ? $this->assertSame(0, $actual, "{$domain}.{$classification}")
+                    : $this->assertGreaterThanOrEqual($minimum, $actual, "{$domain}.{$classification}");
+            }
+        }
+
+        $this->confirm($import, $destination, $teacher);
+
+        $destinationYear = $this->inOrganization($destination, fn (): AcademicYear => AcademicYear::firstOrFail());
+        $destinationSubject = $this->inOrganization($destination, fn (): Subject => Subject::firstOrFail());
+        $this->assertSame($sourceYear->label, $destinationYear->label);
+        $this->assertSame($sourceYear->starts_on->toDateString(), $destinationYear->starts_on->toDateString());
+        $this->assertSame($sourceYear->ends_on->toDateString(), $destinationYear->ends_on->toDateString());
+        $this->assertSame($sourceYear->status, $destinationYear->status);
+        $this->assertSame($sourceSubject->name, $destinationSubject->name);
+        $this->assertSame($sourceSubject->code, $destinationSubject->code);
+
+        $destinationClass = $this->inOrganization($destination, fn (): SchoolClass => SchoolClass::firstOrFail());
+        $destinationProgression = $this->progressionFor($destination, $destinationClass);
+        $this->assertSame($this->semantic($sourceProgression), $this->semantic($destinationProgression));
+    }
+
+    #[Test]
     public function a_complete_backup_clones_to_another_organization_and_is_idempotent(): void
     {
         $teacher = $this->teacher();
