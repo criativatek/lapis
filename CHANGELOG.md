@@ -2,7 +2,24 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
-## [0.44.0] — 2026-08-21
+## [0.45.0] — 2026-08-21
+
+### Added
+
+- **Restauro completo do grafo pedagógico (schema v2, `schema_version = 4`).** O backup gerado pelo LÁPIS deixa de se limitar a turmas, alunos e inscrições — passa a transportar também períodos letivos, escalas (e os seus níveis), tipos de elemento, domínios, perfis de avaliação e as suas versões (com os pesos de domínio e de período), elementos de avaliação e itens (com as alocações por domínio), pontuações registadas, o registo completo de classificações, modelos e respostas de autoavaliação, avaliações intercalares, registos pedagógicos, estratégias e medidas (com as suas revisões), e relatórios finalizados. Um professor que perca os dados de uma turma pode agora restaurá-la por inteiro a partir de um backup próprio e continuar a trabalhar exatamente onde ficou — o motor de cálculo (`BuildResultsProgression`, `ClassResultsCalculator`) recalcula os resultados a partir dos factos restaurados, nunca de um valor guardado no backup. Ver `docs/backup-schema.md`.
+- **O backup transporta factos, nunca resultados.** Nenhuma média, evolução ou estatística de turma é alguma vez exportada ou importada — só o que um professor ou o sistema já escreveu como facto (uma pontuação, uma decisão de classificação já confirmada, uma resposta de autoavaliação). Isto é um princípio estrutural desta fatia, não um detalhe de implementação: duplicar a lógica de cálculo no formato de backup criaria um segundo sítio para essa lógica divergir do primeiro.
+- **Escalas e tipos de elemento de sistema, restaurados só por correspondência.** Cada instalação do LÁPIS semeia a sua própria cópia das escalas e tipos de elemento de sistema, cada uma com o seu próprio `ulid` gerado independentemente — por isso estas nunca são criadas por um restauro, só correspondidas por nome/código à instalação de destino. Escalas e tipos de elemento próprios de uma organização continuam a restaurar-se por `ulid`, como qualquer outro registo.
+- **Autoria mapeada só quando inequívoca, nunca inventada.** Cada campo de autoria do backup (quem avaliou, quem confirmou, quem criou um registo) é um email — na importação, só é atribuído ao utilizador que está a confirmar essa mesma importação, e só se o email corresponder. Em qualquer outro caso, o campo fica vazio quando a coluna o permite, ou bloqueia a linha inteira quando não permite — nunca é atribuído a outra pessoa da organização de destino.
+- **Pré-visualização de importação, agrupada por Estrutura/Avaliação/Acompanhamento/Documentos.** A página de pré-visualização de um restauro passa a mostrar as novas dezenas de domínios organizadas em quatro grupos pedagogicamente reconhecíveis, com contagens de novos/existentes/conflitos/inválidos/não suportados — em vez de uma lista técnica plana. Pontos a rever (conflitos, dados inválidos, linhas não suportadas) continuam sempre visíveis, nunca escondidos, mesmo quando o domínio em causa não tem linha própria na tabela resumo.
+
+### Fixed
+
+- **Nenhum perfil de avaliação estava a ser restaurado.** `AssessmentProfile` não tinha conversão booleana declarada para `is_institutional_template`; o valor viajava pelo JSON do backup como um inteiro (`0`/`1`) em vez de um booleano, e a validação — que exige estritamente um booleano — rejeitava a linha inteira em silêncio. Como todas as versões de perfil dependem do respetivo perfil já ter sido restaurado, o efeito prático era que nenhuma turma recuperava o seu perfil de avaliação, e por isso nenhum resultado se recalculava depois de um restauro. Corrigido com a conversão em falta.
+- **A segunda confirmação de um mesmo backup falhava sempre que havia autoavaliações.** As perguntas de um modelo de autoavaliação já existente no destino perdiam a referência ao modelo antes de chegar à escrita, porque a classificação `existing` desse domínio não a transportava — só a `new` o fazia. Corrigido para a incluir também nas linhas já existentes, que é o caminho que uma segunda importação do mesmo backup sempre segue.
+- **Tipos de elemento de sistema rebentavam a escrita.** A construção da chave de correspondência de um tipo de elemento de sistema (`instrument_types`) omitia o código nas linhas devolvidas pelo plano, mas a escrita precisa desse código para reconstruir a mesma chave — todo tipo de elemento de sistema (o caso comum, usado por omissão em qualquer elemento de avaliação) fazia a importação falhar.
+- **`applied_on` de um elemento de avaliação nunca era restaurado.** Esta coluna é obrigatória na base de dados e é a data comparada com a inscrição de cada aluno na regra de inscrição tardia (§11.4) — sem ela, nenhum elemento de avaliação com pontuações associadas conseguia sequer ser escrito. Adicionada a toda a cadeia: exportação, validação, plano e escrita.
+
+
 
 ### Added
 
