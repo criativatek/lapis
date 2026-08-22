@@ -117,6 +117,12 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         ->middleware('module:assessment_profiles')->name('scales.store');
     Route::get('assessment-profiles/{assessment_profile}/edit', [AssessmentProfileController::class, 'edit'])
         ->middleware('module:assessment_profiles')->name('assessment-profiles.edit');
+    Route::get('assessment-profiles/{assessment_profile}/reuse', [AssessmentProfileController::class, 'reuseForm'])
+        ->middleware('module:assessment_profiles')->name('assessment-profiles.reuse-form');
+    Route::post('assessment-profiles/{assessment_profile}/reuse/preview', [AssessmentProfileController::class, 'reusePreview'])
+        ->middleware('module:assessment_profiles')->name('assessment-profiles.reuse-preview');
+    Route::post('assessment-profiles/{assessment_profile}/reuse/confirm', [AssessmentProfileController::class, 'reuseConfirm'])
+        ->middleware('module:assessment_profiles')->name('assessment-profiles.reuse-confirm');
     Route::put('assessment-profiles/{assessment_profile}', [AssessmentProfileController::class, 'update'])
         ->middleware('module:assessment_profiles')->name('assessment-profiles.update');
     Route::post('assessment-profiles/{assessment_profile}/activate', [AssessmentProfileController::class, 'activate'])

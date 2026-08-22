@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { CheckCircle2, Pencil, Plus, Trash2 } from '@lucide/vue';
+import { CheckCircle2, Copy, Pencil, Plus, Trash2 } from '@lucide/vue';
 import Heading from '@/components/Heading.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -81,6 +81,9 @@ function destroy(profile: Profile): void {
                                 </Button>
                                 <Button as-child variant="ghost" size="icon" aria-label="Editar">
                                     <Link :href="`/assessment-profiles/${profile.ulid}/edit`"><Pencil class="size-4" /></Link>
+                                </Button>
+                                <Button v-if="canManage" as-child variant="ghost" size="icon" aria-label="Reutilizar noutro ano letivo">
+                                    <Link :href="`/assessment-profiles/${profile.ulid}/reuse`"><Copy class="size-4" /></Link>
                                 </Button>
                                 <Button
                                     v-if="canManage && !profile.is_active"
