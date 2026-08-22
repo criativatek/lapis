@@ -5,19 +5,19 @@ import RevealOnScroll from './RevealOnScroll.vue';
 const problems = [
     {
         title: 'Um ficheiro por turma, um separador por período',
-        body: 'E uma fórmula que só o autor entende — até ao ano em que deixa de entender.',
+        body: 'Fórmulas, versões e ficheiros acumulam-se. Meses depois, até pode ser difícil perceber como um resultado foi construído.',
     },
     {
-        title: 'Mudar uma ponderação obriga a refazer tudo',
-        body: 'Um peso alterado em novembro custa uma revisão coluna a coluna.',
+        title: 'Uma alteração pode obrigar a rever muita coisa',
+        body: 'Mudar uma ponderação ou um critério pode significar regressar às fórmulas e conferir resultados, coluna a coluna.',
     },
     {
-        title: 'Faltas e dispensas acabam em zeros',
-        body: 'Quem faltou a um teste não teve zero. Teve outra coisa.',
+        title: 'Nem tudo o que está vazio é zero',
+        body: 'Faltas, dispensas e situações não aplicáveis precisam de contexto. Uma folha de cálculo só sabe tratá-las corretamente se alguém lhe ensinar essa lógica.',
     },
     {
-        title: 'No fim, falta a justificação',
-        body: '«Porquê aquele 4?» — a resposta está numa célula que ninguém encontra.',
+        title: 'No fim, é preciso explicar o resultado',
+        body: 'Quando surge a pergunta «Porque é que este aluno teve 4?», a resposta deve estar acessível, não escondida entre células e fórmulas.',
     },
 ] as const;
 </script>
@@ -26,8 +26,8 @@ const problems = [
     <LandingSection
         tinted
         eyebrow="O problema"
-        title="Hoje, a avaliação vive espalhada por ficheiros."
-        lead="Nada disto é falta de método. É o que acontece quando o método é seu e a ferramenta é uma folha de cálculo."
+        title="Durante anos, a avaliação viveu espalhada por ficheiros."
+        lead="Foi assim que muitos professores organizaram o seu trabalho durante muito tempo. Funcionou, mas hoje já existem formas mais simples de fazer o mesmo com mais clareza."
     >
         <div
             class="grid gap-px overflow-hidden rounded-2xl border border-border/70 bg-border/70 sm:grid-cols-2"
@@ -64,8 +64,8 @@ const problems = [
             <p
                 class="mt-10 max-w-2xl text-lg leading-relaxed font-medium tracking-tight text-balance sm:text-xl"
             >
-                O LÁPIS junta este trabalho num só sítio — e guarda a razão de
-                cada número.
+                O que antes exigia vários ficheiros pode agora ser feito no
+                LÁPIS, de forma mais simples, organizada e transparente.
             </p>
         </RevealOnScroll>
     </LandingSection>

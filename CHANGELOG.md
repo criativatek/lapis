@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.54.3] — 2026-08-22
+
+### Changed
+
+- **Copy da secção "O Problema" na landing.** Eyebrow, título, texto introdutório, os 4 blocos e a frase final reescritos, sem travessões. Layout, grelha, tipografia e numeração 01-04 inalterados.
+
 ## [0.54.2] — 2026-08-22
 
 ### Changed
