@@ -285,7 +285,10 @@ class ShellNavigationTest extends TestCase
     {
         $gained = array_diff(array_keys($this->menuFor('pro')), array_keys($this->menuFor('base')));
 
-        $this->assertSame(['calendar', 'lessons'], array_values($gained));
+        // Fatia 1 (config-sharing) added "Partilhar configuração" and "Importar
+        // configuração", gated by the pre-existing template_sharing module —
+        // present in PRO_MODULES, absent from BASE_MODULES.
+        $this->assertSame(['calendar', 'lessons', 'configuration-sharing', 'configuration-import'], array_values($gained));
     }
 
     #[Test]
