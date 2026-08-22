@@ -134,6 +134,7 @@ type InterventionRow = {
     concluded_on: string | null;
     domain: string | null;
     is_individual: boolean;
+    needs_review: boolean;
 };
 
 const props = defineProps<{
@@ -203,7 +204,7 @@ const props = defineProps<{
         difference: string;
     } | null;
     records: { total: number; kinds: { value: string; label: string; count: number }[]; rows: RecordRow[] };
-    interventions: { total: number; individual: number; rows: InterventionRow[] };
+    interventions: { total: number; individual: number; needing_review: number; rows: InterventionRow[] };
     narrative: string | null;
     links: {
         records: string;
@@ -837,6 +838,12 @@ const hasAnything = computed(
                         <h2 id="intervencoes" class="flex items-center gap-2 text-sm font-semibold">
                             <HeartHandshake class="size-4" />
                             Estratégias e Medidas
+                            <span
+                                v-if="interventions.needing_review > 0"
+                                class="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-800 dark:text-amber-400"
+                            >
+                                {{ interventions.needing_review === 1 ? '1 revisão pendente' : `${interventions.needing_review} revisões pendentes` }}
+                            </span>
                         </h2>
                         <p class="mt-0.5 text-xs text-muted-foreground">
                             Inclui as já concluídas — a evolução precisa da história.
@@ -884,6 +891,13 @@ const hasAnything = computed(
                                 {{ row.status }}
                                 <template v-if="row.domain"> · {{ row.domain }}</template>
                                 · {{ row.is_individual ? 'dirigida a este aluno' : 'dirigida à turma' }}
+                            </span>
+
+                            <span
+                                v-if="row.needs_review"
+                                class="mt-1 inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-800 dark:text-amber-400"
+                            >
+                                Revisão pendente
                             </span>
 
                             <!-- What the TEACHER observed. Placed beside the

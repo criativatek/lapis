@@ -938,12 +938,16 @@ class BuildStudentProgress
                 // «Dirigida a si» and «dirigida à turma» are different facts
                 // about the same student, and the screen says which.
                 'is_individual' => $intervention->enrollment_id !== null,
+                // The date the teacher chose, and nothing else — never a rule
+                // like "30 days without follow-up" (see Intervention::needsReview()).
+                'needs_review' => $intervention->needsReview(),
             ];
         }
 
         return [
             'total' => count($rows),
             'individual' => count(array_filter($rows, fn (array $row): bool => $row['is_individual'])),
+            'needing_review' => count(array_filter($rows, fn (array $row): bool => $row['needs_review'])),
             'rows' => $rows,
         ];
     }
