@@ -47,8 +47,6 @@ formato. Tabelas de suporte (`import_jobs`) desenhadas em `domain-model.md`.
 
 ## O que falta
 
-- **Fase 3 restante:** Análise da Turma (distribuição/estatística) — o único
-  placeholder que resta da Fase 3.
 - **Resultados persistidos (§6.2):** `student_overall_results` / `student_domain_results`
   / `instrument_student_results`. Continua tudo calculado on-the-fly. A dupla
   passagem agregada da Evolução do Aluno **está resolvida**:
@@ -63,7 +61,11 @@ formato. Tabelas de suporte (`import_jobs`) desenhadas em `domain-model.md`.
 
 ## Próximo candidato sem bloqueio, por valor
 
-1. **Análise da Turma** — o último placeholder da Fase 3. Lê os mesmos read models
-   que a Evolução do Aluno já consome, pelo que não fica bloqueada por nada.
-2. **Alunos** (página de gestão) — fecha um placeholder da Fase 1.
-3. **Q5 Intuitivo** — assim que houver o ficheiro real.
+1. **Alunos** (página de gestão) — fecha um placeholder da Fase 1.
+2. **Q5 Intuitivo** — assim que houver o ficheiro real.
+
+*(A Análise da Turma, antes listada aqui como placeholder, está feita desde a
+[0.35.0] — "Estatística": [`ClassStatisticsController`](../app/Http/Controllers/ClassStatisticsController.php),
+[`BuildClassStatistics`](../app/Services/Assessment/BuildClassStatistics.php),
+`resources/js/pages/results/Statistics.vue`. Esta secção não tinha sido
+atualizada depois desse trabalho.)*
