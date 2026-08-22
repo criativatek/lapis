@@ -22,17 +22,29 @@ class ClassRequest extends FormRequest
         $class = $this->route('class');
         $classId = $class instanceof SchoolClass ? $class->id : null;
 
+        // Editing an existing class (Fatia D) only ever changes the label —
+        // academic_year_id/subject_id/grade_level stay whatever the class
+        // already has, never whatever the client happens to send, because
+        // they feed reporting, config-sharing and profile-matching logic
+        // that assumes a class's year/subject/grade are stable once
+        // enrollments or instruments exist against them. The uniqueness
+        // scope below reads the class's own stored values on update, so it
+        // stays correct even though those two fields are no longer required
+        // on this route.
+        $academicYearId = $classId !== null ? $class->academic_year_id : $this->input('academic_year_id');
+        $subjectId = $classId !== null ? $class->subject_id : $this->input('subject_id');
+
         return [
             'label' => [
                 'required', 'string', 'max:64',
                 Rule::unique('classes', 'label')
                     ->where('organization_id', $organizationId)
-                    ->where('academic_year_id', $this->input('academic_year_id'))
-                    ->where('subject_id', $this->input('subject_id'))
+                    ->where('academic_year_id', $academicYearId)
+                    ->where('subject_id', $subjectId)
                     ->ignore($classId),
             ],
-            'academic_year_id' => ['required', new BelongsToCurrentOrganization(AcademicYear::class)],
-            'subject_id' => ['required', new BelongsToCurrentOrganization(Subject::class)],
+            'academic_year_id' => [$classId !== null ? 'sometimes' : 'required', new BelongsToCurrentOrganization(AcademicYear::class)],
+            'subject_id' => [$classId !== null ? 'sometimes' : 'required', new BelongsToCurrentOrganization(Subject::class)],
             'grade_level' => ['nullable', 'string', 'max:16'],
             // The active profile version this class is assessed by. Optional at
             // creation; a class can be set up before its profile is chosen.

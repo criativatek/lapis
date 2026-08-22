@@ -149,6 +149,39 @@ class ClassController extends Controller
         ]);
     }
 
+    public function edit(SchoolClass $class): Response
+    {
+        Gate::authorize('update', $class);
+
+        $class->load(['subject', 'academicYear']);
+
+        return Inertia::render('classes/Edit', [
+            'schoolClass' => [
+                'ulid' => $class->ulid,
+                'label' => $class->label,
+                // Shown for context, not editable here (§10.2 — year, subject
+                // and grade feed reporting/profile-matching and are not safe
+                // to change once a class has enrollments or instruments).
+                'subject' => $class->subject->name,
+                'academic_year' => $class->academicYear->label,
+                'grade_level' => $class->grade_level,
+            ],
+        ]);
+    }
+
+    public function update(ClassRequest $request, SchoolClass $class): RedirectResponse
+    {
+        Gate::authorize('update', $class);
+
+        // Only the label is editable from this form — academic_year_id,
+        // subject_id and grade_level are deliberately never read from the
+        // request here, regardless of what ClassRequest validated, so a
+        // crafted payload cannot move a class between years/subjects.
+        $class->update(['label' => $request->validated('label')]);
+
+        return to_route('classes.show', $class->ulid);
+    }
+
     /**
      * Assign (or change) the profile version a class is assessed by.
      *

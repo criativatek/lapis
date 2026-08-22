@@ -300,6 +300,14 @@ function submitPhotos(): void {
                 >
                     Ativar turma
                 </Button>
+                <Button as-child variant="outline" size="sm">
+                    <Link
+                        :href="`/classes/${schoolClass.ulid}/edit`"
+                        :aria-label="`Editar turma ${schoolClass.label}`"
+                    >
+                        <Pencil class="size-4" /> Editar turma
+                    </Link>
+                </Button>
                 <Badge variant="secondary">{{
                     schoolClass.status_label
                 }}</Badge>

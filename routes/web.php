@@ -146,6 +146,8 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::get('classes/create', [ClassController::class, 'create'])->name('classes.create');
         Route::post('classes', [ClassController::class, 'store'])->name('classes.store');
         Route::get('classes/{class}', [ClassController::class, 'show'])->name('classes.show');
+        Route::get('classes/{class}/edit', [ClassController::class, 'edit'])->name('classes.edit');
+        Route::put('classes/{class}', [ClassController::class, 'update'])->name('classes.update');
         Route::post('classes/{class}/activate', [ClassController::class, 'activate'])->name('classes.activate');
         Route::put('classes/{class}/profile', [ClassController::class, 'updateProfile'])->name('classes.profile.update');
         Route::delete('classes/{class}', [ClassController::class, 'destroy'])->name('classes.destroy');

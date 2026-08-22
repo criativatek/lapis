@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.54.0] — 2026-08-22
+
+### Added
+
+- **Editar turma.** Uma turma criada com a designação errada obrigava a apagar e recriar — não havia forma de a corrigir. Ação "Editar turma" nova, descoberta a partir do cartão em Turmas (ícone com aria-label) e da própria página da turma (botão). O formulário só permite alterar a Designação, seguindo a convenção "Ex.: 7.º A" da Fatia E; ano letivo, disciplina e ano de escolaridade ficam bloqueados e explicados como tal — alteram-nos e desalinhariam elementos de avaliação e relatórios já associados. O `FormRequest` já previa este caso (a verificação de unicidade já sabia excluir-se a si próprio); reutilizado tal e qual, sem endpoint paralelo. Mesmo que um pedido tente enviar outros campos, o controlador só lê e grava a designação — o bloqueio é aplicado no servidor, não só escondido na UI.
+
 ## [0.53.2] — 2026-08-22
 
 ### Changed

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
-import { Plus, Users } from '@lucide/vue';
+import { Pencil, Plus, Users } from '@lucide/vue';
 import Heading from '@/components/Heading.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -39,15 +39,27 @@ defineProps<{
         </div>
 
         <div v-else class="grid gap-3 sm:grid-cols-2">
-            <Link
+            <div
                 v-for="schoolClass in classes"
                 :key="schoolClass.ulid"
-                :href="`/classes/${schoolClass.ulid}`"
-                class="rounded-lg border border-border p-4 transition-colors hover:border-primary/40"
+                class="relative rounded-lg border border-border p-4 transition-colors hover:border-primary/40"
             >
+                <Link :href="`/classes/${schoolClass.ulid}`" class="absolute inset-0 rounded-lg">
+                    <span class="sr-only">Abrir turma {{ schoolClass.label }}</span>
+                </Link>
                 <div class="flex items-start justify-between gap-2">
                     <span class="text-base font-semibold">{{ schoolClass.label }}</span>
-                    <Badge variant="secondary">{{ schoolClass.status_label }}</Badge>
+                    <div class="flex items-center gap-2">
+                        <Badge variant="secondary">{{ schoolClass.status_label }}</Badge>
+                        <Link
+                            :href="`/classes/${schoolClass.ulid}/edit`"
+                            title="Editar turma"
+                            :aria-label="`Editar turma ${schoolClass.label}`"
+                            class="relative z-10 rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                        >
+                            <Pencil class="size-4" />
+                        </Link>
+                    </div>
                 </div>
                 <p class="mt-1 text-sm text-muted-foreground">
                     {{ schoolClass.subject }} · {{ schoolClass.academic_year }}<template v-if="schoolClass.grade_level"> · {{ schoolClass.grade_level }}</template>
@@ -55,7 +67,7 @@ defineProps<{
                 <p class="mt-3 flex items-center gap-1.5 text-sm text-muted-foreground">
                     <Users class="size-4" /> {{ schoolClass.students_count }} alunos
                 </p>
-            </Link>
+            </div>
         </div>
     </div>
 </template>
