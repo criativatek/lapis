@@ -351,6 +351,8 @@ class AdminAccountController extends Controller
 
         $this->log($organization, 'admin.plan_changed', "Plano alterado para {$plan->name}.", ['plan_key' => $plan->key]);
 
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Plano atualizado para :plan.', ['plan' => $plan->name])]);
+
         return back();
     }
 

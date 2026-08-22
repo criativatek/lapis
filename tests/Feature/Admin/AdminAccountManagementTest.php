@@ -54,7 +54,9 @@ class AdminAccountManagementTest extends TestCase
     {
         [, $org] = $this->targetAccount();
 
-        $this->actingAs($this->admin())->post("/admin/accounts/{$org->ulid}/plan", ['plan_key' => 'pro'])->assertRedirect();
+        $this->actingAs($this->admin())->post("/admin/accounts/{$org->ulid}/plan", ['plan_key' => 'pro'])
+            ->assertRedirect()
+            ->assertSessionHas('inertia.flash_data', fn ($flash) => ($flash['toast']['message'] ?? null) === 'Plano atualizado para LÁPIS Pro.');
 
         $latest = OrganizationSubscription::withoutGlobalScope('organization')
             ->where('organization_id', $org->id)->latest('starts_at')->latest('id')->with('plan')->first();
