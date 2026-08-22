@@ -2,6 +2,7 @@
 import { Head, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import LandingBenefits from '@/components/landing/LandingBenefits.vue';
+import LandingBrandStory from '@/components/landing/LandingBrandStory.vue';
 import LandingCustomEvaluation from '@/components/landing/LandingCustomEvaluation.vue';
 import LandingFaq from '@/components/landing/LandingFaq.vue';
 import LandingFeatures from '@/components/landing/LandingFeatures.vue';
@@ -62,6 +63,7 @@ const authenticated = computed(() => page.props.auth.user !== null);
         <main id="conteudo">
             <LandingHero :authenticated="authenticated" />
             <LandingProblem />
+            <LandingBrandStory />
             <LandingHowItWorks />
             <LandingCustomEvaluation />
             <LandingFeatures />

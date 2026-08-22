@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.55.1] — 2026-08-22
+
+### Added
+
+- **Secção "Porque LÁPIS?" na landing.** Nova nota editorial de marca entre "O Problema" e "Como funciona", explicando o acrónimo (Laboratório de Apoio ao Professor, Informação e Simplificação) com as iniciais destacadas por cor de destaque existente e peso tipográfico — nunca só cor. Compacta, sem cards nem ícones, reutilizando o `LandingSection` e o `RevealOnScroll` já usados no resto da página.
+
 ## [0.55.0] — 2026-08-22
 
 ### Changed
