@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.54.1] — 2026-08-22
+
+### Changed
+
+- **Faixa de níveis de ensino na landing.** "Superior" passa a "Universitário" na hero. Só esta palavra.
+
 ## [0.54.0] — 2026-08-22
 
 ### Added
