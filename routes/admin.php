@@ -26,6 +26,8 @@ Route::middleware(['auth', 'verified', 'platform-admin'])
         Route::post('accounts', [AdminAccountController::class, 'store'])->name('accounts.store');
         Route::get('accounts/{organization}', [AdminAccountController::class, 'show'])->name('accounts.show');
         Route::post('accounts/{organization}/verify-email', [AdminAccountController::class, 'verifyEmail'])->name('accounts.verify-email');
+        Route::post('accounts/{organization}/reset-password', [AdminAccountController::class, 'resetPassword'])->name('accounts.reset-password');
+        Route::post('accounts/{organization}/temporary-password', [AdminAccountController::class, 'generateTemporaryPassword'])->name('accounts.temporary-password');
         Route::post('accounts/{organization}/plan', [AdminAccountController::class, 'changePlan'])->name('accounts.plan');
         Route::post('accounts/{organization}/suspend', [AdminAccountController::class, 'suspend'])->name('accounts.suspend');
         Route::post('accounts/{organization}/reactivate', [AdminAccountController::class, 'reactivate'])->name('accounts.reactivate');

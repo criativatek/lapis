@@ -2,6 +2,16 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.45.9] — 2026-08-22
+
+### Added
+
+- **Reposição segura de palavra-passe no backoffice.** O detalhe de uma conta em `/admin` ganha "Repor palavra-passe" — envia o link de redefinição normal do Laravel (`Password::sendResetLink`, mesmo broker, mesmo token de utilização única, 60 minutos) para o email da conta, com diálogo de confirmação. Nunca mostra a palavra-passe atual, nunca a altera diretamente, nunca reativa uma conta desativada (essa continua bloqueada no login pela guarda já existente, mesmo depois de repor). Uma segunda ação, "Gerar palavra-passe temporária", reutiliza o mesmo padrão já usado na criação de contas (`Str::password(14)`, nunca persistida em claro) e mostra o valor uma única vez, com botão "Copiar" — nunca recuperável depois de sair da página. Disponível só para platform admin (herda a autorização do grupo de rotas já existente); bloqueado durante impersonação; ambas as ações auditadas sem nunca gravar a palavra-passe ou o token.
+
+### Fixed
+
+- **Uma falha de entrega SMTP ao repor a palavra-passe a partir do backoffice também escapava sem tratamento.** `Password::sendResetLink()` chama o envio da notificação diretamente, sem guarda própria (`Illuminate\Auth\Passwords\PasswordBroker`) — o mesmo padrão de falha corrigido em 0.45.8 para o registo. Corrigido a apanhar a exceção no controlador (o operador está a olhar diretamente para a página da conta, por isso é aí, e não no modelo, que faz sentido avisar de imediato) e a mostrar o mesmo erro já usado para outros estados falhados do broker, em vez de um 500.
+
 ## [0.45.8] — 2026-08-22
 
 ### Fixed

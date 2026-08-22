@@ -30,6 +30,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -277,6 +278,63 @@ class AdminAccountController extends Controller
             $owner->forceFill(['email_verified_at' => now()])->save();
             $this->log($organization, 'admin.email_verified', "Email de {$owner->email} verificado manualmente.");
         }
+
+        return back();
+    }
+
+    public function resetPassword(Organization $organization): RedirectResponse
+    {
+        $owner = $organization->owner;
+
+        if ($owner === null) {
+            return back()->withErrors(['account' => __('Esta organização não tem dono.')]);
+        }
+
+        // Password::sendResetLink() calls the owner's sendPasswordResetNotification()
+        // directly, unguarded (Illuminate\Auth\Passwords\PasswordBroker) — a mail
+        // transport failure (bounce, relay down) throws here, not a status string.
+        // Caught here rather than on the User model: this admin is looking straight
+        // at the account page and can be told immediately, the same way an
+        // unreachable broker status already is — no need for the model to guess
+        // where to surface it, unlike the registration flow (see
+        // App\Models\User::sendEmailVerificationNotification).
+        try {
+            $status = Password::sendResetLink(['email' => $owner->email]);
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return back()->withErrors(['account' => __('Não foi possível enviar o email de redefinição. Tente novamente mais tarde.')]);
+        }
+
+        if ($status !== Password::RESET_LINK_SENT) {
+            return back()->withErrors(['account' => __('Não foi possível enviar o email de redefinição. Tente novamente mais tarde.')]);
+        }
+
+        $this->log($organization, 'admin.password_reset_requested', "Link de redefinição de palavra-passe enviado para {$owner->email}.");
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Email de redefinição enviado.')]);
+
+        return back();
+    }
+
+    public function generateTemporaryPassword(Organization $organization): RedirectResponse
+    {
+        $owner = $organization->owner;
+
+        if ($owner === null) {
+            return back()->withErrors(['account' => __('Esta organização não tem dono.')]);
+        }
+
+        $generated = Str::password(14);
+
+        $owner->forceFill(['password' => $generated])->save();
+
+        $this->log($organization, 'admin.password_temporary_generated', "Palavra-passe temporária gerada para {$owner->email}.");
+
+        Inertia::flash([
+            'toast' => ['type' => 'success', 'message' => __('Palavra-passe temporária gerada.')],
+            'temporary_password' => ['value' => $generated, 'email' => $owner->email],
+        ]);
 
         return back();
     }

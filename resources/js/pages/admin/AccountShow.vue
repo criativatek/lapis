@@ -1,6 +1,17 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
+import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from '@/components/ui/dialog';
 
 type Member = {
     name: string;
@@ -65,9 +76,45 @@ const userForm = useForm({
 });
 
 const memberForm = useForm({ email: '' });
+const resetPasswordForm = useForm({});
+const temporaryPasswordForm = useForm({});
+const resetPasswordDialogOpen = ref(false);
+const temporaryPasswordDialogOpen = ref(false);
+const temporaryPassword = ref<{ value: string; email: string } | null>(null);
+const page = usePage();
+
+watch(
+    () => page.flash?.temporary_password as { value?: string; email?: string } | undefined,
+    (generated) => {
+        if (generated?.value && generated.email) {
+            temporaryPassword.value = { value: generated.value, email: generated.email };
+        }
+    },
+    { immediate: true },
+);
 
 function post(path: string, data: Record<string, string> = {}): void {
     router.post(`${base.value}${path}`, data, { preserveScroll: true });
+}
+
+function copyTemporaryPassword(): void {
+    if (temporaryPassword.value !== null) {
+        void navigator.clipboard.writeText(temporaryPassword.value.value);
+    }
+}
+
+function requestPasswordReset(): void {
+    resetPasswordForm.post(`${base.value}/reset-password`, {
+        preserveScroll: true,
+        onSuccess: () => (resetPasswordDialogOpen.value = false),
+    });
+}
+
+function generateTemporaryPassword(): void {
+    temporaryPasswordForm.post(`${base.value}/temporary-password`, {
+        preserveScroll: true,
+        onSuccess: () => (temporaryPasswordDialogOpen.value = false),
+    });
 }
 
 function saveUser(): void {
@@ -124,6 +171,23 @@ function destroy(): void {
         >
             {{ refusal }}
         </p>
+
+        <div
+            v-if="temporaryPassword"
+            class="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
+        >
+            <div class="flex items-start justify-between gap-4">
+                <div>
+                    <h2 class="text-sm font-medium">Palavra-passe temporária</h2>
+                    <p class="text-sm">Guarde-a agora. Esta palavra-passe só é mostrada uma vez para {{ temporaryPassword.email }}.</p>
+                </div>
+                <button type="button" class="text-sm underline" @click="temporaryPassword = null">Fechar</button>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+                <code class="rounded-md bg-background px-3 py-2 font-mono text-sm">{{ temporaryPassword.value }}</code>
+                <Button type="button" variant="outline" size="sm" @click="copyTemporaryPassword">Copiar</Button>
+            </div>
+        </div>
 
         <!-- Dono -->
         <section class="space-y-3 rounded-lg border border-border p-4">
@@ -201,6 +265,51 @@ function destroy(): void {
                     >
                         Verificar email
                     </button>
+                    <Dialog v-model:open="resetPasswordDialogOpen">
+                        <DialogTrigger as-child>
+                            <button type="button" class="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40">
+                                Repor palavra-passe
+                            </button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader class="space-y-3">
+                                <DialogTitle>Repor palavra-passe</DialogTitle>
+                                <DialogDescription>
+                                    Será enviado um link de redefinição de palavra-passe para {{ account.owner.email }}.
+                                </DialogDescription>
+                                <DialogDescription v-if="!account.owner.active">
+                                    Este utilizador está desativado — repor a palavra-passe não reativa o acesso.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <DialogFooter class="gap-2">
+                                <DialogClose as-child>
+                                    <Button variant="secondary">Cancelar</Button>
+                                </DialogClose>
+                                <Button :disabled="resetPasswordForm.processing" @click="requestPasswordReset">Enviar link</Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                    <Dialog v-model:open="temporaryPasswordDialogOpen">
+                        <DialogTrigger as-child>
+                            <button type="button" class="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40">
+                                Gerar palavra-passe temporária
+                            </button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader class="space-y-3">
+                                <DialogTitle>Gerar palavra-passe temporária</DialogTitle>
+                                <DialogDescription>
+                                    Será gerada uma nova palavra-passe para {{ account.owner.email }} e mostrada uma única vez. A palavra-passe atual deixará de funcionar.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <DialogFooter class="gap-2">
+                                <DialogClose as-child>
+                                    <Button variant="secondary">Cancelar</Button>
+                                </DialogClose>
+                                <Button :disabled="temporaryPasswordForm.processing" @click="generateTemporaryPassword">Gerar</Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
                     <button type="button" class="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40" @click="post('/toggle-admin')">
                         {{ account.owner.is_platform_admin ? 'Revogar admin da plataforma' : 'Tornar admin da plataforma' }}
                     </button>
