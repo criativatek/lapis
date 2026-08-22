@@ -95,9 +95,20 @@ class FortifyServiceProvider extends ServiceProvider
             'status' => $request->session()->get('status'),
         ]));
 
-        Fortify::verifyEmailView(fn (Request $request) => Inertia::render('auth/VerifyEmail', [
-            'status' => $request->session()->get('status'),
-        ]));
+        Fortify::verifyEmailView(function (Request $request) {
+            // `pull` rather than `flash`: this page can be reached after one or
+            // two redirects (register -> dashboard -> here, since a fresh
+            // account is unverified), and flash data only survives exactly one
+            // request. A plain session value read-and-cleared on whichever
+            // request actually renders this page is what "show it once" means
+            // here — see User::sendEmailVerificationNotification().
+            $sendFailed = (bool) $request->session()->pull('verification_send_failed', false);
+
+            return Inertia::render('auth/VerifyEmail', [
+                'status' => $request->session()->get('status'),
+                'sendFailed' => $sendFailed,
+            ]);
+        });
 
         Fortify::registerView(fn (Request $request) => Inertia::render('auth/Register', [
             'passwordRules' => Password::defaults()->toPasswordRulesString(),

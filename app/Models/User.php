@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Factories\UserFactory;
+use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -79,6 +80,25 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
     public function isDeactivated(): bool
     {
         return $this->deactivated_at !== null;
+    }
+
+    /**
+     * Overrides the trait's version: a valid account was just created (or the
+     * person asked to resend), and a mail transport hiccup — a bounce, a
+     * greylisted relay, SMTP momentarily down — is not that person's problem
+     * to see as a 500. Never marks the email verified; only stops the failure
+     * from escaping the request. `verifyEmailView` (FortifyServiceProvider)
+     * reads the session flag this sets to show a friendly message instead.
+     */
+    public function sendEmailVerificationNotification(): void
+    {
+        try {
+            $this->notify(new VerifyEmail);
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            session()->put('verification_send_failed', true);
+        }
     }
 
     public function isActive(): bool

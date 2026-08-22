@@ -16,6 +16,7 @@ defineOptions({
 
 defineProps<{
     status?: string;
+    sendFailed?: boolean;
 }>();
 </script>
 
@@ -23,7 +24,14 @@ defineProps<{
     <Head title="Verificação de e-mail" />
 
     <div
-        v-if="status === 'verification-link-sent'"
+        v-if="sendFailed"
+        class="mb-4 text-center text-sm font-medium text-amber-600"
+    >
+        A conta foi criada, mas não foi possível enviar o email de verificação
+        neste momento. Pode tentar reenviá-lo dentro de instantes.
+    </div>
+    <div
+        v-else-if="status === 'verification-link-sent'"
         class="mb-4 text-center text-sm font-medium text-green-600"
     >
         Foi enviada uma nova ligação de verificação para o endereço de e-mail

@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.45.8] — 2026-08-22
+
+### Fixed
+
+- **Uma falha de entrega SMTP no email de verificação derrubava o registo inteiro com um 500.** Diagnosticado em produção: `smoke2.local@lapis.test` (domínio local, sem entrega real possível) foi rejeitado pelo relé com um `550`, e a exceção do Symfony Mailer propagava-se por todo o pedido HTTP sem nada a apanhar — apesar de a conta, a organização pessoal, a membership e a subscrição inicial já terem sido criadas com sucesso antes desse ponto (confirmado em produção: zero dados órfãos). O mesmo caminho síncrono (`Registered` → `SendEmailVerificationNotification` → `MustVerifyEmail::sendEmailVerificationNotification()`) é partilhado pelo envio automático do registo e pelo botão "Enviar novamente" — corrigido uma única vez, sobrepondo o método em `App\Models\User` (nunca em código vendor) para nunca deixar uma falha de transporte escapar: `report()` regista o erro para alguém tratar, a conta nunca é marcada como verificada, e a pessoa continua o fluxo normal, vendo "A conta foi criada, mas não foi possível enviar o email de verificação neste momento. Pode tentar reenviá-lo dentro de instantes." em vez de um ecrã de erro. Sem filas nem workers novos — a decisão de não os introduzir nesta correção está registada, dado que produção não tem atualmente nenhum queue worker a correr.
+
 ## [0.45.7] — 2026-08-22
 
 ### Fixed
