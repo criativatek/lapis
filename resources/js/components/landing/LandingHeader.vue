@@ -177,7 +177,7 @@ const items: readonly LandingNavItem[] = LANDING_NAV;
                         <Link :href="login()">Entrar</Link>
                     </Button>
                     <Button as-child size="sm">
-                        <Link :href="register()">Criar conta</Link>
+                        <Link :href="register()">Experimentar LÁPIS</Link>
                     </Button>
                 </template>
 

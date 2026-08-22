@@ -37,7 +37,7 @@ defineProps<{ authenticated: boolean }>();
                             {{
                                 authenticated
                                     ? 'Ir para o painel'
-                                    : 'Criar conta'
+                                    : 'Experimentar LÁPIS'
                             }}
                             <ArrowRight
                                 aria-hidden="true"

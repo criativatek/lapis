@@ -32,18 +32,22 @@ defineProps<{ authenticated: boolean }>();
                 <h1
                     class="mt-6 text-4xl font-semibold tracking-tight text-balance sm:text-5xl lg:text-[3.4rem] lg:leading-[1.05]"
                 >
-                    Avaliar com rigor não devia custar-lhe os fins de semana.
+                    Mais simples. Mais tempo para o que realmente importa.
                 </h1>
 
                 <p
-                    class="mt-6 max-w-xl text-lg leading-relaxed text-pretty text-muted-foreground"
+                    class="mt-6 max-w-xl text-lg leading-relaxed text-pretty text-foreground"
                 >
-                    Os seus critérios, as suas turmas e todos os elementos de
-                    avaliação num só sítio — com cada classificação proposta de
-                    forma explicável.
-                    <span class="font-medium text-foreground"
-                        >A decisão continua sua.</span
-                    >
+                    Avaliação, acompanhamento e organização do trabalho
+                    docente num único lugar.
+                </p>
+
+                <p
+                    class="mt-3 max-w-xl leading-relaxed text-pretty text-muted-foreground"
+                >
+                    Turmas, critérios e elementos de avaliação num só lugar.
+                    Informação clara para classificar, acompanhar e criar
+                    relatórios.
                 </p>
 
                 <div class="mt-9 flex flex-wrap items-center gap-3">
@@ -52,7 +56,7 @@ defineProps<{ authenticated: boolean }>();
                             {{
                                 authenticated
                                     ? 'Ir para o painel'
-                                    : 'Criar conta'
+                                    : 'Experimentar LÁPIS'
                             }}
                             <ArrowRight
                                 aria-hidden="true"

@@ -94,7 +94,7 @@ const questions = [
                     </p>
                     <Button as-child class="group/cta mt-7">
                         <Link :href="register()">
-                            Criar conta
+                            Experimentar LÁPIS
                             <ArrowRight
                                 aria-hidden="true"
                                 class="transition-transform duration-300 group-hover/cta:translate-x-0.5"
