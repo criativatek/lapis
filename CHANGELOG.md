@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.48.1] — 2026-08-22
+
+### Fixed
+
+- **A exportação de configuração não descarregava num browser real.** `Export.vue` lia o token CSRF de uma meta tag que o layout nunca renderizava; corrigido a adicionar `<meta name="csrf-token">` a `app.blade.php`. Só afetava o download direto por `fetch()` — todos os outros pedidos da aplicação passam pelo router do Inertia, que já resolve o CSRF sozinho.
+
 ## [0.48.0] — 2026-08-22
 
 ### Added
