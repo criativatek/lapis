@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.53.1] — 2026-08-22
+
+### Changed
+
+- **Copy do bloco "Três regras" na landing.** Título e os três cartões junto de `#como-funciona` reescritos para descrever vazio/zero, "não aplicável" e entrada tardia com mais precisão. Só texto — layout, tipografia e responsividade inalterados.
+
 ## [0.53.0] — 2026-08-22
 
 ### Added

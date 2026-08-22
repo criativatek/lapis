@@ -12,15 +12,15 @@ import RevealOnScroll from './RevealOnScroll.vue';
 const rules = [
     {
         claim: 'Vazio nunca é zero.',
-        body: 'Uma célula por preencher é trabalho por fazer — não uma nota.',
+        body: 'Uma avaliação ainda por preencher não conta como zero. O LÁPIS distingue o que falta avaliar de uma classificação de zero.',
     },
     {
-        claim: '«Não aplicável» sai da conta.',
-        body: 'A média é sobre o que era exigível, não sobre a lista completa.',
+        claim: '«Não aplicável» fica fora do cálculo.',
+        body: 'Se um critério, questão ou domínio não se aplica, o LÁPIS exclui-o do cálculo e recalcula o resultado apenas com o que era efetivamente avaliável.',
     },
     {
-        claim: 'Chegar tarde não custa zeros.',
-        body: 'Quem entrou em novembro não é avaliado por outubro.',
+        claim: 'Quem chega mais tarde não é penalizado.',
+        body: 'Um aluno que entra na turma a meio do período é avaliado apenas com base nos elementos em que podia efetivamente participar.',
     },
 ] as const;
 </script>
@@ -29,7 +29,7 @@ const rules = [
     <LandingSection
         tinted
         eyebrow="O cálculo"
-        title="Três regras que uma folha de cálculo não tem."
+        title="Três regras que uma folha de cálculo não trata sozinha."
     >
         <dl class="grid gap-8 sm:grid-cols-3 sm:gap-6">
             <RevealOnScroll
