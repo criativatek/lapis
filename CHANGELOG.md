@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.51.0] — 2026-08-22
+
+### Added
+
+- **Ligação e autoria em Estratégias e Medidas.** Depois de auditar o módulo, a maior parte do que se pedia já estava construída — o acompanhamento como ação de primeira classe (histórico preservado, nunca sobrescrito), o enquadramento pedagógico/legal, a biblioteca partilhada com Relatórios. Ficavam por fazer duas ligações pequenas: o nome de um aluno numa intervenção individual passa a ligar à sua própria página de Evolução (a ligação inversa já existia); e cada intervenção passa a indicar quem a registou, o que só importa quando uma turma tem mais do que um professor.
+
 ## [0.50.0] — 2026-08-22
 
 ### Added
