@@ -3,6 +3,7 @@
 namespace Tests\Feature\Interventions;
 
 use App\Models\Domain;
+use App\Models\Enrollment;
 use App\Models\EvaluationAdaptationCode;
 use App\Models\Intervention;
 use App\Models\InterventionContext;
@@ -1039,5 +1040,39 @@ class InterventionTest extends TestCase
         $this->actingAs($teacher)
             ->get("/classes/{$class->ulid}/interventions")
             ->assertInertia(fn ($page) => $page->has('interventions', 2));
+    }
+
+    // ------------------------------------------------------- §6 autoria/ligação
+
+    #[Test]
+    public function a_row_names_who_registered_it(): void
+    {
+        ['class' => $class, 'enrollments' => $enrollments, 'teacher' => $teacher] = $this->seedClass();
+
+        $this->postIntervention($class->ulid, $teacher, ['enrollment_ids' => [$enrollments[0]]])->assertRedirect();
+
+        $this->actingAs($teacher)
+            ->get("/classes/{$class->ulid}/interventions")
+            ->assertInertia(fn ($page) => $page->where('interventions.0.creator_name', $teacher->name));
+    }
+
+    #[Test]
+    public function a_single_student_intervention_links_back_to_their_enrollment_and_a_group_does_not(): void
+    {
+        ['class' => $class, 'enrollments' => $enrollments, 'teacher' => $teacher] = $this->seedClass();
+
+        $this->postIntervention($class->ulid, $teacher, ['enrollment_ids' => [$enrollments[0]]])->assertRedirect();
+        $this->postIntervention($class->ulid, $teacher, [
+            'target_type' => 'group',
+            'enrollment_ids' => [$enrollments[1], $enrollments[2]],
+        ])->assertRedirect();
+
+        $expectedUlid = $this->inTenant($teacher, fn () => Enrollment::findOrFail($enrollments[0])->ulid);
+
+        $this->actingAs($teacher)
+            ->get("/classes/{$class->ulid}/interventions")
+            ->assertInertia(fn ($page) => $page
+                ->where('interventions.0.target_enrollment_ulid', null)
+                ->where('interventions.1.target_enrollment_ulid', $expectedUlid));
     }
 }
