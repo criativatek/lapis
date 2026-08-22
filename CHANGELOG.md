@@ -2,6 +2,16 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.50.0] — 2026-08-22
+
+### Added
+
+- **Revisão de estratégia pendente, na Evolução do Aluno.** `Intervention::needsReview()` já existia — a data que o professor escolheu, já passada, numa estratégia ainda em curso — mas não aparecia em lado nenhum. A secção Estratégias e Medidas do aluno passa a mostrar "Revisão pendente" em cada linha nessa situação, e uma contagem no cabeçalho da secção. Composto inteiramente a partir do método já existente — sem regra nova, sem inferência, sem linguagem de "aluno em risco".
+
+### Fixed
+
+- **`docs/status.md` estava desatualizado.** Continuava a listar "Análise da Turma" como o último placeholder da Fase 3 e como o próximo candidato — já está feito desde a 0.35.0, com o nome de "Estatística".
+
 ## [0.49.0] — 2026-08-22
 
 ### Added
