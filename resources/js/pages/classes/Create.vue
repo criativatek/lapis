@@ -49,7 +49,7 @@ function submit(): void {
         <form class="space-y-4" @submit.prevent="submit">
             <div class="grid gap-2">
                 <Label for="label">Designação</Label>
-                <Input id="label" v-model="form.label" placeholder="7.º A" />
+                <Input id="label" v-model="form.label" placeholder="Ex.: 7.º A" />
                 <InputError :message="form.errors.label" />
             </div>
             <div class="grid gap-4 sm:grid-cols-2">
@@ -71,7 +71,7 @@ function submit(): void {
                 </div>
                 <div class="grid gap-2">
                     <Label for="grade_level">Ano de escolaridade</Label>
-                    <Input id="grade_level" v-model="form.grade_level" placeholder="7.º" />
+                    <Input id="grade_level" v-model="form.grade_level" placeholder="Ex.: 7.º" />
                     <InputError :message="form.errors.grade_level" />
                 </div>
                 <div class="grid gap-2">

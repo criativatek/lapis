@@ -627,7 +627,7 @@ function submit(): void {
                 <Input
                     id="title"
                     v-model="form.title"
-                    placeholder="Teste de Compreensão Leitora"
+                    placeholder="Ex.: Teste de compreensão leitora"
                 />
                 <InputError :message="form.errors.title" />
             </div>
@@ -778,7 +778,7 @@ function submit(): void {
                     <Input
                         :id="`group-label-${groupIndex}`"
                         v-model="group.label"
-                        placeholder="Oralidade"
+                        placeholder="Ex.: Oralidade"
                         :aria-invalid="unnamedVisibleGroups.has(groupIndex)"
                         :class="
                             unnamedVisibleGroups.has(groupIndex)
@@ -871,7 +871,7 @@ function submit(): void {
                         <Label class="text-xs">Código</Label>
                         <Input
                             v-model="item.code"
-                            placeholder="Q1"
+                            placeholder="Ex.: Q1"
                             :aria-invalid="duplicateCodeIndexes.has(index)"
                             :class="
                                 duplicateCodeIndexes.has(index)
@@ -884,7 +884,7 @@ function submit(): void {
                         <Label class="text-xs">Enunciado (opcional)</Label>
                         <Input
                             v-model="item.label"
-                            placeholder="Compreensão do texto"
+                            placeholder="Ex.: Compreensão do texto"
                         />
                     </div>
                     <div class="grid gap-1.5">

@@ -382,7 +382,7 @@ function destroy(): void {
                     <input
                         v-model="memberForm.email"
                         type="email"
-                        placeholder="email@escola.pt"
+                        placeholder="Ex.: email@escola.pt"
                         class="w-full rounded-md border border-border bg-background px-3 py-2"
                     />
                     <span v-if="memberForm.errors.email" class="mt-1 block text-xs text-red-600">{{ memberForm.errors.email }}</span>

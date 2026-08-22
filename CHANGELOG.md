@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.53.0] — 2026-08-22
+
+### Added
+
+- **Convenção transversal de exemplos nos campos.** Vários formulários mostravam um exemplo ("7.º A", "Q1", "Compreensão do texto"...) que parecia um valor já introduzido. Todo o texto de exemplo passa a seguir o padrão "Ex.: …" — 24 campos corrigidos em 17 páginas (turmas, disciplinas, perfis de avaliação, elementos de avaliação, ano letivo, equipa, admin, autenticação, relatórios, importação). Uma regra `::placeholder` global e centralizada (`resources/css/app.css`, reutilizando o token `--muted-foreground` já existente) garante que todo o placeholder da aplicação — incluindo campos nativos fora do componente `Input` — usa a mesma cor ténue e acessível, sem depender de repetir a classe campo a campo. Valores por omissão genuinamente funcionais (cotação total = 100, código de questão auto-numerado "Q1"/"Q2"...) foram auditados e mantidos como valores reais, não convertidos em exemplos. Campos instrutivos ("Nome completo", "Palavra-passe", "Procurar por nome ou email…") mantidos como estão — não são exemplos, são instruções.
+
 ## [0.52.0] — 2026-08-22
 
 ### Added

@@ -193,7 +193,7 @@ function submitTransferOwnership(member: Member): void {
             <form class="flex items-end gap-2" @submit.prevent="invite">
                 <label class="block flex-1 text-sm">
                     <Label for="invite-email" class="mb-1 block font-medium">Email</Label>
-                    <Input id="invite-email" v-model="form.email" type="email" placeholder="colega@escola.pt" />
+                    <Input id="invite-email" v-model="form.email" type="email" placeholder="Ex.: colega@escola.pt" />
                     <span v-if="form.errors.email" class="mt-1 block text-xs text-red-600">{{ form.errors.email }}</span>
                 </label>
                 <Button type="submit" :disabled="form.processing || form.email === ''">

@@ -80,7 +80,7 @@ function submit(): void {
             <div class="grid gap-4 sm:grid-cols-2">
                 <div class="grid gap-2">
                     <Label for="label">Designação</Label>
-                    <Input id="label" v-model="form.label" placeholder="2026/2027" />
+                    <Input id="label" v-model="form.label" placeholder="Ex.: 2026/2027" />
                     <InputError :message="form.errors.label" />
                 </div>
                 <div class="grid gap-2">
@@ -130,7 +130,7 @@ function submit(): void {
             >
                 <div class="grid gap-1.5">
                     <Label :for="`period-label-${index}`" class="text-xs">Designação</Label>
-                    <Input :id="`period-label-${index}`" v-model="period.label" placeholder="1.º Semestre" />
+                    <Input :id="`period-label-${index}`" v-model="period.label" placeholder="Ex.: 1.º Semestre" />
                 </div>
                 <div class="grid gap-1.5">
                     <Label :for="`period-kind-${index}`" class="text-xs">Tipo</Label>

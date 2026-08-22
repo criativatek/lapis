@@ -70,7 +70,7 @@ function submit(): void {
                 <input
                     v-model="form.organization_name"
                     type="text"
-                    placeholder="Agrupamento de Escolas de Exemplo"
+                    placeholder="Ex.: Agrupamento de Escolas de Exemplo"
                     class="w-full rounded-md border border-border bg-background px-3 py-2"
                 />
                 <span v-if="form.errors.organization_name" class="mt-1 block text-xs text-red-600">{{

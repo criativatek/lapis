@@ -48,7 +48,7 @@ function sendTest(): void {
             <div class="grid gap-4 sm:grid-cols-2">
                 <label class="text-sm">
                     <span class="mb-1 block font-medium">Host</span>
-                    <input v-model="form.mail_host" type="text" placeholder="smtp.exemplo.com" class="w-full rounded-md border border-border bg-background px-3 py-2" />
+                    <input v-model="form.mail_host" type="text" placeholder="Ex.: smtp.exemplo.com" class="w-full rounded-md border border-border bg-background px-3 py-2" />
                 </label>
                 <label class="text-sm">
                     <span class="mb-1 block font-medium">Encriptação</span>
@@ -72,12 +72,12 @@ function sendTest(): void {
                 </label>
                 <label class="text-sm">
                     <span class="mb-1 block font-medium">Remetente (email)</span>
-                    <input v-model="form.mail_from_address" type="email" placeholder="nao-responder@criativatek.com" class="w-full rounded-md border border-border bg-background px-3 py-2" />
+                    <input v-model="form.mail_from_address" type="email" placeholder="Ex.: nao-responder@criativatek.com" class="w-full rounded-md border border-border bg-background px-3 py-2" />
                     <span v-if="form.errors.mail_from_address" class="mt-1 block text-xs text-red-600">{{ form.errors.mail_from_address }}</span>
                 </label>
                 <label class="text-sm">
                     <span class="mb-1 block font-medium">Remetente (nome)</span>
-                    <input v-model="form.mail_from_name" type="text" placeholder="LÁPIS" class="w-full rounded-md border border-border bg-background px-3 py-2" />
+                    <input v-model="form.mail_from_name" type="text" placeholder="Ex.: LÁPIS" class="w-full rounded-md border border-border bg-background px-3 py-2" />
                 </label>
             </div>
 
@@ -85,7 +85,7 @@ function sendTest(): void {
                 <div class="flex items-end gap-2">
                     <label class="text-sm">
                         <span class="mb-1 block text-xs text-muted-foreground">Enviar teste para</span>
-                        <input v-model="testTo" type="email" placeholder="o-teu-email@exemplo.com" class="w-56 rounded-md border border-border bg-background px-3 py-2" />
+                        <input v-model="testTo" type="email" placeholder="Ex.: o-teu-email@exemplo.com" class="w-56 rounded-md border border-border bg-background px-3 py-2" />
                     </label>
                     <button type="button" class="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted/40" @click="sendTest">
                         Enviar email de teste

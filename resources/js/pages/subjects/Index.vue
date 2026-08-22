@@ -125,12 +125,12 @@ function destroy(subject: Subject): void {
                     <div class="grid gap-4 py-4">
                         <div class="grid gap-2">
                             <Label for="name">Nome</Label>
-                            <Input id="name" v-model="form.name" placeholder="Português" />
+                            <Input id="name" v-model="form.name" placeholder="Ex.: Português" />
                             <InputError :message="form.errors.name" />
                         </div>
                         <div class="grid gap-2">
                             <Label for="code">Código</Label>
-                            <Input id="code" v-model="form.code" placeholder="PT7" />
+                            <Input id="code" v-model="form.code" placeholder="Ex.: PT7" />
                             <InputError :message="form.errors.code" />
                         </div>
                     </div>

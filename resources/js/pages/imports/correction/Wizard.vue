@@ -1454,7 +1454,7 @@ const typeName = computed(
                                     id="table-maximum"
                                     v-model="form.table.overall_maximum"
                                     inputmode="decimal"
-                                    placeholder="20"
+                                    placeholder="Ex.: 20"
                                     class="h-9 rounded-md border border-input bg-background px-3 text-sm"
                                 />
                                 <p class="text-xs text-muted-foreground">

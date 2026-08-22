@@ -173,6 +173,17 @@
     }
 
     /*
+     * Every placeholder reads as an example, not as a value someone already
+     * typed — regardless of whether the field is the shared Input/Textarea
+     * component or a raw native element that never picked up their
+     * placeholder:text-muted-foreground utility. One rule instead of
+     * auditing every field for the class.
+     */
+    ::placeholder {
+        @apply text-muted-foreground opacity-100;
+    }
+
+    /*
      * A scrollbar that works and does not compete.
      *
      * The sidebar's own scrollbar was drawn at the platform default width and

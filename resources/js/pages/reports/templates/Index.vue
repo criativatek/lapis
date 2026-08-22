@@ -87,7 +87,7 @@ const badgeClass: Record<string, string> = {
             <div class="grid gap-3 sm:grid-cols-2">
                 <div class="grid gap-2 sm:col-span-2">
                     <Label for="name">Nome</Label>
-                    <Input id="name" v-model="form.name" placeholder="Relatório semestral de Português" />
+                    <Input id="name" v-model="form.name" placeholder="Ex.: Relatório semestral de Português" />
                     <InputError :message="form.errors.name" />
                 </div>
 

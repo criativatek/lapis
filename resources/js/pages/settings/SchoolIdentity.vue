@@ -211,7 +211,7 @@ const logoSrc = computed<string | null>(() => (
                                 v-model="form.official_name"
                                 type="text"
                                 :disabled="!canEdit"
-                                placeholder="Agrupamento de Escolas de…"
+                                placeholder="Ex.: Agrupamento de Escolas de…"
                             />
                             <InputError :message="form.errors.official_name" />
                         </div>
@@ -263,7 +263,7 @@ const logoSrc = computed<string | null>(() => (
                                 v-model="form.website"
                                 type="text"
                                 :disabled="!canEdit"
-                                placeholder="aeexemplo.pt"
+                                placeholder="Ex.: aeexemplo.pt"
                             />
                             <InputError :message="form.errors.website" />
                         </div>

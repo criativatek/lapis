@@ -41,7 +41,7 @@ defineProps<{
                     name="email"
                     autocomplete="off"
                     autofocus
-                    placeholder="email@example.com"
+                    placeholder="Ex.: email@example.com"
                 />
                 <InputError :message="errors.email" />
             </div>

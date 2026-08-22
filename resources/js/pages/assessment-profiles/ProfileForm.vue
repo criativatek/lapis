@@ -133,7 +133,7 @@ function submit(): void {
                 <Input
                     id="name"
                     v-model="form.name"
-                    placeholder="Português – 7.º Ano – Escala 1 a 5"
+                    placeholder="Ex.: Português – 7.º Ano – Escala 1 a 5"
                     :disabled="!canManage"
                 />
                 <InputError :message="form.errors.name" />
@@ -181,7 +181,7 @@ function submit(): void {
                 <Input
                     id="grade_level"
                     v-model="form.grade_level"
-                    placeholder="7.º"
+                    placeholder="Ex.: 7.º"
                     :disabled="!canManage"
                 />
                 <InputError :message="form.errors.grade_level" />
@@ -269,7 +269,7 @@ function submit(): void {
                         <Input
                             :id="`domain-name-${index}`"
                             v-model="domain.name"
-                            placeholder="Leitura"
+                            placeholder="Ex.: Leitura"
                             :disabled="!canManage"
                         />
                         <InputError :message="domainError(index, 'name')" />

@@ -810,7 +810,7 @@ function derive() {
                         v-model="characterisationForm.teacher_input.final_note"
                         rows="3"
                         class="rounded-md border border-border bg-background p-2 text-sm"
-                        placeholder="Perspetivas para o período seguinte, por exemplo."
+                        placeholder="Perspetivas para o período seguinte."
                     ></textarea>
                 </div>
 

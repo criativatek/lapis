@@ -65,7 +65,7 @@ defineOptions({
                     :tabindex="2"
                     autocomplete="email"
                     name="email"
-                    placeholder="email@example.com"
+                    placeholder="Ex.: email@example.com"
                     :default-value="prefillEmail ?? undefined"
                 />
                 <InputError :message="errors.email" />
