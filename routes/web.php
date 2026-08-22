@@ -347,6 +347,9 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     Route::middleware('module:records')->group(function () {
         Route::get('records', [EvidenceController::class, 'index'])->name('records.index');
         Route::get('classes/{class}/records', [EvidenceController::class, 'show'])->name('records.show');
+        Route::get('classes/{class}/records/homework-batch', [EvidenceController::class, 'homeworkBatch'])->name('records.homework-batch.show');
+        Route::put('classes/{class}/records/homework-batch', [EvidenceController::class, 'updateHomeworkBatch'])->name('records.homework-batch.update');
+        Route::delete('classes/{class}/records/homework-batch', [EvidenceController::class, 'destroyHomeworkBatch'])->name('records.homework-batch.destroy');
         Route::post('classes/{class}/records', [EvidenceController::class, 'store'])->name('records.store');
         Route::put('records/{record}', [EvidenceController::class, 'update'])->name('records.update');
         Route::delete('records/{record}', [EvidenceController::class, 'destroy'])->name('records.destroy');

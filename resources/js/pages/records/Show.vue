@@ -3,6 +3,7 @@ import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { Pencil, Trash2 } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import Heading from '@/components/Heading.vue';
+import HomeworkGrid from './HomeworkGrid.vue';
 
 type EvidenceRecordRow = {
     ulid: string;
@@ -176,6 +177,7 @@ watch(
 );
 
 const editingUlid = ref<string | null>(null);
+const isHomeworkGrid = computed(() => editingUlid.value === null && form.kind === 'homework');
 
 function edit(record: EvidenceRecordRow): void {
     editingUlid.value = record.ulid;
@@ -242,6 +244,10 @@ function remove(record: EvidenceRecordRow): void {
     }
 }
 
+function refreshRecords(): void {
+    router.reload({ only: ['records'] });
+}
+
 function when(iso: string): string {
     return new Date(iso).toLocaleDateString('pt-PT', { day: '2-digit', month: 'short', year: 'numeric' });
 }
@@ -295,7 +301,7 @@ function applyFilters(): void {
         <p class="text-xs text-muted-foreground">Os registos não alteram automaticamente a classificação do aluno.</p>
 
         <form class="space-y-3 rounded-lg border border-border p-4" @submit.prevent="submit">
-            <div class="grid gap-3 sm:grid-cols-3">
+            <div class="grid gap-3" :class="isHomeworkGrid ? 'sm:grid-cols-2' : 'sm:grid-cols-3'">
                 <label class="text-sm">
                     <span class="mb-1 block text-xs text-muted-foreground">Tipo</span>
                     <select v-model="form.kind" class="w-full rounded-md border border-border bg-background px-2 py-1.5">
@@ -309,7 +315,7 @@ function applyFilters(): void {
                     <span class="mb-1 block text-xs text-muted-foreground">Data</span>
                     <input v-model="form.occurred_at" type="date" class="w-full rounded-md border border-border bg-background px-2 py-1.5" />
                 </label>
-                <label class="text-sm">
+                <label v-if="!isHomeworkGrid" class="text-sm">
                     <span class="mb-1 block text-xs text-muted-foreground">Aluno</span>
 
                     <!-- Editing always targets the one student (or none) the
@@ -359,7 +365,14 @@ function applyFilters(): void {
                 </label>
             </div>
 
-            <label v-if="form.kind === 'homework'" class="block text-sm">
+            <HomeworkGrid
+                v-if="isHomeworkGrid"
+                :class-ulid="schoolClass.ulid"
+                :occurred-at="form.occurred_at"
+                @saved="refreshRecords"
+            />
+
+            <label v-if="form.kind === 'homework' && editingUlid" class="block text-sm">
                 <span class="mb-1 block text-xs text-muted-foreground">Situação</span>
                 <select v-model="form.homework_status" class="w-full rounded-md border border-border bg-background px-2 py-1.5">
                     <option :value="null" disabled>Escolher…</option>
@@ -418,7 +431,7 @@ function applyFilters(): void {
                 </label>
             </div>
 
-            <label class="block text-sm">
+            <label v-if="!isHomeworkGrid" class="block text-sm">
                 <span class="mb-1 block text-xs text-muted-foreground">{{ metaFor(form.kind).descriptionLabel }}</span>
                 <textarea
                     v-model="form.description"
@@ -429,9 +442,9 @@ function applyFilters(): void {
                 ></textarea>
                 <p class="mt-1 text-xs text-muted-foreground">{{ metaFor(form.kind).descriptionHint }}</p>
             </label>
-            <p v-if="form.errors.description" class="text-xs text-red-600">{{ form.errors.description }}</p>
+            <p v-if="!isHomeworkGrid && form.errors.description" class="text-xs text-red-600">{{ form.errors.description }}</p>
 
-            <div class="flex items-center justify-end gap-2">
+            <div v-if="!isHomeworkGrid" class="flex items-center justify-end gap-2">
                 <button
                     v-if="editingUlid"
                     type="button"

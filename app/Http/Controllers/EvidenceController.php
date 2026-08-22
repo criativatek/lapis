@@ -12,6 +12,7 @@ use App\Models\HomeworkStatus;
 use App\Models\ParticipationLevel;
 use App\Models\SchoolClass;
 use App\Models\User;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -173,6 +174,142 @@ class EvidenceController extends Controller
             : __(':count registos adicionados.', ['count' => count($targets)]);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => $message]);
+
+        return back();
+    }
+
+    /**
+     * The active roster and the per-student homework rows already saved for
+     * one calendar day. Homework batches deliberately have no persisted batch
+     * model: class + kind + calendar date is their authoring identity.
+     */
+    public function homeworkBatch(Request $request, SchoolClass $class): JsonResponse
+    {
+        Gate::authorize('update', $class);
+
+        $validated = $request->validate([
+            'occurred_at' => ['required', 'date_format:Y-m-d'],
+        ]);
+
+        $records = EvidenceRecord::query()
+            ->forClass($class->id)
+            ->where('kind', EvidenceKind::Homework->value)
+            ->whereDate('occurred_at', $validated['occurred_at'])
+            ->whereNotNull('enrollment_id')
+            ->orderBy('id')
+            ->get()
+            ->keyBy('enrollment_id');
+
+        $enrollments = $class->activeEnrollments()
+            ->with('student.identity')
+            ->orderBy('class_number')
+            ->get()
+            ->map(function ($enrollment) use ($records): array {
+                /** @var EvidenceRecord|null $record */
+                $record = $records->get($enrollment->id);
+
+                return [
+                    'id' => $enrollment->id,
+                    'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
+                    'homework_status' => $record?->homework_status?->value,
+                    'description' => $record === null ? '' : $record->description,
+                ];
+            });
+
+        return response()->json(['enrollments' => $enrollments]);
+    }
+
+    /**
+     * Saves the whole visible homework grid atomically. Blank statuses mean
+     * "sem informação": an existing row in this exact batch is soft-deleted,
+     * while a row that never existed remains a no-op.
+     */
+    public function updateHomeworkBatch(Request $request, SchoolClass $class): RedirectResponse
+    {
+        Gate::authorize('update', $class);
+
+        $validated = $request->validate([
+            'occurred_at' => ['required', 'date_format:Y-m-d'],
+            'rows' => ['present', 'array'],
+            'rows.*.enrollment_id' => ['required', 'integer', 'distinct'],
+            'rows.*.homework_status' => ['nullable', Rule::enum(HomeworkStatus::class)],
+            'rows.*.description' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $enrollmentIds = array_column($validated['rows'], 'enrollment_id');
+        $this->guardCrossReferences($class, ['enrollment_ids' => $enrollmentIds], isNew: true);
+
+        DB::transaction(function () use ($class, $validated, $enrollmentIds): void {
+            // There is deliberately no batch table or uniqueness constraint.
+            // Locking the existing parent serializes two first saves, where no
+            // EvidenceRecord row exists yet for lockForUpdate() to lock.
+            SchoolClass::query()->whereKey($class->id)->lockForUpdate()->firstOrFail();
+
+            $existingRecords = EvidenceRecord::query()
+                ->forClass($class->id)
+                ->where('kind', EvidenceKind::Homework->value)
+                ->whereDate('occurred_at', $validated['occurred_at'])
+                ->whereIn('enrollment_id', $enrollmentIds)
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('enrollment_id');
+
+            foreach ($validated['rows'] as $row) {
+                /** @var EvidenceRecord|null $record */
+                $record = $existingRecords->get($row['enrollment_id']);
+
+                if (($row['homework_status'] ?? null) === null) {
+                    $record?->delete();
+
+                    continue;
+                }
+
+                $values = [
+                    'occurred_at' => $validated['occurred_at'],
+                    'homework_status' => $row['homework_status'],
+                    'description' => $row['description'] ?? '',
+                ];
+
+                if ($record !== null) {
+                    $record->update($values);
+
+                    continue;
+                }
+
+                EvidenceRecord::create(array_merge($values, [
+                    'class_id' => $class->id,
+                    'enrollment_id' => $row['enrollment_id'],
+                    'kind' => EvidenceKind::Homework->value,
+                    'created_by' => $this->user()->getKey(),
+                ]));
+            }
+        });
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Trabalho de casa guardado.')]);
+
+        return back();
+    }
+
+    public function destroyHomeworkBatch(Request $request, SchoolClass $class): RedirectResponse
+    {
+        Gate::authorize('update', $class);
+
+        $validated = $request->validate([
+            'occurred_at' => ['required', 'date_format:Y-m-d'],
+        ]);
+
+        DB::transaction(function () use ($class, $validated): void {
+            EvidenceRecord::query()
+                ->forClass($class->id)
+                ->where('kind', EvidenceKind::Homework->value)
+                ->whereDate('occurred_at', $validated['occurred_at'])
+                ->whereNotNull('enrollment_id')
+                ->lockForUpdate()
+                ->get()
+                ->each->delete();
+        });
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Trabalho de casa eliminado.')]);
 
         return back();
     }
