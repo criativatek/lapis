@@ -168,6 +168,8 @@ return [
             'items' => [
                 ['key' => 'academic-structure', 'label' => 'Estrutura do Ano Letivo', 'icon' => 'CalendarRange', 'module' => null, 'phase' => 1, 'route' => 'academic-years.index', 'built' => true, 'description' => 'Definir anos letivos, disciplinas e períodos.', 'match' => ['/subjects']],
                 ['key' => 'assessment-profiles', 'label' => 'Perfis de Avaliação', 'icon' => 'SlidersHorizontal', 'module' => 'assessment_profiles', 'phase' => 1, 'route' => 'assessment-profiles.index', 'built' => true, 'description' => 'Definir critérios, domínios, pesos e escalas.'],
+                ['key' => 'configuration-sharing', 'label' => 'Partilhar configuração', 'icon' => 'Share2', 'module' => 'template_sharing', 'phase' => 1, 'route' => 'configuration-sharing.export', 'built' => true, 'description' => 'Partilhar apenas estrutura e configurações.'],
+                ['key' => 'configuration-import', 'label' => 'Importar configuração', 'icon' => 'Download', 'module' => 'template_sharing', 'phase' => 1, 'route' => 'configuration-sharing.import', 'built' => true, 'description' => 'Pré-visualizar e importar configurações partilhadas.'],
                 ['key' => 'settings', 'label' => 'Configurações', 'icon' => 'Settings', 'module' => null, 'route' => 'profile.edit', 'phase' => 0, 'description' => 'Configurar a aplicação e a escola.', 'match' => ['/settings']],
             ],
         ],

@@ -11,6 +11,7 @@ use App\Http\Controllers\ClassPhotoImportController;
 use App\Http\Controllers\ClassProfileMigrationController;
 use App\Http\Controllers\ClassReassignmentController;
 use App\Http\Controllers\ClassStatisticsController;
+use App\Http\Controllers\ConfigurationSharingController;
 use App\Http\Controllers\CorrectionImportController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DataExportController;
@@ -407,6 +408,14 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     Route::get('data-imports/{data_import}', [DataImportController::class, 'edit'])->name('data-imports.edit');
     Route::post('data-imports/{data_import}/confirm', [DataImportController::class, 'confirm'])->name('data-imports.confirm');
     Route::delete('data-imports/{data_import}', [DataImportController::class, 'destroy'])->name('data-imports.destroy');
+
+    Route::middleware('module:template_sharing')->group(function () {
+        Route::get('configuracao/partilhar', [ConfigurationSharingController::class, 'export'])->name('configuration-sharing.export');
+        Route::post('configuracao/partilhar', [ConfigurationSharingController::class, 'download'])->name('configuration-sharing.download');
+        Route::get('configuracao/importar', [ConfigurationSharingController::class, 'import'])->name('configuration-sharing.import');
+        Route::post('configuracao/importar/preview', [ConfigurationSharingController::class, 'preview'])->name('configuration-sharing.preview');
+        Route::post('configuracao/importar/confirmar', [ConfigurationSharingController::class, 'confirm'])->name('configuration-sharing.confirm');
+    });
 
     // Equipa (Fatia 3) — an institutional organization's members and pending
     // invitations, owner-only (TeamController, OrganizationInvitationPolicy).

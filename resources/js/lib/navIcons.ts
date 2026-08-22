@@ -5,6 +5,7 @@ import {
     CalendarDays,
     CalendarRange,
     ClipboardList,
+    Download,
     FileText,
     Footprints,
     GraduationCap,
@@ -14,6 +15,7 @@ import {
     PenLine,
     PieChart,
     Settings,
+    Share2,
     SlidersHorizontal,
     TrendingUp,
     UserCheck,
@@ -33,6 +35,7 @@ const icons: Record<string, LucideIcon> = {
     GraduationCap,
     SlidersHorizontal,
     ClipboardList,
+    Download,
     PenLine,
     BarChart3,
     UserCheck,
@@ -51,6 +54,7 @@ const icons: Record<string, LucideIcon> = {
     BookOpen,
     Building2,
     Settings,
+    Share2,
 };
 
 export function navIcon(name: string): LucideIcon {
