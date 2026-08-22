@@ -718,6 +718,56 @@ class StudentProgressTest extends TestCase
         $this->assertTrue($rows[0]['is_concluded']);
     }
 
+    #[Test]
+    public function an_intervention_past_its_review_date_is_flagged_and_counted(): void
+    {
+        $class = $this->schoolClass();
+        $enrollment = $this->enrollment();
+
+        $this->asTenant(function () use ($class, $enrollment): void {
+            Intervention::create([
+                'class_id' => $class->getKey(),
+                'enrollment_id' => $enrollment->getKey(),
+                'target_type' => InterventionTargetType::Student,
+                'title' => 'Reforço da leitura orientada',
+                'status' => InterventionStatus::InProgress,
+                'started_on' => Carbon::parse('2027-01-10'),
+                'review_on' => Carbon::parse('2027-05-01'),
+                'created_by' => $this->teacher->getKey(),
+            ]);
+        });
+
+        $progress = $this->progress($enrollment);
+
+        $this->assertSame(1, $progress['interventions']['needing_review']);
+        $this->assertTrue($progress['interventions']['rows'][0]['needs_review']);
+    }
+
+    #[Test]
+    public function an_intervention_with_a_future_review_date_is_not_flagged(): void
+    {
+        $class = $this->schoolClass();
+        $enrollment = $this->enrollment();
+
+        $this->asTenant(function () use ($class, $enrollment): void {
+            Intervention::create([
+                'class_id' => $class->getKey(),
+                'enrollment_id' => $enrollment->getKey(),
+                'target_type' => InterventionTargetType::Student,
+                'title' => 'Reforço da leitura orientada',
+                'status' => InterventionStatus::InProgress,
+                'started_on' => Carbon::parse('2027-01-10'),
+                'review_on' => Carbon::parse('2027-08-01'),
+                'created_by' => $this->teacher->getKey(),
+            ]);
+        });
+
+        $progress = $this->progress($enrollment);
+
+        $this->assertSame(0, $progress['interventions']['needing_review']);
+        $this->assertFalse($progress['interventions']['rows'][0]['needs_review']);
+    }
+
     // ------------------------------------------------------- §77 causalidade
 
     #[Test]
