@@ -4,12 +4,14 @@ namespace Tests\Feature\Evidence;
 
 use App\Models\AcademicPeriod;
 use App\Models\Domain;
+use App\Models\EnrollmentStatus;
 use App\Models\EvidenceRecord;
 use App\Models\SchoolClass;
 use App\Models\User;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -96,6 +98,15 @@ class EvidenceRecordTest extends TestCase
         ], $overrides);
 
         return $this->putJson("/records/{$ulid}", $payload);
+    }
+
+    /** @param  list<array{enrollment_id: int, homework_status: string|null, description: string|null}>  $rows */
+    private function putHomeworkBatch(string $classUlid, string $occurredAt, array $rows): TestResponse
+    {
+        return $this->putJson("/classes/{$classUlid}/records/homework-batch", [
+            'occurred_at' => $occurredAt,
+            'rows' => $rows,
+        ]);
     }
 
     #[Test]
@@ -522,5 +533,167 @@ class EvidenceRecordTest extends TestCase
 
         $this->get("/classes/{$classUlid}/records?period_id={$periodId}")
             ->assertInertia(fn ($page) => $page->component('records/Show')->has('records', 2));
+    }
+
+    #[Test]
+    public function the_homework_grid_loads_only_active_enrollments_with_no_default_state(): void
+    {
+        [$classUlid] = $this->seedClass();
+        $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+
+        $inactiveId = app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () use ($classUlid): int {
+            $class = SchoolClass::where('ulid', $classUlid)->firstOrFail();
+            $enrollment = $class->enrollments()->orderBy('class_number')->firstOrFail();
+            $enrollment->update(['status' => EnrollmentStatus::TransferredOut]);
+
+            return $enrollment->id;
+        });
+
+        $response = $this->actingAs($teacher)
+            ->getJson("/classes/{$classUlid}/records/homework-batch?occurred_at=2026-10-20")
+            ->assertOk();
+
+        $this->assertNotContains($inactiveId, $response->json('enrollments.*.id'));
+        $this->assertNotEmpty($response->json('enrollments'));
+        $this->assertSame(
+            array_fill(0, count($response->json('enrollments')), null),
+            $response->json('enrollments.*.homework_status'),
+        );
+    }
+
+    #[Test]
+    public function blank_homework_rows_are_not_inferred_as_not_done(): void
+    {
+        [$classUlid, $enrollmentId] = $this->seedClass();
+        $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+
+        $this->actingAs($teacher);
+        $this->putHomeworkBatch($classUlid, '2026-10-20', [[
+            'enrollment_id' => (int) $enrollmentId,
+            'homework_status' => null,
+            'description' => null,
+        ]])->assertRedirect();
+
+        app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function (): void {
+            $this->assertSame(0, EvidenceRecord::count());
+        });
+    }
+
+    #[Test]
+    public function a_homework_batch_persists_bulk_values_individual_overrides_and_descriptions(): void
+    {
+        [$classUlid] = $this->seedClass();
+        $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+        $enrollmentIds = app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () use ($classUlid): array {
+            return SchoolClass::where('ulid', $classUlid)->firstOrFail()
+                ->activeEnrollments()->orderBy('class_number')->limit(3)->pluck('id')->all();
+        });
+
+        $rows = collect($enrollmentIds)->map(fn (int $enrollmentId): array => [
+            'enrollment_id' => $enrollmentId,
+            'homework_status' => 'done',
+            'description' => 'Exercícios 1 a 5 da página 42',
+        ])->all();
+        $rows[1]['homework_status'] = 'partially_done';
+        $rows[1]['description'] = 'Completou apenas até ao exercício 3.';
+
+        $this->actingAs($teacher);
+        $this->putHomeworkBatch($classUlid, '2026-10-20', $rows)->assertRedirect();
+
+        app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () use ($enrollmentIds): void {
+            $this->assertSame(3, EvidenceRecord::count());
+            $this->assertSame('done', EvidenceRecord::where('enrollment_id', $enrollmentIds[0])->firstOrFail()->homework_status->value);
+            $override = EvidenceRecord::where('enrollment_id', $enrollmentIds[1])->firstOrFail();
+            $this->assertSame('partially_done', $override->homework_status->value);
+            $this->assertSame('Completou apenas até ao exercício 3.', $override->description);
+            $this->assertSame('Exercícios 1 a 5 da página 42', EvidenceRecord::where('enrollment_id', $enrollmentIds[2])->firstOrFail()->description);
+        });
+    }
+
+    #[Test]
+    public function saving_the_same_homework_batch_updates_reopens_and_clears_without_duplicates(): void
+    {
+        [$classUlid, $enrollmentId] = $this->seedClass();
+        $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+        $this->actingAs($teacher);
+
+        $this->putHomeworkBatch($classUlid, '2026-10-20', [[
+            'enrollment_id' => (int) $enrollmentId,
+            'homework_status' => 'done',
+            'description' => 'Descrição inicial.',
+        ]])->assertRedirect();
+        $this->putHomeworkBatch($classUlid, '2026-10-20', [[
+            'enrollment_id' => (int) $enrollmentId,
+            'homework_status' => 'not_done',
+            'description' => 'Não entregou.',
+        ]])->assertRedirect();
+
+        $this->getJson("/classes/{$classUlid}/records/homework-batch?occurred_at=2026-10-20")
+            ->assertOk()
+            ->assertJsonPath('enrollments.0.homework_status', 'not_done')
+            ->assertJsonPath('enrollments.0.description', 'Não entregou.');
+
+        app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function (): void {
+            $this->assertSame(1, EvidenceRecord::count());
+        });
+
+        $this->putHomeworkBatch($classUlid, '2026-10-20', [[
+            'enrollment_id' => (int) $enrollmentId,
+            'homework_status' => null,
+            'description' => '',
+        ]])->assertRedirect();
+
+        app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function (): void {
+            $this->assertSame(0, EvidenceRecord::count());
+            $this->assertSame(1, EvidenceRecord::withTrashed()->count());
+        });
+    }
+
+    #[Test]
+    public function a_homework_batch_failure_after_the_first_insert_rolls_back_every_row(): void
+    {
+        [$classUlid] = $this->seedClass();
+        $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+
+        $enrollmentIds = app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () use ($classUlid): array {
+            return SchoolClass::where('ulid', $classUlid)->firstOrFail()
+                ->activeEnrollments()->orderBy('class_number')->limit(2)->pluck('id')->all();
+        });
+
+        // SQLite's trigger aborts the second INSERT, after the first has run.
+        // The transaction must roll that first row back as well.
+        DB::statement(sprintf(
+            "CREATE TRIGGER fail_second_homework_insert BEFORE INSERT ON evidence_records WHEN NEW.enrollment_id = %d BEGIN SELECT RAISE(ABORT, 'forced batch failure'); END",
+            $enrollmentIds[1],
+        ));
+
+        $this->actingAs($teacher);
+        $this->putHomeworkBatch($classUlid, '2026-10-20', [
+            ['enrollment_id' => $enrollmentIds[0], 'homework_status' => 'done', 'description' => 'Primeiro.'],
+            ['enrollment_id' => $enrollmentIds[1], 'homework_status' => 'done', 'description' => 'Segundo.'],
+        ])->assertServerError();
+
+        app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function (): void {
+            $this->assertSame(0, EvidenceRecord::count());
+        });
+    }
+
+    #[Test]
+    public function homework_batch_routes_enforce_tenant_and_class_teacher_authorization(): void
+    {
+        [$classUlid] = $this->seedClass();
+        $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+
+        $this->actingAs(User::factory()->create())
+            ->getJson("/classes/{$classUlid}/records/homework-batch?occurred_at=2026-10-20")
+            ->assertNotFound();
+
+        app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () use ($classUlid): void {
+            SchoolClass::where('ulid', $classUlid)->firstOrFail()->teachers()->detach();
+        });
+
+        $this->actingAs($teacher)
+            ->getJson("/classes/{$classUlid}/records/homework-batch?occurred_at=2026-10-20")
+            ->assertForbidden();
     }
 }
