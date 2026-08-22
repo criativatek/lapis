@@ -33,11 +33,13 @@ Duas condições têm de estar satisfeitas para um deploy correr, e **as duas j�
 falharam em produção**: a chave tem de estar em `authorized_keys2` (armadilha 6)
 e o `lapis-deploy` tem de ser **dono** dos ficheiros da aplicação (armadilha 8).
 
-**Versão em produção: 0.37.0** desde 2026-08-20 (Relatórios, Acompanhamento do
-Aluno, Estratégias e Medidas, reorganização da navegação; três migrations
-aditivas, e duas dependências novas — `dompdf/dompdf` e `phpoffice/phpword` —
-que tornam o `composer install` do passo 5 obrigatório e não opcional). Antes
-disso, 0.36.0 desde 2026-08-18 (Identidade da escola).
+**Versão em produção: 0.45.9** (commit `74e8ff2`) desde 2026-08-22, confirmado
+ao vivo via `php artisan lapis:release-check` / `php artisan about`. Antes
+disso, 0.37.0 desde 2026-08-20 (Relatórios, Acompanhamento do Aluno,
+Estratégias e Medidas, reorganização da navegação; três migrations aditivas, e
+duas dependências novas — `dompdf/dompdf` e `phpoffice/phpword` — que tornam o
+`composer install` do passo 5 obrigatório e não opcional); antes dessa, 0.36.0
+desde 2026-08-18 (Identidade da escola).
 **Confirmar sempre a versão real no servidor (`grep version config/app.php`)
 antes de assumir de onde parte o deploy**, já que o servidor não tem `.git` e
 nada indica de fora qual o commit que lá está — o `build.json` do pacote e o
