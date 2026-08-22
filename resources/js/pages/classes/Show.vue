@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { preparePhotoForUpload } from '@/lib/studentPhoto';
 
 type Student = {
     ulid: string;
@@ -185,7 +186,7 @@ function submitEdit(): void {
 const photoInput = ref<HTMLInputElement | null>(null);
 const studentPhotoForm = useForm<{ photo: File | null }>({ photo: null });
 
-function onStudentPhotoChange(event: Event): void {
+async function onStudentPhotoChange(event: Event): Promise<void> {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0] ?? null;
 
@@ -193,7 +194,26 @@ function onStudentPhotoChange(event: Event): void {
         return;
     }
 
-    studentPhotoForm.photo = file;
+    studentPhotoForm.clearErrors();
+
+    // Validated and, where possible, shrunk client-side first — most phone
+    // photos are far bigger than an avatar needs, and this is what keeps a
+    // 12 MB original from ever reaching the network at all. The backend
+    // still validates everything again on arrival; this only saves a round
+    // trip for the common case.
+    const prepared = await preparePhotoForUpload(file);
+
+    if (!prepared.ok) {
+        studentPhotoForm.setError('photo', prepared.message);
+
+        if (photoInput.value) {
+            photoInput.value.value = '';
+        }
+
+        return;
+    }
+
+    studentPhotoForm.photo = prepared.file;
     studentPhotoForm.post(
         `/classes/${props.schoolClass.ulid}/students/${editingUlid.value}/photo`,
         {

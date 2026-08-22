@@ -11,9 +11,11 @@ use App\Http\Middleware\ResolveOrganization;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\PostTooLargeException;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\SubstituteBindings;
+use Inertia\Inertia;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -56,4 +58,39 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
+
+        // A request whose body outgrew post_max_size never reaches Laravel's own
+        // validation — ValidatePostSize throws this from the GLOBAL middleware
+        // group, before the "web" group (and StartSession within it) ever runs.
+        // $request->hasSession() is therefore always false here: there is no
+        // shortcut, the session has to be started by hand, the same way
+        // StartSession itself does (read the id off the existing cookie —
+        // never create a new session for a request that isn't really there).
+        // Without this, the teacher sees a raw Laravel error page (a stack
+        // trace under APP_DEBUG=true, a bare "Server Error" otherwise) instead
+        // of the same friendly toast every other upload failure uses.
+        $exceptions->render(function (PostTooLargeException $exception, Request $request) {
+            $manager = app('session');
+
+            if ($manager->getSessionConfig()['driver'] === null) {
+                return null;
+            }
+
+            $session = $manager->driver();
+            $session->setId($request->cookies->get($session->getName()));
+            $session->start();
+            $request->setLaravelSession($session);
+
+            Inertia::flash('toast', [
+                'type' => 'error',
+                'message' => 'O ficheiro é demasiado grande para ser enviado. Reduza o tamanho e tente novamente.',
+            ]);
+
+            // Nothing downstream will call this: the "web" group's own
+            // StartSession middleware, which normally saves the session on
+            // its way out, never runs for a request that failed this early.
+            $session->save();
+
+            return redirect($request->headers->get('referer', route('dashboard')));
+        });
     })->create();
