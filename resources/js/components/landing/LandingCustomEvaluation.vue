@@ -7,24 +7,24 @@ import RevealOnScroll from './RevealOnScroll.vue';
 
 const claims = [
     {
-        title: 'Os domínios são seus',
-        body: 'Nomes, número e ordem. Sem grelha oficial a que se tenha de traduzir.',
+        title: 'Os domínios refletem o modelo da escola',
+        body: 'Designações, organização e critérios de avaliação configurados de acordo com o modelo adotado.',
     },
     {
-        title: 'Os pesos são seus',
-        body: 'Por domínio, e por elemento dentro de cada domínio.',
+        title: 'As ponderações seguem os critérios definidos',
+        body: 'Pesos por domínio e por elemento de avaliação, de acordo com as regras estabelecidas.',
     },
     {
-        title: 'A escala é sua',
-        body: '1 a 5, 0 a 20, percentagem — ou uma que crie para a sua disciplina.',
+        title: 'A escala é a que a escola utiliza',
+        body: 'Níveis, valores, percentagens ou outras escalas podem ser configurados de acordo com o modelo de avaliação.',
     },
     {
-        title: 'O calendário é seu',
-        body: 'Períodos, semestres, trimestres ou módulos. Quantos precisar.',
+        title: 'O ano letivo acompanha a organização da escola',
+        body: 'Períodos, semestres, trimestres ou módulos, conforme a estrutura adotada.',
     },
     {
-        title: 'E fica versionado',
-        body: 'Alterar um perfil ativo cria uma nova versão. O histórico fica intacto.',
+        title: 'As alterações não apagam o passado',
+        body: 'Quando a configuração muda, os resultados anteriores mantêm as regras que estavam em vigor quando foram avaliados.',
     },
 ] as const;
 </script>
@@ -43,19 +43,19 @@ const claims = [
                         class="h-px w-7 origin-left bg-primary transition-transform delay-150 duration-700 ease-out dark:bg-(--brand-amber)"
                         :class="shown ? 'scale-x-100' : 'scale-x-0'"
                     />
-                    O seu modelo
+                    O modelo da sua escola
                 </p>
                 <h2
                     class="mt-3 text-3xl font-semibold tracking-tight text-balance sm:text-4xl"
                 >
-                    O LÁPIS adapta-se à sua forma de avaliar.
+                    O LÁPIS adapta-se ao modelo de avaliação da sua escola.
                 </h2>
                 <p
                     class="mt-4 text-base leading-relaxed text-pretty text-muted-foreground sm:text-lg"
                 >
-                    Cada escola, cada disciplina e cada professor avaliam de
-                    maneira diferente. Um software não devia obrigar toda a
-                    gente a avaliar da mesma forma.
+                    Cada escola pode organizar a avaliação de forma
+                    diferente. O LÁPIS permite configurar essa estrutura e
+                    aplicá-la de forma consistente ao trabalho do professor.
                 </p>
 
                 <dl class="mt-9 space-y-5">

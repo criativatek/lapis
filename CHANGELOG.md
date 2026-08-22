@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.55.3] — 2026-08-22
+
+### Changed
+
+- **Copy da secção "O modelo da sua escola" na landing.** Reescrita para deixar claro que domínios, ponderações, escala e organização do ano letivo são estruturas que a escola/instituição define, não decisões individuais do professor. Removida a linguagem técnica "versionado". Layout, ícones e responsividade inalterados.
+
 ## [0.55.2] — 2026-08-22
 
 ### Changed
