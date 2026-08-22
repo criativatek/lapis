@@ -42,19 +42,19 @@
              document. The tab title stays in the component; everything a robot
              reads has to be in the response. --}}
         @if (($page['component'] ?? null) === 'Welcome')
-            @php($landingDescription = 'O LÁPIS reúne perfis de avaliação, turmas, elementos de avaliação e grelhas de correção num só sítio, e propõe cada classificação de forma explicável. Para professores do básico, secundário, profissional e superior.')
+            @php($landingDescription = 'Avaliação, acompanhamento e organização do trabalho docente num único lugar. O LÁPIS reúne perfis de avaliação, turmas, elementos de avaliação e grelhas de correção, e propõe classificações de forma explicável.')
             <meta name="description" content="{{ $landingDescription }}">
             <link rel="canonical" href="{{ url('/') }}">
             <meta property="og:type" content="website">
             <meta property="og:site_name" content="LÁPIS">
             <meta property="og:locale" content="pt_PT">
             <meta property="og:url" content="{{ url('/') }}">
-            <meta property="og:title" content="LÁPIS — Mais tempo para ensinar">
+            <meta property="og:title" content="LÁPIS — Mais simples. Mais tempo.">
             <meta property="og:description" content="{{ $landingDescription }}">
             {{-- summary, not summary_large_image: there is no OG image asset yet,
                  and the large card renders as a broken box without one. --}}
             <meta name="twitter:card" content="summary">
-            <meta name="twitter:title" content="LÁPIS — Mais tempo para ensinar">
+            <meta name="twitter:title" content="LÁPIS — Mais simples. Mais tempo.">
             <meta name="twitter:description" content="{{ $landingDescription }}">
             @php($landingStructuredData = [
                 '@context' => 'https://schema.org',
@@ -76,7 +76,7 @@
 
         @vite(['resources/css/app.css', 'resources/js/app.ts', "resources/js/pages/{$page['component']}.vue"])
         <x-inertia::head>
-            <title>{{ ($page['component'] ?? null) === 'Welcome' ? 'LÁPIS — Mais tempo para ensinar' : config('app.name', 'Laravel') }}</title>
+            <title>{{ ($page['component'] ?? null) === 'Welcome' ? 'LÁPIS — Mais simples. Mais tempo.' : config('app.name', 'Laravel') }}</title>
         </x-inertia::head>
     </head>
     <body class="font-sans antialiased">

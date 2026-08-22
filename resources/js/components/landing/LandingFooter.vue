@@ -44,7 +44,7 @@ const version = computed(() => usePage().props.appVersion);
                         <span
                             class="mt-0.5 block text-[11px] leading-none"
                             :class="CHROME_MUTED"
-                            >Mais tempo para ensinar</span
+                            >Mais simples. Mais tempo.</span
                         >
                     </span>
                 </span>
@@ -120,7 +120,7 @@ const version = computed(() => usePage().props.appVersion);
                 :class="CHROME_MUTED"
             >
                 <span>LÁPIS v{{ version }}</span>
-                <span>Mais tempo para ensinar.</span>
+                <span>Mais simples. Mais tempo.</span>
             </div>
         </div>
     </footer>

@@ -47,7 +47,7 @@ const authenticated = computed(() => page.props.auth.user !== null);
 </script>
 
 <template>
-    <Head title="LÁPIS — Mais tempo para ensinar" />
+    <Head title="LÁPIS — Mais simples. Mais tempo." />
 
     <div class="min-h-screen bg-background text-foreground">
         <a

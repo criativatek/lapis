@@ -45,10 +45,8 @@ const gains = [
                 <h2
                     class="mt-3 max-w-2xl text-3xl font-semibold tracking-tight text-balance text-white sm:text-4xl"
                 >
-                    Menos tempo a gerir avaliações.
-                    <span class="text-(--brand-amber)"
-                        >Mais tempo para ensinar.</span
-                    >
+                    Mais simples.
+                    <span class="text-(--brand-amber)">Mais tempo.</span>
                 </h2>
                 <p
                     class="mt-4 max-w-2xl leading-relaxed text-pretty text-sidebar-foreground/80"

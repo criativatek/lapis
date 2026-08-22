@@ -136,7 +136,7 @@ const items: readonly LandingNavItem[] = LANDING_NAV;
                     <span
                         class="mt-0.5 block text-[11px] leading-none"
                         :class="CHROME_MUTED"
-                        >Mais tempo para ensinar</span
+                        >Mais simples. Mais tempo.</span
                     >
                 </span>
             </Link>
