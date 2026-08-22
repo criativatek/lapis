@@ -130,13 +130,13 @@ const items: readonly LandingNavItem[] = LANDING_NAV;
                 </span>
                 <span class="hidden sm:block">
                     <span
-                        class="block text-[15px] leading-none font-semibold tracking-tight"
+                        class="block text-[17px] leading-none font-semibold tracking-tight"
                         >LÁPIS</span
                     >
                     <span
-                        class="mt-0.5 block text-[11px] leading-none"
+                        class="mt-1 block text-[12px] leading-tight"
                         :class="CHROME_MUTED"
-                        >Mais simples. Mais tempo.</span
+                        >Mais simples. Mais tempo para o que realmente importa.</span
                     >
                 </span>
             </Link>

@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.53.2] — 2026-08-22
+
+### Changed
+
+- **Bloco de marca no cabeçalho da landing.** Tagline atualizada para "Mais simples. Mais tempo para o que realmente importa." e o conjunto "LÁPIS" + tagline ligeiramente maior (15px→17px / 11px→12px), mantendo "LÁPIS" visualmente dominante. Só este bloco — ícone, cores, resto do cabeçalho e restantes secções inalterados.
+
 ## [0.53.1] — 2026-08-22
 
 ### Changed
