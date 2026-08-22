@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.48.2] — 2026-08-22
+
+### Changed
+
+- **Polimento visual da página "Partilhar configuração".** Sem alterações ao domínio: mesma whitelist, mesmo preview, mesma idempotência, mesma tenancy. A ação "Importar configuração" passa a estar junto ao título, em vez de solta por baixo; as opções de exportação passam de checkboxes soltas a linhas clicáveis com contexto; um grupo sem opções (por exemplo "Escala" quando a organização não tem escalas próprias) mostra sempre uma frase discreta em vez de ficar vazio; o botão "Gerar e descarregar" começa desativado e só ativa com pelo menos um elemento selecionado, com um resumo em tempo real ("1 elemento selecionado" / "N elementos selecionados"); o aviso de privacidade passa a incluir "registos pedagógicos" na lista do que nunca é exportado.
+
 ## [0.48.1] — 2026-08-22
 
 ### Fixed
