@@ -69,7 +69,12 @@ final class ConfigurationSharingController extends Controller
         $package = $validate->fromJson($contents);
         $request->session()->put(self::SESSION_KEY, ['organization_id' => $tenant->id(), 'package' => $package]);
 
-        return Inertia::render('config-sharing/Preview', ['plan' => $plans->handle($package), 'provenance' => $package['provenance']]);
+        return Inertia::render('config-sharing/Preview', [
+            'plan' => $plans->handle($package),
+            'provenance' => $package['provenance'],
+            'exportedAt' => $package['exported_at'],
+            'productVersion' => $package['product']['version'] ?? null,
+        ]);
     }
 
     public function confirm(Request $request, WriteConfigurationImport $write, AuditLog $audit, CurrentOrganization $tenant): RedirectResponse
