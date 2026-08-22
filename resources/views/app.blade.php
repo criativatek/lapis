@@ -3,6 +3,11 @@
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
+        {{-- Inertia's own POST/PUT/DELETE requests carry CSRF via the XSRF-TOKEN
+             cookie automatically. This meta tag is only for the rare direct
+             `fetch()` call (a raw file download, for instance) that Inertia's
+             router can't make. --}}
+        <meta name="csrf-token" content="{{ csrf_token() }}">
 
         {{-- Inline script to detect system dark mode preference and apply it immediately --}}
         <script>
