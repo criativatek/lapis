@@ -2,6 +2,14 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.46.0] — 2026-08-22
+
+### Added
+
+- **Registo rápido de Trabalho de casa, em grelha.** Em Ação Pedagógica → Registos, escolher o tipo "Trabalho de casa" numa turma e data já não abre o formulário genérico, aluno a aluno — mostra a turma inteira (só matrículas ativas) numa grelha com três estados por aluno (Realizado / Parcialmente realizado / Não realizado, mutuamente exclusivos, nenhum por defeito — em branco significa sempre "sem informação", nunca "não realizado") e uma "Observação" opcional e recolhida por omissão. Ações em massa ("Marcar todos como…", "Limpar") afetam só os alunos apresentados e continuam editáveis individualmente depois. Uma "Descrição comum" opcional preenche a Observação de cada aluno como ponto de partida, sem apagar o que já tiver sido personalizado numa linha. Contagens ao vivo, um único pedido para a turma inteira, uma só transação (com bloqueio da turma para serializar duas primeiras gravações em simultâneo). Reabrir a mesma turma/data recarrega exatamente o que foi gravado; limpar o estado de um aluno remove (soft-delete) o registo desse aluno para essa data, nunca fica por defeito como "não realizado". Uma eliminação explícita e confirmada apaga o conjunto todo de uma turma/data.
+
+  **Sem tabela nova, sem módulo novo, sem migration.** Reutiliza inteiramente `EvidenceRecord`/`EvidenceKind::Homework`/`HomeworkStatus` (já existentes desde o módulo Registos original, com os três estados já corretos). A identidade de "o mesmo Trabalho de Casa" é deliberadamente simples — turma + tipo + data — e está documentada como tal: nunca existiu unicidade nessa combinação nesta tabela, e o formulário lento já não a impunha; duas tarefas diferentes escritas na mesma turma no mesmo dia através desta grelha continuam, hoje, a ser o mesmo conjunto de registos por aluno. Outros tipos de registo e a edição individual de um registo já existente mantêm-se exatamente como estavam. Nunca entra em `ClassResultsCalculator`/`BuildResultsProgression`/propostas/classificações — é só acompanhamento pedagógico, como qualquer outro registo.
+
 ## [0.45.9] — 2026-08-22
 
 ### Added
