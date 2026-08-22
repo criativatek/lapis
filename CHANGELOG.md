@@ -2,6 +2,14 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.47.0] — 2026-08-22
+
+### Added
+
+- **Partilha seletiva de configurações entre professores.** Em Configuração → "Partilhar configuração", um professor escolhe o que quer entregar a um colega — identidade da escola, anos letivos, disciplinas, escalas próprias, perfis de avaliação — e recebe um ficheiro JSON. Nunca inclui alunos, matrículas, classificações, autoavaliações, registos de evidência, intervenções, relatórios, utilizadores, associações, palavras-passe, segredos ou qualquer dado derivado: a lista de campos exportáveis é uma whitelist fechada, e cada perfil de avaliação arrasta consigo apenas o seu ano letivo, disciplina, escala (referenciada por nome quando é uma escala de sistema, incluída quando é própria) e domínios — nunca os resultados de nenhum aluno. "Importar configuração" faz sempre uma pré-visualização primeiro (New/Existente/Conflito/Inválido, por chave de negócio — ano letivo por rótulo, disciplina por código, escala por nome, perfil por ano+disciplina+ano de escolaridade+nome), nunca escreve nada na fase de análise, nunca sobrepõe uma linha existente ou em conflito, e é idempotente (reimportar o mesmo ficheiro não duplica nada). Um perfil importado entra sempre como rascunho — a versão nunca fica ativa sozinha; o professor decide quando a publicar. Atrás do módulo `template_sharing` já existente nos planos Pro e Institucional (Base fica de fora); a sessão de pré-visualização fica amarrada ao organization_id de quem a criou, por isso não pode ser confirmada contra outra organização.
+
+  **Sem tabela nova, sem coluna nova, sem alteração ao modelo de avaliação.** Reutiliza inteiramente o modelo de domínio já existente (`AcademicYear`, `Subject`, `Scale`, `AssessmentProfile`/`AssessmentProfileVersion`/`Domain`) através de duas ações novas e isoladas em `App\Actions\ConfigSharing` — deliberadamente não ramificadas do importador de cópia de segurança (Fatia 6), para a whitelist ficar estruturalmente incapaz de incluir dados pedagógicos, nunca dependente de alguém se lembrar de a manter assim.
+
 ## [0.46.0] — 2026-08-22
 
 ### Added
