@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.45.7] — 2026-08-22
+
+### Fixed
+
+- **O campo de email do registo público ficava impossível de editar.** `Register.vue` vinculava `:value="prefillEmail ?? undefined"` ao componente `Input` partilhado — um prop que este não declara (só `defaultValue`/`modelValue`), por isso o Vue reencaminhava-o como atributo bruto direto para o `<input>` nativo, entrando em conflito com o `v-model` interno do componente (`useVModel` do `@vueuse/core`). O resultado: a cada nova renderização do formulário — o que acontece a cada tecla — o valor do campo era reposto a vazio, tornando impossível escrever, colar, editar parte do endereço, Ctrl+A, ou usar Backspace/Delete. Reproduzido em browser real (escrever, colar, editar a meio, substituir tudo, apagar a meio): todas as interações resultavam em campo vazio. Corrigido trocando para `:default-value`, o prop que o componente já declara e que só semeia o valor uma vez — o mesmo padrão já usado corretamente noutros campos da aplicação (ex. Nome em Configurações → Perfil). Auditado todo o `resources/js` por outros usos de `:value` num `Input` editável: nenhum outro encontrado — os restantes são `<option>`, campos `readonly`, ou um componente de apresentação distinto, por isso a correção fica isolada a este campo.
+
 ## [0.45.6] — 2026-08-21
 
 ### Added

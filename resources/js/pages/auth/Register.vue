@@ -66,7 +66,7 @@ defineOptions({
                     autocomplete="email"
                     name="email"
                     placeholder="email@example.com"
-                    :value="prefillEmail ?? undefined"
+                    :default-value="prefillEmail ?? undefined"
                 />
                 <InputError :message="errors.email" />
             </div>
