@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.49.0] — 2026-08-22
+
+### Added
+
+- **Preparação do ano letivo, no Painel do Professor.** Enquanto a organização não estiver totalmente pronta para o ano, o painel mostra uma checklist de cinco passos — ano letivo ativo, disciplinas configuradas, um perfil de avaliação para este ano, uma turma criada, um perfil associado a essa turma — em vez do antigo ecrã "ainda não tem turmas", que passa a ser só um desses passos. Só o primeiro passo por concluir recebe um botão de ação; os seguintes ficam visíveis mas sem ação até chegar a sua vez. Assim que os cinco estiverem concluídos, a checklist desaparece e o painel volta ao normal (turmas e pendências). Nenhuma rota, página ou ação nova — reutiliza inteiramente a criação de anos letivos, disciplinas, perfis (incluindo a reutilização entre anos já existente) e turmas; a heurística de "ano atual" é a mesma já usada pela barra de contexto. Zero dados de alunos lidos ou escritos.
+
 ## [0.48.4] — 2026-08-22
 
 ### Changed
