@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.48.4] — 2026-08-22
+
+### Changed
+
+- **Bloco de polimento UX: reutilização de perfis, TPC e landing.** A ação de reutilizar um perfil de avaliação passa a mostrar "Reutilizar" por extenso na listagem (não só um ícone), e a própria página lidera com a instrução ("Crie uma cópia deste perfil para outro ano letivo.") em vez do contexto do perfil. Na grelha rápida de trabalho de casa, os três estados ganham símbolos distintos (✓ ◐ ✕) — no desktop mostravam todos o mesmo "✓", distinguidos só pela posição e pela cor — e os contadores passam a badges compactas com símbolo, rótulo curto e número. A landing ganha a copy final da hero ("Mais simples. Mais tempo para o que realmente importa.") e o CTA para visitantes não autenticados passa de "Criar conta" para "Experimentar LÁPIS" em todos os botões de ação (mantido "Criar conta" onde é apenas uma ligação de navegação no rodapé, e a secção de preços ficou fora de âmbito). Sem alterações de domínio em nenhum dos três.
+
 ## [0.48.3] — 2026-08-22
 
 ### Changed
