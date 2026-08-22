@@ -3,10 +3,11 @@
 namespace App\Http\Middleware;
 
 use App\Models\AcademicYear;
+use App\Models\Subject;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Navigation\NavigationBuilder;
-use App\Support\Retention\AcademicYearRetentionClassifier;
 use App\Support\Retention\ClosureStatusPresenter;
+use App\Support\Retention\ResolveSelectedAcademicYear;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -45,6 +46,14 @@ class HandleInertiaRequests extends Middleware
         $hasOrganization = $currentOrganization->isResolved();
         $user = $request->user();
         $closureStatus = app(ClosureStatusPresenter::class);
+        $academicYears = $hasOrganization
+            ? AcademicYear::query()->orderByDesc('starts_on')->get()
+            : collect();
+        $sessionSelectedId = $request->session()->get('academic_year_id');
+        $selectedAcademicYear = app(ResolveSelectedAcademicYear::class)->for(
+            $academicYears,
+            is_int($sessionSelectedId) ? $sessionSelectedId : null,
+        );
 
         return [
             ...parent::share($request),
@@ -83,9 +92,20 @@ class HandleInertiaRequests extends Middleware
             // invented here. Subject/gradeLevel/class/period stay null: there
             // is no canonical "current" one to read yet, and guessing would be
             // exactly the kind of invented data this prop was built to avoid.
+            'selectableAcademicYears' => fn () => $hasOrganization
+                ? $academicYears
+                    ->take(4)
+                    ->map(fn (AcademicYear $academicYear): array => [
+                        'ulid' => $academicYear->ulid,
+                        'label' => $academicYear->label,
+                        'is_current' => $selectedAcademicYear !== null && $academicYear->is($selectedAcademicYear),
+                    ])
+                    ->values()
+                : [],
             'scope' => fn () => [
-                'academicYear' => $hasOrganization ? $this->currentAcademicYearLabel() : null,
+                'academicYear' => $selectedAcademicYear?->label,
                 'subject' => null,
+                'hasSubjects' => $hasOrganization && Subject::query()->exists(),
                 'gradeLevel' => null,
                 'class' => null,
                 'period' => null,
@@ -111,14 +131,5 @@ class HandleInertiaRequests extends Middleware
                 ]
                 : null,
         ];
-    }
-
-    protected function currentAcademicYearLabel(): ?string
-    {
-        $years = AcademicYear::query()->get();
-
-        $current = app(AcademicYearRetentionClassifier::class)->currentYearFor($years);
-
-        return $current?->label;
     }
 }

@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.52.0] — 2026-08-22
+
+### Added
+
+- **Ano letivo passa a ser um seletor real na barra de contexto.** "Ano letivo" era uma ligação de navegação para a página de gestão; passa a ser um menu suspenso com o ano atual e até três anos anteriores, cada um selecionável — a escolha grava-se na sessão (mesmo padrão já usado para trocar de organização) e passa a determinar o contexto de toda a app. A lista mostra sempre os anos mais recentes da organização, incluindo um ano ainda em preparação (rascunho) que ainda não seja o "atual" resolvido pela heurística existente — para que o professor consiga entrar nele e continuar a prepará-lo. Selecionar um ano mais antigo não esconde os mais recentes da lista. O acesso à gestão de anos letivos mantém-se, agora como opção separada dentro do menu. Corrigida também a mensagem da Disciplina na barra de contexto, que dizia sempre "Sem disciplinas configuradas" mesmo quando já existiam disciplinas só por não haver nenhuma selecionada — agora distingue os dois casos. Responsividade da barra de contexto ajustada para telemóvel (os seletores ainda não interativos ficam ocultos abaixo do desktop; Ano letivo e Disciplina mantêm-se sempre visíveis).
+
 ## [0.51.0] — 2026-08-22
 
 ### Added

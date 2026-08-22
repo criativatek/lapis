@@ -1,66 +1,124 @@
 <script setup lang="ts">
-import { Link, usePage } from '@inertiajs/vue3';
+import { Link, router, usePage } from '@inertiajs/vue3';
 import {
     BookOpen,
     CalendarRange,
+    Check,
+    ChevronDown,
     GraduationCap,
     Layers,
+    Settings,
     Users,
 } from '@lucide/vue';
 import type { LucideIcon } from '@lucide/vue';
 import { computed } from 'vue';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
-/**
- * The header scope selectors — academic year, subject, grade level, class,
- * period. Choosing here sets the working context for every screen (§9, and the
- * "Seletores de contexto no cabeçalho" section of the navigation doc), so this
- * is an architectural element, not decoration.
- *
- * SELECTS, NEVER CREATES (Fatia 5, §47-§50): clicking academicYear/subject
- * navigates to their management page under Configuração — it does not open a
- * creation form here. Ano/Turma/Período stay disabled until there is a
- * canonical "current" one to read (turma's own creation already lives under
- * Turmas e Alunos, unaffected by this fatia — §50).
- */
 const page = usePage();
 const scope = computed(() => page.props.scope);
+const selectableAcademicYears = computed(() => page.props.selectableAcademicYears);
+const hasAcademicYears = computed(() => selectableAcademicYears.value.length > 0);
+const academicYearChipText = computed(() => {
+    if (!hasAcademicYears.value) {
+        return 'Sem anos letivos configurados';
+    }
+
+    return scope.value.academicYear ?? 'Selecionar ano letivo';
+});
 
 type Selector = { key: string; icon: LucideIcon; label: string; value: string | null; href: string | null; emptyLabel: string };
 
-// Only academicYear/subject are live — both navigate to Configuração → Estrutura
-// do Ano Letivo (AcademicStructureTabs.vue), never a dropdown creation form.
-// The rest stay disabled until class/period have a canonical "current" one.
+// Subject remains a link to its management page until subject selection has a
+// domain rule. Grade level, class and period remain deliberately disabled.
 const selectors = computed<Selector[]>(() => [
-    { key: 'academicYear', icon: CalendarRange, label: 'Ano letivo', value: scope.value.academicYear, href: '/academic-years', emptyLabel: 'Sem ano letivo configurado' },
-    { key: 'subject', icon: BookOpen, label: 'Disciplina', value: scope.value.subject, href: '/subjects', emptyLabel: 'Sem disciplinas configuradas' },
+    { key: 'subject', icon: BookOpen, label: 'Disciplina', value: scope.value.subject, href: '/subjects', emptyLabel: scope.value.hasSubjects ? 'Sem disciplina selecionada' : 'Sem disciplinas configuradas' },
     { key: 'gradeLevel', icon: GraduationCap, label: 'Ano', value: scope.value.gradeLevel, href: null, emptyLabel: '—' },
     { key: 'class', icon: Users, label: 'Turma', value: scope.value.class, href: null, emptyLabel: '—' },
     { key: 'period', icon: Layers, label: 'Período', value: scope.value.period, href: null, emptyLabel: '—' },
 ]);
 
 const chipClass =
-    'flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-muted-foreground';
+    'flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-muted-foreground md:px-2.5';
+
+function selectAcademicYear(ulid: string, isCurrent: boolean): void {
+    if (isCurrent) {
+        return;
+    }
+
+    router.post(`/academic-years/${ulid}/select`, {}, { preserveScroll: true });
+}
 </script>
 
 <template>
-    <div class="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
+    <div class="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden md:overflow-x-auto">
+        <DropdownMenu v-if="hasAcademicYears">
+            <DropdownMenuTrigger as-child>
+                <button
+                    type="button"
+                    title="Ano letivo"
+                    :class="[chipClass, 'shrink-0 transition-colors hover:border-primary/40 hover:text-foreground']"
+                >
+                    <CalendarRange class="size-3.5 shrink-0 opacity-70" />
+                    <span class="hidden font-medium text-foreground/70 sm:inline">Ano letivo:</span>
+                    <span class="whitespace-nowrap">{{ academicYearChipText }}</span>
+                    <ChevronDown class="size-3.5 shrink-0 opacity-70" aria-hidden="true" />
+                </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" class="min-w-56">
+                <DropdownMenuItem
+                    v-for="academicYear in selectableAcademicYears"
+                    :key="academicYear.ulid"
+                    class="cursor-pointer gap-2"
+                    @click="selectAcademicYear(academicYear.ulid, academicYear.is_current)"
+                >
+                    <Check v-if="academicYear.is_current" class="size-4 shrink-0" aria-hidden="true" />
+                    <span v-else class="size-4 shrink-0" aria-hidden="true" />
+                    <span class="flex-1">{{ academicYear.label }}</span>
+                    <span v-if="academicYear.is_current" class="text-xs text-muted-foreground">(atual)</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem :as-child="true">
+                    <Link href="/academic-years" class="flex w-full cursor-pointer items-center gap-2">
+                        <Settings class="size-4 shrink-0" />
+                        Gerir anos letivos
+                    </Link>
+                </DropdownMenuItem>
+            </DropdownMenuContent>
+        </DropdownMenu>
+        <Link
+            v-else
+            href="/academic-years"
+            title="Ano letivo"
+            :class="[chipClass, 'shrink-0 transition-colors hover:border-primary/40 hover:text-foreground']"
+        >
+            <CalendarRange class="size-3.5 shrink-0 opacity-70" />
+            <span class="hidden font-medium text-foreground/70 sm:inline">Ano letivo:</span>
+            <span class="whitespace-nowrap">{{ academicYearChipText }}</span>
+        </Link>
+
         <template v-for="selector in selectors" :key="selector.key">
             <Link
                 v-if="selector.href"
                 :href="selector.href"
                 :title="selector.label"
-                :class="[chipClass, 'transition-colors hover:border-primary/40 hover:text-foreground']"
+                :class="[chipClass, 'min-w-0 flex-1 transition-colors hover:border-primary/40 hover:text-foreground md:flex-none md:shrink-0']"
             >
                 <component :is="selector.icon" class="size-3.5 shrink-0 opacity-70" />
                 <span class="hidden font-medium text-foreground/70 sm:inline">{{ selector.label }}:</span>
-                <span class="whitespace-nowrap">{{ selector.value ?? selector.emptyLabel }}</span>
+                <span class="truncate whitespace-nowrap">{{ selector.value ?? selector.emptyLabel }}</span>
             </Link>
             <button
                 v-else
                 type="button"
                 disabled
                 :title="`${selector.label} — disponível na próxima fase`"
-                :class="[chipClass, 'disabled:cursor-not-allowed']"
+                :class="[chipClass, 'hidden shrink-0 disabled:cursor-not-allowed md:flex']"
             >
                 <component :is="selector.icon" class="size-3.5 shrink-0 opacity-70" />
                 <span class="hidden font-medium text-foreground/70 sm:inline">{{ selector.label }}:</span>

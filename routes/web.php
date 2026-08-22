@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AcademicYearContextController;
 use App\Http\Controllers\AcademicYearController;
 use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\AssessmentController;
@@ -85,6 +86,8 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     // check lives in the controller, not a route param binding — a stranger's
     // ulid must 403, never a clean 404 that confirms it exists.
     Route::post('organizations/switch', [OrganizationController::class, 'switch'])->name('organizations.switch');
+    Route::post('academic-years/{academic_year}/select', [AcademicYearContextController::class, 'select'])
+        ->name('academic-years.select');
 
     // Audit trail (§22.4) — read-only view of the organization's recorded events.
     Route::get('activity', [ActivityController::class, 'index'])->name('activity.index');

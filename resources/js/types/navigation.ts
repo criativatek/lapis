@@ -43,14 +43,22 @@ export type SharedNav = {
 
 /**
  * The header context selectors. `academicYear` reflects the organization's
- * current academic year once one exists (AcademicYearRetentionClassifier);
+ * resolved academic year once one exists (session selection with the
+ * AcademicYearRetentionClassifier fallback);
  * the rest stay null until there is a canonical "current" one to read
  * instead of inventing one.
  */
 export type WorkScope = {
     academicYear: string | null;
     subject: string | null;
+    hasSubjects: boolean;
     gradeLevel: string | null;
     class: string | null;
     period: string | null;
+};
+
+export type SelectableAcademicYear = {
+    ulid: string;
+    label: string;
+    is_current: boolean;
 };

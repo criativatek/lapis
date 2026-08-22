@@ -1,6 +1,6 @@
 import type { Auth } from '@/types/auth';
 import type { ClosureStatus, OrganizationClosureStatus } from '@/types/closure';
-import type { SharedNav, WorkScope } from '@/types/navigation';
+import type { SelectableAcademicYear, SharedNav, WorkScope } from '@/types/navigation';
 
 // Extend ImportMeta interface for Vite...
 declare module 'vite/client' {
@@ -24,6 +24,7 @@ declare module '@inertiajs/core' {
             nav: SharedNav;
             modules: string[];
             scope: WorkScope;
+            selectableAcademicYears: SelectableAcademicYear[];
             sidebarOpen: boolean;
             accountClosure: ClosureStatus | null;
             organizationClosure: OrganizationClosureStatus | null;
