@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { router, useForm } from '@inertiajs/vue3';
+import { MessageSquarePlus } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 
 type HomeworkStatus = 'done' | 'partially_done' | 'not_done';
@@ -21,10 +22,10 @@ const emit = defineEmits<{
     saved: [];
 }>();
 
-const statuses: { value: HomeworkStatus; label: string }[] = [
-    { value: 'done', label: 'Realizado' },
-    { value: 'partially_done', label: 'Parcialmente realizado' },
-    { value: 'not_done', label: 'Não realizado' },
+const statuses: { value: HomeworkStatus; label: string; symbol: string; bulkLabel: string }[] = [
+    { value: 'done', label: 'Realizado', symbol: '✓', bulkLabel: 'Todos realizados' },
+    { value: 'partially_done', label: 'Parcialmente realizado', symbol: '◐', bulkLabel: 'Todos parciais' },
+    { value: 'not_done', label: 'Não realizado', symbol: '✕', bulkLabel: 'Todos não realizados' },
 ];
 
 const rows = ref<HomeworkRow[]>([]);
@@ -176,16 +177,24 @@ function destroyBatch(): void {
 
         <div class="flex flex-wrap gap-1.5" aria-label="Ações em todos os alunos">
             <button v-for="status in statuses" :key="status.value" type="button" class="rounded-md border border-border px-2 py-1.5 text-xs hover:bg-muted/40" @click="setAll(status.value)">
-                Marcar todos como {{ status.label }}
+                {{ status.bulkLabel }}
             </button>
             <button type="button" class="rounded-md border border-border px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted/40" @click="setAll(null)">Limpar</button>
         </div>
 
-        <div class="flex flex-wrap gap-x-4 gap-y-1 rounded-md bg-muted/30 px-3 py-2 text-xs tabular-nums" aria-live="polite">
-            <span>Realizado: {{ counts.done }}</span>
-            <span>Parcialmente realizado: {{ counts.partially_done }}</span>
-            <span>Não realizado: {{ counts.not_done }}</span>
-            <span>Sem informação: {{ counts.empty }}</span>
+        <div class="flex flex-wrap gap-1.5 text-xs tabular-nums" aria-live="polite">
+            <span class="inline-flex items-center gap-1 rounded-full bg-muted/60 px-2.5 py-1">
+                <span aria-hidden="true">✓</span> Realizados {{ counts.done }}
+            </span>
+            <span class="inline-flex items-center gap-1 rounded-full bg-muted/60 px-2.5 py-1">
+                <span aria-hidden="true">◐</span> Parciais {{ counts.partially_done }}
+            </span>
+            <span class="inline-flex items-center gap-1 rounded-full bg-muted/60 px-2.5 py-1">
+                <span aria-hidden="true">✕</span> Não realizados {{ counts.not_done }}
+            </span>
+            <span class="inline-flex items-center gap-1 rounded-full bg-muted/60 px-2.5 py-1 text-muted-foreground">
+                <span aria-hidden="true">—</span> Sem informação {{ counts.empty }}
+            </span>
         </div>
 
         <p v-if="loading" class="py-8 text-center text-sm text-muted-foreground">A carregar alunos…</p>
@@ -209,10 +218,16 @@ function destroyBatch(): void {
                         :aria-label="`${status.label} — ${row.name}`"
                         @click="setStatus(row, status.value)"
                     >
-                        <span class="lg:hidden">{{ status.label }}</span><span class="hidden lg:inline">✓</span>
+                        <span class="lg:hidden">{{ status.label }}</span><span class="hidden lg:inline" aria-hidden="true">{{ status.symbol }}</span>
                     </button>
-                    <button type="button" class="text-left text-xs text-primary hover:underline lg:text-center" :aria-expanded="row.observationOpen" @click="row.observationOpen = !row.observationOpen">
-                        {{ row.observationOpen ? 'Fechar Observação' : '+ Observação' }}
+                    <button
+                        type="button"
+                        class="inline-flex items-center gap-1 text-left text-xs font-medium text-primary hover:underline lg:justify-center lg:text-center"
+                        :aria-expanded="row.observationOpen"
+                        @click="row.observationOpen = !row.observationOpen"
+                    >
+                        <MessageSquarePlus class="size-3.5 shrink-0" aria-hidden="true" />
+                        {{ row.observationOpen ? 'Fechar Observação' : 'Observação' }}
                     </button>
                 </div>
                 <div v-if="row.observationOpen" class="border-t border-border bg-muted/10 p-3">
