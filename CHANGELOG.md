@@ -2,6 +2,17 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.56.0] — 2026-08-23
+
+Release consolidada: reúne tudo o que foi concluído e testado desde a v0.45.9 — a versão confirmada ao vivo em produção (`74e8ff2`, 2026-08-22) — até este commit. Dez releases formais (v0.46.0 a v0.51.0) e cinco bumps informais desde então (v0.52.0 a v0.55.3), já individualmente documentados abaixo, mais as duas correções desta entrada. Zero migrations, dependências, variáveis de ambiente ou alterações de scheduler novas em todo o intervalo.
+
+**Não incluído nesta release** — trabalho auditado, especificado ou iniciado na mesma janela mas deliberadamente deixado de fora: criação rápida de elementos de avaliação em modo simples/detalhado (Fatia H, só auditada), importação Excel "Grelha LÁPIS" para elementos de avaliação (Fatia I, por especificar), perfis de avaliação persistentes entre anos letivos (Fatia C, adiada por decisão de design), refinamento do checklist do painel (Fatia B, nunca retomada) e os itens menores de auditoria da Fatia J — incluindo a origem por explicar do ano letivo "9.º A Teste" no seletor.
+
+### Fixed
+
+- **Último resíduo de inglês visível.** O título por omissão de `AlertError` ("Something went wrong.") só aparecia nos dois ecrãs de 2FA que não o substituem por um próprio; passa a "Ocorreu um erro.". Auditados ambos os fluxos por inteiro — não fica nenhum outro texto em inglês.
+- **`docs/deployment.md` apontava para a versão errada em produção.** Dizia 0.37.0/2026-08-20; uma verificação ao vivo por SSH (só leitura) confirmou produção em 0.45.9 @ `74e8ff2`, construída 2026-08-22. Documento corrigido; processo de deploy inalterado.
+
 ## [0.55.3] — 2026-08-22
 
 ### Changed
