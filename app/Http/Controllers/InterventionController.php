@@ -205,7 +205,7 @@ class InterventionController extends Controller
             // Eager-loaded in one go: the list presents participants, the
             // domain and the follow-up history for every row, and a page that
             // asked per intervention would be a query per row (§78).
-            ->with(['participants.student.identity', 'domain', 'reviews'])
+            ->with(['participants.student.identity', 'domain', 'reviews', 'creator'])
             ->orderByDesc('started_on')
             ->orderByDesc('id')
             ->limit(200)
@@ -849,6 +849,12 @@ class InterventionController extends Controller
             'context_label' => $intervention->context()?->label(),
             'target_type' => $intervention->target_type->value,
             'target_label' => $this->targetLabel($intervention),
+            // Lets a single-student row link back to their own Evolução page —
+            // never resolved for a group or a class-wide intervention, which
+            // name no single student to link to.
+            'target_enrollment_ulid' => $intervention->target_type === InterventionTargetType::Student
+                ? $intervention->participants->first()?->ulid
+                : null,
             'participant_ids' => $intervention->participants->pluck('id')->all(),
             'domain_relation' => $intervention->domain_relation->value,
             'domain_id' => $intervention->domain_id,
@@ -861,6 +867,7 @@ class InterventionController extends Controller
             'status' => $intervention->status->value,
             'status_label' => $intervention->status->label(),
             'is_closed' => $intervention->status->isClosed(),
+            'creator_name' => $intervention->creator?->name,
             'started_on' => $intervention->started_on->toDateString(),
             'expected_end_on' => $intervention->expected_end_on?->toDateString(),
             'concluded_on' => $intervention->concluded_on?->toDateString(),

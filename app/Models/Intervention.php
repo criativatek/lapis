@@ -150,6 +150,16 @@ class Intervention extends Model
     }
 
     /**
+     * Who registered it — meaningful once a class has more than one teacher.
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    /**
      * The follow-ups, newest first.
      *
      * A HISTORY, NOT A FIELD. Each one is what was observed on a day, and a

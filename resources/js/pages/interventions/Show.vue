@@ -65,6 +65,8 @@ type Intervention = {
     context_label: string | null;
     target_type: TargetType;
     target_label: string;
+    /** Only resolved for a single-student intervention — links back to their own Evolução page. */
+    target_enrollment_ulid: string | null;
     participant_ids: number[];
     domain_relation: DomainRelation;
     domain_id: number | null;
@@ -74,6 +76,7 @@ type Intervention = {
     status: string;
     status_label: string;
     is_closed: boolean;
+    creator_name: string | null;
     started_on: string;
     expected_end_on: string | null;
     concluded_on: string | null;
@@ -1005,12 +1008,21 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
                     <div class="min-w-0 flex-1">
                         <div class="flex flex-wrap items-center gap-2">
                             <span class="rounded-full px-2 py-0.5 text-xs" :class="statusClasses[intervention.status]">{{ intervention.status_label }}</span>
-                            <span class="text-sm font-medium">{{ intervention.target_label }}</span>
+                            <Link
+                                v-if="intervention.target_enrollment_ulid"
+                                :href="`/classes/${schoolClass.ulid}/evolucao/${intervention.target_enrollment_ulid}`"
+                                class="text-sm font-medium text-primary hover:underline"
+                            >
+                                {{ intervention.target_label }}
+                            </Link>
+                            <span v-else class="text-sm font-medium">{{ intervention.target_label }}</span>
                             <!-- Só quando há nome. Sem nome, o cartão fica
                                  «Álvaro Simões» e mais nada — que é tudo o que o
                                  registo alguma vez disse (§1, §10). -->
                             <span v-if="intervention.title" class="text-sm">— {{ intervention.title }}</span>
-                            <span class="ml-auto text-xs text-muted-foreground tabular-nums">{{ when(intervention.started_on) }}</span>
+                            <span class="ml-auto text-xs text-muted-foreground tabular-nums">
+                                {{ when(intervention.started_on) }}<template v-if="intervention.creator_name"> · {{ intervention.creator_name }}</template>
+                            </span>
                         </div>
                         <!-- PORQUÊ e PARA QUÊ, quando o professor os registou.
                              Uma intervenção antiga não tem nenhum dos dois e não
