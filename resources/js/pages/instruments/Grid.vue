@@ -629,7 +629,7 @@ const completeBlockedReason = computed<string | null>(() => {
     // to resolve and nothing to conclude. The count was telling the truth; it
     // was answering a question nobody had asked (§2).
     if (props.instrument.applicable_count === 0) {
-        return `Esta avaliação está datada de ${props.instrument.applied_on} e nenhum aluno da turma estava inscrito nessa data, por isso não se aplica a ninguém. Corrija a data da avaliação em «Editar instrumento».`;
+        return `Esta avaliação está datada de ${props.instrument.applied_on} e nenhum aluno da turma estava inscrito nessa data, por isso não se aplica a ninguém. Corrija a data da avaliação em «Editar elemento de avaliação».`;
     }
 
     const count = props.instrument.pending_count;
@@ -738,10 +738,10 @@ function revertCancellation(): void {
                         Descarregar grelha
                     </a>
                     <Link :href="`/instruments/${instrument.ulid}/edit`" class="text-sm text-muted-foreground hover:underline">
-                        Editar instrumento
+                        Editar elemento de avaliação
                     </Link>
                     <Button v-if="!instrument.is_completed" type="button" variant="outline" size="sm" @click="openCancelDialog">
-                        Anular instrumento
+                        Anular elemento de avaliação
                     </Button>
 
                     <!-- A closed correction is consulted, not edited. -->
@@ -808,7 +808,7 @@ function revertCancellation(): void {
         </div>
 
         <div v-if="isCancelled" class="flex items-center justify-between rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            <span>Instrumento anulado — motivo: {{ instrument.cancellation_reason }}</span>
+            <span>Elemento de avaliação anulado — motivo: {{ instrument.cancellation_reason }}</span>
             <Button type="button" variant="outline" size="sm" @click="revertCancellation">
                 Reverter anulação
             </Button>
@@ -835,7 +835,7 @@ function revertCancellation(): void {
                         <th class="px-3 py-2 text-right font-medium">Total</th>
                         <th
                             class="min-w-40 px-3 py-2 text-left font-medium"
-                            title="Indicador só deste instrumento — não é a classificação oficial da turma/período, que pondera domínios e outras regras."
+                            title="Indicador só deste elemento de avaliação — não é a classificação oficial da turma/período, que pondera domínios e outras regras."
                         >Apreciação Qualitativa</th>
                     </tr>
                 </thead>
@@ -988,7 +988,7 @@ function revertCancellation(): void {
         <Dialog v-model:open="completeDialogOpen">
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Concluir a correção deste instrumento?</DialogTitle>
+                    <DialogTitle>Concluir a correção deste elemento de avaliação?</DialogTitle>
                     <DialogDescription>
                         Depois de concluída, a correção fica em modo de consulta. Para
                         voltar a alterá-la, será necessário reabrir a correção.
@@ -1038,7 +1038,7 @@ function revertCancellation(): void {
         <Dialog v-model:open="reopenDialogOpen">
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Reabrir a correção deste instrumento?</DialogTitle>
+                    <DialogTitle>Reabrir a correção deste elemento de avaliação?</DialogTitle>
                     <DialogDescription>
                         Voltará a ser possível alterar as classificações.
                     </DialogDescription>
@@ -1058,9 +1058,9 @@ function revertCancellation(): void {
             <DialogContent>
                 <form @submit.prevent="submitCancel">
                     <DialogHeader>
-                        <DialogTitle>Anular instrumento</DialogTitle>
+                        <DialogTitle>Anular elemento de avaliação</DialogTitle>
                         <DialogDescription>
-                            O instrumento deixa de contar para o cálculo e fica só-leitura até reverteres a anulação.
+                            O elemento de avaliação deixa de contar para o cálculo e fica só-leitura até reverteres a anulação.
                         </DialogDescription>
                     </DialogHeader>
                     <div class="grid gap-4 py-4">

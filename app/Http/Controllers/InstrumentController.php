@@ -226,7 +226,7 @@ class InstrumentController extends Controller
         ]);
 
         if ($instrument->status === InstrumentStatus::Cancelled) {
-            return back()->withErrors(['reason' => 'Este instrumento já está anulado.']);
+            return back()->withErrors(['reason' => 'Este elemento de avaliação já está anulado.']);
         }
 
         $instrument->update([
@@ -237,7 +237,7 @@ class InstrumentController extends Controller
             'cancellation_reason' => $data['reason'],
         ]);
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Instrumento anulado.']);
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Elemento de avaliação anulado.']);
 
         return back();
     }
@@ -335,7 +335,7 @@ class InstrumentController extends Controller
         Gate::authorize('update', $instrument->schoolClass);
 
         if ($instrument->status !== InstrumentStatus::Cancelled) {
-            return back()->withErrors(['status' => 'Este instrumento não está anulado.']);
+            return back()->withErrors(['status' => 'Este elemento de avaliação não está anulado.']);
         }
 
         $instrument->update([
@@ -630,7 +630,7 @@ class InstrumentController extends Controller
         abort_if(
             $instrument->status === InstrumentStatus::Cancelled,
             403,
-            'Este instrumento está anulado — reverta a anulação antes de o editar ou lançar notas.',
+            'Este elemento de avaliação está anulado — reverta a anulação antes de o editar ou lançar notas.',
         );
     }
 

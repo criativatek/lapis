@@ -64,7 +64,7 @@ class CorrectionImportException extends RuntimeException
     public static function itemsNotMapped(int $count): self
     {
         return new self(trans_choice(
-            '{1}Falta indicar a que pergunta do instrumento corresponde 1 pergunta do ficheiro.|[2,*]Faltam indicar a que perguntas do instrumento correspondem :count perguntas do ficheiro.',
+            '{1}Falta indicar a que pergunta do elemento de avaliação corresponde 1 pergunta do ficheiro.|[2,*]Faltam indicar a que perguntas do elemento de avaliação correspondem :count perguntas do ficheiro.',
             $count,
             ['count' => $count],
         ));
@@ -72,17 +72,17 @@ class CorrectionImportException extends RuntimeException
 
     public static function instrumentNotEligible(string $statusLabel): self
     {
-        return new self(__('Não é possível importar para um instrumento no estado «:estado». Reabra a correção primeiro, se for esse o caso.', ['estado' => $statusLabel]));
+        return new self(__('Não é possível importar para um elemento de avaliação no estado «:estado». Reabra a correção primeiro, se for esse o caso.', ['estado' => $statusLabel]));
     }
 
     public static function instrumentNotChosen(): self
     {
-        return new self(__('Escolha o instrumento a que os resultados se destinam.'));
+        return new self(__('Escolha o elemento de avaliação a que os resultados se destinam.'));
     }
 
     public static function instrumentNotInClass(): self
     {
-        return new self(__('O instrumento escolhido não pertence a esta turma.'));
+        return new self(__('O elemento de avaliação escolhido não pertence a esta turma.'));
     }
 
     /**

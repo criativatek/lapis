@@ -796,7 +796,7 @@ class BuildImportPreview
 
         return [ImportIssue::make(
             IssueCode::NotApplicableStudent,
-            'O ficheiro traz resultados para alunos a quem este instrumento não é aplicável na data indicada (entrada posterior ou saída anterior). Confirme a data ou a correspondência.',
+            'O ficheiro traz resultados para alunos a quem este elemento de avaliação não é aplicável na data indicada (entrada posterior ou saída anterior). Confirme a data ou a correspondência.',
             ['students' => $affected],
         )->toArray()];
     }

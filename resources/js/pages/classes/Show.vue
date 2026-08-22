@@ -437,7 +437,7 @@ function submitPhotos(): void {
                     <Link
                         :href="`/classes/${schoolClass.ulid}/instruments/create`"
                     >
-                        <ClipboardPlus class="size-4" /> Novo instrumento
+                        <ClipboardPlus class="size-4" /> Novo elemento de avaliação
                     </Link>
                 </Button>
             </div>

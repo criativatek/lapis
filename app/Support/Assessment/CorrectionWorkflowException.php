@@ -23,13 +23,13 @@ class CorrectionWorkflowException extends RuntimeException
 
     public static function alreadyCompleted(): self
     {
-        return new self(__('A correção deste instrumento já está concluída.'));
+        return new self(__('A correção deste elemento de avaliação já está concluída.'));
     }
 
     public static function notInCorrection(string $status): self
     {
         return new self(__(
-            'Só é possível concluir a correção de um instrumento em correção. Estado atual: :status.',
+            'Só é possível concluir a correção de um elemento de avaliação em correção. Estado atual: :status.',
             ['status' => $status],
         ));
     }
@@ -37,19 +37,19 @@ class CorrectionWorkflowException extends RuntimeException
     public static function notCompleted(string $status): self
     {
         return new self(__(
-            'Só é possível reabrir a correção de um instrumento concluído. Estado atual: :status.',
+            'Só é possível reabrir a correção de um elemento de avaliação concluído. Estado atual: :status.',
             ['status' => $status],
         ));
     }
 
     public static function cannotCompleteCancelled(): self
     {
-        return new self(__('Um instrumento anulado não pode ser concluído.'));
+        return new self(__('Um elemento de avaliação anulado não pode ser concluído.'));
     }
 
     public static function cannotReopenCancelled(): self
     {
-        return new self(__('Um instrumento anulado não pode ser reaberto.'));
+        return new self(__('Um elemento de avaliação anulado não pode ser reaberto.'));
     }
 
     /**
@@ -57,6 +57,6 @@ class CorrectionWorkflowException extends RuntimeException
      */
     public static function correctionIsClosed(): self
     {
-        return new self(__('A correção deste instrumento está concluída. Reabra a correção para fazer alterações.'));
+        return new self(__('A correção deste elemento de avaliação está concluída. Reabra a correção para fazer alterações.'));
     }
 }

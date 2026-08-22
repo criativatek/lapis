@@ -12,7 +12,7 @@ class InstrumentValidationException extends RuntimeException
 {
     public static function noItems(): self
     {
-        return new self(__('O instrumento precisa de pelo menos uma questão ou critério.'));
+        return new self(__('O elemento de avaliação precisa de pelo menos uma questão ou critério.'));
     }
 
     /**
@@ -23,7 +23,7 @@ class InstrumentValidationException extends RuntimeException
     {
         if ($groupLabel === null || trim($groupLabel) === '') {
             return new self(__(
-                'Já existe uma questão com o código :code neste instrumento.',
+                'Já existe uma questão com o código :code neste elemento de avaliação.',
                 ['code' => $itemCode],
             ));
         }

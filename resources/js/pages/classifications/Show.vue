@@ -469,7 +469,7 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                                                 type="text"
                                                 maxlength="1000"
                                                 class="w-full rounded-md border border-border bg-background px-2 py-1"
-                                                placeholder="Ex.: participação sustentada não refletida nos instrumentos"
+                                                placeholder="Ex.: participação sustentada não refletida nos elementos de avaliação"
                                             />
                                         </label>
                                         <div class="flex gap-2">

@@ -99,7 +99,7 @@ enum InterventionType: string
             // code stays `statement_reading`: history is anchored to the code,
             // never to the wording (§13.2).
             self::StatementReading => __('Leitura de enunciados em situação de avaliação'),
-            self::AssessmentInstrumentAdaptation => __('Adaptação do instrumento de avaliação'),
+            self::AssessmentInstrumentAdaptation => __('Adaptação do elemento de avaliação'),
             // "Tempo suplementar", matching EvaluationAdaptationCode::ExtraTime,
             // so the same thing is not called two names across the screen. The
             // code stays `extra_time`.

@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.55.0] — 2026-08-22
+
+### Changed
+
+- **Nomenclatura visível "Instrumento" → "Elemento de Avaliação".** A revisão manual ainda encontrava "Novo instrumento", "Editar instrumento", "Anular instrumento" e mensagens equivalentes espalhadas pela UI e por mensagens de validação/erro do backend — a maior parte já dizia "Elementos de Avaliação" (navegação, listagens), mas não em todo o lado. Corrigidos 17 pontos no frontend (botões, títulos, breadcrumbs, tooltips, diálogos de confirmação) e 14 no backend (exceções de validação, do fluxo de correção, de importação, mensagens do controlador, dois enums de adaptações de avaliação). Só linguagem visível — `Instrument`, `InstrumentController`, rotas técnicas, tabelas e testes mantêm o nome técnico. Deliberadamente não tocado: o texto gerado das secções de relatórios (`app/Services/Reporting/`), porque esse texto passa por um guarda de reescrita (`RewriteGuard`/`WritingGlossary`) que protege a precisão da prosa de documentos oficiais e cuja sincronização exige uma revisão própria, cuidadosa — registado para decisão futura.
+
 ## [0.54.3] — 2026-08-22
 
 ### Changed

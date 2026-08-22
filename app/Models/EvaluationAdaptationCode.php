@@ -35,7 +35,7 @@ enum EvaluationAdaptationCode: string
             self::InstructionComprehensionSupport => __('Apoio na compreensão das instruções'),
             self::SimplifiedWording => __('Simplificação da formulação dos enunciados'),
             self::ResponseFormatAdaptation => __('Adaptação do formato da resposta'),
-            self::InstrumentAdaptation => __('Adaptação do instrumento de avaliação'),
+            self::InstrumentAdaptation => __('Adaptação do elemento de avaliação'),
             self::ExtraTime => __('Tempo suplementar'),
             self::SeparateRoom => __('Realização da prova em sala à parte'),
             self::DirectAnswerQuestions => __('Questões de resposta direta'),

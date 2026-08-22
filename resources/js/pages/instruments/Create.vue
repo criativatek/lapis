@@ -36,11 +36,11 @@ defineProps<{
 </script>
 
 <template>
-    <Head title="Novo instrumento" />
+    <Head title="Novo elemento de avaliação" />
 
     <div class="mx-auto w-full max-w-3xl space-y-6 p-4">
         <Heading
-            :title="`Novo instrumento — ${schoolClass.label}`"
+            :title="`Novo elemento de avaliação — ${schoolClass.label}`"
             description="Questões, cotações e a que domínios pertencem."
         />
         <InstrumentForm

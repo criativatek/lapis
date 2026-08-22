@@ -151,7 +151,7 @@ function hasNoApplicableStudents(assessment: Assessment): boolean {
         <div v-if="assessments.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
             <PenLine class="mx-auto mb-3 size-8 text-muted-foreground" />
             <p class="text-sm text-muted-foreground">
-                {{ hasActiveFilters() ? 'Nenhuma avaliação corresponde aos filtros escolhidos.' : 'Ainda não tem avaliações — crie um instrumento a partir de uma turma.' }}
+                {{ hasActiveFilters() ? 'Nenhuma avaliação corresponde aos filtros escolhidos.' : 'Ainda não tem avaliações — crie um elemento de avaliação a partir de uma turma.' }}
             </p>
         </div>
 

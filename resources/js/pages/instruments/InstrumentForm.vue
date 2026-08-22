@@ -592,7 +592,7 @@ function submit(): void {
             class="flex flex-wrap items-end gap-3 rounded-lg border border-dashed border-border p-3"
         >
             <div class="grid gap-1.5">
-                <Label class="text-xs">Importar de outro instrumento</Label>
+                <Label class="text-xs">Importar de outro elemento de avaliação</Label>
                 <select
                     v-model="selectedImportUlid"
                     class="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
@@ -731,7 +731,7 @@ function submit(): void {
             <div>
                 <h2 class="text-sm font-semibold">Domínios avaliados</h2>
                 <p class="text-sm text-muted-foreground">
-                    Escolhe os domínios que este instrumento avalia — depois cria as questões dentro de cada um.
+                    Escolhe os domínios que este elemento de avaliação avalia — depois cria as questões dentro de cada um.
                 </p>
             </div>
             <div v-if="domains.length" class="flex flex-wrap gap-4">
@@ -1033,7 +1033,7 @@ function submit(): void {
         </p>
 
         <Button type="submit" :disabled="form.processing || !canSubmit">{{
-            method === 'post' ? 'Criar instrumento' : 'Guardar alterações'
+            method === 'post' ? 'Criar elemento de avaliação' : 'Guardar alterações'
         }}</Button>
     </form>
 </template>
