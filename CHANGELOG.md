@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.48.0] — 2026-08-22
+
+### Added
+
+- **Reutilização de perfis de avaliação entre anos letivos.** O owner pode escolher um ano letivo já existente, pré-visualizar o mesmo plano New/Existente/Conflito/Inválido da partilha seletiva e criar uma cópia estrutural independente do perfil nesse ano. A cópia recebe uma versão própria em rascunho, nunca é ativada automaticamente e nunca substitui um perfil equivalente; a origem fica intacta. O fluxo reutiliza integralmente as actions de exportação, planeamento e escrita já existentes, corre sob `module:assessment_profiles`, reconfirma o pacote devolvido pelo browser contra a origem e o destino atuais e audita a operação sem dados de alunos.
+
 ## [0.47.0] — 2026-08-22
 
 ### Added
