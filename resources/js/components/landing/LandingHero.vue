@@ -39,15 +39,15 @@ defineProps<{ authenticated: boolean }>();
                     class="mt-6 max-w-xl text-lg leading-relaxed text-pretty text-foreground"
                 >
                     Avaliação, acompanhamento e organização do trabalho
-                    docente num único lugar.
+                    docente de forma simples e integrada.
                 </p>
 
                 <p
                     class="mt-3 max-w-xl leading-relaxed text-pretty text-muted-foreground"
                 >
-                    Turmas, critérios e elementos de avaliação num só lugar.
-                    Informação clara para classificar, acompanhar e criar
-                    relatórios.
+                    Turmas, critérios e elementos de avaliação reunidos num
+                    só lugar. Informação clara para classificar, acompanhar
+                    e criar relatórios.
                 </p>
 
                 <div class="mt-9 flex flex-wrap items-center gap-3">

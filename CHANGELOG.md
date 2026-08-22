@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.54.2] — 2026-08-22
+
+### Changed
+
+- **Dois parágrafos do hero da landing.** Texto sobre avaliação/acompanhamento e sobre turmas/critérios/elementos de avaliação reescritos. Só estes dois parágrafos.
+
 ## [0.54.1] — 2026-08-22
 
 ### Changed
