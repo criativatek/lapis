@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.55.2] — 2026-08-22
+
+### Changed
+
+- **Ajuste à secção "Porquê LÁPIS?".** Corrigido o acento ("Porque" → "Porquê"). A secção passa a ter fundo próprio — o tom quente de papel já usado no cabeçalho/rodapé (`CHROME_SURFACE`, novo prop `warm` em `LandingSection`), criando uma pausa visual entre as secções brancas envolventes. Restante copy, destaque do acrónimo e layout inalterados.
+
 ## [0.55.1] — 2026-08-22
 
 ### Added

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { CHROME_SURFACE } from './chrome';
 import RevealOnScroll from './RevealOnScroll.vue';
 
 /**
@@ -18,6 +19,12 @@ withDefaults(
         lead?: string;
         /** A faint band, used to break the rhythm between white sections. */
         tinted?: boolean;
+        /**
+         * The header/footer's warm paper tone, for a section that wants its
+         * own identity rather than a neutral pause. Takes priority over
+         * `tinted` if both are set.
+         */
+        warm?: boolean;
         /** Centres the heading block. Left-aligned is the default. */
         centered?: boolean;
     }>(),
@@ -27,6 +34,7 @@ withDefaults(
         title: undefined,
         lead: undefined,
         tinted: false,
+        warm: false,
         centered: false,
     },
 );
@@ -36,7 +44,7 @@ withDefaults(
     <section
         :id="id"
         class="scroll-mt-[4.5rem] border-t border-border/60 pt-12 pb-16 sm:py-24 lg:py-28"
-        :class="tinted ? 'bg-muted/40 dark:bg-muted/10' : undefined"
+        :class="warm ? CHROME_SURFACE : tinted ? 'bg-muted/40 dark:bg-muted/10' : undefined"
         :aria-labelledby="id && title ? `${id}-title` : undefined"
     >
         <div class="mx-auto w-full max-w-6xl px-6 sm:px-8">

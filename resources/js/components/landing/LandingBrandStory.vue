@@ -4,7 +4,7 @@ import RevealOnScroll from './RevealOnScroll.vue';
 </script>
 
 <template>
-    <LandingSection eyebrow="Porque LÁPIS?" centered>
+    <LandingSection eyebrow="Porquê LÁPIS?" warm centered>
         <RevealOnScroll>
             <div class="mx-auto max-w-2xl text-center">
                 <p
