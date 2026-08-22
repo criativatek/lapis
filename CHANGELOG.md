@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.48.3] — 2026-08-22
+
+### Changed
+
+- **Polimento visual de "Importar configuração" e "Pré-visualizar importação".** Sem alterações ao domínio: mesmo parser, schema, business keys, plano de importação, idempotência, conflitos, escritas, tenancy, autorização, entitlement, limite de 20 MB. O seletor nativo de ficheiro dá lugar a uma zona de arrastar-e-largar (clicável, navegável por teclado, sem esconder o input nativo), com confirmação imediata do ficheiro escolhido — nome, tamanho, "Alterar ficheiro"/"Remover" — sem analisar automaticamente. O aviso de privacidade fica igual em ambas as páginas e na de exportação. A pré-visualização mostra agora a data e a versão em que o ficheiro foi criado, cada elemento da lista com o seu tipo (Ano letivo/Disciplina/Perfil de avaliação), nome e contexto separados, e um resumo do que falta importar. O botão "Importar novos elementos" continua desativado quando não há nada novo.
+
 ## [0.48.2] — 2026-08-22
 
 ### Changed
