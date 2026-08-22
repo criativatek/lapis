@@ -82,8 +82,8 @@ function destroy(profile: Profile): void {
                                 <Button as-child variant="ghost" size="icon" aria-label="Editar">
                                     <Link :href="`/assessment-profiles/${profile.ulid}/edit`"><Pencil class="size-4" /></Link>
                                 </Button>
-                                <Button v-if="canManage" as-child variant="ghost" size="icon" aria-label="Reutilizar noutro ano letivo">
-                                    <Link :href="`/assessment-profiles/${profile.ulid}/reuse`"><Copy class="size-4" /></Link>
+                                <Button v-if="canManage" as-child variant="ghost" size="sm" title="Reutilizar noutro ano letivo" aria-label="Reutilizar noutro ano letivo">
+                                    <Link :href="`/assessment-profiles/${profile.ulid}/reuse`"><Copy class="size-4" /> Reutilizar</Link>
                                 </Button>
                                 <Button
                                     v-if="canManage && !profile.is_active"

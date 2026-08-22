@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
+import { Info } from '@lucide/vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 
@@ -18,11 +19,13 @@ function submit(): void {
     <Head title="Reutilizar perfil de avaliação" />
     <div class="mx-auto w-full max-w-2xl space-y-6 p-4">
         <div>
-            <Heading title="Reutilizar perfil de avaliação" :description="`${profile.name} · ${profile.subject} · ${profile.academic_year}`" />
+            <Heading title="Reutilizar perfil de avaliação" description="Crie uma cópia deste perfil para outro ano letivo." />
+            <p class="mt-1 text-sm text-muted-foreground">{{ profile.name }} · {{ profile.subject }} · {{ profile.academic_year }}</p>
             <Link href="/assessment-profiles" class="text-sm text-primary hover:underline">← Voltar aos perfis</Link>
         </div>
-        <div class="rounded-md border border-primary/25 bg-primary/5 p-4 text-sm font-medium">
-            Será criada uma cópia independente, em rascunho, sem alunos, classificações ou outros dados pessoais.
+        <div class="flex items-start gap-3 rounded-lg border border-primary/25 bg-primary/5 p-4 text-sm">
+            <Info class="mt-0.5 size-4 shrink-0 text-primary" />
+            <p>Será criada uma cópia independente, em rascunho. Não serão copiados alunos, classificações, registos pedagógicos ou outros dados pessoais.</p>
         </div>
         <form class="space-y-5" @submit.prevent="submit">
             <div>
@@ -34,7 +37,7 @@ function submit(): void {
                 <p v-if="form.errors.target_academic_year" class="mt-2 text-sm text-destructive">{{ form.errors.target_academic_year }}</p>
             </div>
             <Button type="submit" :disabled="form.processing || !form.target_academic_year">
-                {{ form.processing ? 'A analisar…' : 'Pré-visualizar' }}
+                {{ form.processing ? 'A analisar…' : 'Pré-visualizar reutilização' }}
             </Button>
         </form>
     </div>
