@@ -11,7 +11,10 @@ const props = defineProps<{
     item: ItemDomains;
     domains: Domain[];
     selectedDomainIds: number[];
+    mode?: 'points' | 'percent';
 }>();
+
+const allocationMode = computed(() => props.mode ?? 'points');
 
 // Many instruments assess a single domain — a "Ficha de Gramática" is all
 // Gramática. There is no other distribution possible there, so asking the
@@ -41,8 +44,12 @@ const isSingleDomain = computed(
 // stays choosable for THAT row (falling back to the full list) so the select
 // never silently drops to a blank/mismatched value.
 function optionsFor(allocation: { domain_id: number }): Domain[] {
+    const used = new Set(props.item.domains.map((candidate) => candidate.domain_id));
+
     return props.domains.filter(
-        (domain) => props.selectedDomainIds.includes(domain.id) || domain.id === allocation.domain_id,
+        (domain) =>
+            (props.selectedDomainIds.includes(domain.id) || domain.id === allocation.domain_id) &&
+            (!used.has(domain.id) || domain.id === allocation.domain_id),
     );
 }
 
@@ -55,15 +62,39 @@ function optionsFor(allocation: { domain_id: number }): Domain[] {
 // line by line, so it keeps firing anywhere else.
 
 function addAllocation(): void {
-    const firstSelectable = props.domains.find((domain) => props.selectedDomainIds.includes(domain.id));
+    const used = new Set(props.item.domains.map((allocation) => allocation.domain_id));
+    const firstSelectable = props.domains.find(
+        (domain) => props.selectedDomainIds.includes(domain.id) && !used.has(domain.id),
+    );
+
+    if (!firstSelectable) {
+        return;
+    }
+
     // eslint-disable-next-line vue/no-mutating-props -- intentional: see note above
-    props.item.domains.push({ domain_id: firstSelectable?.id ?? props.domains[0]?.id ?? 0, points: 0 });
+    props.item.domains.push({ domain_id: firstSelectable.id, points: 0 });
 }
 
 function removeAllocation(index: number): void {
     // eslint-disable-next-line vue/no-mutating-props -- intentional: see note above
     props.item.domains.splice(index, 1);
 }
+
+function allocationPercent(points: number): number {
+    const possible = Number(props.item.points_possible) || 0;
+
+    return possible > 0 ? Math.round(((Number(points) || 0) / possible) * 10000) / 100 : 0;
+}
+
+function updateAllocationPercent(index: number, value: string | number): void {
+    const percent = Math.min(100, Math.max(0, Number(value) || 0));
+    // eslint-disable-next-line vue/no-mutating-props -- intentional: see note above
+    props.item.domains[index].points = Math.round((Number(props.item.points_possible) || 0) * percent * 100) / 10000;
+}
+
+const allocationPercentTotal = computed(() =>
+    props.item.domains.reduce((sum, allocation) => sum + allocationPercent(allocation.points), 0),
+);
 
 // The question's total is never typed directly — it's the sum of what's
 // entered per domain below, kept in sync here as those points change. Skipped
@@ -72,7 +103,7 @@ function removeAllocation(index: number): void {
 watch(
     () => props.item.domains,
     () => {
-        if (isSingleDomain.value) {
+        if (isSingleDomain.value || allocationMode.value === 'percent') {
             return;
         }
 
@@ -106,8 +137,16 @@ watch(
         class="space-y-1.5 border-t border-border pt-3"
     >
         <div class="flex items-center justify-between">
-            <span class="text-xs text-muted-foreground">Cotação por domínio</span>
-            <Button type="button" variant="ghost" size="sm" @click="addAllocation">
+            <span class="text-xs text-muted-foreground">
+                {{ allocationMode === 'percent' ? 'Distribuição por domínio' : 'Cotação por domínio' }}
+            </span>
+            <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                :disabled="item.domains.length >= selectedDomainIds.length"
+                @click="addAllocation"
+            >
                 <Plus class="size-3.5" /> Domínio
             </Button>
         </div>
@@ -120,14 +159,31 @@ watch(
                     {{ domain.label }}
                 </option>
             </select>
-            <Input v-model.number="allocation.points" type="number" min="0" step="0.25" class="h-7 w-16 text-xs" />
-            <span class="text-xs text-muted-foreground">pts</span>
+            <Input
+                v-if="allocationMode === 'percent'"
+                :model-value="allocationPercent(allocation.points)"
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                class="h-7 w-20 text-xs"
+                @update:model-value="updateAllocationPercent(allocationIndex, $event)"
+            />
+            <Input v-else v-model.number="allocation.points" type="number" min="0" step="0.25" class="h-7 w-16 text-xs" />
+            <span class="text-xs text-muted-foreground">{{ allocationMode === 'percent' ? '%' : 'pts' }}</span>
             <Button type="button" variant="ghost" size="icon" class="size-7" @click="removeAllocation(allocationIndex)">
                 <Trash2 class="size-3.5" />
             </Button>
         </div>
         <p v-if="item.domains.length === 0" class="text-xs text-muted-foreground">
             Sem domínio associado a esta questão ainda — adiciona um acima.
+        </p>
+        <p
+            v-else-if="allocationMode === 'percent'"
+            class="text-xs"
+            :class="Math.abs(allocationPercentTotal - 100) < 0.01 ? 'text-emerald-700' : 'text-destructive'"
+        >
+            Total: {{ allocationPercentTotal }}%{{ Math.abs(allocationPercentTotal - 100) < 0.01 ? ' ✓' : ' — tem de somar 100%' }}
         </p>
     </div>
     <p v-else class="text-xs text-muted-foreground">

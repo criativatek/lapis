@@ -220,6 +220,14 @@ class InstrumentBuilder
                 continue;
             }
 
+            $domainIds = array_column($allocations, 'domain_id');
+
+            if (count(array_unique($domainIds)) !== count($domainIds)) {
+                throw InstrumentValidationException::duplicateDomainAllocation(
+                    (string) ($item['code'] ?? $index + 1),
+                );
+            }
+
             $total = array_sum(array_column($allocations, 'allocation_percent'));
 
             if (abs($total - 100.0) > 0.0001) {

@@ -105,7 +105,6 @@ class InstrumentRequest extends FormRequest
                 Rule::when($this->boolean('quick'), 'required', 'nullable'),
                 'numeric',
                 'min:0',
-                Rule::when($this->boolean('quick'), Rule::in([100, 100.0, '100', '100.0'])),
             ],
             'weight' => ['nullable', 'numeric', 'min:0'],
             'allow_bonus' => ['required', 'boolean', Rule::when($this->boolean('quick'), 'declined')],
@@ -120,7 +119,7 @@ class InstrumentRequest extends FormRequest
             'groups.*.ulid' => ['nullable', 'string', new BelongsToCurrentOrganization(InstrumentGroup::class, 'ulid')],
             'groups.*.label' => ['nullable', 'string', 'max:120', Rule::when($this->boolean('quick'), 'prohibited')],
 
-            'items' => ['required', 'array', 'min:1', Rule::when($this->boolean('quick'), 'size:1')],
+            'items' => ['required', 'array', 'min:1'],
             'items.*' => ['array'],
             'items.*.ulid' => ['nullable', 'string', new BelongsToCurrentOrganization(InstrumentItem::class, 'ulid')],
             // Which submitted group the question sits in. A code is unique
@@ -136,18 +135,16 @@ class InstrumentRequest extends FormRequest
                 'required',
                 'string',
                 'max:16',
-                Rule::when($this->boolean('quick'), Rule::in(['Q1'])),
             ],
-            'items.*.label' => ['nullable', 'string', 'max:500'],
+            'items.*.label' => ['nullable', 'string', 'max:500', Rule::when($this->boolean('quick'), 'prohibited')],
             'items.*.points_possible' => [
                 'required',
                 'numeric',
                 'min:0',
-                Rule::when($this->boolean('quick'), Rule::in([100, 100.0, '100', '100.0'])),
             ],
             'items.*.is_bonus' => ['nullable', 'boolean', Rule::when($this->boolean('quick'), 'declined')],
             'items.*.domains' => [
-                Rule::when($this->boolean('quick'), ['required', 'array', 'size:1'], ['nullable', 'array']),
+                Rule::when($this->boolean('quick'), ['required', 'array', 'min:1'], ['nullable', 'array']),
             ],
             'items.*.domains.*.domain_id' => ['required', new BelongsToCurrentOrganization(Domain::class)],
             'items.*.domains.*.allocation_percent' => [
@@ -155,7 +152,6 @@ class InstrumentRequest extends FormRequest
                 'numeric',
                 'min:0',
                 'max:100',
-                Rule::when($this->boolean('quick'), Rule::in([100, 100.0, '100', '100.0'])),
             ],
         ];
     }
@@ -195,12 +191,34 @@ class InstrumentRequest extends FormRequest
                     continue;
                 }
 
+                if ($this->boolean('quick') && ($item['code'] ?? null) !== 'Q'.($itemIndex + 1)) {
+                    $validator->errors()->add(
+                        "items.{$itemIndex}.code",
+                        'As questões da Criação simples têm de seguir a ordem Q1, Q2, Q3…',
+                    );
+                }
+
+                $seenDomainIds = [];
+
                 foreach ($item['domains'] as $allocationIndex => $allocation) {
                     if (! is_array($allocation) || ! isset($allocation['domain_id'])) {
                         continue;
                     }
 
-                    if ($validDomainIds->contains((int) $allocation['domain_id'])) {
+                    $domainId = (int) $allocation['domain_id'];
+
+                    if (isset($seenDomainIds[$domainId])) {
+                        $validator->errors()->add(
+                            "items.{$itemIndex}.domains.{$allocationIndex}.domain_id",
+                            'Cada domínio só pode aparecer uma vez por questão.',
+                        );
+
+                        continue;
+                    }
+
+                    $seenDomainIds[$domainId] = true;
+
+                    if ($validDomainIds->contains($domainId)) {
                         continue;
                     }
 

@@ -485,12 +485,177 @@ const selectedDomainIds = ref<number[]>(
     ),
 );
 
-const primaryDomainId = computed<number | null>({
-    get: () => selectedDomainIds.value[0] ?? null,
-    set: (domainId) => {
-        selectedDomainIds.value = domainId === null ? [] : [domainId];
-    },
+const expandedQuickAllocations = ref<Set<ItemRow>>(new Set());
+
+function homeDomainId(item: ItemRow): number | null {
+    return item.domains[0]?.domain_id ?? null;
+}
+
+const quickItemsByDomain = computed(() => {
+    const rows = new Map<number, ItemRow[]>();
+
+    for (const domainId of selectedDomainIds.value) {
+        rows.set(domainId, form.items.filter((item) => homeDomainId(item) === domainId));
+    }
+
+    return rows;
 });
+
+function updateItemPoints(item: ItemRow, points: number): void {
+    const previous = Number(item.points_possible) || 0;
+    const next = Math.max(0, Math.round(points * 10000) / 10000);
+
+    if (item.domains.length === 1) {
+        item.domains[0].points = next;
+    } else if (previous > 0) {
+        item.domains.forEach((allocation, index) => {
+            allocation.points = index === item.domains.length - 1
+                ? Math.round((next - item.domains.slice(0, -1).reduce((sum, row) => sum + row.points, 0)) * 10000) / 10000
+                : Math.round(((Number(allocation.points) || 0) / previous) * next * 10000) / 10000;
+        });
+    } else if (item.domains.length > 1) {
+        item.domains.forEach((allocation, index) => {
+            allocation.points = index === 0 ? next : 0;
+        });
+    }
+
+    item.points_possible = next;
+}
+
+function renumberQuickItems(): void {
+    const ordered = selectedDomainIds.value.flatMap((domainId) =>
+        form.items.filter((item) => homeDomainId(item) === domainId),
+    );
+
+    form.items = ordered;
+    form.items.forEach((item, index) => {
+        item.group_index = 0;
+        item.code = `Q${index + 1}`;
+    });
+}
+
+function distributeQuickPoints(): void {
+    if (form.items.length === 0) {
+        return;
+    }
+
+    const total = Math.max(0, Number(form.total_points) || 0);
+    const even = Math.floor((total / form.items.length) * 10000) / 10000;
+
+    form.items.forEach((item, index) => {
+        const points = index === form.items.length - 1
+            ? Math.round((total - even * (form.items.length - 1)) * 10000) / 10000
+            : even;
+        updateItemPoints(item, points);
+    });
+}
+
+function newQuickItem(domainId: number): ItemRow {
+    return {
+        group_index: 0,
+        code: '',
+        label: '',
+        points_possible: 0,
+        is_bonus: false,
+        domains: [{ domain_id: domainId, points: 0 }],
+    };
+}
+
+function addQuickQuestion(domainId: number): void {
+    form.items.push(newQuickItem(domainId));
+    renumberQuickItems();
+    distributeQuickPoints();
+}
+
+function removeQuickQuestion(domainId: number): void {
+    const rows = quickItemsByDomain.value.get(domainId) ?? [];
+
+    if (rows.length <= 1) {
+        selectedDomainIds.value = selectedDomainIds.value.filter((id) => id !== domainId);
+
+        return;
+    }
+
+    const item = rows[rows.length - 1];
+    form.items.splice(form.items.indexOf(item), 1);
+    expandedQuickAllocations.value.delete(item);
+    renumberQuickItems();
+    distributeQuickPoints();
+}
+
+function toggleQuickAllocations(item: ItemRow): void {
+    const expanded = new Set(expandedQuickAllocations.value);
+
+    if (expanded.has(item)) {
+        expanded.delete(item);
+    } else {
+        expanded.add(item);
+    }
+
+    expandedQuickAllocations.value = expanded;
+}
+
+let previousSelectedDomainIds = [...selectedDomainIds.value];
+
+watch(selectedDomainIds, (domainIds) => {
+    if (creationMode.value !== 'quick') {
+        previousSelectedDomainIds = [...domainIds];
+
+        return;
+    }
+
+    const added = domainIds.filter((domainId) => !previousSelectedDomainIds.includes(domainId));
+    const removed = previousSelectedDomainIds.filter((domainId) => !domainIds.includes(domainId));
+
+    for (const domainId of removed) {
+        form.items = form.items.filter((item) => homeDomainId(item) !== domainId);
+
+        for (const item of form.items) {
+            if (!item.domains.some((allocation) => allocation.domain_id === domainId)) {
+                continue;
+            }
+
+            item.domains = item.domains.filter((allocation) => allocation.domain_id !== domainId);
+            const remaining = item.domains.reduce((sum, allocation) => sum + (Number(allocation.points) || 0), 0);
+
+            if (remaining > 0) {
+                item.domains.forEach((allocation, index) => {
+                    allocation.points = index === item.domains.length - 1
+                        ? Math.round((Number(item.points_possible) - item.domains.slice(0, -1).reduce((sum, row) => sum + row.points, 0)) * 10000) / 10000
+                        : Math.round(((Number(allocation.points) || 0) / remaining) * Number(item.points_possible) * 10000) / 10000;
+                });
+            }
+        }
+    }
+
+    for (const domainId of added) {
+        const placeholder = form.items.length === 1 && form.items[0].domains.length === 0
+            ? form.items[0]
+            : null;
+
+        if (placeholder) {
+            placeholder.domains = [{ domain_id: domainId, points: Number(placeholder.points_possible) || 0 }];
+        } else {
+            form.items.push(newQuickItem(domainId));
+        }
+    }
+
+    if (domainIds.length === 0) {
+        form.items = [{
+            group_index: 0,
+            code: 'Q1',
+            label: '',
+            points_possible: Number(form.total_points) || 0,
+            is_bonus: false,
+            domains: [],
+        }];
+    } else {
+        renumberQuickItems();
+        distributeQuickPoints();
+    }
+
+    previousSelectedDomainIds = [...domainIds];
+}, { deep: true });
 
 // Returning to the short form is safe only while no detailed structure would
 // be hidden. The form state is never reset when modes change.
@@ -498,15 +663,16 @@ const canUseQuickMode = computed(() =>
     !props.initial &&
     form.groups.length === 1 &&
     form.groups[0].label.trim() === '' &&
-    form.items.length === 1 &&
-    form.items[0].group_index === 0 &&
-    form.items[0].code === 'Q1' &&
-    form.items[0].label.trim() === '' &&
-    Number(form.items[0].points_possible) === 100 &&
-    !form.items[0].is_bonus &&
+    form.items.length >= 1 &&
+    form.items.every((item, index) =>
+        item.group_index === 0 &&
+        item.code === `Q${index + 1}` &&
+        item.label.trim() === '' &&
+        !item.is_bonus &&
+        item.domains.length >= 1
+    ) &&
     !form.allow_bonus &&
-    Number(form.total_points) === 100 &&
-    selectedDomainIds.value.length <= 1,
+    selectedDomainIds.value.length >= 1,
 );
 
 function showDetailedMode(): void {
@@ -516,6 +682,7 @@ function showDetailedMode(): void {
 function showQuickMode(): void {
     if (canUseQuickMode.value) {
         creationMode.value = 'quick';
+        previousSelectedDomainIds = [...selectedDomainIds.value];
     }
 }
 
@@ -530,7 +697,7 @@ function showQuickMode(): void {
 watch(
     [() => form.items, selectedDomainIds],
     () => {
-        if (selectedDomainIds.value.length !== 1) {
+        if (creationMode.value === 'quick' || selectedDomainIds.value.length !== 1) {
             return;
         }
 
@@ -552,10 +719,7 @@ watch(
                 continue;
             }
 
-            if (creationMode.value === 'quick') {
-                item.domains[0].domain_id = domainId;
-                item.domains[0].points = points;
-            } else if (item.domains[0].domain_id === domainId) {
+            if (item.domains[0].domain_id === domainId) {
                 item.domains[0].points = points;
             }
         }
@@ -596,6 +760,24 @@ const domainTotals = computed(() => {
     }
 
     return totals;
+});
+
+const quickStructureValid = computed(() => {
+    if (creationMode.value !== 'quick') {
+        return true;
+    }
+
+    return selectedDomainIds.value.length > 0 &&
+        totalMatches.value &&
+        form.items.every((item) => {
+            if (item.domains.length === 0) {
+                return false;
+            }
+
+            const allocated = item.domains.reduce((sum, allocation) => sum + (Number(allocation.points) || 0), 0);
+
+            return Math.abs(allocated - Number(item.points_possible)) < 0.0001;
+        });
 });
 
 function submit(): void {
@@ -721,30 +903,138 @@ function submit(): void {
                     <InputError :message="form.errors.academic_period_id" />
                 </div>
                 <div class="grid gap-2">
-                    <Label for="quick-domain">Domínio principal</Label>
-                    <select
-                        v-if="domains.length"
-                        id="quick-domain"
-                        v-model.number="primaryDomainId"
-                        class="h-10 rounded-md border border-input bg-transparent px-3 text-sm"
-                    >
-                        <option :value="null" disabled>Escolher…</option>
-                        <option v-for="domain in domains" :key="domain.id" :value="domain.id">{{ domain.label }}</option>
-                    </select>
-                    <p v-else class="text-xs text-muted-foreground">
-                        A turma não tem perfil ativo, por isso não há domínios para escolher.
+                    <Label for="quick-total-points">Cotação total</Label>
+                    <Input
+                        id="quick-total-points"
+                        v-model.number="form.total_points"
+                        type="number"
+                        min="0"
+                        step="0.25"
+                    />
+                    <InputError :message="form.errors.total_points" />
+                    <p class="text-xs text-muted-foreground">
+                        Ao alterar a estrutura, a cotação é redistribuída e fica sempre visível em cada questão.
                     </p>
-                    <InputError :message="form.errors['items.0.domains.0.domain_id']" />
-                    <InputError :message="form.errors['items.0.domains']" />
                 </div>
             </div>
+
+            <div class="space-y-3">
+                <div>
+                    <h2 class="text-sm font-semibold">Domínios avaliados</h2>
+                    <p class="text-sm text-muted-foreground">
+                        Escolha um ou vários domínios. Cada domínio começa com uma questão.
+                    </p>
+                </div>
+                <div v-if="domains.length" class="flex flex-wrap gap-3">
+                    <label
+                        v-for="domain in domains"
+                        :key="domain.id"
+                        class="flex min-h-10 items-center gap-2 rounded-md border border-border px-3 text-sm"
+                    >
+                        <input v-model="selectedDomainIds" type="checkbox" :value="domain.id" class="size-4" />
+                        {{ domain.label }}
+                    </label>
+                </div>
+                <p v-else class="text-xs text-muted-foreground">
+                    A turma não tem perfil ativo, por isso não há domínios para escolher.
+                </p>
+            </div>
+
+            <div v-if="selectedDomainIds.length" class="space-y-4">
+                <InputError :message="form.errors.items" />
+                <section
+                    v-for="domainId in selectedDomainIds"
+                    :key="domainId"
+                    class="space-y-3 rounded-lg border border-border bg-muted/20 p-3"
+                >
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                            <h3 class="text-sm font-semibold">{{ domains.find((domain) => domain.id === domainId)?.label }}</h3>
+                            <p class="text-xs text-muted-foreground">
+                                {{ quickItemsByDomain.get(domainId)?.length ?? 0 }}
+                                {{ (quickItemsByDomain.get(domainId)?.length ?? 0) === 1 ? 'questão' : 'questões' }}
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <Button type="button" variant="outline" size="sm" @click="removeQuickQuestion(domainId)">
+                                {{ (quickItemsByDomain.get(domainId)?.length ?? 0) === 1 ? 'Remover domínio' : '− Questão' }}
+                            </Button>
+                            <Button type="button" variant="outline" size="sm" @click="addQuickQuestion(domainId)">
+                                <Plus class="size-4" /> Questão
+                            </Button>
+                        </div>
+                    </div>
+
+                    <div class="grid gap-2">
+                        <div
+                            v-for="item in quickItemsByDomain.get(domainId) ?? []"
+                            :key="item.ulid ?? item.code"
+                            class="rounded-md border border-border bg-background p-3"
+                        >
+                            <div class="flex flex-wrap items-center gap-3">
+                                <span class="w-10 text-sm font-semibold">{{ item.code }}</span>
+                                <div class="flex items-center gap-2">
+                                    <Input
+                                        :model-value="item.points_possible"
+                                        type="number"
+                                        min="0"
+                                        step="0.25"
+                                        class="h-9 w-24"
+                                        @update:model-value="updateItemPoints(item, Number($event))"
+                                    />
+                                    <span class="text-xs text-muted-foreground">pontos</span>
+                                </div>
+                                <span class="min-w-0 flex-1 text-xs text-muted-foreground">
+                                    {{ domains.find((domain) => domain.id === homeDomainId(item))?.label }}
+                                </span>
+                                <Button type="button" variant="ghost" size="sm" @click="toggleQuickAllocations(item)">
+                                    {{ expandedQuickAllocations.has(item) ? 'Fechar domínios' : 'Editar domínios' }}
+                                </Button>
+                            </div>
+                            <InstrumentDomainAllocations
+                                v-if="expandedQuickAllocations.has(item)"
+                                :item="item"
+                                :domains="domains"
+                                :selected-domain-ids="selectedDomainIds"
+                                mode="percent"
+                            />
+                            <InputError :message="form.errors[`items.${form.items.indexOf(item)}.domains`]" />
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <section v-if="selectedDomainIds.length" class="space-y-2 rounded-lg border border-border p-3">
+                <h2 class="text-sm font-semibold">Pesos derivados dos domínios</h2>
+                <ul class="space-y-1 text-sm">
+                    <li v-for="domainId in selectedDomainIds" :key="domainId" class="flex items-center justify-between gap-3">
+                        <span>{{ domains.find((domain) => domain.id === domainId)?.label }}</span>
+                        <span class="font-medium tabular-nums">
+                            {{ Math.round((domainTotals.get(domainId) ?? 0) * 10000) / 10000 }} pontos
+                            → {{ Number(form.total_points) > 0 ? Math.round(((domainTotals.get(domainId) ?? 0) / Number(form.total_points)) * 10000) / 100 : 0 }}%
+                        </span>
+                    </li>
+                </ul>
+            </section>
+
+            <div
+                class="flex items-center justify-between rounded-lg border px-4 py-2.5 text-sm"
+                :class="totalMatches ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-amber-300 bg-amber-50 text-amber-900'"
+            >
+                <span class="font-medium">Soma das cotações</span>
+                <span class="font-semibold tabular-nums">{{ itemsTotal }} / {{ form.total_points }} {{ totalMatches ? '✓' : '' }}</span>
+            </div>
+
+            <p v-if="!quickStructureValid" class="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                Selecione pelo menos um domínio e confirme que as cotações e distribuições somam os respetivos totais.
+            </p>
 
             <p class="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
                 Ao guardar, o Elemento de Avaliação fica preparado para lançar resultados. Nunca fica concluído automaticamente.
             </p>
 
             <button type="button" class="flex items-center gap-1 text-sm text-muted-foreground" @click="showDetailedMode">
-                Precisa de configurar questões, pesos ou vários domínios?
+                Precisa de grupos personalizados, bónus ou estruturas especiais?
                 <span class="inline-flex items-center gap-0.5 font-medium text-primary underline-offset-4 hover:underline">
                     Usar criação avançada
                     <ChevronRight class="size-3.5" />
@@ -1200,7 +1490,7 @@ function submit(): void {
             </template>
         </p>
 
-        <Button type="submit" :disabled="form.processing || !canSubmit">{{
+        <Button type="submit" :disabled="form.processing || !canSubmit || !quickStructureValid">{{
             method === 'post' ? 'Criar elemento de avaliação' : 'Guardar alterações'
         }}</Button>
     </form>

@@ -54,6 +54,14 @@ class InstrumentValidationException extends RuntimeException
         ));
     }
 
+    public static function duplicateDomainAllocation(string $itemCode): self
+    {
+        return new self(__(
+            'Cada domínio só pode aparecer uma vez na distribuição da questão :code.',
+            ['code' => $itemCode],
+        ));
+    }
+
     public static function pointsDoNotMatchTotal(string $itemTotal, string $declared): self
     {
         return new self(__(
