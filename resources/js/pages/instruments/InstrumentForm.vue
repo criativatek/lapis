@@ -543,21 +543,24 @@ function renumberQuickItems(): void {
 }
 
 function distributeQuickPoints(): void {
-    if (form.items.length === 0) {
+    const n = form.items.length;
+
+    if (n === 0) {
         return;
     }
 
     // Divide in whole steps, not raw points — 100 / 14 as points gives
     // 7.1428571..., a value no cotação input here accepts (step="0.25").
-    // 100 / 14 as steps (400 steps of 0.25) gives an integer quotient with a
-    // remainder, both of which convert back to exact multiples of the step.
+    // The remainder left after an even integer split is spread one step at
+    // a time across the last few items, rather than dumped whole onto a
+    // single one: 400 steps / 14 is 28 each with 8 left over, so 8 items
+    // get 29 (7.25) and 6 get 28 (7.00) — never 13 at 7.00 and one at 9.00.
     const totalSteps = Math.round(Math.max(0, Number(form.total_points) || 0) / COTATION_STEP);
-    const evenSteps = Math.floor(totalSteps / form.items.length);
+    const baseSteps = Math.floor(totalSteps / n);
+    const remainderSteps = totalSteps - baseSteps * n;
 
     form.items.forEach((item, index) => {
-        const steps = index === form.items.length - 1
-            ? totalSteps - evenSteps * (form.items.length - 1)
-            : evenSteps;
+        const steps = index >= n - remainderSteps ? baseSteps + 1 : baseSteps;
         updateItemPoints(item, steps * COTATION_STEP);
     });
 }

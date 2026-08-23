@@ -201,16 +201,18 @@ class QuickInstrumentCreationTest extends TestCase
     /**
      * The cotação step every points input in the form declares (step="0.25")
      * — 100 / 14 as raw points is 7.1428571..., a value the input itself
-     * rejects. Distributed in steps of 0.25 instead, 100 / 14 has to land on
-     * 13 items of 7.00 and one of 9.00: 400 quarter-points total, 28 each for
-     * 13 items (364), the remaining 36 (9.00) on the last one.
+     * rejects. Distributed in steps of 0.25 instead — 400 quarter-points
+     * total, 28 (7.00) each with 8 left over — the remainder is spread one
+     * step at a time (6 items at 7.00, 8 at 7.25), never dumped whole onto a
+     * single item (which is what an earlier version of this fix did: 13 at
+     * 7.00 and one at 9.00 — valid, but not an even split a teacher would
+     * expect).
      */
     #[Test]
     public function one_hundred_points_across_fourteen_questions_lands_on_valid_cotation_steps(): void
     {
         $scenario = $this->inTenant(fn (): array => $this->scenarioWithDomains(1));
-        $points = array_fill(0, 13, 7.0);
-        $points[] = 9.0;
+        $points = [...array_fill(0, 6, 7.0), ...array_fill(0, 8, 7.25)];
         $payload = $this->multiDomainPayload($scenario, [14], $points);
 
         $this->actingAs($this->teacher)
@@ -219,16 +221,50 @@ class QuickInstrumentCreationTest extends TestCase
 
         $this->inTenant(function (): void {
             $instrument = Instrument::sole();
+            $persisted = $instrument->items()->pluck('points_possible')->all();
 
             // A decimal string comparison, not a float one: this is exactly
             // the "does 100 still read as 100" question the bug report was
             // about, and a loose float assertion would hide the same
             // rounding drift that produced 99.99999999999999 in the UI.
             $this->assertSame('100.0000', (string) $instrument->fresh()->total_points);
-            $this->assertSame(
-                ['7.0000', '7.0000', '7.0000', '7.0000', '7.0000', '7.0000', '7.0000', '7.0000', '7.0000', '7.0000', '7.0000', '7.0000', '7.0000', '9.0000'],
-                $instrument->items()->pluck('points_possible')->all(),
-            );
+            $this->assertCount(14, $persisted);
+            $this->assertSame(6, count(array_filter($persisted, fn (string $value): bool => $value === '7.0000')));
+            $this->assertSame(8, count(array_filter($persisted, fn (string $value): bool => $value === '7.2500')));
+            $this->assertNotContains('9.0000', $persisted);
+
+            // points_possible is already a 4-decimal string straight from the
+            // database — multiplying that single, already-rounded value by
+            // 10000 is exact, not the kind of running float arithmetic this
+            // whole fix exists to avoid.
+            foreach ($persisted as $value) {
+                $this->assertSame(0, ((int) round(((float) $value) * 10000)) % 2500, "{$value} não é múltiplo de 0.25");
+            }
+        });
+    }
+
+    /**
+     * 20 / 6 as raw points is 3.333... — in steps, 80 quarter-points total,
+     * 13 (3.25) each with 2 left over: 4 items at 3.25, 2 at 3.50. No two
+     * questions differ by more than one step.
+     */
+    #[Test]
+    public function twenty_points_across_six_questions_stays_within_one_step_of_even(): void
+    {
+        $scenario = $this->inTenant(fn (): array => $this->scenarioWithDomains(1));
+        // multiDomainPayload() derives total_points from these, already 20.
+        $payload = $this->multiDomainPayload($scenario, [6], [3.25, 3.25, 3.25, 3.25, 3.5, 3.5]);
+
+        $this->actingAs($this->teacher)
+            ->post("/classes/{$scenario['class']->ulid}/instruments", $payload)
+            ->assertSessionHasNoErrors();
+
+        $this->inTenant(function (): void {
+            $instrument = Instrument::sole();
+            $points = $instrument->items()->pluck('points_possible')->map(fn (string $value): float => (float) $value)->all();
+
+            $this->assertSame('20.0000', (string) $instrument->fresh()->total_points);
+            $this->assertLessThanOrEqual(0.25, max($points) - min($points));
         });
     }
 
