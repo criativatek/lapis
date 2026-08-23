@@ -188,9 +188,12 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     });
 
     Route::middleware('module:lessons')->group(function () {
-        // Slice 1 has no weekly/index view yet. Keep the navigation entry real,
-        // uniquely gated and stable while sending the teacher to choose a class.
-        Route::redirect('lessons', '/classes')->name('lessons.index');
+        // Slice 1 has no weekly/index view yet — routes/app.php still owns the
+        // top-level GET /lessons placeholder (config/navigation.php has no
+        // `built` override for this item). Do not register anything at the
+        // bare `lessons` path here; it would collide with that placeholder
+        // route or silently take over the sidebar entry, as it did before
+        // this comment (see the "Aulas e Sumários" navigation bugfix).
         Route::get('lessons/{lesson}', [LessonController::class, 'show'])->name('lessons.show');
         Route::put('lessons/{lesson}/summary', [LessonController::class, 'updateSummary'])->name('lessons.summary.update');
 

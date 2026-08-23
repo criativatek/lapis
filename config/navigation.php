@@ -131,7 +131,7 @@ return [
                 // placeholder route — away from organizations that have the
                 // capability today. Changing what a plan sees is the one thing
                 // this reorganization must not do (§23, §41).
-                ['key' => 'lessons', 'label' => 'Aulas e Sumários', 'icon' => 'BookOpen', 'module' => 'lessons', 'phase' => 5, 'route' => 'lessons.index', 'built' => true, 'description' => 'Registar aulas e sumários.', 'match' => ['/lessons']],
+                ['key' => 'lessons', 'label' => 'Aulas e Sumários', 'icon' => 'BookOpen', 'module' => 'lessons', 'phase' => 5, 'description' => 'Registar aulas e sumários.'],
             ],
         ],
 
