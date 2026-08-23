@@ -26,6 +26,8 @@ use App\Http\Controllers\InstrumentController;
 use App\Http\Controllers\InterimAssessmentController;
 use App\Http\Controllers\InterventionController;
 use App\Http\Controllers\InvitationAcceptanceController;
+use App\Http\Controllers\LessonController;
+use App\Http\Controllers\LessonScheduleController;
 use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\OrganizationMembershipController;
 use App\Http\Controllers\PublicSelfAssessmentController;
@@ -183,6 +185,19 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
             ->name('classes.roster-imports.preview-photo');
 
         Route::get('students/{student}/photo', [StudentPhotoController::class, 'show'])->name('students.photo');
+    });
+
+    Route::middleware('module:lessons')->group(function () {
+        // Slice 1 has no weekly/index view yet. Keep the navigation entry real,
+        // uniquely gated and stable while sending the teacher to choose a class.
+        Route::redirect('lessons', '/classes')->name('lessons.index');
+        Route::get('lessons/{lesson}', [LessonController::class, 'show'])->name('lessons.show');
+        Route::put('lessons/{lesson}/summary', [LessonController::class, 'updateSummary'])->name('lessons.summary.update');
+
+        Route::post('lesson-slots', [LessonScheduleController::class, 'store'])->name('lesson-slots.store');
+        Route::put('lesson-slots/{recurringLessonSlot}', [LessonScheduleController::class, 'update'])->name('lesson-slots.update');
+        Route::delete('lesson-slots/{recurringLessonSlot}', [LessonScheduleController::class, 'destroy'])->name('lesson-slots.destroy');
+        Route::post('classes/{class}/lessons/materialize', [LessonScheduleController::class, 'materialize'])->name('lessons.materialize');
     });
 
     // Instruments and the grading grid. Created inside a class; the grid is the

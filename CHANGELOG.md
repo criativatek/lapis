@@ -2,6 +2,14 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.60.0] — 2026-08-23
+
+### Added
+
+- **Módulo Aulas e Sumários — Fatia 1 de 6: ocorrência concreta e sumário simples.** Primeira fatia vertical de um módulo novo (desenho completo em `docs/superpowers/specs/2026-08-23-lessons-summaries-planning-sequences-design.md`, plano faseado em `docs/superpowers/plans/2026-08-23-lessons-summaries-planning-sequences.md`). O professor configura o horário recorrente de uma turma (`RecurringLessonSlot`), materializa ocorrências concretas (`Lesson`) num intervalo dentro do ano letivo — de forma idempotente e nunca como efeito lateral de uma leitura — e escreve/revê o sumário oficial da aula (`LessonSummary`). A primeira gravação nunca marca a aula como lecionada; editar o sumário depois de já lecionada atualiza `reviewed_at`/`reviewed_by` e regista um evento de auditoria sem copiar o texto do sumário.
+
+  **Ainda não incluído nesta fatia** — planeamento antecipado, notas privadas, recursos, TPC, cumprimento, sequências reutilizáveis, continuidade de conteúdo pendente, faltas/atrasos e a vista semanal (chegam nas Fatias 2–6). Todos os modelos são tenant-owned (`BelongsToOrganization`), autorizados por `LessonPolicy`/`RecurringLessonSlotPolicy` através da relação professor↔turma já existente, recusam mutações durante impersonation e usam ULID nas rotas.
+
 ## [0.59.0] — 2026-08-23
 
 ### Added

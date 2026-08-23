@@ -144,6 +144,22 @@ class SchoolClass extends Model
     }
 
     /**
+     * @return HasMany<RecurringLessonSlot, $this>
+     */
+    public function recurringLessonSlots(): HasMany
+    {
+        return $this->hasMany(RecurringLessonSlot::class, 'class_id');
+    }
+
+    /**
+     * @return HasMany<Lesson, $this>
+     */
+    public function lessons(): HasMany
+    {
+        return $this->hasMany(Lesson::class, 'class_id');
+    }
+
+    /**
      * @return HasMany<EvidenceRecord, $this>
      */
     public function evidenceRecords(): HasMany
