@@ -2,6 +2,16 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.58.0] — 2026-08-23
+
+### Added
+
+- **Vários domínios e várias questões na Criação simples de Elementos de Avaliação.** A validação manual da Fatia H mostrou o modelo anterior demasiado restritivo — 1 domínio, 1 questão. "Criação simples" passa a significar "forma simples de construir a estrutura", não "elemento necessariamente simples": o professor escolhe os domínios avaliados (um ou vários), define quantas questões tem cada domínio (1 por omissão, visível e editável), e ajusta a cotação de cada questão — o peso de cada domínio é sempre **derivado** da soma dessas cotações, nunca pedido diretamente. Cada domínio nasce com uma questão; reduzir a última remove o domínio explicitamente. Excecionalmente, "Editar domínios" numa questão permite dividi-la por mais do que um domínio (ex.: 70%/30%), reutilizando o mesmo `InstrumentDomainAllocations.vue` do modo avançado — agora com um segundo modo de edição em percentagem, fechado por omissão, ao lado do modo em pontos que a Criação avançada já usava. `canUseQuickMode` foi generalizado para múltiplos domínios/questões deixarem de obrigar à Criação avançada; grupos explícitos, bónus e outras estruturas especiais continuam a fazê-lo.
+
+  **Sem tabela nova, sem modelo paralelo.** Cada questão continua a ser um `InstrumentItem` real, com códigos globais Q1…Qn (não reiniciados por domínio) no único grupo implícito de sempre. Nenhum `StudentItemScore` é criado por omissão; guardar continua a nunca concluir o elemento.
+
+  **Grelha Excel redesenhada para refletir a estrutura real.** Cada cabeçalho de coluna passa a mostrar domínio, código, título e cotação máxima, agrupado visualmente por domínio; uma questão multi-domínio continua numa única coluna, assinalada como tal, nunca duplicada. A identidade inequívoca de cada coluna — pensada para uma futura importação — reutiliza o mecanismo de nomes definidos (`LAPIS_ITEM_<coluna>` → ULID) que a grelha de correção já tinha; não foi criada nenhuma folha ou contrato novo. Cabeçalho na linha 1 e alunos a partir da linha 2, como sempre.
+
 ## [0.57.1] — 2026-08-23
 
 ### Changed
