@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { ArrowLeft, Check, Save } from '@lucide/vue';
+import { ArrowLeft, BookOpenCheck, Check, RotateCcw, Save } from '@lucide/vue';
 import { computed } from 'vue';
 import AlertError from '@/components/AlertError.vue';
 import Heading from '@/components/Heading.vue';
@@ -21,6 +21,9 @@ type Lesson = {
         label: string;
         subject: string;
     };
+    plan: {
+        planned_summary: string;
+    } | null;
     summary: {
         content: string;
         reviewed_at: string | null;
@@ -31,8 +34,15 @@ const props = defineProps<{
     lesson: Lesson;
 }>();
 
-const form = useForm({
+const summaryForm = useForm({
     content: props.lesson.summary?.content ?? '',
+});
+const planForm = useForm<{
+    planned_summary: string;
+    target_status: Lesson['status'];
+}>({
+    planned_summary: props.lesson.plan?.planned_summary ?? '',
+    target_status: props.lesson.status,
 });
 
 const dateFormatter = new Intl.DateTimeFormat('pt-PT', {
@@ -56,10 +66,18 @@ const lessonTime = computed(() => {
         ? `${start}–${timeFormatter.format(new Date(props.lesson.ends_at))}`
         : start;
 });
-const errors = computed(() => Object.values(form.errors));
+const summaryErrors = computed(() => Object.values(summaryForm.errors));
+const planErrors = computed(() => Object.values(planForm.errors));
 
-function submit(): void {
-    form.put(`/lessons/${props.lesson.ulid}/summary`, {
+function submitSummary(): void {
+    summaryForm.put(`/lessons/${props.lesson.ulid}/summary`, {
+        preserveScroll: true,
+    });
+}
+
+function submitPlan(targetStatus: Lesson['status'] = props.lesson.status): void {
+    planForm.target_status = targetStatus;
+    planForm.put(`/lessons/${props.lesson.ulid}/plan`, {
         preserveScroll: true,
     });
 }
@@ -97,11 +115,11 @@ function submit(): void {
             </dl>
         </div>
 
-        <form class="space-y-4" @submit.prevent="submit">
-            <AlertError v-if="errors.length > 0" :errors="errors" title="Não foi possível guardar o sumário." />
+        <form class="space-y-4" @submit.prevent="submitSummary">
+            <AlertError v-if="summaryErrors.length > 0" :errors="summaryErrors" title="Não foi possível guardar o sumário." />
 
             <div
-                v-if="form.recentlySuccessful"
+                v-if="summaryForm.recentlySuccessful"
                 role="status"
                 class="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"
             >
@@ -113,7 +131,7 @@ function submit(): void {
                 <Label for="lesson-summary" class="text-base font-semibold">Sumário</Label>
                 <textarea
                     id="lesson-summary"
-                    v-model="form.content"
+                    v-model="summaryForm.content"
                     name="content"
                     rows="10"
                     maxlength="16000"
@@ -121,21 +139,100 @@ function submit(): void {
                     autofocus
                     class="min-h-56 w-full resize-y rounded-xl border border-input bg-background px-4 py-3 text-base leading-relaxed shadow-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
                     placeholder="Escreve o sumário desta aula…"
-                    :disabled="form.processing"
+                    :disabled="summaryForm.processing"
                     aria-describedby="lesson-summary-error"
                 />
-                <InputError id="lesson-summary-error" :message="form.errors.content" />
+                <InputError id="lesson-summary-error" :message="summaryForm.errors.content" />
             </div>
 
-            <div class="fixed inset-x-0 bottom-0 z-20 border-t bg-background/95 p-4 backdrop-blur sm:static sm:border-0 sm:bg-transparent sm:p-0">
+            <div>
                 <div class="mx-auto flex max-w-3xl gap-3">
-                    <Button type="submit" size="lg" class="min-h-12 flex-1 text-base" :disabled="form.processing">
-                        <Spinner v-if="form.processing" />
+                    <Button type="submit" size="lg" class="min-h-12 flex-1 text-base" :disabled="summaryForm.processing">
+                        <Spinner v-if="summaryForm.processing" />
                         <Save v-else class="size-5" />
-                        {{ form.processing ? 'A guardar…' : 'Guardar sumário' }}
+                        {{ summaryForm.processing ? 'A guardar…' : 'Guardar sumário' }}
                     </Button>
                 </div>
             </div>
         </form>
+
+        <section class="space-y-4 rounded-xl border bg-card p-4 sm:p-6" aria-labelledby="lesson-plan-heading">
+            <div class="space-y-1">
+                <h2 id="lesson-plan-heading" class="text-base font-semibold">Planeamento</h2>
+                <p class="text-sm text-muted-foreground">
+                    Prepara a aula sem alterar o sumário oficial.
+                </p>
+            </div>
+
+            <form class="space-y-4" @submit.prevent="submitPlan()">
+                <AlertError v-if="planErrors.length > 0" :errors="planErrors" title="Não foi possível guardar o planeamento." />
+
+                <div
+                    v-if="planForm.recentlySuccessful"
+                    role="status"
+                    class="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"
+                >
+                    <Check class="size-4" />
+                    Planeamento guardado.
+                </div>
+
+                <div class="grid gap-2">
+                    <Label for="lesson-plan">Conteúdo planeado</Label>
+                    <textarea
+                        id="lesson-plan"
+                        v-model="planForm.planned_summary"
+                        name="planned_summary"
+                        rows="6"
+                        maxlength="16000"
+                        class="min-h-36 w-full resize-y rounded-xl border border-input bg-background px-4 py-3 text-base leading-relaxed shadow-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+                        placeholder="O que pretendes trabalhar nesta aula?"
+                        :disabled="planForm.processing"
+                        aria-describedby="lesson-plan-error"
+                    />
+                    <InputError id="lesson-plan-error" :message="planForm.errors.planned_summary" />
+                    <InputError :message="planForm.errors.target_status" />
+                </div>
+
+                <div class="flex flex-wrap gap-2">
+                    <Button type="submit" variant="outline" :disabled="planForm.processing">
+                        <Spinner v-if="planForm.processing" />
+                        <Save v-else class="size-4" />
+                        Guardar planeamento
+                    </Button>
+
+                    <Button
+                        v-if="lesson.status === 'preparation'"
+                        type="button"
+                        :disabled="planForm.processing"
+                        @click="submitPlan('prepared')"
+                    >
+                        <BookOpenCheck class="size-4" />
+                        Marcar como preparada
+                    </Button>
+
+                    <Button
+                        v-if="lesson.status === 'prepared'"
+                        type="button"
+                        variant="outline"
+                        :disabled="planForm.processing"
+                        @click="submitPlan('preparation')"
+                    >
+                        <RotateCcw class="size-4" />
+                        Reabrir planeamento
+                    </Button>
+
+                    <Button
+                        v-if="lesson.status !== 'taught'"
+                        type="button"
+                        variant="secondary"
+                        :disabled="planForm.processing"
+                        @click="submitPlan('taught')"
+                    >
+                        <Check class="size-4" />
+                        Marcar como lecionada
+                    </Button>
+                </div>
+            </form>
+        </section>
     </main>
 </template>

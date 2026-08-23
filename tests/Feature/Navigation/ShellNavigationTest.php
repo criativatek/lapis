@@ -389,13 +389,9 @@ class ShellNavigationTest extends TestCase
     }
 
     #[Test]
-    public function lessons_opens_its_own_placeholder_and_never_the_classes_index(): void
+    public function lessons_opens_its_operational_page_and_never_the_classes_index(): void
     {
-        // Regression: Fatia 1 briefly wired "Aulas e Sumários" to a redirect
-        // to /classes, so it opened the exact same page as "Turmas". The
-        // module's index view only lands in a later fatia — until then it
-        // must stay a distinct, gated placeholder like every other unbuilt
-        // top-level item, never an alias for another menu entry's page.
+        // The weekly operational page remains distinct from the classes index.
         $user = User::factory()->create();
         $this->upgrade($user, 'pro');
 
@@ -403,9 +399,7 @@ class ShellNavigationTest extends TestCase
             ->assertOk()
             ->assertInertia(
                 fn (AssertableInertia $page) => $page
-                    ->component('Placeholder')
-                    ->where('title', 'Aulas e Sumários')
-                    ->where('phase', 5)
+                    ->component('lessons/Index')
             );
 
         $this->actingAs($user)->get('/classes')

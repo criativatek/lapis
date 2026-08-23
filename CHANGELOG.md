@@ -2,6 +2,14 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.61.0] — 2026-08-23
+
+### Added
+
+- **Módulo Aulas e Sumários — Fatia 2 de 6: planeamento antecipado e centro semanal.** `/lessons` deixa de ser o placeholder "em construção" e passa a ser a página operacional real do módulo. O professor pode agora escrever um planeamento (`LessonPlan.planned_summary`) antes da aula acontecer, distinto e nunca copiado silenciosamente para o sumário oficial, e transitar o estado da aula entre Por preparar/Preparado/Lecionado — Preparado exige planeamento ou sumário já preenchido; voltar de Lecionado a um estado anterior é recusado. A vista semanal mostra as aulas de todas as turmas do professor no ano letivo selecionado, com navegação Semana anterior/atual/seguinte, e um botão "Preparar aulas desta semana" que materializa ocorrências em todas as turmas com horário configurado, reutilizando a mesma `MaterializeLessonsForRange` da Fatia 1. O horário recorrente de cada turma (`RecurringLessonSlot`) passa a ser configurável a partir da própria página da turma.
+
+  **Âmbito reduzido face ao plano faseado original**, por pedido explícito: sem notas privadas, recursos, TPC, cumprimento, sequências, continuidade ou faltas/atrasos — ficam para fatias futuras. O ContextBar ainda não tem seletor funcional de turma/disciplina/período (só o ano letivo é real), por isso a vista semanal soma todas as turmas do professor em vez de filtrar por uma só.
+
 ## [0.60.0] — 2026-08-23
 
 ### Added

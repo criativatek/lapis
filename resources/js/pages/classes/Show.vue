@@ -5,6 +5,8 @@ import { computed, ref } from 'vue';
 import FileInput from '@/components/FileInput.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
+import LessonScheduleEditor from '@/components/lessons/LessonScheduleEditor.vue';
+import type { RecurringLessonSlot } from '@/components/lessons/LessonScheduleEditor.vue';
 import StudentAvatar from '@/components/StudentAvatar.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -38,6 +40,7 @@ type ProfileOption = { version_id: number; label: string };
 
 const props = defineProps<{
     schoolClass: {
+        id: number;
         ulid: string;
         label: string;
         subject: string;
@@ -65,6 +68,7 @@ const props = defineProps<{
         status_label: string;
         status: string;
     }[];
+    recurringLessonSlots: RecurringLessonSlot[] | null;
 }>();
 
 /**
@@ -72,11 +76,19 @@ const props = defineProps<{
  * and sent as one column — which is how a teacher has them.
  */
 const processNumbers = ref<Record<string, string>>(
-    Object.fromEntries(props.students.map((student) => [student.ulid, student.process_number ?? ''])),
+    Object.fromEntries(
+        props.students.map((student) => [
+            student.ulid,
+            student.process_number ?? '',
+        ]),
+    ),
 );
 
 const missingProcessNumbers = computed(
-    () => props.students.filter((student) => (student.process_number ?? '') === '').length,
+    () =>
+        props.students.filter(
+            (student) => (student.process_number ?? '') === '',
+        ).length,
 );
 
 const processNumberForm = useForm({});
@@ -87,10 +99,13 @@ function saveProcessNumbers(): void {
             numbers: props.students.map((student) => ({
                 enrollment_ulid: student.ulid,
                 // An empty field is «no number recorded», which is a real state.
-                process_number: processNumbers.value[student.ulid]?.trim() || null,
+                process_number:
+                    processNumbers.value[student.ulid]?.trim() || null,
             })),
         }))
-        .put(`/classes/${props.schoolClass.ulid}/process-numbers`, { preserveScroll: true });
+        .put(`/classes/${props.schoolClass.ulid}/process-numbers`, {
+            preserveScroll: true,
+        });
 }
 
 const profileForm = useForm<{ assessment_profile_version_id: number | null }>({
@@ -383,6 +398,12 @@ function submitPhotos(): void {
             />
         </div>
 
+        <LessonScheduleEditor
+            v-if="recurringLessonSlots != null"
+            :class-id="schoolClass.id"
+            :slots="recurringLessonSlots"
+        />
+
         <section class="space-y-3">
             <div class="flex items-center justify-between">
                 <h2 class="text-sm font-semibold">Adicionar aluno</h2>
@@ -458,7 +479,8 @@ function submitPhotos(): void {
                     <Link
                         :href="`/classes/${schoolClass.ulid}/instruments/create`"
                     >
-                        <ClipboardPlus class="size-4" /> Novo elemento de avaliação
+                        <ClipboardPlus class="size-4" /> Novo elemento de
+                        avaliação
                     </Link>
                 </Button>
             </div>
@@ -474,7 +496,11 @@ function submitPhotos(): void {
             >
                 <li v-for="instrument in instruments" :key="instrument.ulid">
                     <Link
-                        :href="instrument.status === 'draft' ? `/instruments/${instrument.ulid}/edit` : `/instruments/${instrument.ulid}`"
+                        :href="
+                            instrument.status === 'draft'
+                                ? `/instruments/${instrument.ulid}/edit`
+                                : `/instruments/${instrument.ulid}`
+                        "
                         class="flex items-center justify-between px-4 py-3 hover:bg-muted/30"
                     >
                         <span>
@@ -489,7 +515,11 @@ function submitPhotos(): void {
                         <Badge variant="secondary">{{
                             instrument.status_label
                         }}</Badge>
-                        <span v-if="instrument.status === 'draft'" class="ml-2 text-xs text-primary">Continuar preparação</span>
+                        <span
+                            v-if="instrument.status === 'draft'"
+                            class="ml-2 text-xs text-primary"
+                            >Continuar preparação</span
+                        >
                     </Link>
                 </li>
             </ul>
@@ -512,10 +542,10 @@ function submitPhotos(): void {
 
             <div class="space-y-3 border-t border-border p-4">
                 <p class="text-sm text-muted-foreground">
-                    O N.º de processo é o identificador do aluno na escola. Chega
-                    preenchido quando a turma é importada de uma Relação de Turma
-                    (EB058e); de outro modo, pode escrevê-lo aqui. É opcional — só a
-                    exportação para o INOVAR precisa dele.
+                    O N.º de processo é o identificador do aluno na escola.
+                    Chega preenchido quando a turma é importada de uma Relação
+                    de Turma (EB058e); de outro modo, pode escrevê-lo aqui. É
+                    opcional — só a exportação para o INOVAR precisa dele.
                 </p>
 
                 <table class="w-full text-sm">
@@ -527,8 +557,13 @@ function submitPhotos(): void {
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-border">
-                        <tr v-for="student in students" :key="`processo-${student.ulid}`">
-                            <td class="py-1.5 text-muted-foreground tabular-nums">
+                        <tr
+                            v-for="student in students"
+                            :key="`processo-${student.ulid}`"
+                        >
+                            <td
+                                class="py-1.5 text-muted-foreground tabular-nums"
+                            >
                                 {{ student.class_number ?? '—' }}
                             </td>
                             <td class="py-1.5">{{ student.name }}</td>
@@ -550,7 +585,12 @@ function submitPhotos(): void {
                 </table>
 
                 <div class="flex items-center justify-end gap-3">
-                    <p v-if="processNumberForm.recentlySuccessful" class="text-sm text-emerald-600">Guardado.</p>
+                    <p
+                        v-if="processNumberForm.recentlySuccessful"
+                        class="text-sm text-emerald-600"
+                    >
+                        Guardado.
+                    </p>
                     <button
                         type="button"
                         class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
@@ -661,8 +701,8 @@ function submitPhotos(): void {
                         class="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2 text-sm"
                     >
                         <span
-                            class="w-6 shrink-0 tabular-nums text-xs text-muted-foreground"
-                            >{{ student.class_number ?? "—" }}</span
+                            class="w-6 shrink-0 text-xs text-muted-foreground tabular-nums"
+                            >{{ student.class_number ?? '—' }}</span
                         >
                         <span class="min-w-0">{{ student.name }}</span>
                         <span

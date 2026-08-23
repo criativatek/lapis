@@ -12,11 +12,13 @@ use App\Models\Enrollment;
 use App\Models\EnrollmentStatus;
 use App\Models\Instrument;
 use App\Models\ProfileVersionStatus;
+use App\Models\RecurringLessonSlot;
 use App\Models\SchoolClass;
 use App\Models\Subject;
 use App\Models\User;
 use App\Rules\BelongsToCurrentOrganization;
 use App\Services\ClassService;
+use App\Support\Entitlements\Entitlements;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -25,7 +27,7 @@ use Inertia\Response;
 
 class ClassController extends Controller
 {
-    public function __construct(protected ClassService $service) {}
+    public function __construct(protected ClassService $service, protected Entitlements $entitlements) {}
 
     public function index(): Response
     {
@@ -79,6 +81,7 @@ class ClassController extends Controller
         return Inertia::render('classes/Show', [
             'schoolClass' => [
                 'ulid' => $class->ulid,
+                'id' => $class->id,
                 'label' => $class->label,
                 'subject' => $class->subject->name,
                 'academic_year' => $class->academicYear->label,
@@ -106,6 +109,18 @@ class ClassController extends Controller
                     'status_label' => $instrument->status->label(),
                     'status' => $instrument->status->value,
                 ]),
+            'recurringLessonSlots' => $this->entitlements->allows('lessons')
+                ? $class->recurringLessonSlots()->orderBy('day_of_week')->orderBy('starts_at')->get()->map(
+                    fn (RecurringLessonSlot $slot) => [
+                        'ulid' => $slot->ulid,
+                        'day_of_week' => $slot->day_of_week,
+                        'starts_at' => substr($slot->starts_at, 0, 5),
+                        'ends_at' => substr($slot->ends_at, 0, 5),
+                        'starts_on' => $slot->starts_on?->toDateString(),
+                        'ends_on' => $slot->ends_on?->toDateString(),
+                    ],
+                )->values()
+                : null,
             // Names come from the encrypted identity — shown to the class's own
             // teacher, who is authorized. The pseudonym is what leaves the app.
             // THE CLASS AS IT STANDS. Somebody the roll says has transferred,

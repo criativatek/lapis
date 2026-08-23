@@ -73,6 +73,14 @@ class Lesson extends Model
     }
 
     /**
+     * @return HasOne<LessonPlan, $this>
+     */
+    public function plan(): HasOne
+    {
+        return $this->hasOne(LessonPlan::class);
+    }
+
+    /**
      * @return HasOne<LessonSummary, $this>
      */
     public function summary(): HasOne

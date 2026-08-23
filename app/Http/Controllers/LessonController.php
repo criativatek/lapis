@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Lessons\SaveLessonPlan;
 use App\Actions\Lessons\SaveLessonSummary;
 use App\Http\Controllers\Concerns\RefusesDuringImpersonation;
+use App\Http\Requests\Lessons\LessonPlanRequest;
 use App\Http\Requests\Lessons\LessonSummaryRequest;
 use App\Models\Lesson;
 use App\Models\LessonStatus;
@@ -19,7 +21,10 @@ class LessonController extends Controller implements HasMiddleware
 {
     use RefusesDuringImpersonation;
 
-    public function __construct(protected SaveLessonSummary $saveLessonSummary) {}
+    public function __construct(
+        protected SaveLessonPlan $saveLessonPlan,
+        protected SaveLessonSummary $saveLessonSummary,
+    ) {}
 
     /**
      * @return list<string>
@@ -32,7 +37,7 @@ class LessonController extends Controller implements HasMiddleware
     public function show(Lesson $lesson): Response
     {
         Gate::authorize('view', $lesson);
-        $lesson->load(['schoolClass.subject', 'summary']);
+        $lesson->load(['schoolClass.subject', 'plan', 'summary']);
 
         return Inertia::render('lessons/Show', [
             'lesson' => [
@@ -46,12 +51,33 @@ class LessonController extends Controller implements HasMiddleware
                     'label' => $lesson->schoolClass->label,
                     'subject' => $lesson->schoolClass->subject->name,
                 ],
+                'plan' => $lesson->plan === null ? null : [
+                    'planned_summary' => $lesson->plan->planned_summary,
+                ],
                 'summary' => $lesson->summary === null ? null : [
                     'content' => $lesson->summary->content,
                     'reviewed_at' => $lesson->summary->reviewed_at?->toIso8601String(),
                 ],
             ],
         ]);
+    }
+
+    public function updatePlan(
+        LessonPlanRequest $request,
+        Lesson $lesson,
+    ): RedirectResponse {
+        $this->refuseDuringImpersonation($request);
+
+        $plannedSummary = $request->validated('planned_summary');
+
+        $this->saveLessonPlan->execute(
+            $lesson,
+            is_string($plannedSummary) ? $plannedSummary : '',
+            LessonStatus::from($request->string('target_status')->toString()),
+            $this->user($request),
+        );
+
+        return back()->with('success', 'Planeamento guardado.');
     }
 
     public function updateSummary(

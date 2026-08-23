@@ -28,6 +28,7 @@ use App\Http\Controllers\InterventionController;
 use App\Http\Controllers\InvitationAcceptanceController;
 use App\Http\Controllers\LessonController;
 use App\Http\Controllers\LessonScheduleController;
+use App\Http\Controllers\LessonWeekController;
 use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\OrganizationMembershipController;
 use App\Http\Controllers\PublicSelfAssessmentController;
@@ -188,13 +189,10 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     });
 
     Route::middleware('module:lessons')->group(function () {
-        // Slice 1 has no weekly/index view yet — routes/app.php still owns the
-        // top-level GET /lessons placeholder (config/navigation.php has no
-        // `built` override for this item). Do not register anything at the
-        // bare `lessons` path here; it would collide with that placeholder
-        // route or silently take over the sidebar entry, as it did before
-        // this comment (see the "Aulas e Sumários" navigation bugfix).
+        Route::get('lessons', [LessonWeekController::class, 'index'])->name('lessons.index');
+        Route::post('lessons/materialize-week', [LessonWeekController::class, 'materialize'])->name('lessons.materialize-week');
         Route::get('lessons/{lesson}', [LessonController::class, 'show'])->name('lessons.show');
+        Route::put('lessons/{lesson}/plan', [LessonController::class, 'updatePlan'])->name('lessons.plan.update');
         Route::put('lessons/{lesson}/summary', [LessonController::class, 'updateSummary'])->name('lessons.summary.update');
 
         Route::post('lesson-slots', [LessonScheduleController::class, 'store'])->name('lesson-slots.store');
