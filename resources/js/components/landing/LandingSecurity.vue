@@ -13,23 +13,23 @@ type Guarantee = {
 const guarantees: readonly Guarantee[] = [
     {
         icon: LockKeyhole,
-        title: 'A identidade do aluno vive à parte, cifrada',
-        body: 'Numa tabela própria e cifrada. O resto da aplicação usa um pseudónimo.',
+        title: 'A identidade fica separada e protegida',
+        body: 'No trabalho diário, o sistema pode utilizar identificadores pseudonimizados. Os dados de identificação permanecem separados e protegidos.',
     },
     {
         icon: Layers,
-        title: 'Cada organização só vê o que é seu',
-        body: 'Imposto no servidor, em todas as consultas. Nunca devolve tudo por engano.',
+        title: 'Cada organização acede apenas ao que lhe pertence',
+        body: 'O isolamento é aplicado no servidor e nas regras de acesso.',
     },
     {
         icon: KeyRound,
-        title: 'Dois passos e chaves de acesso',
-        body: 'Dois passos com códigos de recuperação, ou passkey.',
+        title: 'Proteção adicional no acesso à conta',
+        body: 'Autenticação em dois passos, códigos de recuperação e passkeys quando disponíveis.',
     },
     {
         icon: ScrollText,
-        title: 'Fica registado quem fez o quê',
-        body: 'Consultável por quem é responsável pela organização.',
+        title: 'As ações importantes ficam registadas',
+        body: 'As operações relevantes ficam associadas a quem as realizou, permitindo auditoria pelos responsáveis autorizados.',
     },
 ];
 </script>
@@ -38,9 +38,9 @@ const guarantees: readonly Guarantee[] = [
     <LandingSection
         id="seguranca"
         tinted
-        eyebrow="Confiança"
-        title="Isto são dados de menores. A proteção é estrutural, não um acabamento."
-        lead="A informação sobre um aluno é a parte mais sensível do sistema. Foi tratada como tal desde a primeira migração."
+        eyebrow="Dados e privacidade"
+        title="Dados de alunos exigem proteção desde a origem."
+        lead="A informação académica e pessoal está entre os dados mais sensíveis tratados pelo LÁPIS. A proteção faz parte da arquitetura do sistema, não é um acrescento posterior. Esta proteção é particularmente relevante quando estão envolvidos menores, mas aplica-se a todos os alunos e estudantes."
     >
         <div
             class="grid gap-12 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:gap-16"
@@ -96,12 +96,14 @@ const guarantees: readonly Guarantee[] = [
                                 class="mt-3 space-y-1.5 font-mono text-[13px] tabular-nums"
                             >
                                 <div class="flex justify-between gap-4">
-                                    <dt class="text-muted-foreground">turma</dt>
-                                    <dd>9.º B</dd>
+                                    <dt class="text-muted-foreground">
+                                        contexto académico
+                                    </dt>
+                                    <dd>Turma / Unidade curricular</dd>
                                 </div>
                                 <div class="flex justify-between gap-4">
                                     <dt class="text-muted-foreground">
-                                        pseudónimo
+                                        identificador
                                     </dt>
                                     <dd>A-1042</dd>
                                 </div>
@@ -124,7 +126,7 @@ const guarantees: readonly Guarantee[] = [
                                     aria-hidden="true"
                                     class="size-3.5"
                                 />
-                                Cifrado, e noutra tabela
+                                Identidade protegida e separada
                             </p>
                             <dl
                                 class="mt-3 space-y-1.5 font-mono text-[13px] tabular-nums"
@@ -135,7 +137,7 @@ const guarantees: readonly Guarantee[] = [
                                 </div>
                                 <div class="flex justify-between gap-4">
                                     <dt class="text-muted-foreground">
-                                        n.º de processo
+                                        identificador institucional
                                     </dt>
                                     <dd class="tracking-widest">••••••</dd>
                                 </div>
@@ -146,9 +148,10 @@ const guarantees: readonly Guarantee[] = [
                     <p
                         class="mt-5 border-t border-border/70 pt-4 text-xs leading-relaxed text-muted-foreground"
                     >
-                        O apoio à redação está desligado por omissão. Quando uma
-                        escola o liga, escolhe o motor — e o que sai é o
-                        pseudónimo, nunca o nome.
+                        O apoio à redação está desligado por omissão. Quando é
+                        ativado, a configuração fica sob controlo do titular da
+                        conta ou, nas contas institucionais, dos responsáveis
+                        autorizados. A informação enviada é pseudonimizada.
                     </p>
                 </figure>
             </RevealOnScroll>
@@ -158,9 +161,10 @@ const guarantees: readonly Guarantee[] = [
             <p
                 class="mt-12 max-w-3xl text-sm leading-relaxed text-muted-foreground"
             >
-                A conformidade com o RGPD também depende das políticas da sua
-                escola. O que o LÁPIS garante é a parte técnica — separação,
-                cifra, isolamento e rasto.
+                A conformidade com o RGPD também depende das políticas de
+                proteção de dados da sua conta ou instituição. O que o LÁPIS
+                garante é a parte técnica — separação, cifra, isolamento e
+                rasto.
             </p>
         </RevealOnScroll>
     </LandingSection>

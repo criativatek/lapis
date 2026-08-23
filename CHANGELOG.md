@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.61.1] — 2026-08-23
+
+### Fixed
+
+- **Copy da secção de segurança/privacidade da landing deixa de posicionar o LÁPIS como produto só para menores.** "Isto são dados de menores. A proteção é estrutural, não um acabamento." e "quando uma escola o liga" presumiam sempre uma escola como única decisora e alunos sempre menores — o que não representa o Pro individual (autonomia do titular da conta) nem o ensino superior. A referência a menores mantém-se como caso especialmente sensível, já não como definição universal do produto; o exemplo lateral passa de "turma 9.º B / n.º de processo" para "contexto académico: Turma / Unidade curricular" e "identificador institucional", transversal a básico, secundário e superior. Só copy — sem alterações de layout, lógica ou segurança real.
+
 ## [0.61.0] — 2026-08-23
 
 ### Added
