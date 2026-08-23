@@ -13,6 +13,8 @@ use PhpOffice\PhpSpreadsheet\Cell\DataValidation;
 use PhpOffice\PhpSpreadsheet\NamedFormula;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx as XlsxWriter;
 
@@ -43,7 +45,11 @@ class WriteLapisGrid
      */
     public function write(Instrument $instrument, string $absolutePath): string
     {
-        $instrument->loadMissing(['items' => fn ($query) => $query->orderBy('sequence'), 'schoolClass']);
+        $instrument->loadMissing([
+            'items' => fn ($query) => $query->orderBy('sequence'),
+            'items.domainAllocations.domain',
+            'schoolClass',
+        ]);
 
         $spreadsheet = new Spreadsheet;
 
@@ -55,7 +61,7 @@ class WriteLapisGrid
             $this->headings($sheet, $items);
             $this->students($sheet, $instrument, $items->count());
             $this->contract($spreadsheet, $instrument, $items);
-            $this->presentation($sheet, $items->count());
+            $this->presentation($sheet, $items);
 
             (new XlsxWriter($spreadsheet))->save($absolutePath);
 
@@ -114,16 +120,27 @@ class WriteLapisGrid
     {
         $label = trim((string) ($item->label ?? '')) ?: (string) $item->code;
         $points = $this->decimal((string) $item->points_possible);
+        $domains = $item->domainAllocations
+            ->map(function ($allocation): string {
+                $name = mb_strtoupper((string) $allocation->domain->name);
+
+                return $allocation->allocation_percent === '100.0000'
+                    ? $name
+                    : $name.' '.$this->decimal((string) $allocation->allocation_percent).'%';
+            })
+            ->implode(' + ');
+        $identity = $label === $item->code ? $item->code : $item->code.' · '.$label;
+        $prefix = $domains === '' ? '' : $domains."\n";
 
         if ($item->is_bonus && $this->isZero($points)) {
             // A deduction: it takes away from the domain it belongs to and
             // never changes what that domain is out of (§8).
-            return $label.' (desconto)';
+            return $prefix.$identity.' (desconto)';
         }
 
         return $item->is_bonus
-            ? $label.' (bónus, máx. '.$points.')'
-            : $label.' (máx. '.$points.')';
+            ? $prefix.$identity.' (bónus, máx. '.$points.')'
+            : $prefix.$identity.' (máx. '.$points.')';
     }
 
     protected function students(Worksheet $sheet, Instrument $instrument, int $itemCount): void
@@ -217,7 +234,10 @@ class WriteLapisGrid
         }
     }
 
-    protected function presentation(Worksheet $sheet, int $itemCount): void
+    /**
+     * @param  Collection<int, InstrumentItem>  $items
+     */
+    protected function presentation(Worksheet $sheet, $items): void
     {
         // The identity column is hidden rather than absent: the teacher never
         // has to see it, and deleting a column they cannot see is not something
@@ -226,23 +246,58 @@ class WriteLapisGrid
         $sheet->getColumnDimension(LapisGridContract::COLUMN_NUMBER)->setWidth(6);
         $sheet->getColumnDimension(LapisGridContract::COLUMN_NAME)->setWidth(32);
 
-        for ($index = 0; $index < $itemCount; $index++) {
+        foreach ($items as $index => $item) {
             $sheet->getColumnDimension($this->itemColumn($index))->setWidth(16);
+            $this->styleItemHeading($sheet, $items, $item, $index);
         }
 
-        $lastColumn = $itemCount === 0
+        $lastColumn = $items->isEmpty()
             ? LapisGridContract::COLUMN_NAME
-            : $this->itemColumn($itemCount - 1);
+            : $this->itemColumn($items->count() - 1);
 
         $heading = $sheet->getStyle(
             LapisGridContract::COLUMN_ENROLLMENT.LapisGridContract::HEADER_ROW.':'.$lastColumn.LapisGridContract::HEADER_ROW,
         );
         $heading->getFont()->setBold(true);
         $heading->getAlignment()->setWrapText(true)->setVertical(Alignment::VERTICAL_CENTER);
+        $sheet->getRowDimension(LapisGridContract::HEADER_ROW)->setRowHeight(42);
 
         // Names and numbers stay put while the teacher scrolls right through
         // sixteen items — the difference between a usable grid and a guess.
         $sheet->freezePane(LapisGridContract::FIRST_ITEM_COLUMN.LapisGridContract::FIRST_DATA_ROW);
+    }
+
+    /**
+     * Adjacent questions from the same single domain share a restrained fill;
+     * a medium left border marks where the next domain starts. A multi-domain
+     * question deliberately gets the neutral fill: it remains one item column
+     * and is not made to look as if it belonged wholly to either block.
+     *
+     * @param  Collection<int, InstrumentItem>  $items
+     */
+    protected function styleItemHeading(Worksheet $sheet, $items, InstrumentItem $item, int $index): void
+    {
+        $palette = ['DDEBF7', 'E2F0D9', 'FFF2CC', 'FCE4D6', 'E4DFEC', 'DDEBF7'];
+        $domainIds = $item->domainAllocations->pluck('domain_id')->all();
+        $singleDomainId = count($domainIds) === 1 ? (int) $domainIds[0] : null;
+        $orderedDomainIds = $items->flatMap(fn (InstrumentItem $candidate) => $candidate->domainAllocations->pluck('domain_id'))
+            ->unique()->values();
+        $paletteIndex = $singleDomainId === null ? null : $orderedDomainIds->search($singleDomainId);
+        $fill = $paletteIndex === null || $paletteIndex === false
+            ? 'E7E6E6'
+            : $palette[$paletteIndex % count($palette)];
+        $cell = $this->itemColumn($index).LapisGridContract::HEADER_ROW;
+
+        $sheet->getStyle($cell)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FF'.$fill);
+
+        $previous = $index === 0 ? null : $items[$index - 1];
+        $previousDomainIds = $previous?->domainAllocations->pluck('domain_id')->all() ?? [];
+
+        if ($index === 0 || $domainIds !== $previousDomainIds) {
+            $sheet->getStyle($cell)->getBorders()->getLeft()
+                ->setBorderStyle(Border::BORDER_MEDIUM)
+                ->getColor()->setARGB('FF7F8C8D');
+        }
     }
 
     protected function itemColumn(int $index): string
