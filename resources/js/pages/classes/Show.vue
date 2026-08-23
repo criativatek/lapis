@@ -63,6 +63,7 @@ const props = defineProps<{
         type: string;
         applied_on: string;
         status_label: string;
+        status: string;
     }[];
 }>();
 
@@ -473,7 +474,7 @@ function submitPhotos(): void {
             >
                 <li v-for="instrument in instruments" :key="instrument.ulid">
                     <Link
-                        :href="`/instruments/${instrument.ulid}`"
+                        :href="instrument.status === 'draft' ? `/instruments/${instrument.ulid}/edit` : `/instruments/${instrument.ulid}`"
                         class="flex items-center justify-between px-4 py-3 hover:bg-muted/30"
                     >
                         <span>
@@ -488,6 +489,7 @@ function submitPhotos(): void {
                         <Badge variant="secondary">{{
                             instrument.status_label
                         }}</Badge>
+                        <span v-if="instrument.status === 'draft'" class="ml-2 text-xs text-primary">Continuar preparação</span>
                     </Link>
                 </li>
             </ul>

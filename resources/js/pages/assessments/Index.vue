@@ -184,7 +184,7 @@ function hasNoApplicableStudents(assessment: Assessment): boolean {
                             </span>
                         </td>
                         <td class="px-4 py-3 text-right">
-                            <Link :href="`/assessments/${assessment.ulid}`" class="text-sm text-primary hover:underline">{{ assessment.action_label }}</Link>
+                            <Link :href="assessment.status === 'draft' ? `/instruments/${assessment.ulid}/edit` : `/assessments/${assessment.ulid}`" class="text-sm text-primary hover:underline">{{ assessment.action_label }}</Link>
                         </td>
                     </tr>
                 </tbody>

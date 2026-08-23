@@ -542,7 +542,7 @@ class ImportCorrectionGrid
             throw CorrectionImportException::instrumentNotInClass();
         }
 
-        if (! in_array($instrument->status, [InstrumentStatus::Draft, InstrumentStatus::Prepared, InstrumentStatus::InCorrection], true)) {
+        if (! in_array($instrument->status, [InstrumentStatus::Prepared, InstrumentStatus::InCorrection], true)) {
             throw CorrectionImportException::instrumentNotEligible($instrument->status->label());
         }
 

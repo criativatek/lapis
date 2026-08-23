@@ -59,4 +59,17 @@ class CorrectionWorkflowException extends RuntimeException
     {
         return new self(__('A correção deste elemento de avaliação está concluída. Reabra a correção para fazer alterações.'));
     }
+
+    /**
+     * Guards RecordScores::save() specifically — distinct from notInCorrection()
+     * (which guards concluding), because "prepare the grid first" is a different
+     * instruction than "this is already concluded, reopen it".
+     */
+    public static function notReadyForScoring(string $status): self
+    {
+        return new self(__(
+            'Só é possível lançar resultados numa grelha preparada ou em correção. Estado atual: :status.',
+            ['status' => $status],
+        ));
+    }
 }

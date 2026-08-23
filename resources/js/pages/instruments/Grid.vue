@@ -732,6 +732,7 @@ function revertCancellation(): void {
                       and a client-side navigation would try to render it.
                     -->
                     <a
+                        v-if="instrument.status !== 'draft'"
                         :href="`/instruments/${instrument.ulid}/grelha`"
                         class="text-sm text-muted-foreground hover:underline"
                     >

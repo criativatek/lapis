@@ -15,7 +15,7 @@ enum InstrumentStatus: string
     public function label(): string
     {
         return match ($this) {
-            self::Draft => __('Rascunho'),
+            self::Draft => __('Em preparação'),
             self::Prepared => __('Preparado'),
             self::InCorrection => __('Em correção'),
             self::Completed => __('Concluído'),

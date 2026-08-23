@@ -28,11 +28,20 @@ class RecordScores
      */
     public function save(Instrument $instrument, array $cells, User $actor): int
     {
-        // A closed correction is read-only, and that is enforced here rather
-        // than only in the grid: hiding the inputs is presentation, not access
-        // control. Reopening is the explicit way back.
+        // Scoring only opens once a grid is prepared, and closes again once
+        // its correction is completed — enforced here rather than only in the
+        // grid, since hiding the inputs is presentation, not access control.
+        // A draft grid in particular has to stay outside this window: it may
+        // still hold incomplete structure (null cotações, no domains), which
+        // is exactly why it isn't "prepared" yet. Completed keeps its own,
+        // more specific message ("reabra a correção") — the closed-and-done
+        // case is not the same instruction as "prepare it first".
         if ($instrument->status === InstrumentStatus::Completed) {
             throw CorrectionWorkflowException::correctionIsClosed();
+        }
+
+        if (! in_array($instrument->status, [InstrumentStatus::Prepared, InstrumentStatus::InCorrection], true)) {
+            throw CorrectionWorkflowException::notReadyForScoring($instrument->status->label());
         }
 
         // Validated before the transaction opens, not inside it: a rejected

@@ -11,7 +11,7 @@ type ItemRow = {
     group_index: number;
     code: string;
     label: string;
-    points_possible: number;
+    points_possible: number | null;
     is_bonus: boolean;
     has_scores: boolean;
     domains: { domain_id: number; allocation_percent: number }[];
@@ -50,11 +50,11 @@ const initial = {
     instrument_type_id: props.instrument.instrument_type_id,
     custom_instrument_type_name: '',
     applied_on: props.instrument.applied_on,
-    status: props.instrument.status,
     purpose: props.instrument.purpose,
     counts_toward_classification: props.instrument.counts_toward_classification,
     total_points: props.instrument.total_points ?? '',
     allow_bonus: props.instrument.allow_bonus,
+    submission_intent: 'prepare' as const,
     groups: props.instrument.groups,
     items: props.instrument.items,
 };
@@ -65,8 +65,8 @@ const initial = {
 
     <div class="mx-auto w-full max-w-3xl space-y-6 p-4">
         <Heading
-            :title="`Editar ${instrument.title}`"
-            :description="`${schoolClass.label} — questões, cotações e domínios.`"
+            :title="`Elemento de Avaliação — ${instrument.title}`"
+            description="Grelha de correção — Defina os domínios, questões e cotações deste Elemento de Avaliação."
         />
         <InstrumentForm
             :periods="periods"

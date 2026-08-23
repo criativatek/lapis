@@ -31,7 +31,7 @@ type WireItemRow = {
     group_index?: number;
     code: string;
     label: string;
-    points_possible: number;
+    points_possible: number | null;
     is_bonus: boolean;
     has_scores?: boolean;
     domains: WireAllocation[];
@@ -55,7 +55,7 @@ type ItemRow = {
     group_index: number;
     code: string;
     label: string;
-    points_possible: number;
+    points_possible: number | null;
     is_bonus: boolean;
     has_scores?: boolean;
     domains: Allocation[];
@@ -68,10 +68,10 @@ type WireInstrumentData = {
     instrument_type_id: number | null;
     custom_instrument_type_name: string;
     applied_on: string;
-    status: string;
     purpose: string;
     counts_toward_classification: boolean;
-    total_points: number | string;
+    total_points: number | string | null;
+    submission_intent: 'save' | 'prepare';
     allow_bonus: boolean;
     items: WireItemRow[];
 };
@@ -109,7 +109,7 @@ const props = defineProps<{
     defaultCreationMode?: 'quick' | 'detailed';
 }>();
 
-function pointsFromPercent(pointsPossible: number, allocationPercent: number): number {
+function pointsFromPercent(pointsPossible: number | null, allocationPercent: number): number {
     return Math.round(((Number(pointsPossible) || 0) * (Number(allocationPercent) || 0)) / 100 * 100) / 100;
 }
 
@@ -142,6 +142,7 @@ const form = useForm<InstrumentData>(
                     }))
                   : [{ label: '' }],
               items: props.initial.items.map(wireToUiItem),
+              submission_intent: 'prepare',
           }
         : {
               groups: [{ label: '' }],
@@ -150,11 +151,11 @@ const form = useForm<InstrumentData>(
               instrument_type_id: null,
               custom_instrument_type_name: '',
               applied_on: '',
-              status: 'prepared',
               purpose: 'summative',
               counts_toward_classification: true,
               total_points: 100,
               allow_bonus: false,
+              submission_intent: 'prepare',
               items: [
                   {
                       group_index: 0,
@@ -675,7 +676,6 @@ watch(selectedDomainIds, (domainIds) => {
 // Returning to the short form is safe only while no detailed structure would
 // be hidden. The form state is never reset when modes change.
 const canUseQuickMode = computed(() =>
-    !props.initial &&
     form.groups.length === 1 &&
     form.groups[0].label.trim() === '' &&
     form.items.length >= 1 &&
@@ -689,6 +689,10 @@ const canUseQuickMode = computed(() =>
     !form.allow_bonus &&
     selectedDomainIds.value.length >= 1,
 );
+
+if (props.initial && canUseQuickMode.value) {
+    creationMode.value = 'quick';
+}
 
 function showDetailedMode(): void {
     creationMode.value = 'detailed';
@@ -811,7 +815,8 @@ const quickStructureValid = computed(() => {
         });
 });
 
-function submit(): void {
+function submit(intent: 'save' | 'prepare'): void {
+    form.submission_intent = intent;
     form.transform((data) => ({
         ...data,
         quick: creationMode.value === 'quick',
@@ -855,7 +860,7 @@ function submit(): void {
 </script>
 
 <template>
-    <form class="space-y-8" @submit.prevent="submit">
+    <form class="space-y-8" @submit.prevent="submit('prepare')">
         <div v-if="!initial" class="grid grid-cols-2 rounded-lg border border-border bg-muted/30 p-1" aria-label="Modo de criação">
             <Button
                 type="button"
@@ -937,10 +942,11 @@ function submit(): void {
                     <Label for="quick-total-points">Cotação total</Label>
                     <Input
                         id="quick-total-points"
-                        v-model.number="form.total_points"
+                        :model-value="form.total_points ?? ''"
                         type="number"
                         min="0"
                         step="0.25"
+                        @update:model-value="form.total_points = $event === '' ? null : Number($event)"
                     />
                     <InputError :message="form.errors.total_points" />
                     <p class="text-xs text-muted-foreground">
@@ -1006,7 +1012,7 @@ function submit(): void {
                                 <span class="w-10 text-sm font-semibold">{{ item.code }}</span>
                                 <div class="flex items-center gap-2">
                                     <Input
-                                        :model-value="item.points_possible"
+                                        :model-value="item.points_possible ?? ''"
                                         type="number"
                                         min="0"
                                         step="0.25"
@@ -1061,7 +1067,7 @@ function submit(): void {
             </p>
 
             <p class="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                Ao guardar, o Elemento de Avaliação fica preparado para lançar resultados. Nunca fica concluído automaticamente.
+                Pode guardar a preparação e continuar mais tarde, ou preparar a grelha quando estiver completa.
             </p>
 
             <button type="button" class="flex items-center gap-1 text-sm text-muted-foreground" @click="showDetailedMode">
@@ -1184,10 +1190,11 @@ function submit(): void {
                 <Label for="total_points">Cotação total</Label>
                 <Input
                     id="total_points"
-                    v-model.number="form.total_points"
+                    :model-value="form.total_points ?? ''"
                     type="number"
                     min="0"
                     step="1"
+                    @update:model-value="form.total_points = $event === '' ? null : Number($event)"
                 />
                 <InputError :message="form.errors.total_points" />
             </div>
@@ -1377,10 +1384,11 @@ function submit(): void {
                     <div class="grid gap-1.5">
                         <Label class="text-xs">Cotação</Label>
                         <Input
-                            v-model.number="item.points_possible"
+                            :model-value="item.points_possible ?? ''"
                             type="number"
                             min="0"
                             step="0.25"
+                            @update:model-value="item.points_possible = $event === '' ? null : Number($event)"
                         />
                     </div>
                     <Button
@@ -1521,8 +1529,13 @@ function submit(): void {
             </template>
         </p>
 
-        <Button type="submit" :disabled="form.processing || !canSubmit || !quickStructureValid">{{
-            method === 'post' ? 'Criar elemento de avaliação' : 'Guardar alterações'
-        }}</Button>
+        <div class="flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="outline" :disabled="form.processing" @click="submit('save')">
+                {{ method === 'post' ? 'Guardar e continuar depois' : 'Guardar alterações' }}
+            </Button>
+            <Button type="submit" :disabled="form.processing || !canSubmit || !quickStructureValid">
+                Preparar grelha de correção
+            </Button>
+        </div>
     </form>
 </template>

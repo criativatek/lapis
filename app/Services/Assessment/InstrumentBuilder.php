@@ -6,6 +6,7 @@ use App\Models\Domain;
 use App\Models\Instrument;
 use App\Models\InstrumentGroup;
 use App\Models\InstrumentItem;
+use App\Models\InstrumentStatus;
 use App\Models\SchoolClass;
 use App\Support\Assessment\InstrumentValidationException;
 use Illuminate\Support\Collection;
@@ -23,7 +24,7 @@ class InstrumentBuilder
 {
     /**
      * @param  array<string, mixed>  $attributes
-     * @param  list<array{code: string, label?: ?string, points_possible: float, domains?: list<array{domain_id: int, allocation_percent: float}>, is_bonus?: bool}>  $items
+     * @param  list<array{code: string, label?: ?string, points_possible: ?float, domains?: list<array{domain_id: int, allocation_percent: float}>, is_bonus?: bool}>  $items
      * @param  list<array<string, mixed>>  $groups
      */
     public function create(SchoolClass $class, array $attributes, array $items, array $groups = []): Instrument
@@ -77,7 +78,7 @@ class InstrumentBuilder
      * rejected update never partially applies.
      *
      * @param  array<string, mixed>  $attributes
-     * @param  list<array{ulid?: ?string, code: string, label?: ?string, points_possible: float, is_bonus?: bool, domains?: list<array{domain_id: int, allocation_percent: float}>}>  $items
+     * @param  list<array{ulid?: ?string, code: string, label?: ?string, points_possible: ?float, is_bonus?: bool, domains?: list<array{domain_id: int, allocation_percent: float}>}>  $items
      * @param  list<array<string, mixed>>  $groups
      */
     public function update(Instrument $instrument, array $attributes, array $items, array $groups = []): Instrument
@@ -109,7 +110,7 @@ class InstrumentBuilder
 
             $highestScore = $existing->scores()->max('points_earned');
 
-            if ($highestScore !== null && (float) $itemData['points_possible'] < (float) $highestScore) {
+            if ($highestScore !== null && $itemData['points_possible'] !== null && (float) $itemData['points_possible'] < (float) $highestScore) {
                 throw InstrumentValidationException::pointsPossibleBelowExistingScore(
                     $existing->code,
                     rtrim(rtrim(number_format((float) $highestScore, 4, '.', ''), '0'), '.'),
@@ -180,7 +181,10 @@ class InstrumentBuilder
      */
     protected function guard(array $attributes, array $items, array $groups = []): void
     {
-        if ($items === []) {
+        $isDraft = ($attributes['status'] ?? null) === InstrumentStatus::Draft->value
+            || ($attributes['status'] ?? null) === InstrumentStatus::Draft;
+
+        if (! $isDraft && $items === []) {
             throw InstrumentValidationException::noItems();
         }
 
@@ -209,6 +213,10 @@ class InstrumentBuilder
             }
 
             $seenPerGroup[$groupIndex][$code] = true;
+        }
+
+        if ($isDraft) {
+            return;
         }
 
         foreach ($items as $index => $item) {

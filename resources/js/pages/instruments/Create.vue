@@ -9,7 +9,7 @@ type ItemRow = {
     ulid?: string;
     code: string;
     label: string;
-    points_possible: number;
+    points_possible: number | null;
     is_bonus: boolean;
     has_scores?: boolean;
     domains: { domain_id: number; allocation_percent: number }[];
@@ -41,8 +41,8 @@ defineProps<{
 
     <div class="mx-auto w-full max-w-3xl space-y-6 p-4">
         <Heading
-            :title="`Novo elemento de avaliação — ${schoolClass.label}`"
-            description="Configure questões, cotações, múltiplos domínios e restantes opções."
+            :title="`Novo Elemento de Avaliação — ${schoolClass.label}`"
+            description="Grelha de correção — Defina os domínios, questões e cotações deste Elemento de Avaliação."
         />
         <InstrumentForm
             :periods="periods"

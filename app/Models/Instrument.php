@@ -139,8 +139,12 @@ class Instrument extends Model
      * "100" where MySQL gives "100.0000" for the same sum, and a grade path must
      * not behave differently per engine.
      */
-    public function itemPointsTotal(): string
+    public function itemPointsTotal(): ?string
     {
+        if ($this->items()->where('is_bonus', false)->whereNull('points_possible')->exists()) {
+            return null;
+        }
+
         return number_format(
             (float) $this->items()->where('is_bonus', false)->sum('points_possible'),
             4,

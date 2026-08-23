@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
 type Domain = { id: number; label: string };
-type ItemDomains = { points_possible: number; domains: { domain_id: number; points: number }[] };
+type ItemDomains = { points_possible: number | null; domains: { domain_id: number; points: number }[] };
 
 const props = defineProps<{
     item: ItemDomains;

@@ -174,7 +174,7 @@ class AssessmentSummaryQuery
             // already receives from InstrumentController::show().
             'items' => $instrument->items->map(fn ($item) => [
                 'id' => $item->id,
-                'points_possible' => (float) $item->points_possible,
+                'points_possible' => $item->points_possible === null ? null : (float) $item->points_possible,
                 'is_bonus' => $item->is_bonus,
             ])->all(),
             'scores' => $scores->map(fn (StudentItemScore $score) => [
@@ -342,7 +342,8 @@ class AssessmentSummaryQuery
     public static function actionLabel(Instrument $instrument): string
     {
         return match ($instrument->status) {
-            InstrumentStatus::Draft, InstrumentStatus::Prepared => __('Abrir'),
+            InstrumentStatus::Draft => __('Continuar preparação'),
+            InstrumentStatus::Prepared => __('Abrir'),
             InstrumentStatus::InCorrection => __('Continuar'),
             InstrumentStatus::Completed, InstrumentStatus::Published => __('Ver'),
             InstrumentStatus::Cancelled, InstrumentStatus::Archived => __('Ver'),
@@ -373,7 +374,7 @@ class AssessmentSummaryQuery
     public static function stateLabel(Instrument $instrument): string
     {
         return match ($instrument->status) {
-            InstrumentStatus::Draft => __('Rascunho'),
+            InstrumentStatus::Draft => __('Em preparação'),
             InstrumentStatus::Prepared => $instrument->applied_on->isFuture() ? __('Agendada') : __('Por iniciar'),
             InstrumentStatus::InCorrection => __('Em correção'),
             InstrumentStatus::Completed, InstrumentStatus::Published => __('Concluída'),

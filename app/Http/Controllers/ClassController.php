@@ -104,6 +104,7 @@ class ClassController extends Controller
                     'type' => $instrument->type->name,
                     'applied_on' => $instrument->applied_on->toDateString(),
                     'status_label' => $instrument->status->label(),
+                    'status' => $instrument->status->value,
                 ]),
             // Names come from the encrypted identity — shown to the class's own
             // teacher, who is authorized. The pseudonym is what leaves the app.

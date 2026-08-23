@@ -12,6 +12,7 @@ type Instrument = {
     period: string;
     applied_on: string;
     status_label: string;
+    status: string;
     counts: boolean;
     items_count: number;
 };
@@ -47,9 +48,10 @@ defineProps<{
                 <tbody class="divide-y divide-border">
                     <tr v-for="instrument in instruments" :key="instrument.ulid" class="hover:bg-muted/30">
                         <td class="px-4 py-3">
-                            <Link :href="`/instruments/${instrument.ulid}`" class="font-medium hover:underline">
+                            <Link :href="instrument.status === 'draft' ? `/instruments/${instrument.ulid}/edit` : `/instruments/${instrument.ulid}`" class="font-medium hover:underline">
                                 {{ instrument.title }}
                             </Link>
+                            <Link v-if="instrument.status === 'draft'" :href="`/instruments/${instrument.ulid}/edit`" class="ml-2 text-xs text-primary hover:underline">Continuar preparação</Link>
                             <p class="text-xs text-muted-foreground">
                                 {{ instrument.type }} · {{ instrument.items_count }} questões
                                 <span v-if="!instrument.counts"> · não conta para a classificação</span>

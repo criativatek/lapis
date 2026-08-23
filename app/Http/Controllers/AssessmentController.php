@@ -8,6 +8,7 @@ use App\Models\InstrumentStatus;
 use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Assessment\AssessmentSummaryQuery;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
@@ -52,9 +53,13 @@ class AssessmentController extends Controller
      * teacher must teach this instrument's class. There is no InstrumentPolicy;
      * SchoolClassPolicy is what every instrument action already gates on.
      */
-    public function show(Instrument $instrument): Response
+    public function show(Instrument $instrument): Response|RedirectResponse
     {
         Gate::authorize('view', $instrument->schoolClass);
+
+        if ($instrument->status === InstrumentStatus::Draft) {
+            return to_route('instruments.edit', $instrument->ulid);
+        }
 
         return Inertia::render('assessments/Show', $this->summary->summaryFor($instrument));
     }

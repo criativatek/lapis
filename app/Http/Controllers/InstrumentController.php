@@ -51,6 +51,7 @@ class InstrumentController extends Controller
                 'period' => $instrument->academicPeriod->label,
                 'applied_on' => $instrument->applied_on->toDateString(),
                 'status_label' => $instrument->status->label(),
+                'status' => $instrument->status->value,
                 'counts' => $instrument->counts_toward_classification,
                 'items_count' => $instrument->items_count,
             ]);
@@ -93,7 +94,7 @@ class InstrumentController extends Controller
         try {
             $instrument = $this->builder->create(
                 $class,
-                $this->resolveInstrumentType($request->safe()->except(['items', 'groups', 'quick'])),
+                $this->attributesForSubmission($request),
                 $request->validated('items'),
                 $request->validated('groups') ?? [],
             );
@@ -101,7 +102,12 @@ class InstrumentController extends Controller
             return back()->withErrors(['items' => $exception->getMessage()])->withInput();
         }
 
-        return to_route('instruments.show', $instrument->ulid);
+        $prepared = $instrument->status === InstrumentStatus::Prepared;
+        Inertia::flash('toast', ['type' => 'success', 'message' => $prepared
+            ? 'Grelha de correção preparada para lançar resultados.'
+            : 'Grelha guardada. Pode continuar a preparação mais tarde.']);
+
+        return $prepared ? to_route('instruments.show', $instrument->ulid) : to_route('instruments.edit', $instrument->ulid);
     }
 
     /**
@@ -115,6 +121,7 @@ class InstrumentController extends Controller
     public function downloadGrid(Instrument $instrument, WriteLapisGrid $writer): BinaryFileResponse
     {
         Gate::authorize('view', $instrument->schoolClass);
+        abort_if($instrument->status === InstrumentStatus::Draft, 409, 'A grelha de correção ainda está em preparação.');
 
         $path = (string) tempnam(sys_get_temp_dir(), 'lapis-grid-');
         $writer->write($instrument, $path);
@@ -159,7 +166,7 @@ class InstrumentController extends Controller
                     'group_index' => $groupIndexById[$item->instrument_group_id] ?? 0,
                     'code' => $item->code,
                     'label' => $item->label ?? '',
-                    'points_possible' => (float) $item->points_possible,
+                    'points_possible' => $item->points_possible === null ? null : (float) $item->points_possible,
                     'is_bonus' => $item->is_bonus,
                     'has_scores' => $item->scores()->exists(),
                     'domains' => $item->domainAllocations->map(fn ($allocation) => [
@@ -181,19 +188,23 @@ class InstrumentController extends Controller
         try {
             $this->builder->update(
                 $instrument,
-                $this->resolveInstrumentType($request->safe()->except(['items', 'groups', 'quick'])),
+                $this->attributesForSubmission($request, $instrument),
                 $request->validated('items'),
-                // A group ulid belonging to a different instrument is dropped
-                // here: the request rule only proves it is this organization's,
-                // and only the controller knows which instrument is being
-                // edited. syncGroups then treats it as a new group.
+                // The Form Request rejects foreign group identities. This
+                // remains a defence-in-depth filter for non-HTTP callers.
                 $this->groupsOfThisInstrument($instrument, $request->validated('groups') ?? []),
             );
         } catch (InstrumentValidationException $exception) {
             return back()->withErrors(['items' => $exception->getMessage()])->withInput();
         }
 
-        return to_route('instruments.show', $instrument->ulid);
+        $instrument->refresh();
+        $prepared = $instrument->status === InstrumentStatus::Prepared;
+        Inertia::flash('toast', ['type' => 'success', 'message' => $prepared
+            ? 'Grelha de correção preparada para lançar resultados.'
+            : 'Grelha guardada. Pode continuar a preparação mais tarde.']);
+
+        return $prepared ? to_route('instruments.show', $instrument->ulid) : to_route('instruments.edit', $instrument->ulid);
     }
 
     /**
@@ -355,9 +366,13 @@ class InstrumentController extends Controller
     /**
      * The grading grid: students in rows, items in columns (§12.4).
      */
-    public function show(Instrument $instrument): Response
+    public function show(Instrument $instrument): Response|RedirectResponse
     {
         Gate::authorize('view', $instrument->schoolClass);
+
+        if ($instrument->status === InstrumentStatus::Draft) {
+            return to_route('instruments.edit', $instrument->ulid);
+        }
 
         $instrument->load(['items.domainAllocations.domain', 'schoolClass', 'academicPeriod', 'type']);
 
@@ -418,7 +433,7 @@ class InstrumentController extends Controller
                 'id' => $item->id,
                 'code' => $item->code,
                 'label' => $item->label,
-                'points_possible' => (float) $item->points_possible,
+                'points_possible' => $item->points_possible === null ? null : (float) $item->points_possible,
                 'is_bonus' => $item->is_bonus,
                 'domains' => $item->domainAllocations->map(fn ($allocation) => [
                     'domain_id' => (int) $allocation->domain_id,
@@ -557,6 +572,23 @@ class InstrumentController extends Controller
         return $attributes;
     }
 
+    /** @return array<string, mixed> */
+    protected function attributesForSubmission(InstrumentRequest $request, ?Instrument $instrument = null): array
+    {
+        $intent = $request->validated('submission_intent');
+        $attributes = $request->safe()->except(['items', 'groups', 'quick', 'submission_intent']);
+        $attributes['status'] = match (true) {
+            $intent === 'prepare' && ($instrument === null || $instrument->status === InstrumentStatus::Draft) => InstrumentStatus::Prepared,
+            $intent === 'save' && $instrument === null => InstrumentStatus::Draft,
+            // Neither branch above matched, which only happens with a real
+            // $instrument: a null one always takes one of them (intent is
+            // only ever 'save' or 'prepare', per InstrumentRequest).
+            default => $instrument->status,
+        };
+
+        return $this->resolveInstrumentType($attributes);
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -608,7 +640,7 @@ class InstrumentController extends Controller
             'items' => array_map(fn (InstrumentItem $item) => [
                 'code' => $item->code,
                 'label' => $item->label,
-                'points_possible' => (float) $item->points_possible,
+                'points_possible' => $item->points_possible === null ? null : (float) $item->points_possible,
                 'is_bonus' => $item->is_bonus,
                 'domains' => array_values(array_filter(array_map(
                     fn ($allocation) => in_array($allocation->domain_id, $validDomainIds, true) ? [

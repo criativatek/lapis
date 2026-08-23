@@ -56,6 +56,7 @@ class InstrumentRequest extends FormRequest
     {
         return [
             'quick' => ['sometimes', 'boolean'],
+            'submission_intent' => ['required', Rule::in(['save', 'prepare'])],
             'title' => ['required', 'string', 'max:200'],
             'academic_period_id' => ['required', new BelongsToCurrentOrganization(AcademicPeriod::class)],
             // Instrument types may be system-wide (organization_id NULL); the rule
@@ -83,14 +84,6 @@ class InstrumentRequest extends FormRequest
             // restore on revert), and only revertCancellation() may clear it. Allowing
             // it here would let a generic update silently produce a "cancelled"
             // instrument with none of that bookkeeping, which then crashes revert.
-            'status' => [
-                'required',
-                Rule::when(
-                    $this->boolean('quick'),
-                    Rule::in(['prepared']),
-                    Rule::in(['draft', 'prepared', 'in_correction', 'completed', 'published', 'archived']),
-                ),
-            ],
             'purpose' => ['required', Rule::in(['diagnostic', 'formative', 'summative', 'other'])],
             // Required on update — an existing instrument's own value must
             // always be explicit. Optional on create only: leaving it out of
@@ -106,7 +99,7 @@ class InstrumentRequest extends FormRequest
             // step="0.25" is enforced exactly, never by a float comparison
             // that a value like 7.1428... could slip past.
             'total_points' => [
-                Rule::when($this->boolean('quick'), 'required', 'nullable'),
+                Rule::when($this->isPreparing(), 'required', 'nullable'),
                 'numeric',
                 'min:0',
                 'multiple_of:0.25',
@@ -124,7 +117,7 @@ class InstrumentRequest extends FormRequest
             'groups.*.ulid' => ['nullable', 'string', new BelongsToCurrentOrganization(InstrumentGroup::class, 'ulid')],
             'groups.*.label' => ['nullable', 'string', 'max:120', Rule::when($this->boolean('quick'), 'prohibited')],
 
-            'items' => ['required', 'array', 'min:1'],
+            'items' => [Rule::when($this->isPreparing(), 'required', 'sometimes'), 'array', Rule::when($this->isPreparing(), 'min:1')],
             'items.*' => ['array'],
             'items.*.ulid' => ['nullable', 'string', new BelongsToCurrentOrganization(InstrumentItem::class, 'ulid')],
             // Which submitted group the question sits in. A code is unique
@@ -143,14 +136,18 @@ class InstrumentRequest extends FormRequest
             ],
             'items.*.label' => ['nullable', 'string', 'max:500', Rule::when($this->boolean('quick'), 'prohibited')],
             'items.*.points_possible' => [
-                'required',
+                Rule::when($this->isPreparing(), 'required', 'nullable'),
                 'numeric',
                 'min:0',
                 'multiple_of:0.25',
             ],
             'items.*.is_bonus' => ['nullable', 'boolean', Rule::when($this->boolean('quick'), 'declined')],
             'items.*.domains' => [
-                Rule::when($this->boolean('quick'), ['required', 'array', 'min:1'], ['nullable', 'array']),
+                Rule::when(
+                    $this->boolean('quick') && $this->isPreparing(),
+                    ['required', 'array', 'min:1'],
+                    ['nullable', 'array'],
+                ),
             ],
             'items.*.domains.*.domain_id' => ['required', new BelongsToCurrentOrganization(Domain::class)],
             'items.*.domains.*.allocation_percent' => [
@@ -187,6 +184,23 @@ class InstrumentRequest extends FormRequest
 
             $validDomainIds = $class->profileVersion?->domains()->pluck('domain_id') ?? collect();
             $items = $this->input('items', []);
+
+            $instrument = $this->route('instrument');
+            if ($instrument instanceof Instrument) {
+                $ownGroupUlids = $instrument->groups()->pluck('ulid');
+                foreach ($this->input('groups', []) as $groupIndex => $group) {
+                    if (is_array($group) && isset($group['ulid']) && ! $ownGroupUlids->contains($group['ulid'])) {
+                        $validator->errors()->add("groups.{$groupIndex}.ulid", 'O grupo selecionado não pertence a esta grelha de correção.');
+                    }
+                }
+
+                $ownItemUlids = $instrument->items()->pluck('ulid');
+                foreach (is_array($items) ? $items : [] as $itemIndex => $item) {
+                    if (is_array($item) && isset($item['ulid']) && ! $ownItemUlids->contains($item['ulid'])) {
+                        $validator->errors()->add("items.{$itemIndex}.ulid", 'A questão selecionada não pertence a esta grelha de correção.');
+                    }
+                }
+            }
 
             if (! is_array($items)) {
                 return;
@@ -250,5 +264,10 @@ class InstrumentRequest extends FormRequest
         $class = $this->route('class');
 
         return $class instanceof SchoolClass ? $class : null;
+    }
+
+    protected function isPreparing(): bool
+    {
+        return $this->input('submission_intent') === 'prepare';
     }
 }

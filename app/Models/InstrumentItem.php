@@ -24,7 +24,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $code
  * @property string|null $label
  * @property int $sequence
- * @property string $points_possible
+ * @property string|null $points_possible
  * @property string $scoring_mode
  * @property bool $is_bonus
  * @property string|null $source_group_label

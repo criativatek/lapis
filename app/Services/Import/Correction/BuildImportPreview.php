@@ -834,7 +834,7 @@ class BuildImportPreview
     protected function eligibleInstruments(SchoolClass $class): array
     {
         $instruments = $class->instruments()
-            ->whereIn('status', [InstrumentStatus::Draft->value, InstrumentStatus::Prepared->value, InstrumentStatus::InCorrection->value])
+            ->whereIn('status', [InstrumentStatus::Prepared->value, InstrumentStatus::InCorrection->value])
             ->with(['items.group', 'academicPeriod'])
             ->orderByDesc('applied_on')
             ->get();

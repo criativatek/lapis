@@ -117,7 +117,6 @@ class ResolveLapisGrid
         }
 
         return in_array($instrument->status, [
-            InstrumentStatus::Draft,
             InstrumentStatus::Prepared,
             InstrumentStatus::InCorrection,
         ], true) ? $instrument : null;
