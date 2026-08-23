@@ -13,6 +13,7 @@ use App\Rules\BelongsToCurrentOrganization;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 /**
  * Shape validation for an instrument and its items. The multi-row rules — domain
@@ -54,6 +55,7 @@ class InstrumentRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'quick' => ['sometimes', 'boolean'],
             'title' => ['required', 'string', 'max:200'],
             'academic_period_id' => ['required', new BelongsToCurrentOrganization(AcademicPeriod::class)],
             // Instrument types may be system-wide (organization_id NULL); the rule
@@ -81,7 +83,14 @@ class InstrumentRequest extends FormRequest
             // restore on revert), and only revertCancellation() may clear it. Allowing
             // it here would let a generic update silently produce a "cancelled"
             // instrument with none of that bookkeeping, which then crashes revert.
-            'status' => ['required', Rule::in(['draft', 'prepared', 'in_correction', 'completed', 'published', 'archived'])],
+            'status' => [
+                'required',
+                Rule::when(
+                    $this->boolean('quick'),
+                    Rule::in(['prepared']),
+                    Rule::in(['draft', 'prepared', 'in_correction', 'completed', 'published', 'archived']),
+                ),
+            ],
             'purpose' => ['required', Rule::in(['diagnostic', 'formative', 'summative', 'other'])],
             // Required on update — an existing instrument's own value must
             // always be explicit. Optional on create only: leaving it out of
@@ -92,9 +101,14 @@ class InstrumentRequest extends FormRequest
             // former. 'sometimes' means "validate as boolean if present, skip
             // silently if absent" — never coerces a missing key into false.
             'counts_toward_classification' => [$this->route('instrument') instanceof Instrument ? 'required' : 'sometimes', 'boolean'],
-            'total_points' => ['nullable', 'numeric', 'min:0'],
+            'total_points' => [
+                Rule::when($this->boolean('quick'), 'required', 'nullable'),
+                'numeric',
+                'min:0',
+                Rule::when($this->boolean('quick'), Rule::in([100, 100.0, '100', '100.0'])),
+            ],
             'weight' => ['nullable', 'numeric', 'min:0'],
-            'allow_bonus' => ['required', 'boolean'],
+            'allow_bonus' => ['required', 'boolean', Rule::when($this->boolean('quick'), 'declined')],
             'internal_notes' => ['nullable', 'string'],
 
             // Optional: an instrument with no groups submitted gets the implicit
@@ -102,23 +116,115 @@ class InstrumentRequest extends FormRequest
             // not unique — two groups may share a name, since identity is the
             // ulid. Cross-instrument tampering is caught in the controller,
             // which knows which instrument is being edited.
-            'groups' => ['sometimes', 'array'],
+            'groups' => ['sometimes', 'array', Rule::when($this->boolean('quick'), 'size:1')],
             'groups.*.ulid' => ['nullable', 'string', new BelongsToCurrentOrganization(InstrumentGroup::class, 'ulid')],
-            'groups.*.label' => ['nullable', 'string', 'max:120'],
+            'groups.*.label' => ['nullable', 'string', 'max:120', Rule::when($this->boolean('quick'), 'prohibited')],
 
-            'items' => ['required', 'array', 'min:1'],
+            'items' => ['required', 'array', 'min:1', Rule::when($this->boolean('quick'), 'size:1')],
+            'items.*' => ['array'],
             'items.*.ulid' => ['nullable', 'string', new BelongsToCurrentOrganization(InstrumentItem::class, 'ulid')],
             // Which submitted group the question sits in. A code is unique
             // within its group, not across the instrument — that rule spans
             // rows, so it lives in InstrumentBuilder::guard().
-            'items.*.group_index' => ['nullable', 'integer', 'min:0'],
-            'items.*.code' => ['required', 'string', 'max:16'],
+            'items.*.group_index' => [
+                'nullable',
+                'integer',
+                'min:0',
+                Rule::when($this->boolean('quick'), Rule::in([0])),
+            ],
+            'items.*.code' => [
+                'required',
+                'string',
+                'max:16',
+                Rule::when($this->boolean('quick'), Rule::in(['Q1'])),
+            ],
             'items.*.label' => ['nullable', 'string', 'max:500'],
-            'items.*.points_possible' => ['required', 'numeric', 'min:0'],
-            'items.*.is_bonus' => ['nullable', 'boolean'],
-            'items.*.domains' => ['nullable', 'array'],
+            'items.*.points_possible' => [
+                'required',
+                'numeric',
+                'min:0',
+                Rule::when($this->boolean('quick'), Rule::in([100, 100.0, '100', '100.0'])),
+            ],
+            'items.*.is_bonus' => ['nullable', 'boolean', Rule::when($this->boolean('quick'), 'declined')],
+            'items.*.domains' => [
+                Rule::when($this->boolean('quick'), ['required', 'array', 'size:1'], ['nullable', 'array']),
+            ],
             'items.*.domains.*.domain_id' => ['required', new BelongsToCurrentOrganization(Domain::class)],
-            'items.*.domains.*.allocation_percent' => ['required', 'numeric', 'min:0', 'max:100'],
+            'items.*.domains.*.allocation_percent' => [
+                'required',
+                'numeric',
+                'min:0',
+                'max:100',
+                Rule::when($this->boolean('quick'), Rule::in([100, 100.0, '100', '100.0'])),
+            ],
         ];
+    }
+
+    /**
+     * IDs may belong to the current organization and still be wrong for this
+     * class. These checks bind periods to its academic year and domains to its
+     * active profile version, for both quick and detailed creation.
+     *
+     * @return list<callable(Validator): void>
+     */
+    public function after(): array
+    {
+        return [function (Validator $validator): void {
+            $class = $this->schoolClass();
+
+            if ($class === null) {
+                return;
+            }
+
+            $periodId = $this->input('academic_period_id');
+
+            if ($periodId !== null && ! AcademicPeriod::whereKey($periodId)
+                ->where('academic_year_id', $class->academic_year_id)->exists()) {
+                $validator->errors()->add('academic_period_id', 'O período selecionado não pertence ao ano letivo da turma.');
+            }
+
+            $validDomainIds = $class->profileVersion?->domains()->pluck('domain_id') ?? collect();
+            $items = $this->input('items', []);
+
+            if (! is_array($items)) {
+                return;
+            }
+
+            foreach ($items as $itemIndex => $item) {
+                if (! is_array($item) || ! is_array($item['domains'] ?? null)) {
+                    continue;
+                }
+
+                foreach ($item['domains'] as $allocationIndex => $allocation) {
+                    if (! is_array($allocation) || ! isset($allocation['domain_id'])) {
+                        continue;
+                    }
+
+                    if ($validDomainIds->contains((int) $allocation['domain_id'])) {
+                        continue;
+                    }
+
+                    $validator->errors()->add(
+                        "items.{$itemIndex}.domains.{$allocationIndex}.domain_id",
+                        'O domínio selecionado não pertence ao perfil ativo da turma.',
+                    );
+
+                    break;
+                }
+            }
+        }];
+    }
+
+    protected function schoolClass(): ?SchoolClass
+    {
+        $instrument = $this->route('instrument');
+
+        if ($instrument instanceof Instrument) {
+            return $instrument->schoolClass;
+        }
+
+        $class = $this->route('class');
+
+        return $class instanceof SchoolClass ? $class : null;
     }
 }

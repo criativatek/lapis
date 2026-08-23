@@ -82,6 +82,7 @@ class InstrumentController extends Controller
             ...$this->formOptions($class),
             'importableInstruments' => $this->importableInstrumentsFor($class),
             'defaultAcademicPeriodId' => $defaultAcademicPeriodId,
+            'defaultCreationMode' => 'quick',
         ]);
     }
 
@@ -92,7 +93,7 @@ class InstrumentController extends Controller
         try {
             $instrument = $this->builder->create(
                 $class,
-                $this->resolveInstrumentType($request->safe()->except(['items', 'groups'])),
+                $this->resolveInstrumentType($request->safe()->except(['items', 'groups', 'quick'])),
                 $request->validated('items'),
                 $request->validated('groups') ?? [],
             );
@@ -180,7 +181,7 @@ class InstrumentController extends Controller
         try {
             $this->builder->update(
                 $instrument,
-                $this->resolveInstrumentType($request->safe()->except(['items', 'groups'])),
+                $this->resolveInstrumentType($request->safe()->except(['items', 'groups', 'quick'])),
                 $request->validated('items'),
                 // A group ulid belonging to a different instrument is dropped
                 // here: the request rule only proves it is this organization's,

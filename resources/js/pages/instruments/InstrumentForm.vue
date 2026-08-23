@@ -86,6 +86,7 @@ type ImportableInstrument = {
 };
 
 const props = defineProps<{
+    schoolClass: { ulid: string; label: string };
     periods: Option[];
     types: Option[];
     domains: Option[];
@@ -97,6 +98,7 @@ const props = defineProps<{
     // caller can pass so the teacher does not have to re-pick it. Ignored
     // once editing an existing instrument, whose own period always wins.
     defaultAcademicPeriodId?: number | null;
+    defaultCreationMode?: 'quick' | 'detailed';
 }>();
 
 function pointsFromPercent(pointsPossible: number, allocationPercent: number): number {
@@ -158,6 +160,11 @@ const form = useForm<InstrumentData>(
           },
 );
 
+type CreationMode = 'quick' | 'detailed';
+const creationMode = ref<CreationMode>(
+    props.initial ? 'detailed' : (props.defaultCreationMode ?? 'quick'),
+);
+
 // Tracks an explicit professor decision on "Contabiliza para classificação",
 // separately from whatever value the checkbox currently shows — the checkbox
 // alone can't tell a suggested default apart from a deliberate choice, since
@@ -181,6 +188,17 @@ function onPurposeChange(): void {
     if (form.purpose === 'diagnostic') {
         form.counts_toward_classification = false;
     }
+}
+
+function onQuickTypeChange(): void {
+    const selectedType = props.types.find((type) => type.id === form.instrument_type_id);
+
+    if (!selectedType?.default_purpose) {
+        return;
+    }
+
+    form.purpose = selectedType.default_purpose;
+    form.counts_toward_classification = selectedType.default_purpose !== 'diagnostic';
 }
 
 /**
@@ -467,6 +485,40 @@ const selectedDomainIds = ref<number[]>(
     ),
 );
 
+const primaryDomainId = computed<number | null>({
+    get: () => selectedDomainIds.value[0] ?? null,
+    set: (domainId) => {
+        selectedDomainIds.value = domainId === null ? [] : [domainId];
+    },
+});
+
+// Returning to the short form is safe only while no detailed structure would
+// be hidden. The form state is never reset when modes change.
+const canUseQuickMode = computed(() =>
+    !props.initial &&
+    form.groups.length === 1 &&
+    form.groups[0].label.trim() === '' &&
+    form.items.length === 1 &&
+    form.items[0].group_index === 0 &&
+    form.items[0].code === 'Q1' &&
+    form.items[0].label.trim() === '' &&
+    Number(form.items[0].points_possible) === 100 &&
+    !form.items[0].is_bonus &&
+    !form.allow_bonus &&
+    Number(form.total_points) === 100 &&
+    selectedDomainIds.value.length <= 1,
+);
+
+function showDetailedMode(): void {
+    creationMode.value = 'detailed';
+}
+
+function showQuickMode(): void {
+    if (canUseQuickMode.value) {
+        creationMode.value = 'quick';
+    }
+}
+
 // Precomputed (not plain functions called inline in v-for) so typing in one
 // item doesn't re-run a fresh map/filter over the whole list on every
 // keystroke for every domain section on screen.
@@ -500,7 +552,10 @@ watch(
                 continue;
             }
 
-            if (item.domains[0].domain_id === domainId) {
+            if (creationMode.value === 'quick') {
+                item.domains[0].domain_id = domainId;
+                item.domains[0].points = points;
+            } else if (item.domains[0].domain_id === domainId) {
                 item.domains[0].points = points;
             }
         }
@@ -546,6 +601,7 @@ const domainTotals = computed(() => {
 function submit(): void {
     form.transform((data) => ({
         ...data,
+        quick: creationMode.value === 'quick',
         // An empty label means the group was never named — it stays the
         // implicit group, which the server records as NULL.
         groups: data.groups.map((group) => ({
@@ -587,8 +643,109 @@ function submit(): void {
 
 <template>
     <form class="space-y-8" @submit.prevent="submit">
+        <div v-if="!initial" class="grid grid-cols-2 rounded-lg border border-border bg-muted/30 p-1" aria-label="Modo de criação">
+            <Button
+                type="button"
+                :variant="creationMode === 'quick' ? 'secondary' : 'ghost'"
+                :disabled="!canUseQuickMode"
+                class="min-h-10"
+                :title="canUseQuickMode ? undefined : 'A configuração detalhada já contém dados que ficariam ocultos.'"
+                @click="showQuickMode"
+            >
+                Criação rápida
+            </Button>
+            <Button
+                type="button"
+                :variant="creationMode === 'detailed' ? 'secondary' : 'ghost'"
+                class="min-h-10"
+                @click="showDetailedMode"
+            >
+                Criação detalhada
+            </Button>
+        </div>
+
+        <section v-if="creationMode === 'quick'" class="space-y-5">
+            <div class="rounded-lg border border-border bg-muted/20 px-3 py-2.5">
+                <p class="text-xs font-medium text-muted-foreground">Turma</p>
+                <p class="text-sm font-semibold">{{ schoolClass.label }}</p>
+            </div>
+
+            <div class="grid gap-4 sm:grid-cols-2">
+                <div class="grid gap-2 sm:col-span-2">
+                    <Label for="quick-title">Designação</Label>
+                    <Input id="quick-title" v-model="form.title" placeholder="Ex.: Ficha de compreensão leitora" />
+                    <InputError :message="form.errors.title" />
+                </div>
+                <div class="grid gap-2">
+                    <Label for="quick-instrument-type">Tipo de Elemento de Avaliação</Label>
+                    <select
+                        id="quick-instrument-type"
+                        v-model.number="form.instrument_type_id"
+                        class="h-10 rounded-md border border-input bg-transparent px-3 text-sm"
+                        @change="onQuickTypeChange"
+                    >
+                        <option :value="null" disabled>Escolher…</option>
+                        <option v-for="type in types" :key="type.id" :value="type.id">{{ type.label }}</option>
+                        <option :value="OTHER_TYPE_ID">Outro…</option>
+                    </select>
+                    <InputError :message="form.errors.instrument_type_id" />
+                    <Input
+                        v-if="form.instrument_type_id === OTHER_TYPE_ID"
+                        v-model="form.custom_instrument_type_name"
+                        placeholder="Designação do tipo"
+                    />
+                    <InputError :message="form.errors.custom_instrument_type_name" />
+                    <p v-if="form.instrument_type_id !== null" class="text-xs text-muted-foreground">
+                        A finalidade sugerida pelo tipo é aplicada. Pode alterá-la na criação detalhada.
+                    </p>
+                </div>
+                <div class="grid gap-2">
+                    <Label for="quick-applied-on">Data</Label>
+                    <Input id="quick-applied-on" v-model="form.applied_on" type="date" />
+                    <InputError :message="form.errors.applied_on" />
+                </div>
+                <div class="grid gap-2">
+                    <Label for="quick-period">Período</Label>
+                    <select
+                        id="quick-period"
+                        v-model.number="form.academic_period_id"
+                        class="h-10 rounded-md border border-input bg-transparent px-3 text-sm"
+                    >
+                        <option :value="null" disabled>Escolher…</option>
+                        <option v-for="period in periods" :key="period.id" :value="period.id">{{ period.label }}</option>
+                    </select>
+                    <InputError :message="form.errors.academic_period_id" />
+                </div>
+                <div class="grid gap-2">
+                    <Label for="quick-domain">Domínio principal</Label>
+                    <select
+                        v-if="domains.length"
+                        id="quick-domain"
+                        v-model.number="primaryDomainId"
+                        class="h-10 rounded-md border border-input bg-transparent px-3 text-sm"
+                    >
+                        <option :value="null" disabled>Escolher…</option>
+                        <option v-for="domain in domains" :key="domain.id" :value="domain.id">{{ domain.label }}</option>
+                    </select>
+                    <p v-else class="text-xs text-muted-foreground">
+                        A turma não tem perfil ativo, por isso não há domínios para escolher.
+                    </p>
+                    <InputError :message="form.errors['items.0.domains.0.domain_id']" />
+                    <InputError :message="form.errors['items.0.domains']" />
+                </div>
+            </div>
+
+            <p class="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                Ao guardar, o Elemento de Avaliação fica preparado para lançar resultados. Nunca fica concluído automaticamente.
+            </p>
+
+            <button type="button" class="text-sm font-medium text-primary underline-offset-4 hover:underline" @click="showDetailedMode">
+                Avaliar vários domínios ou configurar questões e pesos
+            </button>
+        </section>
+
         <div
-            v-if="importableInstruments && importableInstruments.length"
+            v-if="creationMode === 'detailed' && importableInstruments && importableInstruments.length"
             class="flex flex-wrap items-end gap-3 rounded-lg border border-dashed border-border p-3"
         >
             <div class="grid gap-1.5">
@@ -621,7 +778,7 @@ function submit(): void {
             </p>
         </div>
 
-        <section class="grid gap-4 sm:grid-cols-2">
+        <section v-if="creationMode === 'detailed'" class="grid gap-4 sm:grid-cols-2">
             <div class="grid gap-2 sm:col-span-2">
                 <Label for="title">Designação</Label>
                 <Input
@@ -727,7 +884,7 @@ function submit(): void {
             </label>
         </section>
 
-        <section class="space-y-3">
+        <section v-if="creationMode === 'detailed'" class="space-y-3">
             <div>
                 <h2 class="text-sm font-semibold">Domínios avaliados</h2>
                 <p class="text-sm text-muted-foreground">
@@ -760,6 +917,7 @@ function submit(): void {
             "Questões" and never learns that a group exists. Sections only
             appear once they organise the instrument themselves.
         -->
+        <template v-if="creationMode === 'detailed'">
         <section
             v-for="(group, groupIndex) in form.groups"
             :key="group.ulid ?? `group-${groupIndex}`"
@@ -962,8 +1120,9 @@ function submit(): void {
                 />
             </div>
         </section>
+        </template>
 
-        <div class="flex flex-wrap gap-2">
+        <div v-if="creationMode === 'detailed'" class="flex flex-wrap gap-2">
             <Button
                 v-if="!groupsVisible"
                 type="button"
@@ -985,7 +1144,7 @@ function submit(): void {
         </div>
 
         <section
-            v-if="selectedDomainIds.length"
+            v-if="creationMode === 'detailed' && selectedDomainIds.length"
             class="space-y-2 rounded-lg border border-border p-3"
         >
             <h2 class="text-sm font-semibold">Resumo por domínio</h2>
@@ -1005,6 +1164,7 @@ function submit(): void {
         </section>
 
         <div
+            v-if="creationMode === 'detailed'"
             class="flex items-center justify-between rounded-lg border px-4 py-2.5 text-sm"
             :class="
                 totalMatches
@@ -1021,7 +1181,7 @@ function submit(): void {
         </div>
 
         <p
-            v-if="!canSubmit"
+            v-if="creationMode === 'detailed' && !canSubmit"
             class="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
         >
             <template v-if="duplicateCodeIndexes.size > 0">

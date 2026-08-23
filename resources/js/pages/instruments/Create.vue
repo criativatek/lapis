@@ -32,6 +32,7 @@ defineProps<{
     domains: Option[];
     importableInstruments: ImportableInstrument[];
     defaultAcademicPeriodId: number | null;
+    defaultCreationMode: 'quick';
 }>();
 </script>
 
@@ -49,6 +50,8 @@ defineProps<{
             :domains="domains"
             :importable-instruments="importableInstruments"
             :default-academic-period-id="defaultAcademicPeriodId"
+            :default-creation-mode="defaultCreationMode"
+            :school-class="schoolClass"
             :submit-url="`/classes/${schoolClass.ulid}/instruments`"
             method="post"
         />

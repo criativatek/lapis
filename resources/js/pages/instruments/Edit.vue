@@ -73,6 +73,7 @@ const initial = {
             :types="types"
             :domains="domains"
             :initial="initial"
+            :school-class="schoolClass"
             :submit-url="`/instruments/${instrument.ulid}`"
             method="put"
         />
