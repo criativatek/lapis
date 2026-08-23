@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
-import { ArrowDown, ArrowUp, Plus, Trash2 } from '@lucide/vue';
+import { ArrowDown, ArrowUp, ChevronRight, Plus, Trash2 } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
@@ -649,10 +649,10 @@ function submit(): void {
                 :variant="creationMode === 'quick' ? 'secondary' : 'ghost'"
                 :disabled="!canUseQuickMode"
                 class="min-h-10"
-                :title="canUseQuickMode ? undefined : 'A configuração detalhada já contém dados que ficariam ocultos.'"
+                :title="canUseQuickMode ? undefined : 'A configuração avançada já contém dados que ficariam ocultos.'"
                 @click="showQuickMode"
             >
-                Criação rápida
+                Criação simples
             </Button>
             <Button
                 type="button"
@@ -660,11 +660,15 @@ function submit(): void {
                 class="min-h-10"
                 @click="showDetailedMode"
             >
-                Criação detalhada
+                Criação avançada
             </Button>
         </div>
 
         <section v-if="creationMode === 'quick'" class="space-y-5">
+            <p class="text-sm text-muted-foreground">
+                Crie o elemento com os dados essenciais. O LÁPIS prepara automaticamente a estrutura base.
+            </p>
+
             <div class="rounded-lg border border-border bg-muted/20 px-3 py-2.5">
                 <p class="text-xs font-medium text-muted-foreground">Turma</p>
                 <p class="text-sm font-semibold">{{ schoolClass.label }}</p>
@@ -696,7 +700,7 @@ function submit(): void {
                     />
                     <InputError :message="form.errors.custom_instrument_type_name" />
                     <p v-if="form.instrument_type_id !== null" class="text-xs text-muted-foreground">
-                        A finalidade sugerida pelo tipo é aplicada. Pode alterá-la na criação detalhada.
+                        A finalidade sugerida pelo tipo é aplicada. Pode alterá-la na criação avançada.
                     </p>
                 </div>
                 <div class="grid gap-2">
@@ -739,8 +743,12 @@ function submit(): void {
                 Ao guardar, o Elemento de Avaliação fica preparado para lançar resultados. Nunca fica concluído automaticamente.
             </p>
 
-            <button type="button" class="text-sm font-medium text-primary underline-offset-4 hover:underline" @click="showDetailedMode">
-                Avaliar vários domínios ou configurar questões e pesos
+            <button type="button" class="flex items-center gap-1 text-sm text-muted-foreground" @click="showDetailedMode">
+                Precisa de configurar questões, pesos ou vários domínios?
+                <span class="inline-flex items-center gap-0.5 font-medium text-primary underline-offset-4 hover:underline">
+                    Usar criação avançada
+                    <ChevronRight class="size-3.5" />
+                </span>
             </button>
         </section>
 

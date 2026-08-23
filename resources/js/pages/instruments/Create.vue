@@ -42,7 +42,7 @@ defineProps<{
     <div class="mx-auto w-full max-w-3xl space-y-6 p-4">
         <Heading
             :title="`Novo elemento de avaliação — ${schoolClass.label}`"
-            description="Questões, cotações e a que domínios pertencem."
+            description="Configure questões, cotações, múltiplos domínios e restantes opções."
         />
         <InstrumentForm
             :periods="periods"
