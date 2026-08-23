@@ -2,6 +2,18 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.59.0] — 2026-08-23
+
+### Added
+
+- **A grelha de correção passa a poder ser guardada "Em preparação" e retomada mais tarde.** A validação manual da Fatia H mostrou uma confusão conceptual: o formulário de criação não constrói o Elemento de Avaliação (o teste, a ficha, o trabalho) — constrói a respetiva grelha de correção (domínios, questões, cotações, alocações). Duas ações distintas na criação e na edição de uma grelha ainda em preparação — "Guardar e continuar depois" e "Preparar grelha de correção" — tornam isto explícito: guardar persiste a estrutura tal como está, mesmo incompleta (zero questões, cotações por preencher, domínios por definir, soma diferente de 100); preparar aplica todas as validações que já existiam e transita a grelha para "Preparado", o estado que sempre existiu para poder lançar resultados.
+
+  **Reutiliza o estado técnico `draft` que já existia** (`InstrumentStatus::Draft`, agora rotulado "Em preparação" em vez de "Rascunho") — não foi criado nenhum estado novo. O cliente deixa de poder escolher o estado diretamente: envia apenas a intenção (`submission_intent: save|prepare`), e é o servidor que deriva o estado daí.
+
+  **Uma grelha "Em preparação" fica isolada do lançamento de resultados.** Auditados e fechados os pontos que hoje assumiam "existe um Instrument = está pronto": a página de lançamento redireciona para a edição em vez de mostrar uma grelha de alunos incompleta; guardar uma pontuação passa a exigir "Preparado" ou "Em correção" (antes só recusava "Concluído"); a importação de resultados e o descarregamento da grelha Excel deixam de aceitar um elemento em preparação. Nas listagens (Elementos de Avaliação, página da turma, Registo de Avaliações), "Em preparação" aparece com a ação "Continuar preparação", nunca "Abrir"/"Ver resultados".
+
+  **Uma migration reversível** torna `instrument_items.points_possible` opcional — para representar "questão ainda sem cotação" sem usar 0 (que seria indistinguível de uma cotação real de zero). Elementos já existentes em Preparado, Em correção, Concluído ou Anulado não são afetados nem reclassificados. Funciona nos dois modos de criação (simples e avançada), sem sacrificar nenhuma capacidade existente da criação avançada. `ClassResultsCalculator` e `BuildResultsProgression` não foram alterados.
+
 ## [0.58.1] — 2026-08-23
 
 ### Fixed
