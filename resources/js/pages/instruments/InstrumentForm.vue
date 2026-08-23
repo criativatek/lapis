@@ -15,6 +15,14 @@ type Option = { id: number; label: string; default_purpose?: string };
 // InstrumentType from that name instead of an existing one.
 const OTHER_TYPE_ID = 0;
 
+// The one granularity every points input in this form (quick and detailed
+// alike) already declares via step="0.25" — a quarter point, exactly
+// representable in binary floating point, so working in whole multiples of
+// it never drifts. Anything that generates points automatically has to
+// round to a multiple of this, not to an arbitrary decimal precision, or the
+// value it produces is one the input's own step immediately rejects.
+const COTATION_STEP = 0.25;
+
 // The shape the server sends/expects: domain shares as percentages of the
 // item's own points_possible.
 type WireAllocation = { domain_id: number; allocation_percent: number };
@@ -539,14 +547,18 @@ function distributeQuickPoints(): void {
         return;
     }
 
-    const total = Math.max(0, Number(form.total_points) || 0);
-    const even = Math.floor((total / form.items.length) * 10000) / 10000;
+    // Divide in whole steps, not raw points — 100 / 14 as points gives
+    // 7.1428571..., a value no cotação input here accepts (step="0.25").
+    // 100 / 14 as steps (400 steps of 0.25) gives an integer quotient with a
+    // remainder, both of which convert back to exact multiples of the step.
+    const totalSteps = Math.round(Math.max(0, Number(form.total_points) || 0) / COTATION_STEP);
+    const evenSteps = Math.floor(totalSteps / form.items.length);
 
     form.items.forEach((item, index) => {
-        const points = index === form.items.length - 1
-            ? Math.round((total - even * (form.items.length - 1)) * 10000) / 10000
-            : even;
-        updateItemPoints(item, points);
+        const steps = index === form.items.length - 1
+            ? totalSteps - evenSteps * (form.items.length - 1)
+            : evenSteps;
+        updateItemPoints(item, steps * COTATION_STEP);
     });
 }
 
@@ -727,12 +739,21 @@ watch(
     { deep: true, immediate: true },
 );
 
+// Rounded to the same 4 decimal places points_possible is stored at —
+// summing several exact values can still leave a binary tail (7.25 + 9 can
+// print as 16.25 or as 16.249999999999998 depending on what else fed into
+// the sum), and that tail is what the teacher would see and what a naive
+// !== 100 check would fail on. Rounding here fixes the number itself, not
+// just how it's printed — totalMatches below still compares with a
+// tolerance on top of it, but this is what keeps 100 reading as 100.
 const itemsTotal = computed(() =>
-    form.items.reduce(
-        (sum, item) =>
-            item.is_bonus ? sum : sum + (Number(item.points_possible) || 0),
-        0,
-    ),
+    Math.round(
+        form.items.reduce(
+            (sum, item) =>
+                item.is_bonus ? sum : sum + (Number(item.points_possible) || 0),
+            0,
+        ) * 10000,
+    ) / 10000,
 );
 
 const totalMatches = computed(
@@ -757,6 +778,13 @@ const domainTotals = computed(() => {
                 totals.set(allocation.domain_id, (totals.get(allocation.domain_id) ?? 0) + (Number(allocation.points) || 0));
             }
         }
+    }
+
+    // Same reasoning as itemsTotal: round the accumulated value itself, not
+    // just its later display, so a domain that should read as 25 never
+    // prints as 24.999999999999996.
+    for (const [domainId, total] of totals) {
+        totals.set(domainId, Math.round(total * 10000) / 10000);
     }
 
     return totals;

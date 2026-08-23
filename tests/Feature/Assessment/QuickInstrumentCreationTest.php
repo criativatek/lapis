@@ -198,6 +198,83 @@ class QuickInstrumentCreationTest extends TestCase
         $this->inTenant(fn () => $this->assertSame(0, Instrument::count()));
     }
 
+    /**
+     * The cotação step every points input in the form declares (step="0.25")
+     * — 100 / 14 as raw points is 7.1428571..., a value the input itself
+     * rejects. Distributed in steps of 0.25 instead, 100 / 14 has to land on
+     * 13 items of 7.00 and one of 9.00: 400 quarter-points total, 28 each for
+     * 13 items (364), the remaining 36 (9.00) on the last one.
+     */
+    #[Test]
+    public function one_hundred_points_across_fourteen_questions_lands_on_valid_cotation_steps(): void
+    {
+        $scenario = $this->inTenant(fn (): array => $this->scenarioWithDomains(1));
+        $points = array_fill(0, 13, 7.0);
+        $points[] = 9.0;
+        $payload = $this->multiDomainPayload($scenario, [14], $points);
+
+        $this->actingAs($this->teacher)
+            ->post("/classes/{$scenario['class']->ulid}/instruments", $payload)
+            ->assertSessionHasNoErrors();
+
+        $this->inTenant(function (): void {
+            $instrument = Instrument::sole();
+
+            // A decimal string comparison, not a float one: this is exactly
+            // the "does 100 still read as 100" question the bug report was
+            // about, and a loose float assertion would hide the same
+            // rounding drift that produced 99.99999999999999 in the UI.
+            $this->assertSame('100.0000', (string) $instrument->fresh()->total_points);
+            $this->assertSame(
+                ['7.0000', '7.0000', '7.0000', '7.0000', '7.0000', '7.0000', '7.0000', '7.0000', '7.0000', '7.0000', '7.0000', '7.0000', '7.0000', '9.0000'],
+                $instrument->items()->pluck('points_possible')->all(),
+            );
+        });
+    }
+
+    /**
+     * 100 / 3 as raw points is 33.333... — in 0.25 steps (400 quarter-points
+     * total, 133 each for 2 items, 134 on the last) it lands on 33.25, 33.25
+     * and 33.50, all valid, summing exactly to 100.
+     */
+    #[Test]
+    public function one_hundred_points_across_three_questions_lands_on_valid_cotation_steps(): void
+    {
+        $scenario = $this->inTenant(fn (): array => $this->scenarioWithDomains(1));
+        $payload = $this->multiDomainPayload($scenario, [3], [33.25, 33.25, 33.5]);
+
+        $this->actingAs($this->teacher)
+            ->post("/classes/{$scenario['class']->ulid}/instruments", $payload)
+            ->assertSessionHasNoErrors();
+
+        $this->inTenant(function (): void {
+            $instrument = Instrument::sole();
+
+            $this->assertSame('100.0000', (string) $instrument->fresh()->total_points);
+            $this->assertSame(
+                ['33.2500', '33.2500', '33.5000'],
+                $instrument->items()->pluck('points_possible')->all(),
+            );
+        });
+    }
+
+    #[Test]
+    public function an_item_cotation_off_the_valid_step_grid_is_rejected(): void
+    {
+        $scenario = $this->inTenant(fn (): array => $this->scenario());
+        $payload = $this->quickPayload($scenario);
+        // The exact value the bug report saw generated: not a multiple of the
+        // 0.25 the cotação input's own step already declares.
+        $payload['items'][0]['points_possible'] = 7.1428;
+        $payload['total_points'] = 7.1428;
+
+        $this->actingAs($this->teacher)
+            ->post("/classes/{$scenario['class']->ulid}/instruments", $payload)
+            ->assertSessionHasErrors(['total_points', 'items.0.points_possible']);
+
+        $this->inTenant(fn () => $this->assertSame(0, Instrument::count()));
+    }
+
     #[Test]
     public function a_quickly_created_element_opens_and_edits_in_the_normal_detailed_flow(): void
     {

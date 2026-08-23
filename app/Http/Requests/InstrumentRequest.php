@@ -101,10 +101,15 @@ class InstrumentRequest extends FormRequest
             // former. 'sometimes' means "validate as boolean if present, skip
             // silently if absent" — never coerces a missing key into false.
             'counts_toward_classification' => [$this->route('instrument') instanceof Instrument ? 'required' : 'sometimes', 'boolean'],
+            // multiple_of runs on BigDecimal (brick/math), not float — the
+            // 0.25 grain every points input in the form already declares via
+            // step="0.25" is enforced exactly, never by a float comparison
+            // that a value like 7.1428... could slip past.
             'total_points' => [
                 Rule::when($this->boolean('quick'), 'required', 'nullable'),
                 'numeric',
                 'min:0',
+                'multiple_of:0.25',
             ],
             'weight' => ['nullable', 'numeric', 'min:0'],
             'allow_bonus' => ['required', 'boolean', Rule::when($this->boolean('quick'), 'declined')],
@@ -141,6 +146,7 @@ class InstrumentRequest extends FormRequest
                 'required',
                 'numeric',
                 'min:0',
+                'multiple_of:0.25',
             ],
             'items.*.is_bonus' => ['nullable', 'boolean', Rule::when($this->boolean('quick'), 'declined')],
             'items.*.domains' => [
