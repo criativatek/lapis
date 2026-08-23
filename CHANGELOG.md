@@ -2,6 +2,14 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.57.0] — 2026-08-23
+
+### Added
+
+- **Criação rápida de Elementos de Avaliação (Fatia H).** A criação passa a abrir num modo curto — turma, designação, tipo, data, período e domínio principal — em vez do formulário completo logo à partida, pensado sobretudo para tablet em contexto de sala de aula (sem modais, sem scroll longo, sem campos avançados visíveis). Escolher um único domínio aloca-lhe automaticamente 100%, reutilizando o mesmo mecanismo do modo detalhado (`InstrumentBuilder`); escolher mais do que um passa para a configuração detalhada de pesos. É possível alternar [Criação rápida]/[Criação detalhada] sem perder o que já estiver preenchido, sempre que a mudança for segura — a alternância bloqueia-se assim que existir estrutura detalhada que ficaria escondida. Um elemento criado no modo rápido é editado depois pelo fluxo detalhado normal, sem distinção.
+
+  **Sem tabela nova, sem modelo paralelo, sem endpoint próprio.** O modo rápido produz exatamente a mesma entidade canónica que o modo detalhado sempre produziu — um `Instrument`, um grupo implícito sem nome, um `InstrumentItem` `Q1` de 100 pontos, uma alocação de 100% — validada no servidor (`quick=true` não pode transportar múltiplos grupos/itens, bónus, estado concluído ou totais diferentes de 100). Nenhuma pontuação ou resultado é criado por omissão; guardar nunca conclui o elemento, exatamente como no modo detalhado. Reforçada a mesma validação de tenancy do fluxo detalhado (período pertence ao ano letivo da turma, domínio pertence ao perfil ativo da turma) para ambos os modos.
+
 ## [0.56.0] — 2026-08-23
 
 Release consolidada: reúne tudo o que foi concluído e testado desde a v0.45.9 — a versão confirmada ao vivo em produção (`74e8ff2`, 2026-08-22) — até este commit. Dez releases formais (v0.46.0 a v0.51.0) e cinco bumps informais desde então (v0.52.0 a v0.55.3), já individualmente documentados abaixo, mais as duas correções desta entrada. Zero migrations, dependências, variáveis de ambiente ou alterações de scheduler novas em todo o intervalo.
