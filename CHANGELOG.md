@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.58.1] — 2026-08-23
+
+### Fixed
+
+- **Precisão e uniformidade da distribuição automática de cotações, na Criação simples.** O smoke manual da v0.58.0 mostrou 100 pontos divididos por 14 questões a gerar 7,1428 — um valor que o próprio input de cotação (`step="0.25"`) rejeita — e o resumo a mostrar "99.99999999999999 / 100". A distribuição automática passa a trabalhar em unidades inteiras de 0,25 (não em pontos brutos arredondados a 4 casas decimais arbitrárias), o que elimina o problema de raiz. O resto de uma divisão não exata deixa de ser todo despejado numa única questão (100/14 já não dá 13×7,00 + 1×9,00) — passa a ser espalhado um passo de cada vez pelas últimas questões, tão uniformemente quanto a grelha de 0,25 permite (100/14 → 6×7,00 + 8×7,25). Os totais apresentados (por questão e por domínio) passam a ser arredondados no próprio valor, não só na apresentação, o que evita o artefacto de vírgula flutuante. A cotação total e a de cada questão passam também a exigir `multiple_of:0.25` no servidor — usando aritmética decimal exata, não comparação de floats — como proteção real, não só uma dica visual do formulário.
+
 ## [0.58.0] — 2026-08-23
 
 ### Added
