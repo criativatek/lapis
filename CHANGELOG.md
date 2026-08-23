@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.57.1] — 2026-08-23
+
+### Changed
+
+- **Nomenclatura e copy dos modos de criação de Elementos de Avaliação.** "Criação rápida"/"Criação detalhada" passam a "Criação simples"/"Criação avançada" — depois de validação visual, "detalhada" sugeria um fluxo lento, e o modo simples já produz um elemento perfeitamente completo. Novo subtítulo no modo simples ("Crie o elemento com os dados essenciais. O LÁPIS prepara automaticamente a estrutura base.") e descrição do modo avançado reescrita para explicar o motivo de o escolher. A ligação entre modos passa a uma pergunta seguida de uma ação claramente clicável, com indicador visual. Só linguagem — lógica, payloads, validações e testes de domínio inalterados.
+
 ## [0.57.0] — 2026-08-23
 
 ### Added
