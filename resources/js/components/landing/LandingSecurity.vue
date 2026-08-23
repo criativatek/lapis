@@ -18,7 +18,7 @@ const guarantees: readonly Guarantee[] = [
     },
     {
         icon: Layers,
-        title: 'Cada organização acede apenas ao que lhe pertence',
+        title: 'Cada conta acede apenas ao contexto autorizado',
         body: 'O isolamento é aplicado no servidor e nas regras de acesso.',
     },
     {
@@ -161,10 +161,10 @@ const guarantees: readonly Guarantee[] = [
             <p
                 class="mt-12 max-w-3xl text-sm leading-relaxed text-muted-foreground"
             >
-                A conformidade com o RGPD também depende das políticas de
-                proteção de dados da sua conta ou instituição. O que o LÁPIS
-                garante é a parte técnica — separação, cifra, isolamento e
-                rasto.
+                A conformidade com o RGPD não depende apenas da tecnologia. O
+                LÁPIS incorpora medidas técnicas de proteção, incluindo
+                separação de dados, cifragem, isolamento entre contas e
+                registo de operações.
             </p>
         </RevealOnScroll>
     </LandingSection>

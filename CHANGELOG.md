@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.61.2] — 2026-08-23
+
+### Fixed
+
+- **Copy da secção de privacidade e do CTA final da landing, transversal a todos os níveis de ensino.** Duas afinações à correção anterior: "Cada organização acede apenas ao que lhe pertence" passa a "Cada conta acede apenas ao contexto autorizado" (a conta, não a organização, é a unidade que faz sentido tanto no Pro individual como no Institucional); e o parágrafo de RGPD deixa de dizer "o que o LÁPIS garante" — uma afirmação absoluta demasiado forte para uma secção legal — passando a "a conformidade não depende apenas da tecnologia", que distingue corretamente medidas técnicas de responsabilidades do utilizador/organização. O CTA final ("O próximo período pode correr melhor do que o último... Monte um perfil, traga uma turma... Meia hora chega") presumia calendário escolar por períodos e um tom informal — passa a "A próxima etapa pode correr melhor do que a última... Crie o seu perfil de avaliação, importe uma turma..." sem promessa temporal arbitrária. "Não é pedido cartão" clarificado para "Não é necessário cartão de crédito" (ambíguo antes). Só copy — sem alterações de layout, lógica, planos/preços ou segurança real.
+
 ## [0.61.1] — 2026-08-23
 
 ### Fixed

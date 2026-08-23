@@ -22,13 +22,13 @@ defineProps<{ authenticated: boolean }>();
                 <h2
                     class="text-3xl font-semibold tracking-tight text-balance sm:text-4xl"
                 >
-                    O próximo período pode correr melhor do que o último.
+                    A próxima etapa pode correr melhor do que a última.
                 </h2>
                 <p
                     class="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-pretty text-muted-foreground"
                 >
-                    Monte um perfil, traga uma turma. Meia hora chega para
-                    perceber se o LÁPIS trabalha à sua maneira.
+                    Crie o seu perfil de avaliação, importe uma turma e veja o
+                    LÁPIS a trabalhar com a sua realidade.
                 </p>
 
                 <div class="mt-9 flex flex-wrap justify-center gap-3">
@@ -56,8 +56,8 @@ defineProps<{ authenticated: boolean }>();
                 </div>
 
                 <p class="mt-5 text-sm text-muted-foreground">
-                    Não é pedido cartão. O plano LÁPIS Base fica ativo de
-                    imediato.
+                    Não é necessário cartão de crédito. O plano LÁPIS Base
+                    fica ativo de imediato.
                 </p>
             </RevealOnScroll>
         </div>
