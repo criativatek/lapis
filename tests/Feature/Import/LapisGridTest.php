@@ -23,6 +23,7 @@ use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia;
 use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PHPUnit\Framework\Attributes\Test;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -334,16 +335,56 @@ class LapisGridTest extends CorrectionImportHttpTest
         }
 
         $this->assertSame([
-            'Compreensão do texto (máx. 20)',
-            'Gramática aplicada (máx. 20)',
-            'Produção escrita (máx. 20)',
+            "LEITURA\nQ1 · Compreensão do texto (máx. 20)",
+            "LEITURA\nQ2 · Gramática aplicada (máx. 20)",
+            "ESCRITA\nQ3 · Produção escrita (máx. 20)",
             // Not a bonus and not a question — a deduction, and named as one.
-            'Desconto por extensão (desconto)',
+            "ESCRITA\nDESC · Desconto por extensão (desconto)",
         ], $headings);
 
         // And no total: LÁPIS computes from the items and the instrument's own
         // rules, so a total in the file would be a second answer to one question.
         $this->assertNull($sheet->getCell('H1')->getValue());
+
+        $spreadsheet->disconnectWorksheets();
+    }
+
+    #[Test]
+    public function domain_blocks_are_visible_and_a_multi_domain_item_keeps_one_identified_column(): void
+    {
+        $instrument = $this->instrument();
+
+        app(CurrentOrganization::class)->runFor($this->organization, function () use ($instrument): void {
+            $item = $instrument->items()->where('code', 'Q2')->firstOrFail();
+            $allocations = $item->domainAllocations()->with('domain')->get();
+            $leitura = $allocations->sole();
+            $escrita = $instrument->items()->where('code', 'Q3')->firstOrFail()
+                ->domainAllocations()->sole()->domain;
+
+            $leitura->update(['allocation_percent' => 70]);
+            ItemDomainAllocation::create([
+                'instrument_item_id' => $item->id,
+                'domain_id' => $escrita->id,
+                'allocation_percent' => 30,
+            ]);
+        });
+
+        $spreadsheet = $this->workbook($this->download($instrument->fresh()));
+        $sheet = $spreadsheet->getActiveSheet();
+        $value = fn (string $name): ?string => LapisGridContract::unwrap(
+            $spreadsheet->getDefinedName($name)?->getValue(),
+        );
+        $q2 = app(CurrentOrganization::class)->runFor(
+            $this->organization,
+            fn () => $instrument->items()->where('code', 'Q2')->firstOrFail(),
+        );
+
+        $this->assertStringContainsString('LEITURA 70% + ESCRITA 30%', (string) $sheet->getCell('E1')->getValue());
+        $this->assertSame($q2->ulid, $value(LapisGridContract::itemName('E')));
+        $this->assertNull($sheet->getCell('H1')->getValue(), 'o item multidomínio não pode criar uma coluna duplicada');
+        $this->assertSame('FFDDEBF7', $sheet->getStyle('D1')->getFill()->getStartColor()->getARGB());
+        $this->assertSame('FFE7E6E6', $sheet->getStyle('E1')->getFill()->getStartColor()->getARGB());
+        $this->assertSame(Border::BORDER_MEDIUM, $sheet->getStyle('E1')->getBorders()->getLeft()->getBorderStyle());
 
         $spreadsheet->disconnectWorksheets();
     }
@@ -748,11 +789,16 @@ class LapisGridTest extends CorrectionImportHttpTest
 
             $this->assertCount($expected, $headings, "{$expected} itens têm de dar {$expected} colunas");
 
-            // The labels are the items' own, in the items' own order.
-            $this->assertSame(
-                array_column($rows, 'label'),
-                array_map(fn (string $heading): string => (string) preg_replace('/\s*\(máx\.[^)]*\)$/u', '', $heading), $headings),
+            // The heading is built purely from each item's own domain, code,
+            // label and points — nothing about the instrument as a whole.
+            // Every row here has a label distinct from its code and a single
+            // 100%-allocated domain, so headingFor()'s shape reduces to
+            // "DOMAIN\ncode · label (máx. points)".
+            $expectedHeadings = array_map(
+                fn (array $row): string => mb_strtoupper($row['domain'])."\n".$row['code'].' · '.$row['label'].' (máx. '.rtrim(rtrim(number_format($row['points'], 4, '.', ''), '0'), '.').')',
+                $rows,
             );
+            $this->assertSame($expectedHeadings, $headings);
 
             $spreadsheet->disconnectWorksheets();
         }
