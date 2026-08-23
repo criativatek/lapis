@@ -59,7 +59,7 @@ class InstrumentCustomTypeTest extends TestCase
             'instrument_type_id' => 0,
             'custom_instrument_type_name' => 'Portfólio Digital',
             'applied_on' => '2026-10-15',
-            'status' => 'prepared',
+            'submission_intent' => 'prepare',
             'purpose' => 'summative',
             'counts_toward_classification' => true,
             'total_points' => 100,

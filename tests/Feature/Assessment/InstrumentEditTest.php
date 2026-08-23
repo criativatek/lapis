@@ -107,7 +107,7 @@ class InstrumentEditTest extends TestCase
                     'academic_period_id' => $instrument->academic_period_id,
                     'instrument_type_id' => $instrument->instrument_type_id,
                     'applied_on' => $instrument->applied_on->toDateString(),
-                    'status' => $instrument->status->value,
+                    'submission_intent' => 'prepare',
                     'purpose' => $instrument->purpose,
                     'counts_toward_classification' => true,
                     'total_points' => 130,
@@ -149,7 +149,7 @@ class InstrumentEditTest extends TestCase
                     'academic_period_id' => $instrument->academic_period_id,
                     'instrument_type_id' => $instrument->instrument_type_id,
                     'applied_on' => $instrument->applied_on->toDateString(),
-                    'status' => $instrument->status->value,
+                    'submission_intent' => 'prepare',
                     'purpose' => $instrument->purpose,
                     'counts_toward_classification' => true,
                     'total_points' => 60,
@@ -180,6 +180,7 @@ class InstrumentEditTest extends TestCase
                     'instrument_type_id' => $instrument->instrument_type_id,
                     'applied_on' => $instrument->applied_on->toDateString(),
                     'status' => 'cancelled',
+                    'submission_intent' => 'prepare',
                     'purpose' => $instrument->purpose,
                     'counts_toward_classification' => true,
                     'total_points' => 100,
@@ -189,7 +190,7 @@ class InstrumentEditTest extends TestCase
                         ['ulid' => $q2->ulid, 'code' => 'Q2', 'points_possible' => 40],
                     ],
                 ])
-                ->assertSessionHasErrors('status');
+                ->assertSessionHasNoErrors();
 
             $this->assertSame('prepared', $instrument->refresh()->status->value);
         });

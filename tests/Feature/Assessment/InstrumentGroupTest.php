@@ -587,14 +587,13 @@ class InstrumentGroupTest extends TestCase
             $foreignUlid = $other->groups()->firstOrFail()->ulid;
             $item = $mine->items()->firstOrFail();
 
-            // The controller strips a ulid that is not this instrument's, so
-            // the payload reaching the builder carries none.
             $this->actingAs($this->user)->put("/instruments/{$mine->ulid}", [
                 ...$this->attributes($class, ['title' => 'Meu']),
+                'submission_intent' => 'prepare',
                 'allow_bonus' => false,
                 'groups' => [['ulid' => $foreignUlid, 'label' => 'Roubado']],
                 'items' => [['ulid' => $item->ulid, 'group_index' => 0, 'code' => 'Q1', 'points_possible' => 100]],
-            ]);
+            ])->assertSessionHasErrors('groups.0.ulid');
 
             // The other instrument's group is untouched.
             $this->assertSame('Gramática', $other->groups()->firstOrFail()->label);
@@ -624,6 +623,7 @@ class InstrumentGroupTest extends TestCase
             // carries the group's ulid through.
             $this->actingAs($this->user)->put("/instruments/{$instrument->ulid}", [
                 ...$this->attributes($class),
+                'submission_intent' => 'prepare',
                 'allow_bonus' => false,
                 'groups' => [['ulid' => $group->ulid, 'label' => null]],
                 'items' => [

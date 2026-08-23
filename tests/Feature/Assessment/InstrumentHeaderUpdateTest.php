@@ -69,7 +69,13 @@ class InstrumentHeaderUpdateTest extends TestCase
             'instrument_type_id' => InstrumentType::where('code', 'TEST')->firstOrFail()->id,
             'title' => 'Teste A',
             'applied_on' => '2026-10-15',
+            // 'status' is only read by makeInstrument() below, which calls
+            // InstrumentBuilder directly (the column has no DB default);
+            // HTTP requests built from this same array derive their status
+            // from 'submission_intent' instead and simply ignore 'status',
+            // since InstrumentRequest no longer validates that field.
             'status' => 'prepared',
+            'submission_intent' => 'prepare',
             'counts_toward_classification' => true,
             'purpose' => 'summative',
             'total_points' => 100,
@@ -78,7 +84,14 @@ class InstrumentHeaderUpdateTest extends TestCase
 
     protected function makeInstrument(SchoolClass $class): Instrument
     {
-        return app(InstrumentBuilder::class)->create($class, $this->attributes($class), [
+        // 'submission_intent' only exists for the HTTP-facing InstrumentRequest
+        // — InstrumentController strips it before handing attributes to the
+        // builder, and this direct call has to do the same, or Instrument's
+        // mass-assignment guard rejects a key that was never meant for it.
+        $attributes = $this->attributes($class);
+        unset($attributes['submission_intent']);
+
+        return app(InstrumentBuilder::class)->create($class, $attributes, [
             ['code' => 'Q1', 'points_possible' => 100],
         ]);
     }
@@ -93,6 +106,7 @@ class InstrumentHeaderUpdateTest extends TestCase
 
         return array_merge([
             ...$this->attributes($class),
+            'submission_intent' => 'prepare',
             'allow_bonus' => false,
             'groups' => [['ulid' => $group->ulid, 'label' => $group->label]],
             'items' => $instrument->items()->orderBy('sequence')->get()->map(fn ($item) => [

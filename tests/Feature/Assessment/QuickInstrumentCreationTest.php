@@ -15,6 +15,8 @@ use App\Models\SchoolClass;
 use App\Models\StudentItemScore;
 use App\Models\Subject;
 use App\Models\User;
+use App\Services\Assessment\RecordScores;
+use App\Support\Assessment\CorrectionWorkflowException;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
@@ -34,6 +36,139 @@ class QuickInstrumentCreationTest extends TestCase
 
         $this->teacher = User::factory()->create();
         $this->organization = $this->teacher->personalOrganization();
+    }
+
+    #[Test]
+    public function an_incomplete_grid_can_be_saved_reopened_and_saved_again_as_draft(): void
+    {
+        $scenario = $this->inTenant(fn (): array => $this->scenario());
+        $payload = $this->quickPayload($scenario);
+        $payload['quick'] = false;
+        $payload['submission_intent'] = 'save';
+        $payload['total_points'] = null;
+        $payload['items'] = [];
+
+        $this->actingAs($this->teacher)
+            ->post("/classes/{$scenario['class']->ulid}/instruments", $payload)
+            ->assertSessionHasNoErrors();
+
+        $instrument = $this->inTenant(fn (): Instrument => Instrument::where('class_id', $scenario['class']->id)->sole());
+        $this->assertSame(InstrumentStatus::Draft, $instrument->status);
+        $this->assertSame(0, $this->inTenant(fn (): int => StudentItemScore::count()));
+
+        $this->actingAs($this->teacher)->get("/instruments/{$instrument->ulid}")
+            ->assertRedirect(route('instruments.edit', $instrument->ulid));
+        $this->actingAs($this->teacher)->get("/assessments/{$instrument->ulid}")
+            ->assertRedirect(route('instruments.edit', $instrument->ulid));
+        $this->actingAs($this->teacher)->get("/instruments/{$instrument->ulid}/grelha")
+            ->assertStatus(409);
+        $this->actingAs($this->teacher)->get('/assessments')
+            ->assertInertia(fn ($page) => $page
+                ->where('assessments.0.state_label', 'Em preparação')
+                ->where('assessments.0.action_label', 'Continuar preparação'));
+
+        $payload['items'] = [[
+            'code' => 'Q1',
+            'label' => 'Questão por cotar',
+            'points_possible' => null,
+            'is_bonus' => false,
+            'domains' => [[
+                'domain_id' => $scenario['domain']->id,
+                'allocation_percent' => 0,
+            ]],
+        ]];
+
+        $this->actingAs($this->teacher)->put("/instruments/{$instrument->ulid}", $payload)
+            ->assertSessionHasNoErrors();
+
+        $this->inTenant(function () use ($instrument): void {
+            $this->assertNull($instrument->fresh()->items()->sole()->points_possible);
+            $this->assertSame(InstrumentStatus::Draft, $instrument->fresh()->status);
+        });
+    }
+
+    #[Test]
+    public function a_draft_only_becomes_prepared_after_the_strong_validation_passes(): void
+    {
+        $scenario = $this->inTenant(fn (): array => $this->scenario());
+        $payload = $this->quickPayload($scenario);
+        $payload['submission_intent'] = 'save';
+        $payload['total_points'] = null;
+        $payload['items'][0]['points_possible'] = null;
+
+        $this->actingAs($this->teacher)->post("/classes/{$scenario['class']->ulid}/instruments", $payload);
+        $instrument = $this->inTenant(fn (): Instrument => Instrument::where('class_id', $scenario['class']->id)->sole());
+
+        $payload['submission_intent'] = 'prepare';
+        $this->actingAs($this->teacher)->put("/instruments/{$instrument->ulid}", $payload)
+            ->assertSessionHasErrors(['total_points', 'items.0.points_possible']);
+        $this->assertSame(InstrumentStatus::Draft, $this->inTenant(fn () => $instrument->fresh()->status));
+
+        $payload['total_points'] = 100;
+        $payload['items'][0]['points_possible'] = 100;
+        $this->actingAs($this->teacher)->put("/instruments/{$instrument->ulid}", $payload)
+            ->assertSessionHasNoErrors();
+        $this->assertSame(InstrumentStatus::Prepared, $this->inTenant(fn () => $instrument->fresh()->status));
+    }
+
+    #[Test]
+    public function a_five_domain_zero_hundred_partial_allocation_is_preserved_in_draft(): void
+    {
+        $scenario = $this->inTenant(fn (): array => $this->scenarioWithDomains(5));
+        $payload = $this->quickPayload($scenario);
+        $payload['quick'] = false;
+        $payload['submission_intent'] = 'save';
+        $payload['items'] = [[
+            'code' => 'Q1',
+            'points_possible' => 25,
+            'domains' => collect($scenario['domains'])->map(fn (Domain $domain, int $index) => [
+                'domain_id' => $domain->id,
+                'allocation_percent' => $index === 4 ? 100 : 0,
+            ])->all(),
+        ], [
+            'code' => 'Q2',
+            'points_possible' => null,
+            'domains' => [],
+        ]];
+
+        $this->actingAs($this->teacher)->post("/classes/{$scenario['class']->ulid}/instruments", $payload)
+            ->assertSessionHasNoErrors();
+
+        $this->inTenant(function (): void {
+            $instrument = Instrument::sole();
+            $this->assertSame(InstrumentStatus::Draft, $instrument->status);
+            $this->assertCount(5, $instrument->items()->where('code', 'Q1')->sole()->domainAllocations);
+            $this->assertNull($instrument->items()->where('code', 'Q2')->sole()->points_possible);
+        });
+    }
+
+    #[Test]
+    public function a_draft_cannot_accept_scores_or_be_completed(): void
+    {
+        $scenario = $this->inTenant(fn (): array => $this->scenario());
+        $payload = $this->quickPayload($scenario);
+        $payload['submission_intent'] = 'save';
+        $this->actingAs($this->teacher)->post("/classes/{$scenario['class']->ulid}/instruments", $payload);
+        $instrument = $this->inTenant(fn (): Instrument => Instrument::where('class_id', $scenario['class']->id)->sole());
+
+        $this->inTenant(function () use ($instrument): void {
+            try {
+                app(RecordScores::class)->save($instrument, [[
+                    'enrollment_id' => 1,
+                    'instrument_item_id' => $instrument->items()->sole()->id,
+                    'result_state' => 'assessed',
+                    'points_earned' => 10,
+                ]], $this->teacher);
+                $this->fail('A grelha em preparação aceitou resultados.');
+            } catch (CorrectionWorkflowException) {
+                $this->addToAssertionCount(1);
+            }
+        });
+        $this->actingAs($this->teacher)->post("/instruments/{$instrument->ulid}/complete")
+            ->assertSessionHasErrors('status');
+
+        $this->assertSame(0, $this->inTenant(fn (): int => StudentItemScore::count()));
+        $this->assertSame(InstrumentStatus::Draft, $this->inTenant(fn () => $instrument->fresh()->status));
     }
 
     #[Test]
@@ -438,13 +573,16 @@ class QuickInstrumentCreationTest extends TestCase
         $payload['instrument_type_id'] = $foreign['type']->id;
         $payload['items'][0]['domains'][0]['domain_id'] = $foreign['domain']->id;
 
-        $this->actingAs($this->teacher)
-            ->post("/classes/{$scenario['class']->ulid}/instruments", $payload)
-            ->assertSessionHasErrors([
-                'academic_period_id',
-                'instrument_type_id',
-                'items.0.domains.0.domain_id',
-            ]);
+        foreach (['save', 'prepare'] as $intent) {
+            $payload['submission_intent'] = $intent;
+            $this->actingAs($this->teacher)
+                ->post("/classes/{$scenario['class']->ulid}/instruments", $payload)
+                ->assertSessionHasErrors([
+                    'academic_period_id',
+                    'instrument_type_id',
+                    'items.0.domains.0.domain_id',
+                ]);
+        }
 
         $this->inTenant(fn () => $this->assertSame(0, Instrument::count()));
     }
@@ -489,8 +627,7 @@ class QuickInstrumentCreationTest extends TestCase
         $this->actingAs($this->teacher)
             ->post("/classes/{$scenario['class']->ulid}/instruments", $payload)
             ->assertSessionHasErrors([
-                // status/allow_bonus/is_bonus/groups stay rejected outright.
-                'status',
+                // Lifecycle is derived from submission_intent; the free status is ignored.
                 'allow_bonus',
                 'groups',
                 'groups.0.label',
@@ -613,7 +750,7 @@ class QuickInstrumentCreationTest extends TestCase
             'academic_period_id' => $scenario['period']->id,
             'instrument_type_id' => $scenario['type']->id,
             'applied_on' => '2026-10-15',
-            'status' => 'prepared',
+            'submission_intent' => 'prepare',
             'purpose' => 'summative',
             'counts_toward_classification' => true,
             'total_points' => 100,

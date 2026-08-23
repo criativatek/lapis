@@ -160,7 +160,7 @@ class AssessmentControllerTest extends TestCase
             ['class' => $class, 'period' => $period] = $this->classScenario();
 
             $expectedLabels = [
-                'draft' => 'Rascunho',
+                'draft' => 'Em preparação',
                 'in_correction' => 'Em correção',
                 'completed' => 'Concluída',
                 'published' => 'Concluída',
@@ -300,7 +300,7 @@ class AssessmentControllerTest extends TestCase
             ['class' => $class, 'period' => $period] = $this->classScenario();
 
             $expectedActionLabels = [
-                'draft' => 'Abrir',
+                'draft' => 'Continuar preparação',
                 'in_correction' => 'Continuar',
                 'completed' => 'Ver',
                 'published' => 'Ver',
@@ -322,7 +322,18 @@ class AssessmentControllerTest extends TestCase
                         ->has('assessments', 1)
                         ->where('assessments.0.action_label', $expectedActionLabel));
 
-                // The row's action is a real, working route — not a dead link.
+                // The row's action is a real, working route — not a dead
+                // link. A draft's own row instead sends the teacher to keep
+                // preparing the grid, never to the assessment detail its
+                // structure may not be ready to show.
+                if ($status === 'draft') {
+                    $this->actingAs($this->user)
+                        ->get("/assessments/{$instrument->ulid}")
+                        ->assertRedirect(route('instruments.edit', $instrument->ulid));
+
+                    continue;
+                }
+
                 $this->actingAs($this->user)->get("/assessments/{$instrument->ulid}")->assertOk();
             }
         });

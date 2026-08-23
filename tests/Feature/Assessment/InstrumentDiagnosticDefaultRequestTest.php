@@ -70,7 +70,7 @@ class InstrumentDiagnosticDefaultRequestTest extends TestCase
             'instrument_type_id' => 0,
             'custom_instrument_type_name' => 'Ficha de diagnóstico',
             'applied_on' => '2026-10-15',
-            'status' => 'prepared',
+            'submission_intent' => 'prepare',
             'purpose' => 'diagnostic',
             'counts_toward_classification' => true,
             'total_points' => 100,
