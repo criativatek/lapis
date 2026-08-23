@@ -2,6 +2,20 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.62.0] — 2026-08-24
+
+### Added
+
+- **Proteção contra perda de classificações na grelha de correção.** Um professor que edita a mesma grelha em dois separadores, dois browsers ou dois dispositivos deixa de arriscar perder trabalho silenciosamente.
+
+  **Rascunho local imediato.** Cada célula alterada mas ainda não guardada é escrita no `localStorage` do browser (com um pequeno atraso técnico, nunca a cada tecla), isolada por organização, utilizador e elemento de avaliação — um rascunho de outra conta, outro professor ou outro elemento nunca é lido por engano. Ao reabrir a grelha (reload, fecho acidental, falha de rede), um aviso explícito oferece "Recuperar alterações" ou "Ignorar rascunho" — nunca aplicado silenciosamente. Um rascunho cuja estrutura mudou entretanto (questões, cotações ou domínios diferentes) é assinalado como incompatível e nunca aplicado célula a célula por posição ou nome. O rascunho só é apagado depois de o servidor confirmar a gravação; uma gravação falhada ou uma ligação perdida preservam-no.
+
+  **Proteção real no servidor.** Auditado o incidente que motivou esta fatia — duas abas do mesmo professor a guardar alterações diferentes na mesma grelha — confirmou-se por código que o servidor aceitava escritas cegas, sem qualquer verificação de concorrência. Cada célula passa a transportar a sua `lock_version` (coluna já existente na tabela, nunca antes usada); o servidor bloqueia e compara a linha antes de escrever, incrementa a versão quando aceita, e rejeita apenas as células que outro pedido já alterou — as restantes do mesmo lote continuam a gravar normalmente. A grelha substitui as células rejeitadas pelo valor real do servidor e avisa o professor, sem tocar nas restantes edições locais. Cada rejeição fica registada em auditoria (`scores.stale_write_rejected`, só com identificadores técnicos). Autosave automático para o servidor foi deliberadamente **não implementado**: sem uma forma segura e provada de evitar sobrescrever uma edição feita noutro separador, ficou decidido manter o "Guardar" explícito como o único caminho até ao servidor.
+
+  **Indicadores discretos, sem se misturarem com a avaliação em si.** Estado offline ("Sem ligação — N alterações protegidas neste dispositivo") e aviso de edição concorrente noutro separador (via `BroadcastChannel`, só informativo) aparecem em blocos visuais distintos do painel amarelo de resultados por resolver — nunca confundidos com regras pedagógicas.
+
+  **Semântica da avaliação inalterada.** Vazio continua diferente de zero, ausência continua uma decisão explícita nunca inferida, "Guardar" continua a nunca concluir a correção, e nenhuma fórmula ou agregação foi tocada.
+
 ## [0.61.2] — 2026-08-23
 
 ### Fixed

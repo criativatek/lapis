@@ -109,6 +109,23 @@ class ImportedGridPendingTest extends CorrectionImportHttpTest
     }
 
     /**
+     * The real current lock_version for a cell — never guessed. The import
+     * that seeds these tests may or may not have already written this exact
+     * (item, enrollment) pair, so 0 and 1 are both wrong to assume.
+     */
+    protected function currentLockVersion(int $itemId, int $enrollmentId): int
+    {
+        return app(CurrentOrganization::class)->runFor(
+            $this->organization,
+            fn (): int => (int) (StudentItemScore::query()
+                ->where('instrument_item_id', $itemId)
+                ->where('enrollment_id', $enrollmentId)
+                ->first()
+                ?->lock_version ?? 0),
+        );
+    }
+
+    /**
      * @return array<string, mixed>
      */
     protected function gridProps(Instrument $instrument): array
@@ -302,6 +319,8 @@ class ImportedGridPendingTest extends CorrectionImportHttpTest
             fn (): int => (int) $instrument->items()->firstOrFail()->id,
         );
 
+        $lockVersion = $this->currentLockVersion($itemId, $this->roll['Marta Tomás']);
+
         $this->actingAs($this->teacher)
             ->post("/instruments/{$instrument->ulid}/scores", [
                 'cells' => [[
@@ -309,15 +328,18 @@ class ImportedGridPendingTest extends CorrectionImportHttpTest
                     'instrument_item_id' => $itemId,
                     'result_state' => ResultState::Absent->value,
                     'points_earned' => null,
+                    'lock_version' => $lockVersion,
                 ]],
             ])
-            ->assertRedirect()
-            // Every other action on this page flashed; saving was the one that
-            // did not, so a successful save looked exactly like nothing
-            // happening — the counter vanished and nothing replaced it (§5).
-            ->assertSessionHas(SessionKey::FLASH_DATA, [
-                'toast' => ['type' => 'success', 'message' => 'Alterações guardadas.'],
-            ]);
+            ->assertRedirect();
+
+        // Every other action on this page flashed; saving was the one that
+        // did not, so a successful save looked exactly like nothing
+        // happening — the counter vanished and nothing replaced it (§5).
+        // scoreSaveResult also travels on every save (success or not) — the
+        // grid needs each cell's fresh lock_version to save again correctly.
+        $flash = session(SessionKey::FLASH_DATA, []);
+        $this->assertSame(['type' => 'success', 'message' => 'Alterações guardadas.'], $flash['toast'] ?? null);
     }
 
     #[Test]
@@ -352,7 +374,10 @@ class ImportedGridPendingTest extends CorrectionImportHttpTest
         }
 
         $grid = $this->grid();
-        $this->assertStringContainsString('onSuccess: () => dirty.clear()', $grid);
+        // Clearing happens per confirmed cell, not a blanket dirty.clear():
+        // a cell edited again while the request was in flight must stay
+        // dirty, since it was never actually part of what got sent.
+        $this->assertStringContainsString('dirty.delete(key)', $grid);
 
         // And the two buttons read that same state.
         $this->assertStringContainsString('if (dirtyCount.value > 0)', $grid);
@@ -379,6 +404,7 @@ class ImportedGridPendingTest extends CorrectionImportHttpTest
                 'instrument_item_id' => $itemId,
                 'result_state' => ResultState::Absent->value,
                 'points_earned' => null,
+                'lock_version' => $this->currentLockVersion($itemId, $this->roll['Marta Tomás']),
             ]],
         ])->assertRedirect();
 
@@ -441,6 +467,7 @@ class ImportedGridPendingTest extends CorrectionImportHttpTest
                 'enrollment_id' => $this->roll['Marta Tomás'],
                 'instrument_item_id' => $itemId,
                 'result_state' => ResultState::Absent->value,
+                'lock_version' => $this->currentLockVersion($itemId, $this->roll['Marta Tomás']),
                 // A stale client trying to smuggle a value onto an absence.
                 'points_earned' => 0,
             ]],

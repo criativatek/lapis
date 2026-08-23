@@ -6,11 +6,14 @@ use App\Models\AcademicPeriod;
 use App\Models\AcademicYear;
 use App\Models\AssessmentProfileVersion;
 use App\Models\Domain;
+use App\Models\Enrollment;
 use App\Models\Instrument;
 use App\Models\InstrumentItem;
 use App\Models\Organization;
 use App\Models\Scale;
 use App\Models\SchoolClass;
+use App\Models\Student;
+use App\Models\StudentItemScore;
 use App\Models\Subject;
 use App\Models\User;
 use App\Support\Tenancy\CurrentOrganization;
@@ -110,6 +113,30 @@ class InstrumentControllerTest extends TestCase
                     ->where('items.0.domains.0.domain_id', $domain->id)
                     ->where('items.0.domains.0.name', 'Leitura')
                     ->where('items.0.domains.0.percent', 100));
+        });
+    }
+
+    #[Test]
+    public function the_grid_receives_the_current_lock_version_for_each_existing_score(): void
+    {
+        $this->inTenant(function (): void {
+            ['class' => $class, 'instrument' => $instrument] = $this->scenario();
+            $item = InstrumentItem::factory()->recycle($this->organization)->create(['instrument_id' => $instrument->id]);
+            $student = Student::factory()->recycle($this->organization)->create();
+            $enrollment = Enrollment::factory()->recycle($this->organization)->create([
+                'class_id' => $class->id,
+                'student_id' => $student->id,
+            ]);
+            StudentItemScore::factory()->recycle($this->organization)->create([
+                'instrument_id' => $instrument->id,
+                'instrument_item_id' => $item->id,
+                'enrollment_id' => $enrollment->id,
+                'lock_version' => 7,
+            ]);
+
+            $this->actingAs($this->user)
+                ->get("/instruments/{$instrument->ulid}")
+                ->assertInertia(fn ($page) => $page->where('scores.0.lock_version', 7));
         });
     }
 

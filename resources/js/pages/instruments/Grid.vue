@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { CheckCircle2, CircleAlert, Save } from '@lucide/vue';
-import { computed, nextTick, reactive, ref } from 'vue';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
+import { CheckCircle2, CircleAlert, Save, WifiOff } from '@lucide/vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import StudentAvatar from '@/components/StudentAvatar.vue';
@@ -15,6 +15,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { computeStructuralFingerprint, useGridDraft } from '@/composables/useGridDraft';
 import {
     domainResultsFor as computeDomainResultsFor,
     percentFor as computePercentFor,
@@ -54,7 +55,12 @@ type Score = {
     result_state: string;
     points_earned: number | null;
     state_reason: string | null;
+    lock_version: number;
 };
+
+type ScoreVersion = { enrollment_id: number; instrument_item_id: number; lock_version: number };
+type StaleScore = Score;
+type ScoreSaveResult = { written: number; versions: ScoreVersion[]; stale: StaleScore[] };
 
 type StateOption = { value: string; label: string; carries_value: boolean; resolves: boolean };
 
@@ -87,7 +93,7 @@ const props = defineProps<{
     scaleBands: { label: string; band_min: string; band_max: string; sequence: number; is_negative: boolean }[];
 }>();
 
-type Cell = { state: string; points: number | null; reason: string | null };
+type Cell = { state: string; points: number | null; reason: string | null; lock_version: number };
 
 const cellKey = (enrollmentId: number, itemId: number) => `${enrollmentId}:${itemId}`;
 
@@ -103,20 +109,170 @@ for (const score of props.scores) {
         state: score.result_state,
         points: score.points_earned,
         reason: score.state_reason,
+        lock_version: score.lock_version,
     };
 }
+
+const page = usePage();
+const organizationUlid = page.props.auth.organization?.ulid ?? '';
+const currentFingerprint = computeStructuralFingerprint(props.items);
+const gridDraft = useGridDraft(
+    {
+        organizationUlid,
+        userId: page.props.auth.user.id,
+        instrumentUlid: props.instrument.ulid,
+    },
+    currentFingerprint,
+);
+
+type AvailableDraft = NonNullable<ReturnType<typeof gridDraft.readDraft>>;
+
+const recoverableDraft = ref<AvailableDraft | null>(null);
+const incompatibleDraftExists = ref(false);
+const isOnline = ref(navigator.onLine);
+const otherEditingTabs = reactive(new Set<string>());
+
+function dirtyDraftCells(): Record<string, { state: string; points: number | null; reason: string | null }> {
+    return Object.fromEntries(
+        [...dirty]
+            .filter((key) => cells[key] !== undefined)
+            .map((key) => {
+                const current = cells[key];
+
+                return [key, { state: current.state, points: current.points, reason: current.reason }];
+            }),
+    );
+}
+
+function writeCurrentDraft(): void {
+    gridDraft.writeDraft(dirtyDraftCells());
+}
+
+function recoverDraft(): void {
+    const draft = recoverableDraft.value;
+
+    if (draft === null) {
+        return;
+    }
+
+    for (const [key, draftCell] of Object.entries(draft.cells)) {
+        const [enrollmentId, itemId] = key.split(':').map(Number);
+        const belongsToCurrentGrid = props.students.some((student) => student.enrollment_id === enrollmentId)
+            && props.items.some((item) => item.id === itemId);
+
+        if (!belongsToCurrentGrid) {
+            continue;
+        }
+
+        const current = cell(enrollmentId, itemId);
+
+        cells[key] = { ...draftCell, lock_version: current.lock_version };
+        dirty.add(key);
+    }
+
+    recoverableDraft.value = null;
+    writeCurrentDraft();
+}
+
+function discardDraft(): void {
+    gridDraft.clearDraft();
+    recoverableDraft.value = null;
+    incompatibleDraftExists.value = false;
+}
+
+const recoverableDraftCount = computed(() => Object.keys(recoverableDraft.value?.cells ?? {}).length);
+const recoverableDraftDate = computed(() => {
+    if (recoverableDraft.value === null) {
+        return '';
+    }
+
+    return new Intl.DateTimeFormat('pt-PT', {
+        dateStyle: 'short',
+        timeStyle: 'short',
+    }).format(new Date(recoverableDraft.value.savedAt));
+});
+
+type EditingChannelMessage = { type: 'editing' | 'closing'; tabId: string };
+
+let editingChannel: BroadcastChannel | null = null;
+let tabId = '';
+
+function announceEditing(): void {
+    editingChannel?.postMessage({ type: 'editing', tabId } satisfies EditingChannelMessage);
+}
+
+function handleChannelMessage(event: MessageEvent<EditingChannelMessage>): void {
+    const message = event.data;
+
+    if (!message || message.tabId === tabId) {
+        return;
+    }
+
+    if (message.type === 'closing') {
+        otherEditingTabs.delete(message.tabId);
+
+        return;
+    }
+
+    if (message.type === 'editing' && !otherEditingTabs.has(message.tabId)) {
+        otherEditingTabs.add(message.tabId);
+        announceEditing();
+    }
+}
+
+onMounted(() => {
+    const draft = gridDraft.readDraft();
+
+    if (draft !== null && Object.keys(draft.cells).length > 0) {
+        if (gridDraft.isCompatible()) {
+            recoverableDraft.value = draft;
+        } else {
+            incompatibleDraftExists.value = true;
+        }
+    }
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    if ('BroadcastChannel' in window) {
+        tabId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
+        editingChannel = new BroadcastChannel(`lapis:grid-editing:${organizationUlid}:${props.instrument.ulid}`);
+        editingChannel.addEventListener('message', handleChannelMessage);
+        announceEditing();
+    }
+});
+
+function handleOnline(): void {
+    isOnline.value = true;
+}
+
+function handleOffline(): void {
+    isOnline.value = false;
+}
+
+onBeforeUnmount(() => {
+    window.removeEventListener('online', handleOnline);
+    window.removeEventListener('offline', handleOffline);
+
+    if (editingChannel !== null) {
+        editingChannel.postMessage({ type: 'closing', tabId } satisfies EditingChannelMessage);
+        editingChannel.removeEventListener('message', handleChannelMessage);
+        editingChannel.close();
+    }
+});
 
 function cell(enrollmentId: number, itemId: number): Cell {
     const key = cellKey(enrollmentId, itemId);
     // A missing cell is "por avaliar" — the grid does not pre-create rows, and an
     // empty box is never read as a zero.
-    cells[key] ??= { state: 'pending', points: null, reason: null };
+    cells[key] ??= { state: 'pending', points: null, reason: null, lock_version: 0 };
 
     return cells[key];
 }
 
 function markDirty(enrollmentId: number, itemId: number): void {
     dirty.add(cellKey(enrollmentId, itemId));
+    writeCurrentDraft();
 }
 
 /**
@@ -448,13 +604,46 @@ function save(): void {
             result_state: assessed ? 'assessed' : current.state === 'assessed' ? 'pending' : current.state,
             points_earned: assessed ? current.points : null,
             state_reason: current.reason,
+            lock_version: current.lock_version,
         };
     });
 
     saving.value = true;
     router.post(`/instruments/${props.instrument.ulid}/scores`, { cells: payload }, {
         preserveScroll: true,
-        onSuccess: () => dirty.clear(),
+        onSuccess: (page) => {
+            const result = page.flash?.scoreSaveResult as ScoreSaveResult | undefined;
+
+            if (!result) {
+                return;
+            }
+
+            for (const version of result.versions) {
+                const key = cellKey(version.enrollment_id, version.instrument_item_id);
+
+                cell(version.enrollment_id, version.instrument_item_id).lock_version = version.lock_version;
+                dirty.delete(key);
+            }
+
+            // Only conflicted cells are replaced with the authoritative server
+            // value. Every other local cell is left untouched.
+            for (const stale of result.stale) {
+                const key = cellKey(stale.enrollment_id, stale.instrument_item_id);
+
+                cells[key] = {
+                    state: stale.result_state,
+                    points: stale.points_earned,
+                    reason: stale.state_reason,
+                    lock_version: stale.lock_version,
+                };
+                dirty.delete(key);
+            }
+
+            gridDraft.reconcileSaved([
+                ...result.versions.map((version) => cellKey(version.enrollment_id, version.instrument_item_id)),
+                ...result.stale.map((stale) => cellKey(stale.enrollment_id, stale.instrument_item_id)),
+            ]);
+        },
         onFinish: () => {
             saving.value = false;
         },
@@ -785,6 +974,52 @@ function revertCancellation(): void {
                 </template>
             </div>
         </div>
+
+        <section class="space-y-2" aria-label="Proteção das alterações locais">
+            <div
+                v-if="recoverableDraft"
+                class="flex flex-wrap items-center justify-between gap-3 rounded-md border border-sky-300 bg-sky-50 px-4 py-3 text-sm text-sky-950"
+                role="status"
+            >
+                <p>
+                    <strong>Encontrámos alterações não guardadas desta grelha.</strong>
+                    {{ recoverableDraftCount }}
+                    {{ recoverableDraftCount === 1 ? 'célula' : 'células' }}, de {{ recoverableDraftDate }}.
+                </p>
+                <div class="flex gap-2">
+                    <Button type="button" size="sm" @click="recoverDraft">Recuperar alterações</Button>
+                    <Button type="button" variant="outline" size="sm" @click="discardDraft">Ignorar rascunho</Button>
+                </div>
+            </div>
+
+            <div
+                v-if="incompatibleDraftExists"
+                class="flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900"
+                role="status"
+            >
+                <p>Existe um rascunho de uma versão anterior desta grelha e não pode ser aplicado automaticamente.</p>
+                <Button type="button" variant="outline" size="sm" @click="discardDraft">Descartar rascunho</Button>
+            </div>
+
+            <div
+                v-if="!isOnline"
+                class="flex items-center gap-2 rounded-md border border-rose-300 bg-rose-50 px-4 py-2 text-sm text-rose-900"
+                role="status"
+            >
+                <WifiOff class="size-4 shrink-0" />
+                <span>
+                    Sem ligação<span v-if="dirtyCount"> · {{ dirtyCount }} {{ dirtyCount === 1 ? 'alteração protegida' : 'alterações protegidas' }} neste dispositivo</span>
+                </span>
+            </div>
+
+            <div
+                v-if="otherEditingTabs.size > 0"
+                class="rounded-md border border-violet-300 bg-violet-50 px-4 py-2 text-sm text-violet-950"
+                role="status"
+            >
+                Esta grelha está também a ser editada noutro separador.
+            </div>
+        </section>
 
         <!--
           Why the correction cannot be closed, on the page and by name.

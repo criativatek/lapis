@@ -391,6 +391,7 @@ class InstrumentController extends Controller
                 'result_state' => $score->result_state->value,
                 'points_earned' => $score->points_earned === null ? null : (float) $score->points_earned,
                 'state_reason' => $score->state_reason,
+                'lock_version' => $score->lock_version,
             ]);
 
         // sequence and is_negative travel alongside label/band_min/band_max so
@@ -486,6 +487,7 @@ class InstrumentController extends Controller
             'cells.*.enrollment_id' => ['required', 'integer'],
             'cells.*.instrument_item_id' => ['required', 'integer'],
             'cells.*.result_state' => ['required', 'string'],
+            'cells.*.lock_version' => ['required', 'integer', 'min:0'],
             'cells.*.points_earned' => ['nullable', 'numeric'],
             'cells.*.state_reason' => ['nullable', 'string', 'max:255'],
         ]);
@@ -501,7 +503,7 @@ class InstrumentController extends Controller
         }
 
         try {
-            $recordScores->save($instrument, $data['cells'], $this->user());
+            $result = $recordScores->save($instrument, $data['cells'], $this->user());
         } catch (ScoreExceedsMaximumException $exception) {
             return back()->withErrors(['cells' => $exception->getMessage()]);
         } catch (CorrectionWorkflowException $exception) {
@@ -515,7 +517,23 @@ class InstrumentController extends Controller
         // not, so a successful save looked exactly like a button that does
         // nothing: the «N alterações por guardar» counter simply vanished and
         // nothing took its place (§5).
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Alterações guardadas.']);
+        Inertia::flash('scoreSaveResult', [
+            'written' => $result->written,
+            'versions' => $result->versions,
+            'stale' => $result->stale,
+        ]);
+
+        if ($result->stale === []) {
+            Inertia::flash('toast', ['type' => 'success', 'message' => 'Alterações guardadas.']);
+        } else {
+            $count = count($result->stale);
+            Inertia::flash('toast', [
+                'type' => 'warning',
+                'message' => $count === 1
+                    ? '1 alteração não foi guardada porque a grelha tinha sido alterada entretanto — o valor foi atualizado.'
+                    : "{$count} alterações não foram guardadas porque a grelha tinha sido alterada entretanto — os valores foram atualizados.",
+            ]);
+        }
 
         return back();
     }

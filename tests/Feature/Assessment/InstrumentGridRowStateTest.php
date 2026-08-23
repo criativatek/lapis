@@ -321,6 +321,7 @@ class InstrumentGridRowStateTest extends TestCase
             'instrument_item_id' => $column->id,
             'result_state' => ResultState::Annulled->value,
             'points_earned' => null,
+            'lock_version' => 0,
         ]];
 
         foreach ($enrollments->skip(1) as $enrollment) {
@@ -330,6 +331,7 @@ class InstrumentGridRowStateTest extends TestCase
                 // What the corrected payload builder sends for an empty cell.
                 'result_state' => ResultState::Pending->value,
                 'points_earned' => null,
+                'lock_version' => 0,
             ];
         }
 
@@ -368,6 +370,7 @@ class InstrumentGridRowStateTest extends TestCase
                     'instrument_item_id' => $items->first()->id,
                     'result_state' => ResultState::Assessed->value,
                     'points_earned' => null,
+                    'lock_version' => 0,
                 ]],
             ])
             ->assertServerError();
@@ -446,6 +449,7 @@ class InstrumentGridRowStateTest extends TestCase
                     'enrollment_id' => $enrollments->first()->id,
                     'instrument_item_id' => $otherItems->first()->id,
                     'result_state' => ResultState::Absent->value,
+                    'lock_version' => 0,
                 ]],
             ])
             ->assertStatus(422);
@@ -468,6 +472,7 @@ class InstrumentGridRowStateTest extends TestCase
                     'enrollment_id' => $enrollments->first()->id,
                     'instrument_item_id' => $items->first()->id,
                     'result_state' => ResultState::Absent->value,
+                    'lock_version' => 0,
                 ]],
             ])
             ->assertNotFound();
@@ -485,6 +490,17 @@ class InstrumentGridRowStateTest extends TestCase
      */
     protected function saveCells(Instrument $instrument, array $cells): void
     {
+        $cells = app(CurrentOrganization::class)->runFor($this->organization, function () use ($cells): array {
+            return array_map(function (array $cell): array {
+                $score = StudentItemScore::query()
+                    ->where('instrument_item_id', $cell['instrument_item_id'])
+                    ->where('enrollment_id', $cell['enrollment_id'])
+                    ->first();
+
+                return [...$cell, 'lock_version' => $score?->lock_version ?? 0];
+            }, $cells);
+        });
+
         $this->actingAs($this->teacher)
             ->post("/instruments/{$instrument->ulid}/scores", ['cells' => $cells])
             ->assertRedirect();

@@ -33,10 +33,11 @@ use Illuminate\Support\Carbon;
  * @property string|null $state_reason
  * @property Carbon|null $assessed_at
  * @property int|null $assessed_by
+ * @property int $lock_version
  */
 #[Fillable([
     'instrument_id', 'instrument_item_id', 'enrollment_id', 'result_state',
-    'points_earned', 'scale_level_id', 'state_reason', 'assessed_at', 'assessed_by',
+    'points_earned', 'scale_level_id', 'state_reason', 'assessed_at', 'assessed_by', 'lock_version',
 ])]
 class StudentItemScore extends Model
 {
@@ -69,6 +70,7 @@ class StudentItemScore extends Model
             'result_state' => ResultState::class,
             'points_earned' => 'decimal:4',
             'assessed_at' => 'datetime',
+            'lock_version' => 'integer',
         ];
     }
 

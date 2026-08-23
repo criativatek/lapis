@@ -4,6 +4,7 @@ namespace Tests\Feature\Assessment;
 
 use App\Models\AcademicPeriod;
 use App\Models\AcademicYear;
+use App\Models\AuditEvent;
 use App\Models\Enrollment;
 use App\Models\Instrument;
 use App\Models\InstrumentItem;
@@ -83,6 +84,7 @@ class RecordScoresTest extends TestCase
                 'enrollment_id' => $enrollment->id,
                 'instrument_item_id' => $item->id,
                 'result_state' => 'assessed',
+                'lock_version' => 0,
                 'points_earned' => 7.5,
             ]], $this->user);
 
@@ -105,6 +107,7 @@ class RecordScoresTest extends TestCase
                 'enrollment_id' => $enrollment->id,
                 'instrument_item_id' => $item->id,
                 'result_state' => 'absent',
+                'lock_version' => 0,
                 'points_earned' => 0,
                 'state_reason' => 'Faltou.',
             ]], $this->user);
@@ -127,6 +130,7 @@ class RecordScoresTest extends TestCase
                 'enrollment_id' => $enrollment->id,
                 'instrument_item_id' => $item->id,
                 'result_state' => 'assessed',
+                'lock_version' => 0,
                 'points_earned' => 5,
             ]], $this->user);
             $this->assertSame(1, StudentItemScore::count());
@@ -136,6 +140,7 @@ class RecordScoresTest extends TestCase
                 'enrollment_id' => $enrollment->id,
                 'instrument_item_id' => $item->id,
                 'result_state' => 'pending',
+                'lock_version' => 1,
             ]], $this->user);
 
             $this->assertSame(0, StudentItemScore::count());
@@ -149,13 +154,16 @@ class RecordScoresTest extends TestCase
             ['instrument' => $instrument, 'item' => $item, 'enrollment' => $enrollment] = $this->scenario();
             $service = app(RecordScores::class);
 
+            $version = 0;
             foreach ([4, 8] as $points) {
-                $service->save($instrument, [[
+                $result = $service->save($instrument, [[
                     'enrollment_id' => $enrollment->id,
                     'instrument_item_id' => $item->id,
                     'result_state' => 'assessed',
+                    'lock_version' => $version,
                     'points_earned' => $points,
                 ]], $this->user);
+                $version = $result->versions[0]['lock_version'];
             }
 
             $this->assertSame(1, StudentItemScore::count());
@@ -174,6 +182,7 @@ class RecordScoresTest extends TestCase
                 'enrollment_id' => $enrollment->id,
                 'instrument_item_id' => $item->id,
                 'result_state' => 'assessed',
+                'lock_version' => 0,
                 'points_earned' => 6,
             ]], $this->user);
 
@@ -191,6 +200,7 @@ class RecordScoresTest extends TestCase
                 'enrollment_id' => $enrollment->id,
                 'instrument_item_id' => $item->id,
                 'result_state' => 'assessed',
+                'lock_version' => 0,
                 'points_earned' => 0,
             ]], $this->user);
 
@@ -214,6 +224,7 @@ class RecordScoresTest extends TestCase
                 'enrollment_id' => $enrollment->id,
                 'instrument_item_id' => $item->id,
                 'result_state' => 'assessed',
+                'lock_version' => 0,
                 'points_earned' => 15,
             ]], $this->user);
 
@@ -231,6 +242,7 @@ class RecordScoresTest extends TestCase
                 'enrollment_id' => $enrollment->id,
                 'instrument_item_id' => $item->id,
                 'result_state' => 'assessed',
+                'lock_version' => 0,
                 'points_earned' => 10,
             ]], $this->user);
 
@@ -273,9 +285,189 @@ class RecordScoresTest extends TestCase
                 'enrollment_id' => $enrollment->id,
                 'instrument_item_id' => $item->id,
                 'result_state' => 'assessed',
+                'lock_version' => 0,
                 'points_earned' => 8,
             ]], $this->user);
         });
+    }
+
+    #[Test]
+    public function a_new_cell_with_version_zero_is_written_and_returns_its_next_version(): void
+    {
+        $this->inTenant(function (): void {
+            ['instrument' => $instrument, 'item' => $item, 'enrollment' => $enrollment] = $this->scenario();
+
+            $result = app(RecordScores::class)->save($instrument, [[
+                'enrollment_id' => $enrollment->id,
+                'instrument_item_id' => $item->id,
+                'result_state' => 'assessed',
+                'points_earned' => 7,
+                'lock_version' => 0,
+            ]], $this->user);
+
+            $this->assertSame(1, $result->written);
+            $this->assertSame([], $result->stale);
+            $this->assertSame(1, $result->versions[0]['lock_version']);
+            $this->assertSame(1, StudentItemScore::firstOrFail()->lock_version);
+            $this->assertSame(0, AuditEvent::where('event', 'scores.stale_write_rejected')->count());
+        });
+    }
+
+    #[Test]
+    public function a_second_write_from_the_same_original_version_is_rejected_as_stale(): void
+    {
+        $this->inTenant(function (): void {
+            ['instrument' => $instrument, 'item' => $item, 'enrollment' => $enrollment] = $this->scenario();
+            $service = app(RecordScores::class);
+            $originalVersion = 0;
+
+            $first = $service->save($instrument, [[
+                'enrollment_id' => $enrollment->id,
+                'instrument_item_id' => $item->id,
+                'result_state' => 'assessed',
+                'points_earned' => 4,
+                'state_reason' => 'Primeiro separador.',
+                'lock_version' => $originalVersion,
+            ]], $this->user);
+            $second = $service->save($instrument, [[
+                'enrollment_id' => $enrollment->id,
+                'instrument_item_id' => $item->id,
+                'result_state' => 'assessed',
+                'points_earned' => 9,
+                'state_reason' => 'Segundo separador.',
+                'lock_version' => $originalVersion,
+            ]], $this->user);
+
+            $this->assertSame(1, $first->written);
+            $this->assertSame(0, $second->written);
+            $this->assertSame([], $second->versions);
+            $this->assertSame([[
+                'enrollment_id' => $enrollment->id,
+                'instrument_item_id' => $item->id,
+                'result_state' => 'assessed',
+                'points_earned' => 4.0,
+                'state_reason' => 'Primeiro separador.',
+                'lock_version' => 1,
+            ]], $second->stale);
+            $this->assertSame('4.0000', StudentItemScore::firstOrFail()->points_earned);
+
+            $audit = AuditEvent::where('event', 'scores.stale_write_rejected')->sole();
+            $this->assertSame($instrument->id, $audit->subject_id);
+            $this->assertSame($this->user->id, $audit->causer_id);
+            $this->assertSame([[
+                'enrollment_id' => $enrollment->id,
+                'instrument_item_id' => $item->id,
+            ]], $audit->properties['cells']);
+        });
+    }
+
+    #[Test]
+    public function writes_to_different_cells_do_not_conflict(): void
+    {
+        $this->inTenant(function (): void {
+            ['instrument' => $instrument, 'item' => $firstItem, 'enrollment' => $enrollment] = $this->scenario();
+            $secondItem = InstrumentItem::factory()->recycle($this->organization)->create(['instrument_id' => $instrument->id]);
+            $service = app(RecordScores::class);
+
+            $first = $service->save($instrument, [[
+                'enrollment_id' => $enrollment->id,
+                'instrument_item_id' => $firstItem->id,
+                'result_state' => 'assessed',
+                'points_earned' => 3,
+                'lock_version' => 0,
+            ]], $this->user);
+            $second = $service->save($instrument, [[
+                'enrollment_id' => $enrollment->id,
+                'instrument_item_id' => $secondItem->id,
+                'result_state' => 'assessed',
+                'points_earned' => 6,
+                'lock_version' => 0,
+            ]], $this->user);
+
+            $this->assertSame(1, $first->written);
+            $this->assertSame(1, $second->written);
+            $this->assertSame([], $first->stale);
+            $this->assertSame([], $second->stale);
+            $this->assertSame(2, StudentItemScore::count());
+        });
+    }
+
+    #[Test]
+    public function a_mixed_batch_writes_fresh_cells_and_returns_only_stale_cells(): void
+    {
+        $this->inTenant(function (): void {
+            ['instrument' => $instrument, 'item' => $staleItem, 'enrollment' => $enrollment] = $this->scenario();
+            $freshItem = InstrumentItem::factory()->recycle($this->organization)->create(['instrument_id' => $instrument->id]);
+            $service = app(RecordScores::class);
+
+            $service->save($instrument, [[
+                'enrollment_id' => $enrollment->id,
+                'instrument_item_id' => $staleItem->id,
+                'result_state' => 'assessed',
+                'points_earned' => 2,
+                'lock_version' => 0,
+            ]], $this->user);
+
+            $result = $service->save($instrument, [[
+                'enrollment_id' => $enrollment->id,
+                'instrument_item_id' => $staleItem->id,
+                'result_state' => 'assessed',
+                'points_earned' => 8,
+                'lock_version' => 0,
+            ], [
+                'enrollment_id' => $enrollment->id,
+                'instrument_item_id' => $freshItem->id,
+                'result_state' => 'assessed',
+                'points_earned' => 5,
+                'lock_version' => 0,
+            ]], $this->user);
+
+            $this->assertSame(1, $result->written);
+            $this->assertCount(1, $result->stale);
+            $this->assertSame($staleItem->id, $result->stale[0]['instrument_item_id']);
+            $this->assertSame($freshItem->id, $result->versions[0]['instrument_item_id']);
+            $this->assertSame('2.0000', StudentItemScore::where('instrument_item_id', $staleItem->id)->sole()->points_earned);
+            $this->assertSame('5.0000', StudentItemScore::where('instrument_item_id', $freshItem->id)->sole()->points_earned);
+        });
+    }
+
+    #[Test]
+    public function the_endpoint_flashes_the_authoritative_stale_cell_and_warning(): void
+    {
+        $context = $this->inTenant(function () {
+            $context = $this->scenario();
+            app(RecordScores::class)->save($context['instrument'], [[
+                'enrollment_id' => $context['enrollment']->id,
+                'instrument_item_id' => $context['item']->id,
+                'result_state' => 'assessed',
+                'points_earned' => 4,
+                'lock_version' => 0,
+            ]], $this->user);
+
+            return $context;
+        });
+
+        $this->actingAs($this->user)
+            ->post("/instruments/{$context['instrument']->ulid}/scores", [
+                'cells' => [[
+                    'enrollment_id' => $context['enrollment']->id,
+                    'instrument_item_id' => $context['item']->id,
+                    'result_state' => 'assessed',
+                    'points_earned' => 9,
+                    'lock_version' => 0,
+                ]],
+            ])
+            ->assertRedirect();
+
+        $flash = session('inertia.flash_data', []);
+        $result = $flash['scoreSaveResult'] ?? [];
+        $stale = $result['stale'][0] ?? [];
+
+        $this->assertSame('warning', $flash['toast']['type'] ?? null);
+        $this->assertSame(0, $result['written'] ?? null);
+        $this->assertSame($context['item']->id, $stale['instrument_item_id'] ?? null);
+        $this->assertSame(4.0, $stale['points_earned'] ?? null);
+        $this->assertSame(1, $stale['lock_version'] ?? null);
     }
 
     #[Test]
@@ -296,10 +488,33 @@ class RecordScoresTest extends TestCase
                     'enrollment_id' => $intruderEnrollment,
                     'instrument_item_id' => $context['item']->id,
                     'result_state' => 'assessed',
+                    'lock_version' => 0,
                     'points_earned' => 10,
                 ]],
             ])
             ->assertStatus(422);
+    }
+
+    #[Test]
+    public function the_endpoint_requires_a_non_negative_integer_lock_version(): void
+    {
+        $context = $this->inTenant(fn () => $this->scenario());
+
+        $this->actingAs($this->user)
+            ->from("/instruments/{$context['instrument']->ulid}")
+            ->post("/instruments/{$context['instrument']->ulid}/scores", [
+                'cells' => [[
+                    'enrollment_id' => $context['enrollment']->id,
+                    'instrument_item_id' => $context['item']->id,
+                    'result_state' => 'assessed',
+                    'points_earned' => 5,
+                    'lock_version' => -1,
+                ]],
+            ])
+            ->assertRedirect("/instruments/{$context['instrument']->ulid}")
+            ->assertSessionHasErrors('cells.0.lock_version');
+
+        $this->assertSame(0, $this->inTenant(fn () => StudentItemScore::count()));
     }
 
     #[Test]
@@ -314,6 +529,7 @@ class RecordScoresTest extends TestCase
                     'enrollment_id' => $context['enrollment']->id,
                     'instrument_item_id' => $context['item']->id,
                     'result_state' => 'assessed',
+                    'lock_version' => 0,
                     'points_earned' => 999,
                 ]],
             ])

@@ -140,8 +140,8 @@ class InovarPartialCoverageTest extends TestCase
 
             foreach ($class->enrollments()->orderBy('class_number')->get() as $index => $enrollment) {
                 $cells[] = $index === $studentIndex
-                    ? ['enrollment_id' => $enrollment->id, 'instrument_item_id' => $item->id, 'result_state' => $state->value]
-                    : ['enrollment_id' => $enrollment->id, 'instrument_item_id' => $item->id, 'result_state' => ResultState::Assessed->value, 'points_earned' => 14];
+                    ? ['enrollment_id' => $enrollment->id, 'instrument_item_id' => $item->id, 'result_state' => $state->value, 'lock_version' => 0]
+                    : ['enrollment_id' => $enrollment->id, 'instrument_item_id' => $item->id, 'result_state' => ResultState::Assessed->value, 'points_earned' => 14, 'lock_version' => 0];
             }
 
             app(RecordScores::class)->save($instrument, $cells, $this->teacher);

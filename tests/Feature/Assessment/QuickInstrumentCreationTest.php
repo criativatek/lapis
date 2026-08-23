@@ -157,6 +157,7 @@ class QuickInstrumentCreationTest extends TestCase
                     'enrollment_id' => 1,
                     'instrument_item_id' => $instrument->items()->sole()->id,
                     'result_state' => 'assessed',
+                    'lock_version' => 0,
                     'points_earned' => 10,
                 ]], $this->teacher);
                 $this->fail('A grelha em preparação aceitou resultados.');

@@ -115,6 +115,7 @@ class CorrectionWorkflowTest extends TestCase
                     'enrollment_id' => $enrollment->id,
                     'instrument_item_id' => $item->id,
                     'result_state' => $state->value,
+                    'lock_version' => 0,
                     'points_earned' => $state === ResultState::Assessed ? (float) $item->points_possible : null,
                 ];
             }
@@ -198,6 +199,7 @@ class CorrectionWorkflowTest extends TestCase
                 'enrollment_id' => $marked->id,
                 'instrument_item_id' => $instrument->items()->firstOrFail()->id,
                 'result_state' => 'assessed',
+                'lock_version' => 0,
                 'points_earned' => 100,
             ]], $this->user);
 
@@ -227,6 +229,7 @@ class CorrectionWorkflowTest extends TestCase
                 'enrollment_id' => $enrollment->id,
                 'instrument_item_id' => $instrument->items()->orderBy('sequence')->firstOrFail()->id,
                 'result_state' => 'assessed',
+                'lock_version' => 0,
                 'points_earned' => 50,
             ]], $this->user);
 
@@ -290,6 +293,7 @@ class CorrectionWorkflowTest extends TestCase
                 'enrollment_id' => $onTime->id,
                 'instrument_item_id' => $instrument->items()->firstOrFail()->id,
                 'result_state' => 'assessed',
+                'lock_version' => 0,
                 'points_earned' => 100,
             ]], $this->user);
 
@@ -313,6 +317,7 @@ class CorrectionWorkflowTest extends TestCase
                 'enrollment_id' => $present->id,
                 'instrument_item_id' => $instrument->items()->firstOrFail()->id,
                 'result_state' => 'assessed',
+                'lock_version' => 0,
                 'points_earned' => 100,
             ]], $this->user);
 
@@ -367,6 +372,7 @@ class CorrectionWorkflowTest extends TestCase
                     'enrollment_id' => $enrollment->id,
                     'instrument_item_id' => $instrument->items()->firstOrFail()->id,
                     'result_state' => 'assessed',
+                    'lock_version' => 0,
                     'points_earned' => 10,
                 ]],
             ]);
@@ -446,11 +452,20 @@ class CorrectionWorkflowTest extends TestCase
             $this->assertNull($fresh->completed_by);
 
             // And marking works again.
+            $itemId = $instrument->items()->firstOrFail()->id;
+            // markAll() above already wrote this exact cell once — its real
+            // version is whatever that write left behind, not a fresh 0.
+            $lockVersion = (int) StudentItemScore::withoutGlobalScopes()
+                ->where('instrument_item_id', $itemId)
+                ->where('enrollment_id', $enrollment->id)
+                ->firstOrFail()->lock_version;
+
             $this->actingAs($this->user)->post("/instruments/{$instrument->ulid}/scores", [
                 'cells' => [[
                     'enrollment_id' => $enrollment->id,
-                    'instrument_item_id' => $instrument->items()->firstOrFail()->id,
+                    'instrument_item_id' => $itemId,
                     'result_state' => 'assessed',
+                    'lock_version' => $lockVersion,
                     'points_earned' => 80,
                 ]],
             ])->assertSessionHasNoErrors();

@@ -131,6 +131,7 @@ class InterimComparisonTest extends TestCase
                     'enrollment_id' => $enrollment->id,
                     'instrument_item_id' => $item->id,
                     'result_state' => ResultState::Assessed->value,
+                    'lock_version' => 0,
                     'points_earned' => $points,
                 ];
             }

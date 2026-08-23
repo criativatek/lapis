@@ -559,7 +559,7 @@ class ImportCorrectionGrid
      * deleting a mark the teacher had already entered is not this feature's
      * business.
      *
-     * @return list<array{enrollment_id: int, instrument_item_id: int, result_state: string, points_earned: float|null}>
+     * @return list<array{enrollment_id: int, instrument_item_id: int, result_state: string, points_earned: float|null, lock_version: int}>
      */
     protected function cells(CanonicalCorrectionGrid $grid, ImportMapping $mapping, Instrument $instrument): array
     {
@@ -609,7 +609,7 @@ class ImportCorrectionGrid
 
             $current = $existing[$enrollmentId.':'.$itemId] ?? null;
 
-            if ($current !== null && $this->sameMark($current, $earned)) {
+            if ($current !== null && $this->sameMark($current['points_earned'], $earned)) {
                 continue; // Already says exactly this. Writing it again is noise.
             }
 
@@ -623,6 +623,7 @@ class ImportCorrectionGrid
                 'instrument_item_id' => $itemId,
                 'result_state' => ResultState::Assessed->value,
                 'points_earned' => (float) $earned,
+                'lock_version' => $current['lock_version'] ?? 0,
             ];
         }
 
@@ -643,7 +644,7 @@ class ImportCorrectionGrid
      *  - the student answered nothing: their 0% is arithmetic over an empty set,
      *    not a mark they earned (§3).
      *
-     * @return list<array{enrollment_id: int, instrument_item_id: int, result_state: string, points_earned: float|null}>
+     * @return list<array{enrollment_id: int, instrument_item_id: int, result_state: string, points_earned: float|null, lock_version: int}>
      */
     protected function overallCells(CanonicalCorrectionGrid $grid, ImportMapping $mapping, Instrument $instrument): array
     {
@@ -674,7 +675,7 @@ class ImportCorrectionGrid
             $earned = OverallResultItem::earned($percent, $pointsPossible);
             $current = $existing[$enrollmentId.':'.$itemId] ?? null;
 
-            if ($current !== null && $this->sameMark($current, $earned)) {
+            if ($current !== null && $this->sameMark($current['points_earned'], $earned)) {
                 continue;
             }
 
@@ -687,6 +688,7 @@ class ImportCorrectionGrid
                 'instrument_item_id' => $itemId,
                 'result_state' => ResultState::Assessed->value,
                 'points_earned' => (float) $earned,
+                'lock_version' => $current['lock_version'] ?? 0,
             ];
         }
 
@@ -702,7 +704,7 @@ class ImportCorrectionGrid
      * produces NO cell at all, so a partial sum never masquerades as a complete
      * one (§14).
      *
-     * @return list<array{enrollment_id: int, instrument_item_id: int, result_state: string, points_earned: float|null}>
+     * @return list<array{enrollment_id: int, instrument_item_id: int, result_state: string, points_earned: float|null, lock_version: int}>
      */
     protected function groupCells(CanonicalCorrectionGrid $grid, ImportMapping $mapping, Instrument $instrument): array
     {
@@ -750,7 +752,7 @@ class ImportCorrectionGrid
                 $itemId = (int) $item->id;
                 $current = $existing[$enrollmentId.':'.$itemId] ?? null;
 
-                if ($current !== null && $this->sameMark($current, $earned)) {
+                if ($current !== null && $this->sameMark($current['points_earned'], $earned)) {
                     continue;
                 }
 
@@ -763,6 +765,7 @@ class ImportCorrectionGrid
                     'instrument_item_id' => $itemId,
                     'result_state' => ResultState::Assessed->value,
                     'points_earned' => (float) $earned,
+                    'lock_version' => $current['lock_version'] ?? 0,
                 ];
             }
         }
@@ -841,15 +844,18 @@ class ImportCorrectionGrid
     }
 
     /**
-     * @return array<string, string>
+     * @return array<string, array{points_earned: string, lock_version: int}>
      */
     protected function existingScores(Instrument $instrument): array
     {
         return StudentItemScore::query()
             ->where('instrument_id', $instrument->getKey())
-            ->get(['enrollment_id', 'instrument_item_id', 'points_earned'])
+            ->get(['enrollment_id', 'instrument_item_id', 'points_earned', 'lock_version'])
             ->mapWithKeys(fn (StudentItemScore $score): array => [
-                $score->enrollment_id.':'.$score->instrument_item_id => (string) $score->points_earned,
+                $score->enrollment_id.':'.$score->instrument_item_id => [
+                    'points_earned' => (string) $score->points_earned,
+                    'lock_version' => $score->lock_version,
+                ],
             ])
             ->all();
     }

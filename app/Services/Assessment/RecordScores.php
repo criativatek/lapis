@@ -7,6 +7,7 @@ use App\Models\InstrumentStatus;
 use App\Models\ResultState;
 use App\Models\StudentItemScore;
 use App\Models\User;
+use App\Services\Audit\AuditLog;
 use App\Support\Assessment\CorrectionWorkflowException;
 use App\Support\Assessment\ScoreExceedsMaximumException;
 use Illuminate\Support\Carbon;
@@ -22,11 +23,12 @@ use Illuminate\Support\Facades\DB;
  */
 class RecordScores
 {
+    public function __construct(protected AuditLog $audit) {}
+
     /**
-     * @param  list<array{enrollment_id: int, instrument_item_id: int, result_state: string, points_earned?: float|null, scale_level_id?: int|null, state_reason?: string|null}>  $cells
-     * @return int Number of cells written or removed.
+     * @param  list<array{enrollment_id: int, instrument_item_id: int, result_state: string, lock_version?: int, points_earned?: float|null, scale_level_id?: int|null, state_reason?: string|null}>  $cells
      */
-    public function save(Instrument $instrument, array $cells, User $actor): int
+    public function save(Instrument $instrument, array $cells, User $actor): RecordScoresResult
     {
         // Scoring only opens once a grid is prepared, and closes again once
         // its correction is completed — enforced here rather than only in the
@@ -49,20 +51,50 @@ class RecordScores
         // rules in this app are enforced (e.g. InstrumentBuilder::guard()).
         $this->guardAgainstScoresAboveMaximum($instrument, $cells);
 
-        return DB::transaction(function () use ($instrument, $cells, $actor): int {
+        return DB::transaction(function () use ($instrument, $cells, $actor): RecordScoresResult {
             $written = 0;
+            $versions = [];
+            $stale = [];
 
             foreach ($cells as $cell) {
                 $state = ResultState::from($cell['result_state']);
+                $score = StudentItemScore::query()
+                    ->where('instrument_item_id', $cell['instrument_item_id'])
+                    ->where('enrollment_id', $cell['enrollment_id'])
+                    ->lockForUpdate()
+                    ->first();
+                $currentVersion = $score === null ? 0 : $score->lock_version;
+
+                // A caller that never sends a version — every internal writer
+                // predating this check: seeders, imports, and any future one
+                // that has no browser tab to conflict with — asked for no
+                // staleness protection and gets the old unconditional write.
+                // Only a request that names a version (the grid's own
+                // "Guardar", which always does) can be rejected as stale.
+                if (array_key_exists('lock_version', $cell) && $currentVersion !== $cell['lock_version']) {
+                    $stale[] = [
+                        'enrollment_id' => $cell['enrollment_id'],
+                        'instrument_item_id' => $cell['instrument_item_id'],
+                        'result_state' => $score?->result_state->value ?? ResultState::Pending->value,
+                        'points_earned' => $score?->points_earned === null ? null : (float) $score->points_earned,
+                        'state_reason' => $score?->state_reason,
+                        'lock_version' => $currentVersion,
+                    ];
+
+                    continue;
+                }
 
                 // "Pending with no value" is the empty cell — remove the row so the
                 // grid returns to genuinely having no data, not a stored blank.
                 if ($state === ResultState::Pending) {
-                    $deleted = StudentItemScore::where('instrument_item_id', $cell['instrument_item_id'])
-                        ->where('enrollment_id', $cell['enrollment_id'])
-                        ->delete();
+                    $deleted = $score?->delete() === true ? 1 : 0;
 
                     $written += $deleted;
+                    $versions[] = [
+                        'enrollment_id' => $cell['enrollment_id'],
+                        'instrument_item_id' => $cell['instrument_item_id'],
+                        'lock_version' => 0,
+                    ];
 
                     continue;
                 }
@@ -72,23 +104,27 @@ class RecordScores
                 // so a stale client cannot smuggle a value onto an absence.
                 $carries = $state->carriesValue();
 
-                StudentItemScore::updateOrCreate(
-                    [
-                        'instrument_item_id' => $cell['instrument_item_id'],
-                        'enrollment_id' => $cell['enrollment_id'],
-                    ],
-                    [
-                        'instrument_id' => $instrument->id,
-                        'result_state' => $state,
-                        'points_earned' => $carries ? ($cell['points_earned'] ?? null) : null,
-                        'scale_level_id' => $carries ? ($cell['scale_level_id'] ?? null) : null,
-                        'state_reason' => $cell['state_reason'] ?? null,
-                        'assessed_at' => $carries ? Carbon::now() : null,
-                        'assessed_by' => $carries ? $actor->getKey() : null,
-                    ],
-                );
+                $score ??= new StudentItemScore([
+                    'instrument_item_id' => $cell['instrument_item_id'],
+                    'enrollment_id' => $cell['enrollment_id'],
+                ]);
+                $score->fill([
+                    'instrument_id' => $instrument->id,
+                    'result_state' => $state,
+                    'points_earned' => $carries ? ($cell['points_earned'] ?? null) : null,
+                    'scale_level_id' => $carries ? ($cell['scale_level_id'] ?? null) : null,
+                    'state_reason' => $cell['state_reason'] ?? null,
+                    'assessed_at' => $carries ? Carbon::now() : null,
+                    'assessed_by' => $carries ? $actor->getKey() : null,
+                    'lock_version' => $currentVersion + 1,
+                ])->save();
 
                 $written++;
+                $versions[] = [
+                    'enrollment_id' => $cell['enrollment_id'],
+                    'instrument_item_id' => $cell['instrument_item_id'],
+                    'lock_version' => $score->lock_version,
+                ];
             }
 
             // Marking anything moves a prepared instrument into correction, so the
@@ -98,7 +134,22 @@ class RecordScores
                 $instrument->update(['status' => 'in_correction']);
             }
 
-            return $written;
+            if ($stale !== []) {
+                $this->audit->record(
+                    'scores.stale_write_rejected',
+                    $instrument,
+                    $actor,
+                    count($stale).' célula(s) rejeitada(s) por escrita obsoleta.',
+                    [
+                        'cells' => array_map(fn (array $cell) => [
+                            'enrollment_id' => $cell['enrollment_id'],
+                            'instrument_item_id' => $cell['instrument_item_id'],
+                        ], $stale),
+                    ],
+                );
+            }
+
+            return new RecordScoresResult($written, $versions, $stale);
         });
     }
 
@@ -107,7 +158,7 @@ class RecordScores
      * excuses an item from the denominator (§4.2), it never raises what a
      * single question can itself be worth.
      *
-     * @param  list<array{enrollment_id: int, instrument_item_id: int, result_state: string, points_earned?: float|null, scale_level_id?: int|null, state_reason?: string|null}>  $cells
+     * @param  list<array{enrollment_id: int, instrument_item_id: int, result_state: string, lock_version?: int, points_earned?: float|null, scale_level_id?: int|null, state_reason?: string|null}>  $cells
      */
     protected function guardAgainstScoresAboveMaximum(Instrument $instrument, array $cells): void
     {
