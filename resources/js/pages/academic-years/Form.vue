@@ -9,6 +9,10 @@ import { Label } from '@/components/ui/label';
 type Option = { value: string; label: string };
 
 type Period = {
+    // Present for a period loaded from an existing year — its identity across
+    // saves. Absent for a period added client-side via addPeriod(): the
+    // backend then knows this is a brand-new period, never one being renamed.
+    ulid?: string;
     label: string;
     kind: string;
     sequence: number;

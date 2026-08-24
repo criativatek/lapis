@@ -2,9 +2,11 @@
 
 namespace App\Http\Requests;
 
+use App\Models\AcademicPeriod;
 use App\Models\AcademicPeriodKind;
 use App\Models\AcademicYear;
 use App\Models\AcademicYearStatus;
+use App\Rules\BelongsToCurrentOrganization;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -43,6 +45,11 @@ class AcademicYearRequest extends FormRequest
             'region_code' => ['nullable', 'string', 'max:8'],
 
             'periods' => ['required', 'array', 'min:1'],
+            // Absent/null is a brand-new period. When present, it must at
+            // least belong to the current organization — whether it belongs
+            // to THIS year is checked below, in after(), since that needs
+            // the resolved $academicYear rather than a bare column rule.
+            'periods.*.ulid' => ['nullable', 'string', new BelongsToCurrentOrganization(AcademicPeriod::class, 'ulid')],
             'periods.*.label' => ['required', 'string', 'max:64'],
             'periods.*.kind' => ['required', Rule::enum(AcademicPeriodKind::class)],
             'periods.*.sequence' => ['required', 'integer', 'min:1', 'max:255'],
@@ -74,6 +81,25 @@ class AcademicYearRequest extends FormRequest
                         "periods.{$index}.starts_on",
                         __('O período tem de estar dentro do ano letivo.'),
                     );
+                }
+            }
+
+            // A period ulid that belongs to the current organization is still
+            // not necessarily THIS year's own — without this, editing one
+            // year could smuggle in (and later silently adopt, or even
+            // remove) another year's period. Mirrors LessonSequenceRequest's
+            // identical check for its own items.
+            $year = $this->route('academic_year');
+            if ($year instanceof AcademicYear) {
+                $ownUlids = $year->periods()->pluck('ulid');
+                foreach ($periods as $index => $period) {
+                    $ulid = is_array($period) ? ($period['ulid'] ?? null) : null;
+                    if ($ulid !== null && ! $ownUlids->contains($ulid)) {
+                        $validator->errors()->add(
+                            "periods.{$index}.ulid",
+                            __('O período selecionado não pertence a este ano letivo.'),
+                        );
+                    }
                 }
             }
         });

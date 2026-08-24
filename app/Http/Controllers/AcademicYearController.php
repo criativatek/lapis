@@ -7,6 +7,7 @@ use App\Models\AcademicPeriodKind;
 use App\Models\AcademicYear;
 use App\Models\AcademicYearStatus;
 use App\Services\AcademicYearService;
+use App\Support\AcademicYears\AcademicYearValidationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
@@ -79,6 +80,7 @@ class AcademicYearController extends Controller
                 'region_code' => $academicYear->region_code,
                 'editable' => $academicYear->isEditable(),
                 'periods' => $academicYear->periods->map(fn ($period) => [
+                    'ulid' => $period->ulid,
                     'label' => $period->label,
                     'kind' => $period->kind->value,
                     'sequence' => $period->sequence,
@@ -99,11 +101,15 @@ class AcademicYearController extends Controller
     {
         Gate::authorize('update', $academicYear);
 
-        $this->service->update(
-            $academicYear,
-            $request->safe()->except('periods'),
-            $request->validated('periods'),
-        );
+        try {
+            $this->service->update(
+                $academicYear,
+                $request->safe()->except('periods'),
+                $request->validated('periods'),
+            );
+        } catch (AcademicYearValidationException $exception) {
+            return back()->withErrors(['periods' => $exception->getMessage()])->withInput();
+        }
 
         return to_route('academic-years.index');
     }

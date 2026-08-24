@@ -6,6 +6,7 @@ import Form from './Form.vue';
 type Option = { value: string; label: string };
 
 type Period = {
+    ulid?: string;
     label: string;
     kind: string;
     sequence: number;

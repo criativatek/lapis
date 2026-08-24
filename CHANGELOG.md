@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.65.1] — 2026-08-24
+
+### Fixed
+
+- **Guardar "Estrutura do ano letivo" deixa de apagar e recriar os períodos existentes.** Abrir a estrutura de um ano letivo já em uso, não mudar nada e carregar em Guardar dava, até agora, um erro interno do servidor sempre que qualquer período já tivesse dados associados — um instrumento, uma classificação, um snapshot de cálculo, uma autoavaliação, um registo, uma intervenção, uma avaliação intercalar ou um relatório. A causa: cada gravação apagava todos os períodos do ano e recriava-os do zero, e a base de dados recusa (com razão) apagar um período com dados dependentes. Cada período passa agora a ter uma identidade própria que atravessa gravações — um período existente é atualizado no lugar, mantendo o mesmo identificador interno, e tudo o que já apontava para ele (notas, classificações, snapshots, instrumentos, ...) continua a apontar corretamente. Guardar sem qualquer alteração deixa de dar erro. Remover um período que ainda tem dados associados continua a não ser permitido, mas passa a mostrar uma mensagem clara em vez de um erro de servidor; um período sem dados associados continua a poder ser removido normalmente. Reordenar períodos (trocar a ordem entre dois) continua a funcionar sem colisões. Editar datas, designação ou tipo de um período que já tem dados continua tão livre como sempre — só a estrutura de gravação mudou, nenhuma restrição pedagógica nova foi introduzida.
+
 ## [0.65.0] — 2026-08-24
 
 ### Added
