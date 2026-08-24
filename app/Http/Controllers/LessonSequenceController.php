@@ -128,13 +128,21 @@ class LessonSequenceController extends Controller implements HasMiddleware
             ? 'Sequência aplicada a 1 aula.'
             : "Sequência aplicada a {$result->applied} aulas.";
 
-        if ($result->skipped > 0) {
-            $message .= $result->skipped === 1
-                ? ' 1 item sem aula disponível.'
-                : " {$result->skipped} itens sem aula disponível.";
+        if ($result->preserved > 0) {
+            $message .= $result->preserved === 1
+                ? ' 1 aula já tinha conteúdo próprio e foi preservada.'
+                : " {$result->preserved} aulas já tinham conteúdo próprio e foram preservadas.";
         }
 
-        Inertia::flash('toast', ['type' => $result->skipped > 0 ? 'warning' : 'success', 'message' => $message]);
+        if ($result->unavailable > 0) {
+            $message .= $result->unavailable === 1
+                ? ' 1 item sem aula disponível.'
+                : " {$result->unavailable} itens sem aula disponível.";
+        }
+
+        $hasWarning = $result->preserved > 0 || $result->unavailable > 0;
+
+        Inertia::flash('toast', ['type' => $hasWarning ? 'warning' : 'success', 'message' => $message]);
 
         return back();
     }

@@ -51,22 +51,40 @@ class ApplyLessonSequence
                 ->get();
 
             $appliedLessonUlids = [];
+            $preserved = 0;
+            $unavailable = 0;
 
             foreach ($items as $index => $item) {
                 $lesson = $lessons->get($index);
 
                 if ($lesson === null) {
                     // Fewer eligible lessons than items — reported, not thrown.
+                    $unavailable++;
+
                     continue;
                 }
 
-                $this->saveLessonSummary->execute($lesson, $this->detailsFor($item, $lesson, $options), $actor);
+                $details = $this->detailsFor($item, $lesson, $options);
+
+                if ($details === []) {
+                    // Matched a lesson, but every field was either not
+                    // selected, blank at the source, or already non-blank at
+                    // the destination — nothing to write. Calling
+                    // SaveLessonSummary here would still auto-derive Prepared
+                    // and emit an audit event for a lesson that was not
+                    // actually touched, so it is skipped entirely.
+                    $preserved++;
+
+                    continue;
+                }
+
+                $this->saveLessonSummary->execute($lesson, $details, $actor);
                 $appliedLessonUlids[] = $lesson->ulid;
             }
 
             $applied = count($appliedLessonUlids);
 
-            return new ApplyLessonSequenceResult($applied, $items->count() - $applied, $appliedLessonUlids);
+            return new ApplyLessonSequenceResult($applied, $preserved, $unavailable, $appliedLessonUlids);
         });
 
         $this->audit->record(
@@ -77,7 +95,7 @@ class ApplyLessonSequence
             [
                 'class_id' => $class->getKey(),
                 'items_applied' => $result->applied,
-                'items_skipped' => $result->skipped,
+                'items_skipped' => $result->unavailable,
                 'copy_options' => $options->toArray(),
             ],
         );
@@ -113,38 +131,64 @@ class ApplyLessonSequence
     }
 
     /**
-     * Content is NOT NULL at the database level, so a lesson with no summary
-     * yet always receives it — otherwise SaveLessonSummary's create path
-     * would be handed no content at all. A lesson that already has a summary
-     * only has its content overwritten when the "summary" option is
-     * explicitly on; otherwise the key is omitted entirely, and
-     * SaveLessonSummary's fill()-based update path leaves whatever is
-     * already there completely untouched. The other three fields are
-     * nullable, so they follow the plain "include only if selected" rule.
+     * A field is only filled when all three hold: the copy option for it is
+     * explicitly selected, the sequence item's value is non-blank, and the
+     * destination lesson's current value is blank. Any other combination
+     * leaves that field completely untouched — never written, never
+     * cleared — so SaveLessonSummary's fill()-based update path (which
+     * leaves omitted keys alone) preserves whatever a teacher already wrote
+     * by hand. This applies to `content` exactly like the other three: an
+     * unchecked "summary" option never results in content being written,
+     * even when there is no existing LessonSummary yet.
+     *
+     * `content` is NOT NULL at the database level, so a lesson with no
+     * existing summary that ends up with at least one other field to write
+     * still needs a row to hold them — in that one case only, `content` is
+     * set to `''` as a structural fallback, never to the sequence item's
+     * actual summary text. If nothing at all ends up selected for such a
+     * lesson, the returned array is empty and the caller creates no row.
      *
      * @return array{content?: string, private_notes?: ?string, resources?: ?string, homework?: ?string}
      */
     protected function detailsFor(LessonSequenceItem $item, Lesson $lesson, LessonCopyOptions $options): array
     {
+        $existing = $lesson->summary()->first();
+
         $details = [];
-        $hasExistingSummary = $lesson->summary()->exists();
 
-        if ($options->summary || ! $hasExistingSummary) {
-            $details['content'] = $item->summary;
-        }
+        $this->fillField($details, 'content', $options->summary, $item->summary, $existing?->content);
+        $this->fillField($details, 'resources', $options->resources, $item->resources, $existing?->resources);
+        $this->fillField($details, 'homework', $options->homework, $item->homework, $existing?->homework);
+        $this->fillField($details, 'private_notes', $options->privateNotes, $item->private_notes, $existing?->private_notes);
 
-        if ($options->resources) {
-            $details['resources'] = $item->resources;
-        }
-
-        if ($options->homework) {
-            $details['homework'] = $item->homework;
-        }
-
-        if ($options->privateNotes) {
-            $details['private_notes'] = $item->private_notes;
+        if ($existing === null && $details !== [] && ! array_key_exists('content', $details)) {
+            // No row to hold resources/homework/private_notes without one —
+            // this is a placeholder to satisfy the NOT NULL column, not a
+            // copy of the sequence item's summary.
+            $details['content'] = '';
         }
 
         return $details;
+    }
+
+    /**
+     * @param  array<string, string>  $details
+     */
+    protected function fillField(array &$details, string $key, bool $selected, ?string $sourceValue, ?string $destinationValue): void
+    {
+        // $sourceValue's own blank check is spelled out here, rather than
+        // delegated to isBlank(), so static analysis can see $sourceValue is
+        // never null at the assignment below — isBlank() still holds the one
+        // canonical definition, used as-is for the destination check.
+        if (! $selected || $sourceValue === null || trim($sourceValue) === '' || ! $this->isBlank($destinationValue)) {
+            return;
+        }
+
+        $details[$key] = $sourceValue;
+    }
+
+    protected function isBlank(?string $value): bool
+    {
+        return $value === null || trim($value) === '';
     }
 }

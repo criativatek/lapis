@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.64.1] — 2026-08-24
+
+### Fixed
+
+- **Aplicar uma sequência de aulas deixa de apagar sumário, recursos, TPC ou notas que o professor já tivesse escrito à mão.** Dois problemas na Fatia 4: primeiro, desligar explicitamente a opção "Sumário" não impedia o conteúdo de ser copiado sempre que a aula de destino ainda não tinha nenhum sumário — a opção era ignorada exatamente no caso em que mais importava respeitá-la. Segundo, mesmo com uma opção ligada, o valor da sequência substituía sempre o que já estava escrito na aula, em qualquer um dos quatro campos — Sumário, Recursos, TPC, Notas do professor — em vez de só preencher o que estava em branco. Agora uma sequência só escreve num campo quando a opção respetiva está ligada, o item da sequência tem texto nesse campo, e a aula de destino está em branco nesse mesmo campo; falhando qualquer uma destas três condições, o campo fica completamente intocado. Uma aula sem sumário ainda pode passar a existir com conteúdo vazio (nunca com o texto da sequência, se a opção Sumário estava desligada) quando pelo menos outro campo tinha algo genuíno para escrever; se nada havia mesmo para aplicar, a aula é simplesmente ignorada, sem criar um registo vazio. A mensagem apresentada depois de aplicar passa a distinguir aulas efetivamente preenchidas, aulas que já tinham conteúdo próprio e foram preservadas, e itens sem aula disponível — nunca mais uma única contagem de "aplicadas" a esconder o facto de metade da sequência não ter mudado nada.
+
 ## [0.64.0] — 2026-08-24
 
 ### Added
