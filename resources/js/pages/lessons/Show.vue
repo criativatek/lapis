@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ArrowLeft, Check, Copy, Save } from '@lucide/vue';
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import AlertError from '@/components/AlertError.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
@@ -109,13 +109,78 @@ const originWeekHref = computed(() => {
     return `/lessons?week=${date.toISOString().slice(0, 10)}`;
 });
 
+// A submission started by this page's own buttons ("Guardar", "Marcar como
+// lecionada") is exactly how the work gets saved — never a way of losing it.
+// It is therefore exempt from the unsaved-changes guard below, which would
+// otherwise interrogate the teacher about the very request that saves.
+const submittingFromThisPage = ref(false);
+
+function releaseSubmission(): void {
+    submittingFromThisPage.value = false;
+}
+
 function submitSummary(): void {
-    summaryForm.put(`/lessons/${props.lesson.ulid}/summary`, { preserveScroll: true });
+    submittingFromThisPage.value = true;
+    summaryForm.put(`/lessons/${props.lesson.ulid}/summary`, {
+        preserveScroll: true,
+        onFinish: releaseSubmission,
+    });
 }
 
 function markTaught(): void {
-    taughtForm.post(`/lessons/${props.lesson.ulid}/mark-taught`, { preserveScroll: true });
+    submittingFromThisPage.value = true;
+    taughtForm.post(`/lessons/${props.lesson.ulid}/mark-taught`, {
+        preserveScroll: true,
+        onFinish: releaseSubmission,
+    });
 }
+
+// Leaving with a sumário half-written loses it silently: nothing on this page
+// persists on its own. `summaryForm.isDirty` is Inertia's own comparison
+// against the values the form was created with, and it returns to false by
+// itself once a save succeeds (useForm re-baselines its defaults in
+// onSuccess), so a saved sumário never triggers the warning.
+const UNSAVED_CHANGES_MESSAGE =
+    'Tens alterações por guardar neste sumário. Se saíres agora, perdes o que escreveste. Queres mesmo sair?';
+
+function hasUnsavedChanges(): boolean {
+    return summaryForm.isDirty && !submittingFromThisPage.value;
+}
+
+// Tab close, refresh, and navigation out of the app: the browser shows its own
+// wording, so the message here only opts in to being asked at all.
+function warnOnUnload(event: BeforeUnloadEvent): void {
+    if (!hasUnsavedChanges()) {
+        return;
+    }
+
+    event.preventDefault();
+}
+
+// Navigation inside the app never reaches beforeunload — Inertia's own
+// `before` event is the equivalent hook, and it is cancelable.
+function guardInAppNavigation(event: Event): void {
+    if (!hasUnsavedChanges()) {
+        return;
+    }
+
+    if (!window.confirm(UNSAVED_CHANGES_MESSAGE)) {
+        event.preventDefault();
+    }
+}
+
+let stopGuardingNavigation: (() => void) | null = null;
+
+onMounted(() => {
+    window.addEventListener('beforeunload', warnOnUnload);
+    stopGuardingNavigation = router.on('before', guardInAppNavigation);
+});
+
+onBeforeUnmount(() => {
+    window.removeEventListener('beforeunload', warnOnUnload);
+    stopGuardingNavigation?.();
+    stopGuardingNavigation = null;
+});
 </script>
 
 <template>

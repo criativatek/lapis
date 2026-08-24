@@ -2,7 +2,15 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
-## [0.66.3] — 2026-08-24
+## [0.66.4] — 2026-08-24
+
+### Fixed
+
+- **Sair de uma aula com o sumário por guardar passa a avisar, em vez de perder o texto em silêncio.** Nada nesta página se guarda sozinho: um sumário escrito a meio, umas notas do professor, um TPC — fechar o separador, atualizar a página ou carregar em qualquer ligação fazia desaparecer tudo sem uma palavra. Passa a haver aviso nos dois caminhos por onde se sai: o do navegador (fechar, atualizar, sair da aplicação) e o de dentro da própria aplicação, que nunca chega a passar pelo primeiro — carregar em "Voltar às aulas da semana", ou em qualquer outra ligação, pede confirmação antes de deixar o texto para trás, com o mesmo `confirm()` do navegador que o resto da aplicação já usa nas suas confirmações.
+
+  **O aviso só aparece quando há mesmo algo por guardar.** É o próprio estado do formulário (`isDirty`) que decide — comparação com os valores com que a página abriu, e não uma bandeira própria a ser mantida à mão. Abrir uma aula e sair sem tocar em nada não pergunta nada. "Basear no sumário anterior" continua a ser só texto colocado no formulário, por guardar, e mantém-se exatamente como estava.
+
+  **Guardar não é sair.** As submissões da própria página — "Guardar" e "Marcar como lecionada" — estão explicitamente isentas: seria absurdo interrogar o professor precisamente sobre o pedido que grava o trabalho. Depois de uma gravação bem sucedida o formulário volta a estar limpo por si só, pelo que o aviso não volta a aparecer logo a seguir a guardar; esse comportamento fica coberto por teste contra a biblioteca real, e não contra uma imitação dela, porque é dele que o aviso inteiro depende. Ambos os ouvintes são removidos quando se sai da página.
 
 ### Fixed
 
