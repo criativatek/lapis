@@ -2,6 +2,14 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.62.1] — 2026-08-24
+
+### Fixed
+
+- **"Registo de Avaliações" passa a "Grelhas de correção" na navegação, no menu da landing e na mock da sidebar.** O nome anterior lia-se como um passo burocrático de arquivo; o novo nome diz o que o professor de facto abre — a grelha onde a correção acontece. Só nomenclatura: a rota, o controlador e a capability continuam `assessments`.
+
+  **Auditado em paralelo, sem alteração de código**: o relato de que "Criação simples" ficava inacessível depois de passar por "Criação avançada" não se reproduz na HEAD atual — o ciclo simples → avançada → simples já preserva os campos comuns e já bloqueia corretamente (sem perder dados) uma estrutura avançada incompatível. Adicionada cobertura de regressão (`InstrumentForm.test.ts`) para os dois casos, sem alterar comportamento.
+
 ## [0.62.0] — 2026-08-24
 
 ### Added
