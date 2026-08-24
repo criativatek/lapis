@@ -1154,7 +1154,7 @@ function revertCancellation(): void {
                                 <input
                                     :data-cell="`${rowIndex}-${columnIndex}`"
                                     type="number"
-                                    step="0.25"
+                                    step="0.5"
                                     :min="minimumFor(item)"
                                     :max="item.points_possible"
                                     :value="cell(student.enrollment_id, item.id).state === 'assessed' ? cell(student.enrollment_id, item.id).points : ''"

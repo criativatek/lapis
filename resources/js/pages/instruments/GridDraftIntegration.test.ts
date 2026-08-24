@@ -319,8 +319,41 @@ describe('Grid local protection integration', () => {
             const input = scoreCell(trackedMount());
 
             expect(input.attributes('type')).toBe('number');
-            expect(input.attributes('step')).toBe('0.25');
+            expect(input.attributes('step')).toBe('0.5');
             expect(input.classes().join(' ')).not.toContain('appearance-none');
+        });
+
+        it('steps the spin arrows by 0.5, matching how a grade is actually given', () => {
+            const input = scoreCell(trackedMount()).element as HTMLInputElement;
+
+            input.value = '4';
+            input.stepUp();
+            expect(input.value).toBe('4.5');
+            input.stepUp();
+            expect(input.value).toBe('5');
+
+            input.stepDown();
+            expect(input.value).toBe('4.5');
+            input.stepDown();
+            expect(input.value).toBe('4');
+        });
+
+        it('never lets the spin arrows step past the cotação máxima', () => {
+            const input = scoreCell(trackedMount()).element as HTMLInputElement;
+
+            // item.points_possible is 20 in this fixture — the input's own
+            // max, so the browser's native stepUp() refuses to cross it.
+            input.value = '19.5';
+            input.stepUp();
+            expect(input.value).toBe('20');
+        });
+
+        it('still accepts a manually typed value off the 0.5 grid', async () => {
+            const wrapper = trackedMount();
+
+            await editPoints(wrapper, '4.25');
+
+            expect((scoreCell(wrapper).element as HTMLInputElement).value).toBe('4.25');
         });
 
         it('still composes with the normal, over-max and disabled styling', async () => {

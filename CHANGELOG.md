@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.66.8] — 2026-08-25
+
+### Fixed
+
+- **As setas de cotação, na grelha de correção, passam a avançar de 0,5 em 0,5.** O intervalo herdado da criação do elemento de avaliação era de um quarto de ponto (0,25) — coerente ali, onde as cotações se distribuem por questões, mas estranho ao dar uma nota, onde a prática habitual são meios pontos. As setas passam a percorrer 0 → 0,5 → 1 → 1,5 → ..., sempre travadas na cotação máxima da questão. Escrever a nota diretamente no campo continua a aceitar qualquer valor, incluindo frações menores que 0,5 — só o comportamento das setas mudou.
+
 ## [0.66.7] — 2026-08-24
 
 ### Fixed
