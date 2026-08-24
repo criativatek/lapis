@@ -37,7 +37,6 @@ class LessonScheduleTest extends TestCase
         parent::setUp();
 
         Route::middleware(['web', 'auth', 'organization'])->group(function (): void {
-            Route::get('/_test/lessons/schedule', fn () => response()->noContent());
             Route::post('/_test/lesson-slots', [LessonScheduleController::class, 'store']);
             Route::put('/_test/lesson-slots/{recurringLessonSlot}', [LessonScheduleController::class, 'update']);
             Route::delete('/_test/lesson-slots/{recurringLessonSlot}', [LessonScheduleController::class, 'destroy']);
@@ -184,16 +183,78 @@ class LessonScheduleTest extends TestCase
         });
     }
 
+    /**
+     * Reversão deliberada do princípio anterior ("ler nunca materializa"):
+     * abrir a semana passa a criar as aulas dessa semana, sem passo manual.
+     * A escrita continua estritamente limitada à semana pedida e é
+     * idempotente — ler a mesma semana duas vezes não duplica nada.
+     */
     #[Test]
-    public function reading_the_schedule_does_not_materialize_lessons(): void
+    public function reading_the_week_materializes_only_that_weeks_lessons(): void
     {
         $schoolClass = $this->schoolClassFor($this->teacher);
         $this->inTenant($this->organization, fn () => RecurringLessonSlot::create($this->slotAttributes($schoolClass)));
+        $academicYearId = $this->inTenant(
+            $this->organization,
+            fn (): int => AcademicYear::query()->sole()->id,
+        );
+        $session = [
+            'organization_id' => $this->organization->id,
+            'academic_year_id' => $academicYearId,
+        ];
+
+        $this->actingAs($this->teacher)->withSession($session)
+            ->get('/lessons?week=2026-09-07')
+            ->assertOk();
+
+        $this->assertDatabaseCount('lessons', 1);
+        $this->assertDatabaseHas('lessons', [
+            'class_id' => $schoolClass->id,
+            'starts_at' => '2026-09-07 09:30:00',
+        ]);
+
+        $this->actingAs($this->teacher)->withSession($session)
+            ->get('/lessons?week=2026-09-07')
+            ->assertOk();
+
+        $this->assertDatabaseCount('lessons', 1);
+    }
+
+    #[Test]
+    public function reading_one_week_never_materializes_an_adjacent_week(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $this->inTenant($this->organization, fn () => RecurringLessonSlot::create($this->slotAttributes($schoolClass)));
+        $academicYearId = $this->inTenant(
+            $this->organization,
+            fn (): int => AcademicYear::query()->sole()->id,
+        );
 
         $this->actingAs($this->teacher)
-            ->withSession(['organization_id' => $this->organization->id])
-            ->get('/_test/lessons/schedule')
-            ->assertNoContent();
+            ->withSession(['organization_id' => $this->organization->id, 'academic_year_id' => $academicYearId])
+            ->get('/lessons?week=2026-09-07')
+            ->assertOk();
+
+        $this->assertDatabaseCount('lessons', 1);
+        $this->assertDatabaseMissing('lessons', ['starts_at' => '2026-09-14 09:30:00']);
+        $this->assertDatabaseMissing('lessons', ['starts_at' => '2026-08-31 09:30:00']);
+    }
+
+    #[Test]
+    public function reading_the_week_during_impersonation_never_materializes_lessons(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $this->inTenant($this->organization, fn () => RecurringLessonSlot::create($this->slotAttributes($schoolClass)));
+        $academicYearId = $this->inTenant(
+            $this->organization,
+            fn (): int => AcademicYear::query()->sole()->id,
+        );
+
+        $this->actingAs($this->teacher)->withSession([
+            'organization_id' => $this->organization->id,
+            'academic_year_id' => $academicYearId,
+            'impersonator_id' => 999,
+        ])->get('/lessons?week=2026-09-07')->assertOk();
 
         $this->assertDatabaseCount('lessons', 0);
     }

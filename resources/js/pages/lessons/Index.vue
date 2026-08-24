@@ -8,7 +8,7 @@ import {
     ChevronRight,
     FileText,
     ListOrdered,
-    Plus,
+    RefreshCw,
 } from '@lucide/vue';
 import { computed } from 'vue';
 import Heading from '@/components/Heading.vue';
@@ -137,14 +137,17 @@ function badgeVariant(
                 "
             />
             <Button
-                class="min-h-11 shrink-0"
+                variant="outline"
+                size="sm"
+                class="min-h-10 shrink-0"
+                title="As aulas desta semana são criadas automaticamente ao abrir a página. Usa isto para refletir de imediato uma alteração ao horário recorrente."
                 :disabled="materializeForm.processing || !academicYear"
                 @click="materialize"
             >
-                <Plus class="size-4" />{{
+                <RefreshCw class="size-4" />{{
                     materializeForm.processing
-                        ? 'A preparar…'
-                        : 'Preparar aulas desta semana'
+                        ? 'A atualizar…'
+                        : 'Atualizar aulas desta semana'
                 }}
             </Button>
         </div>
@@ -202,7 +205,7 @@ function badgeVariant(
             <p class="mx-auto mt-1 max-w-lg text-sm text-muted-foreground">
                 {{
                     configuredClassesCount > 0
-                        ? 'Usa “Preparar aulas desta semana” para criar as ocorrências do horário.'
+                        ? 'O horário recorrente das tuas turmas não tem aulas nesta semana. Abrir outra semana mostra as aulas dessa semana automaticamente.'
                         : 'Configura primeiro o horário na página de cada turma.'
                 }}
             </p>

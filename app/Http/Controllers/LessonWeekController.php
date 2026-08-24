@@ -39,6 +39,21 @@ class LessonWeekController extends Controller implements HasMiddleware
         $academicYear = $this->selectedAcademicYear($request);
         $weekStart = CarbonImmutable::parse($request->validated('week', now()->toDateString()), 'Europe/Lisbon')->startOfWeek();
 
+        // Abrir a semana passa a criar as suas próprias aulas, em vez de
+        // exigir um passo manual antes de o horário aparecer. A ação é
+        // idempotente (firstOrCreate sobre um índice único real) e está
+        // estritamente limitada à semana pedida — nunca ao ano letivo
+        // inteiro nem a qualquer outra semana. Uma sessão de suporte
+        // continua a não escrever nada em nome do professor.
+        if ($academicYear !== null && ! $request->session()->has('impersonator_id')) {
+            $this->materializeLessons->execute(
+                $this->user($request),
+                $academicYear,
+                $weekStart,
+                $weekStart->endOfWeek()->startOfDay(),
+            );
+        }
+
         return Inertia::render('lessons/Index', [
             'lessons' => $academicYear === null ? [] : $this->weeklyLessons->for($this->user($request), $academicYear, $weekStart),
             'week' => ['start' => $weekStart->toDateString(), 'end' => $weekStart->endOfWeek()->toDateString()],

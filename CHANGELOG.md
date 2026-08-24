@@ -2,7 +2,17 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
-## [0.66.1] — 2026-08-24
+## [0.66.2] — 2026-08-24
+
+### Fixed
+
+- **Abrir a semana passa a mostrar logo as aulas do horário, sem "Preparar aulas desta semana" primeiro.** Um professor com o horário recorrente inteiramente configurado abria "Aulas e Sumários" e via uma semana vazia, com uma mensagem a dizer-lhe que carregasse num botão — o horário existia, as aulas é que ainda não tinham sido criadas. A vista semanal lia apenas aulas já materializadas e nunca olhava para as aulas recorrentes; só o botão manual as criava. Abrir uma semana passa agora a criar as aulas dessa semana automaticamente, antes de a lista ser lida, com a mesma ação idempotente de sempre (`MaterializeLessonsForWeek`) — as aulas que aparecem continuam a ser registos reais de aula, exatamente como já eram, e não uma pré-visualização por gravar.
+
+  **A escrita está estritamente limitada à semana que está a ser vista.** Nunca ao ano letivo inteiro, nunca a uma semana vizinha: abrir a semana de 7 de setembro cria as aulas dessa semana e mais nenhuma, e só ao navegar para a semana seguinte é que as aulas dessa semana passam a existir. Como a criação assenta num `firstOrCreate` sobre um índice único real, reabrir a mesma semana as vezes que forem precisas não duplica nada nem toca no que já lá está — um sumário já escrito, uma aula já marcada como lecionada. Uma sessão de suporte (impersonação) continua a não escrever nada em nome do professor: vê a semana, mas não cria aulas.
+
+  **Isto inverte deliberadamente um princípio anterior desta base de código** — "ler o horário nunca materializa aulas" — que estava explicitamente coberto por um teste. A decisão de produto mudou: a preparação da semana deixa de ser um passo burocrático que o professor tem de se lembrar de fazer. O teste foi reescrito para provar o comportamento novo (ler cria, limitado à semana, idempotente) em vez de ser apagado.
+
+  **O botão manual não desaparece, passa a secundário.** Deixa de ser o passo obrigatório para as aulas existirem e passa a "Atualizar aulas desta semana", com peso visual menor: serve para quem acabou de editar o horário recorrente a meio da semana e quer vê-lo refletido de imediato, sem esperar por um novo carregamento da página. Continua a ser a mesma ação idempotente, pelo que não fazer nada é um resultado legítimo. O estado vazio deixa de dizer "carrega no botão" e passa a descrever o que de facto se passa: a semana não tem aulas no horário recorrente das turmas, ou ainda não há horário configurado.
 
 ### Fixed
 

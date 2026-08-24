@@ -141,6 +141,47 @@ class WeeklyLessonsTest extends TestCase
     }
 
     #[Test]
+    public function opening_the_week_shows_the_scheduled_lessons_without_a_manual_step(): void
+    {
+        [$teacher, $organization, $year, $schoolClass] = $this->context();
+        $this->tenant($organization, fn () => RecurringLessonSlot::create($this->slot($schoolClass, 1)));
+
+        $this->actingAs($teacher)->withSession([
+            'organization_id' => $organization->id,
+            'academic_year_id' => $year->id,
+        ])->get('/lessons?week=2026-09-09')->assertOk()->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->component('lessons/Index')
+                ->where('week.start', '2026-09-07')
+                ->has('lessons', 1)
+                ->where('lessons.0.starts_at', fn (string $startsAt): bool => str_starts_with($startsAt, '2026-09-07')),
+        );
+
+        $this->assertDatabaseCount('lessons', 1);
+    }
+
+    #[Test]
+    public function opening_an_adjacent_week_materializes_only_that_week(): void
+    {
+        [$teacher, $organization, $year, $schoolClass] = $this->context();
+        $this->tenant($organization, fn () => RecurringLessonSlot::create($this->slot($schoolClass, 1)));
+        $session = ['organization_id' => $organization->id, 'academic_year_id' => $year->id];
+
+        $this->actingAs($teacher)->withSession($session)->get('/lessons?week=2026-09-07')->assertOk();
+        $this->assertDatabaseCount('lessons', 1);
+
+        $this->actingAs($teacher)->withSession($session)->get('/lessons?week=2026-09-14')->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page->has('lessons', 1));
+
+        // A semana seguinte acrescenta exatamente uma aula — a sua — sem
+        // tocar na anterior nem materializar o ano letivo inteiro.
+        $this->assertDatabaseCount('lessons', 2);
+        $this->assertDatabaseHas('lessons', ['starts_at' => '2026-09-07 09:00:00']);
+        $this->assertDatabaseHas('lessons', ['starts_at' => '2026-09-14 09:00:00']);
+        $this->assertDatabaseMissing('lessons', ['starts_at' => '2026-09-21 09:00:00']);
+    }
+
+    #[Test]
     public function materializing_a_week_uses_every_scheduled_class_and_is_idempotent(): void
     {
         [$teacher, $organization, $year, $firstClass] = $this->context();
