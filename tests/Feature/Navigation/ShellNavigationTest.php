@@ -151,7 +151,7 @@ class ShellNavigationTest extends TestCase
                 'classes' => ['Turmas e alunos', 'Turmas'],
                 'students' => ['Turmas e alunos', 'Alunos'],
                 'instruments' => ['Avaliação', 'Elementos de Avaliação'],
-                'assessments' => ['Avaliação', 'Registo de Avaliações'],
+                'assessments' => ['Avaliação', 'Grelhas de correção'],
                 'self-assessments' => ['Avaliação', 'Autoavaliações'],
                 'class-analysis' => ['Acompanhamento', 'Turma'],
                 'student-progress' => ['Acompanhamento', 'Aluno'],
@@ -181,7 +181,8 @@ class ShellNavigationTest extends TestCase
 
             foreach ([
                 'As Minhas Turmas',   // → Turmas
-                'Avaliações',         // → Registo de Avaliações
+                'Avaliações',         // → Grelhas de correção
+                'Registo de Avaliações', // → Grelhas de correção
                 'Resultados',         // no longer a place a teacher goes
                 'Análise da Turma',   // → Acompanhamento > Turma
                 'Evolução do Aluno',  // → Acompanhamento > Aluno

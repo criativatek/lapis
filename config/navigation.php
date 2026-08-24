@@ -74,10 +74,12 @@ return [
                 // route, the module and the whole Instrument* codebase are
                 // untouched: a label is not a rename (§17).
                 ['key' => 'instruments', 'label' => 'Elementos de Avaliação', 'icon' => 'ClipboardList', 'module' => 'instruments', 'phase' => 2, 'route' => 'instruments.index', 'built' => true, 'description' => 'Criar e gerir elementos usados na avaliação.'],
-                // «Registo de Avaliações», because that is the act. The route,
-                // the controller and the capability are all still `assessments`
-                // — a label is not a rename (§17).
-                ['key' => 'assessments', 'label' => 'Registo de Avaliações', 'icon' => 'PenLine', 'module' => 'assessments', 'phase' => 2, 'route' => 'assessments.index', 'built' => true, 'description' => 'Registar avaliações dos alunos.', 'match' => ['/classifications']],
+                // «Grelhas de correção», because that is what the professor
+                // actually opens — the grid the correction happens in, not an
+                // abstract "registo". The route, the controller and the
+                // capability are all still `assessments` — a label is not a
+                // rename (§17).
+                ['key' => 'assessments', 'label' => 'Grelhas de correção', 'icon' => 'PenLine', 'module' => 'assessments', 'phase' => 2, 'route' => 'assessments.index', 'built' => true, 'description' => 'Registar avaliações dos alunos.', 'match' => ['/classifications']],
                 ['key' => 'self-assessments', 'label' => 'Autoavaliações', 'icon' => 'UserCheck', 'module' => 'self_assessments', 'phase' => 3, 'route' => 'self-assessments.index', 'built' => true, 'description' => 'Gerir as autoavaliações.'],
             ],
         ],

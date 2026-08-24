@@ -48,7 +48,7 @@ const stages: readonly Stage[] = [
         path: 'lapis.pt/instruments/teste-1/grelha',
         modules: [
             'Elementos de Avaliação',
-            'Registo de Avaliações',
+            'Grelhas de correção',
             'Autoavaliações',
         ],
     },

@@ -59,7 +59,7 @@ const menu: readonly MenuGroup[] = [
         label: 'Avaliação',
         items: [
             { icon: ClipboardList, label: 'Elementos de Avaliação' },
-            { icon: PenLine, label: 'Registo de Avaliações' },
+            { icon: PenLine, label: 'Grelhas de correção' },
             { icon: UserCheck, label: 'Autoavaliações' },
         ],
     },
