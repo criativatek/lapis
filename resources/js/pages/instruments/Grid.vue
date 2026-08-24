@@ -1149,7 +1149,12 @@ function revertCancellation(): void {
                                   the arrows; the spinners themselves are
                                   deliberately kept, since onKeydown's arrow-key
                                   stepping makes them a real affordance rather
-                                  than decoration.
+                                  than decoration. w-20, not w-16: a manually
+                                  typed value like "10,25" was clipping inside
+                                  the narrower box — text-right just hides the
+                                  overflow instead of scrolling to reveal it,
+                                  so a value the teacher had genuinely typed
+                                  could look shorter than it was.
                                 -->
                                 <input
                                     :data-cell="`${rowIndex}-${columnIndex}`"
@@ -1160,7 +1165,7 @@ function revertCancellation(): void {
                                     :value="cell(student.enrollment_id, item.id).state === 'assessed' ? cell(student.enrollment_id, item.id).points : ''"
                                     :disabled="isReadOnly || (cell(student.enrollment_id, item.id).state !== 'assessed' && cell(student.enrollment_id, item.id).state !== 'pending')"
                                     :class="[
-                                        'h-7 w-16 rounded border bg-transparent pl-1.5 pr-5 text-right tabular-nums disabled:opacity-40',
+                                        'h-7 w-20 rounded border bg-transparent pl-1.5 pr-5 text-right tabular-nums disabled:opacity-40',
                                         isOverMax(student, item) ? 'border-destructive text-destructive' : 'border-input',
                                     ]"
                                     :title="isOverMax(student, item) ? `Excede a cotação máxima (${item.points_possible} pts).` : undefined"

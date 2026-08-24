@@ -309,11 +309,30 @@ describe('Grid local protection integration', () => {
         it('keeps a fixed box width and pads the digits clear of the spin arrows', () => {
             const classes = scoreCell(trackedMount()).classes();
 
-            expect(classes).toContain('w-16');
+            // w-20, not the original w-16: a manually typed value like
+            // "10,25" was clipping inside the narrower box.
+            expect(classes).toContain('w-20');
+            expect(classes).not.toContain('w-16');
             expect(classes).toContain('pr-5');
             expect(classes).toContain('pl-1.5');
             expect(classes).not.toContain('px-1.5');
         });
+
+        it.each(['5', '5.5', '5.25', '10', '100'])(
+            'keeps "%s" fully in the field value, not just partly typed',
+            async (points) => {
+                const wrapper = trackedMount();
+
+                await editPoints(wrapper, points);
+
+                // jsdom doesn't lay out or clip text the way a real browser
+                // does, so this can only prove the untruncated value reaches
+                // the field — pairing it with the wider box above is what
+                // actually keeps it visible; a browser check remains the way
+                // to confirm that combination renders as expected.
+                expect((scoreCell(wrapper).element as HTMLInputElement).value).toBe(points);
+            },
+        );
 
         it('keeps the native spinners rather than suppressing them', () => {
             const input = scoreCell(trackedMount());

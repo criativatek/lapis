@@ -98,9 +98,11 @@ class InstrumentGridRowStateTest extends TestCase
 
         // The controls drove the row height: 32px boxes with 6px of padding
         // above and below made a thirty-student class into a scrolling job.
-        $this->assertStringContainsString('h-7 w-16 rounded border', $grid, 'a caixa da nota tem de ser compacta');
+        // The box widened from w-16 to w-20 separately (a typed value like
+        // "10,25" was clipping) — that's a width change, not a height one.
+        $this->assertStringContainsString('h-7 w-20 rounded border', $grid, 'a caixa da nota tem de ser compacta');
         $this->assertStringContainsString('h-7 cursor-pointer rounded border', $grid, 'o seletor por item tem de ser compacto');
-        $this->assertStringNotContainsString('h-8 w-16 rounded border', $grid);
+        $this->assertStringNotContainsString('h-8 w-20 rounded border', $grid);
 
         // And the cells stopped padding the rows out.
         $this->assertStringContainsString('px-1 py-0.5 text-center', $grid);

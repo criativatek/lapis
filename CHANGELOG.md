@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.66.9] — 2026-08-25
+
+### Fixed
+
+- **A pontuação já não fica cortada na caixa da grelha de correção.** Um valor escrito à mão como "10,25" cabia mal na caixa anterior (64px, a maior parte tomada pelo espaço reservado às setas) e, alinhado à direita, o excesso ficava simplesmente invisível em vez de forçar a caixa a crescer — o professor via "10,2" mesmo tendo escrito "10,25". A caixa passa de 64 para 80px; as setas continuam a saltar de 0,5 em 0,5, a escrita manual continua livre, e o alinhamento à direita das setas mantém-se exatamente como ficou na correção anterior.
+
 ## [0.66.8] — 2026-08-25
 
 ### Fixed
