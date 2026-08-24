@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
+import { capitalizeFirst } from '@/lib/text';
 
 type Lesson = {
     ulid: string;
@@ -85,7 +86,9 @@ const timeFormatter = new Intl.DateTimeFormat('pt-PT', {
     hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Lisbon',
 });
 
-const lessonDate = computed(() => dateFormatter.format(new Date(props.lesson.starts_at)));
+const lessonDate = computed(() =>
+    capitalizeFirst(dateFormatter.format(new Date(props.lesson.starts_at))),
+);
 const lessonTime = computed(() => {
     const start = timeFormatter.format(new Date(props.lesson.starts_at));
 
@@ -203,7 +206,7 @@ onBeforeUnmount(() => {
             <dl class="grid gap-3 rounded-xl border bg-card p-4 text-sm sm:grid-cols-2">
                 <div>
                     <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Data</dt>
-                    <dd class="mt-1 capitalize">{{ lessonDate }}</dd>
+                    <dd class="mt-1">{{ lessonDate }}</dd>
                 </div>
                 <div>
                     <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Hora</dt>

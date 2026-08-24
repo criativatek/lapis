@@ -6,6 +6,7 @@ import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { capitalizeFirst } from '@/lib/text';
 
 export type RecurringLessonSlot = {
     ulid: string;
@@ -104,8 +105,8 @@ function remove(slot: RecurringLessonSlot): void {
                 class="flex flex-wrap items-center justify-between gap-3 p-3"
             >
                 <div class="min-w-0 text-sm">
-                    <p class="font-medium capitalize">
-                        {{ weekdays[slot.day_of_week - 1] }} ·
+                    <p class="font-medium">
+                        {{ capitalizeFirst(weekdays[slot.day_of_week - 1]) }} ·
                         {{ slot.starts_at }}–{{ slot.ends_at }}
                     </p>
                     <p
@@ -173,9 +174,8 @@ function remove(slot: RecurringLessonSlot): void {
                             v-for="(weekday, index) in weekdays"
                             :key="weekday"
                             :value="index + 1"
-                            class="capitalize"
                         >
-                            {{ weekday }}
+                            {{ capitalizeFirst(weekday) }}
                         </option>
                     </select>
                     <InputError :message="form.errors.day_of_week" />

@@ -143,6 +143,26 @@ describe('lessons/Show — back link', () => {
     });
 });
 
+describe('lessons/Show — pt-PT date', () => {
+    /**
+     * Only the opening character is uppercased. The CSS `capitalize` class
+     * used to uppercase every word, giving "Quarta-Feira, 9 De Setembro De
+     * 2026" — the Intl output itself was always right.
+     */
+    it('renders the date in sentence case, not title case', () => {
+        const wrapper = mountPage();
+
+        expect(wrapper.text()).toContain('Quarta-feira, 9 de setembro de 2026');
+        expect(wrapper.text()).not.toContain('De setembro');
+    });
+
+    it('no longer leaves the capitalize class to do it in CSS', () => {
+        const date = mountPage().find('dd');
+
+        expect(date.classes()).not.toContain('capitalize');
+    });
+});
+
 describe('lessons/Show — unsaved changes warning', () => {
     it('does not warn on tab close while nothing has been typed', () => {
         mountPage();

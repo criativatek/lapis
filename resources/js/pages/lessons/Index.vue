@@ -15,6 +15,7 @@ import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { capitalizeFirst } from '@/lib/text';
 
 type Lesson = {
     ulid: string;
@@ -101,6 +102,10 @@ function materialize(): void {
     materializeForm.from = props.week.start;
     materializeForm.to = props.week.end;
     materializeForm.post('/lessons/materialize-week', { preserveScroll: true });
+}
+
+function dayLabel(date: string): string {
+    return capitalizeFirst(dateFormatter.format(new Date(`${date}T12:00:00+01:00`)));
 }
 
 function lessonTime(lesson: Lesson): string {
@@ -213,12 +218,8 @@ function badgeVariant(
 
         <div v-else class="space-y-6">
             <section v-for="day in days" :key="day.date" class="space-y-2">
-                <h2 class="text-sm font-semibold capitalize">
-                    {{
-                        dateFormatter.format(
-                            new Date(`${day.date}T12:00:00+01:00`),
-                        )
-                    }}
+                <h2 class="text-sm font-semibold">
+                    {{ dayLabel(day.date) }}
                 </h2>
                 <ul class="divide-y rounded-xl border bg-card">
                     <li v-for="lesson in day.lessons" :key="lesson.ulid">

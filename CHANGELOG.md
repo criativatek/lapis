@@ -2,7 +2,13 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
-## [0.66.4] — 2026-08-24
+## [0.66.5] — 2026-08-24
+
+### Fixed
+
+- **As datas em português deixam de aparecer com Maiúsculas A Meio Da Frase.** "Segunda-Feira, 14 De Setembro De 2026" não é português: escreve-se "Segunda-feira, 14 de setembro de 2026", com maiúscula apenas na primeira letra da frase. O texto produzido pela aplicação já estava correto — `Intl.DateTimeFormat('pt-PT', …)` devolve tudo em minúsculas, como deve ser; quem o estragava era a classe CSS `capitalize` aplicada por cima, que põe em maiúscula a inicial de **cada palavra**, incluindo as duas ocorrências de "de" e a metade do dia da semana a seguir ao hífen.
+
+  A classe foi retirada da vista semanal e da página de uma aula, e a primeira letra passa a ser posta em maiúscula sobre o próprio texto, através de um utilitário partilhado (`capitalizeFirst`) em vez de a lógica ser repetida em cada sítio. O editor de aulas recorrentes tinha exatamente o mesmo defeito — dias da semana escritos à mão em minúsculas, apresentados com a mesma classe, tanto na lista de horários como no seletor de dia — e foi corrigido ao mesmo tempo, por ser o mesmo problema mesmo ao lado. Nenhum formato de data mudou: só a forma como é apresentado.
 
 ### Fixed
 
