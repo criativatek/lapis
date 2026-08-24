@@ -98,6 +98,83 @@ describe('InstrumentForm creation modes', () => {
         expect(inertia.submit).not.toHaveBeenCalled();
     });
 
+    /**
+     * The scenario the four tests above all happen to avoid: each of them ticks
+     * a domain BEFORE leaving simple mode, which runs the quick-mode watcher
+     * that fills `item.domains`. A brand-new instrument starts with no domain
+     * ticked and `domains: []`, and nothing gates the mode switch on picking
+     * one first — so the way back used to be closed before the teacher had
+     * built anything at all.
+     */
+    it('returns to simple mode when no domain has been picked yet', async () => {
+        const wrapper = mountForm();
+
+        await modeButton(wrapper, 'Criação avançada').trigger('click');
+
+        expect(wrapper.find('#title').exists()).toBe(true);
+
+        const simpleButton = modeButton(wrapper, 'Criação simples');
+        expect(simpleButton.attributes('disabled')).toBeUndefined();
+
+        await simpleButton.trigger('click');
+
+        expect(wrapper.find('#quick-title').exists()).toBe(true);
+        expect(inertia.submit).not.toHaveBeenCalled();
+    });
+
+    it('offers the way back immediately, before advanced mode is even entered', () => {
+        const wrapper = mountForm();
+
+        expect(modeButton(wrapper, 'Criação simples').attributes('disabled')).toBeUndefined();
+    });
+
+    it('keeps the common fields through a mode round trip with no domain picked', async () => {
+        const wrapper = mountForm();
+
+        await wrapper.get('#quick-title').setValue('Ficha sem domínio');
+        await wrapper.get('#quick-total-points').setValue('60');
+        await modeButton(wrapper, 'Criação avançada').trigger('click');
+        await modeButton(wrapper, 'Criação simples').trigger('click');
+
+        expect((wrapper.get('#quick-title').element as HTMLInputElement).value).toBe('Ficha sem domínio');
+        expect((wrapper.get('#quick-total-points').element as HTMLInputElement).value).toBe('60');
+    });
+
+    /**
+     * Structural incompatibility must still block the return — the fix only
+     * stopped an incomplete form from being mistaken for an incompatible one.
+     */
+    it('still blocks the return when a second group was created in advanced mode', async () => {
+        const wrapper = mountForm();
+
+        await modeButton(wrapper, 'Criação avançada').trigger('click');
+        await modeButton(wrapper, 'Organizar por grupos/secções').trigger('click');
+        await modeButton(wrapper, 'Adicionar grupo/secção').trigger('click');
+
+        const simpleButton = modeButton(wrapper, 'Criação simples');
+
+        expect(simpleButton.attributes('disabled')).toBeDefined();
+        expect(simpleButton.attributes('title')).toBe(
+            'A configuração avançada já contém dados que ficariam ocultos.',
+        );
+
+        await simpleButton.trigger('click');
+
+        expect(wrapper.find('#title').exists()).toBe(true);
+        expect(inertia.submit).not.toHaveBeenCalled();
+    });
+
+    it('still blocks the return when a question was renamed and no domain was picked either', async () => {
+        const wrapper = mountForm();
+
+        await modeButton(wrapper, 'Criação avançada').trigger('click');
+        await wrapper
+            .get('input[placeholder="Ex.: Compreensão do texto"]')
+            .setValue('Interpretação do excerto');
+
+        expect(modeButton(wrapper, 'Criação simples').attributes('disabled')).toBeDefined();
+    });
+
     it('keeps an incompatible advanced question intact and prevents returning to simple mode', async () => {
         const wrapper = mountForm();
 

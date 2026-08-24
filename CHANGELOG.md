@@ -2,7 +2,15 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
-## [0.66.5] — 2026-08-24
+## [0.66.6] — 2026-08-24
+
+### Fixed
+
+- **"Criação simples" deixa de ficar inacessível num elemento de avaliação acabado de abrir.** O relato existia desde a 0.62.1, onde uma auditoria não o conseguiu reproduzir e o deu como não confirmado. Reproduz-se, e a receita é mais simples do que a que então se tentou: abrir um novo elemento de avaliação, **não** marcar nenhum domínio, carregar em "Criação avançada" e tentar voltar logo a seguir a "Criação simples" — sem ter tocado em mais nada. O botão de regresso está desativado. Foi por isso que os testes de regressão de então não apanharam nada: todos marcavam um domínio antes de mudar de modo, e essa marcação preenche os domínios de cada questão pelo caminho, contornando sem querer exatamente a condição que falha na prática.
+
+  **A causa: a verificação de regresso misturava duas perguntas diferentes.** Uma é "a estrutura ainda cabe no formulário curto?" — um único grupo sem nome, questões Q1, Q2, Q3… por ordem, sem títulos próprios e sem bónus. Essa é a pergunta certa, porque é ela que diz se voltar atrás esconderia algo que o professor construiu no modo avançado. A outra é "o formulário já está completo?" — nomeadamente, já foi escolhido algum domínio. Essa é uma questão do momento de submeter, não do momento de mudar de modo; e como um elemento novo começa **sempre** sem domínios, a segunda pergunta reprovava logo à partida um formulário onde nada tinha ainda sido construído. As duas condições relativas a domínios saíram da verificação de modo; todas as verificações estruturais ficaram exatamente como estavam.
+
+  **Nada passou a poder ser submetido incompleto.** A exigência de pelo menos um domínio por questão continua onde sempre esteve e não depende desta verificação: no cliente, o botão "Preparar grelha de correção" continua desativado enquanto faltar um domínio; no servidor, `InstrumentRequest` continua a exigir `min:1` domínios por questão numa submissão real. Só o movimento entre os dois modos, com o formulário ainda por completar, deixou de estar bloqueado. Uma estrutura genuinamente incompatível — um segundo grupo, uma questão com título próprio — continua a impedir o regresso, com a mesma mensagem e sem perder dados, agora coberta por testes nos dois sentidos.
 
 ### Fixed
 

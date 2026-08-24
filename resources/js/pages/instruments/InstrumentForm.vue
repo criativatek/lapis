@@ -675,6 +675,16 @@ watch(selectedDomainIds, (domainIds) => {
 
 // Returning to the short form is safe only while no detailed structure would
 // be hidden. The form state is never reset when modes change.
+//
+// This asks one question only: is the STRUCTURE still expressible in the short
+// form — a single unnamed group, sequential Q1..Qn codes, no item labels, no
+// bonus? Whether the form is COMPLETE enough to submit is a different question,
+// answered at submit time by `quickStructureValid` here and by InstrumentRequest
+// on the server (both of which require a domain per item for a real
+// "Preparar grelha" submission). Mixing the two blocked the return for a
+// brand-new instrument whose pristine state has no domains yet: nothing had
+// been built in the advanced form, so there was nothing to lose, and yet the
+// way back was closed. An incomplete form should move freely between modes.
 const canUseQuickMode = computed(() =>
     form.groups.length === 1 &&
     form.groups[0].label.trim() === '' &&
@@ -683,11 +693,9 @@ const canUseQuickMode = computed(() =>
         item.group_index === 0 &&
         item.code === `Q${index + 1}` &&
         item.label.trim() === '' &&
-        !item.is_bonus &&
-        item.domains.length >= 1
+        !item.is_bonus
     ) &&
-    !form.allow_bonus &&
-    selectedDomainIds.value.length >= 1,
+    !form.allow_bonus,
 );
 
 if (props.initial && canUseQuickMode.value) {
