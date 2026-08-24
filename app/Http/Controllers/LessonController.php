@@ -2,10 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Actions\Lessons\SaveLessonPlan;
+use App\Actions\Lessons\MarkLessonAsTaught;
 use App\Actions\Lessons\SaveLessonSummary;
 use App\Http\Controllers\Concerns\RefusesDuringImpersonation;
-use App\Http\Requests\Lessons\LessonPlanRequest;
 use App\Http\Requests\Lessons\LessonSummaryRequest;
 use App\Models\Lesson;
 use App\Models\LessonStatus;
@@ -22,7 +21,7 @@ class LessonController extends Controller implements HasMiddleware
     use RefusesDuringImpersonation;
 
     public function __construct(
-        protected SaveLessonPlan $saveLessonPlan,
+        protected MarkLessonAsTaught $markLessonAsTaught,
         protected SaveLessonSummary $saveLessonSummary,
     ) {}
 
@@ -37,7 +36,7 @@ class LessonController extends Controller implements HasMiddleware
     public function show(Lesson $lesson): Response
     {
         Gate::authorize('view', $lesson);
-        $lesson->load(['schoolClass.subject', 'plan', 'summary']);
+        $lesson->load(['schoolClass.subject', 'summary']);
 
         return Inertia::render('lessons/Show', [
             'lesson' => [
@@ -51,33 +50,15 @@ class LessonController extends Controller implements HasMiddleware
                     'label' => $lesson->schoolClass->label,
                     'subject' => $lesson->schoolClass->subject->name,
                 ],
-                'plan' => $lesson->plan === null ? null : [
-                    'planned_summary' => $lesson->plan->planned_summary,
-                ],
                 'summary' => $lesson->summary === null ? null : [
                     'content' => $lesson->summary->content,
+                    'private_notes' => $lesson->summary->private_notes,
+                    'resources' => $lesson->summary->resources,
+                    'homework' => $lesson->summary->homework,
                     'reviewed_at' => $lesson->summary->reviewed_at?->toIso8601String(),
                 ],
             ],
         ]);
-    }
-
-    public function updatePlan(
-        LessonPlanRequest $request,
-        Lesson $lesson,
-    ): RedirectResponse {
-        $this->refuseDuringImpersonation($request);
-
-        $plannedSummary = $request->validated('planned_summary');
-
-        $this->saveLessonPlan->execute(
-            $lesson,
-            is_string($plannedSummary) ? $plannedSummary : '',
-            LessonStatus::from($request->string('target_status')->toString()),
-            $this->user($request),
-        );
-
-        return back()->with('success', 'Planeamento guardado.');
     }
 
     public function updateSummary(
@@ -88,11 +69,26 @@ class LessonController extends Controller implements HasMiddleware
 
         $this->saveLessonSummary->execute(
             $lesson,
-            $request->validated('content'),
+            [
+                'content' => $request->string('content')->toString(),
+                'private_notes' => $this->nullableString($request, 'private_notes'),
+                'resources' => $this->nullableString($request, 'resources'),
+                'homework' => $this->nullableString($request, 'homework'),
+            ],
             $this->user($request),
         );
 
         return back()->with('success', 'Sumário guardado.');
+    }
+
+    public function markTaught(Request $request, Lesson $lesson): RedirectResponse
+    {
+        Gate::authorize('update', $lesson);
+        $this->refuseDuringImpersonation($request);
+
+        $this->markLessonAsTaught->execute($lesson, $this->user($request));
+
+        return back()->with('success', 'Aula marcada como lecionada.');
     }
 
     protected function user(Request $request): User
@@ -101,6 +97,13 @@ class LessonController extends Controller implements HasMiddleware
         $user = $request->user();
 
         return $user;
+    }
+
+    protected function nullableString(Request $request, string $key): ?string
+    {
+        $value = $request->input($key);
+
+        return is_string($value) && $value !== '' ? $value : null;
     }
 
     protected function statusLabel(LessonStatus $status): string

@@ -39,7 +39,7 @@ class LessonSummaryTest extends TestCase
     }
 
     #[Test]
-    public function creating_a_summary_does_not_mark_the_lesson_as_taught(): void
+    public function saving_content_auto_derives_prepared_but_never_taught(): void
     {
         $lesson = $this->lessonFor($this->teacher);
 
@@ -48,15 +48,19 @@ class LessonSummaryTest extends TestCase
         ])->assertRedirect();
 
         $this->inTenant($this->organization, function () use ($lesson): void {
-            $this->assertSame(LessonStatus::Preparation, $lesson->refresh()->status);
+            $this->assertSame(LessonStatus::Prepared, $lesson->refresh()->status);
             $this->assertSame('Introdução aos números racionais.', $lesson->summary?->content);
             $this->assertNull($lesson->summary->reviewed_at);
             $this->assertNull($lesson->summary->reviewed_by);
+            $this->assertDatabaseHas('audit_events', [
+                'event' => 'lesson.prepared',
+                'subject_id' => $lesson->id,
+            ]);
         });
     }
 
     #[Test]
-    public function editing_and_reopening_a_lesson_preserves_the_saved_summary(): void
+    public function saving_again_while_prepared_is_idempotent_and_round_trips_the_summary(): void
     {
         $lesson = $this->lessonFor($this->teacher);
 
@@ -75,6 +79,64 @@ class LessonSummaryTest extends TestCase
                 ->where('lesson.summary.content', 'Versão final do sumário.'));
 
         $this->assertDatabaseCount('lesson_summaries', 1);
+        $this->assertDatabaseCount('audit_events', 1);
+    }
+
+    #[Test]
+    public function optional_details_save_and_round_trip_independently(): void
+    {
+        $values = [
+            'private_notes' => 'Observação privada.',
+            'resources' => 'https://example.test/recurso',
+            'homework' => 'Resolver os exercícios 1 e 2.',
+        ];
+
+        foreach ($values as $field => $value) {
+            $lesson = $this->lessonFor($this->teacher);
+            $this->asTeacher()->put("/lessons/{$lesson->ulid}/summary", [
+                'content' => 'Conteúdo obrigatório.',
+                $field => "  {$value}  ",
+            ])->assertRedirect();
+
+            $this->asTeacher()->get("/lessons/{$lesson->ulid}")
+                ->assertOk()
+                ->assertInertia(fn (Assert $page): Assert => $page
+                    ->where("lesson.summary.{$field}", $value));
+        }
+    }
+
+    #[Test]
+    public function blank_or_absent_optional_details_are_saved_as_null(): void
+    {
+        $lesson = $this->lessonFor($this->teacher);
+
+        $this->asTeacher()->put("/lessons/{$lesson->ulid}/summary", [
+            'content' => 'Conteúdo obrigatório.',
+            'private_notes' => '   ',
+            'resources' => '',
+        ])->assertRedirect();
+
+        $this->inTenant($this->organization, function () use ($lesson): void {
+            $summary = $lesson->summary()->sole();
+            $this->assertNull($summary->private_notes);
+            $this->assertNull($summary->resources);
+            $this->assertNull($summary->homework);
+        });
+    }
+
+    #[Test]
+    public function saving_content_while_already_taught_never_changes_the_status(): void
+    {
+        $lesson = $this->lessonFor($this->teacher, attributes: ['status' => LessonStatus::Taught]);
+
+        $this->asTeacher()->put("/lessons/{$lesson->ulid}/summary", [
+            'content' => str_repeat('Conteúdo abundante. ', 100),
+        ])->assertRedirect();
+
+        $this->inTenant($this->organization, fn () => $this->assertSame(
+            LessonStatus::Taught,
+            $lesson->refresh()->status,
+        ));
     }
 
     #[Test]
@@ -153,11 +215,17 @@ class LessonSummaryTest extends TestCase
         $this->inTenant($this->organization, fn (): LessonSummary => LessonSummary::create([
             'lesson_id' => $lesson->id,
             'content' => 'Texto anterior confidencial.',
+            'private_notes' => 'Nota anterior confidencial.',
+            'resources' => 'Recurso anterior confidencial.',
+            'homework' => 'TPC anterior confidencial.',
         ]));
         Carbon::setTestNow('2026-10-08 12:30:00');
 
         $this->asTeacher()->put("/lessons/{$lesson->ulid}/summary", [
             'content' => 'Texto revisto que não pode constar na auditoria.',
+            'private_notes' => 'Nota revista confidencial.',
+            'resources' => 'Recurso revisto confidencial.',
+            'homework' => 'TPC revisto confidencial.',
         ])->assertRedirect();
 
         $this->inTenant($this->organization, function () use ($lesson): void {
@@ -179,6 +247,12 @@ class LessonSummaryTest extends TestCase
             ], JSON_THROW_ON_ERROR);
             $this->assertStringNotContainsString('Texto anterior confidencial.', $serializedAudit);
             $this->assertStringNotContainsString('Texto revisto que não pode constar na auditoria.', $serializedAudit);
+            $this->assertStringNotContainsString('Nota anterior confidencial.', $serializedAudit);
+            $this->assertStringNotContainsString('Nota revista confidencial.', $serializedAudit);
+            $this->assertStringNotContainsString('Recurso anterior confidencial.', $serializedAudit);
+            $this->assertStringNotContainsString('Recurso revisto confidencial.', $serializedAudit);
+            $this->assertStringNotContainsString('TPC anterior confidencial.', $serializedAudit);
+            $this->assertStringNotContainsString('TPC revisto confidencial.', $serializedAudit);
         });
     }
 

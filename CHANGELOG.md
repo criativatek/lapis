@@ -2,6 +2,16 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.63.0] — 2026-08-24
+
+### Added
+
+- **Módulo Aulas e Sumários — Fatia 3: um único centro de registo por aula.** O Sumário passa a ser o centro sempre visível da página e a única gravação de conteúdo. A burocracia de planeamento da Fatia 2 — formulário, botões e transições manuais de preparação — foi retirada da experiência; preencher o Sumário deriva automaticamente o estado Preparado, sem ação manual e sem qualquer reabertura artificial.
+
+  Três campos opcionais e recolhíveis completam o registo: **Notas do professor**, privadas e nunca mostradas aos alunos; **Recursos**, como referência ou URL em texto simples nesta primeira versão; e **TPC**, como nota do trabalho atribuído à aula. Estes campos pertencem ao mesmo `LessonSummary` e são guardados em conjunto, sem criar armazenamento paralelo. Deliberadamente não reutilizam `EvidenceRecord` nem o módulo Registos: esse sistema acompanha cumprimento por aluno, enquanto o TPC desta fatia descreve o que foi atribuído numa aula, sem dimensão de aluno — são preocupações diferentes.
+
+  **“Marcar como lecionada” continua explícito e separado.** A transição para Lecionado tem uma ação própria, idempotente e auditada; nunca é inferida ao guardar o Sumário, pela presença de notas, recursos ou TPC, nem pela passagem do tempo. Rever qualquer texto depois de a aula estar lecionada mantém a rastreabilidade sem copiar conteúdo pedagógico ou privado para a auditoria.
+
 ## [0.62.1] — 2026-08-24
 
 ### Fixed

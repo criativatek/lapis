@@ -192,8 +192,8 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::get('lessons', [LessonWeekController::class, 'index'])->name('lessons.index');
         Route::post('lessons/materialize-week', [LessonWeekController::class, 'materialize'])->name('lessons.materialize-week');
         Route::get('lessons/{lesson}', [LessonController::class, 'show'])->name('lessons.show');
-        Route::put('lessons/{lesson}/plan', [LessonController::class, 'updatePlan'])->name('lessons.plan.update');
         Route::put('lessons/{lesson}/summary', [LessonController::class, 'updateSummary'])->name('lessons.summary.update');
+        Route::post('lessons/{lesson}/mark-taught', [LessonController::class, 'markTaught'])->name('lessons.mark-taught');
 
         Route::post('lesson-slots', [LessonScheduleController::class, 'store'])->name('lesson-slots.store');
         Route::put('lesson-slots/{recurringLessonSlot}', [LessonScheduleController::class, 'update'])->name('lesson-slots.update');

@@ -16,8 +16,13 @@ class LessonSummaryRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        if (is_string($this->input('content'))) {
-            $this->merge(['content' => trim($this->string('content')->toString())]);
+        foreach (['content', 'private_notes', 'resources', 'homework'] as $field) {
+            if (! is_string($this->input($field))) {
+                continue;
+            }
+
+            $value = trim($this->string($field)->toString());
+            $this->merge([$field => $field === 'content' || $value !== '' ? $value : null]);
         }
     }
 
@@ -28,6 +33,9 @@ class LessonSummaryRequest extends FormRequest
     {
         return [
             'content' => ['required', 'string', 'max:16000'],
+            'private_notes' => ['nullable', 'string', 'max:16000'],
+            'resources' => ['nullable', 'string', 'max:16000'],
+            'homework' => ['nullable', 'string', 'max:16000'],
         ];
     }
 }

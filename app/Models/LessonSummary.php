@@ -15,10 +15,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $organization_id
  * @property int $lesson_id
  * @property string $content
+ * @property string|null $private_notes
+ * @property string|null $resources
+ * @property string|null $homework
  * @property CarbonImmutable|null $reviewed_at
  * @property int|null $reviewed_by
  */
-#[Fillable(['lesson_id', 'content', 'reviewed_at', 'reviewed_by'])]
+#[Fillable(['lesson_id', 'content', 'private_notes', 'resources', 'homework', 'reviewed_at', 'reviewed_by'])]
 class LessonSummary extends Model
 {
     use BelongsToOrganization, HasUlids;

@@ -13,18 +13,26 @@ class SaveLessonSummary
 {
     public function __construct(protected AuditLog $audit) {}
 
-    public function execute(Lesson $lesson, string $content, User $actor): LessonSummary
+    /**
+     * @param  array{content: string, private_notes?: string|null, resources?: string|null, homework?: string|null}  $details
+     */
+    public function execute(Lesson $lesson, array $details, User $actor): LessonSummary
     {
-        return DB::transaction(function () use ($actor, $content, $lesson): LessonSummary {
+        return DB::transaction(function () use ($actor, $details, $lesson): LessonSummary {
             /** @var Lesson $lockedLesson */
             $lockedLesson = Lesson::query()->lockForUpdate()->findOrFail($lesson->getKey());
             $summary = $lockedLesson->summary()->first();
-            $isPostTaughtEdit = $summary !== null && $lockedLesson->status === LessonStatus::Taught;
+            $isPostTaughtEdit = $lockedLesson->status === LessonStatus::Taught;
 
             if ($summary === null) {
-                $summary = $lockedLesson->summary()->create(['content' => $content]);
+                if ($isPostTaughtEdit) {
+                    $details['reviewed_at'] = now();
+                    $details['reviewed_by'] = $actor->getKey();
+                }
+
+                $summary = $lockedLesson->summary()->create($details);
             } else {
-                $summary->content = $content;
+                $summary->fill($details);
 
                 if ($isPostTaughtEdit) {
                     $summary->reviewed_at = now();
@@ -32,6 +40,22 @@ class SaveLessonSummary
                 }
 
                 $summary->save();
+            }
+
+            if ($lockedLesson->status === LessonStatus::Preparation) {
+                $lockedLesson->status = LessonStatus::Prepared;
+                $lockedLesson->save();
+
+                $this->audit->record(
+                    'lesson.prepared',
+                    $lockedLesson,
+                    $actor,
+                    'Estado da aula alterado.',
+                    [
+                        'from_status' => LessonStatus::Preparation->value,
+                        'to_status' => LessonStatus::Prepared->value,
+                    ],
+                );
             }
 
             if ($isPostTaughtEdit) {
