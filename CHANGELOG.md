@@ -2,7 +2,13 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
-## [0.66.6] — 2026-08-24
+## [0.66.7] — 2026-08-24
+
+### Fixed
+
+- **As setinhas das cotações, na grelha de correção, deixam de parecer que saltam de sítio.** A caixa de cotação de cada questão tem largura fixa e as setas de incremento do navegador estão encostadas à sua margem direita interior — mas o número estava centrado. Bastava a cotação passar de "5" para "12.5" para os dígitos deslizarem para a esquerda e para a direita dentro da caixa, enquanto as setas ficavam paradas: lido de relance numa grelha inteira, é a posição relativa que muda, e o efeito é o de setas que dançam de célula para célula. O número passa a ser alinhado à direita, com espaço reservado para as setas não ficarem por baixo dos dígitos: o último algarismo fica sempre no mesmo sítio, seja qual for a cotação, e a relação entre número e setas deixa de variar.
+
+  **As setas nativas mantêm-se de propósito.** O pedido era uma posição estável, não a sua remoção — e a grelha já responde às teclas de seta para incrementar, pelo que continuam a ser um recurso a sério e não decoração. A largura da caixa não mudou, e as aparências condicionais — a moldura vermelha de cotação acima do máximo, e o estado desativado — continuam a compor-se corretamente com o novo alinhamento.
 
 ### Fixed
 

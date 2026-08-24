@@ -287,4 +287,57 @@ describe('Grid local protection integration', () => {
         expect(first.text()).not.toContain('também a ser editada noutro separador');
         expect(second.text()).not.toContain('também a ser editada noutro separador');
     });
+
+    /**
+     * Centred digits shifted sideways as a value's width changed, while the
+     * browser's spin arrows stayed pinned to the box's right inner edge — which
+     * reads as the arrows moving about. Right-aligned, the last digit holds its
+     * position whatever the value. The spinners are kept on purpose.
+     */
+    describe('score input alignment', () => {
+        function scoreCell(wrapper: VueWrapper) {
+            return wrapper.get('input[data-cell="0-0"]');
+        }
+
+        it('right-aligns the score instead of centring it', () => {
+            const classes = scoreCell(trackedMount()).classes();
+
+            expect(classes).toContain('text-right');
+            expect(classes).not.toContain('text-center');
+        });
+
+        it('keeps a fixed box width and pads the digits clear of the spin arrows', () => {
+            const classes = scoreCell(trackedMount()).classes();
+
+            expect(classes).toContain('w-16');
+            expect(classes).toContain('pr-5');
+            expect(classes).toContain('pl-1.5');
+            expect(classes).not.toContain('px-1.5');
+        });
+
+        it('keeps the native spinners rather than suppressing them', () => {
+            const input = scoreCell(trackedMount());
+
+            expect(input.attributes('type')).toBe('number');
+            expect(input.attributes('step')).toBe('0.25');
+            expect(input.classes().join(' ')).not.toContain('appearance-none');
+        });
+
+        it('still composes with the normal, over-max and disabled styling', async () => {
+            const wrapper = trackedMount();
+
+            expect(scoreCell(wrapper).classes()).toContain('border-input');
+            expect(scoreCell(wrapper).classes()).toContain('disabled:opacity-40');
+
+            await editPoints(wrapper, '25'); // over the 20-point maximum
+            await nextTick();
+
+            const overMax = scoreCell(wrapper).classes();
+
+            expect(overMax).toContain('border-destructive');
+            expect(overMax).toContain('text-destructive');
+            expect(overMax).toContain('text-right');
+            expect(overMax).not.toContain('border-input');
+        });
+    });
 });

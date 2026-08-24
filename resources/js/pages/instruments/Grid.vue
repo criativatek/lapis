@@ -1136,6 +1136,21 @@ function revertCancellation(): void {
 
                         <td v-for="(item, columnIndex) in items" :key="item.id" class="px-1 py-0.5 text-center">
                             <div class="flex items-center justify-center gap-1">
+                                <!--
+                                  The score box is right-aligned, not centred.
+                                  Its width is fixed and the browser's spin
+                                  arrows sit pinned to its right inner edge, so
+                                  centred digits slid sideways as the value's
+                                  width changed ("5" vs "12.5") — which reads as
+                                  the arrows jumping about. Against the right
+                                  edge the last digit stays put whatever the
+                                  value, so number and arrows hold a constant
+                                  relationship. pr-5 keeps the digits clear of
+                                  the arrows; the spinners themselves are
+                                  deliberately kept, since onKeydown's arrow-key
+                                  stepping makes them a real affordance rather
+                                  than decoration.
+                                -->
                                 <input
                                     :data-cell="`${rowIndex}-${columnIndex}`"
                                     type="number"
@@ -1145,7 +1160,7 @@ function revertCancellation(): void {
                                     :value="cell(student.enrollment_id, item.id).state === 'assessed' ? cell(student.enrollment_id, item.id).points : ''"
                                     :disabled="isReadOnly || (cell(student.enrollment_id, item.id).state !== 'assessed' && cell(student.enrollment_id, item.id).state !== 'pending')"
                                     :class="[
-                                        'h-7 w-16 rounded border bg-transparent px-1.5 text-center tabular-nums disabled:opacity-40',
+                                        'h-7 w-16 rounded border bg-transparent pl-1.5 pr-5 text-right tabular-nums disabled:opacity-40',
                                         isOverMax(student, item) ? 'border-destructive text-destructive' : 'border-input',
                                     ]"
                                     :title="isOverMax(student, item) ? `Excede a cotação máxima (${item.points_possible} pts).` : undefined"
