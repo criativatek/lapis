@@ -516,6 +516,37 @@ class ClassTest extends TestCase
     }
 
     #[Test]
+    public function the_evaluation_elements_section_is_gone_and_the_roster_still_renders(): void
+    {
+        $context = $this->context();
+        $this->actingAs($this->user)->post('/classes', [
+            'label' => '7.º A',
+            'academic_year_id' => $context['year'],
+            'subject_id' => $context['subject'],
+        ]);
+        $class = SchoolClass::withoutGlobalScope('organization')->firstOrFail();
+        $this->actingAs($this->user)->post("/classes/{$class->ulid}/students", [
+            'name' => 'Miguel Santos',
+            'enrolled_on' => '2026-09-14',
+        ]);
+
+        // Creating an instrument is no longer reachable from the Turma page —
+        // "Elementos de avaliação" and the `instruments` prop it alone
+        // consumed are both gone (creation moved to Elementos de Avaliação's
+        // own area, see InstrumentCreationPickerTest).
+        $this->actingAs($this->user)
+            ->get("/classes/{$class->ulid}")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('classes/Show')
+                ->missing('instruments')
+                // A scoped removal, not a page-wide regression: an unrelated,
+                // pre-existing section keeps rendering correctly.
+                ->has('students', 1)
+                ->where('students.0.name', 'Miguel Santos'));
+    }
+
+    #[Test]
     public function the_edit_page_shows_the_current_designation_and_read_only_context(): void
     {
         $context = $this->context();

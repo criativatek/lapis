@@ -2,6 +2,16 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.65.0] — 2026-08-24
+
+### Added
+
+- **Criar um Elemento de Avaliação deixa de exigir passar primeiro por uma Turma.** Até agora o único botão "Novo elemento de avaliação" vivia na página de uma Turma — a área global "Avaliação → Elementos de Avaliação" só listava o que já existia, sem qualquer forma de começar a criar um (o texto do estado vazio dizia mesmo "Crie o primeiro a partir de uma turma"). Essa área ganha agora o seu próprio "+ Novo elemento de avaliação", que entra por `/instruments/create`: quando a turma já é conhecida pelo contexto (a partir de uma Turma concreta, como sempre foi), o comportamento mantém-se exatamente o de sempre; quando não é, um passo leve de escolha de turma antecede a criação — só as turmas do próprio professor, nunca as de um colega nem as de outra organização, e um estado vazio claro para quem ainda não tem nenhuma — e escolher uma leva, por navegação normal (não uma submissão), à mesma rota `classes/{turma}/instruments/create` que já existia. O formulário, a validação (`InstrumentRequest`), a associação da turma (`InstrumentBuilder::create`) e a autorização (`SchoolClassPolicy::update`) permanecem byte a byte os mesmos — nada foi duplicado, só a navegação de entrada mudou. Ainda assim entra como funcionalidade nova (não como correção): antes desta fatia não havia, em lado nenhum, uma forma de iniciar esta criação sem já se estar dentro de uma Turma.
+
+  **Turma deixa de duplicar essa gestão.** A secção "Elementos de avaliação" saiu da página de uma Turma — criar e gerir elementos de avaliação passa a viver só na sua área própria; o resto da página de uma Turma continua exatamente como estava.
+
+  **Grelhas de correção não foi tocado.** Corrigir, lançar notas, anular ou reabrir uma correção continuam exatamente como eram — esta fatia mexeu apenas em como se chega ao início da criação.
+
 ## [0.64.1] — 2026-08-24
 
 ### Fixed

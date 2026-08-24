@@ -221,6 +221,12 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     // instrument's own page.
     Route::middleware('module:instruments')->group(function () {
         Route::get('instruments', [InstrumentController::class, 'index'])->name('instruments.index');
+        // The front door when no class is already known from context (this
+        // area's own "+ Novo" button) — a thin picker that then hands off to
+        // the real, unchanged instruments.create below. Declared before
+        // instruments/{instrument}, or "create" would be swallowed as an
+        // (invalid) instrument ulid.
+        Route::get('instruments/create', [InstrumentController::class, 'createChoosingClass'])->name('instruments.create-picker');
         Route::get('classes/{class}/instruments/create', [InstrumentController::class, 'create'])->name('instruments.create');
         Route::post('classes/{class}/instruments', [InstrumentController::class, 'store'])->name('instruments.store');
         Route::get('instruments/{instrument}', [InstrumentController::class, 'show'])->name('instruments.show');

@@ -10,7 +10,6 @@ use App\Models\Classification;
 use App\Models\ClassStatus;
 use App\Models\Enrollment;
 use App\Models\EnrollmentStatus;
-use App\Models\Instrument;
 use App\Models\ProfileVersionStatus;
 use App\Models\RecurringLessonSlot;
 use App\Models\SchoolClass;
@@ -99,15 +98,6 @@ class ClassController extends Controller
                 ->map(fn (AssessmentProfile $profile) => [
                     'version_id' => $profile->current_version_id,
                     'label' => $profile->name,
-                ]),
-            'instruments' => $class->instruments()->with('type')->get()
-                ->map(fn (Instrument $instrument) => [
-                    'ulid' => $instrument->ulid,
-                    'title' => $instrument->title,
-                    'type' => $instrument->type->name,
-                    'applied_on' => $instrument->applied_on->toDateString(),
-                    'status_label' => $instrument->status->label(),
-                    'status' => $instrument->status->value,
                 ]),
             'recurringLessonSlots' => $this->entitlements->allows('lessons')
                 ? $class->recurringLessonSlots()->orderBy('day_of_week')->orderBy('starts_at')->get()->map(

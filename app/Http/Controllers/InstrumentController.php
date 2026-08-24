@@ -87,6 +87,35 @@ class InstrumentController extends Controller
         ]);
     }
 
+    /**
+     * The front door into creation when no class is already known from
+     * context — reached from Elementos de Avaliação's own "+ Novo elemento
+     * de avaliação" button, before any specific class has been chosen.
+     * Authorization here is deliberately generic (mirrors
+     * ClassController::index's own viewAny check): any authenticated member
+     * of the tenant may reach the picker and see their own classes listed.
+     * The real per-class authorization is untouched and still runs, exactly
+     * as before, once the teacher's choice lands them on create() above via
+     * a normal GET navigation — this method never itself creates anything
+     * and never accepts a class id from the request.
+     */
+    public function createChoosingClass(Request $request): Response
+    {
+        Gate::authorize('viewAny', SchoolClass::class);
+
+        $classes = SchoolClass::query()
+            ->whereHas('teachers', fn ($query) => $query->whereKey($this->user()->getKey()))
+            ->orderBy('label')
+            ->get(['ulid', 'label'])
+            ->map(fn (SchoolClass $class) => ['ulid' => $class->ulid, 'label' => $class->label])
+            ->all();
+
+        return Inertia::render('instruments/Create', [
+            'schoolClass' => null,
+            'classes' => $classes,
+        ]);
+    }
+
     public function store(InstrumentRequest $request, SchoolClass $class): RedirectResponse
     {
         Gate::authorize('update', $class);

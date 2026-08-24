@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
-import { ClipboardList } from '@lucide/vue';
+import { ClipboardList, Plus } from '@lucide/vue';
 import Heading from '@/components/Heading.vue';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 
 type Instrument = {
     ulid: string;
@@ -26,13 +27,21 @@ defineProps<{
     <Head title="Elementos de Avaliação" />
 
     <div class="mx-auto w-full max-w-4xl space-y-6 p-4">
-        <Heading title="Elementos de Avaliação" description="Testes, fichas, questões-aula e outras atividades de avaliação." />
+        <div class="flex items-center justify-between">
+            <Heading title="Elementos de Avaliação" description="Testes, fichas, questões-aula e outras atividades de avaliação." />
+            <Button as-child>
+                <Link href="/instruments/create"><Plus class="size-4" /> Novo elemento de avaliação</Link>
+            </Button>
+        </div>
 
         <div v-if="instruments.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
             <ClipboardList class="mx-auto mb-3 size-8 text-muted-foreground" />
             <p class="text-sm text-muted-foreground">
-                Ainda não tem elementos de avaliação. Crie o primeiro a partir de uma turma.
+                Ainda não tem elementos de avaliação.
             </p>
+            <Button as-child class="mt-3">
+                <Link href="/instruments/create"><Plus class="size-4" /> Criar o primeiro</Link>
+            </Button>
         </div>
 
         <div v-else class="overflow-hidden rounded-lg border border-border">

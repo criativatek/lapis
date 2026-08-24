@@ -1,6 +1,10 @@
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
+import { ClipboardList } from '@lucide/vue';
+import { ref } from 'vue';
 import Heading from '@/components/Heading.vue';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 import InstrumentForm from './InstrumentForm.vue';
 
 type Option = { id: number; label: string; default_purpose?: string };
@@ -25,29 +29,49 @@ type ImportableInstrument = {
     items: ItemRow[];
 };
 
-defineProps<{
-    schoolClass: { ulid: string; label: string };
-    periods: Option[];
-    types: Option[];
-    domains: Option[];
-    importableInstruments: ImportableInstrument[];
-    defaultAcademicPeriodId: number | null;
-    defaultCreationMode: 'quick';
+type ClassOption = { ulid: string; label: string };
+
+// schoolClass present (the usual case, reached from a specific class): the
+// form below renders exactly as it always has. schoolClass absent (reached
+// from Elementos de Avaliação's own "+ Novo" button, via instruments.create-
+// picker): no class is known yet, so periods/types/domains — meaningless
+// without one — are never sent either, and a lightweight picker is shown
+// instead. Picking a class there navigates into THIS SAME route/page for
+// that specific class — a normal GET, not a second creation path.
+const props = defineProps<{
+    schoolClass?: { ulid: string; label: string } | null;
+    classes?: ClassOption[];
+    periods?: Option[];
+    types?: Option[];
+    domains?: Option[];
+    importableInstruments?: ImportableInstrument[];
+    defaultAcademicPeriodId?: number | null;
+    defaultCreationMode?: 'quick';
 }>();
+
+const selectedClassUlid = ref<string | null>(props.classes?.[0]?.ulid ?? null);
+
+function continueToClass(): void {
+    if (!selectedClassUlid.value) {
+        return;
+    }
+
+    router.visit(`/classes/${selectedClassUlid.value}/instruments/create`);
+}
 </script>
 
 <template>
     <Head title="Novo elemento de avaliação" />
 
-    <div class="mx-auto w-full max-w-3xl space-y-6 p-4">
+    <div v-if="schoolClass" class="mx-auto w-full max-w-3xl space-y-6 p-4">
         <Heading
             :title="`Novo Elemento de Avaliação — ${schoolClass.label}`"
             description="Grelha de correção — Defina os domínios, questões e cotações deste Elemento de Avaliação."
         />
         <InstrumentForm
-            :periods="periods"
-            :types="types"
-            :domains="domains"
+            :periods="periods ?? []"
+            :types="types ?? []"
+            :domains="domains ?? []"
             :importable-instruments="importableInstruments"
             :default-academic-period-id="defaultAcademicPeriodId"
             :default-creation-mode="defaultCreationMode"
@@ -55,5 +79,36 @@ defineProps<{
             :submit-url="`/classes/${schoolClass.ulid}/instruments`"
             method="post"
         />
+    </div>
+
+    <div v-else class="mx-auto w-full max-w-lg space-y-6 p-4">
+        <Heading
+            title="Novo Elemento de Avaliação"
+            description="Escolha a turma para a qual quer criar o elemento de avaliação."
+        />
+
+        <div v-if="!classes || classes.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
+            <ClipboardList class="mx-auto mb-3 size-8 text-muted-foreground" />
+            <p class="text-sm text-muted-foreground">
+                Precisa de ter pelo menos uma turma sua para criar um elemento de avaliação.
+            </p>
+            <Button as-child class="mt-3">
+                <Link href="/classes/create">Criar turma</Link>
+            </Button>
+        </div>
+
+        <form v-else class="space-y-4" @submit.prevent="continueToClass">
+            <div class="grid gap-2">
+                <Label for="picker-class">Turma</Label>
+                <select
+                    id="picker-class"
+                    v-model="selectedClassUlid"
+                    class="h-10 rounded-md border border-input bg-transparent px-3 text-sm"
+                >
+                    <option v-for="option in classes" :key="option.ulid" :value="option.ulid">{{ option.label }}</option>
+                </select>
+            </div>
+            <Button type="submit" :disabled="!selectedClassUlid">Continuar</Button>
+        </form>
     </div>
 </template>
