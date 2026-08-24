@@ -18,6 +18,7 @@ use App\Models\User;
 use App\Rules\BelongsToCurrentOrganization;
 use App\Services\ClassService;
 use App\Support\Entitlements\Entitlements;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -33,8 +34,7 @@ class ClassController extends Controller
         Gate::authorize('viewAny', SchoolClass::class);
 
         // Only the teacher's own classes (§23). Tenant isolation plus class_teachers.
-        $classes = SchoolClass::query()
-            ->whereHas('teachers', fn ($query) => $query->whereKey($this->user()->getKey()))
+        $classes = $this->teacherClasses()
             ->with(['subject', 'academicYear'])
             ->withCount('enrollments')
             ->orderByDesc('created_at')
@@ -50,6 +50,31 @@ class ClassController extends Controller
             ]);
 
         return Inertia::render('classes/Index', ['classes' => $classes]);
+    }
+
+    /**
+     * "Configurar horários" — the front door onto both ways a teacher fills in
+     * a turma's schedule: importing a PDF (timetable-imports.create, unchanged)
+     * or configuring one turma at a time by hand on its own page
+     * (LessonScheduleEditor, unchanged). This picker creates nothing itself —
+     * it only points at the two existing flows.
+     */
+    public function scheduleSetup(): Response
+    {
+        Gate::authorize('viewAny', SchoolClass::class);
+
+        $classes = $this->teacherClasses()
+            ->with('subject')
+            ->orderBy('label')
+            ->get()
+            ->map(fn (SchoolClass $class) => [
+                'ulid' => $class->ulid,
+                'label' => $class->label,
+                'subject' => $class->subject->name,
+            ])
+            ->values();
+
+        return Inertia::render('classes/ScheduleSetup', ['classes' => $classes]);
     }
 
     public function create(): Response
@@ -273,6 +298,20 @@ class ClassController extends Controller
                     'subject_id' => $profile->subject_id,
                 ]),
         ];
+    }
+
+    /**
+     * The turmas this teacher teaches (§23): the current organization's own
+     * (SchoolClass's own global scope) via class_teachers, and nothing else.
+     * Shared by index() and scheduleSetup() so this scoping is defined in
+     * exactly one place rather than reimplemented per entry point.
+     *
+     * @return Builder<SchoolClass>
+     */
+    protected function teacherClasses(): Builder
+    {
+        return SchoolClass::query()
+            ->whereHas('teachers', fn ($query) => $query->whereKey($this->user()->getKey()));
     }
 
     protected function user(): User

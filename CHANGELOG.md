@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.66.1] — 2026-08-24
+
+### Fixed
+
+- **"Importar horário" passa a "Configurar horários" — um único ponto de entrada para as duas formas de preencher o horário de uma turma.** O botão que a versão anterior deixou em Turmas só entrava na importação de PDF, dando a entender que essa seria a única forma de configurar aulas recorrentes — a edição manual, já existente na página de cada turma, continuava sem qualquer ligação direta a partir de Turmas. O botão passa agora a abrir um pequeno passo intermédio, "Configurar horários", com as duas opções lado a lado: "Importar PDF", que continua a levar exatamente à mesma importação de sempre, e "Configurar manualmente", com a lista das turmas do professor e uma ligação direta à secção de horário de cada uma. Nem o mecanismo de importação (leitura do PDF, correspondência de turmas, deteção de conflitos, confirmação) nem o editor manual de aulas recorrentes foram tocados — ambos continuam byte a byte os mesmos; só a forma de lá chegar mudou. Um horário importado continua totalmente editável à mão depois, exatamente como já acontecia.
+
 ## [0.66.0] — 2026-08-24
 
 ### Added

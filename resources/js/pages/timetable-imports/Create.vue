@@ -67,8 +67,8 @@ function submit(): void {
                     {{ form.processing ? 'A ler o ficheiro…' : 'Continuar' }}
                 </Button>
                 <Button as-child variant="ghost">
-                    <Link href="/classes">
-                        <ArrowLeft class="size-4" /> Voltar às turmas
+                    <Link href="/classes/schedule-setup">
+                        <ArrowLeft class="size-4" /> Voltar a Configurar horários
                     </Link>
                 </Button>
             </div>

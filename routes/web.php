@@ -146,6 +146,21 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::post('classes/reassignment/{class}/assign', [ClassReassignmentController::class, 'assign'])->name('classes.reassignment.assign');
     });
 
+    // "Configurar horários" — the front door onto BOTH ways a teacher sets up
+    // a turma's schedule (PDF import, or by hand on the turma's own page).
+    // Reached from Turmas' own header before either path is chosen. Must be
+    // registered before `classes/{class}` (module:classes, right below), or
+    // "schedule-setup" would be swallowed as an (invalid) class ulid — the
+    // same instruments/create vs instruments/{instrument} pitfall, here
+    // crossing a module boundary instead of sitting inside one group, hence
+    // its own block rather than living inside the module:lessons group
+    // below. Gated by module:lessons like the timetable-imports.* routes it
+    // links to, not by module:classes: a base-plan teacher without the
+    // lessons entitlement has nothing to configure here.
+    Route::middleware('module:lessons')->group(function () {
+        Route::get('classes/schedule-setup', [ClassController::class, 'scheduleSetup'])->name('classes.schedule-setup');
+    });
+
     Route::middleware('module:classes')->group(function () {
         Route::get('classes', [ClassController::class, 'index'])->name('classes.index');
         Route::get('classes/create', [ClassController::class, 'create'])->name('classes.create');

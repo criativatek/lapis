@@ -390,11 +390,12 @@ function submitPhotos(): void {
             />
         </div>
 
-        <LessonScheduleEditor
-            v-if="recurringLessonSlots != null"
-            :class-id="schoolClass.id"
-            :slots="recurringLessonSlots"
-        />
+        <div v-if="recurringLessonSlots != null" id="horario">
+            <LessonScheduleEditor
+                :class-id="schoolClass.id"
+                :slots="recurringLessonSlots"
+            />
+        </div>
 
         <section class="space-y-3">
             <div class="flex items-center justify-between">

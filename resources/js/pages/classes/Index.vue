@@ -5,7 +5,7 @@ import Heading from '@/components/Heading.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
-type SchoolClass = {
+export type SchoolClass = {
     ulid: string;
     label: string;
     subject: string;
@@ -28,7 +28,7 @@ defineProps<{
             <Heading title="Turmas" description="As turmas que leciona neste ano letivo." />
             <div class="flex items-center gap-2">
                 <Button as-child variant="outline">
-                    <Link href="/timetable-imports/create"><CalendarPlus class="size-4" /> Importar horário</Link>
+                    <Link href="/classes/schedule-setup"><CalendarPlus class="size-4" /> Configurar horários</Link>
                 </Button>
                 <Button as-child>
                     <Link href="/classes/create"><Plus class="size-4" /> Nova turma</Link>
