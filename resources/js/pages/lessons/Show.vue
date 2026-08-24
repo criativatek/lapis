@@ -93,6 +93,22 @@ const lessonTime = computed(() => {
 });
 const summaryErrors = computed(() => Object.values(summaryForm.errors));
 
+// The week to return to is derived from the lesson itself, never threaded in
+// from wherever the teacher happened to arrive from — a direct link, browser
+// history and the weekly view all land on the same, correct week. Anchored at
+// noon UTC on the Lisbon calendar date, the same way Index.vue builds its own
+// `?week=` values, so a DST shift can never move the date by a day.
+const originWeekHref = computed(() => {
+    const lisbonDate = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Lisbon',
+    }).format(new Date(props.lesson.starts_at));
+    const date = new Date(`${lisbonDate}T12:00:00Z`);
+    const isoWeekday = date.getUTCDay() === 0 ? 7 : date.getUTCDay();
+    date.setUTCDate(date.getUTCDate() - (isoWeekday - 1));
+
+    return `/lessons?week=${date.toISOString().slice(0, 10)}`;
+});
+
 function submitSummary(): void {
     summaryForm.put(`/lessons/${props.lesson.ulid}/summary`, { preserveScroll: true });
 }
@@ -107,9 +123,9 @@ function markTaught(): void {
 
     <main class="mx-auto w-full max-w-3xl space-y-6 p-4 pb-28 sm:p-6 sm:pb-8">
         <Button as-child variant="ghost" class="-ml-3 min-h-11">
-            <Link :href="`/classes/${lesson.school_class.ulid}`">
+            <Link :href="originWeekHref">
                 <ArrowLeft class="size-4" />
-                Voltar à turma
+                Voltar às aulas da semana
             </Link>
         </Button>
 

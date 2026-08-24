@@ -2,7 +2,13 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
-## [0.66.2] — 2026-08-24
+## [0.66.3] — 2026-08-24
+
+### Fixed
+
+- **A ligação de saída de uma aula volta à semana dessa aula, não à página da turma.** Quem entra numa aula vem quase sempre da vista semanal e quer voltar exatamente para lá — continuar a preencher a aula seguinte, ver o que falta na semana. O botão "Voltar à turma" levava à página da turma, um sítio diferente daquele de onde se veio, obrigando a navegar de novo até à semana certa. Passa a ser "Voltar às aulas da semana" e aponta para `/lessons?week=` da segunda-feira da semana da própria aula.
+
+  **A semana é calculada a partir da data da aula, não do caminho percorrido.** Nenhum parâmetro é passado a partir da vista semanal: essa solução só funcionaria para quem chegasse por aí, e cairia silenciosamente numa semana errada para quem entrasse por uma ligação direta, pelo histórico do navegador ou por qualquer outro caminho. A data da aula já está na página, por isso é dela que a semana sai — a segunda-feira da semana ISO correspondente, no calendário de Lisboa e não no de UTC, para que uma aula ao fim da tarde de domingo não seja empurrada para a semana seguinte. O formato produzido é exatamente o `YYYY-MM-DD` que a vista semanal já lê hoje.
 
 ### Fixed
 
