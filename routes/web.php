@@ -47,6 +47,7 @@ use App\Http\Controllers\StudentPhotoController;
 use App\Http\Controllers\StudentProgressController;
 use App\Http\Controllers\SubjectController;
 use App\Http\Controllers\TeamController;
+use App\Http\Controllers\TimetableImportController;
 use Illuminate\Support\Facades\Route;
 
 // The public landing page. A GET (not Route::inertia) because the plan cards
@@ -215,6 +216,13 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::put('lesson-slots/{recurringLessonSlot}', [LessonScheduleController::class, 'update'])->name('lesson-slots.update');
         Route::delete('lesson-slots/{recurringLessonSlot}', [LessonScheduleController::class, 'destroy'])->name('lesson-slots.destroy');
         Route::post('classes/{class}/lessons/materialize', [LessonScheduleController::class, 'materialize'])->name('lessons.materialize');
+
+        // Importing a timetable export into recurring slots. Global rather than
+        // nested inside a turma — one file spans several — and gated by this
+        // module because RecurringLessonSlot is exactly what it creates.
+        Route::get('timetable-imports/create', [TimetableImportController::class, 'create'])->name('timetable-imports.create');
+        Route::post('timetable-imports', [TimetableImportController::class, 'store'])->name('timetable-imports.store');
+        Route::post('timetable-imports/confirm', [TimetableImportController::class, 'confirm'])->name('timetable-imports.confirm');
     });
 
     // Instruments and the grading grid. Created inside a class; the grid is the

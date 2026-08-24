@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
-import { Pencil, Plus, Users } from '@lucide/vue';
+import { CalendarPlus, Pencil, Plus, Users } from '@lucide/vue';
 import Heading from '@/components/Heading.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -26,9 +26,14 @@ defineProps<{
     <div class="mx-auto w-full max-w-4xl space-y-6 p-4">
         <div class="flex items-center justify-between">
             <Heading title="Turmas" description="As turmas que leciona neste ano letivo." />
-            <Button as-child>
-                <Link href="/classes/create"><Plus class="size-4" /> Nova turma</Link>
-            </Button>
+            <div class="flex items-center gap-2">
+                <Button as-child variant="outline">
+                    <Link href="/timetable-imports/create"><CalendarPlus class="size-4" /> Importar horário</Link>
+                </Button>
+                <Button as-child>
+                    <Link href="/classes/create"><Plus class="size-4" /> Nova turma</Link>
+                </Button>
+            </div>
         </div>
 
         <div v-if="classes.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">

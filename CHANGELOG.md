@@ -2,6 +2,22 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.66.0] — 2026-08-24
+
+### Added
+
+- **Importar o horário do professor a partir do PDF exportado pela escola.** Configurar à mão, bloco a bloco, as aulas recorrentes de meia dúzia de turmas é meia hora de trabalho no início de cada ano letivo — e o horário já existe, em PDF, exportado pelo sistema da escola (INOVAR). Turmas ganha agora um "Importar horário": carrega-se o ficheiro, o LÁPIS lê a grelha e mostra, turma a turma, exatamente que aulas recorrentes seriam criadas; só depois de confirmar é que alguma coisa é escrita. Cada bloco criado é uma aula recorrente igual a qualquer outra — editável e removível no mesmo sítio de sempre, na página da turma.
+
+  **A grelha é lida pela posição de cada célula na página, nunca pela ordem do texto.** Num horário real, um dia sem aulas não deixa qualquer rasto no texto do ficheiro: uma linha com aula à 2ª e à 4ª feira lê-se, em texto corrido, exatamente como uma linha com aula à 2ª e à 3ª. Contar separadores poria metade do horário no dia errado — com toda a confiança e sem qualquer aviso. Por isso cada célula é colocada na coluna onde está realmente desenhada; um bloco cujo texto passa para uma segunda linha é reconstruído inteiro; e um dia da semana que não apareça em lado nenhum do ficheiro (um professor sem aulas à 5ª feira) continua a não deslocar os restantes. Dois blocos seguidos da mesma turma — 08:30–09:20 e 09:20–10:10 — continuam a ser duas aulas, nunca uma só de 08:30 às 10:10.
+
+  **Nada é adivinhado.** Cada turma do ficheiro ("7º C") é comparada com as turmas que o professor realmente leciona — só as suas, só as da sua organização, só as do ano letivo selecionado — e a correspondência tem de ser exata depois de ignorar acentuação, maiúsculas e o ponto ordinal ("7º C", "7.º C" e "7C" são a mesma turma). Uma turma que não se encontra, ou duas que respondem ao mesmo nome, nunca são resolvidas por palpite: aparecem em "Não associadas", para o professor decidir. Entradas que a grelha usa para outra coisa que não uma aula de turma — apoios, coadjuvações, códigos como "REE - Sem sala" ou "AE_3C_Port" — são mostradas mas nunca importadas como aulas normais.
+
+  **Importar o mesmo ficheiro duas vezes não duplica nada.** Um bloco que já existe no horário da turma é identificado como tal e ignorado; um bloco que se sobrepõe a uma aula já marcada sem ser igual a ela é assinalado como conflito e deixado ao critério do professor — nunca fundido nem substituído automaticamente. Estas verificações são refeitas no momento de confirmar, contra o horário como está nesse instante, e não contra o que a pré-visualização dizia minutos antes. No fim, a mensagem diz quantas aulas foram adicionadas, em quantas turmas, quantas já existiam e quantas ficaram por associar — nunca um "importação concluída" que esconda o que ainda falta resolver.
+
+  **A vigência é pedida uma vez para toda a importação**, e fica em branco por omissão: cada aula fica então limitada pelo ano letivo da própria turma, exatamente como já acontece quando se deixa esse campo vazio no formulário manual. Se o ficheiro for de outro ano letivo, isso é dito de forma bem visível na pré-visualização — sem bloquear a importação, porque pode ser mesmo essa a intenção, e sem nunca mudar o ano letivo selecionado.
+
+  **Criar e editar horários à mão continua exatamente como estava.** Esta importação é um atalho, não uma substituição: o formulário da página da turma, as suas regras de validação e as suas permissões não foram tocados. O PDF carregado é lido em memória e esquecido — nunca é guardado, e não passa a ser fonte de verdade depois da importação. Horários digitalizados (imagem, sem texto) ficam fora do âmbito desta versão e são recusados com uma frase clara em vez de um erro.
+
 ## [0.65.1] — 2026-08-24
 
 ### Fixed
