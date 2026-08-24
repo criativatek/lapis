@@ -14,7 +14,14 @@ class SaveLessonSummary
     public function __construct(protected AuditLog $audit) {}
 
     /**
-     * @param  array{content: string, private_notes?: string|null, resources?: string|null, homework?: string|null}  $details
+     * `content` is optional here rather than required: on the create path
+     * below (no existing summary) it must be present — `content` is NOT NULL
+     * at the database level — but on the update path, fill() below leaves
+     * any key the caller omits completely untouched, which is exactly what
+     * ApplyLessonSequence relies on to leave an existing lesson's unselected
+     * fields alone.
+     *
+     * @param  array{content?: string, private_notes?: string|null, resources?: string|null, homework?: string|null}  $details
      */
     public function execute(Lesson $lesson, array $details, User $actor): LessonSummary
     {

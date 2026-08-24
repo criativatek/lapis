@@ -7,6 +7,7 @@ import {
     ChevronLeft,
     ChevronRight,
     FileText,
+    ListOrdered,
     Plus,
 } from '@lucide/vue';
 import { computed } from 'vue';
@@ -174,6 +175,11 @@ function badgeVariant(
                 @click="navigate(7)"
                 >Semana seguinte <ChevronRight class="size-4"
             /></Button>
+            <Button as-child variant="ghost" size="sm" class="min-h-10 ml-auto">
+                <Link href="/lessons/sequences">
+                    <ListOrdered class="size-4" /> Sequências de aulas
+                </Link>
+            </Button>
         </nav>
 
         <div

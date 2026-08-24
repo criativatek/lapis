@@ -28,6 +28,7 @@ use App\Http\Controllers\InterventionController;
 use App\Http\Controllers\InvitationAcceptanceController;
 use App\Http\Controllers\LessonController;
 use App\Http\Controllers\LessonScheduleController;
+use App\Http\Controllers\LessonSequenceController;
 use App\Http\Controllers\LessonWeekController;
 use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\OrganizationMembershipController;
@@ -191,9 +192,24 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     Route::middleware('module:lessons')->group(function () {
         Route::get('lessons', [LessonWeekController::class, 'index'])->name('lessons.index');
         Route::post('lessons/materialize-week', [LessonWeekController::class, 'materialize'])->name('lessons.materialize-week');
+
+        // Reusable lesson sequences (Fatia 4) — secondary to the weekly view
+        // above, never a replacement for it. Registered before the
+        // single-segment lessons/{lesson} wildcard below, which would
+        // otherwise swallow GET lessons/sequences by treating "sequences"
+        // as a lesson ulid.
+        Route::get('lessons/sequences', [LessonSequenceController::class, 'index'])->name('lessons.sequences.index');
+        Route::post('lessons/sequences', [LessonSequenceController::class, 'store'])->name('lessons.sequences.store');
+        Route::put('lessons/sequences/{lessonSequence}', [LessonSequenceController::class, 'update'])->name('lessons.sequences.update');
+        Route::delete('lessons/sequences/{lessonSequence}', [LessonSequenceController::class, 'destroy'])->name('lessons.sequences.destroy');
+        Route::post('lessons/sequences/{lessonSequence}/apply', [LessonSequenceController::class, 'apply'])->name('lessons.sequences.apply');
+
         Route::get('lessons/{lesson}', [LessonController::class, 'show'])->name('lessons.show');
         Route::put('lessons/{lesson}/summary', [LessonController::class, 'updateSummary'])->name('lessons.summary.update');
         Route::post('lessons/{lesson}/mark-taught', [LessonController::class, 'markTaught'])->name('lessons.mark-taught');
+        // Read-only convenience for "Basear no sumário anterior" — never
+        // writes; copies into the CURRENT lesson's still-open, unsaved form.
+        Route::get('lessons/{lesson}/previous-summary', [LessonController::class, 'previousSummary'])->name('lessons.previous-summary');
 
         Route::post('lesson-slots', [LessonScheduleController::class, 'store'])->name('lesson-slots.store');
         Route::put('lesson-slots/{recurringLessonSlot}', [LessonScheduleController::class, 'update'])->name('lesson-slots.update');

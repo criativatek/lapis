@@ -9,6 +9,7 @@ use App\Http\Requests\Lessons\LessonSummaryRequest;
 use App\Models\Lesson;
 use App\Models\LessonStatus;
 use App\Models\User;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
@@ -79,6 +80,38 @@ class LessonController extends Controller implements HasMiddleware
         );
 
         return back()->with('success', 'Sumário guardado.');
+    }
+
+    /**
+     * "Basear no sumário anterior" — a read-only convenience, never a write.
+     * Finds the same class's most recent earlier lesson that already has a
+     * summary, and hands its text back so the frontend can copy it into the
+     * CURRENT lesson's still-open, not-yet-saved form. Nothing is persisted
+     * here, and nothing here links the two lessons afterwards — once copied,
+     * it is just text the teacher can edit or overwrite like anything else.
+     */
+    public function previousSummary(Lesson $lesson): JsonResponse
+    {
+        Gate::authorize('view', $lesson);
+
+        $previous = Lesson::query()
+            ->where('class_id', $lesson->class_id)
+            ->where('starts_at', '<', $lesson->starts_at)
+            ->whereHas('summary')
+            ->with('summary')
+            ->orderByDesc('starts_at')
+            ->first();
+
+        if ($previous === null || $previous->summary === null) {
+            return response()->json(null, 204);
+        }
+
+        return response()->json([
+            'content' => $previous->summary->content,
+            'private_notes' => $previous->summary->private_notes,
+            'resources' => $previous->summary->resources,
+            'homework' => $previous->summary->homework,
+        ]);
     }
 
     public function markTaught(Request $request, Lesson $lesson): RedirectResponse

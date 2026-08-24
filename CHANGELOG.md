@@ -2,6 +2,18 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.64.0] — 2026-08-24
+
+### Added
+
+- **Módulo Aulas e Sumários — Fatia 4: sequências de aulas reutilizáveis.** Um professor com várias turmas da mesma disciplina e ano (ex.: 7ºA, 7ºB, 7ºC) pode agora definir uma vez um plano ordenado de conteúdo de aulas — `LessonSequence` e os seus `LessonSequenceItem` — e aplicá-lo a cada turma sem reescrever o mesmo sumário três vezes. Uma sequência pertence a uma disciplina e a um ano letivo, é opcionalmente limitada a um ano de escolaridade (em branco aplica-se a qualquer turma dessa disciplina, o que a torna utilizável no ensino superior, onde ano de escolaridade não faz sentido), e é pessoal de quem a criou — nunca partilhada com o resto da organização nesta fatia. Deliberadamente secundária: `/lessons/sequences` é uma página própria, com uma ligação discreta a partir da vista semanal, que continua a ser o centro operacional do módulo.
+
+  **Cópia no momento da aplicação, nunca uma ligação viva.** Aplicar uma sequência a uma turma (`ApplyLessonSequence`) escreve o texto de cada item na próxima aula elegível dessa turma — por ordem, a partir de agora, nunca uma aula já lecionada — através do mesmo `SaveLessonSummary` que já deriva Preparado e nunca mexe em Lecionado. A partir desse momento cada sumário é independente: editar a sequência de origem depois de já ter sido aplicada nunca altera as aulas que já a usaram, exatamente a mesma disciplina que já protegia os modelos de relatório desta aplicação.
+
+  **Quatro campos à escolha, notas do professor desligadas por omissão.** Sumário, Recursos, TPC e Notas do professor podem ser copiados independentemente; as Notas do professor começam sempre desligadas e só são copiadas se o professor as pedir explicitamente nessa aplicação em concreto — uma nota escrita a pensar no ritmo de uma turma raramente serve tal e qual noutra. Numa aula que já tem sumário, um campo não selecionado fica completamente intocado; o Sumário em si é sempre escrito quando a aula ainda não tem nenhum, porque a coluna não permite vazio — nunca por acaso, sempre pela mesma regra. Se houver menos aulas elegíveis do que itens na sequência, aplica-se às que existem e o resultado diz exatamente quantas aulas foram preenchidas e quantos itens ficaram sem aula disponível, em vez de falhar.
+
+  **"Basear no sumário anterior", uma conveniência à parte, deliberadamente pequena.** Na página de uma aula sem sumário ainda escrito, um botão oferece copiar o sumário, notas, recursos e TPC da aula anterior mais recente da mesma turma que já tenha sumário — para dentro do formulário atual, ainda por guardar e totalmente editável. Não é uma segunda sequência nem uma ligação entre aulas: é só texto, escrito uma vez, que o professor pode alterar ou substituir como qualquer coisa que tivesse escrito de raiz; nada fica gravado enquanto não for o próprio a carregar em Guardar.
+
 ## [0.63.0] — 2026-08-24
 
 ### Added

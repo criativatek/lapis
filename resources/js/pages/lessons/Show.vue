@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { ArrowLeft, Check, Save } from '@lucide/vue';
-import { computed } from 'vue';
+import { ArrowLeft, Check, Copy, Save } from '@lucide/vue';
+import { computed, onMounted, ref } from 'vue';
 import AlertError from '@/components/AlertError.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
@@ -39,6 +39,44 @@ const summaryForm = useForm({
     homework: props.lesson.summary?.homework ?? '',
 });
 const taughtForm = useForm({});
+
+// "Basear no sumário anterior" — a read-only convenience (never a write) that
+// offers the same class's most recent earlier sumário as an editable
+// starting point. Fetched once, up front, only when there is nothing typed
+// yet to lose — never overwrites anything the teacher already wrote.
+type PreviousSummary = { content: string; private_notes: string | null; resources: string | null; homework: string | null };
+const previousSummary = ref<PreviousSummary | null>(null);
+
+onMounted(async () => {
+    if (props.lesson.summary?.content) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/lessons/${props.lesson.ulid}/previous-summary`, {
+            headers: { Accept: 'application/json' },
+        });
+
+        if (response.status !== 204) {
+            previousSummary.value = (await response.json()) as PreviousSummary;
+        }
+    } catch {
+        // Best-effort only — no previous summary is offered on failure.
+    }
+});
+
+const canBasePrevious = computed(() => previousSummary.value !== null && summaryForm.content.trim() === '');
+
+function basePreviousSummary(): void {
+    if (previousSummary.value === null) {
+        return;
+    }
+
+    summaryForm.content = previousSummary.value.content;
+    summaryForm.private_notes = previousSummary.value.private_notes ?? '';
+    summaryForm.resources = previousSummary.value.resources ?? '';
+    summaryForm.homework = previousSummary.value.homework ?? '';
+}
 
 const dateFormatter = new Intl.DateTimeFormat('pt-PT', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Lisbon',
@@ -102,7 +140,12 @@ function markTaught(): void {
             </div>
 
             <div class="grid gap-2">
-                <Label for="lesson-summary" class="text-base font-semibold">Sumário</Label>
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <Label for="lesson-summary" class="text-base font-semibold">Sumário</Label>
+                    <Button v-if="canBasePrevious" type="button" variant="outline" size="sm" @click="basePreviousSummary">
+                        <Copy class="size-4" /> Basear no sumário anterior
+                    </Button>
+                </div>
                 <textarea id="lesson-summary" v-model="summaryForm.content" name="content" rows="10" maxlength="16000" required autofocus class="min-h-56 w-full resize-y rounded-xl border border-input bg-background px-4 py-3 text-base leading-relaxed shadow-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50" placeholder="Escreve o sumário desta aula…" :disabled="summaryForm.processing" aria-describedby="lesson-summary-error" />
                 <InputError id="lesson-summary-error" :message="summaryForm.errors.content" />
             </div>
