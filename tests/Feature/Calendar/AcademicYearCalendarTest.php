@@ -1,0 +1,861 @@
+<?php
+
+namespace Tests\Feature\Calendar;
+
+use App\Models\AcademicPeriod;
+use App\Models\AcademicPeriodKind;
+use App\Models\AcademicPeriodStatus;
+use App\Models\AcademicYear;
+use App\Models\Instrument;
+use App\Models\InstrumentType;
+use App\Models\Organization;
+use App\Models\OrganizationSubscription;
+use App\Models\Plan;
+use App\Models\SchoolClass;
+use App\Models\Subject;
+use App\Models\SubscriptionStatus;
+use App\Models\User;
+use App\Support\Entitlements\Entitlements;
+use App\Support\Tenancy\CurrentOrganization;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
+use Inertia\Testing\AssertableInertia;
+use PHPUnit\Framework\Attributes\Test;
+use Tests\TestCase;
+
+/**
+ * «Calendário do Ano Letivo» (calendar.index, calendar.year) — the year's own
+ * structure and its avaliações, read together, in a Mês view and an Ano view.
+ *
+ * THE PAGE IS A READING AND NOTHING ELSE, and it owns no table: everything it
+ * shows already exists as AcademicPeriod rows and Instrument.applied_on dates.
+ * The hardest assertions here are the ones that nothing appears in the database
+ * when it is opened or navigated — over lessons AND recurring_lesson_slots AND
+ * instruments — because the failure being guarded against is precisely what
+ * «Aulas e Sumários» deliberately does on its own weekly view.
+ *
+ * AULAS ARE ABSENT BY DECISION, not by accident. «Horário do Professor» (Fase
+ * 5.1) already answers «que aulas tenho»; this calendar answers «o que é
+ * relevante no meu ano», and repeating the horário here would make them one
+ * page. Nothing below expects a Lesson, and one test proves none is created.
+ *
+ * Every assertion about «whose avaliações» is really an assertion about
+ * SchoolClass::scopeTaughtBy — the same scoping «Horário do Professor» and
+ * Turmas already use, called here rather than reproduced.
+ */
+class AcademicYearCalendarTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private User $teacher;
+
+    private Organization $organization;
+
+    private AcademicYear $academicYear;
+
+    /** @var array<int, AcademicPeriod> */
+    private array $anchorPeriods = [];
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->teacher = User::factory()->create();
+        $this->organization = $this->teacher->personalOrganization();
+        $this->subscribeToPro($this->organization);
+
+        // A fixed, explicit year: the initial-month rule below is about a real
+        // relationship between «today» and the year's own bounds, and a random
+        // factory year would make that relationship a coin toss.
+        $this->academicYear = $this->inTenant(fn (): AcademicYear => AcademicYear::factory()
+            ->recycle($this->organization)
+            ->create([
+                'label' => 'Calendário 2026/2027',
+                'starts_on' => '2026-09-01',
+                'ends_on' => '2027-07-31',
+            ]));
+    }
+
+    // ------------------------------------------------------------ o acesso
+
+    #[Test]
+    public function an_authorized_teacher_reaches_both_views(): void
+    {
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar')->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page->component('calendar/Month'));
+
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar/ano')->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page->component('calendar/Year'));
+    }
+
+    /**
+     * The `calendar` entitlement has existed since long before there was a page
+     * behind it, and this phase gates the real page with it rather than
+     * inventing a second capability for the same thing.
+     */
+    #[Test]
+    public function a_teacher_without_the_calendar_module_reaches_neither_view(): void
+    {
+        $base = User::factory()->create();
+        $baseOrganization = $base->personalOrganization();
+
+        $this->actingAs($base)->withSession(['organization_id' => $baseOrganization->id])
+            ->get('/calendar')->assertForbidden();
+        $this->actingAs($base)->withSession(['organization_id' => $baseOrganization->id])
+            ->get('/calendar/ano')->assertForbidden();
+    }
+
+    #[Test]
+    public function a_guest_is_sent_to_log_in(): void
+    {
+        $this->get('/calendar')->assertRedirect('/login');
+        $this->get('/calendar/ano')->assertRedirect('/login');
+    }
+
+    /**
+     * Both views are ADDRESSES, not a toggle inside one page: each answers on
+     * its own URL, so a bookmark and the back button both work on either.
+     */
+    #[Test]
+    public function each_view_is_reachable_directly_at_its_own_address(): void
+    {
+        $this->assertSame('/calendar', route('calendar.index', [], false));
+        $this->assertSame('/calendar/ano', route('calendar.year', [], false));
+    }
+
+    // ------------------------------------------------- o que aparece, e de quem
+
+    #[Test]
+    public function an_assessment_of_the_teachers_own_turma_appears_on_its_day(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher, '7.º C');
+        $this->period('1.º Período', 1, '2026-09-01', '2026-12-18');
+        $this->instrument($schoolClass, 'Teste de Frações', '2026-10-15');
+
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar?month=2026-10')->assertOk()
+            ->assertInertia(function (AssertableInertia $page) {
+                $day = $this->dayOf($page, '2026-10-15');
+
+                $this->assertCount(1, $day['assessments']);
+                $this->assertSame('Teste de Frações', $day['assessments'][0]['title']);
+                $this->assertSame('7.º C', $day['assessments'][0]['class_label']);
+                $this->assertSame('Matemática', $day['assessments'][0]['subject']);
+                $this->assertSame('Teste global', $day['assessments'][0]['type']);
+            });
+    }
+
+    /**
+     * The entry is a way in, never a dead end: it carries the real, existing
+     * route to the element's own page, and that page really answers there.
+     */
+    #[Test]
+    public function an_assessment_links_to_its_own_real_page(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher, '7.º C');
+        $instrument = $this->instrument($schoolClass, 'Teste de Frações', '2026-10-15');
+
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar?month=2026-10')->assertOk()
+            ->assertInertia(function (AssertableInertia $page) use ($instrument) {
+                $day = $this->dayOf($page, '2026-10-15');
+
+                $this->assertSame(
+                    route('instruments.show', $instrument, false),
+                    $day['assessments'][0]['href'],
+                );
+                $this->assertSame("/instruments/{$instrument->ulid}", $day['assessments'][0]['href']);
+            });
+    }
+
+    #[Test]
+    public function an_assessment_of_a_turma_the_teacher_does_not_teach_never_appears(): void
+    {
+        $own = $this->schoolClassFor($this->teacher, 'Minha turma');
+        $this->instrument($own, 'A minha', '2026-10-15');
+
+        $colleague = User::factory()->create();
+        $this->organization->members()->attach($colleague, ['joined_at' => now()]);
+        $colleagueClass = $this->schoolClassFor($colleague, 'Turma do colega');
+        $this->instrument($colleagueClass, 'A do colega', '2026-10-15');
+
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar?month=2026-10')->assertOk()
+            ->assertInertia(function (AssertableInertia $page) {
+                $day = $this->dayOf($page, '2026-10-15');
+
+                $this->assertSame(['A minha'], array_column($day['assessments'], 'title'));
+            });
+    }
+
+    #[Test]
+    public function an_assessment_from_another_organization_never_appears(): void
+    {
+        $own = $this->schoolClassFor($this->teacher, 'Minha turma');
+        $this->instrument($own, 'A minha', '2026-10-15');
+
+        $stranger = User::factory()->create();
+        $strangerOrganization = $stranger->personalOrganization();
+        $this->subscribeToPro($strangerOrganization);
+        $strangerClass = $this->schoolClassFor($stranger, 'Turma de outra organização', $strangerOrganization);
+        $this->instrument($strangerClass, 'A do estranho', '2026-10-15', $strangerOrganization);
+
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar?month=2026-10')->assertOk()
+            ->assertInertia(function (AssertableInertia $page) {
+                $day = $this->dayOf($page, '2026-10-15');
+
+                $this->assertSame(['A minha'], array_column($day['assessments'], 'title'));
+            });
+    }
+
+    // ------------------------------------------------------------ os limites
+
+    /**
+     * The grid's first row reaches back into the previous month and its last
+     * row into the next, so «visible» is the GRID's range and not the month's:
+     * October 2026 begins on a Thursday, so the grid opens on 28 September.
+     * An avaliação on a day the teacher can SEE belongs in the cell it is shown
+     * in; one on a day outside the grid entirely is absent.
+     */
+    #[Test]
+    public function the_boundaries_of_the_visible_grid_are_read_exactly(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher, '7.º C');
+        $this->instrument($schoolClass, 'Primeiro dia visível', '2026-09-28');
+        $this->instrument($schoolClass, 'Primeiro do mês', '2026-10-01');
+        $this->instrument($schoolClass, 'Último do mês', '2026-10-31');
+        $this->instrument($schoolClass, 'Último dia visível', '2026-11-01');
+        $this->instrument($schoolClass, 'Fora, antes', '2026-09-27');
+        $this->instrument($schoolClass, 'Fora, depois', '2026-11-02');
+
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar?month=2026-10')->assertOk()
+            ->assertInertia(function (AssertableInertia $page) {
+                $days = $page->toArray()['props']['days'];
+
+                $this->assertSame('2026-09-28', $days[0]['date']);
+                $this->assertSame('2026-11-01', $days[count($days) - 1]['date']);
+
+                $titles = [];
+                foreach ($days as $day) {
+                    $titles = [...$titles, ...array_column($day['assessments'], 'title')];
+                }
+
+                $this->assertContains('Primeiro dia visível', $titles);
+                $this->assertContains('Primeiro do mês', $titles);
+                $this->assertContains('Último do mês', $titles);
+                $this->assertContains('Último dia visível', $titles);
+                $this->assertNotContains('Fora, antes', $titles);
+                $this->assertNotContains('Fora, depois', $titles);
+            });
+    }
+
+    #[Test]
+    public function the_month_grid_is_whole_weeks_from_monday_to_sunday(): void
+    {
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar?month=2026-10')->assertOk()
+            ->assertInertia(function (AssertableInertia $page) {
+                $days = $page->toArray()['props']['days'];
+
+                $this->assertSame(0, count($days) % 7);
+                $this->assertSame(1, Carbon::parse($days[0]['date'])->dayOfWeekIso);
+                $this->assertSame(7, Carbon::parse($days[count($days) - 1]['date'])->dayOfWeekIso);
+                // The leading and trailing days are marked as not belonging to
+                // the month, so the page can show them as context.
+                $this->assertFalse($days[0]['in_month']);
+                $this->assertTrue($this->dayOf($page, '2026-10-01')['in_month']);
+            });
+    }
+
+    // ---------------------------------------------------- os períodos do ano
+
+    #[Test]
+    public function a_day_inside_a_period_carries_it_and_a_day_in_a_gap_carries_none(): void
+    {
+        // A year is not required to be covered end to end — nothing validates
+        // contiguity — so a gap is a REAL state, and a day in one is honestly
+        // left without a período rather than attached to the nearest.
+        $this->period('1.º Período', 1, '2026-09-01', '2026-10-10');
+        $this->period('2.º Período', 2, '2026-10-20', '2026-12-18');
+
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar?month=2026-10')->assertOk()
+            ->assertInertia(function (AssertableInertia $page) {
+                $this->assertSame('1.º Período', $this->dayOf($page, '2026-10-10')['period']['label']);
+                $this->assertSame('2.º Período', $this->dayOf($page, '2026-10-20')['period']['label']);
+                // Inside the gap: nothing, and nothing invented.
+                $this->assertNull($this->dayOf($page, '2026-10-15')['period']);
+                $this->assertNull($this->dayOf($page, '2026-10-11')['period']);
+                $this->assertNull($this->dayOf($page, '2026-10-19')['period']);
+
+                // Both bands cross this month, so both are offered as legend.
+                $this->assertSame(
+                    ['1.º Período', '2.º Período'],
+                    array_column($page->toArray()['props']['periods'], 'label'),
+                );
+            });
+    }
+
+    /**
+     * The período boundaries, exactly. A período beginning on the LAST visible
+     * day of the grid, or ending on its FIRST, still crosses it — and both are
+     * regressions waiting to happen, because these are date columns Eloquent
+     * stores as «Y-m-d 00:00:00»: compared as raw strings against «Y-m-d»
+     * bounds, «2026-11-01 00:00:00» is not <= «2026-11-01», and the band on the
+     * last day disappears without any error at all.
+     */
+    #[Test]
+    public function a_period_touching_the_grid_on_its_very_first_or_last_day_still_crosses_it(): void
+    {
+        // October 2026 opens on a Thursday, so the grid runs 28 Sep – 1 Nov.
+        $this->period('Acaba no primeiro dia', 1, '2026-09-10', '2026-09-28');
+        $this->period('Começa no último dia', 2, '2026-11-01', '2026-11-30');
+
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar?month=2026-10')->assertOk()
+            ->assertInertia(function (AssertableInertia $page) {
+                $this->assertSame(
+                    ['Acaba no primeiro dia', 'Começa no último dia'],
+                    array_column($page->toArray()['props']['periods'], 'label'),
+                );
+
+                $this->assertSame('Acaba no primeiro dia', $this->dayOf($page, '2026-09-28')['period']['label']);
+                $this->assertSame('Começa no último dia', $this->dayOf($page, '2026-11-01')['period']['label']);
+            });
+    }
+
+    #[Test]
+    public function a_period_that_does_not_cross_the_month_is_not_offered_for_it(): void
+    {
+        $this->period('1.º Período', 1, '2026-09-01', '2026-12-18');
+        $this->period('2.º Período', 2, '2027-01-05', '2027-04-02');
+
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar?month=2026-10')->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->has('periods', 1)
+                ->where('periods.0.label', '1.º Período')
+                ->where('periods.0.kind_label', 'Período')
+                ->etc());
+    }
+
+    /**
+     * A year with neither períodos nor avaliações is still a year, and its
+     * calendar is still a correct calendar of real days — never a blank page,
+     * and never invented content to fill it.
+     */
+    #[Test]
+    public function an_empty_year_still_renders_a_real_and_correct_grid(): void
+    {
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar?month=2026-10')->assertOk()
+            ->assertInertia(function (AssertableInertia $page) {
+                $props = $page->toArray()['props'];
+
+                $this->assertSame([], $props['periods']);
+                $this->assertNotEmpty($props['days']);
+                $this->assertSame('2026-10', $props['month']['value']);
+                $this->assertSame(31, count(array_filter($props['days'], fn (array $day): bool => $day['in_month'])));
+
+                foreach ($props['days'] as $day) {
+                    $this->assertSame([], $day['assessments']);
+                    $this->assertNull($day['period']);
+                }
+            });
+    }
+
+    // ------------------------------------------------------- o excesso num dia
+
+    #[Test]
+    public function every_assessment_of_a_crowded_day_is_sent_and_the_cap_is_declared(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher, '7.º C');
+
+        foreach (['Ficha A', 'Ficha B', 'Ficha C', 'Ficha D', 'Ficha E'] as $title) {
+            $this->instrument($schoolClass, $title, '2026-10-15');
+        }
+
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar?month=2026-10')->assertOk()
+            ->assertInertia(function (AssertableInertia $page) {
+                $props = $page->toArray()['props'];
+
+                // Nothing is dropped on the server: the cap is a presentation
+                // decision the page makes, and «+N mais» must be able to show
+                // what it promises.
+                $this->assertSame(
+                    ['Ficha A', 'Ficha B', 'Ficha C', 'Ficha D', 'Ficha E'],
+                    array_column($this->dayOf($page, '2026-10-15')['assessments'], 'title'),
+                );
+                $this->assertSame(3, $props['assessmentsPerDay']);
+            });
+    }
+
+    // -------------------------------------------------- o mês em que se abre
+
+    /**
+     * THE RULE, HALF ONE: today inside the year opens on today's month.
+     */
+    #[Test]
+    public function with_no_month_asked_for_a_running_year_opens_on_todays_month(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-12 09:00:00', 'Europe/Lisbon'));
+
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar')->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('month.value', '2026-11')
+                ->where('navigation.home', '2026-11')
+                ->where('navigation.home_is_today', true)
+                ->etc());
+
+        Carbon::setTestNow();
+    }
+
+    /**
+     * THE RULE, HALF TWO: today outside the year opens on the year's own first
+     * month — never on today's, which for a finished or not-yet-started year
+     * would be a correct calendar of nothing at all.
+     */
+    #[Test]
+    public function with_no_month_asked_for_a_year_that_is_not_running_opens_on_its_first_month(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2029-03-04 09:00:00', 'Europe/Lisbon'));
+
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar')->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('month.value', '2026-09')
+                ->where('navigation.home', '2026-09')
+                ->where('navigation.home_is_today', false)
+                ->etc());
+
+        Carbon::setTestNow();
+    }
+
+    #[Test]
+    public function the_first_and_last_day_of_the_year_are_both_inside_it_for_the_opening_rule(): void
+    {
+        foreach (['2026-09-01' => '2026-09', '2027-07-31' => '2027-07'] as $today => $expected) {
+            Carbon::setTestNow(Carbon::parse($today.' 09:00:00', 'Europe/Lisbon'));
+
+            $this->actingAs($this->teacher)->withSession($this->tenantSession())
+                ->get('/calendar')->assertOk()
+                ->assertInertia(fn (AssertableInertia $page) => $page
+                    ->where('month.value', $expected)
+                    ->etc());
+        }
+
+        Carbon::setTestNow();
+    }
+
+    // ------------------------------------------------------- a navegação
+
+    #[Test]
+    public function month_navigation_offers_the_real_neighbouring_months_across_a_year_boundary(): void
+    {
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar?month=2026-12')->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('month.value', '2026-12')
+                ->where('navigation.previous', '2026-11')
+                ->where('navigation.next', '2027-01')
+                ->etc());
+
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar?month=2027-01')->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('navigation.previous', '2026-12')
+                ->where('navigation.next', '2027-02')
+                ->etc());
+    }
+
+    /**
+     * Navigating months never changes which year is being read: the year comes
+     * from the session, through the same ResolveSelectedAcademicYear «Aulas e
+     * Sumários» uses, and the month is only a window onto it.
+     */
+    #[Test]
+    public function navigating_month_to_month_preserves_the_academic_year_context(): void
+    {
+        $other = $this->inTenant(fn (): AcademicYear => AcademicYear::factory()
+            ->recycle($this->organization)
+            ->create(['label' => 'Outro 2030/2031', 'starts_on' => '2030-09-01', 'ends_on' => '2031-07-31']));
+
+        $session = $this->tenantSession();
+
+        foreach (['2026-09', '2026-10', '2026-11'] as $month) {
+            $this->actingAs($this->teacher)->withSession($session)
+                ->get("/calendar?month={$month}")->assertOk()
+                ->assertInertia(fn (AssertableInertia $page) => $page
+                    ->where('academicYear.label', 'Calendário 2026/2027')
+                    ->where('month.value', $month)
+                    ->etc());
+        }
+
+        // And selecting the other year really does change it — proving the
+        // assertion above is about the session and not about a constant.
+        $this->actingAs($this->teacher)
+            ->withSession([...$session, 'academic_year_id' => $other->id])
+            ->get('/calendar')->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('academicYear.label', 'Outro 2030/2031')
+                ->etc());
+    }
+
+    #[Test]
+    public function a_malformed_month_is_rejected_rather_than_quietly_reinterpreted(): void
+    {
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar?month=outubro')
+            ->assertSessionHasErrors('month');
+    }
+
+    /**
+     * A brand-new organization has no year at all. That is an honest empty
+     * state — the page renders and says so — never a 500 and never a
+     * fabricated year to have something to draw.
+     */
+    #[Test]
+    public function an_organization_with_no_academic_year_gets_an_honest_empty_state(): void
+    {
+        $newcomer = User::factory()->create();
+        $newcomerOrganization = $newcomer->personalOrganization();
+        $this->subscribeToPro($newcomerOrganization);
+
+        $this->actingAs($newcomer)->withSession(['organization_id' => $newcomerOrganization->id])
+            ->get('/calendar')->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('calendar/Month')
+                ->where('academicYear', null)
+                ->where('month', null)
+                ->where('navigation', null)
+                ->where('days', [])
+                ->where('periods', [])
+                ->etc());
+
+        $this->actingAs($newcomer)->withSession(['organization_id' => $newcomerOrganization->id])
+            ->get('/calendar/ano')->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('calendar/Year')
+                ->where('academicYear', null)
+                ->where('months', [])
+                ->where('periods', [])
+                ->where('assessmentsTotal', 0));
+    }
+
+    // ------------------------------------------------------------- a vista Ano
+
+    #[Test]
+    public function the_year_view_bands_the_whole_year_and_counts_its_assessments(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher, '7.º C');
+        $this->period('1.º Período', 1, '2026-09-01', '2026-12-18');
+        $this->period('2.º Período', 2, '2027-01-05', '2027-04-02');
+        $this->period('3.º Período', 3, '2027-04-12', '2027-06-30');
+
+        $this->instrument($schoolClass, 'Teste 1', '2026-10-15');
+        $this->instrument($schoolClass, 'Teste 2', '2026-11-20');
+        $this->instrument($schoolClass, 'Teste 3', '2026-12-02');
+        $this->instrument($schoolClass, 'Teste 4', '2027-02-10');
+        $this->instrument($schoolClass, 'Teste 5', '2027-05-18');
+
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar/ano')->assertOk()
+            ->assertInertia(function (AssertableInertia $page) {
+                $props = $page->toArray()['props'];
+
+                $this->assertSame(5, $props['assessmentsTotal']);
+
+                $periods = collect($props['periods'])->keyBy('label');
+                $this->assertSame(['1.º Período', '2.º Período', '3.º Período'], array_column($props['periods'], 'label'));
+                $this->assertSame(3, $periods['1.º Período']['assessments_count']);
+                $this->assertSame(1, $periods['2.º Período']['assessments_count']);
+                $this->assertSame(1, $periods['3.º Período']['assessments_count']);
+
+                // Every month the year spans, from its first to its last.
+                $this->assertSame([
+                    '2026-09', '2026-10', '2026-11', '2026-12',
+                    '2027-01', '2027-02', '2027-03', '2027-04',
+                    '2027-05', '2027-06', '2027-07',
+                ], array_column($props['months'], 'value'));
+
+                $months = collect($props['months'])->keyBy('value');
+                $this->assertSame(1, $months['2026-10']['assessments_count']);
+                $this->assertSame(1, $months['2026-11']['assessments_count']);
+                $this->assertSame(1, $months['2026-12']['assessments_count']);
+                $this->assertSame(1, $months['2027-02']['assessments_count']);
+                $this->assertSame(1, $months['2027-05']['assessments_count']);
+                $this->assertSame(0, $months['2026-09']['assessments_count']);
+                $this->assertSame(0, $months['2027-03']['assessments_count']);
+
+                // A month may sit in two bands when one ends partway through
+                // it — and in none when it falls in a gap between two.
+                $this->assertCount(1, $months['2026-10']['period_ulids']);
+                $this->assertCount(0, $months['2027-07']['period_ulids']);
+                $this->assertCount(2, $months['2027-04']['period_ulids']);
+            });
+    }
+
+    /**
+     * A SYNOPSIS AND NOT A LIST: the Ano view sends counts, and never the
+     * avaliações themselves. The itemized list already exists in «Elementos de
+     * Avaliação», and a hundred rows here would bury the shape of the year,
+     * which is the only thing this view is for. There is no day grid either.
+     */
+    #[Test]
+    public function the_year_view_sends_counts_and_never_an_itemized_list_or_a_day_grid(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher, '7.º C');
+        $this->period('1.º Período', 1, '2026-09-01', '2026-12-18');
+        $this->instrument($schoolClass, 'Teste de Frações', '2026-10-15');
+
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar/ano')->assertOk()
+            ->assertInertia(function (AssertableInertia $page) {
+                $props = $page->toArray()['props'];
+
+                $this->assertArrayNotHasKey('days', $props);
+                $this->assertArrayNotHasKey('assessments', $props);
+                $this->assertStringNotContainsString('Teste de Frações', json_encode($props, JSON_THROW_ON_ERROR));
+
+                foreach ($props['months'] as $month) {
+                    $this->assertArrayNotHasKey('assessments', $month);
+                    $this->assertIsInt($month['assessments_count']);
+                }
+            });
+    }
+
+    #[Test]
+    public function the_year_view_never_counts_another_teachers_or_another_organizations_assessments(): void
+    {
+        $own = $this->schoolClassFor($this->teacher, 'Minha turma');
+        $this->instrument($own, 'A minha', '2026-10-15');
+
+        $colleague = User::factory()->create();
+        $this->organization->members()->attach($colleague, ['joined_at' => now()]);
+        $this->instrument($this->schoolClassFor($colleague, 'Turma do colega'), 'A do colega', '2026-10-16');
+
+        $stranger = User::factory()->create();
+        $strangerOrganization = $stranger->personalOrganization();
+        $this->subscribeToPro($strangerOrganization);
+        $this->instrument(
+            $this->schoolClassFor($stranger, 'Turma de outra organização', $strangerOrganization),
+            'A do estranho',
+            '2026-10-17',
+            $strangerOrganization,
+        );
+
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar/ano')->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('assessmentsTotal', 1)
+                ->etc());
+    }
+
+    // --------------------------------------- A PROVA DE QUE NADA SE ESCREVE
+
+    /**
+     * THE HARD REQUIREMENT. Opening either view, and walking month to month,
+     * writes NOTHING — not an aula, not uma aula recorrente, not um elemento de
+     * avaliação. Counted before and after every request rather than inferred
+     * from the code being read-only, because the failure this guards against —
+     * a reading that quietly materializes aulas — is exactly what the weekly
+     * view of «Aulas e Sumários» deliberately does, and this page must not.
+     */
+    #[Test]
+    public function opening_and_navigating_the_calendar_writes_absolutely_nothing(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher, '7.º C');
+        $this->period('1.º Período', 1, '2026-09-01', '2026-12-18');
+        $this->instrument($schoolClass, 'Teste de Frações', '2026-10-15');
+
+        $assertNothingWasWritten = function (): void {
+            $this->assertDatabaseCount('lessons', 0);
+            $this->assertDatabaseCount('recurring_lesson_slots', 0);
+            $this->assertDatabaseCount('instruments', 1);
+        };
+
+        $assertNothingWasWritten();
+
+        $session = $this->tenantSession();
+
+        foreach ([
+            '/calendar',
+            '/calendar?month=2026-09',
+            '/calendar?month=2026-10',
+            '/calendar?month=2026-11',
+            '/calendar?month=2027-06',
+            '/calendar/ano',
+        ] as $url) {
+            $this->actingAs($this->teacher)->withSession($session)->get($url)->assertOk();
+            $assertNothingWasWritten();
+        }
+    }
+
+    /**
+     * A support session may LOOK at the calendar it is being asked about,
+     * because looking changes nothing — and the counts after the request are
+     * the proof of it, not the absence of a refusal. The same reasoning
+     * «Horário do Professor» already applies to its own reading.
+     */
+    #[Test]
+    public function reading_the_calendar_during_impersonation_writes_nothing_either(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher, '7.º C');
+        $this->instrument($schoolClass, 'Teste de Frações', '2026-10-15');
+
+        foreach (['/calendar?month=2026-10', '/calendar/ano'] as $url) {
+            $this->actingAs($this->teacher)
+                ->withSession([...$this->tenantSession(), 'impersonator_id' => 999])
+                ->get($url)->assertOk();
+        }
+
+        $this->assertDatabaseCount('lessons', 0);
+        $this->assertDatabaseCount('recurring_lesson_slots', 0);
+        $this->assertDatabaseCount('instruments', 1);
+    }
+
+    // --------------------------------------------------------------- helpers
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function dayOf(AssertableInertia $page, string $date): array
+    {
+        $day = collect($page->toArray()['props']['days'])->firstWhere('date', $date);
+
+        $this->assertNotNull($day, "The grid has no cell for {$date}.");
+
+        return $day;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function tenantSession(): array
+    {
+        return [
+            'organization_id' => $this->organization->id,
+            'academic_year_id' => $this->academicYear->id,
+        ];
+    }
+
+    private function period(string $label, int $sequence, string $startsOn, string $endsOn): AcademicPeriod
+    {
+        return $this->inTenant(fn (): AcademicPeriod => AcademicPeriod::factory()
+            ->recycle($this->organization)
+            ->create([
+                'academic_year_id' => $this->academicYear->getKey(),
+                'label' => $label,
+                'kind' => AcademicPeriodKind::Term,
+                'sequence' => $sequence,
+                'starts_on' => $startsOn,
+                'ends_on' => $endsOn,
+                'status' => AcademicPeriodStatus::Open,
+            ]));
+    }
+
+    private function instrument(
+        SchoolClass $schoolClass,
+        string $title,
+        string $appliedOn,
+        ?Organization $organization = null,
+    ): Instrument {
+        $organization ??= $this->organization;
+
+        return app(CurrentOrganization::class)->runFor($organization, function () use ($organization, $schoolClass, $title, $appliedOn): Instrument {
+            return Instrument::factory()->recycle($organization)->create([
+                'class_id' => $schoolClass->getKey(),
+                'academic_period_id' => $this->anchorPeriodFor($schoolClass, $organization)->getKey(),
+                'instrument_type_id' => InstrumentType::withoutGlobalScope('typeVisibility')
+                    ->firstOrCreate(['organization_id' => null, 'code' => 'TEST'], ['name' => 'Teste global', 'default_purpose' => 'summative'])->id,
+                'title' => $title,
+                'applied_on' => $appliedOn,
+            ]);
+        });
+    }
+
+    /**
+     * Instrument.academic_period_id is NOT NULL, so every avaliação in these
+     * tests needs SOME período — but the calendar never reads that column: it
+     * bands a day by which of the YEAR's own períodos covers the date, and
+     * counts an avaliação into a band by its applied_on. So each turma's year
+     * gets one shared, deliberately irrelevant período, parked well outside
+     * every range under test and outside the year itself.
+     *
+     * Parking it there does real work rather than merely avoiding a collision:
+     * it means every période these tests DO assert about is one created
+     * explicitly by period(), and an avaliação can never appear banded merely
+     * because it points at a période row.
+     *
+     * One per year, because (academic_year_id, sequence) is unique; sequence
+     * 100 stays clear of the small sequences period() uses; and the dates span
+     * a real interval because `ends_on > starts_on` is a CHECK constraint on
+     * MySQL, where CI runs, even though SQLite would let it pass.
+     */
+    private function anchorPeriodFor(SchoolClass $schoolClass, Organization $organization): AcademicPeriod
+    {
+        $yearId = $schoolClass->academic_year_id;
+
+        return $this->anchorPeriods[$yearId] ??= AcademicPeriod::factory()
+            ->recycle($organization)
+            ->create([
+                'academic_year_id' => $yearId,
+                'label' => 'Período técnico (fora do calendário)',
+                'sequence' => 100,
+                'starts_on' => '2000-01-01',
+                'ends_on' => '2000-06-30',
+            ]);
+    }
+
+    private function schoolClassFor(User $teacher, string $label, ?Organization $organization = null): SchoolClass
+    {
+        $organization ??= $this->organization;
+
+        return app(CurrentOrganization::class)->runFor($organization, function () use ($organization, $teacher, $label): SchoolClass {
+            $academicYear = $organization->is($this->organization)
+                ? $this->academicYear
+                : AcademicYear::factory()->recycle($organization)->create([
+                    'starts_on' => '2026-09-01',
+                    'ends_on' => '2027-07-31',
+                ]);
+
+            $subject = Subject::query()->firstOrCreate(['code' => 'MAT'], ['name' => 'Matemática']);
+
+            $schoolClass = SchoolClass::factory()
+                ->recycle($organization)
+                ->create([
+                    'label' => $label,
+                    'academic_year_id' => $academicYear->getKey(),
+                    'subject_id' => $subject->getKey(),
+                ]);
+            $schoolClass->teachers()->attach($teacher, ['role' => 'owner']);
+
+            return $schoolClass;
+        });
+    }
+
+    private function subscribeToPro(Organization $organization): void
+    {
+        OrganizationSubscription::withoutGlobalScope('organization')
+            ->where('organization_id', $organization->id)
+            ->delete();
+        OrganizationSubscription::withoutGlobalScope('organization')->create([
+            'organization_id' => $organization->id,
+            'plan_id' => Plan::query()->where('key', 'pro')->firstOrFail()->id,
+            'status' => SubscriptionStatus::Active,
+            'starts_at' => Carbon::now()->subDay(),
+        ]);
+        app(Entitlements::class)->flush();
+    }
+
+    private function inTenant(callable $callback): mixed
+    {
+        return app(CurrentOrganization::class)->runFor($this->organization, $callback);
+    }
+}

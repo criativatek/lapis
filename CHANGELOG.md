@@ -2,6 +2,30 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.68.0] — 2026-08-25
+
+### Added
+
+- **"Calendário do Ano Letivo" deixa de ser um marcador e passa a ser uma página a sério, com vista de Mês e vista de Ano.** Até agora a entrada existia no menu mas não levava a lado nenhum: a estrutura do ano — os períodos e os semestres — só se via na página onde é definida, e as avaliações marcadas só se viam numa lista ordenada por data. Faltava o sítio onde as duas coisas se leem juntas, que é como um professor pensa o ano: "em que período estou, e o que está marcado à minha frente".
+
+  **A vista de Mês** mostra o mês inteiro em grelha, de segunda a domingo, com os dias dos meses vizinhos que completam a primeira e a última semana. Cada dia mostra o período do ano letivo em que cai — como faixa discreta, com o nome escrito onde a faixa começa e onde muda, e não repetido em trinta células — e as avaliações marcadas nesse dia, cada uma com o título, a turma e o tipo, e cada uma a ligar à sua própria página. Num dia com muitas avaliações a célula não cresce sem fim: mostra as três primeiras e um "+N mais" que abre o resto e volta a fechar. Navega-se para o mês anterior e para o seguinte, e há sempre a forma de voltar ao ponto de partida. Em ecrã estreito a grelha dá lugar a uma agenda do mês, dia a dia, como a vista semanal de "Aulas e Sumários" já resolve o mesmo problema.
+
+  **A vista de Ano** mostra o ano letivo todo de uma vez: os períodos como faixas, com o seu tipo, as suas datas e quantas avaliações caem em cada um, e os meses do ano com a contagem de avaliações de cada um. É uma vista sinóptica e por isso não enumera as avaliações uma a uma — essa lista já existe em "Elementos de Avaliação", e cem linhas aqui enterrariam justamente aquilo que só esta vista mostra, que é a forma do ano. Cada mês liga à sua própria vista de Mês. As duas vistas são dois endereços, e não dois estados de uma só página: cada uma pode ser guardada nos favoritos e o botão de voltar do navegador funciona entre elas.
+
+  **Uma avaliação nunca se confunde com a estrutura do ano, e a diferença não é só de cor.** Uma faixa de período não tem moldura nem ícone e escreve-se em texto discreto; uma avaliação tem moldura, ícone e peso de texto. A distinção mantém-se num ecrã monocromático e para quem não distingue as cores — e é uma só, deliberada, igual nas duas vistas, sem qualquer opção de personalização.
+
+  **O mês em que o calendário abre segue uma regra simples.** Se hoje cai dentro do ano letivo selecionado, abre no mês de hoje; se não cai — um ano já terminado, ou ainda por começar — abre no primeiro mês desse ano, em vez de mostrar um mês de hoje corretamente vazio.
+
+  **Nada é criado nem alterado por se olhar para o calendário.** Ao contrário da vista semanal de "Aulas e Sumários", que materializa deliberadamente as aulas da semana que mostra, aqui abrir a página, mudar de mês ou atualizar não escreve absolutamente nada — nem uma aula, nem uma aula recorrente, nem um elemento de avaliação — e isso está coberto por teste que conta as três tabelas antes e depois de cada pedido. O calendário não tem tabela própria: lê os períodos onde eles já vivem e as avaliações pela data em que já estão marcadas, sem duplicar nem uma coisa nem outra. Só aparecem as avaliações das turmas que o próprio professor leciona, pela mesma regra que as Turmas e o "Horário do Professor" já usam.
+
+  **As aulas não aparecem aqui, de propósito.** Essa pergunta — "que aulas tenho, quando e onde" — é a do "Horário do Professor", que a responde desde a versão anterior. O calendário responde a outra: "o que é relevante no meu ano". Mostrar as aulas nos dois sítios faria do calendário uma cópia do horário, e por isso não há aqui nem uma aula, nem uma contagem de aulas, nem um indicador de carga. Também não há feriados, interrupções nem reuniões: esses dados ainda não existem na aplicação, e inventar espaço vazio para eles seria prometer o que não está feito.
+
+  **Um ano sem períodos ou sem avaliações continua a dar um calendário correto**, com os seus dias reais e uma indicação de onde se criam os períodos — nunca uma página em branco, e nunca conteúdo inventado para a encher. Uma organização acabada de criar, ainda sem ano letivo nenhum, também não vê um erro: vê o que lhe falta fazer.
+
+### Changed
+
+- **A entrada "Calendário do Ano Letivo" no menu passa a levar à página real.** Era o último marcador do grupo "Organização do Ano Letivo" e apontava para a página "em construção"; passa a apontar para a vista de Mês, no mesmo endereço em que o marcador respondia — quem tenha guardado essa morada nos favoritos continua a chegar ao sítio certo, agora com a página verdadeira. A chave, o módulo, a legenda, a descrição e a posição da entrada ficam exatamente como estavam, e nada muda quanto a quem a vê: a capacidade comercial que a protege existia desde muito antes de haver página por trás dela. "Estrutura do Ano Letivo" e "Horário do Professor" ficaram intocados no mesmo grupo.
+
 ## [0.67.0] — 2026-08-25
 
 ### Added

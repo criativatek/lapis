@@ -132,11 +132,14 @@ return [
             // then the teacher's own week inside it.
             'label' => 'Organização do Ano Letivo',
             'items' => [
-                // Still a genuine placeholder — the real page is Fase 5.2, and
-                // no route is faked for it here. «Calendário», not «Agenda»:
-                // the key, the module and the capability are all untouched,
-                // because a label is not a rename (§17).
-                ['key' => 'calendar', 'label' => 'Calendário do Ano Letivo', 'icon' => 'CalendarDays', 'module' => 'calendar', 'phase' => 5, 'description' => 'Organizar o ano letivo.'],
+                // A REAL DESTINATION SINCE FASE 5.2, and no longer a
+                // placeholder: the Mês view answers at the same /calendar the
+                // placeholder used to, so a bookmark predating the page still
+                // lands on it, and the Ano view at /calendar/ano beside it.
+                // The key, the module and the capability are untouched — the
+                // entitlement existed long before there was a page behind it,
+                // and nothing about who may see this entry changed (§23, §41).
+                ['key' => 'calendar', 'label' => 'Calendário do Ano Letivo', 'icon' => 'CalendarDays', 'module' => 'calendar', 'phase' => 5, 'route' => 'calendar.index', 'built' => true, 'description' => 'Organizar o ano letivo.', 'match' => ['/calendar/ano']],
                 // MOVED HERE FROM «Configuração», unchanged in every other
                 // respect — same key, same module (null: always available),
                 // same route, same match. Defining anos letivos, disciplinas

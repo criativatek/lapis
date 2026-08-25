@@ -385,13 +385,15 @@ class ShellNavigationTest extends TestCase
     }
 
     /**
-     * «Calendário do Ano Letivo» is a GENUINE placeholder and stays one until
-     * Fase 5.2 builds it: renamed copy, unchanged key and module, and no real
-     * page pretended into existence behind it. routes/app.php still registers
-     * its placeholder route, so the menu does not link to a 404.
+     * FASE 5.2 — «Calendário do Ano Letivo» stopped being a placeholder. The
+     * entry that carried no route until now points at a real page, at the very
+     * address the placeholder answered at, so a bookmark made before it existed
+     * still lands on it. Everything else about the entry — key, module, label,
+     * description, position — is untouched: what changed is that there is now
+     * something behind it (§17, §23).
      */
     #[Test]
-    public function the_calendar_reads_its_new_label_and_is_still_only_a_placeholder(): void
+    public function the_calendar_is_now_a_real_destination_and_no_longer_a_placeholder(): void
     {
         $user = User::factory()->create();
         $this->upgrade($user, 'pro');
@@ -402,22 +404,56 @@ class ShellNavigationTest extends TestCase
 
         $this->assertSame('Calendário do Ano Letivo', $configured['label']);
         $this->assertSame('calendar', $configured['module']);
-        $this->assertArrayNotHasKey('route', $configured);
-        $this->assertArrayNotHasKey('built', $configured);
+        $this->assertSame('Organizar o ano letivo.', $configured['description']);
+        $this->assertSame('calendar.index', $configured['route']);
+        $this->assertTrue($configured['built']);
 
         $this->actingAs($user)->get('/dashboard')->assertInertia(function (AssertableInertia $page) {
             $calendar = collect($this->navItems($page))->firstWhere('key', 'calendar');
 
             $this->assertSame('Calendário do Ano Letivo', $calendar['label']);
-            $this->assertFalse($calendar['built']);
+            $this->assertTrue($calendar['built']);
+            $this->assertStringEndsWith('/calendar', (string) $calendar['href']);
+            // The Ano view lights the same entry: one menu item over the two
+            // views of one calendar, never two entries (§36).
+            $this->assertContains('/calendar/ano', $calendar['match']);
         });
 
-        $this->actingAs($user)->get('/calendar')->assertInertia(
-            fn (AssertableInertia $page) => $page
-                ->component('Placeholder')
-                ->where('title', 'Calendário do Ano Letivo')
-                ->where('phase', 5)
+        // The placeholder route routes/app.php used to generate for this key is
+        // gone with the `built` flag, and the real page answers in its place.
+        $this->actingAs($user)->get('/calendar')->assertOk()->assertInertia(
+            fn (AssertableInertia $page) => $page->component('calendar/Month')
         );
+        $this->actingAs($user)->get('/calendar/ano')->assertOk()->assertInertia(
+            fn (AssertableInertia $page) => $page->component('calendar/Year')
+        );
+    }
+
+    /**
+     * The two neighbours this phase deliberately did not touch: «Estrutura do
+     * Ano Letivo» and «Horário do Professor» (Fase 5.1) keep their own routes,
+     * their own `built` flag and their place in the same group.
+     */
+    #[Test]
+    public function the_other_entries_of_the_year_group_are_untouched_by_the_calendar(): void
+    {
+        $user = User::factory()->create();
+        $this->upgrade($user, 'pro');
+
+        $items = collect(config('navigation.sections'))
+            ->flatMap(fn (array $section): array => $section['items'])
+            ->keyBy('key');
+
+        $this->assertSame('academic-years.index', $items['academic-structure']['route']);
+        $this->assertTrue($items['academic-structure']['built']);
+        $this->assertNull($items['academic-structure']['module']);
+
+        $this->assertSame('timetable.index', $items['teacher-timetable']['route']);
+        $this->assertTrue($items['teacher-timetable']['built']);
+        $this->assertSame('lessons', $items['teacher-timetable']['module']);
+
+        $this->actingAs($user)->get('/academic-years')->assertOk();
+        $this->actingAs($user)->get('/timetable')->assertOk();
     }
 
     /**

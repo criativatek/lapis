@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AcademicYearCalendarController;
 use App\Http\Controllers\AcademicYearContextController;
 use App\Http\Controllers\AcademicYearController;
 use App\Http\Controllers\ActivityController;
@@ -106,6 +107,24 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     Route::get('academic-years/{academic_year}/edit', [AcademicYearController::class, 'edit'])->name('academic-years.edit');
     Route::put('academic-years/{academic_year}', [AcademicYearController::class, 'update'])->name('academic-years.update');
     Route::delete('academic-years/{academic_year}', [AcademicYearController::class, 'destroy'])->name('academic-years.destroy');
+
+    // «Calendário do Ano Letivo» (Fase 5.2) — the year's own structure and its
+    // avaliações read together, in two views. Both are GET-only readings of
+    // AcademicPeriod and Instrument.applied_on; the calendar owns no table.
+    //
+    // The Mês view keeps the /calendar address the navigation placeholder
+    // answered at until now, so a bookmark made before the real page existed
+    // still lands on it. Both views are addressable in their own right — the
+    // Ano view is a URL and not a toggle inside the other, so the back button
+    // and a bookmark both work on it.
+    //
+    // Gated by module:calendar, the entitlement this menu entry has carried
+    // since long before there was a page behind it — no new capability is
+    // invented for a reading of data the teacher can already reach.
+    Route::middleware('module:calendar')->group(function () {
+        Route::get('calendar', [AcademicYearCalendarController::class, 'index'])->name('calendar.index');
+        Route::get('calendar/ano', [AcademicYearCalendarController::class, 'year'])->name('calendar.year');
+    });
 
     // Subjects — the teacher's disciplines. Managed from the header subject
     // selector, like academic years.
