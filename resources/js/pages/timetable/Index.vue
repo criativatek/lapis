@@ -5,6 +5,7 @@ import { computed } from 'vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { capitalizeFirst } from '@/lib/text';
+import { turmaBadgeClass, turmaBarClass } from './timetable';
 
 type TimetableSlot = {
     ulid: string;
@@ -186,6 +187,16 @@ function validity(slot: TimetableSlot): string | null {
                         :aria-label="day.label"
                     >
                         <h2 class="text-sm font-semibold">{{ day.label }}</h2>
+                        <!--
+                            O TOM DA TURMA, nos mesmos dois sítios em todas as
+                            leituras da página: uma barra fina na margem do
+                            bloco e uma cápsula à volta do nome da turma. Sai do
+                            `ulid` (turmaBarClass/turmaBadgeClass, ./timetable),
+                            e por isso não depende da ordem em que os cartões
+                            calham sair. A hora, a disciplina e o fundo do bloco
+                            ficam tão neutros como sempre foram — e o dia sem
+                            aulas, que não tem turma nenhuma, não leva tom.
+                        -->
                         <ul
                             v-if="day.slots.length"
                             class="divide-y rounded-xl border bg-card"
@@ -194,6 +205,9 @@ function validity(slot: TimetableSlot): string | null {
                                 <Link
                                     :href="`/classes/${slot.school_class.ulid}#horario`"
                                     class="flex flex-col gap-1 p-3 transition-colors outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
+                                    :class="
+                                        turmaBarClass(slot.school_class.ulid)
+                                    "
                                 >
                                     <time
                                         class="text-sm font-medium tabular-nums"
@@ -201,9 +215,15 @@ function validity(slot: TimetableSlot): string | null {
                                             slot.ends_at
                                         }}</time
                                     >
-                                    <span class="text-sm font-medium">{{
-                                        slot.school_class.label
-                                    }}</span>
+                                    <span
+                                        class="text-sm font-medium"
+                                        :class="
+                                            turmaBadgeClass(
+                                                slot.school_class.ulid,
+                                            )
+                                        "
+                                        >{{ slot.school_class.label }}</span
+                                    >
                                     <span
                                         class="text-sm text-muted-foreground"
                                         >{{ slot.subject }}</span
@@ -242,6 +262,9 @@ function validity(slot: TimetableSlot): string | null {
                                 <Link
                                     :href="`/classes/${slot.school_class.ulid}#horario`"
                                     class="flex flex-col gap-1 p-3 transition-colors outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
+                                    :class="
+                                        turmaBarClass(slot.school_class.ulid)
+                                    "
                                 >
                                     <time
                                         class="text-sm font-medium tabular-nums"
@@ -249,9 +272,15 @@ function validity(slot: TimetableSlot): string | null {
                                             slot.ends_at
                                         }}</time
                                     >
-                                    <span class="text-sm font-medium">{{
-                                        slot.school_class.label
-                                    }}</span>
+                                    <span
+                                        class="text-sm font-medium"
+                                        :class="
+                                            turmaBadgeClass(
+                                                slot.school_class.ulid,
+                                            )
+                                        "
+                                        >{{ slot.school_class.label }}</span
+                                    >
                                     <span
                                         class="text-sm text-muted-foreground"
                                         >{{ slot.subject }}</span
@@ -282,15 +311,20 @@ function validity(slot: TimetableSlot): string | null {
                             <Link
                                 :href="`/classes/${slot.school_class.ulid}#horario`"
                                 class="flex flex-col gap-1 p-3 transition-colors outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
+                                :class="turmaBarClass(slot.school_class.ulid)"
                             >
                                 <time class="text-sm font-medium tabular-nums"
                                     >{{ slot.starts_at }}–{{
                                         slot.ends_at
                                     }}</time
                                 >
-                                <span class="text-sm font-medium">{{
-                                    slot.school_class.label
-                                }}</span>
+                                <span
+                                    class="text-sm font-medium"
+                                    :class="
+                                        turmaBadgeClass(slot.school_class.ulid)
+                                    "
+                                    >{{ slot.school_class.label }}</span
+                                >
                                 <span class="text-sm text-muted-foreground">{{
                                     slot.subject
                                 }}</span>

@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import { defineComponent, h } from 'vue';
 import Index from './Index.vue';
+import { TURMA_BADGE, TURMA_BAR, TURMA_TONES, turmaBarClass } from './timetable';
 
 vi.mock('@inertiajs/vue3', () => ({
     Head: defineComponent({ setup: (_, { slots }) => () => h('div', slots.default?.()) }),
@@ -54,6 +55,36 @@ const agenda = (wrapper: ReturnType<typeof mountPage>) =>
 
 const labelsOf = (root: ReturnType<typeof week>) =>
     root.findAll('section[aria-label]').map((s) => s.attributes('aria-label'));
+
+// --------------------------------------------------- o tom de cada turma
+
+/** Os blocos desenhados dentro de uma leitura da semana. */
+const blocksOf = (root: ReturnType<typeof week>) => root.findAll('li a');
+
+type Block = ReturnType<typeof blocksOf>[number];
+
+/** A barra vive no próprio bloco; a cápsula, no primeiro <span> lá dentro. */
+const barOf = (block: Block) => block.classes();
+const badgeOf = (block: Block) => block.find('span').classes();
+
+/**
+ * Toda e qualquer classe de tom que existe, seja de que turma for — a lista de
+ * que uma coisa «sem tom» tem de estar inteiramente livre. Sai dos próprios
+ * mapas exportados, e não de hexadecimais copiados para aqui: o que se afirma é
+ * que há ou não há tom, nunca qual é o azul.
+ */
+const everyAccentClass = [
+    'border-l-2',
+    ...TURMA_TONES.flatMap((tone) =>
+        `${TURMA_BAR[tone]} ${TURMA_BADGE[tone]}`.split(' '),
+    ),
+];
+
+const expectNoAccent = (classes: string[]) => {
+    for (const accent of everyAccentClass) {
+        expect(classes).not.toContain(accent);
+    }
+};
 
 describe('timetable/Index', () => {
     it('groups the week by weekday, in Portuguese, only for the days actually taught', () => {
@@ -219,6 +250,157 @@ describe('timetable/Index', () => {
         // There is no room column anywhere in the schema, so there is nothing
         // honest to show — and nothing invented here either.
         expect(wrapper.text()).not.toContain('Sala');
+    });
+
+    // ------------------------------------------------- o tom de cada turma
+
+    /**
+     * A MESMA TURMA, O MESMO TOM, SEMPRE. O tom sai do `ulid` e de mais nada,
+     * por isso não muda entre duas semanas, entre dois dias, nem entre duas
+     * renderizações da mesma página.
+     */
+    it('paints a turma in the same tone however the week around it changes', () => {
+        const monday = mountPage([
+            slot({ ulid: 'a', day_of_week: 1 }),
+        ]);
+        // Outra semana, outro dia, outras turmas à volta — a mesma turma.
+        const otherWeek = mountPage([
+            slot({
+                ulid: 'x',
+                day_of_week: 2,
+                school_class: { ulid: 'class-b', label: '8.º A' },
+            }),
+            slot({ ulid: 'y', day_of_week: 4, starts_at: '14:00' }),
+        ]);
+
+        const first = blocksOf(week(monday))[0] as Block;
+        const again = blocksOf(week(otherWeek))[1] as Block;
+
+        expect(barOf(first)).toEqual(barOf(again));
+        expect(badgeOf(first)).toEqual(badgeOf(again));
+    });
+
+    it('tells two turmas apart, giving them accents that are not the same', () => {
+        const wrapper = mountPage([
+            slot({ ulid: 'a', day_of_week: 1 }),
+            slot({
+                ulid: 'b',
+                day_of_week: 1,
+                starts_at: '10:30',
+                ends_at: '11:20',
+                school_class: { ulid: 'class-b', label: '8.º A' },
+            }),
+        ]);
+
+        const [first, second] = blocksOf(week(wrapper)) as [Block, Block];
+
+        expect(badgeOf(first)).not.toEqual(badgeOf(second));
+        expect(barOf(first)).not.toEqual(barOf(second));
+    });
+
+    /**
+     * E NUNCA PELA POSIÇÃO NA LISTA. Se o tom viesse do índice do cartão, a
+     * mesma turma mudava de cor por ser a terceira aula do dia em vez da
+     * primeira — e o sinal deixava de servir para nada.
+     */
+    it('accents a turma by who it is, never by where its card happens to fall', () => {
+        const wrapper = mountPage([
+            slot({ ulid: 'a', day_of_week: 1, starts_at: '08:30' }),
+            slot({
+                ulid: 'b',
+                day_of_week: 1,
+                starts_at: '10:30',
+                school_class: { ulid: 'class-b', label: '8.º A' },
+            }),
+            // A mesma turma do primeiro bloco, em terceiro lugar.
+            slot({ ulid: 'c', day_of_week: 1, starts_at: '14:00' }),
+        ]);
+
+        const [first, middle, third] = blocksOf(week(wrapper)) as [
+            Block,
+            Block,
+            Block,
+        ];
+
+        expect(barOf(third)).toEqual(barOf(first));
+        expect(badgeOf(third)).toEqual(badgeOf(first));
+        expect(badgeOf(middle)).not.toEqual(badgeOf(first));
+    });
+
+    it('reads the same in the agenda de ecrã estreito as in the grelha', () => {
+        const wrapper = mountPage([slot({ ulid: 'a', day_of_week: 1 })]);
+
+        const onGrid = blocksOf(week(wrapper))[0] as Block;
+        const onPhone = blocksOf(agenda(wrapper))[0] as Block;
+
+        expect(barOf(onPhone)).toEqual(barOf(onGrid));
+        expect(badgeOf(onPhone)).toEqual(badgeOf(onGrid));
+    });
+
+    /**
+     * A COR É REFORÇO, E SÓ. O nome da turma continua escrito, por extenso,
+     * dentro da própria cápsula: quem não distingue estes tons não perde
+     * informação nenhuma.
+     */
+    it('keeps the turma\'s name written out inside the accent, never replaced by it', () => {
+        const wrapper = mountPage([slot()]);
+
+        const badge = (blocksOf(week(wrapper))[0] as Block).find('span');
+
+        expect(badge.text()).toBe('7.º C');
+        expect(badge.classes()).toContain('text-sm');
+        expect(badge.classes()).toContain('font-medium');
+    });
+
+    /**
+     * O TOM PÁRA NA TURMA E NA MARGEM DO BLOCO. A hora, a disciplina e o fundo
+     * do cartão ficam tão neutros como sempre foram — o bloco leva a barra e
+     * nada mais.
+     */
+    it('leaves the hora, the disciplina and the block\'s own ground untinted', () => {
+        const wrapper = mountPage([slot()]);
+
+        const block = blocksOf(week(wrapper))[0] as Block;
+
+        // O bloco leva a barra, mas nenhum dos fundos/textos da cápsula.
+        expect(barOf(block)).toContain('border-l-2');
+
+        const painted = TURMA_TONES.flatMap((tone) =>
+            TURMA_BADGE[tone].split(' '),
+        );
+
+        for (const fill of painted) {
+            expect(barOf(block)).not.toContain(fill);
+        }
+
+        expectNoAccent(block.find('time').classes());
+        expectNoAccent(
+            block.findAll('span').map((s) => s.classes()).slice(1).flat(),
+        );
+    });
+
+    /**
+     * «SEM AULAS» NÃO TEM TURMA, LOGO NÃO TEM TOM. O rótulo do dia vazio
+     * continua a ser um rótulo e mais nada.
+     */
+    it('gives the «Sem aulas» placeholder no turma accent at all', () => {
+        const wrapper = mountPage([
+            slot({ ulid: 'a', day_of_week: 1 }),
+            slot({ ulid: 'e', day_of_week: 5 }),
+        ]);
+
+        const thursday = week(wrapper).find('section[aria-label="Quinta-feira"]');
+        const placeholder = thursday.find('p');
+
+        expect(placeholder.text()).toBe('Sem aulas');
+        expectNoAccent(placeholder.classes());
+    });
+
+    it('derives the accent from the ulid, not from the turma\'s editable label', () => {
+        // O mesmo `ulid` com dois rótulos diferentes é a mesma turma, e o tom
+        // não se move; rótulos iguais com `ulid` diferente são duas turmas.
+        expect(turmaBarClass('class-a')).toBe(turmaBarClass('class-a'));
+        expect(turmaBarClass('class-a')).not.toBe(turmaBarClass('class-b'));
     });
 
     it('shows a block\'s optional validity window only when it has one', () => {

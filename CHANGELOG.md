@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.69.5] — 2026-08-25
+
+### Fixed
+
+- **As turmas do "Horário do Professor" ganham um sinal visual discreto, para se distinguirem mais depressa ao correr a semana com os olhos.** Cada bloco de aula passa a ter uma barra fina na margem esquerda e uma pequena cápsula em torno do nome da turma, ambas num tom pastel de baixa saturação — nunca cores fortes, nunca uma turma por cor viva. O tom sai do identificador estável da turma (`ulid`), nunca da posição do bloco na lista: a mesma turma tem sempre o mesmo tom, em qualquer dia da semana, em qualquer semana, e nas três leituras da página (dias úteis, fim de semana, agenda de ecrã estreito). A hora, a disciplina e o fundo do bloco continuam tão neutros como sempre; "Sem aulas" continua sem qualquer acento; o nome da turma continua escrito em texto — a cor é reforço, nunca o único identificador.
+
 ## [0.69.4] — 2026-08-25
 
 ### Fixed
