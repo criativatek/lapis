@@ -6,6 +6,7 @@ use App\Http\Controllers\AcademicYearController;
 use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\AssessmentController;
 use App\Http\Controllers\AssessmentProfileController;
+use App\Http\Controllers\CalendarEventController;
 use App\Http\Controllers\ChangelogController;
 use App\Http\Controllers\ClassController;
 use App\Http\Controllers\ClassificationController;
@@ -121,9 +122,26 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     // Gated by module:calendar, the entitlement this menu entry has carried
     // since long before there was a page behind it — no new capability is
     // invented for a reading of data the teacher can already reach.
+    //
+    // «Acontecimentos» (Fase 5.3) — a reunião, a atividade, a visita de estudo
+    // e o «outro»: as únicas coisas datadas que não têm casa em mais lado
+    // nenhum da aplicação. São o primeiro — e único — sítio onde o calendário
+    // escreve, e por isso vivem noutro controlador: o das duas vistas acima é
+    // uma leitura e não recusa nada durante uma sessão de suporte, justamente
+    // porque olhar não muda nada. Estas três recusam.
+    //
+    // Não há vista própria: as três respondem com um `back()` para a vista de
+    // Mês ou de Ano em que o professor estava, que é onde o resultado se vê.
     Route::middleware('module:calendar')->group(function () {
         Route::get('calendar', [AcademicYearCalendarController::class, 'index'])->name('calendar.index');
         Route::get('calendar/ano', [AcademicYearCalendarController::class, 'year'])->name('calendar.year');
+
+        Route::post('calendar/acontecimentos', [CalendarEventController::class, 'store'])
+            ->name('calendar.events.store');
+        Route::put('calendar/acontecimentos/{calendarEvent}', [CalendarEventController::class, 'update'])
+            ->name('calendar.events.update');
+        Route::delete('calendar/acontecimentos/{calendarEvent}', [CalendarEventController::class, 'destroy'])
+            ->name('calendar.events.destroy');
     });
 
     // Subjects — the teacher's disciplines. Managed from the header subject

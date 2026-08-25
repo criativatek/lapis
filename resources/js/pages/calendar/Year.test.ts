@@ -30,6 +30,7 @@ function month(value: string, overrides: Record<string, unknown> = {}) {
         value,
         starts_on: `${value}-01`,
         assessments_count: 0,
+        events_count: 0,
         period_ulids: [] as string[],
         is_current: false,
         ...overrides,
@@ -48,6 +49,7 @@ function mountPage(overrides: Partial<InstanceType<typeof Year>['$props']> = {})
             months: [month('2026-09'), month('2026-10'), month('2026-11')],
             periods: [],
             assessmentsTotal: 0,
+            eventsTotal: 0,
             ...overrides,
         },
     });
@@ -165,6 +167,71 @@ describe('calendar/Year', () => {
         expect(badge).toBeTruthy();
         expect(badge!.classes().join(' ')).toContain('font-medium');
         expect(badge!.find('svg').exists()).toBe(true);
+    });
+
+    /**
+     * OS ACONTECIMENTOS ENTRAM PELA MESMA REGRA da Fase 5.2 — uma contagem
+     * compacta por mês, e nunca a lista. E distinguem-se de uma contagem de
+     * avaliações por ícone E por palavra, nunca só por posição ou cor.
+     */
+    it('counts a month\'s acontecimentos compactly, beside the avaliações and never mixed with them', () => {
+        const wrapper = mountPage({
+            months: [
+                month('2026-09'),
+                month('2026-10', {
+                    assessments_count: 2,
+                    events_count: 3,
+                    period_ulids: ['period-1'],
+                }),
+                month('2026-11', { events_count: 1 }),
+            ],
+            periods: [period({ assessments_count: 2 })],
+            assessmentsTotal: 2,
+            eventsTotal: 4,
+        });
+
+        const october = wrapper.find('[data-month="2026-10"]');
+
+        expect(october.text()).toContain('2 avaliações');
+        expect(october.text()).toContain('3 acontecimentos');
+
+        // Um mês com acontecimentos e sem avaliações diz honestamente as duas
+        // coisas, em vez de deixar uma delas por dizer.
+        const november = wrapper.find('[data-month="2026-11"]');
+        expect(november.text()).toContain('Sem avaliações');
+        expect(november.text()).toContain('1 acontecimento');
+
+        // E um mês sem nada continua a não inventar nada.
+        expect(wrapper.find('[data-month="2026-09"]').text()).toContain('Sem avaliações');
+        expect(wrapper.find('[data-month="2026-09"] [data-events-count]').exists()).toBe(false);
+
+        expect(wrapper.text()).toContain('4 acontecimentos');
+    });
+
+    it('distinguishes a count of acontecimentos from a count of avaliações by icon and by word', () => {
+        const wrapper = mountPage({
+            months: [month('2026-10', { assessments_count: 2, events_count: 3 })],
+            assessmentsTotal: 2,
+            eventsTotal: 3,
+        });
+
+        const badge = wrapper.find('[data-month="2026-10"] [data-events-count]');
+
+        expect(badge.exists()).toBe(true);
+        expect(badge.attributes('data-events-count')).toBe('3');
+        expect(badge.text()).toContain('3 acontecimentos');
+        expect(badge.find('svg').exists()).toBe(true);
+    });
+
+    it('never names an acontecimento at this scale, only counts them', () => {
+        const wrapper = mountPage({
+            months: [month('2026-10', { events_count: 12 })],
+            eventsTotal: 12,
+        });
+
+        expect(wrapper.text()).toContain('12 acontecimentos');
+        expect(wrapper.findAll('[data-event-ulid]')).toHaveLength(0);
+        expect(wrapper.findAll('[data-date]')).toHaveLength(0);
     });
 
     it('never draws a day grid and never itemizes the avaliações', () => {

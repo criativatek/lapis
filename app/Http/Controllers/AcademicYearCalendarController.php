@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Calendar\CalendarMonthRequest;
 use App\Models\AcademicYear;
+use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Calendar\AcademicYearCalendarQuery;
 use App\Support\Retention\ResolveSelectedAcademicYear;
@@ -14,13 +15,15 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * «Calendário do Ano Letivo» — the year's own shape and its avaliações, read
- * together, in two views: Mês and Ano.
+ * «Calendário do Ano Letivo» — the year's own shape, its avaliações and the
+ * teacher's own acontecimentos, read together, in two views: Mês and Ano.
  *
- * NOTHING HERE IS PERSISTED, AND NOTHING HERE IS NEW. Both views are readings
- * of AcademicPeriod and Instrument.applied_on exactly where they already live;
- * the calendar owns no table of its own and adds no column to theirs. Opening,
- * navigating or refreshing either view creates nothing.
+ * NOTHING HERE IS PERSISTED. Both views are readings — of AcademicPeriod, of
+ * Instrument.applied_on, and (Fase 5.3) of the teacher's own CalendarEvent
+ * rows. Opening, navigating or refreshing either view creates nothing at all;
+ * an acontecimento only ever comes into being through an explicit action of
+ * the teacher's, in CalendarEventController, which is a different class
+ * precisely so that this one can go on being only a reading.
  *
  * AULAS DO NOT APPEAR HERE, deliberately. «Horário do Professor» already
  * answers «que aulas tenho, quando e onde»; this page answers «o que é
@@ -41,11 +44,18 @@ class AcademicYearCalendarController extends Controller implements HasMiddleware
     private const TIMEZONE = 'Europe/Lisbon';
 
     /**
-     * How many avaliações a day cell shows before it stops growing and offers
-     * the rest behind one control. A cell that lists everything turns a week
-     * with a test-heavy Friday into a column nothing else fits beside.
+     * How many ITEMS a day cell shows before it stops growing and offers the
+     * rest behind one control. A cell that lists everything turns a week with a
+     * test-heavy Friday into a column nothing else fits beside.
+     *
+     * ITEMS, and no longer avaliações alone (Fase 5.3): a day with two
+     * avaliações and three acontecimentos is exactly as crowded as a day with
+     * five avaliações, and a cap that counted only one of the two kinds would
+     * let the cell grow without bound as soon as the other kind arrived. One
+     * cap, one «+N mais», over both — never a second overflow mechanism beside
+     * the first.
      */
-    private const ASSESSMENTS_PER_DAY = 3;
+    private const ITEMS_PER_DAY = 3;
 
     public function __construct(
         private readonly AcademicYearCalendarQuery $calendar,
@@ -76,7 +86,8 @@ class AcademicYearCalendarController extends Controller implements HasMiddleware
                 'days' => [],
                 'periods' => [],
                 'navigation' => null,
-                'assessmentsPerDay' => self::ASSESSMENTS_PER_DAY,
+                'itemsPerDay' => self::ITEMS_PER_DAY,
+                'classes' => [],
             ]);
         }
 
@@ -116,18 +127,29 @@ class AcademicYearCalendarController extends Controller implements HasMiddleware
                 'home' => $opening->format('Y-m'),
                 'home_is_today' => $opening->isSameMonth($this->today()),
             ],
-            'assessmentsPerDay' => self::ASSESSMENTS_PER_DAY,
+            'itemsPerDay' => self::ITEMS_PER_DAY,
+            // As turmas deste professor, para o formulário de «Novo
+            // acontecimento» poder oferecer as suas e só as suas. É a MESMA
+            // pergunta — SchoolClass::scopeTaughtBy — que «Horário do
+            // Professor» e as Turmas já fazem, feita aqui e não reescrita, para
+            // que a lista oferecida não possa divergir da lista que
+            // CalendarEventRequest aceita.
+            'classes' => $this->teacherClasses($this->user($request)),
         ]);
     }
 
     /**
-     * The Ano view — the whole year at a glance: its períodos as bands, and how
-     * many avaliações fall in each month and in each período.
+     * The Ano view — the whole year at a glance: its períodos as bands, how
+     * many avaliações fall in each month and in each período, and how many
+     * acontecimentos cross each month.
      *
-     * COUNTS AND NOT A LIST, on purpose. A year's avaliações itemized end to
-     * end is the Elementos de Avaliação listing, which already exists; what is
-     * missing at this scale is the shape of the year, and a hundred rows would
-     * bury it. There is no day grid here either, for the same reason.
+     * COUNTS AND NOT A LIST, on purpose, and that rule is unchanged by Fase 5.3
+     * — it now simply also counts acontecimentos. A year's avaliações itemized
+     * end to end is the Elementos de Avaliação listing, which already exists;
+     * what is missing at this scale is the shape of the year, and a hundred
+     * rows would bury it. There is no day grid here either, for the same
+     * reason, and no acontecimento is named at this scale: the Mês view, one
+     * click away on every month tile, is where they are read one by one.
      */
     public function year(Request $request): Response
     {
@@ -139,6 +161,7 @@ class AcademicYearCalendarController extends Controller implements HasMiddleware
                 'months' => [],
                 'periods' => [],
                 'assessmentsTotal' => 0,
+                'eventsTotal' => 0,
             ]);
         }
 
@@ -161,6 +184,15 @@ class AcademicYearCalendarController extends Controller implements HasMiddleware
                 'assessments_count' => count(array_filter(
                     $reading['assessments'],
                     fn (array $assessment): bool => $assessment['applied_on'] >= $monthStart && $assessment['applied_on'] <= $monthEnd,
+                )),
+                // Um acontecimento CRUZA um mês, e não «cai» nele: uma visita
+                // de estudo de 30 de outubro a 2 de novembro é uma coisa que
+                // acontece nos dois meses, e conta-se nos dois — a mesma
+                // semântica de sobreposição que as faixas dos períodos, logo a
+                // seguir, já usam para a mesma pergunta.
+                'events_count' => count(array_filter(
+                    $reading['events'],
+                    fn (array $event): bool => $event['starts_on'] <= $monthEnd && $event['ends_on'] >= $monthStart,
                 )),
                 // Which bands cross this month — a month may sit in two, when a
                 // período ends partway through it and the next begins.
@@ -191,16 +223,22 @@ class AcademicYearCalendarController extends Controller implements HasMiddleware
                 $reading['periods'],
             ),
             'assessmentsTotal' => count($reading['assessments']),
+            'eventsTotal' => count($reading['events']),
         ]);
     }
 
     /**
      * One cell per day of the grid, each carrying the período it falls in (or
-     * none, honestly, when the year leaves a gap between two) and the
-     * avaliações applied on it.
+     * none, honestly, when the year leaves a gap between two), the avaliações
+     * applied on it, and the acontecimentos that cover it.
      *
-     * @param  array{periods: list<array<string, mixed>>, assessments: list<array<string, mixed>>}  $reading
-     * @return list<array{date: string, day: int, in_month: bool, is_today: bool, period: array<string, mixed>|null, assessments: list<array<string, mixed>>}>
+     * COVER, and not «begin on»: an acontecimento that runs from Monday to
+     * Thursday is what is happening on each of those four days, so it appears
+     * in each of the four cells — the same reading the período band above it
+     * already gets. An avaliação, by contrast, has one date and appears once.
+     *
+     * @param  array{periods: list<array<string, mixed>>, assessments: list<array<string, mixed>>, events: list<array<string, mixed>>}  $reading
+     * @return list<array{date: string, day: int, in_month: bool, is_today: bool, period: array<string, mixed>|null, assessments: list<array<string, mixed>>, events: list<array<string, mixed>>}>
      */
     private function days(CarbonImmutable $month, CarbonImmutable $gridStart, CarbonImmutable $gridEnd, array $reading): array
     {
@@ -228,10 +266,40 @@ class AcademicYearCalendarController extends Controller implements HasMiddleware
                     $reading['assessments'],
                     fn (array $assessment): bool => $assessment['applied_on'] === $date,
                 )),
+                'events' => array_values(array_filter(
+                    $reading['events'],
+                    fn (array $event): bool => $event['starts_on'] <= $date && $event['ends_on'] >= $date,
+                )),
             ];
         }
 
         return $days;
+    }
+
+    /**
+     * As turmas que este professor leciona, para o formulário de acontecimentos.
+     *
+     * A MESMA PERGUNTA, FEITA UMA VEZ. SchoolClass::scopeTaughtBy é a única
+     * resposta a «que turmas são deste professor» neste projeto — a que as
+     * Turmas, o «Horário do Professor» e as avaliações deste mesmo calendário
+     * já usam. Chamada aqui e não reescrita, para que o que o formulário
+     * oferece e o que CalendarEventRequest aceita não possam divergir.
+     *
+     * @return list<array{ulid: string, label: string, subject: string}>
+     */
+    private function teacherClasses(User $teacher): array
+    {
+        return array_values(SchoolClass::query()
+            ->taughtBy($teacher)
+            ->with('subject')
+            ->orderBy('label')
+            ->get()
+            ->map(fn (SchoolClass $schoolClass): array => [
+                'ulid' => $schoolClass->ulid,
+                'label' => $schoolClass->label,
+                'subject' => $schoolClass->subject->name,
+            ])
+            ->all());
     }
 
     /**

@@ -19,6 +19,8 @@ type YearMonth = {
     value: string;
     starts_on: string;
     assessments_count: number;
+    /** Acontecimentos CRUZANDO este mês, não apenas os que começam nele. */
+    events_count: number;
     period_ulids: string[];
     is_current: boolean;
 };
@@ -33,6 +35,7 @@ const props = defineProps<{
     months: YearMonth[];
     periods: YearPeriod[];
     assessmentsTotal: number;
+    eventsTotal: number;
 }>();
 
 /** How many indicator marks a month draws before it simply states the number. */
@@ -75,12 +78,16 @@ function assessmentsLabel(count: number): string {
     return count === 1 ? '1 avaliação' : `${count} avaliações`;
 }
 
+function eventsLabel(count: number): string {
+    return count === 1 ? '1 acontecimento' : `${count} acontecimentos`;
+}
+
 const description = computed(() => {
     if (!props.academicYear) {
         return 'O ano letivo inteiro, de uma vez.';
     }
 
-    return `${props.academicYear.label} · ${props.periods.length === 1 ? '1 período' : `${props.periods.length} períodos`} · ${assessmentsLabel(props.assessmentsTotal)}`;
+    return `${props.academicYear.label} · ${props.periods.length === 1 ? '1 período' : `${props.periods.length} períodos`} · ${assessmentsLabel(props.assessmentsTotal)} · ${eventsLabel(props.eventsTotal)}`;
 });
 </script>
 
@@ -112,8 +119,12 @@ const description = computed(() => {
             UMA VISTA SINÓPTICA, e por isso sem grelha de dias e sem lista de
             avaliações uma a uma: a lista já existe em «Elementos de Avaliação»,
             e cem linhas aqui enterrariam justamente o que só esta vista mostra
-            — a forma do ano. As aulas não aparecem, aqui como no resto do
-            calendário: essa é a pergunta do «Horário do Professor».
+            — a forma do ano. Os acontecimentos seguem exatamente a mesma regra:
+            contam-se, não se enumeram, e leem-se um a um na vista de Mês, a um
+            clique de cada cartão. Criar e alterar acontecimentos vive lá, e não
+            aqui: a esta escala não há dia nenhum em que os pôr. As aulas não
+            aparecem, aqui como no resto do calendário: essa é a pergunta do
+            «Horário do Professor».
         -->
         <section
             v-if="!academicYear"
@@ -212,29 +223,52 @@ const description = computed(() => {
 
                     <!--
                         Indicadores compactos, nunca a lista: um traço por
-                        avaliação até seis, e o número escrito sempre.
+                        avaliação até seis, e o número escrito sempre. Os
+                        acontecimentos entram aqui pela MESMA regra da Fase 5.2
+                        — uma contagem, e nunca os nomes: a esta escala o que se
+                        procura é a forma do ano, e ler os acontecimentos um a
+                        um é o que a vista de Mês faz, a um clique deste mesmo
+                        cartão.
                     -->
-                    <span
-                        v-if="month.assessments_count > 0"
-                        class="mt-auto flex items-center gap-1.5"
-                    >
-                        <span
-                            class="flex items-center gap-1.5 rounded-md border border-foreground/25 bg-background/80 px-2 py-0.5 text-xs font-medium"
-                        >
-                            <ClipboardCheck class="size-3" aria-hidden="true" />
-                            {{ assessmentsLabel(month.assessments_count) }}
-                        </span>
-                        <span class="flex gap-0.5" aria-hidden="true">
+                    <span class="mt-auto flex flex-wrap items-center gap-1.5">
+                        <template v-if="month.assessments_count > 0">
                             <span
-                                v-for="mark in marks(month.assessments_count)"
-                                :key="mark"
-                                class="h-3 w-1 rounded-full bg-foreground/50"
-                            />
+                                class="flex items-center gap-1.5 rounded-md border border-foreground/25 bg-background/80 px-2 py-0.5 text-xs font-medium"
+                            >
+                                <ClipboardCheck
+                                    class="size-3"
+                                    aria-hidden="true"
+                                />
+                                {{ assessmentsLabel(month.assessments_count) }}
+                            </span>
+                            <span class="flex gap-0.5" aria-hidden="true">
+                                <span
+                                    v-for="mark in marks(
+                                        month.assessments_count,
+                                    )"
+                                    :key="mark"
+                                    class="h-3 w-1 rounded-full bg-foreground/50"
+                                />
+                            </span>
+                        </template>
+                        <span v-else class="text-xs text-muted-foreground"
+                            >Sem avaliações</span
+                        >
+
+                        <!--
+                            Distinto de uma avaliação por ícone E por palavra, e
+                            não só por posição ou cor — a mesma disciplina que a
+                            vista de Mês aplica a cada acontecimento.
+                        -->
+                        <span
+                            v-if="month.events_count > 0"
+                            :data-events-count="month.events_count"
+                            class="flex items-center gap-1.5 rounded-md border border-dashed border-foreground/25 px-2 py-0.5 text-xs"
+                        >
+                            <CalendarDays class="size-3" aria-hidden="true" />
+                            {{ eventsLabel(month.events_count) }}
                         </span>
                     </span>
-                    <span v-else class="mt-auto text-xs text-muted-foreground"
-                        >Sem avaliações</span
-                    >
                 </Link>
             </section>
         </template>

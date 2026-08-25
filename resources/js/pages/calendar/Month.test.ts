@@ -1,16 +1,49 @@
 import { mount } from '@vue/test-utils';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { defineComponent, h } from 'vue';
-import type { CalendarAssessment, CalendarDay, CalendarPeriod } from './calendar';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as VueModule from 'vue';
+import { nextTick } from 'vue';
+import type {
+    CalendarAssessment,
+    CalendarDay,
+    CalendarEvent,
+    CalendarPeriod,
+} from './calendar';
 import Month from './Month.vue';
 
 const routerGet = vi.fn();
+const formPost = vi.fn();
+const formPut = vi.fn();
+const formDelete = vi.fn();
 
-vi.mock('@inertiajs/vue3', () => ({
-    Head: defineComponent({ setup: (_, { slots }) => () => h('div', slots.default?.()) }),
-    Link: defineComponent({ inheritAttrs: false, setup: (_, { attrs, slots }) => () => h('a', attrs, slots.default?.()) }),
-    router: { get: (...args: unknown[]) => routerGet(...args) },
-}));
+vi.mock('@inertiajs/vue3', async () => {
+    const { defineComponent: define, h: hyper, reactive } =
+        await vi.importActual<typeof VueModule>('vue');
+
+    return {
+        Head: define({ setup: (_, { slots }) => () => hyper('div', slots.default?.()) }),
+        Link: define({
+            inheritAttrs: false,
+            setup: (_, { attrs, slots }) => () => hyper('a', attrs, slots.default?.()),
+        }),
+        router: { get: (...args: unknown[]) => routerGet(...args) },
+        // Enough of useForm for this page: the fields themselves, the errors
+        // bag the inputs read, and the three verbs it submits with.
+        useForm: (initial: Record<string, unknown>) =>
+            reactive({
+                ...initial,
+                errors: {} as Record<string, string>,
+                processing: false,
+                defaults(values: Record<string, unknown>) {
+                    Object.assign(this, values);
+                },
+                reset() {},
+                clearErrors() {},
+                post: (...args: unknown[]) => formPost(...args),
+                put: (...args: unknown[]) => formPut(...args),
+                delete: (...args: unknown[]) => formDelete(...args),
+            }),
+    };
+});
 
 function assessment(overrides: Partial<CalendarAssessment> = {}): CalendarAssessment {
     return {
@@ -41,6 +74,23 @@ function period(overrides: Partial<CalendarPeriod> = {}): CalendarPeriod {
     };
 }
 
+function event(overrides: Partial<CalendarEvent> = {}): CalendarEvent {
+    return {
+        ulid: 'event-a',
+        type: 'meeting',
+        type_label: 'Reunião',
+        type_short_label: 'REUNIÃO',
+        title: 'Conselho de turma',
+        starts_on: '2026-10-15',
+        ends_on: '2026-10-15',
+        starts_at: null,
+        ends_at: null,
+        description: null,
+        school_classes: [],
+        ...overrides,
+    };
+}
+
 /**
  * The real October 2026 grid: the month opens on a Thursday, so the grid runs
  * from Monday 28 September to Sunday 1 November — 35 cells.
@@ -61,6 +111,7 @@ function octoberDays(
             is_today: false,
             period: null,
             assessments: [],
+            events: [],
             ...fill(date),
         });
 
@@ -68,6 +119,14 @@ function octoberDays(
     }
 
     return days;
+}
+
+/** Every cell an acontecimento covers, the way the server fills them. */
+function covering(target: CalendarEvent) {
+    return (date: string): Partial<CalendarDay> =>
+        date >= target.starts_on && date <= target.ends_on
+            ? { events: [target] }
+            : {};
 }
 
 function mountPage(overrides: Partial<InstanceType<typeof Month>['$props']> = {}) {
@@ -92,21 +151,45 @@ function mountPage(overrides: Partial<InstanceType<typeof Month>['$props']> = {}
                 home: '2026-10',
                 home_is_today: true,
             },
-            assessmentsPerDay: 3,
+            itemsPerDay: 3,
+            classes: [{ ulid: 'class-a', label: '7.º C', subject: 'Matemática' }],
             ...overrides,
         },
     });
 }
 
+/** The panel is teleported to the body, so that is where it is read. */
+function panelText(): string {
+    return document.body.textContent ?? '';
+}
+
+function panelInput(id: string): HTMLInputElement | null {
+    return document.body.querySelector<HTMLInputElement>(`#${id}`);
+}
+
 /**
- * «Calendário do Ano Letivo», vista Mês — a estrutura do ano e as avaliações,
- * lidas juntas. The page is a READING: it has no form and no mutating control,
- * and nothing here creates anything. Aulas never appear — that is «Horário do
- * Professor»'s question, and this page must never become a copy of it.
+ * «Calendário do Ano Letivo», vista Mês — a estrutura do ano, as avaliações e
+ * os acontecimentos do próprio professor, lidos juntos.
+ *
+ * A PÁGINA DEIXOU DE SER SÓ UMA LEITURA (Fase 5.3), e só numa direção: o
+ * professor pode criar, alterar e eliminar ACONTECIMENTOS — a reunião, a
+ * atividade, a visita de estudo, o «outro» — que são as únicas coisas datadas
+ * sem casa noutro sítio. As avaliações e os períodos continuam a ser lidos e a
+ * ser alterados nas suas próprias páginas, e nada aqui lhes toca. As aulas
+ * continuam ausentes de propósito: essa é a pergunta do «Horário do Professor».
  */
 describe('calendar/Month', () => {
     beforeEach(() => {
         routerGet.mockClear();
+        formPost.mockClear();
+        formPut.mockClear();
+        formDelete.mockClear();
+        document.body.innerHTML = '';
+    });
+
+    afterEach(() => {
+        document.body.innerHTML = '';
+        vi.restoreAllMocks();
     });
 
     it('lays the month out as whole weeks of seven days', () => {
@@ -123,7 +206,7 @@ describe('calendar/Month', () => {
         const text = mountPage().text();
 
         // capitalizeFirst, never the CSS `capitalize` class: the day after the
-        // hyphen stays lower case, and so does every «de» on this page.
+        // hyphen stays lower case, and so does every "de" on this page.
         expect(text).toContain('Seg');
         expect(text).toContain('Sáb');
         expect(mountPage().html()).not.toContain('capitalize');
@@ -236,14 +319,14 @@ describe('calendar/Month', () => {
             ),
         });
 
-        await wrapper.find('[data-date="2026-10-15"]').find('button').trigger('click');
+        await wrapper.find('[data-date="2026-10-15"]').find('[data-overflow]').trigger('click');
 
         let cell = wrapper.find('[data-date="2026-10-15"]');
         expect(cell.findAll('li')).toHaveLength(5);
         expect(cell.text()).toContain('Ficha E');
         expect(cell.text()).toContain('Ver menos');
 
-        await cell.find('button').trigger('click');
+        await cell.find('[data-overflow]').trigger('click');
 
         cell = wrapper.find('[data-date="2026-10-15"]');
         expect(cell.findAll('li')).toHaveLength(3);
@@ -262,7 +345,7 @@ describe('calendar/Month', () => {
         const cell = wrapper.find('[data-date="2026-10-15"]');
 
         expect(cell.findAll('li')).toHaveLength(2);
-        expect(cell.find('button').exists()).toBe(false);
+        expect(cell.find('[data-overflow]').exists()).toBe(false);
     });
 
     it('navigates to the previous and next month by their real values', async () => {
@@ -355,19 +438,6 @@ describe('calendar/Month', () => {
         expect(agenda.text()).toContain('Matemática');
     });
 
-    it('never renders a form or a mutating control: the page is a reading', () => {
-        const wrapper = mountPage({
-            periods: [period()],
-            days: octoberDays((date) => ({
-                period: period(),
-                ...(date === '2026-10-15' ? { assessments: [assessment()] } : {}),
-            })),
-        });
-
-        expect(wrapper.findAll('form')).toHaveLength(0);
-        expect(wrapper.findAll('input')).toHaveLength(0);
-    });
-
     /**
      * THE PRODUCT DECISION, ASSERTED. Aulas belong to «Horário do Professor»;
      * this calendar answers a different question, and must never grow a lesson
@@ -378,7 +448,9 @@ describe('calendar/Month', () => {
             periods: [period()],
             days: octoberDays((date) => ({
                 period: period(),
-                ...(date === '2026-10-15' ? { assessments: [assessment()] } : {}),
+                ...(date === '2026-10-15'
+                    ? { assessments: [assessment()], events: [event()] }
+                    : {}),
             })),
         });
 
@@ -388,5 +460,380 @@ describe('calendar/Month', () => {
         expect(text).not.toContain('Aula');
         expect(text).not.toContain('horário');
         expect(text).not.toContain('Horário');
+    });
+
+    // ------------------------------------------------ os acontecimentos
+
+    it('renders an acontecimento with its icon and its written type, never colour alone', () => {
+        const wrapper = mountPage({
+            days: octoberDays(covering(event())),
+        });
+
+        const entry = wrapper.find('[data-event-ulid="event-a"]');
+
+        expect(entry.exists()).toBe(true);
+        // A palavra escrita, o ícone, e só então a cor.
+        expect(entry.text()).toContain('REUNIÃO');
+        expect(entry.text()).toContain('Conselho de turma');
+        expect(entry.find('svg').exists()).toBe(true);
+    });
+
+    it('gives each of the four kinds its own written label and its own icon', () => {
+        const kinds = [
+            { type: 'meeting', short: 'REUNIÃO' },
+            { type: 'activity', short: 'ATIVIDADE' },
+            { type: 'field_trip', short: 'VISITA' },
+            { type: 'other', short: 'OUTRO' },
+        ] as const;
+
+        const wrapper = mountPage({
+            days: octoberDays((date) =>
+                date === '2026-10-15'
+                    ? {
+                          events: kinds.map((kind, index) =>
+                              event({
+                                  ulid: `event-${kind.type}`,
+                                  type: kind.type,
+                                  type_short_label: kind.short,
+                                  title: `Acontecimento ${index}`,
+                              }),
+                          ),
+                      }
+                    : {},
+            ),
+            itemsPerDay: 4,
+        });
+
+        const cell = wrapper.find('[data-date="2026-10-15"]');
+        const icons = new Set<string>();
+
+        for (const kind of kinds) {
+            const entry = cell.find(`[data-event-ulid="event-${kind.type}"]`);
+
+            expect(entry.exists()).toBe(true);
+            expect(entry.text()).toContain(kind.short);
+            expect(entry.attributes('data-event-type')).toBe(kind.type);
+            icons.add(entry.find('svg').html());
+        }
+
+        // Quatro ícones diferentes: a cor nunca é o que separa os quatro.
+        expect(icons.size).toBe(4);
+    });
+
+    /**
+     * UMA AVALIAÇÃO CONTINUA A SER O TRATAMENTO MAIS FORTE DA PÁGINA. Nada do
+     * que a Fase 5.3 acrescentou lhe faz sombra: a avaliação tem moldura sólida
+     * e fundo cheio; um «outro», o mais neutro dos quatro, tem moldura pontuada
+     * e texto esbatido.
+     */
+    it('keeps an avaliação heavier than every kind of acontecimento', () => {
+        const wrapper = mountPage({
+            days: octoberDays((date) =>
+                date === '2026-10-15'
+                    ? {
+                          assessments: [assessment()],
+                          events: [
+                              event({ ulid: 'e-meeting', type: 'meeting' }),
+                              event({
+                                  ulid: 'e-other',
+                                  type: 'other',
+                                  type_short_label: 'OUTRO',
+                              }),
+                          ],
+                      }
+                    : {},
+            ),
+        });
+
+        const cell = wrapper.find('[data-date="2026-10-15"]');
+        const assessmentClasses = cell.find('a').classes().join(' ');
+        const meetingClasses = cell
+            .find('[data-event-ulid="e-meeting"]')
+            .classes()
+            .join(' ');
+        const otherClasses = cell
+            .find('[data-event-ulid="e-other"]')
+            .classes()
+            .join(' ');
+
+        // A avaliação: moldura sólida, fundo cheio, peso de texto.
+        expect(assessmentClasses).toContain('bg-background/80');
+        expect(assessmentClasses).toContain('font-medium');
+        expect(assessmentClasses).not.toContain('border-dashed');
+        expect(assessmentClasses).not.toContain('border-dotted');
+
+        // A reunião: peso intermédio — moldura sólida, mas mais leve.
+        expect(meetingClasses).toContain('font-medium');
+        expect(meetingClasses).not.toContain('border-dotted');
+
+        // O «outro»: o mais neutro de todos.
+        expect(otherClasses).toContain('border-dotted');
+        expect(otherClasses).toContain('text-muted-foreground');
+        expect(otherClasses).not.toContain('font-medium');
+    });
+
+    it('shows a multi-day acontecimento in every cell it covers', () => {
+        const visit = event({
+            ulid: 'visit',
+            type: 'field_trip',
+            type_short_label: 'VISITA',
+            title: 'Visita a Évora',
+            starts_on: '2026-10-14',
+            ends_on: '2026-10-16',
+        });
+
+        const wrapper = mountPage({ days: octoberDays(covering(visit)) });
+
+        for (const date of ['2026-10-14', '2026-10-15', '2026-10-16']) {
+            expect(
+                wrapper.find(`[data-date="${date}"] [data-event-ulid="visit"]`).exists(),
+            ).toBe(true);
+        }
+
+        expect(
+            wrapper.find('[data-date="2026-10-13"] [data-event-ulid="visit"]').exists(),
+        ).toBe(false);
+        expect(
+            wrapper.find('[data-date="2026-10-17"] [data-event-ulid="visit"]').exists(),
+        ).toBe(false);
+    });
+
+    /**
+     * UM SÓ MECANISMO DE EXCESSO. Um dia com duas avaliações e três
+     * acontecimentos está exatamente tão cheio como um dia com cinco
+     * avaliações, e o «+N mais» conta as duas espécies juntas — nunca um
+     * segundo mecanismo ao lado do primeiro.
+     */
+    it('counts avaliações and acontecimentos together under the same cap', async () => {
+        const wrapper = mountPage({
+            days: octoberDays((date) =>
+                date === '2026-10-15'
+                    ? {
+                          assessments: [
+                              assessment({ ulid: 'i1', title: 'Ficha A' }),
+                              assessment({ ulid: 'i2', title: 'Ficha B' }),
+                          ],
+                          events: [
+                              event({ ulid: 'e1', title: 'Reunião A' }),
+                              event({ ulid: 'e2', title: 'Reunião B' }),
+                              event({ ulid: 'e3', title: 'Reunião C' }),
+                          ],
+                      }
+                    : {},
+            ),
+        });
+
+        let cell = wrapper.find('[data-date="2026-10-15"]');
+
+        // Três de cinco, e a avaliação primeiro: é o tratamento mais forte.
+        expect(cell.findAll('li')).toHaveLength(3);
+        expect(cell.text()).toContain('Ficha A');
+        expect(cell.text()).toContain('Ficha B');
+        expect(cell.text()).toContain('Reunião A');
+        expect(cell.text()).not.toContain('Reunião B');
+        expect(cell.text()).toContain('+2 mais');
+
+        await cell.find('[data-overflow]').trigger('click');
+
+        cell = wrapper.find('[data-date="2026-10-15"]');
+        expect(cell.findAll('li')).toHaveLength(5);
+        expect(cell.text()).toContain('Reunião C');
+    });
+
+    it('lists acontecimentos in the narrow-viewport agenda too', () => {
+        const wrapper = mountPage({
+            days: octoberDays(
+                covering(
+                    event({
+                        starts_at: '17:30',
+                        ends_at: '19:00',
+                        school_classes: [{ ulid: 'class-a', label: '7.º C' }],
+                    }),
+                ),
+            ),
+        });
+
+        const agenda = wrapper.find('section[aria-label="Agenda do mês"]');
+
+        expect(agenda.text()).toContain('Conselho de turma');
+        expect(agenda.text()).toContain('REUNIÃO');
+        expect(agenda.text()).toContain('17:30 – 19:00');
+        expect(agenda.text()).toContain('7.º C');
+    });
+
+    it('says «dia inteiro» when an acontecimento carries no hour at all', () => {
+        const wrapper = mountPage({
+            days: octoberDays(covering(event({ title: 'Dia da escola' }))),
+        });
+
+        expect(wrapper.find('section[aria-label="Agenda do mês"]').text()).toContain(
+            'Dia inteiro',
+        );
+    });
+
+    // --------------------------------------------- criar, alterar, eliminar
+
+    /**
+     * O BOTÃO EXPLÍCITO EXISTE E BASTA-SE. Criar um acontecimento não está
+     * escondido dentro de um clique num dia que seja preciso adivinhar: o botão
+     * está sempre visível, fora da grelha, e abre o formulário sozinho.
+     */
+    it('offers an always-visible «Novo acontecimento» button that works with no day clicked', async () => {
+        const wrapper = mountPage();
+
+        const button = wrapper.find('[data-new-event]');
+
+        expect(button.exists()).toBe(true);
+        expect(button.text()).toContain('Novo acontecimento');
+        // Fora da grelha: não depende de célula nenhuma.
+        expect(wrapper.find('section[aria-label="Grelha do mês"] [data-new-event]').exists()).toBe(false);
+
+        await button.trigger('click');
+        await nextTick();
+
+        expect(panelText()).toContain('Novo acontecimento');
+        expect(panelText()).toContain('Adicionar ao calendário');
+        // Sem dia carregado, a data proposta é o primeiro dia do mês visto.
+        expect(panelInput('event-starts-on')?.value).toBe('2026-10-01');
+    });
+
+    it('pre-fills the day that was clicked in the grid', async () => {
+        const wrapper = mountPage();
+
+        await wrapper
+            .find('[data-date="2026-10-15"] [data-add-on-day]')
+            .trigger('click');
+        await nextTick();
+
+        expect(panelInput('event-starts-on')?.value).toBe('2026-10-15');
+    });
+
+    it('submits a new acontecimento to its own route', async () => {
+        const wrapper = mountPage();
+
+        await wrapper.find('[data-new-event]').trigger('click');
+        await nextTick();
+
+        document.body
+            .querySelector('form')
+            ?.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+        await nextTick();
+
+        expect(formPost).toHaveBeenCalledWith(
+            '/calendar/acontecimentos',
+            expect.anything(),
+        );
+        expect(formPut).not.toHaveBeenCalled();
+    });
+
+    it('opens an existing acontecimento pre-filled, and saves it with put', async () => {
+        const wrapper = mountPage({
+            days: octoberDays(
+                covering(
+                    event({
+                        title: 'Conselho de turma',
+                        starts_on: '2026-10-14',
+                        ends_on: '2026-10-16',
+                        starts_at: '17:30',
+                        ends_at: '19:00',
+                    }),
+                ),
+            ),
+        });
+
+        await wrapper.find('[data-event-ulid="event-a"]').trigger('click');
+        await nextTick();
+
+        expect(panelInput('event-title')?.value).toBe('Conselho de turma');
+        expect(panelInput('event-starts-on')?.value).toBe('2026-10-14');
+        expect(panelInput('event-ends-on')?.value).toBe('2026-10-16');
+        expect(panelInput('event-starts-at')?.value).toBe('17:30');
+        expect(panelInput('event-ends-at')?.value).toBe('19:00');
+        expect(panelText()).toContain('Guardar alterações');
+
+        document.body
+            .querySelector('form')
+            ?.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+        await nextTick();
+
+        expect(formPut).toHaveBeenCalledWith(
+            '/calendar/acontecimentos/event-a',
+            expect.anything(),
+        );
+        expect(formPost).not.toHaveBeenCalled();
+    });
+
+    it('leaves the end date empty for an acontecimento that lasts one day', async () => {
+        const wrapper = mountPage({ days: octoberDays(covering(event())) });
+
+        await wrapper.find('[data-event-ulid="event-a"]').trigger('click');
+        await nextTick();
+
+        expect(panelInput('event-starts-on')?.value).toBe('2026-10-15');
+        expect(panelInput('event-ends-on')?.value).toBe('');
+    });
+
+    it('asks for confirmation before deleting, and does nothing when refused', async () => {
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+        const wrapper = mountPage({ days: octoberDays(covering(event())) });
+
+        await wrapper.find('[data-event-ulid="event-a"]').trigger('click');
+        await nextTick();
+
+        document.body
+            .querySelector<HTMLButtonElement>('[data-delete-event]')
+            ?.click();
+        await nextTick();
+
+        expect(confirmSpy).toHaveBeenCalled();
+        expect(formDelete).not.toHaveBeenCalled();
+    });
+
+    it('deletes only once the teacher has confirmed', async () => {
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
+        const wrapper = mountPage({ days: octoberDays(covering(event())) });
+
+        await wrapper.find('[data-event-ulid="event-a"]').trigger('click');
+        await nextTick();
+
+        document.body
+            .querySelector<HTMLButtonElement>('[data-delete-event]')
+            ?.click();
+        await nextTick();
+
+        expect(formDelete).toHaveBeenCalledWith(
+            '/calendar/acontecimentos/event-a',
+            expect.anything(),
+        );
+    });
+
+    /**
+     * O QUE ESTA PÁGINA ESCREVE, E O QUE NÃO ESCREVE. Só nasce daqui um
+     * acontecimento. Não há botão de eliminar numa avaliação, e não há
+     * formulário nenhum para os períodos do ano: essas coisas têm as suas
+     * páginas, e continuam a tê-las.
+     */
+    it('offers no control at all that would create or change an avaliação or um período', () => {
+        const wrapper = mountPage({
+            periods: [period()],
+            days: octoberDays((date) => ({
+                period: period(),
+                ...(date === '2026-10-15' ? { assessments: [assessment()] } : {}),
+            })),
+        });
+
+        // Uma avaliação é um link para a sua própria página, e nada mais.
+        const entry = wrapper.find('[data-date="2026-10-15"]').find('a');
+        expect(entry.attributes('href')).toBe('/instruments/inst-a');
+        expect(entry.element.tagName).toBe('A');
+
+        // Nenhum formulário está aberto enquanto o painel não for pedido.
+        expect(wrapper.findAll('form')).toHaveLength(0);
+        expect(document.body.querySelector('form')).toBeNull();
+
+        // E a faixa do período continua a ser texto, sem controlo nenhum.
+        const legend = wrapper.find('section[aria-label="Períodos deste mês"]');
+        expect(legend.findAll('button')).toHaveLength(0);
+        expect(legend.findAll('input')).toHaveLength(0);
     });
 });

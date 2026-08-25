@@ -4,6 +4,7 @@ namespace App\Services\Calendar;
 
 use App\Models\AcademicPeriod;
 use App\Models\AcademicYear;
+use App\Models\CalendarEvent;
 use App\Models\Instrument;
 use App\Models\SchoolClass;
 use App\Models\User;
@@ -13,10 +14,13 @@ use Carbon\CarbonImmutable;
  * «Calendário do Ano Letivo» — what is relevant in the teacher's year, over an
  * arbitrary range of dates.
  *
- * A PURE READ MODEL OVER DATA THAT ALREADY EXISTS. It owns no table and adds
- * no persistence: the year's structure is read from AcademicPeriod, and the
- * avaliações from Instrument.applied_on, both exactly where they already live.
- * Reading the calendar therefore cannot create, alter or delete anything.
+ * A PURE READ MODEL. Reading the calendar cannot create, alter or delete
+ * anything, and nothing below writes. Two of the three things it reads own no
+ * table of the calendar's at all — the year's structure comes from
+ * AcademicPeriod and the avaliações from Instrument.applied_on, both exactly
+ * where they already live. The third, `calendar_events` (Fase 5.3), IS the
+ * calendar's own, but it is written only by SaveCalendarEvent, from an explicit
+ * action of the teacher's, and never from here.
  *
  * AULAS ARE DELIBERATELY ABSENT, and neither Lesson nor RecurringLessonSlot is
  * reachable from here. «Que aulas tenho, quando e onde» is «Horário do
@@ -38,7 +42,8 @@ final class AcademicYearCalendarQuery
     /**
      * @return array{
      *     periods: list<array{ulid: string, label: string, kind: string, kind_label: string, sequence: int, starts_on: string, ends_on: string}>,
-     *     assessments: list<array{ulid: string, title: string, applied_on: string, class_ulid: string, class_label: string, subject: string, type: string, status: string, status_label: string, href: string}>
+     *     assessments: list<array{ulid: string, title: string, applied_on: string, class_ulid: string, class_label: string, subject: string, type: string, status: string, status_label: string, href: string}>,
+     *     events: list<array{ulid: string, type: string, type_label: string, type_short_label: string, title: string, starts_on: string, ends_on: string, starts_at: string|null, ends_at: string|null, description: string|null, school_classes: list<array{ulid: string, label: string}>}>
      * }
      */
     public function for(User $teacher, AcademicYear $academicYear, CarbonImmutable $from, CarbonImmutable $to): array
@@ -49,6 +54,7 @@ final class AcademicYearCalendarQuery
         return [
             'periods' => $this->periods($academicYear, $fromDate, $toDate),
             'assessments' => $this->assessments($teacher, $academicYear, $fromDate, $toDate),
+            'events' => $this->events($teacher, $fromDate, $toDate),
         ];
     }
 
@@ -139,6 +145,69 @@ final class AcademicYearCalendarQuery
                 // The real page of the real element, by its real route: an
                 // entry in the calendar is a way in, never a dead end.
                 'href' => route('instruments.show', $instrument, false),
+            ])
+            ->all());
+    }
+
+    /**
+     * Os acontecimentos DESTE professor que cruzam o intervalo (Fase 5.3) —
+     * uma reunião, uma atividade, uma visita de estudo, ou outra coisa datada.
+     *
+     * PESSOAIS, E NÃO DA ESCOLA. `user_id` is the whole of «whose», because
+     * that is what a CalendarEvent is in this version: um acontecimento de um
+     * colega não aparece aqui, e não é apenas não-editável — é invisível, tal
+     * como CalendarEventPolicy diz. A fronteira da organização não é repetida
+     * aqui pela mesma razão que não é repetida nas avaliações acima: o global
+     * scope do próprio modelo já a desenha, e um segundo filtro redundante só
+     * convidaria os dois a discordarem.
+     *
+     * OVERLAP, E NÃO CONTENÇÃO — exatamente a mesma forma que os períodos acima
+     * usam, e pela mesma razão: uma visita de estudo de segunda a quinta é o
+     * que está a acontecer em cada um desses quatro dias, e o dia visível a
+     * meio dela tem de a mostrar. Com `whereDate` nos dois lados, e nunca um
+     * `where` simples, porque estas são colunas `date` que o Eloquent guarda
+     * como «Y-m-d 00:00:00»: comparadas como texto contra um limite «Y-m-d»,
+     * «2026-10-31 00:00:00» NÃO é <= «2026-10-31», e o acontecimento do último
+     * dia visível desaparecia sem erro nenhum — a armadilha que já mordeu os
+     * períodos e as avaliações desta mesma classe.
+     *
+     * `ends_on` nunca é nulo (ver SaveCalendarEvent e a migração), e é isso que
+     * permite que esta condição seja esta e não uma com um COALESCE por dentro.
+     *
+     * @return list<array{ulid: string, type: string, type_label: string, type_short_label: string, title: string, starts_on: string, ends_on: string, starts_at: string|null, ends_at: string|null, description: string|null, school_classes: list<array{ulid: string, label: string}>}>
+     */
+    private function events(User $teacher, string $from, string $to): array
+    {
+        return array_values(CalendarEvent::query()
+            ->where('user_id', $teacher->getKey())
+            ->whereDate('starts_on', '<=', $to)
+            ->whereDate('ends_on', '>=', $from)
+            // Eager-loaded, so a month with forty acontecimentos is still two
+            // queries and not forty-one.
+            ->with('schoolClasses')
+            ->orderBy('starts_on')
+            ->orderBy('starts_at')
+            ->orderBy('title')
+            ->get()
+            ->map(fn (CalendarEvent $event): array => [
+                'ulid' => $event->ulid,
+                'type' => $event->type->value,
+                'type_label' => $event->type->label(),
+                'type_short_label' => $event->type->shortLabel(),
+                'title' => $event->title,
+                'starts_on' => $event->starts_on->toDateString(),
+                'ends_on' => $event->ends_on->toDateString(),
+                // `time` columns come back as «HH:MM:SS»; trimmed to «HH:MM»
+                // exactly as «Horário do Professor» already trims its own.
+                'starts_at' => $event->starts_at === null ? null : substr($event->starts_at, 0, 5),
+                'ends_at' => $event->ends_at === null ? null : substr($event->ends_at, 0, 5),
+                'description' => $event->description,
+                'school_classes' => array_values($event->schoolClasses
+                    ->map(fn (SchoolClass $schoolClass): array => [
+                        'ulid' => $schoolClass->ulid,
+                        'label' => $schoolClass->label,
+                    ])
+                    ->all()),
             ])
             ->all());
     }

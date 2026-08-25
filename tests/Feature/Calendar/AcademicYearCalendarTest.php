@@ -363,6 +363,7 @@ class AcademicYearCalendarTest extends TestCase
 
                 foreach ($props['days'] as $day) {
                     $this->assertSame([], $day['assessments']);
+                    $this->assertSame([], $day['events']);
                     $this->assertNull($day['period']);
                 }
             });
@@ -391,7 +392,11 @@ class AcademicYearCalendarTest extends TestCase
                     ['Ficha A', 'Ficha B', 'Ficha C', 'Ficha D', 'Ficha E'],
                     array_column($this->dayOf($page, '2026-10-15')['assessments'], 'title'),
                 );
-                $this->assertSame(3, $props['assessmentsPerDay']);
+                // O limite passou a contar TODOS os itens de um dia — avaliações
+                // e acontecimentos juntos (Fase 5.3) — e por isso deixou de se
+                // chamar «assessmentsPerDay». O valor, e o que se afirma sobre
+                // ele, são exatamente os mesmos.
+                $this->assertSame(3, $props['itemsPerDay']);
             });
     }
 
@@ -545,7 +550,8 @@ class AcademicYearCalendarTest extends TestCase
                 ->where('academicYear', null)
                 ->where('months', [])
                 ->where('periods', [])
-                ->where('assessmentsTotal', 0));
+                ->where('assessmentsTotal', 0)
+                ->where('eventsTotal', 0));
     }
 
     // ------------------------------------------------------------- a vista Ano
@@ -678,6 +684,11 @@ class AcademicYearCalendarTest extends TestCase
             $this->assertDatabaseCount('lessons', 0);
             $this->assertDatabaseCount('recurring_lesson_slots', 0);
             $this->assertDatabaseCount('instruments', 1);
+            // O calendário passou a ter tabela própria (Fase 5.3), e por isso
+            // passou a ser possível LÊ-LA e escrever nela sem querer. Um
+            // acontecimento só nasce de um pedido explícito do professor, nunca
+            // de se olhar para a página.
+            $this->assertDatabaseCount('calendar_events', 0);
         };
 
         $assertNothingWasWritten();
@@ -718,6 +729,7 @@ class AcademicYearCalendarTest extends TestCase
         $this->assertDatabaseCount('lessons', 0);
         $this->assertDatabaseCount('recurring_lesson_slots', 0);
         $this->assertDatabaseCount('instruments', 1);
+        $this->assertDatabaseCount('calendar_events', 0);
     }
 
     // --------------------------------------------------------------- helpers

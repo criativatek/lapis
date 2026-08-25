@@ -1,19 +1,50 @@
 <script setup lang="ts">
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import {
     CalendarDays,
+    CalendarPlus,
     CalendarRange,
     ChevronLeft,
     ChevronRight,
+    Circle,
     ClipboardCheck,
     LayoutGrid,
+    MapPin,
+    Sparkles,
+    Trash2,
+    Users,
 } from '@lucide/vue';
+import type { Component } from 'vue';
 import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
+import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { capitalizeFirst } from '@/lib/text';
-import type { CalendarDay, CalendarPeriod } from './calendar';
-import { periodTint } from './calendar';
+import type {
+    CalendarAssessment,
+    CalendarDay,
+    CalendarEvent,
+    CalendarEventType,
+    CalendarPeriod,
+    CalendarTeacherClass,
+} from './calendar';
+import {
+    eventBadgeClasses,
+    eventEntryClasses,
+    eventTimeLabel,
+    periodTint,
+} from './calendar';
 
 const props = defineProps<{
     academicYear: {
@@ -31,7 +62,13 @@ const props = defineProps<{
         home: string;
         home_is_today: boolean;
     } | null;
-    assessmentsPerDay: number;
+    /**
+     * The cap over EVERYTHING a day cell shows — avaliações and acontecimentos
+     * counted together, never one mechanism each.
+     */
+    itemsPerDay: number;
+    /** The turmas this teacher leciona, and only those. */
+    classes: CalendarTeacherClass[];
 }>();
 
 /**
@@ -113,10 +150,41 @@ const namesPeriod = computed(() => {
     return shows;
 });
 
+// ------------------------------------------------ o que uma célula mostra
+
+/**
+ * Uma célula do mês mostra DUAS espécies de coisa, e a ordem entre elas é a
+ * escada de peso: a avaliação primeiro, sempre, porque é o que tem
+ * consequências; os acontecimentos a seguir.
+ */
+type DayItem =
+    | { kind: 'assessment'; key: string; assessment: CalendarAssessment }
+    | { kind: 'event'; key: string; event: CalendarEvent };
+
+function itemsOf(day: CalendarDay): DayItem[] {
+    return [
+        ...day.assessments.map(
+            (assessment): DayItem => ({
+                kind: 'assessment',
+                key: `assessment-${assessment.ulid}`,
+                assessment,
+            }),
+        ),
+        ...day.events.map(
+            (event): DayItem => ({ kind: 'event', key: `event-${event.ulid}`, event }),
+        ),
+    ];
+}
+
 /**
  * Days a cell has stopped hiding. The cap keeps a test-heavy Friday from
  * turning its column into a page of its own; opening one is the teacher's
  * choice, and it re-closes.
+ *
+ * UM SÓ MECANISMO PARA AS DUAS ESPÉCIES: um dia com duas avaliações e três
+ * acontecimentos está exatamente tão cheio como um dia com cinco avaliações, e
+ * um limite que contasse só uma das espécies deixaria a célula crescer sem fim
+ * assim que a outra aparecesse.
  */
 const expanded = ref<Set<string>>(new Set());
 
@@ -130,14 +198,30 @@ function toggle(date: string): void {
     expanded.value = next;
 }
 
-function shown(day: CalendarDay): CalendarDay['assessments'] {
-    return expanded.value.has(day.date)
-        ? day.assessments
-        : day.assessments.slice(0, props.assessmentsPerDay);
+function shown(day: CalendarDay): DayItem[] {
+    const items = itemsOf(day);
+
+    return expanded.value.has(day.date) ? items : items.slice(0, props.itemsPerDay);
 }
 
 function hiddenCount(day: CalendarDay): number {
-    return Math.max(0, day.assessments.length - props.assessmentsPerDay);
+    return Math.max(0, itemsOf(day).length - props.itemsPerDay);
+}
+
+/**
+ * O ícone de cada espécie. NUNCA SÓ A COR: cada entrada traz sempre também o
+ * seu ícone e a sua etiqueta escrita, para a página continuar legível num ecrã
+ * monocromático e para quem não distingue as cores.
+ */
+const EVENT_ICONS: Record<CalendarEventType, Component> = {
+    meeting: Users,
+    activity: Sparkles,
+    field_trip: MapPin,
+    other: Circle,
+};
+
+function eventIcon(type: CalendarEventType): Component {
+    return EVENT_ICONS[type];
 }
 
 /**
@@ -147,7 +231,10 @@ function hiddenCount(day: CalendarDay): number {
  * something are listed: an empty Tuesday is not information.
  */
 const agenda = computed(() =>
-    props.days.filter((day) => day.in_month && day.assessments.length > 0),
+    props.days.filter(
+        (day) =>
+            day.in_month && (day.assessments.length > 0 || day.events.length > 0),
+    ),
 );
 
 const assessmentsThisMonth = computed(() =>
@@ -157,16 +244,38 @@ const assessmentsThisMonth = computed(() =>
     ),
 );
 
+/**
+ * Contado por acontecimento e não por célula: uma visita de estudo de três dias
+ * aparece em três células do mês e continua a ser UM acontecimento.
+ */
+const eventsThisMonth = computed(() => {
+    const seen = new Set<string>();
+
+    for (const day of props.days) {
+        if (!day.in_month) {
+            continue;
+        }
+
+        for (const event of day.events) {
+            seen.add(event.ulid);
+        }
+    }
+
+    return seen.size;
+});
+
 const description = computed(() => {
     if (!props.academicYear || !props.month) {
-        return 'A estrutura do ano letivo e as avaliações, lado a lado.';
+        return 'A estrutura do ano letivo, as avaliações e os teus acontecimentos, lado a lado.';
     }
 
     const count = assessmentsThisMonth.value;
-    const avaliacoes =
-        count === 1 ? '1 avaliação' : `${count} avaliações`;
+    const avaliacoes = count === 1 ? '1 avaliação' : `${count} avaliações`;
+    const events = eventsThisMonth.value;
+    const acontecimentos =
+        events === 1 ? '1 acontecimento' : `${events} acontecimentos`;
 
-    return `${monthLabel.value} · ${props.academicYear.label} · ${avaliacoes}`;
+    return `${monthLabel.value} · ${props.academicYear.label} · ${avaliacoes} · ${acontecimentos}`;
 });
 
 function dayLabel(date: string): string {
@@ -177,12 +286,151 @@ function periodRange(period: CalendarPeriod): string {
     return `${rangeFormatter.format(asDate(period.starts_on))} – ${rangeFormatter.format(asDate(period.ends_on))}`;
 }
 
+function eventRange(event: CalendarEvent): string {
+    return event.ends_on === event.starts_on
+        ? rangeFormatter.format(asDate(event.starts_on))
+        : `${rangeFormatter.format(asDate(event.starts_on))} – ${rangeFormatter.format(asDate(event.ends_on))}`;
+}
+
 function goToMonth(month: string): void {
     router.get(
         '/calendar',
         { month },
         { preserveState: true, preserveScroll: true },
     );
+}
+
+// ------------------------------------------------------ os acontecimentos
+
+/**
+ * UM SÓ PAINEL para ver, editar e eliminar, e o MESMO formulário para criar —
+ * pré-preenchido quando se abre a partir de um acontecimento que já existe.
+ * Dois formulários diferentes para a mesma coisa é como se acaba com uma regra
+ * aplicada na criação e esquecida na edição.
+ */
+const panelOpen = ref(false);
+const editing = ref<CalendarEvent | null>(null);
+
+const form = useForm<{
+    type: CalendarEventType;
+    title: string;
+    starts_on: string;
+    ends_on: string;
+    starts_at: string;
+    ends_at: string;
+    description: string;
+    school_class_ulids: string[];
+}>({
+    type: 'meeting',
+    title: '',
+    starts_on: '',
+    ends_on: '',
+    starts_at: '',
+    ends_at: '',
+    description: '',
+    school_class_ulids: [],
+});
+
+const TYPE_OPTIONS: { value: CalendarEventType; label: string }[] = [
+    { value: 'meeting', label: 'Reunião' },
+    { value: 'activity', label: 'Atividade' },
+    { value: 'field_trip', label: 'Visita de estudo' },
+    { value: 'other', label: 'Outro' },
+];
+
+/** O primeiro dia do mês que está a ser visto — o palpite honesto quando o
+ * professor carrega no botão em vez de carregar num dia. */
+function defaultDate(): string {
+    return props.month?.starts_on ?? '';
+}
+
+/**
+ * O BOTÃO EXPLÍCITO. Funciona sozinho, sem que nenhum dia tenha sido carregado
+ * — criar um acontecimento não pode estar escondido dentro de um gesto que é
+ * preciso adivinhar.
+ */
+function openCreate(date?: string): void {
+    editing.value = null;
+    form.defaults({
+        type: 'meeting',
+        title: '',
+        starts_on: date ?? defaultDate(),
+        ends_on: '',
+        starts_at: '',
+        ends_at: '',
+        description: '',
+        school_class_ulids: [],
+    });
+    form.reset();
+    form.clearErrors();
+    panelOpen.value = true;
+}
+
+function openEvent(event: CalendarEvent): void {
+    editing.value = event;
+    form.defaults({
+        type: event.type,
+        title: event.title,
+        starts_on: event.starts_on,
+        // Um acontecimento de um só dia mostra a data de fim vazia, que é o que
+        // ela é: a data final é opcional, e igual à inicial quando não existe.
+        ends_on: event.ends_on === event.starts_on ? '' : event.ends_on,
+        starts_at: event.starts_at ?? '',
+        ends_at: event.ends_at ?? '',
+        description: event.description ?? '',
+        school_class_ulids: event.school_classes.map(
+            (schoolClass) => schoolClass.ulid,
+        ),
+    });
+    form.reset();
+    form.clearErrors();
+    panelOpen.value = true;
+}
+
+function toggleClass(ulid: string): void {
+    form.school_class_ulids = form.school_class_ulids.includes(ulid)
+        ? form.school_class_ulids.filter((selected) => selected !== ulid)
+        : [...form.school_class_ulids, ulid];
+}
+
+function submit(): void {
+    const options = {
+        preserveScroll: true,
+        onSuccess: () => {
+            panelOpen.value = false;
+        },
+    };
+
+    if (editing.value) {
+        form.put(`/calendar/acontecimentos/${editing.value.ulid}`, options);
+    } else {
+        form.post('/calendar/acontecimentos', options);
+    }
+}
+
+/**
+ * Confirmado antes de submeter, com o mesmo `window.confirm` que todas as
+ * outras ações destrutivas desta aplicação já usam.
+ *
+ * Eliminar um acontecimento elimina UM ACONTECIMENTO: as avaliações, a
+ * estrutura do ano letivo e o horário têm ciclos de vida inteiramente próprios
+ * e não são tocados — e o texto diz isso, para ninguém ter de o adivinhar.
+ */
+function destroyEvent(event: CalendarEvent): void {
+    const confirmed = window.confirm(
+        `Eliminar «${event.title}»? Só este acontecimento é eliminado — as avaliações e a estrutura do ano letivo não são afetadas.`,
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    useForm({}).delete(`/calendar/acontecimentos/${event.ulid}`, {
+        preserveScroll: true,
+        onSuccess: () => {
+            panelOpen.value = false;
+        },
+    });
 }
 </script>
 
@@ -219,11 +467,13 @@ function goToMonth(month: string): void {
         </div>
 
         <!--
-            NADA É CRIADO AO ABRIR ESTA PÁGINA. Ao contrário da vista semanal de
-            «Aulas e Sumários», que materializa as aulas da semana que mostra,
-            aqui só se lê o que já existe — os períodos do ano e as avaliações
-            marcadas. As aulas não aparecem aqui de propósito: essa pergunta é a
-            do «Horário do Professor», e já tem a sua própria página.
+            O QUE ESTA PÁGINA LÊ, e o que só ela escreve. Os períodos do ano e
+            as avaliações são lidos onde já vivem, e continuam a ser criados e
+            alterados nas suas próprias páginas. Os acontecimentos — a reunião,
+            a atividade, a visita de estudo, o «outro» — são as únicas coisas
+            datadas que não têm casa em mais lado nenhum, e por isso são as
+            únicas que nascem aqui. As aulas não aparecem, de propósito: essa
+            pergunta é a do «Horário do Professor», e já tem a sua página.
         -->
         <section
             v-if="!academicYear || !month || !navigation"
@@ -277,6 +527,21 @@ function goToMonth(month: string): void {
                     @click="goToMonth(navigation.next)"
                 >
                     Mês seguinte <ChevronRight class="size-4" />
+                </Button>
+
+                <!--
+                    O BOTÃO EXPLÍCITO, sempre visível e sempre suficiente por si
+                    só: criar um acontecimento não está escondido dentro de um
+                    clique num dia que seja preciso adivinhar. Carregar num dia
+                    da grelha é um atalho por cima disto, e não o caminho.
+                -->
+                <Button
+                    class="ml-auto min-h-10"
+                    size="sm"
+                    data-new-event
+                    @click="openCreate()"
+                >
+                    <CalendarPlus class="size-4" /> Novo acontecimento
                 </Button>
             </nav>
 
@@ -346,18 +611,29 @@ function goToMonth(month: string): void {
                         :data-date="day.date"
                     >
                         <div class="flex items-baseline justify-between gap-1">
-                            <span
-                                class="text-xs tabular-nums"
+                            <!--
+                                O número do dia é o atalho: carregar nele abre o
+                                mesmo formulário já com esta data. É um botão a
+                                sério — alcançável pelo teclado e com nome — e
+                                não um `div` que responde ao rato.
+                            -->
+                            <button
+                                type="button"
+                                data-add-on-day
+                                class="rounded-md text-xs tabular-nums transition-colors outline-none hover:bg-foreground/10 focus-visible:ring-2 focus-visible:ring-ring"
                                 :class="[
                                     day.in_month
                                         ? 'font-medium'
                                         : 'text-muted-foreground',
                                     day.is_today
-                                        ? 'rounded-full bg-foreground px-1.5 py-0.5 text-background'
-                                        : '',
+                                        ? 'bg-foreground px-1.5 py-0.5 text-background'
+                                        : 'px-1',
                                 ]"
-                                >{{ day.day }}</span
+                                :aria-label="`Novo acontecimento em ${dayLabel(day.date)}`"
+                                @click="openCreate(day.date)"
                             >
+                                {{ day.day }}
+                            </button>
                             <!--
                                 O período é NOMEADO onde começa, e não repetido
                                 em todas as células do mês.
@@ -370,19 +646,18 @@ function goToMonth(month: string): void {
                         </div>
 
                         <ul class="mt-1 space-y-1">
-                            <li
-                                v-for="assessment in shown(day)"
-                                :key="assessment.ulid"
-                            >
+                            <li v-for="item in shown(day)" :key="item.key">
                                 <!--
-                                    UMA AVALIAÇÃO: moldura, ícone e peso de
-                                    texto — nunca só uma cor diferente — para
-                                    não se confundir com a faixa do período.
+                                    UMA AVALIAÇÃO: moldura sólida, ícone e peso
+                                    de texto. É o tratamento mais forte da
+                                    página e assim fica — nada do que se
+                                    acrescentou lhe faz sombra.
                                 -->
                                 <Link
-                                    :href="assessment.href"
+                                    v-if="item.kind === 'assessment'"
+                                    :href="item.assessment.href"
                                     class="flex items-start gap-1 rounded-md border border-foreground/25 bg-background/80 px-1.5 py-1 text-[0.7rem] leading-tight font-medium transition-colors outline-none hover:border-foreground/50 focus-visible:ring-2 focus-visible:ring-ring"
-                                    :title="`${assessment.title} · ${assessment.class_label} · ${assessment.type}`"
+                                    :title="`${item.assessment.title} · ${item.assessment.class_label} · ${item.assessment.type}`"
                                 >
                                     <ClipboardCheck
                                         class="mt-px size-3 shrink-0"
@@ -390,21 +665,56 @@ function goToMonth(month: string): void {
                                     />
                                     <span class="min-w-0">
                                         <span class="block truncate">{{
-                                            assessment.title
+                                            item.assessment.title
                                         }}</span>
                                         <span
                                             class="block truncate font-normal opacity-75"
-                                            >{{ assessment.class_label }} ·
-                                            {{ assessment.type }}</span
+                                            >{{ item.assessment.class_label }} ·
+                                            {{ item.assessment.type }}</span
                                         >
                                     </span>
                                 </Link>
+
+                                <!--
+                                    UM ACONTECIMENTO: cor, MAIS ícone, MAIS
+                                    etiqueta escrita da espécie. Nunca só a cor
+                                    — a etiqueta e o ícone são o que mantém isto
+                                    legível num ecrã monocromático e para quem
+                                    não distingue as cores.
+                                -->
+                                <button
+                                    v-else
+                                    type="button"
+                                    :data-event-ulid="item.event.ulid"
+                                    :data-event-type="item.event.type"
+                                    class="flex w-full items-start gap-1 rounded-md border px-1.5 py-1 text-left text-[0.7rem] leading-tight transition-colors outline-none hover:border-foreground/50 focus-visible:ring-2 focus-visible:ring-ring"
+                                    :class="eventEntryClasses(item.event.type)"
+                                    :title="`${item.event.type_label} · ${item.event.title}`"
+                                    @click="openEvent(item.event)"
+                                >
+                                    <component
+                                        :is="eventIcon(item.event.type)"
+                                        class="mt-px size-3 shrink-0"
+                                        aria-hidden="true"
+                                    />
+                                    <span class="min-w-0">
+                                        <span
+                                            class="block truncate text-[0.6rem] font-semibold tracking-wide"
+                                            :class="eventBadgeClasses(item.event.type)"
+                                            >{{ item.event.type_short_label }}</span
+                                        >
+                                        <span class="block truncate">{{
+                                            item.event.title
+                                        }}</span>
+                                    </span>
+                                </button>
                             </li>
                         </ul>
 
                         <button
                             v-if="hiddenCount(day) > 0"
                             type="button"
+                            data-overflow
                             class="mt-1 w-full rounded-md px-1 py-0.5 text-[0.7rem] font-medium underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                             @click="toggle(day.date)"
                         >
@@ -424,7 +734,7 @@ function goToMonth(month: string): void {
                     v-if="agenda.length === 0"
                     class="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground"
                 >
-                    Não há avaliações marcadas em {{ monthLabel }}.
+                    Não há nada marcado em {{ monthLabel }}.
                 </p>
 
                 <section
@@ -471,9 +781,218 @@ function goToMonth(month: string): void {
                                 </span>
                             </Link>
                         </li>
+                        <li v-for="event in day.events" :key="event.ulid">
+                            <button
+                                type="button"
+                                :data-agenda-event-ulid="event.ulid"
+                                class="flex w-full items-start gap-2 p-3 text-left transition-colors outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
+                                @click="openEvent(event)"
+                            >
+                                <component
+                                    :is="eventIcon(event.type)"
+                                    class="mt-0.5 size-4 shrink-0"
+                                    aria-hidden="true"
+                                />
+                                <span class="min-w-0 flex-1">
+                                    <span
+                                        class="block text-xs font-semibold tracking-wide"
+                                        :class="eventBadgeClasses(event.type)"
+                                        >{{ event.type_short_label }}</span
+                                    >
+                                    <span class="block text-sm font-medium">{{
+                                        event.title
+                                    }}</span>
+                                    <span
+                                        class="block text-sm text-muted-foreground"
+                                        >{{ eventTimeLabel(event) }} ·
+                                        {{ eventRange(event) }}</span
+                                    >
+                                    <span
+                                        v-if="event.school_classes.length > 0"
+                                        class="block text-xs text-muted-foreground"
+                                        >{{
+                                            event.school_classes
+                                                .map(
+                                                    (schoolClass) =>
+                                                        schoolClass.label,
+                                                )
+                                                .join(' · ')
+                                        }}</span
+                                    >
+                                </span>
+                            </button>
+                        </li>
                     </ul>
                 </section>
             </section>
         </template>
+
+        <!--
+            UM SÓ PAINEL: ver, editar e eliminar, com o MESMO formulário da
+            criação, pré-preenchido. Um segundo formulário para a mesma coisa é
+            como se acaba com uma regra aplicada ao criar e esquecida ao editar.
+        -->
+        <Dialog v-model:open="panelOpen">
+            <DialogContent class="max-h-[85vh] max-w-2xl overflow-y-auto">
+                <form class="space-y-4" @submit.prevent="submit">
+                    <DialogHeader>
+                        <DialogTitle>{{
+                            editing ? 'Acontecimento' : 'Novo acontecimento'
+                        }}</DialogTitle>
+                        <DialogDescription>
+                            Uma reunião, uma atividade, uma visita de estudo ou
+                            outra coisa marcada numa data. É teu: só tu o vês e
+                            só tu o alteras.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div class="grid gap-4 sm:grid-cols-3">
+                        <div class="grid gap-2">
+                            <Label for="event-type">Tipo</Label>
+                            <select
+                                id="event-type"
+                                v-model="form.type"
+                                class="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+                            >
+                                <option
+                                    v-for="option in TYPE_OPTIONS"
+                                    :key="option.value"
+                                    :value="option.value"
+                                >
+                                    {{ option.label }}
+                                </option>
+                            </select>
+                            <InputError :message="form.errors.type" />
+                        </div>
+                        <div class="grid gap-2 sm:col-span-2">
+                            <Label for="event-title">Título</Label>
+                            <Input
+                                id="event-title"
+                                v-model="form.title"
+                                placeholder="Ex.: Reunião de conselho de turma"
+                            />
+                            <InputError :message="form.errors.title" />
+                        </div>
+                    </div>
+
+                    <div class="grid gap-4 sm:grid-cols-2">
+                        <div class="grid gap-2">
+                            <Label for="event-starts-on">Data</Label>
+                            <Input
+                                id="event-starts-on"
+                                v-model="form.starts_on"
+                                type="date"
+                            />
+                            <InputError :message="form.errors.starts_on" />
+                        </div>
+                        <div class="grid gap-2">
+                            <Label for="event-ends-on">Data de fim</Label>
+                            <Input
+                                id="event-ends-on"
+                                v-model="form.ends_on"
+                                type="date"
+                            />
+                            <InputError :message="form.errors.ends_on" />
+                            <p class="text-xs text-muted-foreground">
+                                Em branco fica no mesmo dia.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="grid gap-4 sm:grid-cols-2">
+                        <div class="grid gap-2">
+                            <Label for="event-starts-at">Hora de início</Label>
+                            <Input
+                                id="event-starts-at"
+                                v-model="form.starts_at"
+                                type="time"
+                            />
+                            <InputError :message="form.errors.starts_at" />
+                            <p class="text-xs text-muted-foreground">
+                                Em branco é o dia inteiro.
+                            </p>
+                        </div>
+                        <div class="grid gap-2">
+                            <Label for="event-ends-at">Hora de fim</Label>
+                            <Input
+                                id="event-ends-at"
+                                v-model="form.ends_at"
+                                type="time"
+                            />
+                            <InputError :message="form.errors.ends_at" />
+                        </div>
+                    </div>
+
+                    <div class="grid gap-2">
+                        <Label for="event-description">Notas</Label>
+                        <textarea
+                            id="event-description"
+                            v-model="form.description"
+                            rows="3"
+                            class="rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+                        />
+                        <InputError :message="form.errors.description" />
+                    </div>
+
+                    <div class="grid gap-2">
+                        <span class="text-sm font-medium">Turmas</span>
+                        <p
+                            v-if="classes.length === 0"
+                            class="text-xs text-muted-foreground"
+                        >
+                            Ainda não tens turmas para associar. O acontecimento
+                            pode ficar sem turma nenhuma.
+                        </p>
+                        <div v-else class="flex flex-wrap gap-x-4 gap-y-2">
+                            <Label
+                                v-for="schoolClass in classes"
+                                :key="schoolClass.ulid"
+                                class="flex items-center gap-2 font-normal"
+                            >
+                                <Checkbox
+                                    :model-value="
+                                        form.school_class_ulids.includes(
+                                            schoolClass.ulid,
+                                        )
+                                    "
+                                    @update:model-value="
+                                        toggleClass(schoolClass.ulid)
+                                    "
+                                />
+                                <span
+                                    >{{ schoolClass.label }} ·
+                                    {{ schoolClass.subject }}</span
+                                >
+                            </Label>
+                        </div>
+                        <InputError :message="form.errors.school_class_ulids" />
+                        <p class="text-xs text-muted-foreground">
+                            Nenhuma, uma ou várias — só as turmas que lecionas.
+                        </p>
+                    </div>
+
+                    <DialogFooter class="gap-2 sm:justify-between">
+                        <Button
+                            v-if="editing"
+                            type="button"
+                            variant="ghost"
+                            class="text-red-600 dark:text-red-500"
+                            data-delete-event
+                            @click="destroyEvent(editing)"
+                        >
+                            <Trash2 class="size-4" /> Eliminar
+                        </Button>
+                        <span v-else />
+                        <Button type="submit" :disabled="form.processing">
+                            {{
+                                editing
+                                    ? 'Guardar alterações'
+                                    : 'Adicionar ao calendário'
+                            }}
+                        </Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
     </main>
 </template>

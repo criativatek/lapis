@@ -2,6 +2,30 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.69.0] — 2026-08-25
+
+### Added
+
+- **O "Calendário do Ano Letivo" passa a deixar marcar os acontecimentos que não têm sítio nenhum onde viver.** Até agora o calendário mostrava a estrutura do ano e as avaliações — duas coisas que já existiam noutras páginas e que ele apenas juntava — e não havia forma de lá pôr uma reunião de conselho de turma, a semana da leitura ou uma visita de estudo. Não havia porque essas coisas não existiam em lado nenhum da aplicação: não são um elemento de avaliação, não são um período do ano letivo e não são uma aula. Passam a existir, e a nascer no único sítio onde fazem sentido, que é o próprio calendário.
+
+  **Quatro espécies, e só quatro: reunião, atividade, visita de estudo e "outro".** O conjunto é fechado de propósito. Cada uma destas quatro é uma coisa marcada numa data que não tem casa noutro sítio; o que já tem casa — uma avaliação, um período, uma aula — continua a ser criado e alterado na sua própria página, e não é duplicado aqui. Um tipo fora destes quatro é recusado, e não aceite "por agora".
+
+  **Cada acontecimento pode ter uma data só ou várias, uma hora marcada ou o dia inteiro, e nenhuma, uma ou várias turmas.** A data de fim é opcional: em branco, o acontecimento fica no mesmo dia. Sem hora nenhuma, é um dia inteiro — a ausência de hora é informação, e não uma hora que ficou por escrever. Um acontecimento de vários dias aparece em cada um dos dias que atravessa, e não só no primeiro. As turmas que se podem associar são as que o próprio professor leciona, pela mesma regra que as Turmas e o "Horário do Professor" já usam: a turma de um colega é recusada com uma mensagem, e nunca aceite em silêncio e deixada de fora sem se dizer nada.
+
+  **Cria-se por um botão que está sempre à vista.** "Novo acontecimento" está na vista de Mês, fora da grelha, e funciona sozinho — não é preciso descobrir que se pode carregar num dia. Carregar no número de um dia é um atalho por cima disso, que abre o mesmo formulário já com aquela data. Cada acontecimento marcado no calendário abre, ao ser carregado, o mesmo formulário preenchido, com "Guardar alterações" e "Eliminar"; eliminar pede sempre confirmação primeiro.
+
+  **Um acontecimento é pessoal de quem o criou.** Só o professor que o marcou o vê, e só ele o altera ou elimina — o de um colega não é apenas não-editável: não aparece de todo. Não é um calendário institucional partilhado, e não é um esquecimento: é o que esta primeira versão faz, pela mesma regra que as sequências de aulas já seguem.
+
+  **Eliminar um acontecimento elimina um acontecimento, e mais nada.** As avaliações, a estrutura do ano letivo e o horário têm ciclos de vida inteiramente próprios e não são tocados — a única outra coisa que desaparece são as ligações às turmas daquele acontecimento, que sem ele não querem dizer nada. As turmas, essas, ficam. Isto está coberto por teste que conta os elementos de avaliação, os períodos, as aulas, as aulas recorrentes e as turmas antes e depois da eliminação: agora que estas coisas se veem todas na mesma página, é precisamente aí que seria fácil passar a tratá-las como se fossem a mesma coisa.
+
+  **Uma avaliação continua a ser o mais forte da página, e a diferença nunca é só de cor.** A escada é deliberada: uma avaliação tem o tratamento mais carregado; uma reunião fica num peso intermédio; uma atividade e uma visita de estudo leem-se bem sem competir com as avaliações; e o "outro" é o mais discreto de todos. Nenhuma das quatro se distingue das outras — nem de uma avaliação — apenas pela cor: cada uma traz sempre o seu ícone e a sua etiqueta escrita ("REUNIÃO", "ATIVIDADE", "VISITA", "OUTRO"), pelo que a página continua legível num ecrã monocromático, num ecrã de fraco contraste e para quem não distingue as cores. As faixas dos períodos continuam a ser estrutura — sem moldura, sem ícone, sem peso — exatamente como estavam. Não há aqui escolha de cores nem personalização, e isso não é um esquecimento: uma cor à escolha de cada um tornaria impossível garantir justamente isto.
+
+  **Num dia cheio, o limite passou a contar as duas coisas juntas.** Um dia com duas avaliações e três acontecimentos está exatamente tão cheio como um dia com cinco avaliações: a célula mostra os três primeiros itens e um "+N mais" que abre o resto — o mesmo mecanismo de sempre, agora a contar tudo, e não um segundo mecanismo ao lado do primeiro. Em ecrã estreito, a agenda do mês lista também os acontecimentos, com a hora ou "dia inteiro" e as turmas associadas.
+
+  **A vista de Ano conta-os, e continua a não os enumerar.** Cada mês mostra quantos acontecimentos o atravessam, ao lado da contagem de avaliações que já mostrava e distinguida dela por ícone e por palavra. É uma vista sinóptica, e lê-los um a um é o que a vista de Mês faz, a um clique de cada mês. Um acontecimento que atravessa a fronteira entre dois meses conta nos dois, porque é uma coisa que acontece nos dois.
+
+  **Abrir o calendário continua a não escrever absolutamente nada.** O calendário passou a ter tabela própria, e por isso passou a ser possível escrever nela sem querer: um acontecimento só nasce de um pedido explícito do professor, nunca de se olhar para a página, e o teste que já contava as aulas, as aulas recorrentes e os elementos de avaliação antes e depois de cada pedido passou a contar também os acontecimentos. Uma sessão de suporte pode ver o calendário — olhar não muda nada —, mas não pode criar, alterar nem eliminar um acontecimento em nome de quem está a ser ajudado.
+
 ## [0.68.0] — 2026-08-25
 
 ### Added
