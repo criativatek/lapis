@@ -120,21 +120,31 @@ export function periodRange(period: CalendarPeriod): string {
 // -------------------------------- a estrutura do ano, respondida uma só vez
 
 /**
- * O TOM ÚNICO DA ESTRUTURA — um bege quente, discreto e de baixa saturação, e
- * um só: o arco-íris por índice de período pintava a página inteira de azul só
+ * O TOM ÚNICO DA ESTRUTURA — um bege de papel quente, de baixa saturação, e um
+ * só: o arco-íris por índice de período pintava a página inteira de azul só
  * porque se estava a meio de um semestre, e a estrutura do ano letivo tem de
  * estar VISÍVEL sem MANDAR na página.
  *
- * `stone` de propósito, e nunca `amber`: o âmbar já é da «Visita de estudo»
- * (EVENT_TREATMENTS, aqui em baixo) e do próprio `--brand-amber`, e repeti-lo
- * aqui faria a estrutura do ano colidir com uma das quatro espécies de
- * acontecimento. Fica um cinzento-quente que não compete com nada.
+ * E VISÍVEL A SÉRIO. O `stone` que aqui esteve cumpria a metade «sem mandar» e
+ * falhava a outra: lia-se como um cinzento sujo e desaparecia da página. Um
+ * bege quente — `amber-50`, que é o que o Tailwind tem mais perto de papel —
+ * dá-se a ver sem levantar a voz.
+ *
+ * E NÃO É O ÂMBAR DA «VISITA DE ESTUDO», embora venha da mesma família de
+ * matiz: aquele é uma MOLDURA e um TEXTO saturados, de peso 600/700
+ * (EVENT_TREATMENTS, aqui em baixo); este é um ENCHIMENTO pálido, de peso 50,
+ * com moldura NEUTRA e texto por omissão. São dois pesos diferentes e leem-se
+ * como duas coisas diferentes — e é justamente por isso que a faixa que o usa
+ * nunca leva moldura de âmbar: com ela, passaria mesmo a ser a mesma cor de uma
+ * visita de estudo.
  *
  * E CONTINUA A NÃO SER A COR QUE DIZ QUAL É O PERÍODO: onde quer que este tom
  * apareça, o nome do período — e, num mês de transição, o «desde»/«até» — está
- * escrito ao lado. A página lê-se inteira num ecrã monocromático.
+ * escrito ao lado. A página lê-se inteira num ecrã monocromático. Os dois
+ * semestres de um ano partilham este mesmo tom, e distinguem-se pelo que está
+ * escrito, nunca por uma segunda cor.
  */
-export const PERIOD_TINT = 'bg-stone-100/70 dark:bg-stone-800/50';
+export const PERIOD_TINT = 'bg-amber-50 dark:bg-amber-950/20';
 
 /**
  * O período que cobre este intervalo DE UMA PONTA À OUTRA, e só esse — ou

@@ -308,23 +308,75 @@ describe('calendar/Year', () => {
             expect(row.classes().join(' ')).toContain(PERIOD_TINT);
         }
 
-        // E nenhuma das seis cores antigas em lado nenhum da página.
+        // E nenhuma das seis cores antigas em lado nenhum da página — nem o
+        // cinzento que lhes sucedeu e que não se via.
         for (const tint of RAINBOW) {
             expect(wrapper.html()).not.toContain(tint);
         }
+
+        expect(wrapper.html()).not.toContain('stone');
     });
 
     /**
-     * O TOM ESCOLHIDO NÃO É O DO ÂMBAR, e não é por acaso: o âmbar já é da
-     * «Visita de estudo» e do próprio `--brand-amber` da aplicação, e a estrutura
-     * do ano a usá-lo faria as duas coisas colidirem. É um cinzento-quente —
-     * `stone` — e a cor nunca é o que diz qual é o período: o nome está sempre
-     * escrito ao lado dela.
+     * UM MÊS DE TRANSIÇÃO CONTINUA SEM TOM NENHUM, e o tom novo não muda isso: o
+     * bege é mais visível do que o cinzento que substituiu, e é por isso mesmo
+     * que ele não pode aparecer num mês de que o período só tem metade.
      */
-    it('keeps the structural tone off the amber that «Visita de estudo» already owns', () => {
-        expect(PERIOD_TINT).toContain('stone');
-        expect(PERIOD_TINT).not.toContain('amber');
-        expect(PERIOD_TINT).not.toContain('orange');
+    it('keeps the new cream tone off a transition month and on a fully contained one', () => {
+        const semester = period({
+            ulid: 'sem-1',
+            label: '1.º Semestre',
+            kind: 'semester',
+            kind_label: 'Semestre',
+            starts_on: '2026-09-11',
+            ends_on: '2027-01-29',
+        });
+
+        const wrapper = mountPage({
+            months: [
+                month('2026-09', { period_ulids: ['sem-1'] }),
+                month('2026-10', { period_ulids: ['sem-1'] }),
+            ],
+            periods: [semester],
+            periodsCountLabel: '1 semestre',
+        });
+
+        const september = wrapper.find('[data-month="2026-09"]').classes().join(' ');
+        const october = wrapper.find('[data-month="2026-10"]').classes().join(' ');
+
+        expect(september).not.toContain('bg-amber-50');
+        expect(october).toContain('bg-amber-50');
+
+        // E o cartão do mês continua com a sua moldura neutra: o bege é
+        // enchimento, e não uma segunda moldura de cor.
+        expect(october).not.toMatch(/border-amber|border-orange/);
+    });
+
+    /**
+     * O TOM ESCOLHIDO É UM BEGE DE PAPEL QUENTE, e não o cinzento que aqui
+     * esteve: o `stone` era discreto ao ponto de não estar lá — lia-se como um
+     * cinzento sujo e desaparecia da página, o que é o mesmo que não dizer nada.
+     *
+     * E NÃO COLIDE COM A «VISITA DE ESTUDO», embora venha da mesma família de
+     * matiz. O que separa os dois não é a matiz: é o PESO. Uma visita de estudo
+     * é uma MOLDURA e um TEXTO saturados, de peso 600/700; isto é um
+     * ENCHIMENTO pálido, de peso 50, com moldura neutra e texto por omissão.
+     *
+     * E a cor nunca é o que diz qual é o período: o nome está sempre escrito ao
+     * lado dela, e os dois semestres de um ano partilham este mesmo tom.
+     */
+    it('tints the structure in warm cream, never in the saturated amber «Visita de estudo» owns', () => {
+        // O cinzento foi-se embora, e o que ficou é um bege de peso 50.
+        expect(PERIOD_TINT).not.toContain('stone');
+        expect(PERIOD_TINT).toContain('bg-amber-50');
+
+        // Nunca os pesos saturados de um acontecimento.
+        expect(PERIOD_TINT).not.toContain('amber-600');
+        expect(PERIOD_TINT).not.toContain('amber-700');
+
+        // E enchimento, e só enchimento: nem moldura, nem cor de texto.
+        expect(PERIOD_TINT).not.toContain('border-');
+        expect(PERIOD_TINT).not.toContain('text-');
     });
 
     it('says where the next período begins in the month it begins in', () => {

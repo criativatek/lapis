@@ -2,6 +2,16 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.69.4] — 2026-08-25
+
+### Fixed
+
+- **O tom estrutural do Calendário deixa de parecer cinzento e passa a bege de papel quente.** O `stone` da ronda anterior cumpria "não mandar na página", mas deixava de se ver — lia-se como um cinzento sujo, quase invisível. Passa a `amber-50` (papel quente, não o âmbar saturado da "Visita de estudo": aquele é moldura e texto de peso 600/700, este é só um enchimento pálido de peso 50, com moldura neutra). Os dois semestres de um ano continuam a partilhar o mesmo tom — nunca uma cor por período — e distinguem-se sempre pelo nome e pelas datas.
+
+- **A faixa de período da vista Mês deixa de ser uma pastilha solta e passa a uma faixa estrutural a sério.** Uma tira baixa e larga, do tamanho da grelha logo por baixo, com o novo bege — em vez das pequenas pastilhas que antes flutuavam soltas e eram fáceis de não ver. Quando dois períodos tocam o mesmo mês, ambos aparecem dentro da mesma faixa, separados por um traço vertical desenhado (mais pesado do que o "·" que já separava o nome de um período das suas próprias datas).
+
+- **A célula do dia deixa de repetir o nome do período que a faixa já diz.** O dia em que um semestre começa mostrava "1.º Semestre" também dentro da própria célula — a um passo de uma faixa que já diz "1.º Semestre · desde 11/09" com muito mais peso, sobre a grelha inteira. Essa repetição foi removida; a grelha do mês fica só com os dias, as avaliações e os acontecimentos.
+
 ## [0.69.3] — 2026-08-25
 
 ### Fixed

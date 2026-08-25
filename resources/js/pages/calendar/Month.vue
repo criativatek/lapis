@@ -120,31 +120,6 @@ const weeks = computed(() => {
     return rows;
 });
 
-/**
- * A período is NAMED where it begins — on the first cell of the grid, and again
- * wherever the band changes from one day to the next — and elsewhere carries
- * only its quiet tint. Repeating the name in all thirty cells would shout the
- * one thing about the month that never changes.
- */
-const namesPeriod = computed(() => {
-    const shows = new Set<string>();
-    let previous: string | null | undefined;
-
-    for (const [index, day] of props.days.entries()) {
-        const current = day.period?.ulid ?? null;
-
-        if (index === 0 || current !== previous) {
-            if (current !== null) {
-                shows.add(day.date);
-            }
-        }
-
-        previous = current;
-    }
-
-    return shows;
-});
-
 // ------------------------------------------------ o que uma célula mostra
 
 /**
@@ -672,37 +647,56 @@ function destroyEvent(event: CalendarEvent): void {
 
         <template v-else>
             <!--
-                OS PERÍODOS DESTE MÊS como contexto estrutural — uma faixa, não
-                um cartão. A distinção em relação a uma avaliação nunca é só de
-                cor: um período não tem moldura nem ícone e escreve-se em texto
-                discreto; uma avaliação tem as três coisas.
+                OS PERÍODOS DESTE MÊS NUMA FAIXA A SÉRIO — uma tira baixa e
+                larga, do tamanho da grelha que fica logo por baixo dela, e não
+                as pastilhas soltas que aqui estavam: pequenas, a flutuar num
+                canto, e demasiado fáceis de não ver. Uma só faixa, também
+                quando são dois os períodos que tocam o mês.
+
+                E CONTINUA A NÃO SER NEM UM BOTÃO NEM UM ACONTECIMENTO: sem
+                ícone, sem moldura de cor, sem sombra e sem nada em que carregar
+                — só texto quieto sobre o bege da estrutura. A distinção nunca é
+                só de cor: uma avaliação tem moldura, ícone e peso, e isto não
+                tem nenhuma das três coisas.
 
                 E DIZ O QUE É VERDADE SOBRE ESTE MÊS, não sobre a grelha: os
                 períodos são filtrados pelos limites reais do mês e ditos com o
                 mesmo «desde»/«até» que a vista de Ano já usava, pela mesma
                 função. Um mês que nenhum período toca não diz nada — nem uma
                 faixa, nem um período por omissão.
+
+                DOIS NÍVEIS DE SEPARAÇÃO, E POR ISSO DOIS DESENHOS: o «·» separa
+                o nome de um período das suas próprias datas; o traço vertical —
+                mais pesado, e desenhado em vez de escrito — separa um período
+                do outro. Com o mesmo «·» nos dois sítios, «1.º Período · até
+                5/11 · 2.º Período · desde 15/11» lia-se como uma lista de
+                quatro coisas todas ao mesmo nível.
+
+                E O NOME DO PERÍODO JÁ DIZ A ESPÉCIE — «1.º Semestre», «2.º
+                Período» — pelo que repeti-la a seguir («1.º Semestre ·
+                Semestre») não acrescentava nada a ninguém. Fica o nome e as
+                datas, que é o que aqui falta saber.
             -->
             <section
                 v-if="structuralBands.length > 0"
-                class="flex flex-wrap gap-2"
+                class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border px-4 py-2.5 text-sm"
+                :class="PERIOD_TINT"
                 aria-label="Períodos deste mês"
             >
-                <p
-                    v-for="band in structuralBands"
+                <template
+                    v-for="(band, index) in structuralBands"
                     :key="band.period.ulid"
-                    class="rounded-md px-2.5 py-1.5 text-xs"
-                    :class="PERIOD_TINT"
                 >
-                    <!--
-                        O nome do período já diz a espécie — «1.º Semestre»,
-                        «2.º Período» — e repeti-la a seguir («1.º Semestre ·
-                        Semestre») não acrescenta nada a ninguém. Fica o nome e
-                        as datas, que é o que aqui falta saber.
-                    -->
-                    <span class="font-medium">{{ band.period.label }}</span>
-                    <span class="opacity-80"> · {{ band.detail }}</span>
-                </p>
+                    <span
+                        v-if="index > 0"
+                        class="h-4 w-px shrink-0 bg-foreground/20"
+                        aria-hidden="true"
+                    />
+                    <span :data-period-band="band.period.ulid">
+                        <span class="font-medium">{{ band.period.label }}</span>
+                        <span class="opacity-80"> · {{ band.detail }}</span>
+                    </span>
+                </template>
             </section>
             <p
                 v-else-if="periods.length === 0"
@@ -743,9 +737,15 @@ function destroyEvent(event: CalendarEvent): void {
                         com a cor do período em que caía, e o mês inteiro ficava
                         pintado só porque se estava a meio de um semestre — a
                         estrutura do ano a mandar na página em vez de a
-                        acompanhar. O período continua NOMEADO onde começa, logo
-                        aqui em baixo, que é o que informa; o cinzento dos dias
-                        de fora do mês fica como estava, porque diz outra coisa.
+                        acompanhar. O cinzento dos dias de fora do mês fica como
+                        estava, porque diz outra coisa.
+
+                        E A CÉLULA JÁ NÃO NOMEIA O PERÍODO. Nomeava-o onde ele
+                        começava — a célula do dia 11 de setembro dizia «1.º
+                        Semestre» — a um centímetro de uma faixa que já diz «1.º
+                        Semestre · desde 11/09» por cima da grelha inteira e com
+                        muito mais peso. Era a mesma coisa dita duas vezes, e a
+                        segunda só fazia ruído dentro do dia.
                     -->
                     <div
                         v-for="day in week"
@@ -779,15 +779,6 @@ function destroyEvent(event: CalendarEvent): void {
                             >
                                 {{ day.day }}
                             </button>
-                            <!--
-                                O período é NOMEADO onde começa, e não repetido
-                                em todas as células do mês.
-                            -->
-                            <span
-                                v-if="day.period && namesPeriod.has(day.date)"
-                                class="truncate text-[0.65rem] leading-tight opacity-80"
-                                >{{ day.period.label }}</span
-                            >
                         </div>
 
                         <ul class="mt-1 space-y-1">

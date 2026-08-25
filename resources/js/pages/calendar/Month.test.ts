@@ -468,11 +468,49 @@ describe('calendar/Month', () => {
             }),
         ]);
 
-        const bands = wrapper.findAll('section[aria-label="Períodos deste mês"] > p');
+        const bands = wrapper.findAll('[data-period-band]');
 
         expect(bands).toHaveLength(2);
         expect(bands[0]!.text()).toContain('1.º Período · até 5/11');
         expect(bands[1]!.text()).toContain('2.º Período · desde 15/11');
+
+        // E OS DOIS DENTRO DA MESMA FAIXA, e não em duas faixas ao lado uma da
+        // outra: o mês é um só, e o que se lê é a estrutura dele.
+        const strips = wrapper.findAll('section[aria-label="Períodos deste mês"]');
+
+        expect(strips).toHaveLength(1);
+        expect(strips[0]!.findAll('[data-period-band]')).toHaveLength(2);
+    });
+
+    /**
+     * A FAIXA É UMA FAIXA, e não uma pastilha à solta. Era uma etiqueta pequena
+     * num canto — «um crachá solto», nas palavras de quem a foi ver — e passava
+     * despercebida justamente à pessoa que abre o calendário para saber em que
+     * período está. Agora é uma tira baixa e larga, imediatamente por cima da
+     * grelha, com a mesma largura do que está por baixo dela.
+     */
+    it('lays the período context out as one low, full-width strip above the grid', () => {
+        const wrapper = mountPage({ periods: [SEMESTER_ONE] });
+        const strip = wrapper.find('section[aria-label="Períodos deste mês"]');
+        const classes = strip.classes().join(' ');
+
+        // Uma tira: larga por omissão (nada a encolhe para o tamanho do texto),
+        // baixa, e com folga horizontal a sério.
+        expect(classes).not.toContain('inline');
+        expect(classes).toMatch(/\bpx-4\b/);
+        expect(classes).toMatch(/\bpy-2(\.5)?\b/);
+
+        // E NÃO É UM BOTÃO nem um acontecimento: nada em que carregar, nenhuma
+        // sombra, nenhum ícone, nenhuma moldura de cor.
+        expect(strip.findAll('button')).toHaveLength(0);
+        expect(strip.findAll('a')).toHaveLength(0);
+        expect(strip.find('svg').exists()).toBe(false);
+        expect(classes).not.toMatch(/shadow|cursor-pointer|hover:/);
+
+        // Imediatamente antes da grelha, e não algures noutro sítio da página.
+        expect(
+            strip.element.nextElementSibling?.getAttribute('aria-label'),
+        ).toBe('Grelha do mês');
     });
 
     /**
@@ -499,12 +537,13 @@ describe('calendar/Month', () => {
     });
 
     /**
-     * A GRELHA FICA NEUTRA. Cada célula levava um fundo cheio com a cor do
-     * período em que caía, e o mês inteiro ficava azul só porque se estava a
-     * meio de um semestre. O período continua NOMEADO onde começa — que é o que
-     * informa, e o que se lê num ecrã monocromático — sem o banho de cor.
+     * A GRELHA FICA NEUTRA — e agora fica-o inteiramente. Cada célula levava um
+     * fundo cheio com a cor do período em que caía, e o mês inteiro ficava azul
+     * só porque se estava a meio de um semestre; e a célula onde o período
+     * começava ainda lhe escrevia o nome por dentro. Nem o banho de cor, nem o
+     * nome repetido: o período é dito uma vez, na faixa, por cima da grelha.
      */
-    it('leaves every day cell of the grid without a período background', () => {
+    it('leaves every day cell of the grid without a período background or a período name', () => {
         const wrapper = mountPage({
             periods: [SEMESTER_ONE],
             days: octoberDays(() => ({ period: SEMESTER_ONE })),
@@ -515,26 +554,39 @@ describe('calendar/Month', () => {
 
             // Só o cinzento dos dias de fora do mês, que diz outra coisa.
             expect(backgrounds.every((name) => name === 'bg-muted/30')).toBe(true);
+            expect(cell.text()).not.toContain('Semestre');
         }
 
-        // E o nome do período continua lá, onde a faixa começa.
-        expect(wrapper.find('[data-date="2026-09-28"]').text()).toContain('1.º Semestre');
+        // E o nome do período está lá, uma vez, na faixa que fala do mês.
+        expect(bandText(wrapper)).toContain('1.º Semestre');
     });
 
     /**
-     * O TOM DA ESTRUTURA É UM SÓ, e é o MESMO que a vista de Ano usa: um
-     * cinzento-quente discreto, e nunca uma cor tirada da ordem em que o período
-     * calhou vir. E nunca o âmbar, que já é da «Visita de estudo».
+     * O TOM DA ESTRUTURA É UM SÓ, e é o MESMO que a vista de Ano usa: um bege de
+     * papel quente, e nunca uma cor tirada da ordem em que o período calhou vir.
+     *
+     * O `stone` que aqui esteve lia-se como cinzento e desaparecia da página —
+     * era discreto ao ponto de não estar lá. E o bege não colide com a «Visita
+     * de estudo», que é uma MOLDURA e um TEXTO saturados de peso 600/700: isto é
+     * um ENCHIMENTO de peso 50 com moldura neutra.
      */
-    it('draws the estrutural band in the one quiet tone, never in a per-período colour', () => {
+    it('draws the estrutural strip in the one quiet cream tone, never in a per-período colour', () => {
         const wrapper = mountPage({
             periods: [SEMESTER_ONE],
             days: octoberDays(() => ({ period: SEMESTER_ONE })),
         });
 
-        expect(
-            wrapper.find('section[aria-label="Períodos deste mês"] > p').classes().join(' '),
-        ).toContain(PERIOD_TINT);
+        const strip = wrapper.find('section[aria-label="Períodos deste mês"]');
+
+        expect(strip.classes().join(' ')).toContain(PERIOD_TINT);
+        expect(PERIOD_TINT).toContain('bg-amber-50');
+
+        // O cinzento antigo foi-se embora de toda a página.
+        expect(wrapper.html()).not.toContain('stone');
+
+        // E a moldura da faixa é NEUTRA: com uma moldura de âmbar, a estrutura do
+        // ano passaria a ler-se como a cor de uma visita de estudo.
+        expect(strip.classes().join(' ')).not.toMatch(/border-amber|border-orange/);
 
         for (const tint of [
             'bg-sky-100/70',
@@ -548,35 +600,41 @@ describe('calendar/Month', () => {
         }
     });
 
-    it('names a período where it begins and where it changes, not in all thirty cells', () => {
+    /**
+     * A CÉLULA DO DIA DEIXOU DE NOMEAR O PERÍODO. Nomeava-o onde ele começava —
+     * a célula do dia 11 escrevia «1.º Semestre» — a um centímetro de uma faixa
+     * que já diz «1.º Semestre · desde 11/09» por cima da grelha inteira e com
+     * muito mais peso. Era a mesma coisa dita duas vezes, e a segunda só fazia
+     * ruído dentro do dia.
+     */
+    it('never names a período inside a grid day cell, now that the strip says it', () => {
         const first = period({ ulid: 'p1', label: '1.º Período', ends_on: '2026-10-10' });
-        const second = period({ ulid: 'p2', label: '2.º Período', starts_on: '2026-10-11' });
+        const second = period({ ulid: 'p2', label: '2.º Período', starts_on: '2026-10-15' });
 
         const wrapper = mountPage({
+            month: { value: '2026-10', starts_on: '2026-10-01', ends_on: '2026-10-31' },
             periods: [first, second],
             days: octoberDays((date) => ({
-                period: date <= '2026-10-10' ? first : second,
+                // Um período, um intervalo por dizer, e o período seguinte: as
+                // três situações em que a célula chegou a escrever um nome.
+                period:
+                    date <= '2026-10-10'
+                        ? first
+                        : date >= '2026-10-15'
+                          ? second
+                          : null,
             })),
         });
 
-        const named = wrapper
-            .findAll('[data-date]')
-            .filter((cell) => cell.text().includes('.º Período'))
-            .map((cell) => cell.attributes('data-date'));
+        // Nem na primeira célula da grelha, nem naquela onde a faixa muda, nem
+        // em nenhuma das trinta e cinco.
+        for (const cell of wrapper.findAll('[data-date]')) {
+            expect(cell.text()).not.toContain('Período');
+        }
 
-        // The first cell of the grid, and the day the band changes. Nowhere else.
-        expect(named).toEqual(['2026-09-28', '2026-10-11']);
-    });
-
-    it('leaves a day in a gap between períodos honestly unbanded', () => {
-        const wrapper = mountPage({
-            periods: [period({ ends_on: '2026-10-10' })],
-            days: octoberDays((date) => ({
-                period: date <= '2026-10-10' ? period({ ends_on: '2026-10-10' }) : null,
-            })),
-        });
-
-        expect(wrapper.find('[data-date="2026-10-20"]').text()).not.toContain('Período');
+        // E continua dito — uma vez, na faixa, por cima da grelha inteira.
+        expect(bandText(wrapper)).toContain('1.º Período');
+        expect(bandText(wrapper)).toContain('2.º Período');
     });
 
     it('caps a crowded day and offers the rest behind one control', () => {
