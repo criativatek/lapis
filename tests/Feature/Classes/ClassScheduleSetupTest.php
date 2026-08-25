@@ -13,6 +13,7 @@ use App\Models\SubscriptionStatus;
 use App\Models\User;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Tenancy\CurrentOrganization;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Route;
@@ -191,6 +192,50 @@ class ClassScheduleSetupTest extends TestCase
                 $slots = $page->toArray()['props']['recurringLessonSlots'];
                 $this->assertIsArray($slots);
                 $this->assertCount(1, $slots);
+            });
+    }
+
+    /**
+     * A mesma filtragem que TeacherTimetableTest já prova para o horário do
+     * professor, aqui do lado do editor da própria turma: uma linha fechada
+     * por uma revisão (ReviseRecurringLessonSlot) fica na tabela — os Lesson
+     * já materializados a partir dela continuam a apontar para ela — mas
+     * não volta a aparecer neste ecrã ao lado da versão que a substituiu, e
+     * a versão que fica já traz `already_in_vigor`.
+     */
+    #[Test]
+    public function a_closed_slot_from_an_earlier_revision_never_appears_in_the_turmas_own_editor(): void
+    {
+        $class = $this->schoolClassFor($this->teacher, '7.º C');
+        $today = CarbonImmutable::now('Europe/Lisbon');
+
+        $this->inTenant(fn () => RecurringLessonSlot::create([
+            'class_id' => $class->id,
+            'day_of_week' => 1,
+            'starts_at' => '08:30',
+            'ends_at' => '09:20',
+            'ends_on' => $today->subDay()->toDateString(),
+        ]));
+        $this->inTenant(fn () => RecurringLessonSlot::create([
+            'class_id' => $class->id,
+            'day_of_week' => 1,
+            'starts_at' => '09:30',
+            'ends_at' => '10:20',
+            'starts_on' => $today->toDateString(),
+        ]));
+
+        $this->actingAs($this->teacher)
+            ->withSession($this->tenantSession())
+            ->get("/classes/{$class->ulid}")
+            ->assertOk()
+            ->assertInertia(function (AssertableInertia $page) {
+                $page->component('classes/Show');
+
+                $slots = $page->toArray()['props']['recurringLessonSlots'];
+                $this->assertIsArray($slots);
+                $this->assertCount(1, $slots);
+                $this->assertSame('09:30', $slots[0]['starts_at']);
+                $this->assertTrue($slots[0]['already_in_vigor']);
             });
     }
 

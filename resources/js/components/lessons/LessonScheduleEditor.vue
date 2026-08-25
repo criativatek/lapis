@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { router, useForm } from '@inertiajs/vue3';
 import { Pencil, Plus, Trash2, X } from '@lucide/vue';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +15,7 @@ export type RecurringLessonSlot = {
     ends_at: string;
     starts_on: string | null;
     ends_on: string | null;
+    already_in_vigor: boolean;
 };
 
 const props = defineProps<{
@@ -39,12 +40,31 @@ const form = useForm({
     ends_at: '',
     starts_on: '',
     ends_on: '',
+    effective_from: '',
 });
+
+// Derived from `props.slots` — the same slot the list itself already knows
+// about — rather than a second ref kept in sync by hand, so editing() can
+// never disagree with what the "Editar" button that opened the form saw.
+const editingSlotAlreadyInVigor = computed(
+    () =>
+        props.slots.find((slot) => slot.ulid === editingUlid.value)
+            ?.already_in_vigor ?? false,
+);
+
+function todayIsoDate(): string {
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+
+    return `${now.getFullYear()}-${month}-${day}`;
+}
 
 function resetForm(): void {
     editingUlid.value = null;
     form.reset();
     form.class_id = props.classId;
+    form.effective_from = '';
     form.clearErrors();
 }
 
@@ -56,10 +76,34 @@ function edit(slot: RecurringLessonSlot): void {
     form.ends_at = slot.ends_at;
     form.starts_on = slot.starts_on ?? '';
     form.ends_on = slot.ends_on ?? '';
+    // Only a UI default — the server independently validates effective_from
+    // against "today" in the organization's own timezone regardless of what
+    // the browser's clock defaulted it to.
+    form.effective_from = slot.already_in_vigor ? todayIsoDate() : '';
     form.clearErrors();
 }
 
 function submit(): void {
+    // effective_from only means anything when revising an already-in-vigor
+    // slot (LessonScheduleController::update()) — creating a slot, or editing
+    // one that has not started yet, sends no such field at all rather than
+    // an empty string for the backend to have to ignore.
+    const includeEffectiveFrom =
+        editingUlid.value !== null && editingSlotAlreadyInVigor.value;
+
+    form.transform((data) =>
+        includeEffectiveFrom
+            ? data
+            : {
+                  class_id: data.class_id,
+                  day_of_week: data.day_of_week,
+                  starts_at: data.starts_at,
+                  ends_at: data.ends_at,
+                  starts_on: data.starts_on,
+                  ends_on: data.ends_on,
+              },
+    );
+
     const options = { preserveScroll: true, onSuccess: resetForm };
 
     if (editingUlid.value === null) {
@@ -72,11 +116,11 @@ function submit(): void {
 }
 
 function remove(slot: RecurringLessonSlot): void {
-    if (
-        confirm(
-            `Remover o horário de ${weekdays[slot.day_of_week - 1]} às ${slot.starts_at}?`,
-        )
-    ) {
+    const message = slot.already_in_vigor
+        ? `Terminar o horário de ${weekdays[slot.day_of_week - 1]} às ${slot.starts_at} a partir de hoje? O histórico é preservado.`
+        : `Remover o horário de ${weekdays[slot.day_of_week - 1]} às ${slot.starts_at}?`;
+
+    if (confirm(message)) {
         router.delete(`/lesson-slots/${slot.ulid}`, { preserveScroll: true });
     }
 }
@@ -222,6 +266,24 @@ function remove(slot: RecurringLessonSlot): void {
                         type="date"
                     /><InputError :message="form.errors.ends_on" />
                 </div>
+            </div>
+            <div
+                v-if="editingSlotAlreadyInVigor"
+                class="grid gap-1.5 rounded-md border border-dashed p-3"
+            >
+                <Label for="slot-effective-from"
+                    >Aplicar alteração a partir de</Label
+                ><Input
+                    id="slot-effective-from"
+                    v-model="form.effective_from"
+                    type="date"
+                    required
+                /><InputError :message="form.errors.effective_from" />
+                <p class="text-xs text-muted-foreground">
+                    Este horário já está em vigor. As aulas até ao dia
+                    anterior mantêm a configuração atual; a partir desta data
+                    passa a vigorar a nova.
+                </p>
             </div>
             <InputError :message="form.errors.class_id" />
             <Button type="submit" class="min-h-11" :disabled="form.processing"

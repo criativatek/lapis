@@ -13,6 +13,7 @@ use App\Models\SubscriptionStatus;
 use App\Models\User;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Tenancy\CurrentOrganization;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Route;
@@ -330,6 +331,53 @@ class TeacherTimetableTest extends TestCase
             ->get('/classes/schedule-setup')
             ->assertOk()
             ->assertInertia(fn (AssertableInertia $page) => $page->component('classes/ScheduleSetup'));
+    }
+
+    /**
+     * A linha fechada por uma revisão (ReviseRecurringLessonSlot) fica na
+     * tabela — os Lesson já materializados a partir dela continuam a
+     * apontar para a sua FK — mas deixa de aparecer aqui: sem este filtro, o
+     * horário voltaria a mostrar a versão antiga a par da que a substituiu.
+     */
+    #[Test]
+    public function a_closed_slot_from_an_earlier_revision_never_appears_while_its_replacement_does(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher, '7.º C');
+        $today = CarbonImmutable::now('Europe/Lisbon');
+
+        $this->slot($schoolClass, 1, '08:30', '09:20', [
+            'starts_on' => null,
+            'ends_on' => $today->subDay()->toDateString(),
+        ]);
+        $replacement = $this->slot($schoolClass, 1, '09:30', '10:20', [
+            'starts_on' => $today->toDateString(),
+            'ends_on' => null,
+        ]);
+
+        $this->actingAs($this->teacher)
+            ->withSession($this->tenantSession())
+            ->get('/timetable')
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->has('slots', 1)
+                ->where('slots.0.ulid', $replacement->ulid)
+                ->where('slots.0.already_in_vigor', true)
+                ->etc());
+    }
+
+    #[Test]
+    public function a_not_yet_started_slot_is_reported_as_not_yet_in_vigor(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher, '7.º C');
+        $this->slot($schoolClass, 2, '10:00', '10:50', [
+            'starts_on' => CarbonImmutable::now('Europe/Lisbon')->addMonth()->toDateString(),
+        ]);
+
+        $this->actingAs($this->teacher)
+            ->withSession($this->tenantSession())
+            ->get('/timetable')
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('slots.0.already_in_vigor', false)
+                ->etc());
     }
 
     // --------------------------------------------------------------- helpers

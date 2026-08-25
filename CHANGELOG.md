@@ -2,6 +2,14 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.73.0] — 2026-08-25
+
+### Added
+
+- **Editar ou remover um horário recorrente (`RecurringLessonSlot`) já em vigor deixa de reescrever o que já aconteceu — passa a criar uma nova versão.** Até agora uma alteração ao dia, à hora ou ao período de um horário reescrevia-o sempre no próprio lugar, mesmo depois de já ter produzido aulas — arrastando consigo qualquer `Lesson` já materializada a partir dele. Um horário que ainda não começou continua a ser editado ou apagado no próprio lugar, porque não há nada a proteger; um horário já em vigor passa em vez disso a fechar-se na véspera da data a partir de quando a alteração deve valer (`effective_from`, pedido explicitamente ao professor) e a abrir uma linha nova a partir dessa data. A linha antiga fica exactamente como estava — mesmo dia, mesma hora, mesmo período —, com as suas próprias `Lesson` a continuar a apontar para ela; se já tinha um fim marcado antes dessa véspera, esse fim nunca é esticado, abrindo de propósito um intervalo em que nenhuma das duas versões está activa. Remover um horário já em vigor deixa igualmente de ser um apagar: a linha fecha-se em vez de ser destruída, preservando as aulas que aponta para ela. `MaterializeLessonsForRange` não precisou de mudar nada — já lia cada horário pelos seus próprios `starts_on`/`ends_on`, pelo que a fronteira entre a versão antiga e a nova é respeitada automaticamente, incluindo a meio de uma semana.
+
+  **O caso do horário cujo próprio início é hoje.** Um horário que só entrou em vigor hoje e ainda não produziu nenhuma aula não tem histórico nenhum a proteger — comporta-se exactamente como um horário futuro: editável e apagável no próprio lugar, sem pedir `effective_from`. Assim que existe pelo menos uma aula de hoje sob esse horário, a alteração passa a exigir `effective_from`, que só pode entrar em vigor a partir de amanhã — nunca hoje, o que reescreveria a aula já criada —, com uma mensagem própria a explicar porquê em vez da mensagem genérica de "início da versão atual". Remover esse horário deixa de ser recusado: a linha fecha-se exactamente em hoje (e não em "hoje menos um dia", que produziria uma data de fim anterior à de início), preservando a aula de hoje e impedindo qualquer nova ocorrência a partir de amanhã.
+
 ## [0.72.1] — 2026-08-25
 
 ### Fixed

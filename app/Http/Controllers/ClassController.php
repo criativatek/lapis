@@ -18,6 +18,8 @@ use App\Models\User;
 use App\Rules\BelongsToCurrentOrganization;
 use App\Services\ClassService;
 use App\Support\Entitlements\Entitlements;
+use App\Support\Tenancy\CurrentOrganization;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -27,7 +29,11 @@ use Inertia\Response;
 
 class ClassController extends Controller
 {
-    public function __construct(protected ClassService $service, protected Entitlements $entitlements) {}
+    public function __construct(
+        protected ClassService $service,
+        protected Entitlements $entitlements,
+        protected CurrentOrganization $currentOrganization,
+    ) {}
 
     public function index(): Response
     {
@@ -102,6 +108,9 @@ class ClassController extends Controller
 
         $class->load(['subject', 'academicYear', 'profileVersion.profile']);
 
+        $timezone = $this->currentOrganization->get()->timezone;
+        $today = CarbonImmutable::now($timezone)->toDateString();
+
         return Inertia::render('classes/Show', [
             'schoolClass' => [
                 'ulid' => $class->ulid,
@@ -124,17 +133,25 @@ class ClassController extends Controller
                     'version_id' => $profile->current_version_id,
                     'label' => $profile->name,
                 ]),
+            // Only the currently-active-or-future slot per schedule line: a
+            // revision (ReviseRecurringLessonSlot) leaves the old, now-closed
+            // row in place for Lessons already materialized from it to keep
+            // pointing at, and without this filter it would reappear here
+            // mixed in with the version that replaced it.
             'recurringLessonSlots' => $this->entitlements->allows('lessons')
-                ? $class->recurringLessonSlots()->orderBy('day_of_week')->orderBy('starts_at')->get()->map(
-                    fn (RecurringLessonSlot $slot) => [
-                        'ulid' => $slot->ulid,
-                        'day_of_week' => $slot->day_of_week,
-                        'starts_at' => substr($slot->starts_at, 0, 5),
-                        'ends_at' => substr($slot->ends_at, 0, 5),
-                        'starts_on' => $slot->starts_on?->toDateString(),
-                        'ends_on' => $slot->ends_on?->toDateString(),
-                    ],
-                )->values()
+                ? $class->recurringLessonSlots()
+                    ->where(fn (Builder $query) => $query->whereNull('ends_on')->orWhereDate('ends_on', '>=', $today))
+                    ->orderBy('day_of_week')->orderBy('starts_at')->get()->map(
+                        fn (RecurringLessonSlot $slot) => [
+                            'ulid' => $slot->ulid,
+                            'day_of_week' => $slot->day_of_week,
+                            'starts_at' => substr($slot->starts_at, 0, 5),
+                            'ends_at' => substr($slot->ends_at, 0, 5),
+                            'starts_on' => $slot->starts_on?->toDateString(),
+                            'ends_on' => $slot->ends_on?->toDateString(),
+                            'already_in_vigor' => $slot->isAlreadyInVigor($timezone),
+                        ],
+                    )->values()
                 : null,
             // Names come from the encrypted identity — shown to the class's own
             // teacher, who is authorized. The pseudonym is what leaves the app.

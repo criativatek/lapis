@@ -5,6 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\RecurringLessonSlot;
 use App\Models\SchoolClass;
 use App\Models\User;
+use App\Support\Tenancy\CurrentOrganization;
+use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Support\Facades\Gate;
@@ -32,6 +35,8 @@ use Inertia\Response;
  */
 class TeacherTimetableController extends Controller implements HasMiddleware
 {
+    public function __construct(protected CurrentOrganization $currentOrganization) {}
+
     /**
      * Gated by module:lessons, like classes.schedule-setup and the
      * timetable-imports.* routes it links to: RecurringLessonSlot is the same
@@ -62,11 +67,21 @@ class TeacherTimetableController extends Controller implements HasMiddleware
             ->orderBy('label')
             ->get();
 
+        $timezone = $this->currentOrganization->get()->timezone;
+        $today = CarbonImmutable::now($timezone)->toDateString();
+
         // Every recurring block of those turmas, and of no others. Narrowed by
         // class_id over the list already in hand, the same way
         // GenerateDataExport already reaches a teacher's dependent rows.
+        //
+        // Only the currently-active-or-future slot per schedule line: a
+        // revision (ReviseRecurringLessonSlot) leaves the old, now-closed row
+        // in place for Lessons already materialized from it to keep pointing
+        // at, and without this filter it would show up here alongside the
+        // version that replaced it.
         $slots = RecurringLessonSlot::query()
             ->whereIn('class_id', $schoolClasses->modelKeys())
+            ->where(fn (Builder $query) => $query->whereNull('ends_on')->orWhereDate('ends_on', '>=', $today))
             ->with('schoolClass.subject')
             ->orderBy('day_of_week')
             ->orderBy('starts_at')
@@ -81,6 +96,7 @@ class TeacherTimetableController extends Controller implements HasMiddleware
                 'ends_at' => substr($slot->ends_at, 0, 5),
                 'starts_on' => $slot->starts_on?->toDateString(),
                 'ends_on' => $slot->ends_on?->toDateString(),
+                'already_in_vigor' => $slot->isAlreadyInVigor($timezone),
                 'school_class' => [
                     'ulid' => $slot->schoolClass->ulid,
                     'label' => $slot->schoolClass->label,

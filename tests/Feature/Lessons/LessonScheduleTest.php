@@ -4,6 +4,8 @@ namespace Tests\Feature\Lessons;
 
 use App\Actions\Lessons\MaterializeLessonsForRange;
 use App\Http\Controllers\LessonScheduleController;
+use App\Models\AcademicCalendarException;
+use App\Models\AcademicCalendarExceptionType;
 use App\Models\AcademicYear;
 use App\Models\Lesson;
 use App\Models\LessonStatus;
@@ -289,23 +291,918 @@ class LessonScheduleTest extends TestCase
         $this->assertDatabaseCount('lessons', 0);
     }
 
-    private function schoolClassFor(User $teacher, ?Organization $organization = null): SchoolClass
+    // ------------------------------------------------- effective-dating
+
+    #[Test]
+    public function editing_a_slot_before_it_starts_is_a_plain_in_place_update(): void
     {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
+            $this->slotAttributes($schoolClass, ['starts_on' => $this->inDays(30), 'ends_on' => null]),
+        ));
+
+        $this->actingAs($this->teacher)
+            ->withSession(['organization_id' => $this->organization->id])
+            ->put("/_test/lesson-slots/{$slot->ulid}", $this->slotPayload($schoolClass, [
+                'day_of_week' => 3,
+                'starts_at' => '10:00',
+                'ends_at' => '10:50',
+                'starts_on' => $this->inDays(30),
+                'ends_on' => null,
+            ]))
+            ->assertRedirect();
+
+        $this->assertDatabaseCount('recurring_lesson_slots', 1);
+
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => $slot->refresh());
+        $this->assertSame(3, $slot->day_of_week);
+        $this->assertStringStartsWith('10:00', $slot->starts_at);
+        $this->assertStringStartsWith('10:50', $slot->ends_at);
+    }
+
+    #[Test]
+    public function editing_an_already_in_vigor_slot_closes_it_and_creates_a_new_version(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
+            $this->slotAttributes($schoolClass, ['starts_on' => null, 'ends_on' => null]),
+        ));
+        $effectiveFrom = $this->inDays(10);
+        $newEndsOn = $this->inDays(300);
+
+        $this->actingAs($this->teacher)
+            ->withSession(['organization_id' => $this->organization->id])
+            ->put("/_test/lesson-slots/{$slot->ulid}", $this->slotPayload($schoolClass, [
+                'day_of_week' => 3,
+                'starts_at' => '10:00',
+                'ends_at' => '10:50',
+                'starts_on' => null,
+                'ends_on' => $newEndsOn,
+                'effective_from' => $effectiveFrom,
+            ]))
+            ->assertRedirect();
+
+        $this->assertDatabaseCount('recurring_lesson_slots', 2);
+
+        [$old, $new] = $this->inTenant($this->organization, fn (): array => [
+            $slot->refresh(),
+            RecurringLessonSlot::query()->where('id', '!=', $slot->id)->sole(),
+        ]);
+
+        // The OLD row keeps its own pattern completely untouched — only
+        // ends_on moves, closing it the day before the new version starts.
+        $this->assertSame(1, $old->day_of_week);
+        $this->assertStringStartsWith('09:30', $old->starts_at);
+        $this->assertStringStartsWith('10:20', $old->ends_at);
+        $this->assertNull($old->starts_on);
+        $this->assertSame(
+            CarbonImmutable::parse($effectiveFrom)->subDay()->toDateString(),
+            $old->ends_on->toDateString(),
+        );
+
+        // The NEW row carries the submitted pattern, starting exactly on
+        // effective_from and bounded by whatever ends_on was submitted.
+        $this->assertSame(3, $new->day_of_week);
+        $this->assertStringStartsWith('10:00', $new->starts_at);
+        $this->assertStringStartsWith('10:50', $new->ends_at);
+        $this->assertSame($effectiveFrom, $new->starts_on->toDateString());
+        $this->assertSame($newEndsOn, $new->ends_on->toDateString());
+    }
+
+    /**
+     * (a) do enunciado de integridade: o limite entre a versão antiga e a
+     * nova é CONTÍGUO — o último dia da antiga é exatamente a véspera do
+     * primeiro dia da nova — e não deixa nem sobrepõe nem abre um buraco por
+     * omissão.
+     */
+    #[Test]
+    public function revising_a_slot_produces_a_contiguous_boundary_between_old_and_new(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
+            $this->slotAttributes($schoolClass, ['starts_on' => null, 'ends_on' => null]),
+        ));
+        $effectiveFrom = $this->inDays(5);
+
+        $this->actingAs($this->teacher)
+            ->withSession(['organization_id' => $this->organization->id])
+            ->put("/_test/lesson-slots/{$slot->ulid}", $this->slotPayload($schoolClass, [
+                'starts_on' => null,
+                'ends_on' => null,
+                'effective_from' => $effectiveFrom,
+            ]))
+            ->assertRedirect();
+
+        [$old, $new] = $this->inTenant($this->organization, fn (): array => [
+            $slot->refresh(),
+            RecurringLessonSlot::query()->where('id', '!=', $slot->id)->sole(),
+        ]);
+
+        $this->assertSame(
+            $new->starts_on->toDateString(),
+            $old->ends_on->addDay()->toDateString(),
+        );
+    }
+
+    /**
+     * (b) O caso-limite agora RESOLVIDO: um slot cujo próprio starts_on é
+     * HOJE mas que ainda não produziu nenhuma Lesson não tem histórico
+     * nenhum a proteger — comporta-se exatamente como um slot futuro, e por
+     * isso é editado no próprio lugar, sem exigir effective_from.
+     */
+    #[Test]
+    public function editing_a_today_starting_slot_with_no_lessons_yet_is_a_plain_in_place_update(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $today = $this->today();
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
+            $this->slotAttributes($schoolClass, ['starts_on' => $today, 'ends_on' => null]),
+        ));
+
+        $this->actingAs($this->teacher)
+            ->withSession(['organization_id' => $this->organization->id])
+            ->put("/_test/lesson-slots/{$slot->ulid}", $this->slotPayload($schoolClass, [
+                'day_of_week' => 3,
+                'starts_at' => '10:00',
+                'ends_at' => '10:50',
+                'starts_on' => $today,
+                'ends_on' => null,
+                // Deliberadamente SEM effective_from — a prova de que este
+                // caso não o exige.
+            ]))
+            ->assertRedirect()
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertDatabaseCount('recurring_lesson_slots', 1);
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => $slot->refresh());
+        $this->assertSame(3, $slot->day_of_week);
+        $this->assertStringStartsWith('10:00', $slot->starts_at);
+        $this->assertNull($slot->ends_on);
+    }
+
+    /**
+     * (b) A OUTRA metade do mesmo caso-limite: um slot cujo starts_on é HOJE
+     * mas que já produziu pelo menos uma Lesson TEM histórico a proteger —
+     * as duas invariantes de effective_from (>= hoje E > starts_on) juntam-se
+     * e só deixam passar amanhã ou mais tarde; effective_from === hoje é
+     * rejeitado, com a mensagem específica sobre a aula de hoje.
+     */
+    #[Test]
+    public function revising_a_today_starting_slot_with_a_lesson_today_is_rejected_when_effective_from_is_today(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $today = $this->today();
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
+            $this->slotAttributes($schoolClass, ['starts_on' => $today, 'ends_on' => null]),
+        ));
+        $this->inTenant($this->organization, fn (): Lesson => Lesson::create([
+            'class_id' => $schoolClass->id,
+            'recurring_lesson_slot_id' => $slot->id,
+            'starts_at' => $today.' 09:30:00',
+            'ends_at' => $today.' 10:20:00',
+            'status' => LessonStatus::Preparation,
+            'created_by' => $this->teacher->id,
+        ]));
+
+        $this->actingAs($this->teacher)
+            ->withSession(['organization_id' => $this->organization->id])
+            ->put("/_test/lesson-slots/{$slot->ulid}", $this->slotPayload($schoolClass, [
+                'starts_on' => $today,
+                'ends_on' => null,
+                'effective_from' => $today,
+            ]))
+            ->assertSessionHasErrors('effective_from');
+
+        $this->assertDatabaseCount('recurring_lesson_slots', 1);
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => $slot->refresh());
+        $this->assertNull($slot->ends_on);
+    }
+
+    /**
+     * (b) E a data que a rejeição acima deixa passar: amanhã fecha a versão
+     * de hoje exatamente EM hoje (não em "hoje - 1", que produziria
+     * ends_on < starts_on) e abre a nova a partir de amanhã — e a Lesson já
+     * materializada para hoje, sob a versão antiga, fica completamente
+     * intocada.
+     */
+    #[Test]
+    public function revising_a_today_starting_slot_with_a_lesson_today_succeeds_from_tomorrow(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $today = $this->today();
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
+            $this->slotAttributes($schoolClass, ['starts_on' => $today, 'ends_on' => null]),
+        ));
+        $lesson = $this->inTenant($this->organization, fn (): Lesson => Lesson::create([
+            'class_id' => $schoolClass->id,
+            'recurring_lesson_slot_id' => $slot->id,
+            'starts_at' => $today.' 09:30:00',
+            'ends_at' => $today.' 10:20:00',
+            'status' => LessonStatus::Preparation,
+            'created_by' => $this->teacher->id,
+        ]));
+        $before = $this->byColumn($lesson->getAttributes());
+        $tomorrow = $this->inDays(1);
+
+        $this->actingAs($this->teacher)
+            ->withSession(['organization_id' => $this->organization->id])
+            ->put("/_test/lesson-slots/{$slot->ulid}", $this->slotPayload($schoolClass, [
+                'day_of_week' => 3,
+                'starts_at' => '10:00',
+                'ends_at' => '10:50',
+                'starts_on' => $today,
+                'ends_on' => null,
+                'effective_from' => $tomorrow,
+            ]))
+            ->assertRedirect();
+
+        $this->assertDatabaseCount('recurring_lesson_slots', 2);
+
+        [$old, $new] = $this->inTenant($this->organization, fn (): array => [
+            $slot->refresh(),
+            RecurringLessonSlot::query()->where('id', '!=', $slot->id)->sole(),
+        ]);
+
+        $this->assertSame($today, $old->ends_on->toDateString());
+        $this->assertSame($tomorrow, $new->starts_on->toDateString());
+
+        $this->assertSame($before, $this->inTenant(
+            $this->organization,
+            fn (): array => $this->byColumn(Lesson::query()->findOrFail($lesson->id)->getAttributes()),
+        ));
+    }
+
+    /**
+     * (c) effective_from cai DEPOIS do ends_on original da versão atual: o
+     * limite antigo fica exatamente onde já estava — nunca esticado até
+     * effective_from - 1 dia —, o que abre de propósito um intervalo em que
+     * nenhuma das duas versões está em vigor.
+     */
+    #[Test]
+    public function revising_a_slot_past_its_original_ends_on_leaves_the_gap_instead_of_extending_it(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $originalEndsOn = $this->inDays(60);
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
+            $this->slotAttributes($schoolClass, ['starts_on' => null, 'ends_on' => $originalEndsOn]),
+        ));
+        $effectiveFrom = $this->inDays(120);
+        $newEndsOn = $this->inDays(300);
+
+        $this->actingAs($this->teacher)
+            ->withSession(['organization_id' => $this->organization->id])
+            ->put("/_test/lesson-slots/{$slot->ulid}", $this->slotPayload($schoolClass, [
+                'starts_on' => null,
+                'ends_on' => $newEndsOn,
+                'effective_from' => $effectiveFrom,
+            ]))
+            ->assertRedirect();
+
+        $this->assertDatabaseCount('recurring_lesson_slots', 2);
+
+        [$old, $new] = $this->inTenant($this->organization, fn (): array => [
+            $slot->refresh(),
+            RecurringLessonSlot::query()->where('id', '!=', $slot->id)->sole(),
+        ]);
+
+        $this->assertSame($originalEndsOn, $old->ends_on->toDateString());
+        $this->assertSame($effectiveFrom, $new->starts_on->toDateString());
+        $this->assertSame($newEndsOn, $new->ends_on->toDateString());
+    }
+
+    #[Test]
+    public function revising_a_bounded_slot_without_touching_ends_on_keeps_the_new_version_bounded(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $boundedEndsOn = $this->inDays(200);
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
+            $this->slotAttributes($schoolClass, ['starts_on' => null, 'ends_on' => $boundedEndsOn]),
+        ));
+
+        $this->actingAs($this->teacher)
+            ->withSession(['organization_id' => $this->organization->id])
+            ->put("/_test/lesson-slots/{$slot->ulid}", $this->slotPayload($schoolClass, [
+                'day_of_week' => 4,
+                // A UI já pré-preenche `ends_on` com o valor existente do slot
+                // (LessonScheduleEditor.vue::edit()) — isto simula um envio
+                // sem o campo ter sido tocado, e não um valor escolhido de
+                // propósito para o teste.
+                'ends_on' => $boundedEndsOn,
+                'starts_on' => null,
+                'effective_from' => $this->inDays(10),
+            ]))
+            ->assertRedirect();
+
+        $new = $this->inTenant(
+            $this->organization,
+            fn (): RecurringLessonSlot => RecurringLessonSlot::query()->where('id', '!=', $slot->id)->sole(),
+        );
+
+        $this->assertNotNull($new->ends_on);
+        $this->assertSame($boundedEndsOn, $new->ends_on->toDateString());
+    }
+
+    #[Test]
+    public function removing_an_already_in_vigor_slot_closes_it_instead_of_deleting(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
+            $this->slotAttributes($schoolClass, ['starts_on' => null, 'ends_on' => null]),
+        ));
+
+        $this->actingAs($this->teacher)
+            ->withSession(['organization_id' => $this->organization->id])
+            ->delete("/_test/lesson-slots/{$slot->ulid}")
+            ->assertRedirect();
+
+        $this->assertDatabaseCount('recurring_lesson_slots', 1);
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => $slot->refresh());
+        $this->assertSame(
+            CarbonImmutable::now('Europe/Lisbon')->subDay()->toDateString(),
+            $slot->ends_on->toDateString(),
+        );
+    }
+
+    /**
+     * Um slot cujo starts_on é HOJE mas sem nenhuma Lesson ainda não tem
+     * histórico nenhum a proteger — removê-lo é um apagar verdadeiro, tal e
+     * qual um slot futuro.
+     */
+    #[Test]
+    public function removing_a_today_starting_slot_with_no_lessons_yet_is_hard_deleted(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
+            $this->slotAttributes($schoolClass, ['starts_on' => $this->today(), 'ends_on' => null]),
+        ));
+
+        $this->actingAs($this->teacher)
+            ->withSession(['organization_id' => $this->organization->id])
+            ->delete("/_test/lesson-slots/{$slot->ulid}")
+            ->assertRedirect()
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertDatabaseCount('recurring_lesson_slots', 0);
+    }
+
+    /**
+     * A outra metade: um slot cujo starts_on é HOJE mas que já produziu uma
+     * Lesson TEM histórico a proteger. Fecha em vez de apagar — e fecha
+     * exatamente EM hoje (não em "hoje - 1", que produziria ends_on menor
+     * que starts_on, já que os dois são iguais). A Lesson de hoje, já
+     * materializada sob esta versão, fica intocada, e materializar de novo o
+     * próprio hoje continua idempotente; nada nasce a partir de amanhã.
+     */
+    #[Test]
+    public function removing_a_today_starting_slot_with_a_lesson_today_closes_it_at_today_instead_of_deleting(): void
+    {
+        // A wide academic year — the fixed 2026-09-01/2027-06-30 window used
+        // everywhere else in this file would throw when today happens to
+        // fall outside it, and this test's whole point is materializing
+        // AROUND the real "today".
+        $schoolClass = $this->schoolClassFor($this->teacher, null, $this->inDays(-30), $this->inDays(400));
+        $today = $this->today();
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
+            // day_of_week pinned to today's own real weekday, so the
+            // re-materialization check below lands on the same day instead
+            // of silently matching nothing when today isn't a Monday.
+            $this->slotAttributes($schoolClass, [
+                'day_of_week' => $this->todayDayOfWeek(),
+                'starts_on' => $today,
+                'ends_on' => null,
+            ]),
+        ));
+        $lesson = $this->inTenant($this->organization, fn (): Lesson => Lesson::create([
+            'class_id' => $schoolClass->id,
+            'recurring_lesson_slot_id' => $slot->id,
+            'starts_at' => $today.' 09:30:00',
+            'ends_at' => $today.' 10:20:00',
+            'status' => LessonStatus::Preparation,
+            'created_by' => $this->teacher->id,
+        ]));
+        $before = $this->byColumn($lesson->getAttributes());
+
+        $this->actingAs($this->teacher)
+            ->withSession(['organization_id' => $this->organization->id])
+            ->delete("/_test/lesson-slots/{$slot->ulid}")
+            ->assertRedirect()
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertDatabaseCount('recurring_lesson_slots', 1);
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => $slot->refresh());
+        $this->assertSame($today, $slot->ends_on->toDateString());
+
+        $this->assertSame($before, $this->inTenant(
+            $this->organization,
+            fn (): array => $this->byColumn(Lesson::query()->findOrFail($lesson->id)->getAttributes()),
+        ));
+
+        // Re-materializar o próprio hoje continua idempotente (não duplica,
+        // não rebenta), e nada nasce a partir de amanhã — a versão fechada
+        // não produz mais nenhuma ocorrência.
+        $lessons = $this->inTenant($this->organization, fn () => app(MaterializeLessonsForRange::class)->execute(
+            $schoolClass,
+            CarbonImmutable::parse($today),
+            CarbonImmutable::parse($this->inDays(7)),
+            $this->teacher,
+        ));
+
+        $this->assertCount(1, $lessons);
+        $this->assertSame($lesson->id, $lessons->sole()->id);
+        $this->assertSame(1, Lesson::query()->count());
+    }
+
+    #[Test]
+    public function a_future_slot_with_no_lessons_is_still_hard_deleted(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
+            $this->slotAttributes($schoolClass, ['starts_on' => $this->inDays(30), 'ends_on' => null]),
+        ));
+
+        $this->actingAs($this->teacher)
+            ->withSession(['organization_id' => $this->organization->id])
+            ->delete("/_test/lesson-slots/{$slot->ulid}")
+            ->assertRedirect();
+
+        $this->assertDatabaseCount('recurring_lesson_slots', 0);
+    }
+
+    #[Test]
+    public function a_future_slot_with_existing_lessons_is_closed_instead_of_deleted(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $startsOn = $this->inDays(30);
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
+            $this->slotAttributes($schoolClass, ['starts_on' => $startsOn, 'ends_on' => null]),
+        ));
+        $lesson = $this->inTenant($this->organization, fn (): Lesson => Lesson::create([
+            'class_id' => $schoolClass->id,
+            'recurring_lesson_slot_id' => $slot->id,
+            'starts_at' => $startsOn.' 09:30:00',
+            'ends_at' => $startsOn.' 10:20:00',
+            'status' => LessonStatus::Preparation,
+            'created_by' => $this->teacher->id,
+        ]));
+        $before = $this->byColumn($lesson->getAttributes());
+
+        $this->actingAs($this->teacher)
+            ->withSession(['organization_id' => $this->organization->id])
+            ->delete("/_test/lesson-slots/{$slot->ulid}")
+            ->assertRedirect();
+
+        $this->assertDatabaseCount('recurring_lesson_slots', 1);
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => $slot->refresh());
+        $this->assertSame($startsOn, $slot->ends_on->toDateString());
+
+        $this->assertSame($before, $this->inTenant(
+            $this->organization,
+            fn (): array => $this->byColumn(Lesson::query()->findOrFail($lesson->id)->getAttributes()),
+        ));
+    }
+
+    #[Test]
+    public function revising_an_already_in_vigor_slot_never_touches_its_existing_materialized_lessons(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
+            $this->slotAttributes($schoolClass, ['day_of_week' => 1, 'starts_on' => null, 'ends_on' => null]),
+        ));
+        $this->inTenant($this->organization, fn () => app(MaterializeLessonsForRange::class)->execute(
+            $schoolClass,
+            CarbonImmutable::parse('2026-09-07'),
+            CarbonImmutable::parse('2026-09-07'),
+            $this->teacher,
+        ));
+        $lesson = $this->inTenant($this->organization, fn (): Lesson => Lesson::query()->sole());
+        $before = $this->byColumn($lesson->getAttributes());
+
+        $this->actingAs($this->teacher)
+            ->withSession(['organization_id' => $this->organization->id])
+            ->put("/_test/lesson-slots/{$slot->ulid}", $this->slotPayload($schoolClass, [
+                'day_of_week' => 2,
+                'starts_on' => null,
+                'ends_on' => null,
+                'effective_from' => $this->inDays(400),
+            ]))
+            ->assertRedirect();
+
+        $this->assertSame($before, $this->inTenant(
+            $this->organization,
+            fn (): array => $this->byColumn(Lesson::query()->findOrFail($lesson->id)->getAttributes()),
+        ));
+    }
+
+    #[Test]
+    public function removing_an_already_in_vigor_slot_never_touches_its_existing_materialized_lessons(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
+            $this->slotAttributes($schoolClass, ['day_of_week' => 1, 'starts_on' => null, 'ends_on' => null]),
+        ));
+        $this->inTenant($this->organization, fn () => app(MaterializeLessonsForRange::class)->execute(
+            $schoolClass,
+            CarbonImmutable::parse('2026-09-07'),
+            CarbonImmutable::parse('2026-09-07'),
+            $this->teacher,
+        ));
+        $lesson = $this->inTenant($this->organization, fn (): Lesson => Lesson::query()->sole());
+        $before = $this->byColumn($lesson->getAttributes());
+
+        $this->actingAs($this->teacher)
+            ->withSession(['organization_id' => $this->organization->id])
+            ->delete("/_test/lesson-slots/{$slot->ulid}")
+            ->assertRedirect();
+
+        $this->assertDatabaseCount('recurring_lesson_slots', 1);
+        $this->assertSame($before, $this->inTenant(
+            $this->organization,
+            fn (): array => $this->byColumn(Lesson::query()->findOrFail($lesson->id)->getAttributes()),
+        ));
+    }
+
+    /**
+     * Mudança de dia a meio do ano: terça às 10:00 passa a quarta às 11:00 a
+     * partir de 2026-09-15. Materializar um intervalo que atravessa a
+     * fronteira prova as duas metades ao mesmo tempo — o dia/hora certos de
+     * cada lado, e o recurring_lesson_slot_id certo (o antigo, agora
+     * fechado, do lado de cá; o novo do lado de lá).
+     */
+    #[Test]
+    public function revising_a_slots_weekday_splits_materialization_at_the_boundary(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
+            $this->slotAttributes($schoolClass, [
+                'day_of_week' => 2,
+                'starts_at' => '10:00',
+                'ends_at' => '10:50',
+                'starts_on' => null,
+                'ends_on' => null,
+            ]),
+        ));
+
+        $this->actingAs($this->teacher)
+            ->withSession(['organization_id' => $this->organization->id])
+            ->put("/_test/lesson-slots/{$slot->ulid}", $this->slotPayload($schoolClass, [
+                'day_of_week' => 3,
+                'starts_at' => '11:00',
+                'ends_at' => '11:50',
+                'starts_on' => null,
+                'ends_on' => null,
+                'effective_from' => '2026-09-15',
+            ]))
+            ->assertRedirect();
+
+        $new = $this->inTenant(
+            $this->organization,
+            fn (): RecurringLessonSlot => RecurringLessonSlot::query()->where('id', '!=', $slot->id)->sole(),
+        );
+
+        $lessons = $this->inTenant($this->organization, fn () => app(MaterializeLessonsForRange::class)->execute(
+            $schoolClass,
+            CarbonImmutable::parse('2026-09-07'),
+            CarbonImmutable::parse('2026-09-21'),
+            $this->teacher,
+        ));
+
+        $this->assertCount(2, $lessons);
+        $byDate = $this->inTenant($this->organization, fn (): array => Lesson::query()
+            ->orderBy('starts_at')
+            ->get()
+            ->map(fn (Lesson $lesson): array => [
+                'starts_at' => $lesson->starts_at->format('Y-m-d H:i:s'),
+                'ends_at' => $lesson->ends_at->format('Y-m-d H:i:s'),
+                'recurring_lesson_slot_id' => $lesson->recurring_lesson_slot_id,
+            ])
+            ->all());
+
+        $this->assertSame([
+            [
+                'starts_at' => '2026-09-08 10:00:00',
+                'ends_at' => '2026-09-08 10:50:00',
+                'recurring_lesson_slot_id' => $slot->id,
+            ],
+            [
+                'starts_at' => '2026-09-16 11:00:00',
+                'ends_at' => '2026-09-16 11:50:00',
+                'recurring_lesson_slot_id' => $new->id,
+            ],
+        ], $byDate);
+    }
+
+    /**
+     * Uma mudança só de hora — o mesmo dia da semana dos dois lados — divide
+     * exatamente da mesma forma: a terça de antes do limite fica com a hora
+     * antiga, a de depois com a nova.
+     */
+    #[Test]
+    public function revising_only_the_time_of_a_slot_also_splits_materialization_at_the_boundary(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
+            $this->slotAttributes($schoolClass, [
+                'day_of_week' => 2,
+                'starts_at' => '09:00',
+                'ends_at' => '09:50',
+                'starts_on' => null,
+                'ends_on' => null,
+            ]),
+        ));
+
+        $this->actingAs($this->teacher)
+            ->withSession(['organization_id' => $this->organization->id])
+            ->put("/_test/lesson-slots/{$slot->ulid}", $this->slotPayload($schoolClass, [
+                'day_of_week' => 2,
+                'starts_at' => '14:00',
+                'ends_at' => '14:50',
+                'starts_on' => null,
+                'ends_on' => null,
+                'effective_from' => '2026-09-15',
+            ]))
+            ->assertRedirect();
+
+        $this->inTenant($this->organization, fn () => app(MaterializeLessonsForRange::class)->execute(
+            $schoolClass,
+            CarbonImmutable::parse('2026-09-07'),
+            CarbonImmutable::parse('2026-09-21'),
+            $this->teacher,
+        ));
+
+        $this->assertSame(
+            ['2026-09-08 09:00:00', '2026-09-15 14:00:00'],
+            $this->inTenant($this->organization, fn (): array => Lesson::query()
+                ->orderBy('starts_at')
+                ->get()
+                ->map(fn (Lesson $lesson): string => $lesson->starts_at->format('Y-m-d H:i:s'))
+                ->all()),
+        );
+    }
+
+    /**
+     * A fronteira das duas versões, do lado da nova: nada antes do seu
+     * `starts_on`, e nada depois do `ends_on` que lhe foi dado — nem sequer
+     * a antiga, que já ficou fechada antes disso, contribui algo ali.
+     */
+    #[Test]
+    public function materializing_after_a_revision_respects_the_new_slots_own_boundary(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
+            $this->slotAttributes($schoolClass, [
+                'day_of_week' => 2,
+                'starts_at' => '09:00',
+                'ends_at' => '09:50',
+                'starts_on' => null,
+                'ends_on' => null,
+            ]),
+        ));
+
+        $this->actingAs($this->teacher)
+            ->withSession(['organization_id' => $this->organization->id])
+            ->put("/_test/lesson-slots/{$slot->ulid}", $this->slotPayload($schoolClass, [
+                'day_of_week' => 2,
+                'starts_at' => '14:00',
+                'ends_at' => '14:50',
+                'starts_on' => null,
+                // Fecha a versão nova ao fim de UMA só terça (2026-09-15).
+                'ends_on' => '2026-09-15',
+                'effective_from' => '2026-09-15',
+            ]))
+            ->assertRedirect();
+
+        $this->inTenant($this->organization, fn () => app(MaterializeLessonsForRange::class)->execute(
+            $schoolClass,
+            CarbonImmutable::parse('2026-09-07'),
+            CarbonImmutable::parse('2026-09-29'),
+            $this->teacher,
+        ));
+
+        // 08 (versão antiga) e 15 (versão nova, o único dia dentro do seu
+        // ends_on) sim; 22 e 29 — depois do ends_on da nova — não, apesar de
+        // ainda serem terças-feiras dentro do intervalo materializado.
+        $this->assertSame(
+            ['2026-09-08 09:00:00', '2026-09-15 14:00:00'],
+            $this->inTenant($this->organization, fn (): array => Lesson::query()
+                ->orderBy('starts_at')
+                ->get()
+                ->map(fn (Lesson $lesson): string => $lesson->starts_at->format('Y-m-d H:i:s'))
+                ->all()),
+        );
+    }
+
+    /**
+     * Num feriado não há aula — Fase 5.5 — continua verdadeiro debaixo do
+     * PADRÃO NOVO de um horário revisto: o feriado bloqueia a ocorrência da
+     * quarta que criou, e a rotina sobrevive intacta para a quarta seguinte.
+     */
+    #[Test]
+    public function non_teaching_days_are_still_respected_under_a_revised_schedule(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $academicYear = $this->inTenant(
+            $this->organization,
+            fn (): AcademicYear => AcademicYear::query()->findOrFail($schoolClass->academic_year_id),
+        );
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
+            $this->slotAttributes($schoolClass, [
+                'day_of_week' => 2,
+                'starts_at' => '10:00',
+                'ends_at' => '10:50',
+                'starts_on' => null,
+                'ends_on' => null,
+            ]),
+        ));
+
+        $this->actingAs($this->teacher)
+            ->withSession(['organization_id' => $this->organization->id])
+            ->put("/_test/lesson-slots/{$slot->ulid}", $this->slotPayload($schoolClass, [
+                'day_of_week' => 3,
+                'starts_at' => '11:00',
+                'ends_at' => '11:50',
+                'starts_on' => null,
+                'ends_on' => null,
+                'effective_from' => '2026-09-15',
+            ]))
+            ->assertRedirect();
+
+        $this->inTenant($this->organization, fn (): AcademicCalendarException => AcademicCalendarException::factory()
+            ->recycle($this->organization)
+            ->for($academicYear)
+            ->create([
+                'type' => AcademicCalendarExceptionType::Holiday,
+                'title' => 'Feriado municipal',
+                'starts_on' => '2026-09-16',
+                'ends_on' => '2026-09-16',
+            ]));
+
+        $this->inTenant($this->organization, fn () => app(MaterializeLessonsForRange::class)->execute(
+            $schoolClass,
+            CarbonImmutable::parse('2026-09-07'),
+            CarbonImmutable::parse('2026-09-23'),
+            $this->teacher,
+        ));
+
+        // 08 (padrão antigo, terça) sim; 16 (padrão novo, quarta, feriado)
+        // não; 23 (padrão novo, quarta seguinte) sim — a rotina nova
+        // sobrevive ao feriado exatamente como a antiga sempre sobreviveu.
+        $this->assertSame(
+            ['2026-09-08 10:00:00', '2026-09-23 11:00:00'],
+            $this->inTenant($this->organization, fn (): array => Lesson::query()
+                ->orderBy('starts_at')
+                ->get()
+                ->map(fn (Lesson $lesson): string => $lesson->starts_at->format('Y-m-d H:i:s'))
+                ->all()),
+        );
+    }
+
+    #[Test]
+    public function a_teacher_not_assigned_to_the_class_is_forbidden_from_revising_an_in_vigor_slot(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $unassignedTeacher = User::factory()->create();
+        $this->organization->members()->attach($unassignedTeacher, ['joined_at' => now()]);
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
+            $this->slotAttributes($schoolClass, ['starts_on' => null, 'ends_on' => null]),
+        ));
+
+        $this->actingAs($unassignedTeacher)
+            ->withSession(['organization_id' => $this->organization->id])
+            ->put("/_test/lesson-slots/{$slot->ulid}", $this->slotPayload($schoolClass, [
+                'day_of_week' => 2,
+                'starts_on' => null,
+                'ends_on' => null,
+                'effective_from' => $this->inDays(10),
+            ]))
+            ->assertForbidden();
+
+        $this->assertDatabaseCount('recurring_lesson_slots', 1);
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => $slot->refresh());
+        $this->assertSame(1, $slot->day_of_week);
+    }
+
+    /**
+     * Uma versão já em vigor revista uma vez gera uma versão nova que ainda
+     * não começou. Enquanto essa versão nova continuar no futuro, revê-la de
+     * novo é, pela regra 1, uma edição simples no lugar — e não uma terceira
+     * linha: o mecanismo de versionamento só entra em jogo quando há mesmo
+     * histórico para proteger.
+     */
+    #[Test]
+    public function revising_an_already_future_slot_a_second_time_is_still_a_plain_in_place_update(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $original = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
+            $this->slotAttributes($schoolClass, ['day_of_week' => 1, 'starts_on' => null, 'ends_on' => null]),
+        ));
+        $firstEffectiveFrom = $this->inDays(30);
+
+        $this->actingAs($this->teacher)
+            ->withSession(['organization_id' => $this->organization->id])
+            ->put("/_test/lesson-slots/{$original->ulid}", $this->slotPayload($schoolClass, [
+                'day_of_week' => 2,
+                'starts_on' => null,
+                'ends_on' => null,
+                'effective_from' => $firstEffectiveFrom,
+            ]))
+            ->assertRedirect();
+
+        $this->assertDatabaseCount('recurring_lesson_slots', 2);
+        $future = $this->inTenant(
+            $this->organization,
+            fn (): RecurringLessonSlot => RecurringLessonSlot::query()->where('id', '!=', $original->id)->sole(),
+        );
+
+        $this->actingAs($this->teacher)
+            ->withSession(['organization_id' => $this->organization->id])
+            ->put("/_test/lesson-slots/{$future->ulid}", $this->slotPayload($schoolClass, [
+                'day_of_week' => 4,
+                'starts_at' => '13:00',
+                'ends_at' => '13:50',
+                'starts_on' => $firstEffectiveFrom,
+                'ends_on' => null,
+            ]))
+            ->assertRedirect();
+
+        // Ainda só duas linhas — a original, já fechada, e a `future`
+        // atualizada no próprio lugar, e não uma terceira.
+        $this->assertDatabaseCount('recurring_lesson_slots', 2);
+        $future = $this->inTenant($this->organization, fn (): RecurringLessonSlot => $future->refresh());
+        $this->assertSame(4, $future->day_of_week);
+        $this->assertStringStartsWith('13:00', $future->starts_at);
+        $this->assertSame($firstEffectiveFrom, $future->starts_on->toDateString());
+    }
+
+    private function today(): string
+    {
+        return CarbonImmutable::now('Europe/Lisbon')->toDateString();
+    }
+
+    private function inDays(int $days): string
+    {
+        return CarbonImmutable::now('Europe/Lisbon')->addDays($days)->toDateString();
+    }
+
+    /**
+     * ISO day-of-week (1 = Monday .. 7 = Sunday) of the real "today" — for a
+     * test that needs its slot's own `day_of_week` to actually match today,
+     * so that re-materializing today's own date hits the same weekday
+     * instead of silently matching nothing.
+     */
+    private function todayDayOfWeek(): int
+    {
+        return CarbonImmutable::now('Europe/Lisbon')->dayOfWeekIso;
+    }
+
+    /**
+     * Os atributos por nome de coluna — a mesma disciplina que
+     * MaterializeLessonsCalendarExceptionsTest já usa — para que a
+     * comparação seja sobre o que a linha VALE, e não sobre a ordem por que
+     * o Eloquent a hidratou.
+     *
+     * @param  array<string, mixed>  $attributes
+     * @return array<string, mixed>
+     */
+    private function byColumn(array $attributes): array
+    {
+        ksort($attributes);
+
+        return $attributes;
+    }
+
+    /**
+     * The academic year bounds default to the same fixed 2026-09-01 /
+     * 2027-06-30 every other test in this file already relies on. A test
+     * that needs "today" (the real clock, not a fixed date) to fall inside
+     * the academic year — e.g. to call MaterializeLessonsForRange with a
+     * `from` of today — passes its own wide-enough bounds instead of relying
+     * on the fixed ones, which would throw outside of a narrow window of the
+     * calendar.
+     */
+    private function schoolClassFor(
+        User $teacher,
+        ?Organization $organization = null,
+        string $academicYearStartsOn = '2026-09-01',
+        string $academicYearEndsOn = '2027-06-30',
+    ): SchoolClass {
         $organization ??= $this->organization;
 
-        return $this->inTenant($organization, function () use ($organization, $teacher): SchoolClass {
-            $schoolClass = SchoolClass::factory()
-                ->recycle($organization)
-                ->create([
-                    'academic_year_id' => AcademicYear::factory()
-                        ->recycle($organization)
-                        ->create(['starts_on' => '2026-09-01', 'ends_on' => '2027-06-30'])
-                        ->id,
-                ]);
-            $schoolClass->teachers()->attach($teacher, ['role' => 'owner']);
+        return $this->inTenant(
+            $organization,
+            function () use ($organization, $teacher, $academicYearStartsOn, $academicYearEndsOn): SchoolClass {
+                $schoolClass = SchoolClass::factory()
+                    ->recycle($organization)
+                    ->create([
+                        'academic_year_id' => AcademicYear::factory()
+                            ->recycle($organization)
+                            ->create(['starts_on' => $academicYearStartsOn, 'ends_on' => $academicYearEndsOn])
+                            ->id,
+                    ]);
+                $schoolClass->teachers()->attach($teacher, ['role' => 'owner']);
 
-            return $schoolClass;
-        });
+                return $schoolClass;
+            },
+        );
     }
 
     /**
