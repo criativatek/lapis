@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.70.1] — 2026-08-25
+
+### Fixed
+
+- **A materialização de aulas passa a respeitar feriados, interrupções letivas e dias não letivos.** Até agora um `RecurringLessonSlot` gerava sempre uma `Lesson` na sua data, mesmo caindo em cima de um feriado recém-marcado. A regra vive no único sítio por onde toda a materialização passa (`MaterializeLessonsForRange`), pelo que se aplica a todos os caminhos de uma só vez — o de "Aulas e Sumários" incluído — e não distingue as três espécies de exceção: todas impedem igualmente a criação da aula. O `RecurringLessonSlot` em si nunca é tocado — a rotina sobrevive ao feriado intacta, e o dia seguinte volta a criar aula normalmente; e nenhuma `Lesson` já existente é apagada ou alterada por esta regra, mesmo que a exceção que a passou a cobrir só tenha sido criada depois.
+
 ## [0.70.0] — 2026-08-25
 
 ### Added
