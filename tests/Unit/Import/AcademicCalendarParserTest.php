@@ -285,11 +285,20 @@ class AcademicCalendarParserTest extends TestCase
             array_keys(AcademicCalendarXlsxBuilder::COHORT_MARKERS),
             array_map(fn ($marker): string => $marker->date, $markers),
         );
-        // Os espaços a dobrar do documento real são reduzidos a um; o resto do
-        // texto é do documento e não é reescrito.
+        // A ABREVIATURA DA CÉLULA É ESCRITA POR EXTENSO (CohortMarkerTitle), e
+        // é-o aqui e não na página: daqui para a frente este texto é o título de
+        // um acontecimento do calendário do professor, lido meses depois e longe
+        // da coluna de junho que lhe dava o contexto. A célula tal como está
+        // escrita — espaços a dobrar incluídos — fica em `rawText`.
+        $this->assertSame([
+            'Fim das atividades letivas — 9.º ano',
+            'Fim das atividades letivas — 5.º/6.º/7.º/8.º anos',
+            'Fim das atividades letivas — Pré-escolar e 1.º Ciclo',
+        ], array_map(fn ($marker): string => $marker->title, $markers));
+
         $this->assertSame(
-            ['Fim 9.º ano', 'Fim 5/6/7/8.º', 'Fim Pré/1.ºC'],
-            array_map(fn ($marker): string => $marker->title, $markers),
+            ['4 Fim 9.º ano', '11 Fim  5/6/7/8.º', '30 Fim  Pré/1.ºC'],
+            array_map(fn ($marker): string => $marker->rawText, $markers),
         );
     }
 

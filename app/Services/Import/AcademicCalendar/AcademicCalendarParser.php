@@ -417,7 +417,19 @@ class AcademicCalendarParser
                 }
 
                 if ($this->isCohortMarker($label)) {
-                    $markers[] = new ParsedCalendarMarker($label, $date, $value);
+                    // O TÍTULO É NORMALIZADO AQUI E EM MAIS SÍTIO NENHUM. «Fim
+                    // 5/6/7/8.º» é uma abreviatura escrita para caber num
+                    // quadradinho, e daqui para a frente ela deixa de estar num
+                    // quadradinho: vai ser o título de um acontecimento do
+                    // calendário do professor, lido meses depois e fora da
+                    // coluna de junho que lhe dava o contexto. Escrevê-la por
+                    // extenso na pré-visualização deixaria a linha gravada por
+                    // abreviar; escrevê-la aqui arruma as duas de uma vez.
+                    $markers[] = new ParsedCalendarMarker(
+                        CohortMarkerTitle::normalise($label),
+                        $date,
+                        $value,
+                    );
 
                     continue;
                 }

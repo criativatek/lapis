@@ -237,7 +237,7 @@ function panelInput(id: string): HTMLInputElement | null {
  *
  * A PÁGINA DEIXOU DE SER SÓ UMA LEITURA (Fase 5.3), e só numa direção: o
  * professor pode criar, alterar e eliminar ACONTECIMENTOS — a reunião, a
- * atividade, a visita de estudo, o «outro» — que são as únicas coisas datadas
+ * atividade, a visita de estudo, a «data relevante» — que são as únicas coisas datadas
  * sem casa noutro sítio. As avaliações e os períodos continuam a ser lidos e a
  * ser alterados nas suas próprias páginas, e nada aqui lhes toca. As aulas
  * continuam ausentes de propósito: essa é a pergunta do «Horário do Professor».
@@ -1133,7 +1133,7 @@ describe('calendar/Month', () => {
             { type: 'meeting', short: 'REUNIÃO' },
             { type: 'activity', short: 'ATIVIDADE' },
             { type: 'field_trip', short: 'VISITA' },
-            { type: 'other', short: 'OUTRO' },
+            { type: 'other', short: 'DATA RELEVANTE' },
         ] as const;
 
         const wrapper = mountPage({
@@ -1204,7 +1204,7 @@ describe('calendar/Month', () => {
             { type: 'meeting', short: 'REUNIÃO' },
             { type: 'activity', short: 'ATIVIDADE' },
             { type: 'field_trip', short: 'VISITA' },
-            { type: 'other', short: 'OUTRO' },
+            { type: 'other', short: 'DATA RELEVANTE' },
         ] as const;
 
         const wrapper = mountPage({
@@ -1244,7 +1244,7 @@ describe('calendar/Month', () => {
     /**
      * UMA AVALIAÇÃO CONTINUA A SER O TRATAMENTO MAIS FORTE DA PÁGINA. Nada do
      * que a Fase 5.3 acrescentou lhe faz sombra: a avaliação tem moldura sólida
-     * e fundo cheio; um «outro», o mais neutro dos quatro, tem moldura pontuada
+     * e fundo cheio; uma «data relevante», a mais neutra dos quatro, tem moldura pontuada
      * e texto esbatido.
      */
     it('keeps an avaliação heavier than every kind of acontecimento', () => {
@@ -1258,7 +1258,7 @@ describe('calendar/Month', () => {
                               event({
                                   ulid: 'e-other',
                                   type: 'other',
-                                  type_short_label: 'OUTRO',
+                                  type_short_label: 'DATA RELEVANTE',
                               }),
                           ],
                       }
@@ -1287,7 +1287,7 @@ describe('calendar/Month', () => {
         expect(meetingClasses).toContain('font-medium');
         expect(meetingClasses).not.toContain('border-dotted');
 
-        // O «outro»: o mais neutro de todos.
+        // A «data relevante»: a mais neutra de todas.
         expect(otherClasses).toContain('border-dotted');
         expect(otherClasses).toContain('text-muted-foreground');
         expect(otherClasses).not.toContain('font-medium');
@@ -1416,6 +1416,35 @@ describe('calendar/Month', () => {
         expect(panelText()).toContain('Adicionar ao calendário');
         // Sem dia carregado, a data proposta é o primeiro dia do mês visto.
         expect(panelInput('event-starts-on')?.value).toBe('2026-10-01');
+    });
+
+    /**
+     * O FORMULÁRIO E A GRELHA TÊM DE DIZER O MESMO NOME. A lista de tipos do
+     * formulário está escrita aqui, no cliente, e o rótulo que a grelha mostra
+     * vem do servidor no `type_short_label` — são duas fontes para o mesmo nome,
+     * e é exatamente por isso que este teste existe: um acontecimento criado
+     * como «Data relevante» tem de continuar a chamar-se «DATA RELEVANTE» na
+     * célula onde depois aparece. O valor gravado é `other` nos dois sítios, e
+     * não muda.
+     */
+    it('offers «Data relevante» as the written name of the other type', async () => {
+        const wrapper = mountPage();
+
+        await wrapper.find('[data-new-event]').trigger('click');
+        await nextTick();
+
+        const select = document.body.querySelector<HTMLSelectElement>('#event-type');
+        const options = [...(select?.options ?? [])];
+
+        expect(options.map((option) => option.textContent?.trim())).toEqual([
+            'Reunião',
+            'Atividade',
+            'Visita de estudo',
+            'Data relevante',
+        ]);
+        // O nome mudou; o valor por baixo não, e é ele que vai no pedido.
+        expect(options.at(-1)?.value).toBe('other');
+        expect(panelText()).not.toContain('Outro');
     });
 
     it('pre-fills the day that was clicked in the grid', async () => {

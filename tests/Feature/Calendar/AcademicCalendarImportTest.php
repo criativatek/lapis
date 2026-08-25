@@ -11,9 +11,11 @@ use App\Models\AcademicPeriodStatus;
 use App\Models\AcademicYear;
 use App\Models\CalendarEvent;
 use App\Models\CalendarEventType;
+use App\Models\Lesson;
 use App\Models\Organization;
 use App\Models\OrganizationSubscription;
 use App\Models\Plan;
+use App\Models\RecurringLessonSlot;
 use App\Models\SubscriptionStatus;
 use App\Models\User;
 use App\Services\Import\AcademicCalendar\BuildAcademicCalendarImportPreview as Preview;
@@ -185,7 +187,8 @@ class AcademicCalendarImportTest extends TestCase
     /**
      * NENHUMA REUNIÃO, NENHUMA ATIVIDADE, NENHUMA VISITA DE ESTUDO. O documento
      * não tem nenhuma, e os únicos acontecimentos propostos são os três fins de
-     * ano por coorte — todos do tipo «outro» e todos por confirmar.
+     * ano por coorte — todos com o valor `other`, que o professor lê como «Data
+     * relevante», e todos por confirmar.
      */
     #[Test]
     public function no_meeting_activity_or_field_trip_is_ever_invented(): void
@@ -193,6 +196,9 @@ class AcademicCalendarImportTest extends TestCase
         $this->preview()->assertInertia(function (AssertableInertia $page): void {
             foreach ($page->toArray()['props']['otherItems'] as $item) {
                 $this->assertSame(CalendarEventType::Other->value, $item['type']);
+                // O RÓTULO VIAJA COM A PROPOSTA e vem do enum, que é a única
+                // fonte deste texto no servidor.
+                $this->assertSame('Data relevante', $item['type_label']);
                 $this->assertFalse($item['include']);
             }
         });
@@ -620,6 +626,13 @@ class AcademicCalendarImportTest extends TestCase
         $this->assertSame(Preview::STATE_EXISTS, $props['semesters'][0]['state']);
     }
 
+    /**
+     * O TÍTULO CHEGA JÁ POR EXTENSO. «Fim 9.º ano» é uma abreviatura escrita
+     * para caber num quadradinho de junho; a partir daqui é o título de um
+     * acontecimento do calendário deste professor, e vai ser lido em janeiro sem
+     * a coluna ao lado a explicá-lo. Quem o escreve por extenso é o parser
+     * (CohortMarkerTitle) — não a página, não este controlador.
+     */
     #[Test]
     public function a_confirmed_marker_becomes_an_ordinary_calendar_event_of_the_importing_teacher(): void
     {
@@ -631,12 +644,66 @@ class AcademicCalendarImportTest extends TestCase
         $this->inTenant(function (): void {
             $event = CalendarEvent::query()->sole();
 
-            $this->assertSame('Fim 9.º ano', $event->title);
+            $this->assertSame('Fim das atividades letivas — 9.º ano', $event->title);
             $this->assertSame(CalendarEventType::Other, $event->type);
+            $this->assertSame('Data relevante', $event->type->label());
             $this->assertSame('2031-06-04', $event->starts_on->toDateString());
             $this->assertSame('2031-06-04', $event->ends_on->toDateString());
             $this->assertSame($this->teacher->id, $event->user_id);
         });
+
+        // E É UM CalendarEvent, NUNCA UMA EXCEÇÃO LETIVA. Uma «Data relevante»
+        // não diz que naquele dia não há aula — dizê-lo era uma
+        // AcademicCalendarException, e uma linha destas nunca vira uma dessas.
+        $this->assertDatabaseHas('calendar_events', [
+            'type' => 'other',
+            'title' => 'Fim das atividades letivas — 9.º ano',
+        ]);
+        $this->inTenant(function (): void {
+            $this->assertSame(0, AcademicCalendarException::query()
+                ->whereDate('starts_on', '2031-06-04')
+                ->count());
+        });
+    }
+
+    /**
+     * CONFIRMAR OS TRÊS MARCADORES NÃO TOCA NAS AULAS NEM NO HORÁRIO. Uma «Data
+     * relevante» é uma nota no calendário e não uma decisão sobre a forma do ano:
+     * não materializa aulas, não as apaga, não mexe num tempo do horário nem num
+     * período. As contagens antes e depois são a prova.
+     */
+    #[Test]
+    public function confirming_the_markers_never_touches_lessons_periods_or_the_timetable(): void
+    {
+        $payload = $this->payload();
+
+        foreach (array_keys($payload['events']) as $index) {
+            $payload['events'][$index]['include'] = true;
+        }
+
+        // Só os acontecimentos: os períodos e as exceções ficam de fora para que
+        // as contagens meçam esta confirmação e mais nada.
+        $payload['semesters'] = array_map(fn (array $row): array => [...$row, 'include' => false], $payload['semesters']);
+        $payload['exceptions'] = array_map(fn (array $row): array => [...$row, 'include' => false], $payload['exceptions']);
+
+        $before = $this->inTenant(fn (): array => [
+            'academic_periods' => AcademicPeriod::query()->count(),
+            'academic_calendar_exceptions' => AcademicCalendarException::query()->count(),
+            'lessons' => Lesson::withoutGlobalScope('organization')->count(),
+            'recurring_lesson_slots' => RecurringLessonSlot::withoutGlobalScope('organization')->count(),
+        ]);
+
+        $this->confirm($payload)->assertRedirect();
+
+        $after = $this->inTenant(fn (): array => [
+            'academic_periods' => AcademicPeriod::query()->count(),
+            'academic_calendar_exceptions' => AcademicCalendarException::query()->count(),
+            'lessons' => Lesson::withoutGlobalScope('organization')->count(),
+            'recurring_lesson_slots' => RecurringLessonSlot::withoutGlobalScope('organization')->count(),
+        ]);
+
+        $this->assertSame($before, $after);
+        $this->assertSame(3, $this->inTenant(fn (): int => CalendarEvent::query()->count()));
     }
 
     /**

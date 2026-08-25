@@ -13,6 +13,15 @@ namespace App\Models;
  *
  * The internal names are English, like every other enum here; the labels are
  * the only thing the teacher ever reads, and they are pt-PT.
+ *
+ * `Other` É A ÚNICA CUJO VALOR E RÓTULO NÃO SE PARECEM, e é de propósito. O
+ * valor guardado é `other` desde o primeiro dia e continua a sê-lo — está
+ * escrito em linhas que já existem —, mas o que o professor lê é «Data
+ * relevante»: uma data que importa e que não é uma reunião, uma atividade nem
+ * uma visita. Não diz — e nunca pode passar a dizer — que naquele dia não há
+ * aula; isso é uma AcademicCalendarException, que é outra tabela e outra
+ * decisão. Renomear o valor para casar com o rótulo daria uma migração inteira
+ * a troco de nada, e por isso a divergência fica, escrita aqui.
  */
 enum CalendarEventType: string
 {
@@ -27,7 +36,7 @@ enum CalendarEventType: string
             self::Meeting => __('Reunião'),
             self::Activity => __('Atividade'),
             self::FieldTrip => __('Visita de estudo'),
-            self::Other => __('Outro'),
+            self::Other => __('Data relevante'),
         };
     }
 
@@ -44,7 +53,7 @@ enum CalendarEventType: string
             self::Meeting => __('REUNIÃO'),
             self::Activity => __('ATIVIDADE'),
             self::FieldTrip => __('VISITA'),
-            self::Other => __('OUTRO'),
+            self::Other => __('DATA RELEVANTE'),
         };
     }
 

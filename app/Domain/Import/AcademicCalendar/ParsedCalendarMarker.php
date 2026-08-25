@@ -14,12 +14,17 @@ namespace App\Domain\Import\AcademicCalendar;
  * escrever no calendário uma afirmação que o documento não faz.
  *
  * Fica portanto o que é honesto: uma data com um nome, proposta como
- * CalendarEvent do tipo «outro», SEMPRE POR CONFIRMAR, com a explicação à vista.
- * O professor aceita ou rejeita; nenhum dos dois é o que acontece por omissão.
+ * CalendarEvent do tipo «Data relevante» (valor interno `other`), SEMPRE POR
+ * CONFIRMAR, com a explicação à vista. O professor aceita ou rejeita; nenhum dos
+ * dois é o que acontece por omissão.
  */
 final readonly class ParsedCalendarMarker
 {
     /**
+     * @param  string  $title  a coorte escrita por extenso — «Fim das atividades
+     *                         letivas — 9.º ano» —, normalizada pelo
+     *                         CohortMarkerTitle a partir da abreviatura da
+     *                         célula, que fica guardada em `$rawText`
      * @param  string  $date  «Y-m-d»
      * @param  string  $rawText  a célula tal como está escrita no ficheiro
      */

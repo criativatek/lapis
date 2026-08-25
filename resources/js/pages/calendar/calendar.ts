@@ -437,8 +437,8 @@ export const EXCEPTION_ACCENT = 'text-slate-700 dark:text-slate-300';
  *   3. UMA ATIVIDADE e UMA VISITA DE ESTUDO são distintas uma da outra e
  *      distintas de tudo o resto, com moldura tracejada e texto normal: leem-se
  *      bem, mas não competem com o que está acima.
- *   4. «OUTRO» é o mais neutro de todos, e é assim que deve ser: é a gaveta
- *      para o que não é nenhuma das outras três, e não deve gritar.
+ *   4. «DATA RELEVANTE» é o mais neutro de todos, e é assim que deve ser: é a
+ *      data que importa e que não é nenhuma das outras três, e não deve gritar.
  *
  * E, ACIMA DE TUDO: A FAIXA DE UM PERÍODO NÃO ENTRA NESTA ESCADA. Continua a
  * ser estrutura — sem moldura, sem ícone, sem peso — e é desenhada nos tons
@@ -456,11 +456,11 @@ export const EXCEPTION_ACCENT = 'text-slate-700 dark:text-slate-300';
  *
  * NENHUM DESTES QUATRO SE DISTINGUE DOS OUTROS — NEM DE UMA AVALIAÇÃO — SÓ PELA
  * COR. Cada um traz sempre também um ícone próprio e uma etiqueta escrita
- * («REUNIÃO», «ATIVIDADE», «VISITA», «OUTRO»), pelo que a página continua
- * legível num ecrã monocromático, num ecrã de fraco contraste, e para quem não
- * distingue as cores. Não há aqui nenhuma opção de personalização, e não é um
- * esquecimento: uma cor escolhida por cada professor tornaria impossível
- * garantir justamente isto.
+ * («REUNIÃO», «ATIVIDADE», «VISITA», «DATA RELEVANTE»), pelo que a página
+ * continua legível num ecrã monocromático, num ecrã de fraco contraste, e para
+ * quem não distingue as cores. Não há aqui nenhuma opção de personalização, e
+ * não é um esquecimento: uma cor escolhida por cada professor tornaria
+ * impossível garantir justamente isto.
  */
 const EVENT_TREATMENTS: Record<CalendarEventType, { entry: string; badge: string }> = {
     meeting: {

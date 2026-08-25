@@ -2,6 +2,14 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.72.1] — 2026-08-25
+
+### Fixed
+
+- **O tipo de acontecimento "Outro" passa a aparecer como "Data relevante" em todo o Calendário do Ano Letivo.** "Outro" descrevia mal um acontecimento deliberadamente amplo — uma data que importa para a organização do professor sem ser reunião, atividade ou visita de estudo, e sem implicar ausência de aulas. O valor interno (`other`) mantém-se, pelo que os acontecimentos já existentes deste tipo continuam a funcionar e passam automaticamente a mostrar a nova designação, sem qualquer migração.
+
+- **Os marcos de fim das atividades letivas importados do calendário escolar ganham títulos completos.** "Fim 9.º ano" passa a "Fim das atividades letivas — 9.º ano", e o mesmo para os restantes agrupamentos de anos de escolaridade e ciclos identificados no documento — nunca inventando um nível de ensino que o ficheiro não mencione.
+
 ## [0.72.0] — 2026-08-25
 
 ### Added

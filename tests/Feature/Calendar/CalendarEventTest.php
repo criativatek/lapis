@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Calendar;
 
+use App\Models\AcademicCalendarException;
 use App\Models\AcademicPeriod;
 use App\Models\AcademicYear;
 use App\Models\CalendarEvent;
@@ -128,8 +129,14 @@ class CalendarEventTest extends TestCase
         $this->assertSame('Visita ao Oceanário', $event->title);
     }
 
+    /**
+     * «DATA RELEVANTE» É UM RÓTULO, E O VALOR POR BAIXO CONTINUA A SER `other`.
+     * O que o professor lê mudou; o que a base de dados guarda não, e não podia:
+     * há linhas gravadas com `other` desde a Fase 5.3 e uma migração para lhes
+     * trocar o nome não compraria nada a ninguém.
+     */
     #[Test]
-    public function a_teacher_creates_an_outro(): void
+    public function a_teacher_creates_a_data_relevante(): void
     {
         $this->asTeacher()
             ->post('/calendar/acontecimentos', $this->payload([
@@ -141,7 +148,95 @@ class CalendarEventTest extends TestCase
         $event = $this->soleEvent();
 
         $this->assertSame(CalendarEventType::Other, $event->type);
-        $this->assertSame('Outro', $event->type->label());
+        $this->assertSame('Data relevante', $event->type->label());
+        $this->assertSame('DATA RELEVANTE', $event->type->shortLabel());
+        // O valor gravado, lido da coluna e não do modelo.
+        $this->assertDatabaseHas('calendar_events', [
+            'title' => 'Entrega de documentos',
+            'type' => 'other',
+        ]);
+    }
+
+    /**
+     * UMA DATA RELEVANTE NÃO BLOQUEIA AULA NENHUMA, e é isso que a separa de uma
+     * AcademicCalendarException. Criá-la escreve UMA linha em `calendar_events`
+     * e mais nada: nenhuma exceção letiva, nenhuma aula, nenhum tempo do
+     * horário, nenhum período. As contagens antes e depois são a prova — a mesma
+     * prova que a eliminação já faz mais abaixo, feita agora para a criação e
+     * para esta espécie em particular.
+     */
+    #[Test]
+    public function creating_a_data_relevante_writes_nothing_but_the_event(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher, '7.º C');
+        $this->period('1.º Período', 1, '2026-09-01', '2026-12-18');
+        $this->recurringSlot($schoolClass);
+        $this->lesson($schoolClass);
+
+        $before = $this->countsAround();
+
+        $this->asTeacher()
+            ->post('/calendar/acontecimentos', $this->payload([
+                'type' => 'other',
+                'title' => 'Prazo de entrega das matrículas',
+                'school_class_ulids' => [$schoolClass->ulid],
+            ]))
+            ->assertRedirect();
+
+        $this->assertDatabaseCount('calendar_events', 1);
+        $this->assertSame($before, $this->countsAround());
+    }
+
+    /**
+     * ZERO TURMAS CONTINUA A SER VÁLIDO para esta espécie. Uma data que importa
+     * ao professor não é obrigada a dizer respeito a uma turma dele — o prazo de
+     * entrega de um documento não é de ninguém em particular.
+     */
+    #[Test]
+    public function a_data_relevante_may_have_no_turma_at_all(): void
+    {
+        $this->asTeacher()
+            ->post('/calendar/acontecimentos', $this->payload([
+                'type' => 'other',
+                'title' => 'Prazo das matrículas',
+                'school_class_ulids' => [],
+            ]))
+            ->assertRedirect();
+
+        $event = $this->soleEvent();
+
+        $this->assertSame(CalendarEventType::Other, $event->type);
+        $this->assertSame([], $this->classLabelsOf($event));
+        $this->assertDatabaseCount('calendar_event_school_class', 0);
+    }
+
+    /**
+     * A COMPATIBILIDADE COM O QUE JÁ ESTÁ GRAVADO, dita por um teste em vez de
+     * assumida. Esta linha é semeada diretamente com `type = 'other'` — é o que
+     * uma linha criada antes desta mudança é, byte a byte — e o calendário
+     * mostra-a como «Data relevante» sem que nada tenha sido migrado.
+     */
+    #[Test]
+    public function an_event_stored_before_the_rename_still_reads_as_data_relevante(): void
+    {
+        $this->inTenant(fn (): CalendarEvent => CalendarEvent::create([
+            'user_id' => $this->teacher->getKey(),
+            // A COLUNA, e não o enum: é assim que a linha antiga está escrita.
+            'type' => 'other',
+            'title' => 'Entrega de documentos',
+            'starts_on' => '2026-10-15',
+            'ends_on' => '2026-10-15',
+        ]));
+
+        $this->asTeacher()->get('/calendar?month=2026-10')->assertOk()
+            ->assertInertia(function (AssertableInertia $page) {
+                $event = $this->dayOf($page, '2026-10-15')['events'][0];
+
+                $this->assertSame('other', $event['type']);
+                $this->assertSame('Data relevante', $event['type_label']);
+                $this->assertSame('DATA RELEVANTE', $event['type_short_label']);
+                $this->assertSame('Entrega de documentos', $event['title']);
+            });
     }
 
     /**
@@ -865,6 +960,25 @@ class CalendarEventTest extends TestCase
     private function soleEvent(): CalendarEvent
     {
         return $this->inTenant(fn (): CalendarEvent => CalendarEvent::query()->with('schoolClasses')->sole());
+    }
+
+    /**
+     * Tudo o que um acontecimento NÃO É, contado. Uma exceção letiva, uma
+     * avaliação, um período, uma aula e um tempo do horário têm cada um o seu
+     * ciclo de vida, e a única maneira de o provar é contá-los antes e depois.
+     *
+     * @return array<string, int>
+     */
+    private function countsAround(): array
+    {
+        return [
+            'academic_calendar_exceptions' => AcademicCalendarException::withoutGlobalScope('organization')->count(),
+            'instruments' => Instrument::withoutGlobalScope('organization')->count(),
+            'academic_periods' => AcademicPeriod::withoutGlobalScope('organization')->count(),
+            'lessons' => Lesson::withoutGlobalScope('organization')->count(),
+            'recurring_lesson_slots' => RecurringLessonSlot::withoutGlobalScope('organization')->count(),
+            'classes' => SchoolClass::withoutGlobalScope('organization')->count(),
+        ];
     }
 
     /**

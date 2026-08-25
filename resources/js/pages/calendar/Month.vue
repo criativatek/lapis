@@ -479,7 +479,7 @@ const TYPE_OPTIONS: { value: CalendarEventType; label: string }[] = [
     { value: 'meeting', label: 'Reunião' },
     { value: 'activity', label: 'Atividade' },
     { value: 'field_trip', label: 'Visita de estudo' },
-    { value: 'other', label: 'Outro' },
+    { value: 'other', label: 'Data relevante' },
 ];
 
 /** O primeiro dia do mês que está a ser visto — o palpite honesto quando o
@@ -733,7 +733,7 @@ function destroyEvent(event: CalendarEvent): void {
             O QUE ESTA PÁGINA LÊ, e o que só ela escreve. Os períodos do ano e
             as avaliações são lidos onde já vivem, e continuam a ser criados e
             alterados nas suas próprias páginas. Os acontecimentos — a reunião,
-            a atividade, a visita de estudo, o «outro» — são as únicas coisas
+            a atividade, a visita de estudo, a «data relevante» — são as únicas coisas
             datadas que não têm casa em mais lado nenhum, e por isso são as
             únicas que nascem aqui. As aulas não aparecem, de propósito: essa
             pergunta é a do «Horário do Professor», e já tem a sua página.
