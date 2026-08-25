@@ -46,6 +46,15 @@ function mountPage(slots: TimetableSlot[], classes: ClassOption[] = []) {
  * what it SHOWS — the grouping by weekday, the empty state, and the two entry
  * points pointing at the real routes.
  */
+const week = (wrapper: ReturnType<typeof mountPage>) =>
+    wrapper.find('section[aria-label="Horário semanal"]');
+
+const agenda = (wrapper: ReturnType<typeof mountPage>) =>
+    wrapper.find('section[aria-label="Agenda da semana"]');
+
+const labelsOf = (root: ReturnType<typeof week>) =>
+    root.findAll('section[aria-label]').map((s) => s.attributes('aria-label'));
+
 describe('timetable/Index', () => {
     it('groups the week by weekday, in Portuguese, only for the days actually taught', () => {
         const wrapper = mountPage([
@@ -53,16 +62,128 @@ describe('timetable/Index', () => {
             slot({ ulid: 'b', day_of_week: 3, starts_at: '11:00', ends_at: '11:50' }),
         ]);
 
-        const headings = wrapper
+        const headings = agenda(wrapper)
             .findAll('h2')
             .map((heading) => heading.text());
 
         expect(headings).toContain('Segunda-feira');
         expect(headings).toContain('Quarta-feira');
-        // A day with no aulas is not a column: an empty Saturday is not
-        // information, and seven mostly-empty columns is not a week.
+        // In the narrow-screen agenda a day with no aulas is not a line: there
+        // is no week to read at a glance on a phone, only a list, and an empty
+        // Saturday is not information.
         expect(headings).not.toContain('Terça-feira');
         expect(headings).not.toContain('Sábado');
+    });
+
+    // ------------------------------------------- a semana em ecrã largo
+
+    /**
+     * A SEXTA-FEIRA NUNCA CAI PARA A LINHA DE BAIXO. Com aulas à segunda,
+     * terça, quarta e sexta, um número de colunas que acompanhasse a largura
+     * do ecrã punha a sexta sozinha numa segunda linha só porque a quinta
+     * estava vazia — e uma semana lida assim deixa de ser uma semana.
+     */
+    it('holds all five weekdays in place, in order, however wide the ecrã is', () => {
+        const wrapper = mountPage([
+            slot({ ulid: 'a', day_of_week: 1 }),
+            slot({ ulid: 'b', day_of_week: 2 }),
+            slot({ ulid: 'c', day_of_week: 3 }),
+            slot({ ulid: 'e', day_of_week: 5 }),
+        ]);
+
+        expect(labelsOf(week(wrapper))).toEqual([
+            'Segunda-feira',
+            'Terça-feira',
+            'Quarta-feira',
+            'Quinta-feira',
+            'Sexta-feira',
+        ]);
+
+        // Five columns, fixed — not a responsive count that can wrap.
+        const grid = week(wrapper).find('div.grid');
+
+        expect(grid.classes().filter((c) => c.includes('grid-cols'))).toEqual([
+            'grid-cols-5',
+        ]);
+    });
+
+    it('says «Sem aulas» on a free weekday instead of dropping the column', () => {
+        const wrapper = mountPage([
+            slot({ ulid: 'a', day_of_week: 1 }),
+            slot({ ulid: 'e', day_of_week: 5 }),
+        ]);
+
+        const thursday = week(wrapper).find('section[aria-label="Quinta-feira"]');
+
+        expect(thursday.exists()).toBe(true);
+        expect(thursday.text()).toContain('Sem aulas');
+    });
+
+    /**
+     * O DIA VAZIO É SÓ UM RÓTULO. Não há bloco nenhum por trás dele, nem passa
+     * a haver por ser mostrado: a página continua a ser uma leitura.
+     */
+    it('invents no aula behind an empty weekday: the placeholder is a label and nothing else', () => {
+        const wrapper = mountPage([
+            slot({ ulid: 'a', day_of_week: 1 }),
+            slot({ ulid: 'b', day_of_week: 2 }),
+            slot({ ulid: 'c', day_of_week: 3 }),
+            slot({ ulid: 'e', day_of_week: 5 }),
+        ]);
+
+        // Four blocks sent, four blocks drawn — the fifth column adds none.
+        expect(week(wrapper).findAll('li')).toHaveLength(4);
+
+        const thursday = week(wrapper).find('section[aria-label="Quinta-feira"]');
+
+        expect(thursday.findAll('li')).toHaveLength(0);
+        expect(thursday.findAll('a')).toHaveLength(0);
+        expect(thursday.findAll('form')).toHaveLength(0);
+        expect(thursday.findAll('button')).toHaveLength(0);
+    });
+
+    it('keeps a rare sábado visible, in a row of its own, and never a column reserved for it', () => {
+        const withSaturday = mountPage([
+            slot({ ulid: 'a', day_of_week: 1 }),
+            slot({ ulid: 's', day_of_week: 6, starts_at: '09:00', ends_at: '09:50' }),
+        ]);
+
+        expect(labelsOf(week(withSaturday))).toEqual([
+            'Segunda-feira',
+            'Terça-feira',
+            'Quarta-feira',
+            'Quinta-feira',
+            'Sexta-feira',
+            'Sábado',
+        ]);
+        expect(
+            week(withSaturday).find('section[aria-label="Sábado"]').findAll('li'),
+        ).toHaveLength(1);
+        // The weekend never shares the guaranteed five-column row.
+        expect(week(withSaturday).findAll('div.grid')).toHaveLength(2);
+
+        // With no aulas on it, o sábado simply is not there.
+        expect(week(mountPage([slot()])).text()).not.toContain('Sábado');
+    });
+
+    // ------------------------------------------ a semana em ecrã estreito
+
+    it('still lists only the days actually taught in ecrã estreito, with no «Sem aulas» filler', () => {
+        const wrapper = mountPage([
+            slot({ ulid: 'a', day_of_week: 1 }),
+            slot({ ulid: 'b', day_of_week: 2 }),
+            slot({ ulid: 'c', day_of_week: 3 }),
+            slot({ ulid: 'e', day_of_week: 5 }),
+        ]);
+
+        expect(labelsOf(agenda(wrapper))).toEqual([
+            'Segunda-feira',
+            'Terça-feira',
+            'Quarta-feira',
+            'Sexta-feira',
+        ]);
+        expect(agenda(wrapper).text()).not.toContain('Sem aulas');
+        expect(agenda(wrapper).text()).not.toContain('Quinta-feira');
     });
 
     it('keeps every block of a day together, in the order the server sent them', () => {

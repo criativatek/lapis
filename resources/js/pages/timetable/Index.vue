@@ -45,13 +45,13 @@ const weekdays = [
     'domingo',
 ];
 
-/**
- * Only the days the teacher actually teaches on. An empty Saturday column is
- * not information, and dropping it keeps a real week — easily fifteen or
- * twenty blocks — legible instead of spreading it over seven columns to make
- * a grid look complete.
- */
-const days = computed(() => {
+/** Os cinco dias úteis, sempre, e por esta ordem. */
+const weekdayColumns = [1, 2, 3, 4, 5];
+
+/** Fim de semana: raro, e por isso nunca uma coluna reservada de antemão. */
+const weekendDaysOfWeek = [6, 7];
+
+const slotsByDay = computed(() => {
     const grouped = new Map<number, TimetableSlot[]>();
 
     for (const slot of props.slots) {
@@ -61,14 +61,55 @@ const days = computed(() => {
         ]);
     }
 
-    return [...grouped.entries()]
-        .sort(([a], [b]) => a - b)
-        .map(([dayOfWeek, slots]) => ({
-            dayOfWeek,
-            label: capitalizeFirst(weekdays[dayOfWeek - 1] ?? `Dia ${dayOfWeek}`),
-            slots,
-        }));
+    return grouped;
 });
+
+/**
+ * NADA É CRIADO AQUI. Um dia sem aulas é um rótulo desenhado e mais nada: não
+ * há bloco nenhum por trás dele, nem passa a haver por ser mostrado.
+ */
+function dayColumn(dayOfWeek: number) {
+    return {
+        dayOfWeek,
+        label: capitalizeFirst(weekdays[dayOfWeek - 1] ?? `Dia ${dayOfWeek}`),
+        slots: slotsByDay.value.get(dayOfWeek) ?? [],
+    };
+}
+
+/**
+ * Em ecrã largo a semana é uma semana: cinco colunas fixas, de segunda a
+ * sexta, sempre pela mesma ordem e sempre nas mesmas posições. Um número de
+ * colunas que acompanhasse a largura fazia a sexta-feira «cair" para a linha
+ * seguinte só porque a quinta estava vazia — e uma sexta-feira debaixo da
+ * segunda não é a semana que o professor tem na cabeça. Por isso o dia vazio
+ * fica cá, dito por escrito («Sem aulas»), a segurar a sua coluna.
+ */
+const desktopDays = computed(() =>
+    weekdayColumns.map((dayOfWeek) => dayColumn(dayOfWeek)),
+);
+
+/**
+ * Sábado e domingo não têm coluna garantida — teriam de a ter vazia em todas
+ * as semanas de todos os professores para servir os poucos que lá dão aulas.
+ * Quando existem mesmo, aparecem numa linha própria por baixo dos dias úteis,
+ * alinhados pelas mesmas colunas.
+ */
+const weekendDays = computed(() =>
+    weekendDaysOfWeek
+        .filter((dayOfWeek) => slotsByDay.value.has(dayOfWeek))
+        .map((dayOfWeek) => dayColumn(dayOfWeek)),
+);
+
+/**
+ * Em ecrã estreito, só os dias em que o professor dá mesmo aulas. Não há
+ * semana nenhuma para ler de uma vez num telemóvel — há uma lista — e cinco
+ * cartões «Sem aulas» empilhados seriam ecrã gasto a dizer que não há nada.
+ */
+const days = computed(() =>
+    [...slotsByDay.value.keys()]
+        .sort((a, b) => a - b)
+        .map((dayOfWeek) => dayColumn(dayOfWeek)),
+);
 
 const summary = computed(() => {
     const blocks = props.slots.length;
@@ -107,7 +148,7 @@ function validity(slot: TimetableSlot): string | null {
             se lê o que já existe.
         -->
         <section
-            v-if="days.length === 0"
+            v-if="slots.length === 0"
             class="rounded-xl border border-dashed p-8 text-center"
             aria-labelledby="timetable-empty-heading"
         >
@@ -123,47 +164,147 @@ function validity(slot: TimetableSlot): string | null {
         </section>
 
         <!--
-            Uma coluna por dia: em ecrã largo lê-se como uma semana; em ecrã
-            estreito as colunas empilham-se e ficam uma lista agrupada por dia,
-            que é como a vista semanal já resolve o mesmo problema.
+            A MESMA SEMANA, DUAS LEITURAS, como a grelha do mês já faz: em ecrã
+            largo cinco colunas fixas de segunda a sexta; em ecrã estreito uma
+            agenda só com os dias que têm mesmo aulas.
         -->
-        <section
-            v-else
-            class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
-            aria-label="Horário semanal"
-        >
+        <template v-else>
             <section
-                v-for="day in days"
-                :key="day.dayOfWeek"
-                class="space-y-2"
-                :aria-label="day.label"
+                class="hidden space-y-4 lg:block"
+                aria-label="Horário semanal"
             >
-                <h2 class="text-sm font-semibold">{{ day.label }}</h2>
-                <ul class="divide-y rounded-xl border bg-card">
-                    <li v-for="slot in day.slots" :key="slot.ulid">
-                        <Link
-                            :href="`/classes/${slot.school_class.ulid}#horario`"
-                            class="flex flex-col gap-1 p-3 transition-colors outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
+                <!--
+                    CINCO COLUNAS, SEMPRE. Nunca um número de colunas que
+                    acompanhe a largura: era isso que empurrava a sexta-feira
+                    para a linha de baixo quando a quinta não tinha aulas.
+                -->
+                <div class="grid grid-cols-5 gap-4">
+                    <section
+                        v-for="day in desktopDays"
+                        :key="day.dayOfWeek"
+                        class="space-y-2"
+                        :aria-label="day.label"
+                    >
+                        <h2 class="text-sm font-semibold">{{ day.label }}</h2>
+                        <ul
+                            v-if="day.slots.length"
+                            class="divide-y rounded-xl border bg-card"
                         >
-                            <time class="text-sm font-medium tabular-nums"
-                                >{{ slot.starts_at }}–{{ slot.ends_at }}</time
-                            >
-                            <span class="text-sm font-medium">{{
-                                slot.school_class.label
-                            }}</span>
-                            <span class="text-sm text-muted-foreground">{{
-                                slot.subject
-                            }}</span>
-                            <span
-                                v-if="validity(slot)"
-                                class="text-xs text-muted-foreground"
-                                >{{ validity(slot) }}</span
-                            >
-                        </Link>
-                    </li>
-                </ul>
+                            <li v-for="slot in day.slots" :key="slot.ulid">
+                                <Link
+                                    :href="`/classes/${slot.school_class.ulid}#horario`"
+                                    class="flex flex-col gap-1 p-3 transition-colors outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
+                                >
+                                    <time
+                                        class="text-sm font-medium tabular-nums"
+                                        >{{ slot.starts_at }}–{{
+                                            slot.ends_at
+                                        }}</time
+                                    >
+                                    <span class="text-sm font-medium">{{
+                                        slot.school_class.label
+                                    }}</span>
+                                    <span
+                                        class="text-sm text-muted-foreground"
+                                        >{{ slot.subject }}</span
+                                    >
+                                    <span
+                                        v-if="validity(slot)"
+                                        class="text-xs text-muted-foreground"
+                                        >{{ validity(slot) }}</span
+                                    >
+                                </Link>
+                            </li>
+                        </ul>
+                        <p
+                            v-else
+                            class="rounded-xl border bg-card p-3 text-sm text-muted-foreground"
+                        >
+                            Sem aulas
+                        </p>
+                    </section>
+                </div>
+
+                <!--
+                    Sábado e domingo, só se existirem, e numa linha à parte: a
+                    garantia de cinco colunas é sobre os dias úteis.
+                -->
+                <div v-if="weekendDays.length" class="grid grid-cols-5 gap-4">
+                    <section
+                        v-for="day in weekendDays"
+                        :key="day.dayOfWeek"
+                        class="space-y-2"
+                        :aria-label="day.label"
+                    >
+                        <h2 class="text-sm font-semibold">{{ day.label }}</h2>
+                        <ul class="divide-y rounded-xl border bg-card">
+                            <li v-for="slot in day.slots" :key="slot.ulid">
+                                <Link
+                                    :href="`/classes/${slot.school_class.ulid}#horario`"
+                                    class="flex flex-col gap-1 p-3 transition-colors outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
+                                >
+                                    <time
+                                        class="text-sm font-medium tabular-nums"
+                                        >{{ slot.starts_at }}–{{
+                                            slot.ends_at
+                                        }}</time
+                                    >
+                                    <span class="text-sm font-medium">{{
+                                        slot.school_class.label
+                                    }}</span>
+                                    <span
+                                        class="text-sm text-muted-foreground"
+                                        >{{ slot.subject }}</span
+                                    >
+                                    <span
+                                        v-if="validity(slot)"
+                                        class="text-xs text-muted-foreground"
+                                        >{{ validity(slot) }}</span
+                                    >
+                                </Link>
+                            </li>
+                        </ul>
+                    </section>
+                </div>
             </section>
-        </section>
+
+            <!-- A mesma semana em ecrã estreito, lida como agenda. -->
+            <section class="space-y-4 lg:hidden" aria-label="Agenda da semana">
+                <section
+                    v-for="day in days"
+                    :key="day.dayOfWeek"
+                    class="space-y-2"
+                    :aria-label="day.label"
+                >
+                    <h2 class="text-sm font-semibold">{{ day.label }}</h2>
+                    <ul class="divide-y rounded-xl border bg-card">
+                        <li v-for="slot in day.slots" :key="slot.ulid">
+                            <Link
+                                :href="`/classes/${slot.school_class.ulid}#horario`"
+                                class="flex flex-col gap-1 p-3 transition-colors outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                                <time class="text-sm font-medium tabular-nums"
+                                    >{{ slot.starts_at }}–{{
+                                        slot.ends_at
+                                    }}</time
+                                >
+                                <span class="text-sm font-medium">{{
+                                    slot.school_class.label
+                                }}</span>
+                                <span class="text-sm text-muted-foreground">{{
+                                    slot.subject
+                                }}</span>
+                                <span
+                                    v-if="validity(slot)"
+                                    class="text-xs text-muted-foreground"
+                                    >{{ validity(slot) }}</span
+                                >
+                            </Link>
+                        </li>
+                    </ul>
+                </section>
+            </section>
+        </template>
 
         <!--
             OS MESMOS DOIS CAMINHOS que «Configurar horários» já oferece, e as

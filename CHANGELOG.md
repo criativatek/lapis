@@ -2,6 +2,14 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.69.1] — 2026-08-25
+
+### Fixed
+
+- **"Horário do Professor" deixa de deslocar a sexta-feira para uma linha à parte só porque a quinta está vazia.** A grelha desta página, em ecrã largo, distribuía apenas os dias com aulas por um número de colunas que acompanhava a largura do ecrã — e num professor com aulas a segunda, terça, quarta e sexta (sem quinta), a sexta-feira caía na linha seguinte assim que a grelha só tinha espaço para três colunas na mesma linha, quebrando o modelo mental de uma semana lida de uma vez.
+
+  **A semana passa a ser sempre cinco colunas fixas — segunda a sexta —, por esta ordem e nesta posição.** Um dia sem aulas mostra "Sem aulas" em vez de desaparecer, e nada é criado por trás desse rótulo: continua a ser uma página que só lê, tal como já era. Sábado e domingo, quando têm mesmo aulas, aparecem numa linha à parte por baixo — não têm coluna garantida, porque a teriam de ter vazia em todas as semanas de todos os professores para servir os poucos que lá lecionam. Em ecrã estreito mantém-se a leitura anterior: só os dias que têm mesmo aulas, em lista.
+
 ## [0.69.0] — 2026-08-25
 
 ### Added
