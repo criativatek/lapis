@@ -14,6 +14,16 @@ type Period = {
     ends_on: string;
 };
 
+/** Um feriado, uma interrupção letiva ou um dia não letivo (Fase 5.4). */
+type Exception = {
+    ulid?: string;
+    type: string;
+    title: string;
+    starts_on: string;
+    ends_on: string;
+    note: string | null;
+};
+
 const props = defineProps<{
     academicYear: {
         ulid: string;
@@ -25,9 +35,11 @@ const props = defineProps<{
         region_code: string | null;
         editable: boolean;
         periods: Period[];
+        exceptions: Exception[];
     };
     statuses: Option[];
     periodKinds: Option[];
+    exceptionTypes: Option[];
     canManage: boolean;
 }>();
 
@@ -39,6 +51,7 @@ const initial = {
     country_code: props.academicYear.country_code,
     region_code: props.academicYear.region_code,
     periods: props.academicYear.periods,
+    exceptions: props.academicYear.exceptions,
 };
 </script>
 
@@ -46,7 +59,10 @@ const initial = {
     <Head :title="`Editar ${academicYear.label}`" />
 
     <div class="mx-auto w-full max-w-3xl space-y-6 p-4">
-        <Heading :title="`Editar ${academicYear.label}`" description="Ajuste o ano letivo e os seus períodos." />
+        <Heading
+            :title="`Editar ${academicYear.label}`"
+            description="Ajuste o ano letivo, os seus períodos e os dias em que não há aula."
+        />
 
         <p
             v-if="!academicYear.editable"
@@ -66,6 +82,7 @@ const initial = {
             v-else
             :statuses="statuses"
             :period-kinds="periodKinds"
+            :exception-types="exceptionTypes"
             :initial="initial"
             :submit-url="`/academic-years/${academicYear.ulid}`"
             method="put"

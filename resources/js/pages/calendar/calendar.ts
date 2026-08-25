@@ -2,11 +2,11 @@
  * The shapes the «Calendário do Ano Letivo» server sends, and the visual
  * vocabulary its two views share.
  *
- * Both views read the same three things and nothing else: the year's own
+ * Both views read the same four things and nothing else: the year's own
  * períodos (structural context), the avaliações applied on a date (Instrument),
- * and the teacher's own acontecimentos (Fase 5.3). There is deliberately no
- * lesson type here — aulas belong to «Horário do Professor», not to this
- * calendar.
+ * the teacher's own acontecimentos (Fase 5.3), e as exceções letivas do ano —
+ * os dias em que NÃO há aula (Fase 5.4). There is deliberately no lesson type
+ * here — aulas belong to «Horário do Professor», not to this calendar.
  */
 
 export type CalendarAssessment = {
@@ -79,12 +79,51 @@ export type CalendarTeacherClass = {
     subject: string;
 };
 
+/**
+ * As três espécies de exceção letiva, e só estas três (Fase 5.4). Um conjunto
+ * fechado à volta de UMA pergunta — «isto impede a aula de acontecer?» — que é
+ * exatamente a pergunta a que nenhum dos quatro `CalendarEventType` responde
+ * que sim.
+ */
+export type CalendarExceptionType =
+    | 'holiday'
+    | 'school_break'
+    | 'non_teaching_day';
+
+/**
+ * Um feriado, uma interrupção letiva ou um dia não letivo.
+ *
+ * NÃO É UM `CalendarEvent`, e a diferença não é de arrumação: um acontecimento
+ * é pessoal e nunca apaga uma aula; isto é do ano letivo inteiro e é a única
+ * coisa deste calendário que diz «neste dia não há aula». São por isso dois
+ * tipos, duas leituras e dois tratamentos visuais, e nunca uma lista só com
+ * espécies misturadas lá dentro.
+ */
+export type CalendarException = {
+    ulid: string;
+    type: CalendarExceptionType;
+    type_label: string;
+    type_short_label: string;
+    title: string;
+    starts_on: string;
+    /** Never null: uma exceção de um dia só tem `ends_on === starts_on`. */
+    ends_on: string;
+    note: string | null;
+};
+
 export type CalendarDay = {
     date: string;
     day: number;
     in_month: boolean;
     is_today: boolean;
     period: CalendarPeriod | null;
+    /**
+     * A exceção que COBRE este dia, ou nenhuma — uma, e nunca uma lista, tal
+     * como o `period` acima e ao contrário dos `events` abaixo. Uma interrupção
+     * de onze dias é UMA coisa com onze dias, e a célula do meio dela não tem
+     * nada de novo para dizer que a do dia anterior já não tenha dito.
+     */
+    exception: CalendarException | null;
     assessments: CalendarAssessment[];
     /** Every acontecimento COVERING this day, not only those beginning on it. */
     events: CalendarEvent[];
@@ -120,31 +159,80 @@ export function periodRange(period: CalendarPeriod): string {
 // -------------------------------- a estrutura do ano, respondida uma só vez
 
 /**
- * O TOM ÚNICO DA ESTRUTURA — um bege de papel quente, de baixa saturação, e um
- * só: o arco-íris por índice de período pintava a página inteira de azul só
- * porque se estava a meio de um semestre, e a estrutura do ano letivo tem de
- * estar VISÍVEL sem MANDAR na página.
+ * OS TONS DA ESTRUTURA — um por período, e três ao todo.
  *
- * E VISÍVEL A SÉRIO. O `stone` que aqui esteve cumpria a metade «sem mandar» e
- * falhava a outra: lia-se como um cinzento sujo e desaparecia da página. Um
- * bege quente — `amber-50`, que é o que o Tailwind tem mais perto de papel —
- * dá-se a ver sem levantar a voz.
+ * UM TOM POR PERÍODO, E NÃO UM SÓ PARA TODOS. Com um tom único, a forma do ano
+ * lia-se como uma mancha contínua: setembro e março tinham exatamente a mesma
+ * cor, e a fronteira entre os dois semestres — que é a divisão estrutural do
+ * ano letivo — não estava desenhada em lado nenhum. Um tom por período dá-a a
+ * ver de relance, e as duas metades do ano deixam de ser a mesma coisa.
  *
- * E NÃO É O ÂMBAR DA «VISITA DE ESTUDO», embora venha da mesma família de
- * matiz: aquele é uma MOLDURA e um TEXTO saturados, de peso 600/700
- * (EVENT_TREATMENTS, aqui em baixo); este é um ENCHIMENTO pálido, de peso 50,
- * com moldura NEUTRA e texto por omissão. São dois pesos diferentes e leem-se
- * como duas coisas diferentes — e é justamente por isso que a faixa que o usa
- * nunca leva moldura de âmbar: com ela, passaria mesmo a ser a mesma cor de uma
- * visita de estudo.
+ * E BAIXO, MUITO BAIXO. O arco-íris que aqui esteve, de peso 100, pintava a
+ * página inteira de azul só porque se estava a meio de um semestre. Estes são
+ * de peso 50 — o degrau mais pálido que o Tailwind tem — e o do dia ainda leva
+ * 70% de opacidade por cima disso: um sopro de cor, e nunca um banho.
  *
- * E CONTINUA A NÃO SER A COR QUE DIZ QUAL É O PERÍODO: onde quer que este tom
- * apareça, o nome do período — e, num mês de transição, o «desde»/«até» — está
- * escrito ao lado. A página lê-se inteira num ecrã monocromático. Os dois
- * semestres de um ano partilham este mesmo tom, e distinguem-se pelo que está
- * escrito, nunca por uma segunda cor.
+ * PELA `sequence` DO PERÍODO, e não pela ordem em que ele calhou vir na lista:
+ * é o número que o próprio período traz, o mesmo por que o servidor já os
+ * ordena. O 1.º período de um ano tem o mesmo tom em setembro, na vista de Ano
+ * e na faixa do mês, hoje e no próximo ecrã. São três e não dois para um ano de
+ * trimestres não ficar sem cor no terceiro; a partir do quarto, repetem-se.
+ *
+ * E NENHUM DELES É O ÂMBAR DA «VISITA DE ESTUDO», embora o primeiro venha da
+ * mesma família de matiz: aquele é uma MOLDURA e um TEXTO saturados, de peso
+ * 600/700 (EVENT_TREATMENTS, aqui em baixo); este é um ENCHIMENTO pálido, de
+ * peso 50, com moldura NEUTRA e texto por omissão. São dois pesos diferentes e
+ * leem-se como duas coisas diferentes — e é por isso que nenhuma superfície que
+ * os use leva moldura de âmbar.
+ *
+ * E CONTINUA A NÃO SER A COR QUE DIZ QUAL É O PERÍODO: onde quer que um destes
+ * tons apareça, o nome do período — e, num mês de transição, o «desde»/«até» —
+ * está escrito ao lado. A página lê-se inteira num ecrã monocromático, e quem
+ * não distingue estes tons não perde informação nenhuma.
  */
-export const PERIOD_TINT = 'bg-amber-50 dark:bg-amber-950/20';
+const PERIOD_TINTS = [
+    'bg-amber-50 dark:bg-amber-950/20',
+    'bg-blue-50 dark:bg-blue-950/20',
+    'bg-emerald-50 dark:bg-emerald-950/20',
+];
+
+/**
+ * O MESMO TOM, MAIS FRACO, PARA A CÉLULA DE UM DIA. Uma célula do mês é uma
+ * superfície de altura inteira, e a mesma tinta que numa tira baixa é discreta
+ * repetida por trinta células passa a ser o fundo da página. O que a faixa diz
+ * a meia-voz, a grelha diz num sussurro.
+ */
+const PERIOD_DAY_TINTS = [
+    'bg-amber-50/70 dark:bg-amber-950/15',
+    'bg-blue-50/70 dark:bg-blue-950/15',
+    'bg-emerald-50/70 dark:bg-emerald-950/15',
+];
+
+/** O índice do tom deste período, sempre dentro da paleta e nunca negativo. */
+function tintIndex(period: CalendarPeriod, palette: string[]): number {
+    return (
+        (((period.sequence - 1) % palette.length) + palette.length) %
+        palette.length
+    );
+}
+
+/**
+ * O tom deste período nas superfícies estruturais: a faixa do mês, o cartão de
+ * um mês inteiramente dentro dele, a sua linha no resumo do ano.
+ */
+export function periodTint(period: CalendarPeriod): string {
+    return PERIOD_TINTS[tintIndex(period, PERIOD_TINTS)] as string;
+}
+
+/**
+ * O tom deste período na célula de um dia da grelha — e SÓ nos dias que ele
+ * cobre mesmo. É o `period` que o servidor põe em cada `CalendarDay`, que é
+ * exato ao dia: setembro de um ano que abre a 11 tem dez células por pintar e
+ * dezanove pintadas, e nunca um mês inteiro pintado por causa de metade dele.
+ */
+export function periodDayTint(period: CalendarPeriod): string {
+    return PERIOD_DAY_TINTS[tintIndex(period, PERIOD_DAY_TINTS)] as string;
+}
 
 /**
  * O período que cobre este intervalo DE UMA PONTA À OUTRA, e só esse — ou
@@ -227,6 +315,115 @@ export function periodContext(
     return touching.map((period) => periodNote(range, period)).join(' · ');
 }
 
+// ------------------------------- os dias em que NÃO há aula (Fase 5.4)
+
+/**
+ * «11/09 – 29/01», ou «5/10» quando é um dia só — porque uma exceção de um dia
+ * é o caso mais comum que existe (um feriado), e escrever «5/10 – 5/10» era
+ * dizer duas vezes a mesma data para não ter de fazer uma pergunta.
+ */
+export function exceptionRange(exception: CalendarException): string {
+    return exception.ends_on === exception.starts_on
+        ? formatDay(exception.starts_on)
+        : `${formatDay(exception.starts_on)} – ${formatDay(exception.ends_on)}`;
+}
+
+/**
+ * As exceções que TOCAM este intervalo — o mês que se está a ver, um cartão de
+ * mês da vista de Ano. Sobreposição e não contenção, exatamente como os
+ * períodos: uma interrupção de 21 de dezembro a 3 de janeiro é estrutura dos
+ * dois meses, e os dois têm de a mostrar.
+ */
+export function exceptionsTouching(
+    range: CalendarDateRange,
+    exceptions: CalendarException[],
+): CalendarException[] {
+    return exceptions.filter(
+        (exception) =>
+            exception.starts_on <= range.ends_on &&
+            exception.ends_on >= range.starts_on,
+    );
+}
+
+/**
+ * ESTA CÉLULA É A QUE NOMEIA A EXCEÇÃO? — verdadeiro no primeiro dia da grelha
+ * que ela cobre, e falso em todos os que vêm a seguir.
+ *
+ * É ISTO QUE IMPEDE UMA INTERRUPÇÃO DE ONZE DIAS DE SE LER COMO ONZE COISAS.
+ * Um acontecimento de vários dias aparece, hoje, em cada célula que atravessa,
+ * e está certo que assim seja: uma visita de estudo de segunda a quinta é uma
+ * coisa que está mesmo a acontecer em cada um daqueles quatro dias, e cada um
+ * deles tem a sua própria hora. Uma interrupção de Natal não é isso — é UM
+ * intervalo com um nome — e onze cartões iguais empilhados de 21 a 31 de
+ * dezembro seriam onze vezes a mesma frase. Diz-se onde ela começa, e os
+ * restantes dias mostram-se pelo tom, tal como já acontece a um período.
+ *
+ * Compara-se com a célula ANTERIOR da grelha inteira (e não a do início da
+ * semana): uma exceção que já vinha do mês passado não se volta a nomear, e uma
+ * que atravessa duas linhas nomeia-se uma vez só, na primeira.
+ */
+export function namesException(days: CalendarDay[], index: number): boolean {
+    const current = days[index]?.exception ?? null;
+
+    if (current === null) {
+        return false;
+    }
+
+    const previous = days[index - 1]?.exception ?? null;
+
+    return previous === null || previous.ulid !== current.ulid;
+}
+
+/**
+ * O TOM DE UM DIA NÃO LETIVO — e porque é que ele não é nenhum dos tons de
+ * período aqui em cima.
+ *
+ * UM CINZENTO NEUTRO, E DE PROPÓSITO. Os períodos ficaram com três tons pálidos
+ * de matiz (âmbar, azul, verde), de peso 50, que dizem «estamos a meio do 1.º
+ * semestre». Isto diz outra coisa inteiramente — «neste dia não há aula» — e
+ * uma quarta cor da mesma família seria lida como um quarto período. Um neutro
+ * mais escuro, fora da paleta dos períodos, é a convenção que todos os
+ * calendários do mundo já usam para um dia que não se trabalha, e lê-se como tal
+ * mesmo num ecrã a preto e branco: é uma diferença de LUMINOSIDADE, e não de
+ * matiz.
+ *
+ * E UMA MOLDURA TRACEJADA POR DENTRO, que é o que nenhuma célula de período tem
+ * e nenhuma célula de período jamais terá. É a segunda pista, e é de FORMA e não
+ * de cor: para quem não distingue o cinzento do âmbar pálido, o tracejado
+ * continua lá.
+ *
+ * E GANHA AO TOM DO PERÍODO, quando o dia é dos dois — 21 de dezembro está
+ * dentro do 1.º Semestre E dentro da Interrupção de Natal. A regra é a do
+ * enunciado e é a certa: para AQUELE dia, o facto operacionalmente relevante é
+ * que não há aula; que ele pertença ao 1.º semestre continua escrito na faixa
+ * por cima da grelha, que é onde o período já se dizia de qualquer maneira.
+ *
+ * O QUE NÃO GANHA A NINGUÉM É AO CONTEÚDO DA CÉLULA: uma avaliação e um
+ * acontecimento trazem moldura e fundo próprios (`bg-background/…`) que assentam
+ * POR CIMA disto, e continuam a ser a coisa mais forte da célula — que é como
+ * tem de ser, porque um teste marcado num dia que passou a não letivo é
+ * exatamente a coisa que o professor tem de ver.
+ */
+export const EXCEPTION_DAY_TINT =
+    'bg-slate-200/70 outline-dashed outline-1 -outline-offset-1 outline-slate-400/70 dark:bg-slate-700/40 dark:outline-slate-500/60';
+
+/**
+ * A superfície de uma exceção fora da grelha: a faixa por cima do mês, a
+ * etiqueta no cartão de um mês da vista de Ano.
+ *
+ * TRACEJADA E CINZENTA, onde a faixa de um período é SÓLIDA e de matiz — as duas
+ * são estrutura e vivem no mesmo sítio da página, pelo que a diferença entre
+ * elas tem de ser visível de relance e sem ler. E, ao contrário da faixa de um
+ * período, esta traz sempre ícone (`CalendarOff`) e uma palavra escrita
+ * («FERIADO», «INTERRUPÇÃO», «NÃO LETIVO»), que é o que a mantém distinta de um
+ * período E de um acontecimento sem depender de cor nenhuma.
+ */
+export const EXCEPTION_SURFACE =
+    'border-dashed border-slate-400/80 bg-slate-100 text-slate-900 dark:border-slate-500/70 dark:bg-slate-800/60 dark:text-slate-100';
+
+/** O tom do ícone e da etiqueta de uma exceção dentro de uma célula. */
+export const EXCEPTION_ACCENT = 'text-slate-700 dark:text-slate-300';
+
 /**
  * A ESCADA DE PESO VISUAL DO CALENDÁRIO, de cima para baixo — and the order is
  * a product decision, not a palette:
@@ -244,9 +441,18 @@ export function periodContext(
  *      para o que não é nenhuma das outras três, e não deve gritar.
  *
  * E, ACIMA DE TUDO: A FAIXA DE UM PERÍODO NÃO ENTRA NESTA ESCADA. Continua a
- * ser estrutura — sem moldura, sem ícone, sem peso — e passou a ser desenhada no
- * tom único e discreto de PERÍODO_TINT, justamente para não competir com nenhum
- * dos quatro nem com uma avaliação.
+ * ser estrutura — sem moldura, sem ícone, sem peso — e é desenhada nos tons
+ * pálidos de `periodTint`/`periodDayTint`, justamente para não competir com
+ * nenhum dos quatro nem com uma avaliação. Uma avaliação e um acontecimento
+ * trazem moldura e fundo próprios (`bg-background/…`), que assentam POR CIMA do
+ * fundo da célula e continuam a destacar-se dele seja qual for o período.
+ *
+ * NEM UMA EXCEÇÃO LETIVA ENTRA NESTA ESCADA, e pela mesma razão: também ela é
+ * estrutura. Não é uma entrada da célula — é uma propriedade DO DIA, como o
+ * período, e por isso pinta o fundo em vez de ocupar uma linha da lista. É o que
+ * garante que uma interrupção de onze dias nunca compete com o teste marcado
+ * para o dia 22: o teste continua a ser a coisa com moldura, fundo e peso, e
+ * está desenhado por cima.
  *
  * NENHUM DESTES QUATRO SE DISTINGUE DOS OUTROS — NEM DE UMA AVALIAÇÃO — SÓ PELA
  * COR. Cada um traz sempre também um ícone próprio e uma etiqueta escrita

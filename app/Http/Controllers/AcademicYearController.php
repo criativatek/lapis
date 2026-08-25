@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\AcademicYearRequest;
+use App\Models\AcademicCalendarExceptionType;
 use App\Models\AcademicPeriodKind;
 use App\Models\AcademicYear;
 use App\Models\AcademicYearStatus;
@@ -50,6 +51,7 @@ class AcademicYearController extends Controller
         return Inertia::render('academic-years/Create', [
             'statuses' => $this->statusOptions(),
             'periodKinds' => $this->periodKindOptions(),
+            'exceptionTypes' => $this->exceptionTypeOptions(),
         ]);
     }
 
@@ -58,8 +60,11 @@ class AcademicYearController extends Controller
         Gate::authorize('create', AcademicYear::class);
 
         $this->service->create(
-            $request->safe()->except('periods'),
+            $request->safe()->except(['periods', 'exceptions']),
             $request->validated('periods'),
+            // Null quando o pedido não falou de exceções de todo — o serviço
+            // distingue isso de um array vazio, que é «não tem nenhuma».
+            $request->validated('exceptions'),
         );
 
         return to_route('academic-years.index');
@@ -87,9 +92,23 @@ class AcademicYearController extends Controller
                     'starts_on' => $period->starts_on->toDateString(),
                     'ends_on' => $period->ends_on->toDateString(),
                 ]),
+                // As exceções letivas do ano, mapeadas exatamente como os
+                // períodos acima — mesmas chaves editáveis, mesmo ulid a
+                // carregar a identidade através das gravações. `source` não vai
+                // no payload porque o formulário não a oferece: escreve-se no
+                // servidor e não é do professor.
+                'exceptions' => $academicYear->exceptions->map(fn ($exception) => [
+                    'ulid' => $exception->ulid,
+                    'type' => $exception->type->value,
+                    'title' => $exception->title,
+                    'starts_on' => $exception->starts_on->toDateString(),
+                    'ends_on' => $exception->ends_on->toDateString(),
+                    'note' => $exception->note,
+                ]),
             ],
             'statuses' => $this->statusOptions(),
             'periodKinds' => $this->periodKindOptions(),
+            'exceptionTypes' => $this->exceptionTypeOptions(),
             // Ownership alone — kept separate from `editable` (the year's own
             // pedagogical state) so the page can tell the two refusal reasons
             // apart instead of collapsing them into one silent blank form.
@@ -104,8 +123,9 @@ class AcademicYearController extends Controller
         try {
             $this->service->update(
                 $academicYear,
-                $request->safe()->except('periods'),
+                $request->safe()->except(['periods', 'exceptions']),
                 $request->validated('periods'),
+                $request->validated('exceptions'),
             );
         } catch (AcademicYearValidationException $exception) {
             return back()->withErrors(['periods' => $exception->getMessage()])->withInput();
@@ -118,6 +138,10 @@ class AcademicYearController extends Controller
     {
         Gate::authorize('delete', $academicYear);
 
+        // As exceções letivas têm a MESMA chave estrangeira RESTRICT que os
+        // períodos, e por isso a mesma remoção explícita: um ano nunca leva
+        // consigo, por arrasto e em silêncio, a estrutura que dependia dele.
+        $academicYear->exceptions()->delete();
         $academicYear->periods()->delete();
         $academicYear->delete();
 
@@ -143,6 +167,22 @@ class AcademicYearController extends Controller
         return array_map(
             fn (AcademicPeriodKind $kind) => ['value' => $kind->value, 'label' => $kind->label()],
             AcademicPeriodKind::cases(),
+        );
+    }
+
+    /**
+     * As três espécies de exceção letiva, oferecidas ao formulário a partir do
+     * próprio enum — nunca reescritas na página, pela mesma razão que as
+     * espécies de período não o são: a lista que o formulário oferece e a lista
+     * que AcademicYearRequest aceita não podem divergir.
+     *
+     * @return list<array{value: string, label: string}>
+     */
+    protected function exceptionTypeOptions(): array
+    {
+        return array_map(
+            fn (AcademicCalendarExceptionType $type) => ['value' => $type->value, 'label' => $type->label()],
+            AcademicCalendarExceptionType::cases(),
         );
     }
 }

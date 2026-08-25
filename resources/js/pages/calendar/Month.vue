@@ -2,12 +2,14 @@
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import {
     CalendarDays,
+    CalendarOff,
     CalendarPlus,
     CalendarRange,
     ChevronLeft,
     ChevronRight,
     Circle,
     ClipboardCheck,
+    FileUp,
     LayoutGrid,
     MapPin,
     Sparkles,
@@ -35,19 +37,27 @@ import type {
     CalendarDay,
     CalendarEvent,
     CalendarEventType,
+    CalendarException,
     CalendarPeriod,
     CalendarTeacherClass,
 } from './calendar';
 import {
     asDate,
+    EXCEPTION_ACCENT,
+    EXCEPTION_DAY_TINT,
+    EXCEPTION_SURFACE,
     eventBadgeClasses,
     eventEntryClasses,
     eventTimeLabel,
+    exceptionRange,
+    exceptionsTouching,
     formatDay,
     fullyContainedPeriod,
+    namesException,
     periodBoundaryNote,
+    periodDayTint,
     periodRange,
-    PERIOD_TINT,
+    periodTint,
 } from './calendar';
 
 const props = defineProps<{
@@ -60,6 +70,11 @@ const props = defineProps<{
     month: { value: string; starts_on: string; ends_on: string } | null;
     days: CalendarDay[];
     periods: CalendarPeriod[];
+    /**
+     * As exceções letivas que cruzam a GRELHA visível — nomeadas uma vez, na
+     * faixa por cima dela, e não uma vez por cada dia que ocupam.
+     */
+    exceptions: CalendarException[];
     navigation: {
         previous: string;
         next: string;
@@ -310,6 +325,81 @@ const structuralBands = computed(() => {
                   periodBoundaryNote(month, period) || periodRange(period),
     }));
 });
+
+/**
+ * O FUNDO DE UMA CÉLULA, e as duas coisas diferentes que ele pode estar a
+ * dizer.
+ *
+ * O CINZENTO DE «FORA DO MÊS» GANHA SEMPRE. Um dia que a grelha só mostra para
+ * a linha fechar — 28 de setembro numa grelha de outubro — pode muito bem estar
+ * dentro de um período, e está: mas o que é preciso saber sobre ele, primeiro e
+ * acima de tudo, é que não é deste mês. As duas tintas ao mesmo tempo não dizem
+ * as duas coisas, dizem uma cor confusa.
+ *
+ * E O TOM DO PERÍODO É EXATO AO DIA. Sai do `day.period`, que o servidor já
+ * calcula dia a dia — o período cujo `starts_on <= data <= ends_on` para AQUELA
+ * data, e `null` quando não há nenhum. Num setembro que abre a 11, os dias 1 a
+ * 10 ficam por pintar e o 11 é o primeiro pintado: nem um dia a mais, e nunca
+ * o mês inteiro por causa de metade dele. O intervalo entre dois períodos fica
+ * igualmente por pintar, que é o que ele é.
+ */
+function dayTint(day: CalendarDay): string {
+    if (!day.in_month) {
+        return 'bg-muted/30';
+    }
+
+    // E UM DIA NÃO LETIVO GANHA AO PERÍODO EM QUE CAI. 21 de dezembro está
+    // dentro do 1.º Semestre E dentro da Interrupção de Natal, e as duas coisas
+    // são verdade — mas o que é preciso saber sobre AQUELE dia é que não há
+    // aula. Que ele seja do 1.º Semestre continua escrito, com todas as letras,
+    // na faixa por cima da grelha, que é onde o período já se dizia; o que a
+    // faixa não conseguia dizer é qual dos trinta e um dias é que é feriado.
+    //
+    // E não se somam as duas tintas: duas tintas ao mesmo tempo não dizem duas
+    // coisas, dizem uma cor confusa — exatamente o mesmo raciocínio que o
+    // cinzento de «fora do mês» aqui em cima já faz.
+    if (day.exception !== null) {
+        return EXCEPTION_DAY_TINT;
+    }
+
+    return day.period === null ? '' : periodDayTint(day.period);
+}
+
+// ----------------------------------- os dias em que não há aula, DESTE mês
+
+/**
+ * AS EXCEÇÕES DO MÊS QUE SE ESTÁ A VER, e não as da grelha — exatamente o mesmo
+ * recorte que `periodsThisMonth` faz aos períodos, e pela mesma razão: a faixa
+ * fala DO MÊS, e uma interrupção que só toca o dia 28 de setembro não é
+ * estrutura de outubro nenhuma.
+ */
+const exceptionsThisMonth = computed(() =>
+    props.month === null
+        ? []
+        : exceptionsTouching(props.month, props.exceptions),
+);
+
+/**
+ * As datas em que a exceção que as cobre é NOMEADA — a primeira célula da grelha
+ * de cada exceção, e mais nenhuma. Calculado uma vez sobre a grelha inteira, em
+ * vez de por célula, porque a pergunta é sobre o dia ANTERIOR e as semanas são
+ * fatias desta mesma lista.
+ */
+const exceptionNamingDates = computed(() => {
+    const dates = new Set<string>();
+
+    props.days.forEach((day, index) => {
+        if (namesException(props.days, index)) {
+            dates.add(day.date);
+        }
+    });
+
+    return dates;
+});
+
+function namesExceptionOn(day: CalendarDay): boolean {
+    return exceptionNamingDates.value.has(day.date);
+}
 
 function dayLabel(date: string): string {
     return capitalizeFirst(dayFormatter.format(asDate(date)));
@@ -614,6 +704,28 @@ function destroyEvent(event: CalendarEvent): void {
                 >
                     <CalendarPlus class="size-4" /> Novo acontecimento
                 </Button>
+
+                <!--
+                    A PORTA PARA A IMPORTAÇÃO É O CALENDÁRIO, e não uma entrada
+                    de menu nova (§24). Quem decide importar o calendário da
+                    escola está a olhar para o calendário quando o decide — a
+                    página onde a falta se nota é a página onde se resolve. Ao
+                    lado de «Novo acontecimento» e não em vez dele: escrever uma
+                    data à mão e carregar o ficheiro da escola são as duas
+                    maneiras de encher esta página, e nenhuma substitui a outra.
+                -->
+                <Button
+                    v-if="academicYear"
+                    as-child
+                    variant="outline"
+                    size="sm"
+                    class="min-h-10"
+                    data-import-calendar
+                >
+                    <Link href="/academic-calendar-imports/create">
+                        <FileUp class="size-4" /> Importar calendário da escola
+                    </Link>
+                </Button>
             </div>
         </header>
 
@@ -676,27 +788,38 @@ function destroyEvent(event: CalendarEvent): void {
                 Período» — pelo que repeti-la a seguir («1.º Semestre ·
                 Semestre») não acrescentava nada a ninguém. Fica o nome e as
                 datas, que é o que aqui falta saber.
+
+                E CADA PERÍODO TRAZ O SEU PRÓPRIO TOM PARA DENTRO DA FAIXA. A
+                faixa era de uma cor só, e num mês de transição os dois períodos
+                ficavam com o mesmo fundo — o que é a mesma tinta a apagar
+                justamente a fronteira que aquele mês tem para mostrar. Continua
+                a ser UMA faixa, com uma moldura só e a largura da grelha: o que
+                mudou foi ela ficar repartida por dentro, cada segmento no tom
+                que o seu período tem também nos dias da grelha logo abaixo. Com
+                um período só — o caso normal — há um segmento, que ocupa a
+                faixa inteira, e ela lê-se exatamente como antes.
+
+                E O TOM NÃO É O QUE SEPARA OS DOIS: cada segmento diz o nome do
+                seu período, e o traço entre eles está desenhado.
             -->
             <section
                 v-if="structuralBands.length > 0"
-                class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border px-4 py-2.5 text-sm"
-                :class="PERIOD_TINT"
+                class="flex flex-wrap overflow-hidden rounded-lg border text-sm"
                 aria-label="Períodos deste mês"
             >
-                <template
+                <span
                     v-for="(band, index) in structuralBands"
                     :key="band.period.ulid"
+                    :data-period-band="band.period.ulid"
+                    class="min-w-64 flex-1 px-4 py-2.5"
+                    :class="[
+                        periodTint(band.period),
+                        index > 0 ? 'border-l' : '',
+                    ]"
                 >
-                    <span
-                        v-if="index > 0"
-                        class="h-4 w-px shrink-0 bg-foreground/20"
-                        aria-hidden="true"
-                    />
-                    <span :data-period-band="band.period.ulid">
-                        <span class="font-medium">{{ band.period.label }}</span>
-                        <span class="opacity-80"> · {{ band.detail }}</span>
-                    </span>
-                </template>
+                    <span class="font-medium">{{ band.period.label }}</span>
+                    <span class="opacity-80"> · {{ band.detail }}</span>
+                </span>
             </section>
             <p
                 v-else-if="periods.length === 0"
@@ -706,6 +829,57 @@ function destroyEvent(event: CalendarEvent): void {
                 mostra os dias na mesma — os períodos aparecem assim que
                 estiverem criados em «Estrutura do Ano Letivo».
             </p>
+
+            <!--
+                OS DIAS EM QUE NÃO HÁ AULA, DITOS UMA VEZ E COMO INTERVALOS.
+                Uma interrupção de 21 a 31 de dezembro aparece aqui como UMA
+                linha — «INTERRUPÇÃO · Interrupção de Natal · 21/12 – 31/12» —
+                e não como onze cartões iguais espalhados por onze células. É a
+                regra do §16 do enunciado, e é a diferença entre isto e um
+                acontecimento de vários dias, que continua (com razão) a
+                aparecer em cada dia que atravessa.
+
+                E NÃO SE CONFUNDE COM A FAIXA DOS PERÍODOS, logo acima: aquela é
+                sólida e de matiz, esta é tracejada e cinzenta, e esta traz ícone
+                e uma palavra escrita («FERIADO», «INTERRUPÇÃO», «NÃO LETIVO»)
+                que aquela nunca tem. Nem com um acontecimento: um acontecimento
+                vive DENTRO de uma célula, com moldura de cor e hora; isto é
+                estrutura, e vive por cima da grelha, onde a estrutura já vivia.
+
+                E É A ÚNICA DAS DUAS QUE APARECE TAMBÉM EM ECRÃ ESTREITO: a
+                agenda lista só os dias que têm alguma coisa marcada, e uma
+                interrupção não «marca» nada em dia nenhum — é isto que a diz.
+            -->
+            <section
+                v-if="exceptionsThisMonth.length > 0"
+                class="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border px-4 py-2.5 text-sm"
+                :class="EXCEPTION_SURFACE"
+                aria-label="Dias não letivos deste mês"
+            >
+                <span
+                    class="flex shrink-0 items-center gap-1.5 text-xs font-semibold tracking-wide uppercase opacity-80"
+                >
+                    <CalendarOff class="size-4" aria-hidden="true" />
+                    Não letivo
+                </span>
+                <template
+                    v-for="(exception, index) in exceptionsThisMonth"
+                    :key="exception.ulid"
+                >
+                    <span
+                        v-if="index > 0"
+                        class="h-4 w-px shrink-0 bg-foreground/20"
+                        aria-hidden="true"
+                    />
+                    <span :data-exception-band="exception.ulid">
+                        <span class="font-medium">{{ exception.title }}</span>
+                        <span class="opacity-80">
+                            · {{ exception.type_label }} ·
+                            {{ exceptionRange(exception) }}</span
+                        >
+                    </span>
+                </template>
+            </section>
 
             <!-- A grelha do mês: legível em ecrã largo, substituída pela agenda em ecrã estreito. -->
             <section
@@ -733,25 +907,31 @@ function destroyEvent(event: CalendarEvent): void {
                     class="grid grid-cols-7 border-b last:border-b-0"
                 >
                     <!--
-                        A GRELHA FICA NEUTRA. Cada célula levava um fundo cheio
-                        com a cor do período em que caía, e o mês inteiro ficava
-                        pintado só porque se estava a meio de um semestre — a
-                        estrutura do ano a mandar na página em vez de a
-                        acompanhar. O cinzento dos dias de fora do mês fica como
-                        estava, porque diz outra coisa.
+                        A ESTRUTURA DO ANO VOLTA À GRELHA, A SUSSURRAR. A grelha
+                        inteiramente branca era honesta e ilegível: o desenho do
+                        ano letivo — onde é que um semestre abre, onde é que o
+                        outro começa — desaparecia da única página feita para o
+                        mostrar. O que voltou é um tom por período, de peso 50 a
+                        70% de opacidade, e o que NÃO voltou é o banho de cor
+                        antigo, que era de peso 100 e por mês inteiro.
 
-                        E A CÉLULA JÁ NÃO NOMEIA O PERÍODO. Nomeava-o onde ele
-                        começava — a célula do dia 11 de setembro dizia «1.º
-                        Semestre» — a um centímetro de uma faixa que já diz «1.º
-                        Semestre · desde 11/09» por cima da grelha inteira e com
-                        muito mais peso. Era a mesma coisa dita duas vezes, e a
-                        segunda só fazia ruído dentro do dia.
+                        E É EXATO AO DIA, tão exato como a faixa lá em cima. A
+                        cor sai do `day.period` — o período daquela data, e não
+                        do mês — pelo que num setembro que abre a 11 os dez
+                        primeiros dias ficam por pintar. Pintar setembro inteiro
+                        continuaria a ser dizer uma coisa falsa sobre eles.
+
+                        E A CÉLULA CONTINUA A NÃO NOMEAR O PERÍODO. Nomeava-o
+                        onde ele começava — a célula do dia 11 de setembro dizia
+                        «1.º Semestre» — a um centímetro de uma faixa que já diz
+                        «1.º Semestre · desde 11/09» por cima da grelha inteira e
+                        com muito mais peso.
                     -->
                     <div
                         v-for="day in week"
                         :key="day.date"
                         class="min-h-28 border-r p-1.5 last:border-r-0"
-                        :class="day.in_month ? '' : 'bg-muted/30'"
+                        :class="dayTint(day)"
                         :aria-label="dayLabel(day.date)"
                         :data-date="day.date"
                     >
@@ -780,6 +960,45 @@ function destroyEvent(event: CalendarEvent): void {
                                 {{ day.day }}
                             </button>
                         </div>
+
+                        <!--
+                            A EXCEÇÃO NOMEIA-SE ONDE COMEÇA, E SÓ AÍ. Nos
+                            restantes dias que ela cobre fica o tom cinzento e o
+                            tracejado da própria célula, que é o que já diz «não
+                            há aula» — repetir «Interrupção de Natal» em onze
+                            células seguidas era escrever onze vezes a mesma
+                            frase e enterrar o que cada dia tem de próprio.
+
+                            E NÃO É UM CARTÃO: sem moldura, sem fundo próprio,
+                            sem nada em que carregar — texto quieto por cima do
+                            tom da célula, exatamente o peso que a faixa dos
+                            períodos tem lá em cima. Um acontecimento, na lista
+                            aqui em baixo, tem moldura e é um botão; uma
+                            avaliação tem moldura, fundo e peso. As três não se
+                            confundem, e nenhuma delas depende da cor para isso:
+                            esta traz sempre o seu ícone e a palavra da espécie.
+                        -->
+                        <p
+                            v-if="day.exception && namesExceptionOn(day)"
+                            class="mt-1 flex items-start gap-1 px-1 text-[0.7rem] leading-tight"
+                            :class="EXCEPTION_ACCENT"
+                            :data-exception-start="day.exception.ulid"
+                            :title="`${day.exception.type_label} · ${day.exception.title} · ${exceptionRange(day.exception)}`"
+                        >
+                            <CalendarOff
+                                class="mt-px size-3 shrink-0"
+                                aria-hidden="true"
+                            />
+                            <span class="min-w-0">
+                                <span
+                                    class="block truncate text-[0.6rem] font-semibold tracking-wide"
+                                    >{{ day.exception.type_short_label }}</span
+                                >
+                                <span class="block truncate">{{
+                                    day.exception.title
+                                }}</span>
+                            </span>
+                        </p>
 
                         <ul class="mt-1 space-y-1">
                             <li v-for="item in shown(day)" :key="item.key">
@@ -901,6 +1120,25 @@ function destroyEvent(event: CalendarEvent): void {
                             class="font-normal text-muted-foreground"
                             >· {{ day.period.label }}</span
                         >
+                        <!--
+                            E, SE ESTE DIA NÃO É LETIVO, ISSO DITO NO PRÓPRIO
+                            CABEÇALHO DO DIA — porque em ecrã estreito não há
+                            célula nenhuma para tingir, e um teste listado por
+                            baixo de um dia que afinal é feriado é exatamente a
+                            coisa que o professor precisa de ver de imediato.
+                            Com ícone e com a espécie escrita, e não só com uma
+                            cor que aqui nem existe.
+                        -->
+                        <span
+                            v-if="day.exception"
+                            :data-agenda-exception="day.exception.ulid"
+                            class="ml-1 inline-flex items-center gap-1 rounded-md border border-dashed px-1.5 py-0.5 align-middle text-xs font-medium"
+                            :class="EXCEPTION_SURFACE"
+                        >
+                            <CalendarOff class="size-3" aria-hidden="true" />
+                            {{ day.exception.type_label }} ·
+                            {{ day.exception.title }}
+                        </span>
                     </h3>
                     <ul class="divide-y rounded-xl border bg-card">
                         <li

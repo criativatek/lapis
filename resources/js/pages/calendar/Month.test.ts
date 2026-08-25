@@ -6,9 +6,10 @@ import type {
     CalendarAssessment,
     CalendarDay,
     CalendarEvent,
+    CalendarException,
     CalendarPeriod,
 } from './calendar';
-import { PERIOD_TINT } from './calendar';
+import { EXCEPTION_DAY_TINT, periodDayTint, periodTint } from './calendar';
 import Month from './Month.vue';
 
 const routerGet = vi.fn();
@@ -111,6 +112,40 @@ function octoberDays(
             in_month: date >= '2026-10-01' && date <= '2026-10-31',
             is_today: false,
             period: null,
+            exception: null,
+            assessments: [],
+            events: [],
+            ...fill(date),
+        });
+
+        cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+
+    return days;
+}
+
+/**
+ * The real September 2026 grid: the month opens on a Tuesday, so it runs from
+ * Monday 31 August to Sunday 4 October — 35 cells. It is the month a year that
+ * opens on 11 September splits in two, which is what the per-day tint has to be
+ * exact about.
+ */
+function septemberDays(
+    fill: (date: string) => Partial<CalendarDay> = () => ({}),
+): CalendarDay[] {
+    const days: CalendarDay[] = [];
+    const cursor = new Date('2026-08-31T00:00:00Z');
+
+    for (let index = 0; index < 35; index += 1) {
+        const date = cursor.toISOString().slice(0, 10);
+
+        days.push({
+            date,
+            day: cursor.getUTCDate(),
+            in_month: date >= '2026-09-01' && date <= '2026-09-30',
+            is_today: false,
+            period: null,
+            exception: null,
             assessments: [],
             events: [],
             ...fill(date),
@@ -130,6 +165,33 @@ function covering(target: CalendarEvent) {
             : {};
 }
 
+function exception(
+    overrides: Partial<CalendarException> = {},
+): CalendarException {
+    return {
+        ulid: 'exception-a',
+        type: 'holiday',
+        type_label: 'Feriado',
+        type_short_label: 'FERIADO',
+        title: 'Implantação da República',
+        starts_on: '2026-10-05',
+        ends_on: '2026-10-05',
+        note: null,
+        ...overrides,
+    };
+}
+
+/**
+ * Every cell an exceção covers, the way the server fills them — one `exception`
+ * per day, never a list, exactly as `period` already is.
+ */
+function coveredBy(target: CalendarException) {
+    return (date: string): Partial<CalendarDay> =>
+        date >= target.starts_on && date <= target.ends_on
+            ? { exception: target }
+            : {};
+}
+
 function mountPage(overrides: Partial<InstanceType<typeof Month>['$props']> = {}) {
     return mount(Month, {
         props: {
@@ -146,6 +208,7 @@ function mountPage(overrides: Partial<InstanceType<typeof Month>['$props']> = {}
             },
             days: octoberDays(),
             periods: [],
+            exceptions: [],
             navigation: {
                 previous: '2026-09',
                 next: '2026-11',
@@ -493,19 +556,27 @@ describe('calendar/Month', () => {
         const wrapper = mountPage({ periods: [SEMESTER_ONE] });
         const strip = wrapper.find('section[aria-label="Períodos deste mês"]');
         const classes = strip.classes().join(' ');
+        const segments = strip.findAll('[data-period-band]');
 
         // Uma tira: larga por omissão (nada a encolhe para o tamanho do texto),
-        // baixa, e com folga horizontal a sério.
+        // e com uma moldura só à volta de tudo.
         expect(classes).not.toContain('inline');
-        expect(classes).toMatch(/\bpx-4\b/);
-        expect(classes).toMatch(/\bpy-2(\.5)?\b/);
+        expect(classes).toMatch(/\bborder\b/);
+
+        // Baixa, e com folga horizontal a sério — a medida está no segmento,
+        // que com um período só é a faixa inteira.
+        expect(segments).toHaveLength(1);
+        const segment = segments[0]!.classes().join(' ');
+        expect(segment).toMatch(/\bpx-4\b/);
+        expect(segment).toMatch(/\bpy-2(\.5)?\b/);
+        expect(segment).toMatch(/\bflex-1\b/);
 
         // E NÃO É UM BOTÃO nem um acontecimento: nada em que carregar, nenhuma
         // sombra, nenhum ícone, nenhuma moldura de cor.
         expect(strip.findAll('button')).toHaveLength(0);
         expect(strip.findAll('a')).toHaveLength(0);
         expect(strip.find('svg').exists()).toBe(false);
-        expect(classes).not.toMatch(/shadow|cursor-pointer|hover:/);
+        expect(strip.html()).not.toMatch(/shadow|cursor-pointer|hover:/);
 
         // Imediatamente antes da grelha, e não algures noutro sítio da página.
         expect(
@@ -536,57 +607,253 @@ describe('calendar/Month', () => {
         expect(wrapper.text()).not.toContain('ainda não tem períodos definidos');
     });
 
+    // ----------------------------------- o tom de cada DIA, exato ao dia
+
+    /** O fundo que uma célula da grelha está mesmo a levar. */
+    function cellBackgrounds(
+        wrapper: ReturnType<typeof mountPage>,
+        date: string,
+    ): string[] {
+        return wrapper
+            .find(`[data-date="${date}"]`)
+            .classes()
+            .filter((name) => name.startsWith('bg-'));
+    }
+
     /**
-     * A GRELHA FICA NEUTRA — e agora fica-o inteiramente. Cada célula levava um
-     * fundo cheio com a cor do período em que caía, e o mês inteiro ficava azul
-     * só porque se estava a meio de um semestre; e a célula onde o período
-     * começava ainda lhe escrevia o nome por dentro. Nem o banho de cor, nem o
-     * nome repetido: o período é dito uma vez, na faixa, por cima da grelha.
+     * A ESTRUTURA DO ANO VOLTOU À GRELHA — a sussurrar, e não a gritar. A grelha
+     * inteiramente branca era honesta e ilegível: a forma do ano letivo
+     * desaparecia da única página feita para a mostrar. O que voltou é um tom
+     * pálido por dia; o que NÃO voltou é o banho de cor antigo, de peso 100 e
+     * por mês inteiro.
      */
-    it('leaves every day cell of the grid without a período background or a período name', () => {
+    it('tints a day that sits inside a período with that período\'s own soft tone', () => {
         const wrapper = mountPage({
             periods: [SEMESTER_ONE],
             days: octoberDays(() => ({ period: SEMESTER_ONE })),
         });
 
-        for (const cell of wrapper.findAll('[data-date]')) {
-            const backgrounds = cell.classes().filter((name) => name.startsWith('bg-'));
+        const backgrounds = cellBackgrounds(wrapper, '2026-10-15');
 
-            // Só o cinzento dos dias de fora do mês, que diz outra coisa.
-            expect(backgrounds.every((name) => name === 'bg-muted/30')).toBe(true);
-            expect(cell.text()).not.toContain('Semestre');
-        }
-
-        // E o nome do período está lá, uma vez, na faixa que fala do mês.
+        expect(backgrounds).toContain(periodDayTint(SEMESTER_ONE).split(' ')[0]);
+        // E a célula continua sem nomear o período: a faixa já o diz.
+        expect(wrapper.find('[data-date="2026-10-15"]').text()).not.toContain(
+            'Semestre',
+        );
         expect(bandText(wrapper)).toContain('1.º Semestre');
     });
 
     /**
-     * O TOM DA ESTRUTURA É UM SÓ, e é o MESMO que a vista de Ano usa: um bege de
-     * papel quente, e nunca uma cor tirada da ordem em que o período calhou vir.
-     *
-     * O `stone` que aqui esteve lia-se como cinzento e desaparecia da página —
-     * era discreto ao ponto de não estar lá. E o bege não colide com a «Visita
-     * de estudo», que é uma MOLDURA e um TEXTO saturados de peso 600/700: isto é
-     * um ENCHIMENTO de peso 50 com moldura neutra.
+     * E É EXATO AO DIA, tão exato como a faixa. É a fronteira que importa: o dia
+     * ANTES de um período abrir não é dele, e o dia em que ele abre é. Num
+     * setembro de um ano que começa a 11, os dias 1 a 10 ficam por pintar —
+     * pintar setembro inteiro é dizer uma coisa falsa sobre eles.
      */
-    it('draws the estrutural strip in the one quiet cream tone, never in a per-período colour', () => {
+    it('paints not one day more than the período covers, on either side of its edge', () => {
+        const wrapper = mountPage({
+            month: { value: '2026-09', starts_on: '2026-09-01', ends_on: '2026-09-30' },
+            periods: [SEMESTER_ONE],
+            days: septemberDays((date) => ({
+                period: date >= SEMESTER_ONE.starts_on ? SEMESTER_ONE : null,
+            })),
+        });
+
+        const tint = periodDayTint(SEMESTER_ONE).split(' ')[0] as string;
+
+        // Os dez primeiros dias, antes do semestre abrir: nenhum tom.
+        for (const date of ['2026-09-01', '2026-09-05', '2026-09-10']) {
+            expect(cellBackgrounds(wrapper, date)).not.toContain(tint);
+            expect(cellBackgrounds(wrapper, date)).toEqual([]);
+        }
+
+        // A fronteira: o dia 10 sem tom, o dia 11 com ele.
+        expect(cellBackgrounds(wrapper, '2026-09-10')).not.toContain(tint);
+        expect(cellBackgrounds(wrapper, '2026-09-11')).toContain(tint);
+        expect(cellBackgrounds(wrapper, '2026-09-30')).toContain(tint);
+    });
+
+    /**
+     * O INTERVALO ENTRE DOIS PERÍODOS FICA POR PINTAR, que é o que ele é — e os
+     * dois períodos que tocam o mesmo mês trazem cada um o SEU tom, e não o
+     * mesmo: a fronteira entre eles é justamente o que aquele mês tem para
+     * mostrar.
+     */
+    it('gives each período its own tone, and the gap between them none at all', () => {
+        const first = period({ ulid: 'p1', label: '1.º Período', ends_on: '2026-10-10' });
+        const second = period({
+            ulid: 'p2',
+            label: '2.º Período',
+            sequence: 2,
+            starts_on: '2026-10-15',
+        });
+
+        const wrapper = mountPage({
+            periods: [first, second],
+            days: octoberDays((date) => ({
+                period:
+                    date <= '2026-10-10'
+                        ? first
+                        : date >= '2026-10-15'
+                          ? second
+                          : null,
+            })),
+        });
+
+        const firstTint = periodDayTint(first).split(' ')[0] as string;
+        const secondTint = periodDayTint(second).split(' ')[0] as string;
+
+        expect(firstTint).not.toBe(secondTint);
+        expect(cellBackgrounds(wrapper, '2026-10-05')).toContain(firstTint);
+        expect(cellBackgrounds(wrapper, '2026-10-20')).toContain(secondTint);
+
+        // Os dias entre os dois: sem tom nenhum, e não com metade de um.
+        for (const date of ['2026-10-12', '2026-10-13', '2026-10-14']) {
+            expect(cellBackgrounds(wrapper, date)).toEqual([]);
+        }
+    });
+
+    /**
+     * «FORA DO MÊS» GANHA SEMPRE. Um dia que a grelha só mostra para a linha
+     * fechar pode estar dentro de um período, e está: mas o que é preciso saber
+     * sobre ele, primeiro e acima de tudo, é que não é deste mês. As duas tintas
+     * ao mesmo tempo não dizem as duas coisas, dizem uma cor confusa.
+     */
+    it('keeps a leading grid day reading as «not this month» before anything else', () => {
         const wrapper = mountPage({
             periods: [SEMESTER_ONE],
             days: octoberDays(() => ({ period: SEMESTER_ONE })),
         });
 
-        const strip = wrapper.find('section[aria-label="Períodos deste mês"]');
+        // 28 de setembro está dentro do semestre e fora de outubro.
+        expect(cellBackgrounds(wrapper, '2026-09-28')).toEqual(['bg-muted/30']);
+        expect(cellBackgrounds(wrapper, '2026-11-01')).toEqual(['bg-muted/30']);
+    });
 
-        expect(strip.classes().join(' ')).toContain(PERIOD_TINT);
-        expect(PERIOD_TINT).toContain('bg-amber-50');
+    /**
+     * E O TOM DA CÉLULA NUNCA COMPETE COM O QUE ESTÁ DENTRO DELA. Uma avaliação e
+     * um acontecimento trazem moldura, ícone e fundo próprios, que assentam POR
+     * CIMA do fundo da célula: o que os separa dela não é a matiz, é o peso.
+     */
+    it('leaves an avaliação and an acontecimento reading over the tint, not against it', () => {
+        const wrapper = mountPage({
+            periods: [SEMESTER_ONE],
+            days: octoberDays((date) => ({
+                period: SEMESTER_ONE,
+                ...(date === '2026-10-15'
+                    ? { assessments: [assessment()], events: [event()] }
+                    : {}),
+            })),
+        });
+
+        const cell = wrapper.find('[data-date="2026-10-15"]');
+
+        // A célula leva o tom do período…
+        expect(cell.classes()).toContain(
+            periodDayTint(SEMESTER_ONE).split(' ')[0],
+        );
+
+        // …e as entradas continuam com o seu próprio fundo e a sua própria
+        // moldura, exatamente como antes: nenhuma delas herda o tom da célula.
+        const entry = cell.find('a').classes().join(' ');
+        expect(entry).toContain('bg-background/80');
+        expect(entry).toContain('border-foreground/25');
+        expect(entry).toContain('font-medium');
+        expect(cell.find('a').find('svg').exists()).toBe(true);
+
+        const meeting = cell.find('[data-event-ulid="event-a"]').classes().join(' ');
+        expect(meeting).toContain('bg-background/70');
+        expect(meeting).toContain('border-indigo-500/70');
+        expect(meeting).not.toContain('bg-amber-50/70');
+    });
+
+    /**
+     * O TOM DA FAIXA É O MESMO TOM DA GRELHA. A lista de períodos por cima da
+     * grelha é a legenda do que está por baixo dela, e uma legenda de outra cor
+     * não é uma legenda. Mesma matiz, peso diferente: a faixa é uma tira baixa,
+     * a célula é uma superfície de altura inteira, e a mesma tinta nas duas
+     * deixava de ser discreta na segunda.
+     */
+    it('carries the same per-período hue in the strip as in the grid below it', () => {
+        const wrapper = mountPage({
+            periods: [SEMESTER_ONE],
+            days: octoberDays(() => ({ period: SEMESTER_ONE })),
+        });
+
+        const segment = wrapper.find('[data-period-band="sem-1"]').classes();
+
+        expect(segment.join(' ')).toContain(periodTint(SEMESTER_ONE));
+
+        // A mesma família de cor nos dois sítios, mais fraca no dia.
+        const hue = (name: string) => name.replace(/^bg-([a-z]+)-.*$/, '$1');
+        const stripHue = hue(periodTint(SEMESTER_ONE).split(' ')[0] as string);
+        const dayHue = hue(periodDayTint(SEMESTER_ONE).split(' ')[0] as string);
+
+        expect(dayHue).toBe(stripHue);
+        expect(periodDayTint(SEMESTER_ONE)).toContain('/70');
+    });
+
+    /**
+     * NUM MÊS DE TRANSIÇÃO, CADA METADE DA FAIXA NO SEU TOM. A faixa era de uma
+     * cor só, e os dois períodos ficavam com o mesmo fundo — a mesma tinta a
+     * apagar justamente a fronteira que aquele mês tem para mostrar. Continua a
+     * ser UMA faixa, com uma moldura só; o que mudou foi ficar repartida por
+     * dentro.
+     */
+    it('tints each half of the strip in its own período\'s tone in a transition month', () => {
+        const first = period({ ulid: 'p1', label: '1.º Período', ends_on: '2026-11-05' });
+        const second = period({
+            ulid: 'p2',
+            label: '2.º Período',
+            sequence: 2,
+            starts_on: '2026-11-15',
+            ends_on: '2027-01-31',
+        });
+
+        const wrapper = inMonth('2026-11', '2026-11-01', '2026-11-30', [first, second]);
+
+        // Uma faixa só, e dois segmentos lá dentro.
+        expect(wrapper.findAll('section[aria-label="Períodos deste mês"]')).toHaveLength(1);
+
+        const one = wrapper.find('[data-period-band="p1"]').classes().join(' ');
+        const other = wrapper.find('[data-period-band="p2"]').classes().join(' ');
+
+        expect(one).toContain(periodTint(first));
+        expect(other).toContain(periodTint(second));
+        expect(periodTint(first)).not.toBe(periodTint(second));
+
+        // E o que os separa nunca é só a cor: cada segmento diz o nome do seu
+        // período, e há um traço desenhado entre os dois.
+        expect(wrapper.find('[data-period-band="p1"]').text()).toContain('1.º Período');
+        expect(wrapper.find('[data-period-band="p2"]').text()).toContain('2.º Período');
+        expect(other).toMatch(/\bborder-l\b/);
+    });
+
+    /**
+     * E OS TONS CONTINUAM PÁLIDOS. Nem o arco-íris de peso 100 que aqui esteve —
+     * que pintava a página inteira de azul só porque se estava a meio de um
+     * semestre — nem o cinzento que se lia como sujidade e desaparecia.
+     */
+    it('keeps every período tone at the palest weight, and none of the old loud ones', () => {
+        const wrapper = mountPage({
+            periods: [SEMESTER_ONE],
+            days: octoberDays(() => ({ period: SEMESTER_ONE })),
+        });
+
+        // Peso 50, e nunca os pesos saturados de um acontecimento.
+        for (const tone of [periodTint(SEMESTER_ONE), periodDayTint(SEMESTER_ONE)]) {
+            expect(tone).toMatch(/bg-[a-z]+-50/);
+            expect(tone).not.toMatch(/-(600|700|800)\b/);
+            expect(tone).not.toContain('border-');
+            expect(tone).not.toContain('text-');
+        }
 
         // O cinzento antigo foi-se embora de toda a página.
         expect(wrapper.html()).not.toContain('stone');
 
         // E a moldura da faixa é NEUTRA: com uma moldura de âmbar, a estrutura do
         // ano passaria a ler-se como a cor de uma visita de estudo.
-        expect(strip.classes().join(' ')).not.toMatch(/border-amber|border-orange/);
+        const strip = wrapper.find('section[aria-label="Períodos deste mês"]');
+        expect(strip.html()).not.toMatch(/border-amber|border-orange/);
 
         for (const tint of [
             'bg-sky-100/70',
@@ -1402,5 +1669,219 @@ describe('calendar/Month', () => {
         const legend = wrapper.find('section[aria-label="Períodos deste mês"]');
         expect(legend.findAll('button')).toHaveLength(0);
         expect(legend.findAll('input')).toHaveLength(0);
+    });
+
+    // ------------------------- os dias em que não há aula (Fase 5.4)
+
+    /**
+     * A REGRA CENTRAL DESTA FASE, e a que a separa de um acontecimento de vários
+     * dias: uma interrupção de onze dias é UMA coisa com onze dias, e não onze
+     * coisas. Nomeia-se onde começa, e os restantes dias mostram-se pelo tom.
+     */
+    it('names a multi-day exception once, at the day it starts, and tints every day it covers', () => {
+        const natal = exception({
+            ulid: 'exception-natal',
+            type: 'school_break',
+            type_label: 'Interrupção letiva',
+            type_short_label: 'INTERRUPÇÃO',
+            title: 'Interrupção de Natal',
+            starts_on: '2026-10-12',
+            ends_on: '2026-10-22',
+        });
+
+        const wrapper = mountPage({
+            exceptions: [natal],
+            days: octoberDays(coveredBy(natal)),
+        });
+
+        // UMA vez nomeada dentro da grelha, e não onze.
+        const markers = wrapper.findAll('[data-exception-start]');
+        expect(markers).toHaveLength(1);
+        expect(
+            wrapper
+                .find('[data-date="2026-10-12"]')
+                .find('[data-exception-start]')
+                .exists(),
+        ).toBe(true);
+        expect(
+            wrapper
+                .find('[data-date="2026-10-15"]')
+                .find('[data-exception-start]')
+                .exists(),
+        ).toBe(false);
+
+        // NUNCA SÓ A COR: a espécie vai escrita, e o título também.
+        expect(markers[0]!.text()).toContain('INTERRUPÇÃO');
+        expect(markers[0]!.text()).toContain('Interrupção de Natal');
+
+        // E cada um dos onze dias fica tingido de não letivo.
+        for (const date of ['2026-10-12', '2026-10-15', '2026-10-22']) {
+            expect(
+                wrapper.find(`[data-date="${date}"]`).classes().join(' '),
+            ).toContain(EXCEPTION_DAY_TINT.split(' ')[0] as string);
+        }
+
+        // E o dia seguinte ao fim, não.
+        expect(
+            wrapper.find('[data-date="2026-10-23"]').classes().join(' '),
+        ).not.toContain(EXCEPTION_DAY_TINT.split(' ')[0] as string);
+    });
+
+    it('reads the range once, above the grid, with its type and its dates', () => {
+        const wrapper = mountPage({
+            exceptions: [
+                exception({
+                    type: 'school_break',
+                    type_label: 'Interrupção letiva',
+                    title: 'Interrupção de Natal',
+                    starts_on: '2026-10-12',
+                    ends_on: '2026-10-22',
+                }),
+            ],
+        });
+
+        const band = wrapper.find('section[aria-label="Dias não letivos deste mês"]');
+
+        expect(band.exists()).toBe(true);
+        expect(band.text()).toContain('Interrupção de Natal');
+        expect(band.text()).toContain('Interrupção letiva');
+        expect(band.text()).toContain('12/10');
+        expect(band.text()).toContain('22/10');
+
+        // Estrutura, e não um controlo: não há aqui nada em que carregar.
+        expect(band.findAll('button')).toHaveLength(0);
+        expect(band.findAll('input')).toHaveLength(0);
+    });
+
+    it('writes a single-day feriado as one date and not as a range of itself', () => {
+        const wrapper = mountPage({ exceptions: [exception()] });
+
+        const band = wrapper.find('section[aria-label="Dias não letivos deste mês"]');
+
+        expect(band.text()).toContain('Feriado');
+        expect(band.text()).toContain('5/10');
+        expect(band.text()).not.toContain('5/10 – 5/10');
+    });
+
+    it('says nothing at all about dias não letivos in a month that has none', () => {
+        const wrapper = mountPage();
+
+        expect(
+            wrapper.find('section[aria-label="Dias não letivos deste mês"]').exists(),
+        ).toBe(false);
+        expect(wrapper.findAll('[data-exception-start]')).toHaveLength(0);
+    });
+
+    /**
+     * UM DIA PODE SER DAS DUAS COISAS, e a regra é a do enunciado: para AQUELE
+     * dia, o facto operacionalmente relevante é que não há aula. Que ele
+     * pertença ao 1.º Semestre continua escrito na faixa por cima da grelha,
+     * que é onde o período já se dizia de qualquer maneira.
+     */
+    it('lets the exception win the cell over the período it also falls in', () => {
+        const semester = period({ starts_on: '2026-09-01', ends_on: '2026-12-18' });
+        const feriado = exception({ starts_on: '2026-10-05', ends_on: '2026-10-05' });
+
+        const wrapper = mountPage({
+            periods: [semester],
+            exceptions: [feriado],
+            days: octoberDays((date) => ({
+                period: semester,
+                ...coveredBy(feriado)(date),
+            })),
+        });
+
+        const nonTeaching = wrapper.find('[data-date="2026-10-05"]').classes().join(' ');
+        const ordinary = wrapper.find('[data-date="2026-10-06"]').classes().join(' ');
+
+        expect(nonTeaching).toContain(EXCEPTION_DAY_TINT.split(' ')[0] as string);
+        expect(nonTeaching).not.toContain(periodDayTint(semester).split(' ')[0] as string);
+
+        // E o dia ao lado, que é do período e de mais nada, continua com o tom
+        // do período — a exceção não apaga a estrutura, só ganha ao seu dia.
+        expect(ordinary).toContain(periodDayTint(semester).split(' ')[0] as string);
+
+        // E o período continua nomeado por cima da grelha.
+        expect(
+            wrapper.find('section[aria-label="Períodos deste mês"]').text(),
+        ).toContain('1.º Período');
+    });
+
+    /**
+     * O QUE NUNCA PODE ACONTECER: um teste marcado num dia que passou a não
+     * letivo é exatamente a coisa que o professor tem de ver. A exceção pinta o
+     * fundo; a avaliação continua a ser a coisa com moldura, fundo e peso, e
+     * está desenhada por cima.
+     */
+    it('never hides an avaliação or an acontecimento standing on a non-teaching day', () => {
+        const feriado = exception({ starts_on: '2026-10-15', ends_on: '2026-10-15' });
+
+        const wrapper = mountPage({
+            exceptions: [feriado],
+            days: octoberDays((date) =>
+                date === '2026-10-15'
+                    ? {
+                          exception: feriado,
+                          assessments: [assessment()],
+                          events: [event()],
+                      }
+                    : {},
+            ),
+        });
+
+        const cell = wrapper.find('[data-date="2026-10-15"]');
+
+        expect(cell.text()).toContain('Teste de Frações');
+        expect(cell.text()).toContain('Conselho de turma');
+        expect(cell.find('a').attributes('href')).toBe('/instruments/inst-a');
+        expect(cell.find('[data-event-ulid="event-a"]').exists()).toBe(true);
+        // E a avaliação continua com o seu fundo próprio, que assenta POR CIMA
+        // do tom da célula.
+        expect(cell.find('a').classes().join(' ')).toContain('bg-background/80');
+    });
+
+    it('tells the narrow-screen agenda that a day with something marked is not a teaching day', () => {
+        const feriado = exception({ starts_on: '2026-10-15', ends_on: '2026-10-15' });
+
+        const wrapper = mountPage({
+            exceptions: [feriado],
+            days: octoberDays((date) =>
+                date === '2026-10-15'
+                    ? { exception: feriado, assessments: [assessment()] }
+                    : {},
+            ),
+        });
+
+        const marker = wrapper.find('[data-agenda-exception="exception-a"]');
+
+        expect(marker.exists()).toBe(true);
+        expect(marker.text()).toContain('Feriado');
+        expect(marker.text()).toContain('Implantação da República');
+    });
+
+    /**
+     * UMA EXCEÇÃO NÃO É UM ACONTECIMENTO, e a página não a deixa passar por um:
+     * não é uma entrada da lista da célula, não abre o painel de acontecimentos
+     * e não conta para o limite de itens por dia.
+     */
+    it('keeps an exception out of the day\'s item list and out of its overflow count', () => {
+        const natal = exception({ starts_on: '2026-10-12', ends_on: '2026-10-22' });
+
+        const wrapper = mountPage({
+            exceptions: [natal],
+            days: octoberDays((date) => ({
+                ...coveredBy(natal)(date),
+                ...(date === '2026-10-15' ? { assessments: [assessment()] } : {}),
+            })),
+        });
+
+        const cell = wrapper.find('[data-date="2026-10-15"]');
+
+        // Um item na lista, e é a avaliação — a exceção não está lá.
+        expect(cell.findAll('ul > li')).toHaveLength(1);
+        // E nenhum «+N mais» nasceu de a contar.
+        expect(cell.find('[data-overflow]').exists()).toBe(false);
+        // Nem há botão nenhum a abrir um painel a partir dela.
+        expect(cell.find('[data-exception-start]').exists()).toBe(false);
     });
 });

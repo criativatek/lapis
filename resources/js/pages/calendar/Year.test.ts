@@ -1,8 +1,8 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import { defineComponent, h } from 'vue';
-import type { CalendarPeriod } from './calendar';
-import { PERIOD_TINT } from './calendar';
+import type { CalendarException, CalendarPeriod } from './calendar';
+import { periodTint } from './calendar';
 import Year from './Year.vue';
 
 /**
@@ -41,6 +41,22 @@ function period(overrides: Partial<YearPeriod> = {}): YearPeriod {
     };
 }
 
+function exception(
+    overrides: Partial<CalendarException> = {},
+): CalendarException {
+    return {
+        ulid: 'exception-a',
+        type: 'school_break',
+        type_label: 'Interrupção letiva',
+        type_short_label: 'INTERRUPÇÃO',
+        title: 'Interrupção de Natal',
+        starts_on: '2026-12-21',
+        ends_on: '2026-12-31',
+        note: null,
+        ...overrides,
+    };
+}
+
 /** O último dia real do mês, tal como o servidor o envia. */
 function lastDayOf(value: string): string {
     const [year, monthNumber] = value.split('-').map(Number) as [number, number];
@@ -56,9 +72,26 @@ function month(value: string, overrides: Record<string, unknown> = {}) {
         assessments_count: 0,
         events_count: 0,
         period_ulids: [] as string[],
+        exception_ulids: [] as string[],
+        non_teaching_days_count: 0,
         is_current: false,
         ...overrides,
     };
+}
+
+/**
+ * Todos os tons de período que existem — a lista de que um mês «sem tom» tem de
+ * estar inteiramente livre. Um mês de transição não é de nenhum dos períodos que
+ * o tocam, pelo que não pode levar o tom de nenhum deles, e não só o do primeiro.
+ */
+const EVERY_PERIOD_TINT = [1, 2, 3, 4].map((sequence) =>
+    periodTint(period({ sequence })),
+);
+
+function expectNoTint(classes: string): void {
+    for (const tint of EVERY_PERIOD_TINT) {
+        expect(classes).not.toContain(tint);
+    }
 }
 
 function mountPage(overrides: Partial<InstanceType<typeof Year>['$props']> = {}) {
@@ -72,9 +105,11 @@ function mountPage(overrides: Partial<InstanceType<typeof Year>['$props']> = {})
             },
             months: [month('2026-09'), month('2026-10'), month('2026-11')],
             periods: [],
+            exceptions: [],
             periodsCountLabel: '0 períodos',
             assessmentsTotal: 0,
             eventsTotal: 0,
+            nonTeachingDaysTotal: 0,
             ...overrides,
         },
     });
@@ -250,63 +285,66 @@ describe('calendar/Year', () => {
         const january = wrapper.find('[data-month="2027-01"]');
 
         // Setembro: o semestre só abre a 11, e o cartão di-lo em vez de o pintar.
-        expect(september.classes().join(' ')).not.toContain(PERIOD_TINT);
+        expectNoTint(september.classes().join(' '));
         expect(september.text()).toContain('1.º Semestre desde 11/09');
 
         // Outubro está inteiro dentro dele: o caso simples, tal e qual como era.
-        expect(october.classes().join(' ')).toContain(PERIOD_TINT);
+        expect(october.classes().join(' ')).toContain(periodTint(semester));
         expect(october.text()).toContain('1.º Semestre');
         expect(october.text()).not.toContain('desde');
         expect(october.text()).not.toContain('até');
 
         // Janeiro: o semestre fecha a 29, e o que vem depois não é dele.
-        expect(january.classes().join(' ')).not.toContain(PERIOD_TINT);
+        expectNoTint(january.classes().join(' '));
         expect(january.text()).toContain('1.º Semestre até 29/01');
     });
 
     /**
-     * O ARCO-ÍRIS FOI-SE EMBORA. A estrutura do ano tem de estar visível sem
-     * mandar na página, e um fundo tirado da ordem em que cada período calhou
-     * vir pintava o calendário inteiro de azul só porque se estava a meio do
-     * 1.º Semestre. Fica UM tom, quente e discreto, o mesmo em toda a parte —
-     * nos cartões dos meses e nas faixas dos períodos, aqui e na vista de Mês.
+     * UM TOM POR PERÍODO, E O MESMO TOM EM TODA A SUPERFÍCIE DESSE PERÍODO. A
+     * faixa do 1.º Período e os meses do 1.º Período são a mesma cor, e é assim
+     * que a lista de cima serve de legenda aos cartões de baixo — com um tom
+     * único para todos, o ano lia-se como uma mancha contínua e a fronteira
+     * entre os dois períodos não estava desenhada em lado nenhum.
+     *
+     * E O ARCO-ÍRIS CONTINUA A NÃO ESTAR CÁ: aquele era de peso 100 e tirado da
+     * ORDEM em que o período calhou vir; este é de peso 50 e sai da `sequence`
+     * que o próprio período traz.
      */
-    it('tints every structural surface in the same quiet tone, never in a per-período colour', () => {
+    it('gives each período one tone, carried identically by its months and its band', () => {
+        const first = period({ ulid: 'p1' });
+        const second = period({
+            ulid: 'p2',
+            label: '2.º Período',
+            sequence: 2,
+            starts_on: '2027-01-05',
+            ends_on: '2027-04-30',
+        });
+
         const wrapper = mountPage({
             months: [
                 month('2026-10', { period_ulids: ['p1'] }),
                 month('2027-03', { period_ulids: ['p2'] }),
             ],
-            periods: [
-                period({ ulid: 'p1' }),
-                period({
-                    ulid: 'p2',
-                    label: '2.º Período',
-                    sequence: 2,
-                    starts_on: '2027-01-05',
-                    ends_on: '2027-04-30',
-                }),
-            ],
+            periods: [first, second],
             periodsCountLabel: '2 períodos',
         });
 
-        // Os dois meses inteiramente dentro de um período: o MESMO tom, e não um
-        // por índice de período.
+        // Cada mês inteiramente dentro de um período leva o tom DESSE período.
+        expect(periodTint(first)).not.toBe(periodTint(second));
         expect(wrapper.find('[data-month="2026-10"]').classes().join(' ')).toContain(
-            PERIOD_TINT,
+            periodTint(first),
         );
         expect(wrapper.find('[data-month="2027-03"]').classes().join(' ')).toContain(
-            PERIOD_TINT,
+            periodTint(second),
         );
 
-        // As faixas da lista de períodos, acima da grelha: o mesmo tom outra vez.
+        // E as faixas da lista de períodos, acima da grelha, dizem o mesmo: cada
+        // uma no tom do seu, e por isso na mesma cor dos seus meses.
         const rows = wrapper.findAll('section[aria-label="Períodos do ano letivo"] > div');
 
         expect(rows).toHaveLength(2);
-
-        for (const row of rows) {
-            expect(row.classes().join(' ')).toContain(PERIOD_TINT);
-        }
+        expect(rows[0]!.classes().join(' ')).toContain(periodTint(first));
+        expect(rows[1]!.classes().join(' ')).toContain(periodTint(second));
 
         // E nenhuma das seis cores antigas em lado nenhum da página — nem o
         // cinzento que lhes sucedeu e que não se via.
@@ -318,11 +356,42 @@ describe('calendar/Year', () => {
     });
 
     /**
-     * UM MÊS DE TRANSIÇÃO CONTINUA SEM TOM NENHUM, e o tom novo não muda isso: o
-     * bege é mais visível do que o cinzento que substituiu, e é por isso mesmo
-     * que ele não pode aparecer num mês de que o período só tem metade.
+     * PELA `sequence`, E NÃO PELA POSIÇÃO NA LISTA. É o número que o próprio
+     * período traz — o mesmo por que o servidor já os ordena — e por isso o 2.º
+     * Semestre tem a mesma cor venha ele primeiro ou segundo no `props.periods`.
      */
-    it('keeps the new cream tone off a transition month and on a fully contained one', () => {
+    it('keys a período\'s tone to its own sequence, never to where it falls in the list', () => {
+        const one = period({ ulid: 'p1', sequence: 1 });
+        const two = period({ ulid: 'p2', label: '2.º Período', sequence: 2 });
+
+        const forward = mountPage({
+            months: [month('2026-10', { period_ulids: ['p2'] })],
+            periods: [one, two],
+            periodsCountLabel: '2 períodos',
+        });
+        const reversed = mountPage({
+            months: [month('2026-10', { period_ulids: ['p2'] })],
+            periods: [two, one],
+            periodsCountLabel: '2 períodos',
+        });
+
+        const toneOf = (wrapper: ReturnType<typeof mountPage>) =>
+            wrapper
+                .find('[data-month="2026-10"]')
+                .classes()
+                .filter((name) => name.startsWith('bg-'))
+                .join(' ');
+
+        expect(toneOf(reversed)).toBe(toneOf(forward));
+        expect(toneOf(forward)).toContain(periodTint(two).split(' ')[0]);
+    });
+
+    /**
+     * UM MÊS DE TRANSIÇÃO CONTINUA SEM TOM NENHUM, e os tons por período não
+     * mudam isso: a decisão «tem tom / não tem tom» é a mesma de sempre, e o que
+     * mudou foi só QUAL é o tom quando há um.
+     */
+    it('keeps the período tone off a transition month and on a fully contained one', () => {
         const semester = period({
             ulid: 'sem-1',
             label: '1.º Semestre',
@@ -344,39 +413,47 @@ describe('calendar/Year', () => {
         const september = wrapper.find('[data-month="2026-09"]').classes().join(' ');
         const october = wrapper.find('[data-month="2026-10"]').classes().join(' ');
 
-        expect(september).not.toContain('bg-amber-50');
-        expect(october).toContain('bg-amber-50');
+        expectNoTint(september);
+        expect(october).toContain(periodTint(semester));
 
-        // E o cartão do mês continua com a sua moldura neutra: o bege é
+        // E o cartão do mês continua com a sua moldura neutra: o tom é
         // enchimento, e não uma segunda moldura de cor.
-        expect(october).not.toMatch(/border-amber|border-orange/);
+        expect(october).not.toMatch(/border-amber|border-orange|border-blue/);
     });
 
     /**
-     * O TOM ESCOLHIDO É UM BEGE DE PAPEL QUENTE, e não o cinzento que aqui
-     * esteve: o `stone` era discreto ao ponto de não estar lá — lia-se como um
-     * cinzento sujo e desaparecia da página, o que é o mesmo que não dizer nada.
+     * OS TONS SÃO TODOS DO DEGRAU MAIS PÁLIDO, e não o cinzento que aqui esteve:
+     * o `stone` era discreto ao ponto de não estar lá — lia-se como um cinzento
+     * sujo e desaparecia da página, o que é o mesmo que não dizer nada.
      *
-     * E NÃO COLIDE COM A «VISITA DE ESTUDO», embora venha da mesma família de
-     * matiz. O que separa os dois não é a matiz: é o PESO. Uma visita de estudo
-     * é uma MOLDURA e um TEXTO saturados, de peso 600/700; isto é um
+     * E NENHUM COLIDE COM A «VISITA DE ESTUDO», embora o primeiro venha da mesma
+     * família de matiz. O que separa os dois não é a matiz: é o PESO. Uma visita
+     * de estudo é uma MOLDURA e um TEXTO saturados, de peso 600/700; isto é um
      * ENCHIMENTO pálido, de peso 50, com moldura neutra e texto por omissão.
      *
      * E a cor nunca é o que diz qual é o período: o nome está sempre escrito ao
-     * lado dela, e os dois semestres de um ano partilham este mesmo tom.
+     * lado dela, e a página lê-se inteira num ecrã monocromático.
      */
-    it('tints the structure in warm cream, never in the saturated amber «Visita de estudo» owns', () => {
-        // O cinzento foi-se embora, e o que ficou é um bege de peso 50.
-        expect(PERIOD_TINT).not.toContain('stone');
-        expect(PERIOD_TINT).toContain('bg-amber-50');
+    it('tints the structure at the palest weight, never in the saturated amber «Visita de estudo» owns', () => {
+        for (const tint of EVERY_PERIOD_TINT) {
+            // O cinzento foi-se embora, e o que ficou é um enchimento de peso 50.
+            expect(tint).not.toContain('stone');
+            expect(tint).toMatch(/^bg-[a-z]+-50\b/);
 
-        // Nunca os pesos saturados de um acontecimento.
-        expect(PERIOD_TINT).not.toContain('amber-600');
-        expect(PERIOD_TINT).not.toContain('amber-700');
+            // Nunca os pesos saturados de um acontecimento.
+            expect(tint).not.toMatch(/-(600|700|800)\b/);
 
-        // E enchimento, e só enchimento: nem moldura, nem cor de texto.
-        expect(PERIOD_TINT).not.toContain('border-');
-        expect(PERIOD_TINT).not.toContain('text-');
+            // E enchimento, e só enchimento: nem moldura, nem cor de texto.
+            expect(tint).not.toContain('border-');
+            expect(tint).not.toContain('text-');
+        }
+
+        // Três tons, e a paleta recomeça ao quarto — um ano de trimestres não
+        // fica sem cor no terceiro, e nada rebenta com um quarto período.
+        expect(new Set(EVERY_PERIOD_TINT).size).toBe(3);
+        expect(periodTint(period({ sequence: 4 }))).toBe(
+            periodTint(period({ sequence: 1 })),
+        );
     });
 
     it('says where the next período begins in the month it begins in', () => {
@@ -401,11 +478,11 @@ describe('calendar/Year', () => {
 
         const february = wrapper.find('[data-month="2027-02"]');
 
-        expect(february.classes().join(' ')).not.toContain(PERIOD_TINT);
+        expectNoTint(february.classes().join(' '));
         expect(february.text()).toContain('2.º Semestre desde 11/02');
         // E março, inteiramente dentro dele, volta a ser o caso simples.
         expect(wrapper.find('[data-month="2027-03"]').classes().join(' ')).toContain(
-            PERIOD_TINT,
+            periodTint(second),
         );
     });
 
@@ -428,7 +505,8 @@ describe('calendar/Year', () => {
         const october = wrapper.find('[data-month="2026-10"]');
         const classes = october.classes().join(' ');
 
-        expect(classes).not.toContain(PERIOD_TINT);
+        // Nem o tom do primeiro, nem o do segundo, nem nenhum outro.
+        expectNoTint(classes);
         // As duas metades do mês, ditas por extenso, e o intervalo entre elas
         // deixado por dizer em vez de ser pintado de uma cor qualquer.
         expect(october.text()).toContain('1.º Período até 10/10');
@@ -453,7 +531,7 @@ describe('calendar/Year', () => {
 
         const october = wrapper.find('[data-month="2026-10"]');
 
-        expect(october.classes().join(' ')).not.toContain(PERIOD_TINT);
+        expectNoTint(october.classes().join(' '));
         expect(october.text()).toContain('Módulo A de 5/10 a 23/10');
     });
 
@@ -466,7 +544,7 @@ describe('calendar/Year', () => {
 
         const february = wrapper.find('[data-month="2027-02"]');
 
-        expect(february.classes().join(' ')).not.toContain(PERIOD_TINT);
+        expectNoTint(february.classes().join(' '));
         expect(february.text()).not.toContain('Período');
         expect(february.text()).not.toContain('desde');
     });
@@ -630,5 +708,115 @@ describe('calendar/Year', () => {
         expect(text).not.toContain('Aula');
         expect(text).not.toContain('horário');
         expect(text).not.toContain('Horário');
+    });
+
+    // ------------------------- os dias em que não há aula (Fase 5.4)
+
+    /**
+     * EM DIAS, E NUNCA EM EXCEÇÕES. «2 exceções em dezembro» pode ser um feriado
+     * mais onze dias de interrupção, e a esta escala o que se pergunta a um mês
+     * é quantos dias é que ele perde.
+     */
+    it('counts a month\'s non-teaching DAYS and names the exceptions behind them', () => {
+        const natal = exception({ ulid: 'exception-natal' });
+        const feriado = exception({
+            ulid: 'exception-natal-dia',
+            type: 'holiday',
+            type_label: 'Feriado',
+            type_short_label: 'FERIADO',
+            title: 'Natal',
+            starts_on: '2026-12-25',
+            ends_on: '2026-12-25',
+        });
+
+        const wrapper = mountPage({
+            months: [
+                month('2026-11'),
+                month('2026-12', {
+                    non_teaching_days_count: 11,
+                    exception_ulids: ['exception-natal', 'exception-natal-dia'],
+                }),
+            ],
+            exceptions: [natal, feriado],
+            nonTeachingDaysTotal: 11,
+        });
+
+        const december = wrapper.find('[data-month="2026-12"]');
+
+        expect(december.find('[data-non-teaching-days="11"]').exists()).toBe(true);
+        expect(december.text()).toContain('11 dias não letivos');
+        // E os nomes, porque um número sozinho não distingue uma interrupção de
+        // onze feriados espalhados.
+        expect(december.text()).toContain('Interrupção de Natal');
+        expect(december.text()).toContain('Natal');
+
+        // Um mês sem exceção nenhuma não diz nada sobre isto.
+        const november = wrapper.find('[data-month="2026-11"]');
+        expect(november.find('[data-non-teaching-days]').exists()).toBe(false);
+        expect(november.find('[data-month-exceptions]').exists()).toBe(false);
+    });
+
+    it('writes the singular for a month that loses exactly one day', () => {
+        const wrapper = mountPage({
+            months: [
+                month('2026-10', {
+                    non_teaching_days_count: 1,
+                    exception_ulids: ['exception-a'],
+                }),
+            ],
+            exceptions: [
+                exception({
+                    type: 'holiday',
+                    type_label: 'Feriado',
+                    title: 'Implantação da República',
+                    starts_on: '2026-10-05',
+                    ends_on: '2026-10-05',
+                }),
+            ],
+            nonTeachingDaysTotal: 1,
+        });
+
+        expect(wrapper.find('[data-month="2026-10"]').text()).toContain(
+            '1 dia não letivo',
+        );
+    });
+
+    it('carries the year total in the heading, and only when there is one', () => {
+        expect(mountPage().text()).not.toContain('dias não letivos');
+
+        expect(mountPage({ nonTeachingDaysTotal: 14 }).text()).toContain(
+            '14 dias não letivos',
+        );
+    });
+
+    /**
+     * UMA SINOPSE E NÃO UMA LISTA, aqui como em tudo o resto desta vista: as
+     * exceções aparecem DENTRO dos cartões dos meses, e não como uma parede de
+     * cartões próprios ao lado das faixas dos períodos.
+     */
+    it('never lays the exceptions out as cards of their own', () => {
+        const wrapper = mountPage({
+            months: [
+                month('2026-12', {
+                    non_teaching_days_count: 11,
+                    exception_ulids: ['exception-a'],
+                }),
+            ],
+            exceptions: [exception()],
+            nonTeachingDaysTotal: 11,
+        });
+
+        // Tudo o que a exceção escreve está dentro do cartão do seu mês.
+        const december = wrapper.find('[data-month="2026-12"]');
+        expect(december.text()).toContain('Interrupção de Natal');
+
+        const outside = wrapper
+            .findAll('[data-month-exceptions]')
+            .filter((node) => node.element.closest('[data-month]') === null);
+        expect(outside).toHaveLength(0);
+
+        // E continua a não haver aqui nada em que carregar para as alterar.
+        expect(wrapper.findAll('form')).toHaveLength(0);
+        expect(wrapper.findAll('input')).toHaveLength(0);
     });
 });

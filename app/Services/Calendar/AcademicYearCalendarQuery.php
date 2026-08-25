@@ -2,6 +2,7 @@
 
 namespace App\Services\Calendar;
 
+use App\Models\AcademicCalendarException;
 use App\Models\AcademicPeriod;
 use App\Models\AcademicYear;
 use App\Models\CalendarEvent;
@@ -15,12 +16,20 @@ use Carbon\CarbonImmutable;
  * arbitrary range of dates.
  *
  * A PURE READ MODEL. Reading the calendar cannot create, alter or delete
- * anything, and nothing below writes. Two of the three things it reads own no
+ * anything, and nothing below writes. Two of the four things it reads own no
  * table of the calendar's at all — the year's structure comes from
  * AcademicPeriod and the avaliações from Instrument.applied_on, both exactly
  * where they already live. The third, `calendar_events` (Fase 5.3), IS the
  * calendar's own, but it is written only by SaveCalendarEvent, from an explicit
  * action of the teacher's, and never from here.
+ *
+ * O QUARTO — `academic_calendar_exceptions` (Fase 5.4) — é lido aqui e escrito
+ * em «Estrutura do Ano Letivo», ao lado dos períodos, porque é o que ele é: a
+ * outra metade da forma do ano. Um feriado e uma interrupção letiva NÃO são
+ * acontecimentos: um acontecimento é pessoal e não impede aula nenhuma, uma
+ * exceção é da organização inteira e é precisamente a coisa que diz que naquele
+ * dia não há aula. São por isso duas leituras separadas, e nunca uma só lista
+ * com espécies misturadas lá dentro.
  *
  * AULAS ARE DELIBERATELY ABSENT, and neither Lesson nor RecurringLessonSlot is
  * reachable from here. «Que aulas tenho, quando e onde» is «Horário do
@@ -49,7 +58,8 @@ final class AcademicYearCalendarQuery
      * @return array{
      *     periods: list<array{ulid: string, label: string, kind: string, kind_label: string, sequence: int, starts_on: string, ends_on: string}>,
      *     assessments: list<array{ulid: string, title: string, applied_on: string, class_ulid: string, class_label: string, subject: string, type: string, status: string, status_label: string, href: string}>,
-     *     events: list<array{ulid: string, type: string, type_label: string, type_short_label: string, title: string, starts_on: string, ends_on: string, starts_at: string|null, ends_at: string|null, description: string|null, school_classes: list<array{ulid: string, label: string}>}>
+     *     events: list<array{ulid: string, type: string, type_label: string, type_short_label: string, title: string, starts_on: string, ends_on: string, starts_at: string|null, ends_at: string|null, description: string|null, school_classes: list<array{ulid: string, label: string}>}>,
+     *     exceptions: list<array{ulid: string, type: string, type_label: string, type_short_label: string, title: string, starts_on: string, ends_on: string, note: string|null}>
      * }
      */
     public function for(User $teacher, AcademicYear $academicYear, CarbonImmutable $from, CarbonImmutable $to, ?string $returnMonth = null): array
@@ -61,6 +71,7 @@ final class AcademicYearCalendarQuery
             'periods' => $this->periods($academicYear, $fromDate, $toDate),
             'assessments' => $this->assessments($teacher, $academicYear, $fromDate, $toDate, $returnMonth),
             'events' => $this->events($teacher, $fromDate, $toDate),
+            'exceptions' => $this->exceptions($academicYear, $fromDate, $toDate),
         ];
     }
 
@@ -95,6 +106,53 @@ final class AcademicYearCalendarQuery
                 'sequence' => $period->sequence,
                 'starts_on' => $period->starts_on->toDateString(),
                 'ends_on' => $period->ends_on->toDateString(),
+            ])
+            ->all());
+    }
+
+    /**
+     * As exceções letivas DESTE ano que cruzam o intervalo (Fase 5.4) — os
+     * feriados, as interrupções letivas e os dias não letivos.
+     *
+     * DA ORGANIZAÇÃO, E NÃO DE UM PROFESSOR. Ao contrário dos acontecimentos
+     * aqui em baixo, não há aqui `user_id` nenhum para filtrar, e a ausência é
+     * o ponto: um feriado não é de ninguém em particular, é do ano letivo — a
+     * mesma natureza dos períodos aqui em cima, e por isso a mesma pergunta,
+     * feita da mesma maneira, ao próprio ano (`$academicYear->exceptions()`) e
+     * nunca a uma tabela solta filtrada por datas.
+     *
+     * SOBREPOSIÇÃO, E NÃO CONTENÇÃO, pela mesma razão que os períodos: uma
+     * interrupção de 21 a 31 de dezembro é o que está a acontecer em cada um
+     * desses onze dias, e o dia visível a meio dela tem de a mostrar — uma que
+     * comece em dezembro e acabe em janeiro é estrutura DOS DOIS meses.
+     *
+     * Com `whereDate` nos dois lados, e nunca um `where` simples: são colunas
+     * `date` que o Eloquent guarda como «Y-m-d 00:00:00», e comparadas como
+     * texto contra um limite «Y-m-d», «2026-10-31 00:00:00» NÃO é <=
+     * «2026-10-31» — a exceção do último dia visível desaparecia sem erro
+     * nenhum. É a armadilha que já mordeu os períodos, as avaliações e os
+     * acontecimentos desta mesma classe.
+     *
+     * @return list<array{ulid: string, type: string, type_label: string, type_short_label: string, title: string, starts_on: string, ends_on: string, note: string|null}>
+     */
+    private function exceptions(AcademicYear $academicYear, string $from, string $to): array
+    {
+        return array_values($academicYear->exceptions()
+            ->whereDate('starts_on', '<=', $to)
+            ->whereDate('ends_on', '>=', $from)
+            ->get()
+            ->map(fn (AcademicCalendarException $exception): array => [
+                'ulid' => $exception->ulid,
+                'type' => $exception->type->value,
+                'type_label' => $exception->type->label(),
+                // A PALAVRA CURTA VAI JUNTO, e não é derivada na página: é o
+                // que — com o ícone próprio — mantém uma exceção distinguível
+                // de um período e de um acontecimento num ecrã monocromático.
+                'type_short_label' => $exception->type->shortLabel(),
+                'title' => $exception->title,
+                'starts_on' => $exception->starts_on->toDateString(),
+                'ends_on' => $exception->ends_on->toDateString(),
+                'note' => $exception->note,
             ])
             ->all());
     }

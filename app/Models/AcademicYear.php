@@ -66,6 +66,21 @@ class AcademicYear extends Model
     }
 
     /**
+     * As exceções letivas deste ano — feriados, interrupções e dias não letivos
+     * (Fase 5.4). Estrutura do ano tal como os períodos acima, e editada no
+     * mesmo formulário; a diferença é que não têm ordem nenhuma para respeitar,
+     * pelo que se leem pela data, que é como se leem num calendário.
+     *
+     * @return HasMany<AcademicCalendarException, $this>
+     */
+    public function exceptions(): HasMany
+    {
+        return $this->hasMany(AcademicCalendarException::class)
+            ->orderBy('starts_on')
+            ->orderBy('title');
+    }
+
+    /**
      * @return BelongsTo<User, $this>
      */
     public function closedBy(): BelongsTo

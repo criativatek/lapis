@@ -2,6 +2,24 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.70.0] — 2026-08-25
+
+### Added
+
+- **"Estrutura do Ano Letivo" passa a ter um sítio próprio para feriados, interrupções letivas e dias não letivos — e o Calendário do Ano Letivo passa a mostrá-los.** Até agora estas datas não tinham fonte canónica nenhuma na aplicação: não são uma avaliação, não são a estrutura do ano em si, e marcá-las como um acontecimento pessoal (`CalendarEvent`) confundiria «isto impede uma aula» com «isto é uma reunião às 18h», que nunca impede nada. Passam a ter modelo próprio (`AcademicCalendarException`), editado exactamente onde os semestres já são editados — no mesmo formulário, pela mesma pessoa, sob a mesma política — e nunca num menu novo.
+
+  **Três espécies, e só três: feriado, interrupção letiva, dia não letivo.** Um dia só é `starts_on === ends_on`, a mesma convenção que os acontecimentos já usam; uma interrupção de vários dias é um intervalo, não vários registos soltos.
+
+  **É estrutura do ano, e não de um professor.** Ao contrário de um acontecimento (`user_id`, pessoal), uma exceção letiva é da organização inteira — tal como um semestre — e por isso não tem dono: quem pode alterar os períodos do ano pode alterar isto, e mais ninguém.
+
+  **No Calendário, nunca se confunde com um período nem com um acontecimento.** Um dia não letivo ganha um tom cinzento tracejado — deliberadamente fora da paleta de cor dos semestres — e ícone e etiqueta próprios («FERIADO», «INTERRUPÇÃO», «NÃO LETIVO»); uma interrupção de onze dias é dita uma vez só, onde começa, e não onze vezes repetida. Quando um dia é simultaneamente de um período e de uma exceção — 21 de dezembro é 1.º Semestre e é also Interrupção de Natal — o facto operacionalmente relevante desse dia é que não há aula, e é essa a cor que a célula mostra; o período continua dito, com todas as letras, na faixa acima da grelha.
+
+- **Os tons dos semestres no Calendário passam a ser um por período, e não um só para todos.** Setembro e março deixavam de se distinguir um do outro por cor; cada período (pela sua própria `sequence`, nunca pela ordem em que calhou vir numa lista) passa a ter o seu próprio tom muito pálido — três ao todo, para um ano de trimestres não ficar sem cor no terceiro — reutilizado de forma idêntica na faixa do mês, na grelha por dia e na vista de Ano, para as três nunca poderem descrever o mesmo dia de maneiras diferentes.
+
+### Fixed
+
+- Corrigida uma instabilidade pré-existente e documentada em `AcademicYearFactory`: o rótulo aleatório de um ano letivo gerado por fábrica podia colidir com o literal `"2026/2027"` escrito à mão em dezenas de testes, porque `unique()` só evita colisões fábrica-contra-fábrica e nunca fábrica-contra-literal. O intervalo de anos gerados passou de 2020–2070 para 2040–2090, deixando de poder colidir com qualquer ano escrito à mão neste projeto.
+
 ## [0.69.6] — 2026-08-25
 
 ### Fixed

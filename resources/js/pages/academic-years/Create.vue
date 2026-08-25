@@ -8,6 +8,7 @@ type Option = { value: string; label: string };
 defineProps<{
     statuses: Option[];
     periodKinds: Option[];
+    exceptionTypes: Option[];
 }>();
 </script>
 
@@ -15,10 +16,14 @@ defineProps<{
     <Head title="Novo ano letivo" />
 
     <div class="mx-auto w-full max-w-3xl space-y-6 p-4">
-        <Heading title="Novo ano letivo" description="Defina o ano e os seus períodos de avaliação." />
+        <Heading
+            title="Novo ano letivo"
+            description="Defina o ano, os seus períodos de avaliação e os dias em que não há aula."
+        />
         <Form
             :statuses="statuses"
             :period-kinds="periodKinds"
+            :exception-types="exceptionTypes"
             submit-url="/academic-years"
             method="post"
         />

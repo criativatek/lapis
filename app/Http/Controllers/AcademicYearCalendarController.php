@@ -16,12 +16,15 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * «Calendário do Ano Letivo» — the year's own shape, its avaliações and the
- * teacher's own acontecimentos, read together, in two views: Mês and Ano.
+ * «Calendário do Ano Letivo» — the year's own shape, its avaliações, the
+ * teacher's own acontecimentos e os dias em que NÃO há aula, read together, in
+ * two views: Mês and Ano.
  *
  * NOTHING HERE IS PERSISTED. Both views are readings — of AcademicPeriod, of
- * Instrument.applied_on, and (Fase 5.3) of the teacher's own CalendarEvent
- * rows. Opening, navigating or refreshing either view creates nothing at all;
+ * Instrument.applied_on, (Fase 5.3) of the teacher's own CalendarEvent rows, e
+ * (Fase 5.4) das exceções letivas do ano, que se criam e alteram em «Estrutura
+ * do Ano Letivo», ao lado dos períodos, e nunca aqui. Opening, navigating or
+ * refreshing either view creates nothing at all;
  * an acontecimento only ever comes into being through an explicit action of
  * the teacher's, in CalendarEventController, which is a different class
  * precisely so that this one can go on being only a reading.
@@ -86,6 +89,7 @@ class AcademicYearCalendarController extends Controller implements HasMiddleware
                 'month' => null,
                 'days' => [],
                 'periods' => [],
+                'exceptions' => [],
                 'navigation' => null,
                 'itemsPerDay' => self::ITEMS_PER_DAY,
                 'classes' => [],
@@ -123,6 +127,12 @@ class AcademicYearCalendarController extends Controller implements HasMiddleware
             // the same rows the cells below are banded from, so the two can
             // never describe the month differently.
             'periods' => $reading['periods'],
+            // AS EXCEÇÕES QUE CRUZAM A GRELHA, nomeadas UMA VEZ por cima dela e
+            // não uma vez por cada dia que ocupam: uma interrupção de 21 a 31 de
+            // dezembro é UMA coisa com onze dias, e não onze coisas. As células
+            // por baixo dizem quais são esses dias com o seu próprio tom, e é
+            // desta mesma lista que sabem qual é a exceção que as cobre.
+            'exceptions' => $reading['exceptions'],
             'navigation' => [
                 'previous' => $month->subMonthNoOverflow()->format('Y-m'),
                 'next' => $month->addMonthNoOverflow()->format('Y-m'),
@@ -165,9 +175,11 @@ class AcademicYearCalendarController extends Controller implements HasMiddleware
                 'academicYear' => null,
                 'months' => [],
                 'periods' => [],
+                'exceptions' => [],
                 'periodsCountLabel' => $this->periodsCountLabel([]),
                 'assessmentsTotal' => 0,
                 'eventsTotal' => 0,
+                'nonTeachingDaysTotal' => 0,
             ]);
         }
 
@@ -215,6 +227,24 @@ class AcademicYearCalendarController extends Controller implements HasMiddleware
                         fn (array $period): bool => $period['starts_on'] <= $monthEnd && $period['ends_on'] >= $monthStart,
                     ),
                 )),
+                // AS EXCEÇÕES QUE CRUZAM ESTE MÊS, pelos seus ulids — a mesma
+                // forma que os `period_ulids` acima, e pela mesma razão: uma
+                // interrupção de 21 de dezembro a 3 de janeiro é estrutura dos
+                // dois meses, e conta-se nos dois. Vão os ulids e não os objetos
+                // porque os objetos vão inteiros uma só vez, em `exceptions`.
+                'exception_ulids' => array_values(array_map(
+                    fn (array $exception): string => $exception['ulid'],
+                    array_filter(
+                        $reading['exceptions'],
+                        fn (array $exception): bool => $exception['starts_on'] <= $monthEnd && $exception['ends_on'] >= $monthStart,
+                    ),
+                )),
+                // E QUANTOS DIAS DESTE MÊS SÃO MESMO NÃO LETIVOS. Contar as
+                // exceções — «2 exceções em dezembro» — não diria nada a
+                // ninguém: uma delas pode ser um feriado e a outra onze dias de
+                // interrupção. Contam-se DIAS, que é a única coisa que a esta
+                // escala responde à pergunta que se faz a um mês.
+                'non_teaching_days_count' => $this->nonTeachingDays($reading['exceptions'], $monthStart, $monthEnd),
                 'is_current' => $cursor->isSameMonth($this->today()),
             ];
 
@@ -237,9 +267,59 @@ class AcademicYearCalendarController extends Controller implements HasMiddleware
                 ],
                 $reading['periods'],
             ),
+            // AS EXCEÇÕES INTEIRAS, UMA VEZ SÓ — como os períodos acima, e não
+            // como os acontecimentos, que a esta escala são apenas contados.
+            // A razão é que a vista de Ano precisa de as NOMEAR: um mês com
+            // dias não letivos tem de poder dizer quais são, e um número
+            // sozinho («11 dias») não distingue uma interrupção de Natal de
+            // onze feriados espalhados. Continua a não haver aqui um cartão por
+            // exceção — os cartões são os meses, e é dentro deles que estas
+            // aparecem.
+            'exceptions' => $reading['exceptions'],
             'assessmentsTotal' => count($reading['assessments']),
             'eventsTotal' => count($reading['events']),
+            // Dias, e não exceções, pela mesma razão que nos meses: é a única
+            // contagem que significa a mesma coisa qualquer que seja a mistura
+            // de feriados e interrupções que o ano tenha.
+            'nonTeachingDaysTotal' => $this->nonTeachingDays(
+                $reading['exceptions'],
+                $startsOn->toDateString(),
+                $endsOn->toDateString(),
+            ),
         ]);
+    }
+
+    /**
+     * QUANTOS DIAS DISTINTOS deste intervalo são não letivos.
+     *
+     * DISTINTOS, e é aí que está o trabalho: um feriado que calha dentro de uma
+     * interrupção letiva é UM dia não letivo e não dois, e somar a duração de
+     * cada exceção contá-lo-ia duas vezes. Por isso os dias vão para um
+     * conjunto, e é o conjunto que se conta.
+     *
+     * E RECORTADOS AO INTERVALO: uma interrupção de 21 de dezembro a 3 de
+     * janeiro dá nove dias a dezembro e três a janeiro, nunca doze a cada um.
+     *
+     * @param  list<array<string, mixed>>  $exceptions
+     */
+    private function nonTeachingDays(array $exceptions, string $from, string $to): int
+    {
+        $days = [];
+
+        foreach ($exceptions as $exception) {
+            $start = max((string) $exception['starts_on'], $from);
+            $end = min((string) $exception['ends_on'], $to);
+
+            if ($start > $end) {
+                continue;
+            }
+
+            for ($day = $this->date($start); $day->toDateString() <= $end; $day = $day->addDay()) {
+                $days[$day->toDateString()] = true;
+            }
+        }
+
+        return count($days);
     }
 
     /**
@@ -283,8 +363,14 @@ class AcademicYearCalendarController extends Controller implements HasMiddleware
      * in each of the four cells — the same reading the período band above it
      * already gets. An avaliação, by contrast, has one date and appears once.
      *
-     * @param  array{periods: list<array<string, mixed>>, assessments: list<array<string, mixed>>, events: list<array<string, mixed>>}  $reading
-     * @return list<array{date: string, day: int, in_month: bool, is_today: bool, period: array<string, mixed>|null, assessments: list<array<string, mixed>>, events: list<array<string, mixed>>}>
+     * E A EXCEÇÃO LETIVA que o cobre, quando há uma (Fase 5.4). É a MESMA forma
+     * do período — uma coisa por dia, ou nenhuma, e nunca uma lista — e não a
+     * dos acontecimentos, de propósito: uma interrupção de onze dias tem de se
+     * ler como UM intervalo com nome, e não como onze cartões repetidos dentro
+     * de onze células. A página tinge o dia e nomeia-a onde ela começa.
+     *
+     * @param  array{periods: list<array<string, mixed>>, assessments: list<array<string, mixed>>, events: list<array<string, mixed>>, exceptions: list<array<string, mixed>>}  $reading
+     * @return list<array{date: string, day: int, in_month: bool, is_today: bool, period: array<string, mixed>|null, exception: array<string, mixed>|null, assessments: list<array<string, mixed>>, events: list<array<string, mixed>>}>
      */
     private function days(CarbonImmutable $month, CarbonImmutable $gridStart, CarbonImmutable $gridEnd, array $reading): array
     {
@@ -302,12 +388,26 @@ class AcademicYearCalendarController extends Controller implements HasMiddleware
                 }
             }
 
+            // A EXCEÇÃO QUE COBRE ESTE DIA, exatamente como o período acima — e
+            // a PRIMEIRA delas, quando por acaso houver duas (um feriado que
+            // calha dentro de uma interrupção). Uma célula tem espaço para dizer
+            // uma coisa sobre si própria, e as duas dizem o mesmo: não há aula.
+            // A lista completa vai na faixa por cima da grelha, onde há espaço.
+            $exception = null;
+            foreach ($reading['exceptions'] as $candidate) {
+                if ($candidate['starts_on'] <= $date && $candidate['ends_on'] >= $date) {
+                    $exception = $candidate;
+                    break;
+                }
+            }
+
             $days[] = [
                 'date' => $date,
                 'day' => $day->day,
                 'in_month' => $day->isSameMonth($month),
                 'is_today' => $date === $today,
                 'period' => $period,
+                'exception' => $exception,
                 'assessments' => array_values(array_filter(
                     $reading['assessments'],
                     fn (array $assessment): bool => $assessment['applied_on'] === $date,
