@@ -72,6 +72,25 @@ class SchoolClass extends Model
     }
 
     /**
+     * The turmas one teacher actually teaches (§23), via the class_teachers
+     * pivot and on top of this model's own organization scope — never a
+     * colleague's turma, never another organization's.
+     *
+     * Lives on the model rather than in a controller because more than one
+     * entry point now asks the same question: «Turmas» and «Configurar
+     * horários» (ClassController) and «Horário do Professor»
+     * (TeacherTimetableController), which must all agree about whose turmas
+     * they are looking at.
+     *
+     * @param  Builder<SchoolClass>  $query
+     * @return Builder<SchoolClass>
+     */
+    public function scopeTaughtBy(Builder $query, User $teacher): Builder
+    {
+        return $query->whereHas('teachers', fn ($teachers) => $teachers->whereKey($teacher->getKey()));
+    }
+
+    /**
      * @return BelongsTo<AcademicYear, $this>
      */
     public function academicYear(): BelongsTo

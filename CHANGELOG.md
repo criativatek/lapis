@@ -2,6 +2,24 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.67.0] — 2026-08-25
+
+### Added
+
+- **"Horário do Professor" passa a ser um sítio a sério, e não um botão escondido dentro das Turmas.** Até agora o horário de um professor só existia turma a turma: para saber como era a sua semana inteira era preciso abrir as turmas uma a uma e juntar os blocos de cabeça. Passa a haver uma página própria — "Organização do Ano Letivo → Horário do Professor" — que mostra de uma vez todas as aulas recorrentes de todas as turmas que leciona, agrupadas por dia da semana, com hora de início e de fim, turma e disciplina. Em ecrã largo lê-se como uma semana, uma coluna por dia; em ecrã estreito as colunas empilham-se numa lista agrupada por dia, como a vista semanal de "Aulas e Sumários" já resolve o mesmo problema. Só aparecem os dias em que há mesmo aulas: um sábado vazio não é informação. Cada bloco liga à página da sua turma, no sítio onde esse horário se edita.
+
+  **Os dois caminhos de configuração passam a estar onde o horário se lê.** A mesma página oferece, por baixo da semana, as duas formas que já existiam de preencher um horário: importar o PDF do horário exportado pela escola, e configurar à mão, turma a turma. Nenhuma das duas mudou — são as mesmas rotas, o mesmo importador e o mesmo editor de aulas recorrentes de sempre. Quem ainda não tem horário nenhum não vê uma grelha vazia nem um erro: vê uma explicação clara de que pode importar o PDF ou definir os blocos à mão, com os dois caminhos ali mesmo.
+
+  **A página não escreve absolutamente nada.** Ao contrário da vista semanal de "Aulas e Sumários", que cria deliberadamente as aulas da semana que mostra, um horário é a regra e não as suas ocorrências: abrir esta página não cria nem uma aula recorrente nem uma aula, e isso está coberto por teste que conta as duas tabelas antes e depois. O mecanismo de horários, o importador de PDF e o editor manual ficaram byte a byte como estavam. As Turmas mantêm o seu próprio atalho "Configurar horários", por decisão de produto: quem está dentro de uma turma continua a configurar o horário dali.
+
+### Changed
+
+- **O menu ganha "Organização do Ano Letivo", onde o ano letivo passa a estar todo junto.** O grupo "Organização do ano" passa a chamar-se "Organização do Ano Letivo" e reúne, por esta ordem, o "Calendário do Ano Letivo", a "Estrutura do Ano Letivo" e o "Horário do Professor" — o calendário do ano, a sua estrutura, e a semana do professor dentro dele. "Aulas e Sumários" mantém-se no mesmo grupo, por baixo.
+
+  **"Estrutura do Ano Letivo" mudou de grupo e mais nada.** Vinha de "Configuração", onde estava apenas porque esse grupo existiu primeiro: definir anos letivos, disciplinas e períodos é organizar o ano. A rota (`academic-years.index`), o controlador, as políticas e a disponibilidade em todos os planos ficam exatamente como estavam — um professor do plano Base alcança as mesmas entradas, pela mesma ordem, debaixo de um título diferente. Como esta entrada está disponível em qualquer plano, o grupo deixa de desaparecer para quem não tem o plano Pro: passa a mostrar-se com as entradas a que esse plano tem direito.
+
+  **"Agenda do Ano Letivo" passa a ler-se "Calendário do Ano Letivo", e continua a ser um marcador.** Só a legenda mudou; a chave, o módulo e a capacidade comercial mantêm-se intocados, e nenhuma página foi inventada por trás dela — a página real é construída numa fase seguinte.
+
 ## [0.66.9] — 2026-08-25
 
 ### Fixed

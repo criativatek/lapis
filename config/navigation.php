@@ -125,9 +125,30 @@ return [
         ],
 
         [
-            'label' => 'Organização do ano',
+            // «Organização do Ano Letivo» — the year as a whole: when it runs,
+            // how it is divided, and when the teacher teaches. The three
+            // entries below are ordered by the product decision, not by which
+            // was built first: the calendar of the year, then its structure,
+            // then the teacher's own week inside it.
+            'label' => 'Organização do Ano Letivo',
             'items' => [
-                ['key' => 'calendar', 'label' => 'Agenda do Ano Letivo', 'icon' => 'CalendarDays', 'module' => 'calendar', 'phase' => 5, 'description' => 'Organizar o ano letivo.'],
+                // Still a genuine placeholder — the real page is Fase 5.2, and
+                // no route is faked for it here. «Calendário», not «Agenda»:
+                // the key, the module and the capability are all untouched,
+                // because a label is not a rename (§17).
+                ['key' => 'calendar', 'label' => 'Calendário do Ano Letivo', 'icon' => 'CalendarDays', 'module' => 'calendar', 'phase' => 5, 'description' => 'Organizar o ano letivo.'],
+                // MOVED HERE FROM «Configuração», unchanged in every other
+                // respect — same key, same module (null: always available),
+                // same route, same match. Defining anos letivos, disciplinas
+                // and períodos IS organizing the year; it sat under
+                // configuration only because that group existed first.
+                ['key' => 'academic-structure', 'label' => 'Estrutura do Ano Letivo', 'icon' => 'CalendarRange', 'module' => null, 'phase' => 1, 'route' => 'academic-years.index', 'built' => true, 'description' => 'Definir anos letivos, disciplinas e períodos.', 'match' => ['/subjects']],
+                // The teacher's whole week in one place, and the standalone
+                // home of both ways of filling it in. Gated by `lessons`, the
+                // same capability classes.schedule-setup and timetable-imports.*
+                // already sit behind — RecurringLessonSlot is what all three
+                // are about, so no new entitlement is invented for it.
+                ['key' => 'teacher-timetable', 'label' => 'Horário do Professor', 'icon' => 'CalendarClock', 'module' => 'lessons', 'phase' => 5, 'route' => 'timetable.index', 'built' => true, 'description' => 'Ver o horário semanal e configurá-lo.'],
                 // KEPT DELIBERATELY. The approved structure did not enumerate
                 // it, and removing it would take a Pro entry — and its
                 // placeholder route — away from organizations that have the
@@ -158,17 +179,16 @@ return [
             // profile decides how everything above is calculated, which is
             // exactly why it belongs to configuration and not to the daily run.
             //
-            // «Estrutura do Ano Letivo» first (Fatia 5, §43-§53): academic
-            // years and subjects are STRUCTURE — defined here — never
-            // something the header's context selectors create. The header
-            // (ContextBar.vue) still SELECTS an academic year or subject; it
-            // has not built one since Fase 1, and this entry is simply the
-            // discoverable path to the pages that already did the building
-            // (academic-years.index, subjects.index — unchanged routes,
-            // unchanged controllers, unchanged policies).
+            // «Estrutura do Ano Letivo» LEFT THIS GROUP (Fase 5.1) for
+            // «Organização do Ano Letivo» above, where the year's calendar and
+            // the teacher's horário already are — anos letivos, disciplinas
+            // and períodos are what that group is about. Nothing else about it
+            // moved: same key, same module, same academic-years.index route,
+            // same controllers, same policies. The header (ContextBar.vue)
+            // still only SELECTS an academic year or subject and has not built
+            // one since Fase 1.
             'label' => 'Configuração',
             'items' => [
-                ['key' => 'academic-structure', 'label' => 'Estrutura do Ano Letivo', 'icon' => 'CalendarRange', 'module' => null, 'phase' => 1, 'route' => 'academic-years.index', 'built' => true, 'description' => 'Definir anos letivos, disciplinas e períodos.', 'match' => ['/subjects']],
                 ['key' => 'assessment-profiles', 'label' => 'Perfis de Avaliação', 'icon' => 'SlidersHorizontal', 'module' => 'assessment_profiles', 'phase' => 1, 'route' => 'assessment-profiles.index', 'built' => true, 'description' => 'Definir critérios, domínios, pesos e escalas.'],
                 ['key' => 'configuration-sharing', 'label' => 'Partilhar configuração', 'icon' => 'Share2', 'module' => 'template_sharing', 'phase' => 1, 'route' => 'configuration-sharing.export', 'built' => true, 'description' => 'Partilhar apenas estrutura e configurações.'],
                 ['key' => 'configuration-import', 'label' => 'Importar configuração', 'icon' => 'Download', 'module' => 'template_sharing', 'phase' => 1, 'route' => 'configuration-sharing.import', 'built' => true, 'description' => 'Pré-visualizar e importar configurações partilhadas.'],

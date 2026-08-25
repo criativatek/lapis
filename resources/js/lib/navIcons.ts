@@ -2,6 +2,7 @@ import {
     BarChart3,
     BookOpen,
     Building2,
+    CalendarClock,
     CalendarDays,
     CalendarRange,
     ClipboardList,
@@ -51,6 +52,10 @@ const icons: Record<string, LucideIcon> = {
     FileText,
     CalendarDays,
     CalendarRange,
+    // A clock inside the calendar: «Horário do Professor» is about the hours
+    // of the week, next to a «Calendário» (its days) and an «Estrutura» (its
+    // spans). The three sit together and must not read as the same thing.
+    CalendarClock,
     BookOpen,
     Building2,
     Settings,

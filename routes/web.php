@@ -46,6 +46,7 @@ use App\Http\Controllers\SelfAssessmentController;
 use App\Http\Controllers\StudentPhotoController;
 use App\Http\Controllers\StudentProgressController;
 use App\Http\Controllers\SubjectController;
+use App\Http\Controllers\TeacherTimetableController;
 use App\Http\Controllers\TeamController;
 use App\Http\Controllers\TimetableImportController;
 use Illuminate\Support\Facades\Route;
@@ -206,6 +207,13 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     });
 
     Route::middleware('module:lessons')->group(function () {
+        // «Horário do Professor» — the whole week in one read-only page, and
+        // the standalone home of both ways of filling it in. Distinct from
+        // classes.schedule-setup, which stays exactly where it is as Turmas'
+        // own contextual shortcut. One segment, so it never collides with the
+        // timetable-imports/* routes further down.
+        Route::get('timetable', [TeacherTimetableController::class, 'index'])->name('timetable.index');
+
         Route::get('lessons', [LessonWeekController::class, 'index'])->name('lessons.index');
         Route::post('lessons/materialize-week', [LessonWeekController::class, 'materialize'])->name('lessons.materialize-week');
 

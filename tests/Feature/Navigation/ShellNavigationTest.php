@@ -126,7 +126,7 @@ class ShellNavigationTest extends TestCase
                 'Acompanhamento',
                 'Ação pedagógica',
                 'Documentos',
-                'Organização do ano',
+                'Organização do Ano Letivo',
                 'Instituição',
                 'Configuração',
             ], $labels);
@@ -158,7 +158,14 @@ class ShellNavigationTest extends TestCase
                 'interventions' => ['Ação pedagógica', 'Estratégias e Medidas'],
                 'records' => ['Ação pedagógica', 'Registos'],
                 'reports' => ['Documentos', 'Relatórios'],
-                'calendar' => ['Organização do ano', 'Agenda do Ano Letivo'],
+                // Fase 5.1. «Organização do Ano Letivo» is now the year as a
+                // whole: the calendar of it, its structure — which moved here
+                // out of «Configuração» — and the teacher's own week inside
+                // it. «Calendário», not «Agenda»: same key, same module, only
+                // the copy changed (§17).
+                'calendar' => ['Organização do Ano Letivo', 'Calendário do Ano Letivo'],
+                'academic-structure' => ['Organização do Ano Letivo', 'Estrutura do Ano Letivo'],
+                'teacher-timetable' => ['Organização do Ano Letivo', 'Horário do Professor'],
                 'assessment-profiles' => ['Configuração', 'Perfis de Avaliação'],
                 'settings' => ['Configuração', 'Configurações'],
             ];
@@ -274,6 +281,13 @@ class ShellNavigationTest extends TestCase
 
         // Exactly the Base keys, and no more. The list is spelled out so a
         // capability quietly appearing or vanishing fails here.
+        //
+        // «academic-structure» is in the same place in this list as it always
+        // was, and deliberately so: Fase 5.1 moved it from «Configuração» to
+        // «Organização do Ano Letivo», a group that sits immediately after
+        // «Documentos» and before «Configuração», so a Base teacher reaches
+        // the very same entries in the very same order — under a different
+        // heading (§23, §41).
         $this->assertSame([
             'dashboard', 'classes', 'students', 'instruments', 'assessments',
             'self-assessments', 'class-analysis', 'student-progress',
@@ -289,7 +303,16 @@ class ShellNavigationTest extends TestCase
         // Fatia 1 (config-sharing) added "Partilhar configuração" and "Importar
         // configuração", gated by the pre-existing template_sharing module —
         // present in PRO_MODULES, absent from BASE_MODULES.
-        $this->assertSame(['calendar', 'lessons', 'configuration-sharing', 'configuration-import'], array_values($gained));
+        //
+        // Fase 5.1 adds "Horário do Professor", gated by the SAME `lessons`
+        // module that already gates "Aulas e Sumários", classes.schedule-setup
+        // and timetable-imports.*: a Pro organization gains a new destination
+        // onto a capability it already had, and no new entitlement was
+        // invented for it — which is why Base's own list above is unchanged.
+        $this->assertSame(
+            ['calendar', 'teacher-timetable', 'lessons', 'configuration-sharing', 'configuration-import'],
+            array_values($gained),
+        );
     }
 
     #[Test]
@@ -311,13 +334,137 @@ class ShellNavigationTest extends TestCase
         $user = User::factory()->create();
 
         $this->actingAs($user)->get('/dashboard')->assertInertia(function (AssertableInertia $page) {
-            // Base has neither the calendar nor institutional administration, so
-            // the two groups that would hold them are simply not sent.
+            // Base has no institutional administration, so the group that would
+            // hold it is simply not sent.
             $labels = $this->sectionLabels($page);
 
-            $this->assertNotContains('Organização do ano', $labels);
             $this->assertNotContains('Instituição', $labels);
+
+            // «Organização do Ano Letivo» USED to vanish for Base too, when the
+            // only things in it were the Pro calendar and Pro lessons. Since
+            // Fase 5.1 it also holds «Estrutura do Ano Letivo», whose module is
+            // null — always available — so the group now stands for every plan,
+            // carrying exactly the entries that plan is entitled to. It is
+            // still not standing empty: that is the rule, and this is it
+            // holding.
+            $this->assertContains('Organização do Ano Letivo', $labels);
+
+            $section = collect($page->toArray()['props']['nav']['sections'])
+                ->firstWhere('label', 'Organização do Ano Letivo');
+
+            $this->assertSame(['Estrutura do Ano Letivo'], array_column($section['items'], 'label'));
         });
+    }
+
+    // ------------------------------------------------- Fase 5.1 o ano letivo
+
+    /**
+     * The group reads top to bottom as the product decided, and not in the
+     * order the three were built: the calendar of the year, then its
+     * structure, then the teacher's own week inside it. «Aulas e Sumários»
+     * stays where it always was, below them.
+     */
+    #[Test]
+    public function the_year_group_is_ordered_as_the_product_decided(): void
+    {
+        $user = User::factory()->create();
+        $this->upgrade($user, 'pro');
+
+        $this->actingAs($user)->get('/dashboard')->assertInertia(function (AssertableInertia $page) {
+            $section = collect($page->toArray()['props']['nav']['sections'])
+                ->firstWhere('label', 'Organização do Ano Letivo');
+
+            $this->assertNotNull($section);
+            $this->assertSame([
+                'Calendário do Ano Letivo',
+                'Estrutura do Ano Letivo',
+                'Horário do Professor',
+                'Aulas e Sumários',
+            ], array_column($section['items'], 'label'));
+        });
+    }
+
+    /**
+     * «Calendário do Ano Letivo» is a GENUINE placeholder and stays one until
+     * Fase 5.2 builds it: renamed copy, unchanged key and module, and no real
+     * page pretended into existence behind it. routes/app.php still registers
+     * its placeholder route, so the menu does not link to a 404.
+     */
+    #[Test]
+    public function the_calendar_reads_its_new_label_and_is_still_only_a_placeholder(): void
+    {
+        $user = User::factory()->create();
+        $this->upgrade($user, 'pro');
+
+        $configured = collect(config('navigation.sections'))
+            ->flatMap(fn (array $section): array => $section['items'])
+            ->firstWhere('key', 'calendar');
+
+        $this->assertSame('Calendário do Ano Letivo', $configured['label']);
+        $this->assertSame('calendar', $configured['module']);
+        $this->assertArrayNotHasKey('route', $configured);
+        $this->assertArrayNotHasKey('built', $configured);
+
+        $this->actingAs($user)->get('/dashboard')->assertInertia(function (AssertableInertia $page) {
+            $calendar = collect($this->navItems($page))->firstWhere('key', 'calendar');
+
+            $this->assertSame('Calendário do Ano Letivo', $calendar['label']);
+            $this->assertFalse($calendar['built']);
+        });
+
+        $this->actingAs($user)->get('/calendar')->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->component('Placeholder')
+                ->where('title', 'Calendário do Ano Letivo')
+                ->where('phase', 5)
+        );
+    }
+
+    /**
+     * Moved, not rebuilt: «Estrutura do Ano Letivo» still points at the same
+     * academic-years.index it always did, and still answers there.
+     */
+    #[Test]
+    public function the_moved_academic_structure_still_points_at_its_unchanged_route(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->get('/dashboard')->assertInertia(function (AssertableInertia $page) {
+            $items = collect($this->navItems($page))->keyBy('key');
+
+            $this->assertStringEndsWith('/academic-years', (string) $items['academic-structure']['href']);
+            $this->assertContains('/subjects', $items['academic-structure']['match']);
+        });
+
+        $this->actingAs($user)->get('/academic-years')->assertOk();
+    }
+
+    /**
+     * «Horário do Professor» is a real destination, not a placeholder, and it
+     * is a DIFFERENT one from Turmas' own «Configurar horários» shortcut,
+     * which this phase left exactly where it was.
+     */
+    #[Test]
+    public function the_teacher_timetable_entry_opens_its_own_real_page(): void
+    {
+        $user = User::factory()->create();
+        $this->upgrade($user, 'pro');
+
+        $this->actingAs($user)->get('/dashboard')->assertInertia(function (AssertableInertia $page) {
+            $timetable = collect($this->navItems($page))->firstWhere('key', 'teacher-timetable');
+
+            $this->assertSame('Horário do Professor', $timetable['label']);
+            $this->assertTrue($timetable['built']);
+            $this->assertStringEndsWith('/timetable', (string) $timetable['href']);
+        });
+
+        $this->actingAs($user)->get('/timetable')
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page->component('timetable/Index'));
+
+        $this->actingAs($user)->get('/classes/schedule-setup')
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page->component('classes/ScheduleSetup'));
     }
 
     // -------------------------------------------------- §42 as rotas antigas

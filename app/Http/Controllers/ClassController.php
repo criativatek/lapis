@@ -306,12 +306,16 @@ class ClassController extends Controller
      * Shared by index() and scheduleSetup() so this scoping is defined in
      * exactly one place rather than reimplemented per entry point.
      *
+     * The question itself now lives on the model (SchoolClass::scopeTaughtBy),
+     * because «Horário do Professor» asks it too and the two must never
+     * disagree about whose turmas they are. The query is byte for byte the one
+     * this method has always built.
+     *
      * @return Builder<SchoolClass>
      */
     protected function teacherClasses(): Builder
     {
-        return SchoolClass::query()
-            ->whereHas('teachers', fn ($query) => $query->whereKey($this->user()->getKey()));
+        return SchoolClass::query()->taughtBy($this->user());
     }
 
     protected function user(): User
