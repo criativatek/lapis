@@ -2,6 +2,16 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.71.1] — 2026-08-25
+
+### Fixed
+
+- **Feriados e interrupções ganham edição explícita, própria e independente do resto do ano letivo.** Até agora as linhas viviam sempre abertas em campos de texto dentro do formulário grande do ano, uma exceção nova caía no fundo de uma lista comprida, e o único "Guardar" — o do ano letivo — dizia, sem querer, que cada linha se gravava sozinha quando nenhuma se gravava. Cada exceção passa a ter os seus próprios três gestos: em repouso é texto, com "Editar" e "Eliminar"; a editar mostra os campos, com "Cancelar" (repõe o que estava gravado, sem pedir nada ao servidor) e "Guardar" (um pedido a sério, próprio, imediato). "Adicionar" mostra a nova linha no topo da lista, não no fundo, com foco automático na designação. Eliminar continua a pedir confirmação, com o mesmo diálogo das outras ações destrutivas da aplicação.
+
+  **As datas de uma exceção passam a ser mais difíceis de errar.** Os campos limitam-se às datas do próprio ano letivo; a data de fim acompanha a de início enquanto forem o mesmo dia (evitando terminar por engano com um intervalo invertido) e deixa de a acompanhar assim que o professor escolhe deliberadamente um intervalo de vários dias. O servidor continua a validar tudo de novo, e as mensagens de erro passam a nomear o campo em português, nunca uma chave técnica como `exceptions.4.title`.
+
+  Os períodos do ano não mudaram — continuam no mesmo formulário, com o mesmo "Guardar ano letivo" de sempre.
+
 ## [0.71.0] — 2026-08-25
 
 ### Added

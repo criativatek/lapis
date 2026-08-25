@@ -2,8 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\AcademicCalendarException;
-use App\Models\AcademicCalendarExceptionSource;
 use App\Models\AcademicPeriod;
 use App\Models\AcademicPeriodStatus;
 use App\Models\AcademicYear;
@@ -22,11 +20,21 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Creates and updates an academic year together with its periods — and, desde a
- * Fase 5.4, com as suas exceções letivas — in one transaction (§24.2). A
- * half-written year with missing periods is never left behind if anything fails
- * partway, e uma remoção de período recusada não deixa lá as exceções que vinham
- * no mesmo pedido.
+ * Creates and updates an academic year together with its periods in one
+ * transaction (§24.2). A half-written year with missing periods is never left
+ * behind if anything fails partway.
+ *
+ * AS EXCEÇÕES LETIVAS JÁ NÃO PASSAM POR AQUI. Durante a Fase 5.4 passaram: os
+ * feriados e as interrupções eram sincronizados neste mesmo serviço, no mesmo
+ * pedido que gravava o ano. A verificação em uso real mostrou que esse desenho
+ * mentia ao professor — cada linha parecia ter o seu «Guardar» e nenhuma tinha —
+ * e as exceções ganharam o seu próprio CRUD, com um pedido por gesto:
+ * AcademicCalendarExceptionController e AcademicCalendarExceptionRequest.
+ *
+ * OS PERÍODOS FICARAM EXATAMENTE ONDE ESTAVAM, e é deliberado: são dois ou três,
+ * nascem com o ano, e a sua ordem é uma propriedade do CONJUNTO — mudar um
+ * período de sequência é mexer nos outros (ver applySequences() lá em baixo).
+ * Isso é precisamente uma gravação em bloco, e continua a sê-lo.
  */
 class AcademicYearService
 {
@@ -54,19 +62,12 @@ class AcademicYearService
     /**
      * @param  array<string, mixed>  $attributes
      * @param  list<array<string, mixed>>  $periods
-     * @param  list<array<string, mixed>>|null  $exceptions  Null means «this
-     *                                                       request did not speak about exceptions at all», not «remove
-     *                                                       them» — see syncExceptions() below.
      */
-    public function create(array $attributes, array $periods, ?array $exceptions = null): AcademicYear
+    public function create(array $attributes, array $periods): AcademicYear
     {
-        return DB::transaction(function () use ($attributes, $periods, $exceptions): AcademicYear {
+        return DB::transaction(function () use ($attributes, $periods): AcademicYear {
             $year = AcademicYear::create($attributes);
             $this->syncPeriods($year, $periods);
-
-            if ($exceptions !== null) {
-                $this->syncExceptions($year, $exceptions);
-            }
 
             return $year;
         });
@@ -75,17 +76,12 @@ class AcademicYearService
     /**
      * @param  array<string, mixed>  $attributes
      * @param  list<array<string, mixed>>  $periods
-     * @param  list<array<string, mixed>>|null  $exceptions
      */
-    public function update(AcademicYear $year, array $attributes, array $periods, ?array $exceptions = null): AcademicYear
+    public function update(AcademicYear $year, array $attributes, array $periods): AcademicYear
     {
-        return DB::transaction(function () use ($year, $attributes, $periods, $exceptions): AcademicYear {
+        return DB::transaction(function () use ($year, $attributes, $periods): AcademicYear {
             $year->update($attributes);
             $this->syncPeriods($year, $periods);
-
-            if ($exceptions !== null) {
-                $this->syncExceptions($year, $exceptions);
-            }
 
             return $year->refresh();
         });
@@ -150,94 +146,6 @@ class AcademicYearService
                 ]);
             }
         }
-    }
-
-    /**
-     * O mesmo diff das exceções letivas (Fase 5.4) — e DELIBERADAMENTE MAIS
-     * SIMPLES do que o dos períodos aqui em cima.
-     *
-     * A forma é a mesma e é o que interessa que seja: uma exceção submetida com
-     * um ulid existente é atualizada NO SÍTIO (a linha sobrevive, e sobreviverá
-     * a tudo o que um dia venha a apontar-lhe); uma submetida sem ulid é nova;
-     * uma que existe e deixou de ser submetida é removida.
-     *
-     * O QUE NÃO SE PORTOU DAQUI DE CIMA, E PORQUÊ:
-     *
-     *   - NÃO HÁ `applySequences()`. Aquele bailado de estacionar sequências
-     *     num valor livre antes de escrever as definitivas existe por uma razão
-     *     exata: `academic_periods` tem UNIQUE(academic_year_id, sequence) e o
-     *     MySQL não tem constraints diferidas, pelo que trocar dois períodos de
-     *     ordem colidia a meio. `academic_calendar_exceptions` não tem ordem
-     *     nenhuma — nem coluna, nem índice único — e duas exceções podem até
-     *     cair no mesmo dia (um feriado que também é dia não letivo). Não há
-     *     colisão possível para dançar à volta.
-     *
-     *   - NÃO HÁ `assertRemovable()`. Aquilo transforma nove chaves
-     *     estrangeiras RESTRICT numa mensagem legível. Nada aponta ainda para
-     *     esta tabela: nenhuma tabela tem `academic_calendar_exception_id`, e a
-     *     materialização de aulas, que virá a lê-la, é uma fase à parte e lê-a
-     *     por datas e não por FK. Uma lista de dependentes vazia mantida «para
-     *     o caso» seria uma lista que ninguém se lembraria de atualizar.
-     *
-     * Fica portanto o diff em três passos — remover, atualizar, criar — e mais
-     * nada. Corre dentro da DB::transaction de quem chama, tal como o dos
-     * períodos: se os períodos rejeitarem a gravação, isto não fica meio feito.
-     *
-     * `source` NÃO ENTRA EM `exceptionAttributes()`, exatamente pela mesma razão
-     * que `status` não entra em `periodAttributes()`: é uma coisa que se decide
-     * uma vez, ao criar, e nunca um efeito secundário de gravar o formulário.
-     * Uma exceção nasce «manual» — é a única proveniência que esta fase escreve
-     * — e editá-la não a torna noutra coisa.
-     *
-     * @param  list<array<string, mixed>>  $exceptions
-     */
-    protected function syncExceptions(AcademicYear $year, array $exceptions): void
-    {
-        $existing = $year->exceptions()->get()->keyBy('ulid');
-        $submittedUlids = collect($exceptions)->pluck('ulid')->filter()->all();
-
-        $existing
-            ->reject(fn (AcademicCalendarException $exception): bool => in_array($exception->ulid, $submittedUlids, true))
-            ->each(fn (AcademicCalendarException $exception) => $exception->delete());
-
-        foreach ($exceptions as $exceptionData) {
-            $ulid = $exceptionData['ulid'] ?? null;
-            $current = $ulid === null ? null : $existing->get($ulid);
-
-            if ($current !== null) {
-                $current->fill($this->exceptionAttributes($exceptionData));
-                $current->save();
-
-                continue;
-            }
-
-            $year->exceptions()->create([
-                ...$this->exceptionAttributes($exceptionData),
-                'source' => AcademicCalendarExceptionSource::Manual->value,
-            ]);
-        }
-    }
-
-    /**
-     * The plain-column attributes shared by an updated existing exception and a
-     * freshly-created one, so the two branches in syncExceptions() never drift.
-     * `source` is deliberately absent — see the docblock above.
-     *
-     * @param  array<string, mixed>  $exceptionData
-     * @return array<string, mixed>
-     */
-    private function exceptionAttributes(array $exceptionData): array
-    {
-        return [
-            'type' => $exceptionData['type'],
-            'title' => $exceptionData['title'],
-            'starts_on' => $exceptionData['starts_on'],
-            'ends_on' => $exceptionData['ends_on'],
-            // Uma observação em branco é a ausência de observação, e escreve-se
-            // null — não uma string vazia que o leitor depois teria de saber
-            // tratar como se fosse null.
-            'note' => ($exceptionData['note'] ?? null) === '' ? null : ($exceptionData['note'] ?? null),
-        ];
     }
 
     /**

@@ -48,10 +48,14 @@ class AcademicYearController extends Controller
     {
         Gate::authorize('create', AcademicYear::class);
 
+        // SEM `exceptionTypes`: um ano que ainda não existe não pode ter
+        // feriados — uma exceção pertence a um ano letivo, e o ano tem de estar
+        // gravado antes de haver a que a agarrar. A secção «Feriados e
+        // interrupções» vive só na página de edição, e o passo de criar um ano
+        // voltou a ser o que era: a etiqueta, o estado, as datas e os períodos.
         return Inertia::render('academic-years/Create', [
             'statuses' => $this->statusOptions(),
             'periodKinds' => $this->periodKindOptions(),
-            'exceptionTypes' => $this->exceptionTypeOptions(),
         ]);
     }
 
@@ -60,11 +64,8 @@ class AcademicYearController extends Controller
         Gate::authorize('create', AcademicYear::class);
 
         $this->service->create(
-            $request->safe()->except(['periods', 'exceptions']),
+            $request->safe()->except(['periods']),
             $request->validated('periods'),
-            // Null quando o pedido não falou de exceções de todo — o serviço
-            // distingue isso de um array vazio, que é «não tem nenhuma».
-            $request->validated('exceptions'),
         );
 
         return to_route('academic-years.index');
@@ -92,19 +93,34 @@ class AcademicYearController extends Controller
                     'starts_on' => $period->starts_on->toDateString(),
                     'ends_on' => $period->ends_on->toDateString(),
                 ]),
-                // As exceções letivas do ano, mapeadas exatamente como os
-                // períodos acima — mesmas chaves editáveis, mesmo ulid a
-                // carregar a identidade através das gravações. `source` não vai
-                // no payload porque o formulário não a oferece: escreve-se no
-                // servidor e não é do professor.
-                'exceptions' => $academicYear->exceptions->map(fn ($exception) => [
-                    'ulid' => $exception->ulid,
-                    'type' => $exception->type->value,
-                    'title' => $exception->title,
-                    'starts_on' => $exception->starts_on->toDateString(),
-                    'ends_on' => $exception->ends_on->toDateString(),
-                    'note' => $exception->note,
-                ]),
+                // As exceções letivas do ano — já não campos de um formulário
+                // que se grava em bloco com os períodos, mas a lista que
+                // ExceptionsManager.vue mostra em texto e grava uma de cada vez.
+                // `source` não vai no payload porque a página não a oferece:
+                // escreve-se no servidor e não é do professor.
+                //
+                // POR DATA, E COM DESEMPATE ESTÁVEL. A ordem é uma decisão do
+                // servidor e não da página: uma exceção acabada de criar aparece
+                // onde cronologicamente lhe compete, e não no fundo da lista por
+                // ser a mais recente. `reorder()` porque a relação já traz a sua
+                // própria ordem (data, título) e o que aqui se quer dizer é uma
+                // frase inteira — data, depois id — em vez de um acrescento a
+                // meio de outra. O `id` é o que a torna determinística quando
+                // duas exceções caem no mesmo dia (um feriado que também é dia
+                // não letivo), coisa que a tabela permite de propósito.
+                'exceptions' => $academicYear->exceptions()
+                    ->reorder()
+                    ->orderBy('starts_on')
+                    ->orderBy('id')
+                    ->get()
+                    ->map(fn ($exception) => [
+                        'ulid' => $exception->ulid,
+                        'type' => $exception->type->value,
+                        'title' => $exception->title,
+                        'starts_on' => $exception->starts_on->toDateString(),
+                        'ends_on' => $exception->ends_on->toDateString(),
+                        'note' => $exception->note,
+                    ]),
             ],
             'statuses' => $this->statusOptions(),
             'periodKinds' => $this->periodKindOptions(),
@@ -123,9 +139,8 @@ class AcademicYearController extends Controller
         try {
             $this->service->update(
                 $academicYear,
-                $request->safe()->except(['periods', 'exceptions']),
+                $request->safe()->except(['periods']),
                 $request->validated('periods'),
-                $request->validated('exceptions'),
             );
         } catch (AcademicYearValidationException $exception) {
             return back()->withErrors(['periods' => $exception->getMessage()])->withInput();
@@ -171,10 +186,10 @@ class AcademicYearController extends Controller
     }
 
     /**
-     * As três espécies de exceção letiva, oferecidas ao formulário a partir do
-     * próprio enum — nunca reescritas na página, pela mesma razão que as
+     * As três espécies de exceção letiva, oferecidas à página de edição a partir
+     * do próprio enum — nunca reescritas na página, pela mesma razão que as
      * espécies de período não o são: a lista que o formulário oferece e a lista
-     * que AcademicYearRequest aceita não podem divergir.
+     * que AcademicCalendarExceptionRequest aceita não podem divergir.
      *
      * @return list<array{value: string, label: string}>
      */

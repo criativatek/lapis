@@ -2,8 +2,6 @@
 
 namespace App\Http\Requests;
 
-use App\Models\AcademicCalendarException;
-use App\Models\AcademicCalendarExceptionType;
 use App\Models\AcademicPeriod;
 use App\Models\AcademicPeriodKind;
 use App\Models\AcademicYear;
@@ -18,10 +16,12 @@ use Illuminate\Validation\Validator;
  * Validates an academic year and its periods together — a year is created with
  * its periods in one step (§9), so they are validated in one request.
  *
- * E, DESDE A FASE 5.4, TAMBÉM AS SUAS EXCEÇÕES LETIVAS — feriados, interrupções
- * e dias não letivos. Pela mesma razão e no mesmo pedido: são estrutura DESTE
- * ano, editadas no mesmo sítio e por quem edita os períodos, e um formulário que
- * as validasse noutro lado seria um segundo sítio onde as regras podiam divergir.
+ * AS EXCEÇÕES LETIVAS JÁ NÃO ESTÃO AQUI. Durante a Fase 5.4 estiveram: os
+ * feriados e as interrupções chegavam como um array `exceptions.*` no mesmo
+ * pedido que gravava o ano. Deixaram de chegar quando ganharam o seu próprio
+ * CRUD, um pedido por gesto — AcademicCalendarExceptionRequest valida-as agora,
+ * uma de cada vez e com nomes de campo que uma pessoa reconhece (`title`, e não
+ * `exceptions.4.title`).
  *
  * All validation is server-side (§22.2). The uniqueness rule is scoped to the
  * resolved organization, not a bare unique:, so it cannot collide with another
@@ -62,37 +62,6 @@ class AcademicYearRequest extends FormRequest
             'periods.*.sequence' => ['required', 'integer', 'min:1', 'max:255'],
             'periods.*.starts_on' => ['required', 'date'],
             'periods.*.ends_on' => ['required', 'date', 'after:periods.*.starts_on'],
-
-            // AS EXCEÇÕES LETIVAS (Fase 5.4) — feriados, interrupções e dias
-            // não letivos, submetidas no MESMO formulário e no mesmo pedido que
-            // os períodos, porque são a mesma coisa: a estrutura deste ano.
-            //
-            // `sometimes` E NÃO `required`: ao contrário dos períodos, um ano
-            // letivo sem exceção nenhuma é perfeitamente legítimo — e um pedido
-            // que não fale de exceções de todo (uma integração antiga, um teste
-            // que só quer mexer nos períodos) não deve por isso apagar as que já
-            // existem. É AcademicYearService quem distingue os dois casos: a
-            // chave ausente deixa-as como estão, um array vazio remove-as todas.
-            'exceptions' => ['sometimes', 'array'],
-            // Absent/null is a brand-new exception — a mesma convenção dos
-            // `periods.*.ulid` acima, e o mesmo par de verificações em after():
-            // pertencer à organização é o que esta regra vê, pertencer a ESTE
-            // ano é o que ela não consegue ver.
-            'exceptions.*.ulid' => ['nullable', 'string', new BelongsToCurrentOrganization(AcademicCalendarException::class, 'ulid')],
-            'exceptions.*.type' => ['required', Rule::enum(AcademicCalendarExceptionType::class)],
-            'exceptions.*.title' => ['required', 'string', 'max:200'],
-            'exceptions.*.starts_on' => ['required', 'date'],
-            // `after_or_equal`, E NÃO `after` — a diferença real face aos
-            // períodos logo acima: um período tem de durar mais do que um dia,
-            // mas uma exceção de um dia só é o caso MAIS comum que existe (um
-            // feriado). É a mesma comparação que a CHECK da tabela faz.
-            'exceptions.*.ends_on' => ['required', 'date', 'after_or_equal:exceptions.*.starts_on'],
-            'exceptions.*.note' => ['nullable', 'string', 'max:2000'],
-            // `source` NÃO SE VALIDA PORQUE NÃO SE ACEITA: a proveniência é
-            // escrita pelo servidor (sempre «manual» nesta fase) e nunca vem do
-            // cliente — senão um formulário podia declarar-se «importado» e a
-            // coluna deixava de ser uma resposta honesta à pergunta que existe
-            // para responder.
         ];
     }
 
@@ -136,44 +105,6 @@ class AcademicYearRequest extends FormRequest
                         $validator->errors()->add(
                             "periods.{$index}.ulid",
                             __('O período selecionado não pertence a este ano letivo.'),
-                        );
-                    }
-                }
-            }
-
-            // AS MESMAS DUAS VERIFICAÇÕES, PARA AS EXCEÇÕES. São exatamente as
-            // dos períodos — estar dentro do ano, e o ulid ser mesmo deste ano —
-            // porque os dois riscos são os mesmos: uma interrupção fora do ano
-            // não é estrutura de ano nenhum, e um ulid de outro ano deixaria um
-            // formulário adotar (ou remover) a exceção de um ano vizinho.
-            $exceptions = $this->input('exceptions', []);
-
-            if (! is_array($exceptions)) {
-                return;
-            }
-
-            foreach ($exceptions as $index => $exception) {
-                if (! is_array($exception)) {
-                    continue;
-                }
-
-                if (isset($exception['starts_on'], $exception['ends_on'])
-                    && ($exception['starts_on'] < $yearStart || $exception['ends_on'] > $yearEnd)) {
-                    $validator->errors()->add(
-                        "exceptions.{$index}.starts_on",
-                        __('A exceção tem de estar dentro do ano letivo.'),
-                    );
-                }
-            }
-
-            if ($year instanceof AcademicYear) {
-                $ownExceptionUlids = $year->exceptions()->pluck('ulid');
-                foreach ($exceptions as $index => $exception) {
-                    $ulid = is_array($exception) ? ($exception['ulid'] ?? null) : null;
-                    if ($ulid !== null && ! $ownExceptionUlids->contains($ulid)) {
-                        $validator->errors()->add(
-                            "exceptions.{$index}.ulid",
-                            __('A exceção selecionada não pertence a este ano letivo.'),
                         );
                     }
                 }
