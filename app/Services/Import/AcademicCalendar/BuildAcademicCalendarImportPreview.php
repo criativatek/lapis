@@ -2,6 +2,7 @@
 
 namespace App\Services\Import\AcademicCalendar;
 
+use App\Domain\AcademicCalendar\AcademicCalendarExceptionMatch;
 use App\Domain\Import\AcademicCalendar\ParsedAcademicCalendar;
 use App\Domain\Import\AcademicCalendar\ParsedCalendarMarker;
 use App\Domain\Import\AcademicCalendar\ParsedCalendarRange;
@@ -11,6 +12,7 @@ use App\Models\AcademicPeriod;
 use App\Models\AcademicPeriodKind;
 use App\Models\AcademicYear;
 use App\Models\CalendarEventType;
+use App\Services\AcademicCalendar\MatchAcademicCalendarExceptions;
 use Illuminate\Database\Eloquent\Collection;
 
 /**
@@ -25,7 +27,7 @@ use Illuminate\Database\Eloquent\Collection;
  * lá quando se grava.
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * OS SEIS ESTADOS, E O QUE CADA UM AUTORIZA
+ * OS SETE ESTADOS, E O QUE CADA UM AUTORIZA
  *
  *   novo          — nada de parecido existe. Vem pré-selecionado: não há nada para
  *                   destruir e a alternativa era o professor picar quinze caixas
@@ -33,6 +35,12 @@ use Illuminate\Database\Eloquent\Collection;
  *   já existente  — está lá, igualzinho. Mostra-se e não se faz nada: nem se
  *                   recria, nem se pode selecionar. É isto que torna reimportar o
  *                   mesmo ficheiro uma operação inofensiva.
+ *   designação
+ *   diferente     — SÓ PARA EXCEÇÕES. A mesma espécie, nas mesmas datas, com outro
+ *                   nome: o documento chama «1.º de Maio» ao que este calendário
+ *                   tem como «Dia do Trabalhador». Não nasce uma segunda linha —
+ *                   isso nunca esteve em causa —, mas as duas designações vão lado
+ *                   a lado e o professor escolhe qual fica. Nunca pré-selecionado.
  *   alterado      — existe com o mesmo nome e datas diferentes. NUNCA
  *                   pré-selecionado: sobrescrever a estrutura de um ano é a coisa
  *                   com mais consequências nesta página, e as duas versões vão
@@ -51,6 +59,14 @@ use Illuminate\Database\Eloquent\Collection;
  *                   2026/2027 aberto com 2025/2026 selecionado é isto inteiro.
  *
  * ─────────────────────────────────────────────────────────────────────────────
+ * A REGRA QUE EMPARELHA EXCEÇÕES JÁ NÃO VIVE AQUI. Vive em
+ * MatchAcademicCalendarExceptions, porque deixou de ser assunto da importação: a
+ * sugestão de feriados nacionais propõe a mesma espécie de coisa contra o mesmo
+ * calendário, e as duas têm de chegar à mesma conclusão sobre se o 1 de maio já lá
+ * está. O que ficou aqui é a tradução dessa conclusão para uma LINHA DESTE ECRÃ —
+ * o «fora do ano», o «vem pré-marcado», o que se mostra a quem lê.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
  * O QUE NUNCA VAI PARA DOIS SÍTIOS (§30). Cada facto tem UM destino canónico: as
  * datas dos semestres são AcademicPeriod, os feriados e as interrupções são
  * AcademicCalendarException, e os fins de ano por coorte são CalendarEvent do tipo
@@ -62,15 +78,26 @@ class BuildAcademicCalendarImportPreview
 {
     public const STATE_NEW = 'new';
 
-    public const STATE_EXISTS = 'exists';
+    public const STATE_EXISTS = AcademicCalendarExceptionMatch::STATE_EXISTS;
+
+    /**
+     * SÓ AS EXCEÇÕES CHEGAM AQUI. Um período com o mesmo nome e datas diferentes é
+     * «alterado» e continua a sê-lo — a designação de um período é a sua chave de
+     * emparelhamento, e não um detalhe que se possa trocar.
+     */
+    public const STATE_CORRESPONDENCE = AcademicCalendarExceptionMatch::STATE_CORRESPONDENCE;
 
     public const STATE_CHANGED = 'changed';
 
-    public const STATE_CONFLICT = 'conflict';
+    public const STATE_CONFLICT = AcademicCalendarExceptionMatch::STATE_CONFLICT;
 
     public const STATE_NEEDS_CHOICE = 'needs_choice';
 
     public const STATE_OUT_OF_YEAR = 'out_of_year';
+
+    public function __construct(
+        private readonly MatchAcademicCalendarExceptions $matcher,
+    ) {}
 
     /**
      * @return array{
@@ -230,12 +257,22 @@ class BuildAcademicCalendarImportPreview
      */
     private function exceptionProposal(ParsedCalendarRange $range, string $key, $existing, AcademicYear $academicYear): array
     {
-        $match = $this->matchException($range, $existing);
+        // A MESMA REGRA QUE A SUGESTÃO DE FERIADOS USA, e a mesma que a confirmação
+        // volta a correr contra a base de dados: não há aqui uma segunda opinião
+        // sobre o que conta como duplicado.
+        $match = $this->matcher->match(
+            $range->type,
+            $range->startsOn,
+            $range->endsOn,
+            $range->title,
+            $existing,
+        );
+
         $inYear = $this->insideYear($academicYear, $range->startsOn, $range->endsOn);
 
         $state = match (true) {
             ! $inYear => self::STATE_OUT_OF_YEAR,
-            $match['state'] !== null => $match['state'],
+            $match->matched() => (string) $match->state,
             default => self::STATE_NEW,
         };
 
@@ -251,74 +288,8 @@ class BuildAcademicCalendarImportPreview
             'note' => $range->note,
             'raw_text' => $range->rawText,
             'state' => $state,
-            'current' => $match['current'],
+            'current' => $match->current,
             'include' => $state === self::STATE_NEW,
-        ];
-    }
-
-    /**
-     * A REGRA DE DEDUPLICAÇÃO, escrita uma vez e usada aqui e na confirmação.
-     *
-     * A chave natural de uma exceção é `type` + `starts_on` + `ends_on` dentro
-     * deste ano letivo — e não o título, que é texto livre e que a escola muda de
-     * ano para ano («Natal» e «Interrupção letiva do Natal» são o mesmo intervalo).
-     * É por isso que a igualdade de datas manda e o título só aparece para o
-     * professor ler.
-     *
-     * MESMA ESPÉCIE E DATAS EXATAS é a mesma coisa: já existe.
-     * MESMA ESPÉCIE E DATAS QUE SE TOCAM SEM SEREM IGUAIS é um conflito: pode ser
-     * a interrupção do ano passado que ficou a mais um dia, pode ser a versão nova
-     * do calendário — não há regra que saiba qual, e por isso não há regra
-     * nenhuma a decidir (§32).
-     * ESPÉCIES DIFERENTES NÃO CONFLITUAM, de propósito: um feriado no meio de uma
-     * interrupção letiva é exatamente o que o documento real tem no dia 25 de
-     * dezembro, e as duas linhas são ambas verdadeiras.
-     *
-     * NENHUMA APROXIMAÇÃO DE TEXTO, em ponto nenhum: sem distância de Levenshtein,
-     * sem «títulos parecidos», sem datas «quase iguais».
-     *
-     * @param  Collection<int, AcademicCalendarException>  $existing
-     * @return array{state: string|null, current: array<string, mixed>|null}
-     */
-    private function matchException(ParsedCalendarRange $range, $existing): array
-    {
-        $sameType = $existing->filter(
-            fn (AcademicCalendarException $exception): bool => $exception->type === $range->type,
-        );
-
-        $exact = $sameType->first(
-            fn (AcademicCalendarException $exception): bool => $exception->starts_on->toDateString() === $range->startsOn
-                && $exception->ends_on->toDateString() === $range->endsOn,
-        );
-
-        if ($exact !== null) {
-            return ['state' => self::STATE_EXISTS, 'current' => $this->exceptionPayload($exact)];
-        }
-
-        $overlapping = $sameType->first(
-            fn (AcademicCalendarException $exception): bool => $exception->starts_on->toDateString() <= $range->endsOn
-                && $exception->ends_on->toDateString() >= $range->startsOn,
-        );
-
-        if ($overlapping !== null) {
-            return ['state' => self::STATE_CONFLICT, 'current' => $this->exceptionPayload($overlapping)];
-        }
-
-        return ['state' => null, 'current' => null];
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function exceptionPayload(AcademicCalendarException $exception): array
-    {
-        return [
-            'ulid' => $exception->ulid,
-            'type_label' => $exception->type->label(),
-            'title' => $exception->title,
-            'starts_on' => $exception->starts_on->toDateString(),
-            'ends_on' => $exception->ends_on->toDateString(),
-            'source_label' => $exception->source->label(),
         ];
     }
 
@@ -375,12 +346,11 @@ class BuildAcademicCalendarImportPreview
      */
     private function sameLabel(string $left, string $right): bool
     {
-        return $this->normalise($left) === $this->normalise($right);
-    }
-
-    private function normalise(string $text): string
-    {
-        return mb_strtolower(trim((string) preg_replace('/\s+/u', ' ', $text)));
+        // A MESMA definição de «normalizado» que emparelha as designações das
+        // exceções, e não uma segunda escrita aqui ao lado. Mudou de casa quando
+        // ganhou um segundo cliente; a regra não mudou uma letra.
+        return MatchAcademicCalendarExceptions::normalise($left)
+            === MatchAcademicCalendarExceptions::normalise($right);
     }
 
     /**
@@ -392,6 +362,7 @@ class BuildAcademicCalendarImportPreview
         $counts = [
             self::STATE_NEW => 0,
             self::STATE_EXISTS => 0,
+            self::STATE_CORRESPONDENCE => 0,
             self::STATE_CHANGED => 0,
             self::STATE_CONFLICT => 0,
             self::STATE_NEEDS_CHOICE => 0,

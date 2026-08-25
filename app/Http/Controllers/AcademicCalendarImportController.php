@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Actions\Calendar\SaveCalendarEvent;
+use App\Domain\AcademicCalendar\AcademicCalendarExceptionMatch;
 use App\Http\Controllers\Concerns\RefusesDuringImpersonation;
 use App\Http\Requests\Calendar\AcademicCalendarImportConfirmRequest;
 use App\Models\AcademicCalendarException;
@@ -13,6 +14,7 @@ use App\Models\AcademicYear;
 use App\Models\CalendarEvent;
 use App\Models\CalendarEventType;
 use App\Models\User;
+use App\Services\AcademicCalendar\MatchAcademicCalendarExceptions;
 use App\Services\AcademicYearService;
 use App\Services\Import\AcademicCalendar\AcademicCalendarFileException;
 use App\Services\Import\AcademicCalendar\AcademicCalendarParser;
@@ -71,6 +73,9 @@ class AcademicCalendarImportController extends Controller implements HasMiddlewa
         private readonly AcademicYearService $academicYears,
         private readonly SaveCalendarEvent $saveCalendarEvent,
         private readonly ResolveSelectedAcademicYear $resolveAcademicYear,
+        // A MESMA REGRA que a pré-visualização usou para desenhar o ecrã, corrida
+        // outra vez aqui contra a base de dados — e não uma segunda escrita dela.
+        private readonly MatchAcademicCalendarExceptions $matcher,
     ) {}
 
     /**
@@ -180,6 +185,7 @@ class AcademicCalendarImportController extends Controller implements HasMiddlewa
             'periods_created' => 0,
             'periods_updated' => 0,
             'exceptions_created' => 0,
+            'exceptions_retitled' => 0,
             'events_created' => 0,
             'existed' => 0,
             'conflicted' => 0,
@@ -317,31 +323,44 @@ class AcademicCalendarImportController extends Controller implements HasMiddlewa
                 'country_code' => $academicYear->country_code,
                 'region_code' => $academicYear->region_code,
             ],
+            // E SÓ OS PERÍODOS. O serviço deixou de saber das exceções letivas
+            // quando elas ganharam o seu próprio CRUD, o que aqui não muda nada:
+            // as desta importação já eram — e continuam a ser — escritas logo a
+            // seguir, com a sua própria proveniência, e as que o professor tinha
+            // escrito à mão continuam a não ser para tocar.
             array_values($submitted),
-            // `null` E NÃO `[]`: null é «este pedido não falou de exceções», e um
-            // array vazio seria «remove-as todas». As exceções desta importação são
-            // escritas logo a seguir, com a sua própria proveniência, e as que já lá
-            // estavam não são para tocar.
-            null,
         );
     }
 
     /**
-     * As exceções letivas, criadas diretamente — e deliberadamente NÃO através de
-     * `AcademicYearService::syncExceptions()`.
+     * As exceções letivas, criadas diretamente — e deliberadamente NÃO através do
+     * caminho de escrita que a página do ano letivo usa.
      *
-     * Aquele método é o do FORMULÁRIO DO ANO, e a sua forma é a certa para o que
-     * ele faz e a errada para aqui: faz um diff que apaga tudo o que não venha no
-     * pedido (uma importação não sabe nada das exceções que o professor escreveu à
-     * mão, e não tem de as apagar), e escreve sempre `source = manual` (o contrário
-     * exato do que esta origem tem de registar). O que se reaproveita é a FORMA das
-     * linhas — os mesmos campos, a mesma normalização de uma observação em branco —
-     * e não o mecanismo de sincronização.
+     * Esta independência já existia quando o formulário do ano gravava as exceções
+     * em bloco (`AcademicYearService::syncExceptions()`, entretanto removido) e
+     * continua a valer agora que elas têm CRUD próprio
+     * (`AcademicCalendarExceptionController`): aquele caminho escreve sempre
+     * `source = manual` — o contrário exato do que esta origem tem de registar — e
+     * é o gesto de UMA pessoa a escrever UMA data, ao passo que isto é um lote. O
+     * que se reaproveita é a FORMA das linhas — os mesmos campos, a mesma
+     * normalização de uma observação em branco — e não o mecanismo.
      *
      * `source = imported` EM TODAS ELAS. É esta coluna, e mais nada, a proveniência
      * que o §14 pede: sem tabela de lotes, sem rasto de auditoria, sem chave
      * estrangeira nenhuma para uma importação. Uma palavra a responder «isto foi
      * escrito à mão?».
+     *
+     * ─────────────────────────────────────────────────────────────────────────
+     * E UMA LINHA «DESIGNAÇÃO DIFERENTE» MARCADA MUDA O NOME, E MAIS NADA.
+     *
+     * Quando o mesmo dia já lá está com outro nome, a caixa daquela linha deixa de
+     * querer dizer «cria» — não há nada para criar — e passa a querer dizer «adota
+     * a designação do documento», que é o que a página escreve ao lado dela. As
+     * DATAS não se tocam (são iguais, por definição deste estado), a OBSERVAÇÃO não
+     * se toca, e a PROVENIÊNCIA não se toca: um feriado que o professor escreveu à
+     * mão continua a dizer «escrita pelo professor» depois de lhe mudarem o nome,
+     * porque foi mesmo ele que a escreveu e emparelhar com um documento não desfaz
+     * isso (§28). Deixar a caixa por marcar mantém tudo como está.
      *
      * @param  array<string, int>  $result
      */
@@ -360,32 +379,35 @@ class AcademicCalendarImportController extends Controller implements HasMiddlewa
             $type = AcademicCalendarExceptionType::from((string) $row['type']);
             $startsOn = (string) $row['starts_on'];
             $endsOn = (string) $row['ends_on'];
+            $title = (string) $row['title'];
 
-            // A MESMA CHAVE NATURAL da pré-visualização, aplicada outra vez e agora
-            // contra o que está mesmo na base de dados. É isto — e não o que o
-            // navegador devolveu — que torna reimportar o mesmo ficheiro uma
-            // operação sem efeito, mesmo que o professor volte a marcar tudo.
-            $sameType = $existing->filter(
-                fn (AcademicCalendarException $exception): bool => $exception->type === $type,
-            );
+            // A MESMA REGRA da pré-visualização — literalmente o mesmo serviço —,
+            // aplicada outra vez e agora contra o que está mesmo na base de dados.
+            // É isto, e não o que o navegador devolveu, que torna reimportar o mesmo
+            // ficheiro uma operação sem efeito, mesmo que o professor volte a marcar
+            // tudo.
+            $match = $this->matcher->match($type, $startsOn, $endsOn, $title, $existing);
 
-            $exact = $sameType->first(
-                fn (AcademicCalendarException $exception): bool => $exception->starts_on->toDateString() === $startsOn
-                    && $exception->ends_on->toDateString() === $endsOn,
-            );
-
-            if ($exact !== null) {
+            if ($match->is(AcademicCalendarExceptionMatch::STATE_EXISTS)) {
                 $result['existed']++;
 
                 continue;
             }
 
-            $overlapping = $sameType->first(
-                fn (AcademicCalendarException $exception): bool => $exception->starts_on->toDateString() <= $endsOn
-                    && $exception->ends_on->toDateString() >= $startsOn,
-            );
+            if ($match->is(AcademicCalendarExceptionMatch::STATE_CORRESPONDENCE)) {
+                $target = $existing->firstWhere('ulid', $match->current['ulid'] ?? null);
 
-            if ($overlapping !== null) {
+                if ($target instanceof AcademicCalendarException) {
+                    $target->title = $title;
+                    $target->save();
+
+                    $result['exceptions_retitled']++;
+                }
+
+                continue;
+            }
+
+            if ($match->is(AcademicCalendarExceptionMatch::STATE_CONFLICT)) {
                 $result['conflicted']++;
 
                 continue;
@@ -395,11 +417,12 @@ class AcademicCalendarImportController extends Controller implements HasMiddlewa
 
             $created = $academicYear->exceptions()->create([
                 'type' => $type->value,
-                'title' => (string) $row['title'],
+                'title' => $title,
                 'starts_on' => $startsOn,
                 'ends_on' => $endsOn,
                 // Uma observação em branco é a AUSÊNCIA de observação e escreve-se
-                // null — a mesma convenção de AcademicYearService::exceptionAttributes().
+                // null — a mesma convenção que AcademicCalendarExceptionRequest
+                // aplica ao caminho manual.
                 'note' => is_string($note) && trim($note) !== '' ? trim($note) : null,
                 'source' => AcademicCalendarExceptionSource::Imported->value,
             ]);
@@ -493,7 +516,7 @@ class AcademicCalendarImportController extends Controller implements HasMiddlewa
         $parts = [];
 
         $written = $result['periods_created'] + $result['periods_updated']
-            + $result['exceptions_created'] + $result['events_created'];
+            + $result['exceptions_created'] + $result['exceptions_retitled'] + $result['events_created'];
 
         if ($written === 0) {
             $parts[] = __('Calendário importado: nada foi acrescentado.');
@@ -511,6 +534,10 @@ class AcademicCalendarImportController extends Controller implements HasMiddlewa
 
         if ($result['exceptions_created'] > 0) {
             $parts[] = __(':total feriado(s)/interrupção(ões) criado(s).', ['total' => $result['exceptions_created']]);
+        }
+
+        if ($result['exceptions_retitled'] > 0) {
+            $parts[] = __(':total designação(ões) atualizada(s) com o nome do documento.', ['total' => $result['exceptions_retitled']]);
         }
 
         if ($result['events_created'] > 0) {

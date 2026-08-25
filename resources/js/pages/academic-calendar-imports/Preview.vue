@@ -8,13 +8,24 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
 /**
- * `new` · `exists` · `changed` · `conflict` · `needs_choice` · `out_of_year`
- * — todos decididos no servidor, e todos voltados a decidir lá na confirmação.
- * O que esta página faz com eles é explicá-los e impedir que se marque o que não
- * se pode gravar; nunca é ela a garantia.
+ * `new` · `exists` · `correspondence` · `changed` · `conflict` · `needs_choice`
+ * · `out_of_year` — todos decididos no servidor, e todos voltados a decidir lá
+ * na confirmação. O que esta página faz com eles é explicá-los e impedir que se
+ * marque o que não se pode gravar; nunca é ela a garantia.
+ *
+ * `correspondence` SÓ APARECE EM FERIADOS E INTERRUPÇÕES: é o mesmo dia já
+ * gravado com outro nome. Os períodos não o têm — a designação de um período é a
+ * sua chave de emparelhamento, e um período com o mesmo nome e datas diferentes
+ * continua a ser `changed`, exatamente como sempre foi.
  */
 type State =
-    'new' | 'exists' | 'changed' | 'conflict' | 'needs_choice' | 'out_of_year';
+    | 'new'
+    | 'exists'
+    | 'correspondence'
+    | 'changed'
+    | 'conflict'
+    | 'needs_choice'
+    | 'out_of_year';
 
 type EndCandidate = {
     value: string;
@@ -103,6 +114,7 @@ const props = defineProps<{
 const stateLabels: Record<State, string> = {
     new: 'Novo',
     exists: 'Já existe',
+    correspondence: 'Designação diferente',
     changed: 'Alterado',
     conflict: 'Conflito',
     needs_choice: 'Requer escolha',
@@ -221,6 +233,20 @@ function range(startsOn: string, endsOn: string): string {
     return startsOn === endsOn
         ? longDate(startsOn)
         : `${longDate(startsOn)} – ${longDate(endsOn)}`;
+}
+
+/**
+ * O QUE A CAIXA DAQUELA LINHA FAZ, dito por palavras.
+ *
+ * Numa linha nova é «cria». Numa linha de designação diferente não há nada para
+ * criar — o dia já lá está — e por isso ela quer dizer OUTRA coisa: adotar o nome
+ * do documento na linha que já existe. Duas ações diferentes atrás da mesma caixa
+ * exigem que a caixa diga qual é, e não que o professor a descubra depois.
+ */
+function includeLabel(row: ExceptionProposal): string {
+    return row.state === 'correspondence'
+        ? `Adotar a designação «${row.title}»`
+        : `Incluir ${row.title}`;
 }
 
 function candidateLabel(candidate: EndCandidate): string {
@@ -515,7 +541,7 @@ function submit(): void {
                                     :disabled="
                                         !selectable(row.state, row.ends_on)
                                     "
-                                    :aria-label="`Incluir ${row.title}`"
+                                    :aria-label="includeLabel(row)"
                                 />
                                 <span class="min-w-0 text-sm">
                                     <span class="block font-medium">{{
@@ -536,6 +562,22 @@ function submit(): void {
                                     >
                                         {{ row.note }}
                                     </span>
+                                    <!--
+                                        O QUE ESTA CAIXA FAZ, ao lado da caixa.
+                                        Numa linha de designação diferente ela
+                                        não cria nada — o dia já lá está — e por
+                                        isso tem de dizer o que faz de facto.
+                                    -->
+                                    <span
+                                        v-if="row.state === 'correspondence'"
+                                        class="mt-1 block text-xs font-medium"
+                                        :data-correspondence-hint="row.key"
+                                    >
+                                        Marcar muda a designação da linha que já
+                                        existe para «{{ row.title }}». As datas,
+                                        a observação e a proveniência ficam como
+                                        estão; nenhuma linha nova é criada.
+                                    </span>
                                 </span>
                             </label>
                             <Badge
@@ -549,9 +591,16 @@ function submit(): void {
                             </Badge>
                         </div>
 
+                        <!--
+                            AS DUAS VERSÕES LADO A LADO, tal como um período
+                            «alterado» já as mostra — e aqui pela mesma razão:
+                            uma escolha entre dois nomes só é uma escolha se os
+                            dois nomes estiverem à vista ao mesmo tempo.
+                        -->
                         <div
                             v-if="row.current"
                             class="rounded-md bg-muted/40 p-3 text-sm"
+                            :data-current-exception="row.key"
                         >
                             <p
                                 class="text-xs font-medium text-muted-foreground"
@@ -559,10 +608,45 @@ function submit(): void {
                                 {{
                                     row.state === 'exists'
                                         ? 'Já está no calendário'
-                                        : 'Sobrepõe-se ao que já está no calendário'
+                                        : row.state === 'correspondence'
+                                          ? 'O mesmo dia já está no calendário, com outra designação'
+                                          : 'Sobrepõe-se ao que já está no calendário'
                                 }}
                             </p>
-                            <p class="mt-1">
+
+                            <dl
+                                v-if="row.state === 'correspondence'"
+                                class="mt-2 grid gap-3 sm:grid-cols-2"
+                            >
+                                <div>
+                                    <dt class="text-xs text-muted-foreground">
+                                        Designação atual
+                                    </dt>
+                                    <dd class="font-medium">
+                                        {{ row.current.title }}
+                                    </dd>
+                                    <dd class="text-xs text-muted-foreground">
+                                        {{ row.current.source_label }}
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt class="text-xs text-muted-foreground">
+                                        Designação do documento
+                                    </dt>
+                                    <dd class="font-medium">{{ row.title }}</dd>
+                                    <dd class="text-xs text-muted-foreground">
+                                        {{
+                                            range(
+                                                row.current.starts_on,
+                                                row.current.ends_on,
+                                            )
+                                        }}
+                                        — as mesmas datas
+                                    </dd>
+                                </div>
+                            </dl>
+
+                            <p v-else class="mt-1">
                                 {{ row.current.title }} ·
                                 {{
                                     range(
@@ -665,7 +749,8 @@ function submit(): void {
             >
                 <p class="text-sm text-muted-foreground">
                     {{ counts.new }} nova(s) · {{ counts.exists }} já
-                    existente(s) · {{ counts.changed }} alterada(s) ·
+                    existente(s) · {{ counts.correspondence }} com designação
+                    diferente · {{ counts.changed }} alterada(s) ·
                     {{ counts.conflict }} em conflito ·
                     {{ counts.needs_choice }} a exigir escolha ·
                     {{ counts.out_of_year }} fora do ano

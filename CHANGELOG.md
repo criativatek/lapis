@@ -2,6 +2,16 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.72.0] — 2026-08-25
+
+### Added
+
+- **"Sugerir feriados nacionais" propõe os treze feriados nacionais portugueses do ano letivo selecionado — nunca os grava sem confirmação.** Dez em data fixa e três presos à Páscoa (Sexta-Feira Santa, Domingo de Páscoa, Corpo de Deus, calculados por aritmética própria e verificados contra o calendário escolar real já usado nesta aplicação), filtrados às datas que realmente caem dentro do ano letivo. Nunca inclui Carnaval, feriados municipais ou regionais — dependem da escola ou da região, e não são um facto nacional. Cada sugestão mostra o seu estado antes de o professor decidir: novo, já existente, designação diferente (a mesma data, um nome diferente do que já lá está — sem nunca criar uma segunda linha), ou conflito.
+
+### Fixed
+
+- **Feriados iguais deixam de poder ser criados duas vezes por vias diferentes.** A regra que decide se um feriado ou uma interrupção "já existe" — pela data e pelo tipo, nunca pelo texto do título — deixou de estar só dentro da importação do calendário escolar e passou a ser a mesma para todos os caminhos: criar à mão, sugerir feriados nacionais, e importar. Um feriado sugerido e confirmado não volta a aparecer como novo ao importar o calendário da escola, e vice-versa; a proveniência de um registo (manual, sugerido, importado) nunca é reescrita só porque uma segunda via reconheceu a mesma data.
+
 ## [0.71.1] — 2026-08-25
 
 ### Fixed

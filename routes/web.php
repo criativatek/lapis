@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AcademicCalendarExceptionController;
 use App\Http\Controllers\AcademicCalendarImportController;
 use App\Http\Controllers\AcademicYearCalendarController;
 use App\Http\Controllers\AcademicYearContextController;
@@ -33,6 +34,7 @@ use App\Http\Controllers\LessonController;
 use App\Http\Controllers\LessonScheduleController;
 use App\Http\Controllers\LessonSequenceController;
 use App\Http\Controllers\LessonWeekController;
+use App\Http\Controllers\NationalHolidaySuggestionController;
 use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\OrganizationMembershipController;
 use App\Http\Controllers\PublicSelfAssessmentController;
@@ -109,6 +111,45 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     Route::get('academic-years/{academic_year}/edit', [AcademicYearController::class, 'edit'])->name('academic-years.edit');
     Route::put('academic-years/{academic_year}', [AcademicYearController::class, 'update'])->name('academic-years.update');
     Route::delete('academic-years/{academic_year}', [AcademicYearController::class, 'destroy'])->name('academic-years.destroy');
+
+    // AS EXCEÇÕES LETIVAS DO ANO — feriados, interrupções letivas e dias não
+    // letivos, uma de cada vez.
+    //
+    // ANINHADAS NO ANO, E NÃO SOLTAS: uma exceção não existe fora de um ano
+    // letivo, e é o ano que responde pela autorização (a mesma
+    // AcademicYearPolicy dos períodos, aplicada no controlador). Os dois
+    // parâmetros ligam-se pelo `ulid`, que é o `getRouteKeyName()` dos dois
+    // modelos e a convenção de todos os endereços deste projeto.
+    //
+    // E NÃO HÁ AQUI `index`, `create`, `edit` NEM `show`: as três ações escrevem
+    // e respondem com `back()` para a página onde o professor está — «Editar ano
+    // letivo», que é a única que as lista e a única que as mostra num
+    // formulário. Um endereço próprio para as ver seria uma segunda página a
+    // dizer o que a primeira já diz.
+    Route::post('academic-years/{academic_year}/exceptions', [AcademicCalendarExceptionController::class, 'store'])
+        ->name('academic-years.exceptions.store');
+    Route::put('academic-years/{academic_year}/exceptions/{exception}', [AcademicCalendarExceptionController::class, 'update'])
+        ->name('academic-years.exceptions.update');
+    Route::delete('academic-years/{academic_year}/exceptions/{exception}', [AcademicCalendarExceptionController::class, 'destroy'])
+        ->name('academic-years.exceptions.destroy');
+
+    // «Sugerir feriados nacionais» (§17) — os feriados oficiais do país DESTE ano
+    // letivo (`country_code`, §16), propostos linha a linha.
+    //
+    // AO LADO DAS EXCEÇÕES E NÃO DENTRO DO CALENDÁRIO, porque é isso que isto é:
+    // uma segunda porta para escrever a MESMA `academic_calendar_exceptions`, no
+    // mesmo ecrã, sob a mesma AcademicYearPolicy. Não é uma capacidade nova e não
+    // ganha uma entitlement própria — quem pode escrever um feriado à mão pode
+    // aceitar um sugerido, e quem não pode não pode nenhum dos dois.
+    //
+    // O GET DEVOLVE JSON e não uma página: é o conteúdo de um diálogo que abre
+    // dentro de «Editar ano letivo», e não um endereço onde alguém aterre. A mesma
+    // forma de `reports.context` e de `lessons.previous-summary`. E não escreve
+    // nada — só o POST escreve, e volta a verificar tudo quando o faz.
+    Route::get('academic-years/{academic_year}/holiday-suggestions', [NationalHolidaySuggestionController::class, 'index'])
+        ->name('academic-years.holiday-suggestions.index');
+    Route::post('academic-years/{academic_year}/holiday-suggestions', [NationalHolidaySuggestionController::class, 'store'])
+        ->name('academic-years.holiday-suggestions.store');
 
     // «Calendário do Ano Letivo» (Fase 5.2) — the year's own structure and its
     // avaliações read together, in two views. Both are GET-only readings of
