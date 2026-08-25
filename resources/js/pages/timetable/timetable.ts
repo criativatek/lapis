@@ -14,6 +14,14 @@
  * em qualquer semana e nas três leituras da página (grelha, fim de semana e
  * agenda). Do `ulid` e não do `label`, que é texto editável e só por hábito é
  * único.
+ *
+ * E DO CONJUNTO INTEIRO DE `ulid`s, E NÃO DE UM SÓ. O tom saía de uma dispersão
+ * do `ulid` sozinho, e duas turmas caíam na mesma gaveta com quatro gavetas
+ * vazias ao lado: com cinco turmas na página, o 7.º D e o 7.º E ficaram com a
+ * mesma cor. Era estável e determinístico, e não servia para nada — o sinal
+ * existe para SEPARAR turmas. `assignTurmaTones` decide os tons olhando para
+ * todas as turmas visíveis de uma vez, para que enquanto houver tons a sobrar
+ * não haja duas turmas a partilhar um.
  */
 
 export type TurmaTone =
@@ -35,28 +43,40 @@ export const TURMA_TONES: readonly TurmaTone[] = [
 ];
 
 /**
- * Soma-com-mistura dos códigos dos caracteres. O `* 31` a cada passo é o que
- * distingue anagramas e, sobretudo, o que espalha ULIDs que partilham o mesmo
- * prefixo de tempo — turmas criadas no mesmo instante — em vez de os empilhar
- * todos no mesmo tom. `| 0` mantém a conta em int32 a cada passo e `>>> 0`
- * devolve-a sem sinal, para que o resto da divisão nunca seja negativo.
+ * OS TONS DAS TURMAS QUE ESTÃO NESTA PÁGINA, decididos de uma vez e a olhar
+ * para todas elas.
  *
- * Função pura, sem estado e sem dependências: dois cálculos do mesmo `ulid`
- * dão sempre o mesmo número, nesta e em qualquer outra renderização.
+ * A REGRA: enquanto as turmas visíveis couberem na paleta, cada uma leva um tom
+ * SÓ SEU. Nunca duas turmas com a mesma cor enquanto houver uma cor por usar —
+ * era exatamente isso que a dispersão do `ulid` sozinho deixava acontecer, e o
+ * sinal existe para separar turmas, não para ser bonito. Passadas as seis, os
+ * tons repetem-se, e repetem-se o mais espaçadamente que esta ordem permite.
+ *
+ * ORDENADO PELO PRÓPRIO `ulid`, e não pela ordem em que os blocos chegaram. A
+ * ordem do `props.slots` é a ordem das aulas da semana: bastava o professor
+ * marcar mais uma aula à segunda-feira para a lista mudar de ordem e as turmas
+ * todas trocarem de cor. Ordenar os `ulid`s é uma decisão que só depende dos
+ * `ulid`s — o mesmo CONJUNTO de turmas dá sempre o mesmo mapa, venha ele na
+ * ordem que vier, e as três leituras da página (grelha, fim de semana e agenda)
+ * leem todas o mesmo mapa.
+ *
+ * ISTO É DESTA PÁGINA, e não da aplicação: o tom de uma turma é o que a separa
+ * das turmas que estão AO PÉ DELA no horário, e não uma identidade que a siga
+ * por todo o LAPIS.
  */
-function hashOf(ulid: string): number {
-    let hash = 0;
+export function assignTurmaTones(
+    ulids: readonly string[],
+): Map<string, TurmaTone> {
+    const assignment = new Map<string, TurmaTone>();
 
-    for (let index = 0; index < ulid.length; index += 1) {
-        hash = (hash * 31 + ulid.charCodeAt(index)) | 0;
-    }
+    [...new Set(ulids)].sort().forEach((ulid, index) => {
+        assignment.set(
+            ulid,
+            TURMA_TONES[index % TURMA_TONES.length] as TurmaTone,
+        );
+    });
 
-    return hash >>> 0;
-}
-
-/** O tom desta turma — sempre o mesmo, para o mesmo `ulid`. */
-export function turmaTone(ulid: string): TurmaTone {
-    return TURMA_TONES[hashOf(ulid) % TURMA_TONES.length] as TurmaTone;
+    return assignment;
 }
 
 /**
@@ -102,11 +122,11 @@ export const TURMA_BAR: Record<TurmaTone, string> = {
  * faixa a atravessar o cartão — que é precisamente o fundo pintado que esta
  * mudança não quer.
  */
-export function turmaBadgeClass(ulid: string): string {
-    return `self-start rounded px-1.5 py-0.5 ${TURMA_BADGE[turmaTone(ulid)]}`;
+export function turmaBadgeClass(tone: TurmaTone): string {
+    return `self-start rounded px-1.5 py-0.5 ${TURMA_BADGE[tone]}`;
 }
 
 /** As classes da barra esquerda do bloco desta turma. */
-export function turmaBarClass(ulid: string): string {
-    return `border-l-2 ${TURMA_BAR[turmaTone(ulid)]}`;
+export function turmaBarClass(tone: TurmaTone): string {
+    return `border-l-2 ${TURMA_BAR[tone]}`;
 }

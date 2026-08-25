@@ -5,7 +5,13 @@ import { computed } from 'vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { capitalizeFirst } from '@/lib/text';
-import { turmaBadgeClass, turmaBarClass } from './timetable';
+import type { TurmaTone } from './timetable';
+import {
+    assignTurmaTones,
+    TURMA_TONES,
+    turmaBadgeClass,
+    turmaBarClass,
+} from './timetable';
 
 type TimetableSlot = {
     ulid: string;
@@ -120,6 +126,37 @@ const summary = computed(() => {
     return `${blocks} ${blocks === 1 ? 'aula' : 'aulas'} por semana · ${classCount} ${classCount === 1 ? 'turma' : 'turmas'}`;
 });
 
+// ------------------------------------------------------ o tom de cada turma
+
+/**
+ * OS TONS DESTA PÁGINA, DECIDIDOS SOBRE AS TURMAS DESTA PÁGINA. As turmas
+ * visíveis são as que têm mesmo blocos em `props.slots` — uma turma sem aula
+ * nenhuma não está aqui e não entra na repartição — e é o conjunto delas, e não
+ * cada `ulid` isolado, que decide os tons: enquanto forem seis ou menos, cada
+ * uma leva um tom só seu.
+ *
+ * A conta é feita uma vez por renderização e lida nos três sítios onde a semana
+ * se desenha (grelha, fim de semana e agenda), pelo que as três dizem sempre o
+ * mesmo sobre a mesma turma.
+ */
+const turmaTones = computed(() =>
+    assignTurmaTones(props.slots.map((slot) => slot.school_class.ulid)),
+);
+
+function toneOf(ulid: string): TurmaTone {
+    return turmaTones.value.get(ulid) ?? (TURMA_TONES[0] as TurmaTone);
+}
+
+/** A barra na margem do bloco desta turma. */
+function barOf(ulid: string): string {
+    return turmaBarClass(toneOf(ulid));
+}
+
+/** A cápsula à volta do nome desta turma. */
+function badgeOf(ulid: string): string {
+    return turmaBadgeClass(toneOf(ulid));
+}
+
 function validity(slot: TimetableSlot): string | null {
     if (!slot.starts_on && !slot.ends_on) {
         return null;
@@ -191,11 +228,13 @@ function validity(slot: TimetableSlot): string | null {
                             O TOM DA TURMA, nos mesmos dois sítios em todas as
                             leituras da página: uma barra fina na margem do
                             bloco e uma cápsula à volta do nome da turma. Sai do
-                            `ulid` (turmaBarClass/turmaBadgeClass, ./timetable),
-                            e por isso não depende da ordem em que os cartões
-                            calham sair. A hora, a disciplina e o fundo do bloco
-                            ficam tão neutros como sempre foram — e o dia sem
-                            aulas, que não tem turma nenhuma, não leva tom.
+                            `ulid` da turma e do conjunto de `ulid`s que esta
+                            página mostra (turmaTones/barOf/badgeOf, acima), e
+                            por isso não depende da ordem em que os cartões
+                            calham sair nem repete uma cor enquanto houver
+                            alguma por usar. A hora, a disciplina e o fundo do
+                            bloco ficam tão neutros como sempre foram — e o dia
+                            sem aulas, que não tem turma nenhuma, não leva tom.
                         -->
                         <ul
                             v-if="day.slots.length"
@@ -205,9 +244,7 @@ function validity(slot: TimetableSlot): string | null {
                                 <Link
                                     :href="`/classes/${slot.school_class.ulid}#horario`"
                                     class="flex flex-col gap-1 p-3 transition-colors outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
-                                    :class="
-                                        turmaBarClass(slot.school_class.ulid)
-                                    "
+                                    :class="barOf(slot.school_class.ulid)"
                                 >
                                     <time
                                         class="text-sm font-medium tabular-nums"
@@ -217,11 +254,7 @@ function validity(slot: TimetableSlot): string | null {
                                     >
                                     <span
                                         class="text-sm font-medium"
-                                        :class="
-                                            turmaBadgeClass(
-                                                slot.school_class.ulid,
-                                            )
-                                        "
+                                        :class="badgeOf(slot.school_class.ulid)"
                                         >{{ slot.school_class.label }}</span
                                     >
                                     <span
@@ -262,9 +295,7 @@ function validity(slot: TimetableSlot): string | null {
                                 <Link
                                     :href="`/classes/${slot.school_class.ulid}#horario`"
                                     class="flex flex-col gap-1 p-3 transition-colors outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
-                                    :class="
-                                        turmaBarClass(slot.school_class.ulid)
-                                    "
+                                    :class="barOf(slot.school_class.ulid)"
                                 >
                                     <time
                                         class="text-sm font-medium tabular-nums"
@@ -274,11 +305,7 @@ function validity(slot: TimetableSlot): string | null {
                                     >
                                     <span
                                         class="text-sm font-medium"
-                                        :class="
-                                            turmaBadgeClass(
-                                                slot.school_class.ulid,
-                                            )
-                                        "
+                                        :class="badgeOf(slot.school_class.ulid)"
                                         >{{ slot.school_class.label }}</span
                                     >
                                     <span
@@ -311,7 +338,7 @@ function validity(slot: TimetableSlot): string | null {
                             <Link
                                 :href="`/classes/${slot.school_class.ulid}#horario`"
                                 class="flex flex-col gap-1 p-3 transition-colors outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
-                                :class="turmaBarClass(slot.school_class.ulid)"
+                                :class="barOf(slot.school_class.ulid)"
                             >
                                 <time class="text-sm font-medium tabular-nums"
                                     >{{ slot.starts_at }}–{{
@@ -320,9 +347,7 @@ function validity(slot: TimetableSlot): string | null {
                                 >
                                 <span
                                     class="text-sm font-medium"
-                                    :class="
-                                        turmaBadgeClass(slot.school_class.ulid)
-                                    "
+                                    :class="badgeOf(slot.school_class.ulid)"
                                     >{{ slot.school_class.label }}</span
                                 >
                                 <span class="text-sm text-muted-foreground">{{

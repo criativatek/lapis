@@ -2,7 +2,12 @@ import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import { defineComponent, h } from 'vue';
 import Index from './Index.vue';
-import { TURMA_BADGE, TURMA_BAR, TURMA_TONES, turmaBarClass } from './timetable';
+import {
+    assignTurmaTones,
+    TURMA_BADGE,
+    TURMA_BAR,
+    TURMA_TONES,
+} from './timetable';
 
 vi.mock('@inertiajs/vue3', () => ({
     Head: defineComponent({ setup: (_, { slots }) => () => h('div', slots.default?.()) }),
@@ -85,6 +90,56 @@ const expectNoAccent = (classes: string[]) => {
         expect(classes).not.toContain(accent);
     }
 };
+
+/**
+ * Uma semana com uma turma por bloco — o mínimo para poder perguntar que tons a
+ * página deu a um conjunto de turmas. O rótulo é o próprio `ulid`, para o tom
+ * desenhado poder ser lido de volta e atribuído à turma certa.
+ */
+function weekOfTurmas(ulids: string[]) {
+    return mountPage(
+        ulids.map((ulid, index) =>
+            slot({
+                ulid: `slot-${index}`,
+                day_of_week: 1,
+                school_class: { ulid, label: ulid },
+            }),
+        ),
+    );
+}
+
+/** O tom que a página desenhou para cada turma, lido dos próprios blocos. */
+function tonesByTurma(
+    wrapper: ReturnType<typeof mountPage>,
+): Map<string, string> {
+    const tones = new Map<string, string>();
+
+    for (const block of blocksOf(week(wrapper))) {
+        const badge = block.find('span');
+
+        tones.set(badge.text(), badge.classes().sort().join(' '));
+    }
+
+    return tones;
+}
+
+const badgeToneOf = (block: Block) => badgeOf(block).sort().join(' ');
+const barToneOf = (block: Block) => barOf(block).sort().join(' ');
+
+/**
+ * CINCO TURMAS QUE COLIDIAM. Estes cinco `ulid` caem, na dispersão que antes
+ * decidia o tom, nas gavetas 1, 2, 3, 1 e 5: a primeira e a quarta turma
+ * ficavam com a MESMA cor enquanto duas das seis não eram usadas por ninguém.
+ * É a forma exata do que apareceu na revisão manual — o 7.º D e o 7.º E com o
+ * mesmo tom — e é por isso que estão aqui escritos e não gerados ao acaso.
+ */
+const COLLIDING_UNDER_THE_OLD_HASH = [
+    '01K3QF8ZP0JBSFK1VZXDCKTMXC',
+    '01K3QF8ZP0NND4FRJ7CMXYTVZT',
+    '01K3QF8ZP0GQQG8W9EDH2HWGT0',
+    '01K3QF8ZP0N5KEM7R6WNRZN9XH',
+    '01K3QF8ZP0WPQE5R2PNDWG8XSH',
+];
 
 describe('timetable/Index', () => {
     it('groups the week by weekday, in Portuguese, only for the days actually taught', () => {
@@ -255,26 +310,104 @@ describe('timetable/Index', () => {
     // ------------------------------------------------- o tom de cada turma
 
     /**
-     * A MESMA TURMA, O MESMO TOM, SEMPRE. O tom sai do `ulid` e de mais nada,
-     * por isso não muda entre duas semanas, entre dois dias, nem entre duas
-     * renderizações da mesma página.
+     * NUNCA DUAS TURMAS COM A MESMA COR ENQUANTO HOUVER UMA COR POR USAR. O tom
+     * saía de uma dispersão do `ulid` sozinho, e com cinco turmas na página duas
+     * delas caíam na mesma gaveta — o 7.º D e o 7.º E com a mesma cor — enquanto
+     * duas das seis não eram usadas por ninguém. Era estável e determinístico, e
+     * não servia para o que o sinal existe: separar turmas.
      */
-    it('paints a turma in the same tone however the week around it changes', () => {
-        const monday = mountPage([
-            slot({ ulid: 'a', day_of_week: 1 }),
-        ]);
-        // Outra semana, outro dia, outras turmas à volta — a mesma turma.
-        const otherWeek = mountPage([
-            slot({
-                ulid: 'x',
-                day_of_week: 2,
-                school_class: { ulid: 'class-b', label: '8.º A' },
-            }),
-            slot({ ulid: 'y', day_of_week: 4, starts_at: '14:00' }),
-        ]);
+    it('gives five turmas that used to collide five tones of their own', () => {
+        const blocks = blocksOf(week(weekOfTurmas(COLLIDING_UNDER_THE_OLD_HASH)));
 
-        const first = blocksOf(week(monday))[0] as Block;
-        const again = blocksOf(week(otherWeek))[1] as Block;
+        expect(blocks).toHaveLength(5);
+
+        // Cinco turmas, cinco cápsulas diferentes e cinco barras diferentes.
+        expect(new Set(blocks.map(badgeToneOf)).size).toBe(5);
+        expect(new Set(blocks.map(barToneOf)).size).toBe(5);
+    });
+
+    /**
+     * E A REGRA VALE PARA QUALQUER NÚMERO ATÉ AO TAMANHO DA PALETA, e não só
+     * para o caso que a revisão manual apanhou.
+     */
+    it('never repeats a tone while the visible turmas still fit the palette', () => {
+        for (let count = 1; count <= TURMA_TONES.length; count += 1) {
+            const ulids = Array.from(
+                { length: count },
+                (_, index) => `class-${index}`,
+            );
+            const blocks = blocksOf(week(weekOfTurmas(ulids)));
+
+            expect(blocks).toHaveLength(count);
+            expect(new Set(blocks.map(badgeToneOf)).size).toBe(count);
+        }
+    });
+
+    /**
+     * PASSADAS AS SEIS, REPETIR É INEVITÁVEL — e só então. O que continua a não
+     * poder acontecer é uma cor por estrear enquanto duas turmas partilham
+     * outra.
+     */
+    it('repeats a tone only once the palette is spent, never leaving one unused', () => {
+        const ulids = Array.from(
+            { length: TURMA_TONES.length + 2 },
+            (_, index) => `class-${index}`,
+        );
+        const blocks = blocksOf(week(weekOfTurmas(ulids)));
+
+        expect(blocks).toHaveLength(TURMA_TONES.length + 2);
+        // Oito turmas, seis tons: os seis usados, e só dois repetidos.
+        expect(new Set(blocks.map(badgeToneOf)).size).toBe(TURMA_TONES.length);
+    });
+
+    /**
+     * A MESMA TURMA, O MESMO TOM, SEMPRE — para o mesmo conjunto de turmas
+     * visíveis. O tom é decidido sobre os `ulid` ORDENADOS, e não sobre a ordem
+     * em que os blocos chegam: a mesma semana com as aulas noutra ordem, ou
+     * espalhada por outros dias, dá exatamente o mesmo mapa. Se dependesse da
+     * ordem da lista, bastava marcar mais uma aula à segunda-feira para as
+     * turmas todas trocarem de cor.
+     */
+    it('decides the same tones for the same turmas, however the blocks arrive', () => {
+        const forward = tonesByTurma(weekOfTurmas(COLLIDING_UNDER_THE_OLD_HASH));
+        const backward = tonesByTurma(
+            weekOfTurmas([...COLLIDING_UNDER_THE_OLD_HASH].reverse()),
+        );
+
+        expect(backward).toEqual(forward);
+        expect(forward.size).toBe(5);
+    });
+
+    it('decides the same tones however the week spreads the turmas over the days', () => {
+        const ulids = COLLIDING_UNDER_THE_OLD_HASH;
+
+        const allOnMonday = tonesByTurma(weekOfTurmas(ulids));
+        const oneADay = tonesByTurma(
+            mountPage(
+                // A mesma turma noutro dia, e os dias por ordem inversa.
+                ulids.map((ulid, index) =>
+                    slot({
+                        ulid: `slot-${index}`,
+                        day_of_week: ulids.length - index,
+                        school_class: { ulid, label: ulid },
+                    }),
+                ),
+            ),
+        );
+
+        expect(oneADay).toEqual(allOnMonday);
+    });
+
+    /**
+     * E DUAS RENDERIZAÇÕES DA MESMA PÁGINA dizem sempre o mesmo: a decisão é uma
+     * função pura do conjunto de `ulid`s, sem estado nenhum entre montagens.
+     */
+    it('paints a turma in the same tone in two renderings of the same week', () => {
+        const week1 = mountPage([slot({ ulid: 'a', day_of_week: 1 })]);
+        const week2 = mountPage([slot({ ulid: 'a', day_of_week: 1 })]);
+
+        const first = blocksOf(week(week1))[0] as Block;
+        const again = blocksOf(week(week2))[0] as Block;
 
         expect(barOf(first)).toEqual(barOf(again));
         expect(badgeOf(first)).toEqual(badgeOf(again));
@@ -399,8 +532,63 @@ describe('timetable/Index', () => {
     it('derives the accent from the ulid, not from the turma\'s editable label', () => {
         // O mesmo `ulid` com dois rótulos diferentes é a mesma turma, e o tom
         // não se move; rótulos iguais com `ulid` diferente são duas turmas.
-        expect(turmaBarClass('class-a')).toBe(turmaBarClass('class-a'));
-        expect(turmaBarClass('class-a')).not.toBe(turmaBarClass('class-b'));
+        const sameTurma = mountPage([
+            slot({ ulid: 'a', day_of_week: 1 }),
+            slot({
+                ulid: 'b',
+                day_of_week: 1,
+                starts_at: '10:30',
+                school_class: { ulid: 'class-a', label: '7.º C (turno B)' },
+            }),
+        ]);
+
+        const [first, renamed] = blocksOf(week(sameTurma)) as [Block, Block];
+
+        expect(barOf(renamed)).toEqual(barOf(first));
+        expect(badgeOf(renamed)).toEqual(badgeOf(first));
+
+        const twoTurmas = mountPage([
+            slot({ ulid: 'a', day_of_week: 1 }),
+            slot({
+                ulid: 'b',
+                day_of_week: 1,
+                starts_at: '10:30',
+                school_class: { ulid: 'class-b', label: '7.º C' },
+            }),
+        ]);
+
+        const [one, other] = blocksOf(week(twoTurmas)) as [Block, Block];
+
+        expect(barOf(other)).not.toEqual(barOf(one));
+        expect(badgeOf(other)).not.toEqual(badgeOf(one));
+    });
+
+    /**
+     * A REPARTIÇÃO É SÓ DAS TURMAS QUE ESTÃO MESMO NA PÁGINA. Uma turma sem
+     * aula nenhuma não tem bloco nenhum para pintar, e não gasta um tom: as
+     * turmas listadas em «Configurar manualmente» não entram na conta.
+     */
+    it('shares the palette out among the turmas with blocos, and no others', () => {
+        const tones = assignTurmaTones(['class-b', 'class-a', 'class-b']);
+
+        // Duas turmas distintas, dois tons, e a repetição não gasta um terceiro.
+        expect(tones.size).toBe(2);
+        expect(tones.get('class-a')).not.toBe(tones.get('class-b'));
+
+        // E o mesmo conjunto por outra ordem dá exatamente o mesmo mapa.
+        expect(assignTurmaTones(['class-a', 'class-b'])).toEqual(tones);
+
+        // Uma página com blocos de uma só turma, mas com outras turmas
+        // configuráveis, continua a repartir tons por uma só.
+        const wrapper = mountPage(
+            [slot()],
+            [
+                { ulid: 'class-a', label: '7.º C', subject: 'Matemática' },
+                { ulid: 'class-b', label: '8.º A', subject: 'Matemática' },
+            ],
+        );
+
+        expect(tonesByTurma(wrapper).size).toBe(1);
     });
 
     it('shows a block\'s optional validity window only when it has one', () => {

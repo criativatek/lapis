@@ -2,6 +2,12 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.69.6] — 2026-08-25
+
+### Fixed
+
+- **As turmas do "Horário do Professor" deixam de poder partilhar tom por acaso.** O tom saía de uma dispersão do `ulid` de cada turma sozinho — estável, mas cego às outras turmas da página — e com cinco turmas visíveis chegou a acontecer duas ficarem com exactamente a mesma cor, com quatro tons por usar ao lado. A atribuição passa a olhar para o conjunto inteiro de turmas visíveis de uma vez: enquanto couberem na paleta de seis tons, cada uma leva um tom só seu; só a partir da sétima é que os tons voltam a repetir-se. Continua determinística e independente da ordem em que os blocos aparecem — o mesmo conjunto de turmas dá sempre o mesmo mapa de cores.
+
 ## [0.69.5] — 2026-08-25
 
 ### Fixed
