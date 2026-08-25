@@ -419,6 +419,109 @@ class AcademicYearCalendarTest extends TestCase
     }
 
     /**
+     * O SEMESTRE CERTO PARA CADA MÊS, mês a mês, num ano de dois semestres com
+     * um intervalo real entre eles (30/01 a 10/02).
+     *
+     * A vista de Mês passou a escrever a estrutura do ano com o «desde»/«até» da
+     * vista de Ano, e essa frase só é honesta se o período que lhe chega for o
+     * que realmente toca o mês. O que se afirma aqui é só isso — a sobreposição,
+     * que é a parte do servidor. Como ela é DITA («até 29/01» em janeiro) é
+     * decisão da página, e é lá que está afirmada.
+     */
+    #[Test]
+    public function each_month_is_offered_the_semester_that_really_touches_it(): void
+    {
+        $this->period('1.º Semestre', 1, '2026-09-11', '2027-01-29', AcademicPeriodKind::Semester);
+        $this->period('2.º Semestre', 2, '2027-02-11', '2027-07-31', AcademicPeriodKind::Semester);
+
+        $expected = [
+            '2026-10' => ['1.º Semestre'],
+            '2026-12' => ['1.º Semestre'],
+            // Janeiro: o semestre fecha a 29, e continua a ser o semestre de
+            // janeiro — a sobreposição é o que o servidor responde, e responde-a
+            // sem se deixar apanhar pelo «Y-m-d 00:00:00» das colunas de data.
+            '2027-01' => ['1.º Semestre'],
+            // Fevereiro: o 1.º Semestre já fechou, e o que toca o mês é o 2.º —
+            // nunca um período «pegajoso» do mês anterior.
+            '2027-02' => ['2.º Semestre'],
+            '2027-03' => ['2.º Semestre'],
+        ];
+
+        foreach ($expected as $month => $labels) {
+            $this->actingAs($this->teacher)->withSession($this->tenantSession())
+                ->get("/calendar?month={$month}")->assertOk()
+                ->assertInertia(function (AssertableInertia $page) use ($month, $labels) {
+                    $this->assertSame(
+                        $labels,
+                        array_column($page->toArray()['props']['periods'], 'label'),
+                        "O mês {$month} recebeu os períodos errados.",
+                    );
+                });
+        }
+    }
+
+    /**
+     * UM MÊS QUE NENHUM PERÍODO TOCA NÃO RECEBE NENHUM — nem o último visto, nem
+     * o primeiro do ano por omissão. A lista vem vazia, e é da página a decisão
+     * de não escrever faixa nenhuma.
+     */
+    #[Test]
+    public function a_month_no_period_touches_at_all_is_offered_an_empty_list(): void
+    {
+        $this->period('1.º Período', 1, '2026-09-01', '2026-12-18');
+
+        // Maio de 2027: a grelha inteira (26 de abril a 6 de junho) fica muito
+        // depois do único período do ano.
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar?month=2027-05')->assertOk()
+            ->assertInertia(function (AssertableInertia $page) {
+                $props = $page->toArray()['props'];
+
+                $this->assertSame([], $props['periods']);
+                $this->assertSame('2027-05', $props['month']['value']);
+                // E a grelha continua a ser uma grelha de dias verdadeiros.
+                $this->assertSame(31, count(array_filter($props['days'], fn (array $day): bool => $day['in_month'])));
+
+                foreach ($props['days'] as $day) {
+                    $this->assertNull($day['period']);
+                }
+            });
+    }
+
+    /**
+     * DOIS PERÍODOS A CRUZAREM O MESMO MÊS VÊM OS DOIS, e não só o primeiro: um
+     * mês em que um período fecha no dia 5 e o seguinte abre no dia 15 é as duas
+     * coisas ao mesmo tempo, e esconder um deles deixaria metade do mês por
+     * explicar.
+     */
+    #[Test]
+    public function two_periods_crossing_the_same_month_are_both_offered(): void
+    {
+        $this->period('1.º Período', 1, '2026-09-01', '2026-11-05');
+        $this->period('2.º Período', 2, '2026-11-15', '2027-01-31');
+
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar?month=2026-11')->assertOk()
+            ->assertInertia(function (AssertableInertia $page) {
+                $props = $page->toArray()['props'];
+
+                $this->assertSame(
+                    ['1.º Período', '2.º Período'],
+                    array_column($props['periods'], 'label'),
+                );
+                // Com os dois extremos verdadeiros de cada um, que é o que a
+                // página precisa para dizer «até 5/11» e «desde 15/11».
+                $this->assertSame('2026-11-05', $props['periods'][0]['ends_on']);
+                $this->assertSame('2026-11-15', $props['periods'][1]['starts_on']);
+
+                // E o intervalo entre eles fica honestamente sem período nenhum.
+                $this->assertSame('1.º Período', $this->dayOf($page, '2026-11-05')['period']['label']);
+                $this->assertNull($this->dayOf($page, '2026-11-10')['period']);
+                $this->assertSame('2.º Período', $this->dayOf($page, '2026-11-15')['period']['label']);
+            });
+    }
+
+    /**
      * A year with neither períodos nor avaliações is still a year, and its
      * calendar is still a correct calendar of real days — never a blank page,
      * and never invented content to fill it.
@@ -883,6 +986,51 @@ class AcademicYearCalendarTest extends TestCase
             $this->actingAs($this->teacher)->withSession($session)->get($url)->assertOk();
             $assertNothingWasWritten();
         }
+    }
+
+    /**
+     * E MUDAR DE MÊS TAMBÉM NÃO ESCREVE NADA — nem sequer na ESTRUTURA DO ANO.
+     *
+     * A vista de Mês passou a filtrar os períodos pelo mês que está a ver, e a
+     * pergunta óbvia a seguir é se alguém, algures, resolveu «arrumar» a
+     * estrutura para lhe responder. Não: `academic_periods` é contada antes e
+     * depois de se andar pelos meses dos dois semestres, ao lado das mesmas
+     * quatro tabelas que o teste acima já protege.
+     */
+    #[Test]
+    public function walking_month_to_month_never_writes_to_the_years_structure_either(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher, '7.º C');
+        $this->period('1.º Semestre', 1, '2026-09-11', '2027-01-29', AcademicPeriodKind::Semester);
+        $this->period('2.º Semestre', 2, '2027-02-11', '2027-07-31', AcademicPeriodKind::Semester);
+        $this->instrument($schoolClass, 'Teste de Frações', '2026-10-15');
+
+        // Os dois semestres, mais o período técnico que a avaliação exige.
+        $assertNothingWasWritten = function (): void {
+            $this->assertDatabaseCount('lessons', 0);
+            $this->assertDatabaseCount('recurring_lesson_slots', 0);
+            $this->assertDatabaseCount('instruments', 1);
+            $this->assertDatabaseCount('calendar_events', 0);
+            $this->assertDatabaseCount('academic_periods', 3);
+        };
+
+        $assertNothingWasWritten();
+
+        $session = $this->tenantSession();
+
+        foreach ([
+            '2026-09', '2026-10', '2026-12', '2027-01',
+            '2027-02', '2027-03', '2027-05',
+        ] as $month) {
+            $this->actingAs($this->teacher)->withSession($session)
+                ->get("/calendar?month={$month}")->assertOk();
+            $assertNothingWasWritten();
+        }
+
+        // E voltar atrás, pelo mesmo caminho, continua a não escrever nada.
+        $this->actingAs($this->teacher)->withSession($session)
+            ->get('/calendar?month=2026-10')->assertOk();
+        $assertNothingWasWritten();
     }
 
     /**

@@ -8,6 +8,7 @@ import type {
     CalendarEvent,
     CalendarPeriod,
 } from './calendar';
+import { PERIOD_TINT } from './calendar';
 import Month from './Month.vue';
 
 const routerGet = vi.fn();
@@ -192,6 +193,96 @@ describe('calendar/Month', () => {
         vi.restoreAllMocks();
     });
 
+    // ------------------------------------------- o mês é o título da página
+
+    /**
+     * A PRIMEIRA PERGUNTA DE QUEM ABRE UM CALENDÁRIO é «que mês é este?», e era
+     * a mais difícil de responder da página: «Outubro de 2026» estava enterrado
+     * a meio de uma linha esbatida de contexto, do mesmo tamanho e do mesmo peso
+     * que o número de avaliações. Agora é o elemento mais forte do cabeçalho.
+     */
+    it('makes the month being viewed the loudest thing in the header', () => {
+        const wrapper = mountPage();
+        const title = wrapper.find('[data-month-title]');
+
+        expect(title.exists()).toBe(true);
+        expect(title.text()).toBe('Outubro de 2026');
+
+        // Grande e pesado — e afirmado como classe e não como pixéis, que é o
+        // que esta camada pode mesmo saber.
+        expect(title.classes().join(' ')).toContain('font-bold');
+        expect(title.classes().join(' ')).toMatch(/text-(2xl|3xl|4xl)/);
+
+        // E mais forte do que tudo o resto que está lá: nem a identidade da
+        // página nem o contexto secundário levam este peso.
+        const others = wrapper
+            .find('header')
+            .findAll('p, h1, h2, h3')
+            .filter((node) => node.attributes('data-month-title') === undefined);
+
+        expect(others.length).toBeGreaterThan(0);
+
+        for (const node of others) {
+            expect(node.classes().join(' ')).not.toContain('font-bold');
+            expect(node.classes().join(' ')).not.toMatch(/text-(2xl|3xl|4xl)/);
+        }
+    });
+
+    /**
+     * A IDENTIDADE DA PÁGINA NÃO DESAPARECEU — trocou de lugar com o mês, que é
+     * o que muda de ecrã para ecrã. E o contexto secundário continua todo lá, só
+     * que sem repetir o mês que já está escrito em grande logo acima.
+     */
+    it('keeps the page identity and the secondary context, subordinate to the month', () => {
+        const wrapper = mountPage({
+            days: octoberDays((date) =>
+                date === '2026-10-15'
+                    ? { assessments: [assessment()], events: [event()] }
+                    : {},
+            ),
+        });
+
+        const header = wrapper.find('header');
+
+        expect(header.text()).toContain('Calendário do Ano Letivo');
+        expect(header.text()).toContain('2026/2027');
+        expect(header.text()).toContain('1 avaliação');
+        expect(header.text()).toContain('1 acontecimento');
+
+        // O mês está escrito UMA vez, e não duas: o título já o diz.
+        expect(header.text().split('Outubro de 2026')).toHaveLength(2);
+    });
+
+    /**
+     * ANDAR ENTRE MESES É UMA COISA DO MÊS, e por isso vive colada ao título
+     * dele — e não solta numa linha própria por baixo, onde se confundia com o
+     * seletor de vista. As duas navegações respondem a perguntas diferentes: uma
+     * troca de VISTA, a outra anda dentro da vista de Mês.
+     */
+    it('groups the month navigation with the month title, kept distinct from the view switcher', () => {
+        const wrapper = mountPage();
+        const title = wrapper.find('[data-month-title]');
+
+        // Irmãos na mesma caixa, e não em duas zonas separadas da página.
+        expect(
+            title.element.parentElement?.querySelector(
+                'nav[aria-label="Navegação entre meses"]',
+            ),
+        ).not.toBeNull();
+
+        // E tratados de maneiras diferentes: a vista ativa é um botão cheio, os
+        // botões de andar entre meses são leves.
+        const viewButtons = wrapper.findAll('nav[aria-label="Vista do calendário"] button');
+        const monthButtons = wrapper.findAll('nav[aria-label="Navegação entre meses"] button');
+
+        expect(viewButtons[0]!.classes().join(' ')).toContain('bg-primary');
+        expect(monthButtons).toHaveLength(3);
+
+        for (const button of monthButtons) {
+            expect(button.classes().join(' ')).not.toContain('bg-primary');
+        }
+    });
+
     it('lays the month out as whole weeks of seven days', () => {
         const wrapper = mountPage();
 
@@ -281,6 +372,180 @@ describe('calendar/Month', () => {
         expect(legend.text()).not.toContain('Semestre · Semestre');
         // As datas continuam lá: é o que a faixa tem para dizer que o nome não diz.
         expect(legend.text()).toContain('–');
+    });
+
+    // --------------------------- a faixa estrutural, deste MÊS e não da grelha
+
+    const SEMESTER_ONE = period({
+        ulid: 'sem-1',
+        label: '1.º Semestre',
+        kind: 'semester',
+        kind_label: 'Semestre',
+        starts_on: '2026-09-11',
+        ends_on: '2027-01-29',
+    });
+
+    const SEMESTER_TWO = period({
+        ulid: 'sem-2',
+        label: '2.º Semestre',
+        kind: 'semester',
+        kind_label: 'Semestre',
+        sequence: 2,
+        starts_on: '2027-02-11',
+        ends_on: '2027-07-31',
+    });
+
+    function inMonth(value: string, startsOn: string, endsOn: string, periods: CalendarPeriod[]) {
+        return mountPage({ month: { value, starts_on: startsOn, ends_on: endsOn }, periods });
+    }
+
+    function bandText(wrapper: ReturnType<typeof mountPage>): string {
+        return wrapper.find('section[aria-label="Períodos deste mês"]').text();
+    }
+
+    /**
+     * UM MÊS INTEIRAMENTE DENTRO DE UM PERÍODO é o caso simples, e continua a
+     * dizer exatamente o que sempre disse: o período de uma ponta à outra.
+     */
+    it('states a fully contained month plainly, with the período\'s own whole range', () => {
+        const wrapper = inMonth('2026-10', '2026-10-01', '2026-10-31', [SEMESTER_ONE]);
+
+        expect(bandText(wrapper)).toContain('1.º Semestre · 11/09 – 29/01');
+        expect(bandText(wrapper)).not.toContain('desde');
+        expect(bandText(wrapper)).not.toContain('até');
+    });
+
+    /**
+     * UM MÊS DE TRANSIÇÃO DIZ ONDE É QUE O PERÍODO REALMENTE ABRE OU FECHA.
+     * Setembro, num ano que abre a 11 de setembro, dizia «1.º Semestre · 11/09 –
+     * 29/01» — verdadeiro sobre o semestre, e falso sobre os dez primeiros dias
+     * do mês que se está a ver. E É A MESMA FRASE QUE A VISTA DE ANO JÁ DIZIA
+     * sobre o mesmo mês, porque é a mesma função a construí-la.
+     */
+    it('says «desde» in the month a período opens in, and «até» in the month it closes in', () => {
+        const september = inMonth('2026-09', '2026-09-01', '2026-09-30', [SEMESTER_ONE]);
+        expect(bandText(september)).toContain('1.º Semestre · desde 11/09');
+        expect(bandText(september)).not.toContain('29/01');
+
+        const january = inMonth('2027-01', '2027-01-01', '2027-01-31', [SEMESTER_ONE]);
+        expect(bandText(january)).toContain('1.º Semestre · até 29/01');
+        expect(bandText(january)).not.toContain('11/09');
+
+        const february = inMonth('2027-02', '2027-02-01', '2027-02-28', [SEMESTER_TWO]);
+        expect(bandText(february)).toContain('2.º Semestre · desde 11/02');
+        expect(bandText(february)).not.toContain('1.º Semestre');
+    });
+
+    it('writes both ends when a período opens and closes inside the same month', () => {
+        const wrapper = inMonth('2026-10', '2026-10-01', '2026-10-31', [
+            period({
+                ulid: 'p-brief',
+                label: 'Módulo A',
+                kind: 'module',
+                kind_label: 'Módulo',
+                starts_on: '2026-10-05',
+                ends_on: '2026-10-23',
+            }),
+        ]);
+
+        expect(bandText(wrapper)).toContain('Módulo A · de 5/10 a 23/10');
+    });
+
+    /**
+     * DOIS PERÍODOS A TOCAREM O MESMO MÊS APARECEM OS DOIS — nunca só o
+     * primeiro, e nunca um deles escondido: um mês em que um período fecha e o
+     * seguinte abre é as duas coisas ao mesmo tempo.
+     */
+    it('shows both períodos when two of them touch the same month', () => {
+        const wrapper = inMonth('2026-11', '2026-11-01', '2026-11-30', [
+            period({ ulid: 'p1', label: '1.º Período', ends_on: '2026-11-05' }),
+            period({
+                ulid: 'p2',
+                label: '2.º Período',
+                sequence: 2,
+                starts_on: '2026-11-15',
+                ends_on: '2027-01-31',
+            }),
+        ]);
+
+        const bands = wrapper.findAll('section[aria-label="Períodos deste mês"] > p');
+
+        expect(bands).toHaveLength(2);
+        expect(bands[0]!.text()).toContain('1.º Período · até 5/11');
+        expect(bands[1]!.text()).toContain('2.º Período · desde 15/11');
+    });
+
+    /**
+     * A FAIXA FALA DO MÊS, E NÃO DA GRELHA. `periods` chega preenchido a partir
+     * do intervalo VISÍVEL — que inclui os últimos dias de setembro e os
+     * primeiros de novembro, para as linhas fecharem — e um período que só toca
+     * o dia 29 de setembro não é estrutura de outubro nenhuma.
+     */
+    it('ignores a período that only touches the grid\'s leading days, not the month itself', () => {
+        const wrapper = inMonth('2026-10', '2026-10-01', '2026-10-31', [
+            period({
+                ulid: 'p-setembro',
+                label: 'Período de setembro',
+                starts_on: '2026-09-01',
+                ends_on: '2026-09-29',
+            }),
+        ]);
+
+        // Nem faixa, nem período por omissão, nem um aviso inventado a dizer que
+        // o ano não tem períodos — que seria falso, porque tem.
+        expect(wrapper.find('section[aria-label="Períodos deste mês"]').exists()).toBe(false);
+        expect(wrapper.text()).not.toContain('Período de setembro');
+        expect(wrapper.text()).not.toContain('ainda não tem períodos definidos');
+    });
+
+    /**
+     * A GRELHA FICA NEUTRA. Cada célula levava um fundo cheio com a cor do
+     * período em que caía, e o mês inteiro ficava azul só porque se estava a
+     * meio de um semestre. O período continua NOMEADO onde começa — que é o que
+     * informa, e o que se lê num ecrã monocromático — sem o banho de cor.
+     */
+    it('leaves every day cell of the grid without a período background', () => {
+        const wrapper = mountPage({
+            periods: [SEMESTER_ONE],
+            days: octoberDays(() => ({ period: SEMESTER_ONE })),
+        });
+
+        for (const cell of wrapper.findAll('[data-date]')) {
+            const backgrounds = cell.classes().filter((name) => name.startsWith('bg-'));
+
+            // Só o cinzento dos dias de fora do mês, que diz outra coisa.
+            expect(backgrounds.every((name) => name === 'bg-muted/30')).toBe(true);
+        }
+
+        // E o nome do período continua lá, onde a faixa começa.
+        expect(wrapper.find('[data-date="2026-09-28"]').text()).toContain('1.º Semestre');
+    });
+
+    /**
+     * O TOM DA ESTRUTURA É UM SÓ, e é o MESMO que a vista de Ano usa: um
+     * cinzento-quente discreto, e nunca uma cor tirada da ordem em que o período
+     * calhou vir. E nunca o âmbar, que já é da «Visita de estudo».
+     */
+    it('draws the estrutural band in the one quiet tone, never in a per-período colour', () => {
+        const wrapper = mountPage({
+            periods: [SEMESTER_ONE],
+            days: octoberDays(() => ({ period: SEMESTER_ONE })),
+        });
+
+        expect(
+            wrapper.find('section[aria-label="Períodos deste mês"] > p').classes().join(' '),
+        ).toContain(PERIOD_TINT);
+
+        for (const tint of [
+            'bg-sky-100/70',
+            'bg-amber-100/70',
+            'bg-emerald-100/70',
+            'bg-violet-100/70',
+            'bg-rose-100/70',
+            'bg-teal-100/70',
+        ]) {
+            expect(wrapper.html()).not.toContain(tint);
+        }
     });
 
     it('names a período where it begins and where it changes, not in all thirty cells', () => {

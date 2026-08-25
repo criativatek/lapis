@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import {
     CalendarDays,
@@ -16,7 +16,6 @@ import {
 } from '@lucide/vue';
 import type { Component } from 'vue';
 import { computed, ref, watch } from 'vue';
-import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -40,10 +39,15 @@ import type {
     CalendarTeacherClass,
 } from './calendar';
 import {
+    asDate,
     eventBadgeClasses,
     eventEntryClasses,
     eventTimeLabel,
-    periodTint,
+    formatDay,
+    fullyContainedPeriod,
+    periodBoundaryNote,
+    periodRange,
+    PERIOD_TINT,
 } from './calendar';
 
 const props = defineProps<{
@@ -98,15 +102,6 @@ const dayFormatter = new Intl.DateTimeFormat('pt-PT', {
     month: 'long',
     timeZone: 'UTC',
 });
-const rangeFormatter = new Intl.DateTimeFormat('pt-PT', {
-    day: 'numeric',
-    month: 'short',
-    timeZone: 'UTC',
-});
-
-function asDate(date: string): Date {
-    return new Date(`${date}T00:00:00Z`);
-}
 
 const monthLabel = computed(() =>
     props.month
@@ -264,7 +259,13 @@ const eventsThisMonth = computed(() => {
     return seen.size;
 });
 
-const description = computed(() => {
+/**
+ * O QUE VEM A SEGUIR AO MÊS, e não o que o substitui. O mês que está a ser visto
+ * é agora o título da página — grande, e o mais forte do cabeçalho — pelo que
+ * escrevê-lo outra vez aqui era dizer duas vezes a mesma coisa. Fica o ano
+ * letivo e as duas contagens, em texto esbatido, que é o peso que têm.
+ */
+const summary = computed(() => {
     if (!props.academicYear || !props.month) {
         return 'A estrutura do ano letivo, as avaliações e os teus acontecimentos, lado a lado.';
     }
@@ -275,21 +276,74 @@ const description = computed(() => {
     const acontecimentos =
         events === 1 ? '1 acontecimento' : `${events} acontecimentos`;
 
-    return `${monthLabel.value} · ${props.academicYear.label} · ${avaliacoes} · ${acontecimentos}`;
+    return `${props.academicYear.label} · ${avaliacoes} · ${acontecimentos}`;
+});
+
+// -------------------------------------- a estrutura do ano, DESTE mês
+
+/**
+ * OS PERÍODOS DO MÊS QUE SE ESTÁ A VER, e não os da grelha. `props.periods` é
+ * preenchido a partir do intervalo VISÍVEL — que inclui os últimos dias do mês
+ * anterior e os primeiros do seguinte, para as linhas da grelha fecharem — e é
+ * assim que tem de ser para cada célula saber o seu período. Mas a faixa
+ * estrutural fala DO MÊS, e um período que só toca o dia 28 de setembro não é
+ * estrutura de outubro nenhuma.
+ */
+const periodsThisMonth = computed(() => {
+    const month = props.month;
+
+    if (month === null) {
+        return [];
+    }
+
+    return props.periods.filter(
+        (period) =>
+            period.starts_on <= month.ends_on &&
+            period.ends_on >= month.starts_on,
+    );
+});
+
+/**
+ * A MESMA RESPOSTA QUE A VISTA DE ANO DÁ AO MESMO MÊS, porque é literalmente a
+ * mesma função (`fullyContainedPeriod`, em calendar.ts) a respondê-la: um mês
+ * inteiramente dentro de um período diz o período de uma ponta à outra
+ * («1.º Semestre · 11/09 – 29/01»); um mês de transição diz onde é que o período
+ * realmente abre ou fecha dentro dele («1.º Semestre · desde 11/09»), porque a
+ * primeira frase, em setembro, seria verdadeira sobre o semestre e falsa sobre
+ * os dez primeiros dias do mês.
+ *
+ * Dois períodos a tocarem o mesmo mês aparecem OS DOIS, nunca só o primeiro.
+ */
+const structuralBands = computed(() => {
+    const month = props.month;
+
+    if (month === null) {
+        return [];
+    }
+
+    const touching = periodsThisMonth.value;
+    const contained = fullyContainedPeriod(month, touching);
+
+    return touching.map((period) => ({
+        period,
+        detail:
+            contained !== null && contained.ulid === period.ulid
+                ? periodRange(period)
+                : // Um período que atravessa o mês inteiro sem abrir nem fechar
+                  // lá dentro não tem fronteira nenhuma para dizer: fica com o
+                  // seu intervalo verdadeiro, que é o que sobra por dizer.
+                  periodBoundaryNote(month, period) || periodRange(period),
+    }));
 });
 
 function dayLabel(date: string): string {
     return capitalizeFirst(dayFormatter.format(asDate(date)));
 }
 
-function periodRange(period: CalendarPeriod): string {
-    return `${rangeFormatter.format(asDate(period.starts_on))} – ${rangeFormatter.format(asDate(period.ends_on))}`;
-}
-
 function eventRange(event: CalendarEvent): string {
     return event.ends_on === event.starts_on
-        ? rangeFormatter.format(asDate(event.starts_on))
-        : `${rangeFormatter.format(asDate(event.starts_on))} – ${rangeFormatter.format(asDate(event.ends_on))}`;
+        ? formatDay(event.starts_on)
+        : `${formatDay(event.starts_on)} – ${formatDay(event.ends_on)}`;
 }
 
 function goToMonth(month: string): void {
@@ -457,33 +511,136 @@ function destroyEvent(event: CalendarEvent): void {
     <Head title="Calendário do Ano Letivo" />
 
     <main class="mx-auto w-full max-w-6xl space-y-6 p-4 pb-24 sm:p-6">
-        <div
-            class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
+        <!--
+            O MÊS QUE SE ESTÁ A VER É O CABEÇALHO DA PÁGINA. Antes, «Outubro de
+            2026» estava enterrado a meio de uma linha esbatida de contexto —
+            «Outubro de 2026 · 2026/2027 · 3 avaliações · 4 acontecimentos» — e a
+            primeira pergunta de quem abre um calendário («que mês é este?») era
+            a mais difícil de responder da página. Agora é a coisa mais forte do
+            cabeçalho, com a navegação entre meses ao seu lado e não solta numa
+            linha própria por baixo, e o resto do contexto ficou onde o seu peso
+            manda: pequeno e esbatido, a seguir.
+        -->
+        <header
+            class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"
         >
-            <Heading
-                title="Calendário do Ano Letivo"
-                :description="description"
-            />
+            <div class="min-w-0 space-y-2">
+                <!--
+                    A IDENTIDADE DA PÁGINA continua escrita — não desapareceu,
+                    trocou de lugar com o mês, que é o que muda de ecrã para
+                    ecrã e o que se procura primeiro.
+                -->
+                <p
+                    v-if="month"
+                    class="text-xs font-medium tracking-wide text-muted-foreground uppercase"
+                >
+                    Calendário do Ano Letivo
+                </p>
 
-            <!--
-                AS DUAS VISTAS SÃO DOIS ENDEREÇOS, não um estado interno desta
-                página: cada uma pode ser guardada nos favoritos e o botão de
-                voltar do navegador funciona entre elas.
-            -->
-            <nav
-                class="flex shrink-0 gap-2"
-                aria-label="Vista do calendário"
-            >
-                <Button variant="default" size="sm" class="min-h-10" disabled>
-                    <LayoutGrid class="size-4" /> Mês
+                <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+                    <h2
+                        v-if="month"
+                        data-month-title
+                        class="text-2xl font-bold tracking-tight sm:text-3xl"
+                    >
+                        {{ monthLabel }}
+                    </h2>
+                    <h2 v-else class="text-xl font-semibold tracking-tight">
+                        Calendário do Ano Letivo
+                    </h2>
+
+                    <!--
+                        ANDAR ENTRE MESES é uma coisa do MÊS, e por isso vive
+                        colada ao título dele — agrupada dentro de uma só
+                        moldura, em botões leves, para nunca se confundir com o
+                        seletor de vista (Mês/Ano) ali ao lado, que é outra
+                        pergunta inteiramente: essa troca de VISTA, esta anda
+                        dentro da vista de Mês.
+                    -->
+                    <nav
+                        v-if="navigation"
+                        class="flex flex-wrap items-center gap-1 rounded-lg border p-1"
+                        aria-label="Navegação entre meses"
+                    >
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            class="min-h-10"
+                            @click="goToMonth(navigation.previous)"
+                        >
+                            <ChevronLeft class="size-4" /> Mês anterior
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            class="min-h-10"
+                            @click="goToMonth(navigation.home)"
+                        >
+                            <CalendarDays class="size-4" />
+                            {{
+                                navigation.home_is_today
+                                    ? 'Mês atual'
+                                    : 'Início do ano'
+                            }}
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            class="min-h-10"
+                            @click="goToMonth(navigation.next)"
+                        >
+                            Mês seguinte <ChevronRight class="size-4" />
+                        </Button>
+                    </nav>
+                </div>
+
+                <p class="text-sm text-muted-foreground">{{ summary }}</p>
+            </div>
+
+            <div class="flex shrink-0 flex-wrap items-center gap-2">
+                <!--
+                    AS DUAS VISTAS SÃO DOIS ENDEREÇOS, não um estado interno
+                    desta página: cada uma pode ser guardada nos favoritos e o
+                    botão de voltar do navegador funciona entre elas.
+                -->
+                <nav class="flex gap-2" aria-label="Vista do calendário">
+                    <Button
+                        variant="default"
+                        size="sm"
+                        class="min-h-10"
+                        disabled
+                    >
+                        <LayoutGrid class="size-4" /> Mês
+                    </Button>
+                    <Button
+                        as-child
+                        variant="outline"
+                        size="sm"
+                        class="min-h-10"
+                    >
+                        <Link href="/calendar/ano">
+                            <CalendarRange class="size-4" /> Ano
+                        </Link>
+                    </Button>
+                </nav>
+
+                <!--
+                    O BOTÃO EXPLÍCITO, sempre visível e sempre suficiente por si
+                    só: criar um acontecimento não está escondido dentro de um
+                    clique num dia que seja preciso adivinhar. Carregar num dia
+                    da grelha é um atalho por cima disto, e não o caminho.
+                -->
+                <Button
+                    v-if="month"
+                    class="min-h-10"
+                    size="sm"
+                    data-new-event
+                    @click="openCreate()"
+                >
+                    <CalendarPlus class="size-4" /> Novo acontecimento
                 </Button>
-                <Button as-child variant="outline" size="sm" class="min-h-10">
-                    <Link href="/calendar/ano">
-                        <CalendarRange class="size-4" /> Ano
-                    </Link>
-                </Button>
-            </nav>
-        </div>
+            </div>
+        </header>
 
         <!--
             O QUE ESTA PÁGINA LÊ, e o que só ela escreve. Os períodos do ano e
@@ -514,72 +671,28 @@ function destroyEvent(event: CalendarEvent): void {
         </section>
 
         <template v-else>
-            <nav
-                class="flex flex-wrap items-center gap-2"
-                aria-label="Navegação entre meses"
-            >
-                <Button
-                    variant="outline"
-                    size="sm"
-                    class="min-h-10"
-                    @click="goToMonth(navigation.previous)"
-                >
-                    <ChevronLeft class="size-4" /> Mês anterior
-                </Button>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    class="min-h-10"
-                    @click="goToMonth(navigation.home)"
-                >
-                    <CalendarDays class="size-4" />
-                    {{
-                        navigation.home_is_today
-                            ? 'Mês atual'
-                            : 'Início do ano'
-                    }}
-                </Button>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    class="min-h-10"
-                    @click="goToMonth(navigation.next)"
-                >
-                    Mês seguinte <ChevronRight class="size-4" />
-                </Button>
-
-                <!--
-                    O BOTÃO EXPLÍCITO, sempre visível e sempre suficiente por si
-                    só: criar um acontecimento não está escondido dentro de um
-                    clique num dia que seja preciso adivinhar. Carregar num dia
-                    da grelha é um atalho por cima disto, e não o caminho.
-                -->
-                <Button
-                    class="ml-auto min-h-10"
-                    size="sm"
-                    data-new-event
-                    @click="openCreate()"
-                >
-                    <CalendarPlus class="size-4" /> Novo acontecimento
-                </Button>
-            </nav>
-
             <!--
-                OS PERÍODOS DO ANO como contexto estrutural — uma faixa, não um
-                cartão. A distinção em relação a uma avaliação nunca é só de
+                OS PERÍODOS DESTE MÊS como contexto estrutural — uma faixa, não
+                um cartão. A distinção em relação a uma avaliação nunca é só de
                 cor: um período não tem moldura nem ícone e escreve-se em texto
                 discreto; uma avaliação tem as três coisas.
+
+                E DIZ O QUE É VERDADE SOBRE ESTE MÊS, não sobre a grelha: os
+                períodos são filtrados pelos limites reais do mês e ditos com o
+                mesmo «desde»/«até» que a vista de Ano já usava, pela mesma
+                função. Um mês que nenhum período toca não diz nada — nem uma
+                faixa, nem um período por omissão.
             -->
             <section
-                v-if="periods.length > 0"
+                v-if="structuralBands.length > 0"
                 class="flex flex-wrap gap-2"
                 aria-label="Períodos deste mês"
             >
                 <p
-                    v-for="period in periods"
-                    :key="period.ulid"
+                    v-for="band in structuralBands"
+                    :key="band.period.ulid"
                     class="rounded-md px-2.5 py-1.5 text-xs"
-                    :class="periodTint(periods, period.ulid)"
+                    :class="PERIOD_TINT"
                 >
                     <!--
                         O nome do período já diz a espécie — «1.º Semestre»,
@@ -587,11 +700,14 @@ function destroyEvent(event: CalendarEvent): void {
                         Semestre») não acrescenta nada a ninguém. Fica o nome e
                         as datas, que é o que aqui falta saber.
                     -->
-                    <span class="font-medium">{{ period.label }}</span>
-                    <span class="opacity-80"> · {{ periodRange(period) }}</span>
+                    <span class="font-medium">{{ band.period.label }}</span>
+                    <span class="opacity-80"> · {{ band.detail }}</span>
                 </p>
             </section>
-            <p v-else class="text-sm text-muted-foreground">
+            <p
+                v-else-if="periods.length === 0"
+                class="text-sm text-muted-foreground"
+            >
                 Este ano letivo ainda não tem períodos definidos. O calendário
                 mostra os dias na mesma — os períodos aparecem assim que
                 estiverem criados em «Estrutura do Ano Letivo».
@@ -622,14 +738,20 @@ function destroyEvent(event: CalendarEvent): void {
                     :key="weekIndex"
                     class="grid grid-cols-7 border-b last:border-b-0"
                 >
+                    <!--
+                        A GRELHA FICA NEUTRA. Cada célula levava um fundo cheio
+                        com a cor do período em que caía, e o mês inteiro ficava
+                        pintado só porque se estava a meio de um semestre — a
+                        estrutura do ano a mandar na página em vez de a
+                        acompanhar. O período continua NOMEADO onde começa, logo
+                        aqui em baixo, que é o que informa; o cinzento dos dias
+                        de fora do mês fica como estava, porque diz outra coisa.
+                    -->
                     <div
                         v-for="day in week"
                         :key="day.date"
                         class="min-h-28 border-r p-1.5 last:border-r-0"
-                        :class="[
-                            day.in_month ? '' : 'bg-muted/30',
-                            day.period ? periodTint(periods, day.period.ulid) : '',
-                        ]"
+                        :class="day.in_month ? '' : 'bg-muted/30'"
                         :aria-label="dayLabel(day.date)"
                         :data-date="day.date"
                     >

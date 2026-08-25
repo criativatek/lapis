@@ -2,7 +2,23 @@ import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import { defineComponent, h } from 'vue';
 import type { CalendarPeriod } from './calendar';
+import { PERIOD_TINT } from './calendar';
 import Year from './Year.vue';
+
+/**
+ * As cores do arco-íris por índice de período, que ESTA fase apagou. Ficam aqui
+ * escritas para se poder afirmar que desapareceram: um mês inteiramente dentro
+ * de um período continua a ter tom, mas é sempre o MESMO tom discreto, e nunca
+ * uma cor tirada da ordem em que o período calhou vir.
+ */
+const RAINBOW = [
+    'bg-sky-100/70',
+    'bg-amber-100/70',
+    'bg-emerald-100/70',
+    'bg-violet-100/70',
+    'bg-rose-100/70',
+    'bg-teal-100/70',
+];
 
 vi.mock('@inertiajs/vue3', () => ({
     Head: defineComponent({ setup: (_, { slots }) => () => h('div', slots.default?.()) }),
@@ -234,18 +250,81 @@ describe('calendar/Year', () => {
         const january = wrapper.find('[data-month="2027-01"]');
 
         // Setembro: o semestre só abre a 11, e o cartão di-lo em vez de o pintar.
-        expect(september.classes().join(' ')).not.toContain('bg-sky-100/70');
+        expect(september.classes().join(' ')).not.toContain(PERIOD_TINT);
         expect(september.text()).toContain('1.º Semestre desde 11/09');
 
         // Outubro está inteiro dentro dele: o caso simples, tal e qual como era.
-        expect(october.classes().join(' ')).toContain('bg-sky-100/70');
+        expect(october.classes().join(' ')).toContain(PERIOD_TINT);
         expect(october.text()).toContain('1.º Semestre');
         expect(october.text()).not.toContain('desde');
         expect(october.text()).not.toContain('até');
 
         // Janeiro: o semestre fecha a 29, e o que vem depois não é dele.
-        expect(january.classes().join(' ')).not.toContain('bg-sky-100/70');
+        expect(january.classes().join(' ')).not.toContain(PERIOD_TINT);
         expect(january.text()).toContain('1.º Semestre até 29/01');
+    });
+
+    /**
+     * O ARCO-ÍRIS FOI-SE EMBORA. A estrutura do ano tem de estar visível sem
+     * mandar na página, e um fundo tirado da ordem em que cada período calhou
+     * vir pintava o calendário inteiro de azul só porque se estava a meio do
+     * 1.º Semestre. Fica UM tom, quente e discreto, o mesmo em toda a parte —
+     * nos cartões dos meses e nas faixas dos períodos, aqui e na vista de Mês.
+     */
+    it('tints every structural surface in the same quiet tone, never in a per-período colour', () => {
+        const wrapper = mountPage({
+            months: [
+                month('2026-10', { period_ulids: ['p1'] }),
+                month('2027-03', { period_ulids: ['p2'] }),
+            ],
+            periods: [
+                period({ ulid: 'p1' }),
+                period({
+                    ulid: 'p2',
+                    label: '2.º Período',
+                    sequence: 2,
+                    starts_on: '2027-01-05',
+                    ends_on: '2027-04-30',
+                }),
+            ],
+            periodsCountLabel: '2 períodos',
+        });
+
+        // Os dois meses inteiramente dentro de um período: o MESMO tom, e não um
+        // por índice de período.
+        expect(wrapper.find('[data-month="2026-10"]').classes().join(' ')).toContain(
+            PERIOD_TINT,
+        );
+        expect(wrapper.find('[data-month="2027-03"]').classes().join(' ')).toContain(
+            PERIOD_TINT,
+        );
+
+        // As faixas da lista de períodos, acima da grelha: o mesmo tom outra vez.
+        const rows = wrapper.findAll('section[aria-label="Períodos do ano letivo"] > div');
+
+        expect(rows).toHaveLength(2);
+
+        for (const row of rows) {
+            expect(row.classes().join(' ')).toContain(PERIOD_TINT);
+        }
+
+        // E nenhuma das seis cores antigas em lado nenhum da página.
+        for (const tint of RAINBOW) {
+            expect(wrapper.html()).not.toContain(tint);
+        }
+    });
+
+    /**
+     * O TOM ESCOLHIDO NÃO É O DO ÂMBAR, e não é por acaso: o âmbar já é da
+     * «Visita de estudo» e do próprio `--brand-amber` da aplicação, e a estrutura
+     * do ano a usá-lo faria as duas coisas colidirem. É um cinzento-quente —
+     * `stone` — e a cor nunca é o que diz qual é o período: o nome está sempre
+     * escrito ao lado dela.
+     */
+    it('keeps the structural tone off the amber that «Visita de estudo» already owns', () => {
+        expect(PERIOD_TINT).toContain('stone');
+        expect(PERIOD_TINT).not.toContain('amber');
+        expect(PERIOD_TINT).not.toContain('orange');
     });
 
     it('says where the next período begins in the month it begins in', () => {
@@ -270,11 +349,11 @@ describe('calendar/Year', () => {
 
         const february = wrapper.find('[data-month="2027-02"]');
 
-        expect(february.classes().join(' ')).not.toContain('bg-sky-100/70');
+        expect(february.classes().join(' ')).not.toContain(PERIOD_TINT);
         expect(february.text()).toContain('2.º Semestre desde 11/02');
         // E março, inteiramente dentro dele, volta a ser o caso simples.
         expect(wrapper.find('[data-month="2027-03"]').classes().join(' ')).toContain(
-            'bg-sky-100/70',
+            PERIOD_TINT,
         );
     });
 
@@ -297,8 +376,7 @@ describe('calendar/Year', () => {
         const october = wrapper.find('[data-month="2026-10"]');
         const classes = october.classes().join(' ');
 
-        expect(classes).not.toContain('bg-sky-100/70');
-        expect(classes).not.toContain('bg-amber-100/70');
+        expect(classes).not.toContain(PERIOD_TINT);
         // As duas metades do mês, ditas por extenso, e o intervalo entre elas
         // deixado por dizer em vez de ser pintado de uma cor qualquer.
         expect(october.text()).toContain('1.º Período até 10/10');
@@ -323,7 +401,7 @@ describe('calendar/Year', () => {
 
         const october = wrapper.find('[data-month="2026-10"]');
 
-        expect(october.classes().join(' ')).not.toContain('bg-sky-100/70');
+        expect(october.classes().join(' ')).not.toContain(PERIOD_TINT);
         expect(october.text()).toContain('Módulo A de 5/10 a 23/10');
     });
 
@@ -336,7 +414,7 @@ describe('calendar/Year', () => {
 
         const february = wrapper.find('[data-month="2027-02"]');
 
-        expect(february.classes().join(' ')).not.toContain('bg-sky-100/70');
+        expect(february.classes().join(' ')).not.toContain(PERIOD_TINT);
         expect(february.text()).not.toContain('Período');
         expect(february.text()).not.toContain('desde');
     });

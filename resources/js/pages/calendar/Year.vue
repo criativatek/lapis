@@ -11,7 +11,13 @@ import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { capitalizeFirst } from '@/lib/text';
 import type { CalendarPeriod } from './calendar';
-import { periodTint } from './calendar';
+import {
+    asDate,
+    fullyContainedPeriod,
+    periodContext,
+    periodRange,
+    PERIOD_TINT,
+} from './calendar';
 
 type YearPeriod = CalendarPeriod & { assessments_count: number };
 
@@ -52,22 +58,8 @@ const monthFormatter = new Intl.DateTimeFormat('pt-PT', {
     year: 'numeric',
     timeZone: 'UTC',
 });
-const rangeFormatter = new Intl.DateTimeFormat('pt-PT', {
-    day: 'numeric',
-    month: 'short',
-    timeZone: 'UTC',
-});
-
-function asDate(date: string): Date {
-    return new Date(`${date}T00:00:00Z`);
-}
-
 function monthLabel(month: YearMonth): string {
     return capitalizeFirst(monthFormatter.format(asDate(month.starts_on)));
-}
-
-function periodRange(period: CalendarPeriod): string {
-    return `${rangeFormatter.format(asDate(period.starts_on))} – ${rangeFormatter.format(asDate(period.ends_on))}`;
 }
 
 function periodsOf(month: YearMonth): YearPeriod[] {
@@ -77,74 +69,32 @@ function periodsOf(month: YearMonth): YearPeriod[] {
 }
 
 /**
- * O período que cobre este mês DE UMA PONTA À OUTRA, e só esse — ou nenhum.
+ * O período que cobre este mês DE UMA PONTA À OUTRA — e o que um mês de
+ * transição diz em vez do nome seco do período.
  *
- * É a pergunta de que depende a cor do cartão, e é deliberadamente estreita: um
- * mês tocado por dois períodos, ou por um só que começa ou acaba a meio dele,
- * NÃO é de nenhum deles. Pintar setembro inteiro com a cor do 1.º Semestre
- * quando o semestre só abre no dia 11 é dizer uma coisa falsa sobre os dez
- * primeiros dias, e a mesma mentira apaga o intervalo entre dois períodos.
- *
- * Comparação de strings «Y-m-d», que é o mesmo idioma que o servidor já usa
- * para esta mesma pergunta: em datas canónicas nesse formato, a ordem
- * lexicográfica É a ordem cronológica.
+ * As DUAS perguntas são respondidas em `calendar.ts`, e não aqui: a vista de Mês
+ * faz-lhes exatamente as mesmas perguntas sobre o mês que está a mostrar, e
+ * tê-las escritas duas vezes era como as duas vistas acabariam a descrever o
+ * mesmo mês de maneiras diferentes. O que fica aqui é só o que é DESTA vista —
+ * saber que os períodos que tocam um mês são os `period_ulids` que o servidor
+ * lhe mandou.
  */
-function fullyContainedPeriod(month: YearMonth): YearPeriod | null {
-    const touching = periodsOf(month);
-
-    if (touching.length !== 1) {
-        return null;
-    }
-
-    const only = touching[0] as YearPeriod;
-
-    return only.starts_on <= month.starts_on && only.ends_on >= month.ends_on
-        ? only
-        : null;
+function containedPeriod(month: YearMonth): YearPeriod | null {
+    return fullyContainedPeriod(month, periodsOf(month));
 }
 
 /**
- * A cor de um mês, e a única circunstância em que ele a tem: quando um período
- * o cobre de uma ponta à outra. Um mês de transição fica sem cor nenhuma — que
- * é exatamente o que já acontecia a um mês sem períodos — porque não há aqui
- * meia cor que diga a verdade sobre metade dele.
+ * O tom de um mês, e a única circunstância em que ele o tem: quando um período
+ * o cobre de uma ponta à outra. Um mês de transição fica sem tom nenhum — que é
+ * exatamente o que já acontecia a um mês sem períodos — porque não há aqui meio
+ * tom que diga a verdade sobre metade dele.
  */
 function monthTint(month: YearMonth): string {
-    const period = fullyContainedPeriod(month);
-
-    return period === null ? '' : periodTint(props.periods, period.ulid);
+    return containedPeriod(month) === null ? '' : PERIOD_TINT;
 }
 
-/**
- * O que um mês de transição diz em vez do nome seco do período: onde é que o
- * período realmente começa, ou acaba, dentro deste mês. As datas são escritas
- * com o MESMO formatador das faixas dos períodos, logo acima.
- */
-function periodNote(month: YearMonth, period: YearPeriod): string {
-    const startsHere =
-        period.starts_on >= month.starts_on && period.starts_on <= month.ends_on;
-    const endsHere =
-        period.ends_on >= month.starts_on && period.ends_on <= month.ends_on;
-
-    if (startsHere && endsHere) {
-        return `${period.label} de ${rangeFormatter.format(asDate(period.starts_on))} a ${rangeFormatter.format(asDate(period.ends_on))}`;
-    }
-
-    if (startsHere) {
-        return `${period.label} desde ${rangeFormatter.format(asDate(period.starts_on))}`;
-    }
-
-    if (endsHere) {
-        return `${period.label} até ${rangeFormatter.format(asDate(period.ends_on))}`;
-    }
-
-    return period.label;
-}
-
-function periodContext(month: YearMonth): string {
-    return periodsOf(month)
-        .map((period) => periodNote(month, period))
-        .join(' · ');
+function monthPeriodContext(month: YearMonth): string {
+    return periodContext(month, periodsOf(month));
 }
 
 function assessmentsLabel(count: number): string {
@@ -233,7 +183,7 @@ const description = computed(() => {
                     v-for="period in periods"
                     :key="period.ulid"
                     class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 rounded-lg px-3 py-2.5"
-                    :class="periodTint(periods, period.ulid)"
+                    :class="PERIOD_TINT"
                 >
                     <!--
                         O nome do período já diz a espécie — «1.º Semestre», «2.º
@@ -288,17 +238,17 @@ const description = computed(() => {
                         dele: é o caso simples, e não precisa de mais nada. Um
                         mês de transição — dois períodos, ou um que começa ou
                         acaba a meio — diz onde é que ele realmente começa ou
-                        acaba, porque a cor sozinha diria que o mês é todo dele.
+                        acaba, porque o tom sozinho diria que o mês é todo dele.
                     -->
                     <span
                         v-if="periodsOf(month).length > 0"
                         class="text-xs opacity-80"
                         >{{
-                            fullyContainedPeriod(month)
+                            containedPeriod(month)
                                 ? periodsOf(month)
                                       .map((period) => period.label)
                                       .join(' · ')
-                                : periodContext(month)
+                                : monthPeriodContext(month)
                         }}</span
                     >
 

@@ -2,6 +2,16 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.69.3] — 2026-08-25
+
+### Fixed
+
+- **O mês que se está a ver passa a ser a coisa mais forte do cabeçalho do Calendário.** "Outubro de 2026" vivia a meio de uma linha esbatida — "Outubro de 2026 · 2026/2027 · 3 avaliações · 4 acontecimentos" — e a primeira pergunta de quem abre um calendário ("em que mês estou?") era a mais difícil de responder da página. O mês passa a título grande do cabeçalho, com a navegação entre meses agrupada ao seu lado numa moldura própria — visualmente distinta do seletor Mês/Ano, que é outra pergunta — e o resto do contexto (ano letivo, contagens) fica pequeno e esbatido, a seguir. `?month=`, navegação anterior/seguinte/início do ano e o regresso ao mesmo mês a partir do Ano ou de uma avaliação continuam exatamente como estavam.
+
+- **A faixa estrutural da vista Mês deixa de ficar presa ao primeiro período do ano.** Mostrava sempre o intervalo completo do período que tocasse a grelha, incluindo os dias de preenchimento dos meses vizinhos — o que nunca chegou a mostrar o semestre errado, mas também nunca dizia a verdade sobre o mês em si: Setembro mostrava "1.º Semestre · 11/09 – 29/01" como se o mês inteiro lhe pertencesse, quando o semestre só abre a 11. A faixa passa a responder pelos limites reais do mês visível — e não da grelha — com a mesma frase "desde"/"até" que a vista Ano já usava para o mesmo problema, através de uma única função partilhada entre as duas vistas (`calendar.ts`), para nunca mais poderem descrever o mesmo mês de duas maneiras diferentes. Dois períodos a tocar o mesmo mês aparecem os dois; um mês que nenhum período toca não mostra faixa nenhuma.
+
+- **O fundo azul que cobria a grelha do mês e os cartões da vista Ano dá lugar a um tom bege muito discreto, e um só.** Cada célula do dia levava um fundo cheio com a cor do período em que caía — um arco-íris de seis cores repartidas por índice — e o mês inteiro ficava pintado só por se estar a meio de um semestre: a estrutura do ano a mandar na página em vez de a servir de contexto. A grelha do mês fica neutra (o período continua nomeado por texto onde começa); os cartões da vista Ano só recebem tom quando um período os cobre de uma ponta à outra, e nunca uma cor por período — um só tom `stone`, discreto e de baixa saturação, propositadamente longe do âmbar já usado pela "Visita de estudo" e pelo acento da marca. A identidade do período continua a nunca depender só da cor: o nome, e agora o "desde"/"até", estão sempre escritos ao lado.
+
 ## [0.69.2] — 2026-08-25
 
 ### Fixed

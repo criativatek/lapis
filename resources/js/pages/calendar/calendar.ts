@@ -33,6 +33,18 @@ export type CalendarPeriod = {
 };
 
 /**
+ * Um intervalo de datas «Y-m-d», e nada mais: um mês da vista de Ano, o mês que
+ * a vista de Mês está a mostrar, ou o próprio período. É o menor denominador
+ * comum das perguntas estruturais aqui em baixo, e é de propósito que não é o
+ * tipo de nenhuma das duas vistas — a pergunta «este período cobre isto de uma
+ * ponta à outra?» é a mesma pergunta seja o «isto» o que for.
+ */
+export type CalendarDateRange = {
+    starts_on: string;
+    ends_on: string;
+};
+
+/**
  * The four kinds of acontecimento, and only these four. A closed set: each one
  * is a dated thing with no other home in the application, and anything that
  * already has one does not belong here.
@@ -78,31 +90,131 @@ export type CalendarDay = {
     events: CalendarEvent[];
 };
 
+// ------------------------------------------ as datas, escritas uma só vez
+
 /**
- * The tints the período BANDS are drawn in, in the order the períodos of the
- * year run. Deliberately quiet, and deliberately never the only thing that
- * separates a período from an avaliação: a band has no border, no icon and no
- * emphasis, while an avaliação has all three, so the two stay distinguishable
- * on a monochrome screen and for a reader who does not see the difference in
- * hue. Within the structure itself the tint is a convenience — each band is
- * also named, in the legend and where it begins.
- *
- * There is no setting behind this: one deliberate treatment, applied the same
- * way in both views.
+ * As datas do calendário são «Y-m-d» canónicas, sempre em UTC, e são lidas
+ * assim em toda a parte: assim comparam-se como texto (a ordem lexicográfica É
+ * a ordem cronológica) e escrevem-se sem o fuso do navegador lhes mexer no dia.
  */
-const TINTS = [
-    'bg-sky-100/70 dark:bg-sky-950/40',
-    'bg-amber-100/70 dark:bg-amber-950/40',
-    'bg-emerald-100/70 dark:bg-emerald-950/40',
-    'bg-violet-100/70 dark:bg-violet-950/40',
-    'bg-rose-100/70 dark:bg-rose-950/40',
-    'bg-teal-100/70 dark:bg-teal-950/40',
-];
+export function asDate(date: string): Date {
+    return new Date(`${date}T00:00:00Z`);
+}
 
-export function periodTint(periods: CalendarPeriod[], ulid: string): string {
-    const index = periods.findIndex((period) => period.ulid === ulid);
+const dayFormatter = new Intl.DateTimeFormat('pt-PT', {
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'UTC',
+});
 
-    return index === -1 ? '' : (TINTS[index % TINTS.length] as string);
+/** «11/09» — o mesmo dia escrito da mesma maneira nas duas vistas. */
+export function formatDay(date: string): string {
+    return dayFormatter.format(asDate(date));
+}
+
+/** «11/09 – 29/01»: o período de uma ponta à outra, tal como ele é. */
+export function periodRange(period: CalendarPeriod): string {
+    return `${formatDay(period.starts_on)} – ${formatDay(period.ends_on)}`;
+}
+
+// -------------------------------- a estrutura do ano, respondida uma só vez
+
+/**
+ * O TOM ÚNICO DA ESTRUTURA — um bege quente, discreto e de baixa saturação, e
+ * um só: o arco-íris por índice de período pintava a página inteira de azul só
+ * porque se estava a meio de um semestre, e a estrutura do ano letivo tem de
+ * estar VISÍVEL sem MANDAR na página.
+ *
+ * `stone` de propósito, e nunca `amber`: o âmbar já é da «Visita de estudo»
+ * (EVENT_TREATMENTS, aqui em baixo) e do próprio `--brand-amber`, e repeti-lo
+ * aqui faria a estrutura do ano colidir com uma das quatro espécies de
+ * acontecimento. Fica um cinzento-quente que não compete com nada.
+ *
+ * E CONTINUA A NÃO SER A COR QUE DIZ QUAL É O PERÍODO: onde quer que este tom
+ * apareça, o nome do período — e, num mês de transição, o «desde»/«até» — está
+ * escrito ao lado. A página lê-se inteira num ecrã monocromático.
+ */
+export const PERIOD_TINT = 'bg-stone-100/70 dark:bg-stone-800/50';
+
+/**
+ * O período que cobre este intervalo DE UMA PONTA À OUTRA, e só esse — ou
+ * nenhum.
+ *
+ * É a pergunta de que depende o tom de um mês, e é deliberadamente estreita: um
+ * mês tocado por dois períodos, ou por um só que começa ou acaba a meio dele,
+ * NÃO é de nenhum deles. Pintar setembro inteiro com o tom do 1.º Semestre
+ * quando o semestre só abre no dia 11 é dizer uma coisa falsa sobre os dez
+ * primeiros dias, e a mesma tinta apaga o intervalo entre dois períodos.
+ *
+ * Comparação de strings «Y-m-d», que é o mesmo idioma que o servidor já usa
+ * para esta mesma pergunta.
+ *
+ * `touching` são os períodos que TOCAM o intervalo, já filtrados por quem
+ * chama: a vista de Ano sabe-os pelos `period_ulids` que o servidor lhe manda,
+ * a vista de Mês compara as datas do mês que está a ver. A resposta é a mesma.
+ */
+export function fullyContainedPeriod<TPeriod extends CalendarPeriod>(
+    range: CalendarDateRange,
+    touching: TPeriod[],
+): TPeriod | null {
+    if (touching.length !== 1) {
+        return null;
+    }
+
+    const only = touching[0] as TPeriod;
+
+    return only.starts_on <= range.starts_on && only.ends_on >= range.ends_on
+        ? only
+        : null;
+}
+
+/**
+ * ONDE É QUE O PERÍODO REALMENTE COMEÇA, OU ACABA, DENTRO DESTE INTERVALO —
+ * «desde 11/09», «até 29/01», «de 5/10 a 23/10» — e nada quando ele atravessa
+ * o intervalo inteiro sem abrir nem fechar lá dentro, porque aí não há fronteira
+ * nenhuma para dizer.
+ */
+export function periodBoundaryNote(
+    range: CalendarDateRange,
+    period: CalendarPeriod,
+): string {
+    const startsHere =
+        period.starts_on >= range.starts_on &&
+        period.starts_on <= range.ends_on;
+    const endsHere =
+        period.ends_on >= range.starts_on && period.ends_on <= range.ends_on;
+
+    if (startsHere && endsHere) {
+        return `de ${formatDay(period.starts_on)} a ${formatDay(period.ends_on)}`;
+    }
+
+    if (startsHere) {
+        return `desde ${formatDay(period.starts_on)}`;
+    }
+
+    if (endsHere) {
+        return `até ${formatDay(period.ends_on)}`;
+    }
+
+    return '';
+}
+
+/** O nome do período mais a fronteira que ele tem dentro deste intervalo. */
+function periodNote(range: CalendarDateRange, period: CalendarPeriod): string {
+    const boundary = periodBoundaryNote(range, period);
+
+    return boundary === '' ? period.label : `${period.label} ${boundary}`;
+}
+
+/**
+ * O que um intervalo de transição diz em vez do nome seco do período. Dois
+ * períodos a tocarem o mesmo mês aparecem OS DOIS, e não só o primeiro.
+ */
+export function periodContext(
+    range: CalendarDateRange,
+    touching: CalendarPeriod[],
+): string {
+    return touching.map((period) => periodNote(range, period)).join(' · ');
 }
 
 /**
@@ -122,8 +234,9 @@ export function periodTint(periods: CalendarPeriod[], ulid: string): string {
  *      para o que não é nenhuma das outras três, e não deve gritar.
  *
  * E, ACIMA DE TUDO: A FAIXA DE UM PERÍODO NÃO ENTRA NESTA ESCADA. Continua a
- * ser estrutura — sem moldura, sem ícone, sem peso — exatamente como a Fase 5.2
- * a deixou, e esta fase não lhe toca.
+ * ser estrutura — sem moldura, sem ícone, sem peso — e passou a ser desenhada no
+ * tom único e discreto de PERÍODO_TINT, justamente para não competir com nenhum
+ * dos quatro nem com uma avaliação.
  *
  * NENHUM DESTES QUATRO SE DISTINGUE DOS OUTROS — NEM DE UMA AVALIAÇÃO — SÓ PELA
  * COR. Cada um traz sempre também um ícone próprio e uma etiqueta escrita
