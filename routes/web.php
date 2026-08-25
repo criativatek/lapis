@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AcademicCalendarImportController;
 use App\Http\Controllers\AcademicYearCalendarController;
 use App\Http\Controllers\AcademicYearContextController;
 use App\Http\Controllers\AcademicYearController;
@@ -142,6 +143,25 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
             ->name('calendar.events.update');
         Route::delete('calendar/acontecimentos/{calendarEvent}', [CalendarEventController::class, 'destroy'])
             ->name('calendar.events.destroy');
+
+        // «Importar o calendário da escola» (Fase 5.6) — o .xlsx que o
+        // agrupamento publica, lido para a estrutura DESTE ano letivo.
+        //
+        // Os mesmos três passos, com os mesmos nomes, que timetable-imports.*:
+        // escolher (GET create), rever (POST store, que não escreve nada) e
+        // confirmar (POST confirm, a única que escreve). Gated pelo mesmo
+        // `module:calendar` das duas vistas e dos acontecimentos, porque importar
+        // o calendário é parte de ter o calendário e não uma capacidade nova.
+        //
+        // Alcançado a partir da própria página do Calendário e NÃO de uma entrada
+        // de menu própria (§24): quem importa um calendário está a olhar para o
+        // calendário quando decide fazê-lo.
+        Route::get('academic-calendar-imports/create', [AcademicCalendarImportController::class, 'create'])
+            ->name('academic-calendar-imports.create');
+        Route::post('academic-calendar-imports', [AcademicCalendarImportController::class, 'store'])
+            ->name('academic-calendar-imports.store');
+        Route::post('academic-calendar-imports/confirm', [AcademicCalendarImportController::class, 'confirm'])
+            ->name('academic-calendar-imports.confirm');
     });
 
     // Subjects — the teacher's disciplines. Managed from the header subject

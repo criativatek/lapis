@@ -2,6 +2,18 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.71.0] — 2026-08-25
+
+### Added
+
+- **O Calendário do Ano Letivo passa a deixar importar o calendário escolar publicado pela escola, em Excel.** "Importar calendário da escola" fica junto de "Novo acontecimento", na vista de Mês — sem menu novo. O ficheiro é lido em memória e esquecido: nada é escrito enquanto o professor não rever, linha a linha, o que foi encontrado e confirmar explicitamente. Cada item aceite vai para a sua fonte canónica de sempre — datas de semestre para "Estrutura do Ano Letivo", feriados e interrupções para o domínio criado nesta mesma fase, o que não é classificável com segurança para um acontecimento genérico — e nada é copiado para um sítio novo só por ter sido importado.
+
+  **Nunca uma escolha silenciosa.** Um calendário real trouxe um caso concreto: o 2.º Semestre termina em datas diferentes consoante o ciclo (4, 11 ou 30 de junho). A aplicação não escolhe por adivinhação — mostra as três datas lado a lado e obriga a uma escolha explícita antes de a linha poder ser confirmada; deixá-la por escolher não bloqueia as restantes linhas do ficheiro.
+
+  **Cada linha tem o seu próprio estado, nunca um ficheiro tudo-ou-nada**: novo, já existente (nada a fazer), alterado (mostra o valor atual e o do documento, lado a lado, nunca substituído em silêncio), em conflito, ou fora do ano letivo selecionado. Reimportar o mesmo ficheiro duas vezes não duplica nada — a segunda pré-visualização mostra tudo como já existente.
+
+  **Nada do que não seja claramente reconhecível é descartado.** Um item datado que o documento não permite classificar com confiança fica proposto como acontecimento genérico, por aceitar ou rejeitar — nunca silenciosamente ignorado, e nunca forçado a uma categoria que diria algo que o documento não diz.
+
 ## [0.70.1] — 2026-08-25
 
 ### Fixed
