@@ -15,8 +15,10 @@ use App\Models\SchoolClass;
 use App\Models\Subject;
 use App\Models\SubscriptionStatus;
 use App\Models\User;
+use App\Services\Calendar\AcademicYearCalendarQuery;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Tenancy\CurrentOrganization;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Inertia\Testing\AssertableInertia;
@@ -150,9 +152,15 @@ class AcademicYearCalendarTest extends TestCase
     /**
      * The entry is a way in, never a dead end: it carries the real, existing
      * route to the element's own page, and that page really answers there.
+     *
+     * E CARREGA TAMBÉM O CAMINHO DE VOLTA, no próprio endereço: quem entrar por
+     * aqui volta ao MÊS de onde partiu, e não ao mês de hoje nem à turma. É a
+     * mesma mecânica de query string que «Avaliações» já usava
+     * (?from=assessments) — o cliente lê-a, o servidor não precisa de saber de
+     * nada — e o «month» é sempre o «Y-m» que o próprio servidor resolveu.
      */
     #[Test]
-    public function an_assessment_links_to_its_own_real_page(): void
+    public function an_assessment_links_to_its_own_real_page_and_carries_the_way_back(): void
     {
         $schoolClass = $this->schoolClassFor($this->teacher, '7.º C');
         $instrument = $this->instrument($schoolClass, 'Teste de Frações', '2026-10-15');
@@ -161,13 +169,80 @@ class AcademicYearCalendarTest extends TestCase
             ->get('/calendar?month=2026-10')->assertOk()
             ->assertInertia(function (AssertableInertia $page) use ($instrument) {
                 $day = $this->dayOf($page, '2026-10-15');
+                $href = $day['assessments'][0]['href'];
 
                 $this->assertSame(
-                    route('instruments.show', $instrument, false),
-                    $day['assessments'][0]['href'],
+                    "/instruments/{$instrument->ulid}?from=calendar&month=2026-10",
+                    $href,
                 );
-                $this->assertSame("/instruments/{$instrument->ulid}", $day['assessments'][0]['href']);
+                // A página do elemento é mesmo a que está lá: o link continua a
+                // ser a rota real, e não um endereço inventado a seu lado.
+                $this->assertStringStartsWith(
+                    route('instruments.show', $instrument, false),
+                    $href,
+                );
             });
+    }
+
+    /**
+     * O mês que viaja é o mês QUE SE ESTÁ A VER, e não um constante: navegar
+     * para outro mês muda o caminho de volta com ele.
+     */
+    #[Test]
+    public function the_way_back_names_the_month_actually_being_read(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher, '7.º C');
+
+        // 1 de novembro de 2026 é um domingo, e por isso é visível NAS DUAS
+        // grelhas: na última linha de outubro e na primeira de novembro. O mesmo
+        // elemento, lido de dois meses diferentes, volta para o mês certo.
+        $this->instrument($schoolClass, 'Ficha de novembro', '2026-11-01');
+
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar?month=2026-10')->assertOk()
+            ->assertInertia(function (AssertableInertia $page) {
+                $this->assertStringEndsWith(
+                    '?from=calendar&month=2026-10',
+                    $this->dayOf($page, '2026-11-01')['assessments'][0]['href'],
+                );
+            });
+
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar?month=2026-11')->assertOk()
+            ->assertInertia(function (AssertableInertia $page) {
+                $this->assertStringEndsWith(
+                    '?from=calendar&month=2026-11',
+                    $this->dayOf($page, '2026-11-01')['assessments'][0]['href'],
+                );
+            });
+    }
+
+    /**
+     * E QUEM NÃO PERGUNTA POR UM MÊS NÃO RECEBE UM: a leitura sem contexto de
+     * mês — a mesma que a vista de Ano faz, e que não desenha link nenhum —
+     * continua a dar exatamente o endereço simples que sempre deu.
+     */
+    #[Test]
+    public function a_reading_with_no_month_of_its_own_produces_the_plain_href(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher, '7.º C');
+        $instrument = $this->instrument($schoolClass, 'Teste de Frações', '2026-10-15');
+
+        $reading = app(CurrentOrganization::class)->runFor(
+            $this->organization,
+            fn (): array => app(AcademicYearCalendarQuery::class)->for(
+                $this->teacher,
+                $this->academicYear,
+                CarbonImmutable::parse('2026-10-01'),
+                CarbonImmutable::parse('2026-10-31'),
+            ),
+        );
+
+        $this->assertSame(
+            route('instruments.show', $instrument, false),
+            $reading['assessments'][0]['href'],
+        );
+        $this->assertStringNotContainsString('from=calendar', $reading['assessments'][0]['href']);
     }
 
     #[Test]
@@ -550,6 +625,10 @@ class AcademicYearCalendarTest extends TestCase
                 ->where('academicYear', null)
                 ->where('months', [])
                 ->where('periods', [])
+                // Zero períodos continua a ser dito exatamente como a página o
+                // dizia antes: não há espécie nenhuma de onde tirar um nome, e
+                // «período» é o nome do próprio modelo.
+                ->where('periodsCountLabel', '0 períodos')
                 ->where('assessmentsTotal', 0)
                 ->where('eventsTotal', 0));
     }
@@ -604,6 +683,104 @@ class AcademicYearCalendarTest extends TestCase
                 $this->assertCount(1, $months['2026-10']['period_ulids']);
                 $this->assertCount(0, $months['2027-07']['period_ulids']);
                 $this->assertCount(2, $months['2027-04']['period_ulids']);
+            });
+    }
+
+    /**
+     * «2 SEMESTRES», E NÃO «2 PERÍODOS». Quantos períodos tem o ano, e de que
+     * espécie são, é uma pergunta cuja resposta já está escrita no `kind` de
+     * cada um — e é lida de lá, e não adivinhada pelo texto de uma etiqueta nem
+     * derivada de um número na página.
+     */
+    #[Test]
+    public function a_year_of_semesters_is_counted_in_semesters(): void
+    {
+        $this->period('1.º Semestre', 1, '2026-09-11', '2027-01-29', AcademicPeriodKind::Semester);
+        $this->period('2.º Semestre', 2, '2027-02-11', '2027-07-31', AcademicPeriodKind::Semester);
+
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar/ano')->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('periodsCountLabel', '2 semestres')
+                ->etc());
+    }
+
+    #[Test]
+    public function a_year_of_periods_is_still_counted_in_periods(): void
+    {
+        $this->period('1.º Período', 1, '2026-09-01', '2026-12-18');
+        $this->period('2.º Período', 2, '2027-01-05', '2027-04-02');
+        $this->period('3.º Período', 3, '2027-04-12', '2027-06-30');
+
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar/ano')->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('periodsCountLabel', '3 períodos')
+                ->etc());
+    }
+
+    #[Test]
+    public function a_single_period_is_counted_in_the_singular_of_its_own_kind(): void
+    {
+        $this->period('Trimestre único', 1, '2026-09-01', '2026-12-18', AcademicPeriodKind::Trimester);
+
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar/ano')->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('periodsCountLabel', '1 trimestre')
+                ->etc());
+    }
+
+    /**
+     * E QUANDO AS ESPÉCIES DIFEREM, NÃO SE INVENTA NENHUMA. Um ano que mistura
+     * um semestre com dois períodos não é «3 semestres» nem «3 períodos de»
+     * espécie nenhuma em particular: é dito pela palavra que é estruturalmente
+     * verdadeira sobre todos eles — «período», que é o nome do próprio modelo —
+     * em vez de ser dito pela espécie que calhou vir primeiro.
+     */
+    #[Test]
+    public function a_year_mixing_kinds_falls_back_to_the_neutral_word(): void
+    {
+        $this->period('1.º Semestre', 1, '2026-09-01', '2027-01-29', AcademicPeriodKind::Semester);
+        $this->period('2.º Período', 2, '2027-02-11', '2027-04-02');
+        $this->period('3.º Período', 3, '2027-04-12', '2027-06-30');
+
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar/ano')->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('periodsCountLabel', '3 períodos')
+                ->etc());
+    }
+
+    /**
+     * OS DOIS EXTREMOS DE CADA MÊS vão escritos, e não só o primeiro: sem o
+     * último dia a vista não consegue distinguir um mês INTEIRAMENTE dentro de
+     * um período de um mês que o período apenas toca — e pintar setembro
+     * inteiro com a cor de um semestre que só abre no dia 11 é dizer uma coisa
+     * falsa sobre os dez primeiros dias do mês.
+     */
+    #[Test]
+    public function every_month_of_the_year_view_carries_both_of_its_own_ends(): void
+    {
+        $this->period('1.º Semestre', 1, '2026-09-11', '2027-01-29', AcademicPeriodKind::Semester);
+        $this->period('2.º Semestre', 2, '2027-02-11', '2027-07-31', AcademicPeriodKind::Semester);
+
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar/ano')->assertOk()
+            ->assertInertia(function (AssertableInertia $page) {
+                $months = collect($page->toArray()['props']['months'])->keyBy('value');
+
+                $this->assertSame('2026-09-01', $months['2026-09']['starts_on']);
+                $this->assertSame('2026-09-30', $months['2026-09']['ends_on']);
+                $this->assertSame('2027-02-28', $months['2027-02']['ends_on']);
+                $this->assertSame('2026-10-31', $months['2026-10']['ends_on']);
+
+                // O intervalo real entre os dois semestres (30/01 a 10/02)
+                // continua a ser dito como é: janeiro e fevereiro são tocados
+                // por um semestre cada, e nenhum deles os cobre inteiros.
+                $this->assertCount(1, $months['2027-01']['period_ulids']);
+                $this->assertCount(1, $months['2027-02']['period_ulids']);
+                $this->assertCount(1, $months['2026-10']['period_ulids']);
             });
     }
 
@@ -757,14 +934,19 @@ class AcademicYearCalendarTest extends TestCase
         ];
     }
 
-    private function period(string $label, int $sequence, string $startsOn, string $endsOn): AcademicPeriod
-    {
+    private function period(
+        string $label,
+        int $sequence,
+        string $startsOn,
+        string $endsOn,
+        AcademicPeriodKind $kind = AcademicPeriodKind::Term,
+    ): AcademicPeriod {
         return $this->inTenant(fn (): AcademicPeriod => AcademicPeriod::factory()
             ->recycle($this->organization)
             ->create([
                 'academic_year_id' => $this->academicYear->getKey(),
                 'label' => $label,
-                'kind' => AcademicPeriodKind::Term,
+                'kind' => $kind,
                 'sequence' => $sequence,
                 'starts_on' => $startsOn,
                 'ends_on' => $endsOn,

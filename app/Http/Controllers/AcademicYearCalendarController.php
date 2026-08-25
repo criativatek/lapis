@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\Calendar\CalendarMonthRequest;
+use App\Models\AcademicPeriodKind;
 use App\Models\AcademicYear;
 use App\Models\SchoolClass;
 use App\Models\User;
@@ -103,7 +104,11 @@ class AcademicYearCalendarController extends Controller implements HasMiddleware
         $gridStart = $month->startOfWeek(CarbonImmutable::MONDAY);
         $gridEnd = $month->endOfMonth()->endOfWeek(CarbonImmutable::SUNDAY);
 
-        $reading = $this->calendar->for($this->user($request), $academicYear, $gridStart, $gridEnd);
+        // O mês que está a ser visto viaja com cada avaliação, para que a página
+        // do elemento saiba oferecer «← Voltar ao Calendário» exatamente para
+        // este mês. É o mesmo mecanismo — uma query string, lida no cliente —
+        // que «Avaliações» já usa, e não um returnTo servido pelo servidor.
+        $reading = $this->calendar->for($this->user($request), $academicYear, $gridStart, $gridEnd, $month->format('Y-m'));
         $opening = $this->openingMonth($academicYear);
 
         return Inertia::render('calendar/Month', [
@@ -160,6 +165,7 @@ class AcademicYearCalendarController extends Controller implements HasMiddleware
                 'academicYear' => null,
                 'months' => [],
                 'periods' => [],
+                'periodsCountLabel' => $this->periodsCountLabel([]),
                 'assessmentsTotal' => 0,
                 'eventsTotal' => 0,
             ]);
@@ -181,6 +187,12 @@ class AcademicYearCalendarController extends Controller implements HasMiddleware
             $months[] = [
                 'value' => $cursor->format('Y-m'),
                 'starts_on' => $monthStart,
+                // O último dia do mês vai escrito, e não só o primeiro: sem ele
+                // a vista não consegue distinguir um mês INTEIRAMENTE dentro de
+                // um período de um mês que o período apenas toca — e pintar o
+                // mês todo com a cor de um período que só lá está metade é a
+                // única coisa que este cartão nunca pode fazer.
+                'ends_on' => $monthEnd,
                 'assessments_count' => count(array_filter(
                     $reading['assessments'],
                     fn (array $assessment): bool => $assessment['applied_on'] >= $monthStart && $assessment['applied_on'] <= $monthEnd,
@@ -212,6 +224,9 @@ class AcademicYearCalendarController extends Controller implements HasMiddleware
         return Inertia::render('calendar/Year', [
             'academicYear' => $this->academicYearPayload($academicYear),
             'months' => $months,
+            // «2 semestres», «3 períodos» — contado e NOMEADO aqui, onde a
+            // espécie de cada período está escrita, e não adivinhado na página.
+            'periodsCountLabel' => $this->periodsCountLabel($reading['periods']),
             'periods' => array_map(
                 fn (array $period): array => [
                     ...$period,
@@ -225,6 +240,37 @@ class AcademicYearCalendarController extends Controller implements HasMiddleware
             'assessmentsTotal' => count($reading['assessments']),
             'eventsTotal' => count($reading['events']),
         ]);
+    }
+
+    /**
+     * HOW MANY, AND OF WHAT SHAPE — «2 semestres», «3 períodos», «1 trimestre».
+     *
+     * The collective noun is read from the períodos' own `kind`, which is where
+     * this application already writes down what shape a year has: nothing is
+     * inferred from a label's text, and nothing is guessed. When the year's
+     * períodos are all of one kind, that kind names them — lower-cased for the
+     * middle of a sentence, the exact inverse of the frontend's capitalizeFirst.
+     *
+     * WHEN THE KINDS DIFFER, NOTHING IS INVENTED: a year mixing semestres and
+     * períodos is named by the neutral word that is structurally true of all of
+     * them — «período», which is the model's own name — rather than by whichever
+     * kind happened to come first.
+     *
+     * @param  list<array<string, mixed>>  $periods
+     */
+    private function periodsCountLabel(array $periods): string
+    {
+        $count = count($periods);
+        $kinds = array_unique(array_column($periods, 'kind'));
+
+        if (count($kinds) !== 1) {
+            return $count === 1 ? '1 período' : "{$count} períodos";
+        }
+
+        $kind = AcademicPeriodKind::from((string) reset($kinds));
+        $noun = $count === 1 ? $kind->label() : $kind->pluralLabel();
+
+        return "{$count} ".lcfirst($noun);
     }
 
     /**

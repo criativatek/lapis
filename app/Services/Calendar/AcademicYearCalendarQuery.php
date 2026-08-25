@@ -40,20 +40,26 @@ final class AcademicYearCalendarQuery
     private const TIMEZONE = 'Europe/Lisbon';
 
     /**
+     * @param  string|null  $returnMonth  The «Y-m» the caller is showing, when it
+     *                                    has one, so that an avaliação's href can
+     *                                    carry the way back to the month it was
+     *                                    opened from. The Ano view passes nothing,
+     *                                    because it renders no assessment link at
+     *                                    all, and its hrefs stay exactly as they were.
      * @return array{
      *     periods: list<array{ulid: string, label: string, kind: string, kind_label: string, sequence: int, starts_on: string, ends_on: string}>,
      *     assessments: list<array{ulid: string, title: string, applied_on: string, class_ulid: string, class_label: string, subject: string, type: string, status: string, status_label: string, href: string}>,
      *     events: list<array{ulid: string, type: string, type_label: string, type_short_label: string, title: string, starts_on: string, ends_on: string, starts_at: string|null, ends_at: string|null, description: string|null, school_classes: list<array{ulid: string, label: string}>}>
      * }
      */
-    public function for(User $teacher, AcademicYear $academicYear, CarbonImmutable $from, CarbonImmutable $to): array
+    public function for(User $teacher, AcademicYear $academicYear, CarbonImmutable $from, CarbonImmutable $to, ?string $returnMonth = null): array
     {
         $fromDate = $from->setTimezone(self::TIMEZONE)->toDateString();
         $toDate = $to->setTimezone(self::TIMEZONE)->toDateString();
 
         return [
             'periods' => $this->periods($academicYear, $fromDate, $toDate),
-            'assessments' => $this->assessments($teacher, $academicYear, $fromDate, $toDate),
+            'assessments' => $this->assessments($teacher, $academicYear, $fromDate, $toDate, $returnMonth),
             'events' => $this->events($teacher, $fromDate, $toDate),
         ];
     }
@@ -108,7 +114,7 @@ final class AcademicYearCalendarQuery
      *
      * @return list<array{ulid: string, title: string, applied_on: string, class_ulid: string, class_label: string, subject: string, type: string, status: string, status_label: string, href: string}>
      */
-    private function assessments(User $teacher, AcademicYear $academicYear, string $from, string $to): array
+    private function assessments(User $teacher, AcademicYear $academicYear, string $from, string $to, ?string $returnMonth = null): array
     {
         $classIds = SchoolClass::query()
             ->taughtBy($teacher)
@@ -144,7 +150,16 @@ final class AcademicYearCalendarQuery
                 'status_label' => $instrument->status->label(),
                 // The real page of the real element, by its real route: an
                 // entry in the calendar is a way in, never a dead end.
-                'href' => route('instruments.show', $instrument, false),
+                //
+                // E, QUANDO SE SABE DE QUE MÊS SE PARTIU, o caminho de volta vai
+                // escrito no próprio endereço — a mesma mecânica de query string
+                // que «Avaliações» já usa (?from=assessments), e não um sistema
+                // de «returnTo» vindo do servidor. O «month» é sempre o «Y-m» que
+                // o próprio servidor já resolveu, nunca texto do cliente, e o
+                // destino que a página constrói dele é sempre /calendar.
+                'href' => $returnMonth === null
+                    ? route('instruments.show', $instrument, false)
+                    : route('instruments.show', ['instrument' => $instrument, 'from' => 'calendar', 'month' => $returnMonth], false),
             ])
             ->all());
     }

@@ -18,6 +18,8 @@ type YearPeriod = CalendarPeriod & { assessments_count: number };
 type YearMonth = {
     value: string;
     starts_on: string;
+    /** O último dia do mês, para se poder saber se um período o cobre INTEIRO. */
+    ends_on: string;
     assessments_count: number;
     /** Acontecimentos CRUZANDO este mês, não apenas os que começam nele. */
     events_count: number;
@@ -34,12 +36,16 @@ const props = defineProps<{
     } | null;
     months: YearMonth[];
     periods: YearPeriod[];
+    /**
+     * «2 semestres», «3 períodos» — contado E NOMEADO no servidor, onde a
+     * espécie de cada período está escrita. Esta página não volta a derivar o
+     * plural a partir do número: dizer «períodos» a um ano de semestres seria
+     * inventar uma estrutura que o ano não tem.
+     */
+    periodsCountLabel: string;
     assessmentsTotal: number;
     eventsTotal: number;
 }>();
-
-/** How many indicator marks a month draws before it simply states the number. */
-const MAX_MARKS = 6;
 
 const monthFormatter = new Intl.DateTimeFormat('pt-PT', {
     month: 'long',
@@ -70,8 +76,75 @@ function periodsOf(month: YearMonth): YearPeriod[] {
     );
 }
 
-function marks(count: number): number {
-    return Math.min(count, MAX_MARKS);
+/**
+ * O período que cobre este mês DE UMA PONTA À OUTRA, e só esse — ou nenhum.
+ *
+ * É a pergunta de que depende a cor do cartão, e é deliberadamente estreita: um
+ * mês tocado por dois períodos, ou por um só que começa ou acaba a meio dele,
+ * NÃO é de nenhum deles. Pintar setembro inteiro com a cor do 1.º Semestre
+ * quando o semestre só abre no dia 11 é dizer uma coisa falsa sobre os dez
+ * primeiros dias, e a mesma mentira apaga o intervalo entre dois períodos.
+ *
+ * Comparação de strings «Y-m-d», que é o mesmo idioma que o servidor já usa
+ * para esta mesma pergunta: em datas canónicas nesse formato, a ordem
+ * lexicográfica É a ordem cronológica.
+ */
+function fullyContainedPeriod(month: YearMonth): YearPeriod | null {
+    const touching = periodsOf(month);
+
+    if (touching.length !== 1) {
+        return null;
+    }
+
+    const only = touching[0] as YearPeriod;
+
+    return only.starts_on <= month.starts_on && only.ends_on >= month.ends_on
+        ? only
+        : null;
+}
+
+/**
+ * A cor de um mês, e a única circunstância em que ele a tem: quando um período
+ * o cobre de uma ponta à outra. Um mês de transição fica sem cor nenhuma — que
+ * é exatamente o que já acontecia a um mês sem períodos — porque não há aqui
+ * meia cor que diga a verdade sobre metade dele.
+ */
+function monthTint(month: YearMonth): string {
+    const period = fullyContainedPeriod(month);
+
+    return period === null ? '' : periodTint(props.periods, period.ulid);
+}
+
+/**
+ * O que um mês de transição diz em vez do nome seco do período: onde é que o
+ * período realmente começa, ou acaba, dentro deste mês. As datas são escritas
+ * com o MESMO formatador das faixas dos períodos, logo acima.
+ */
+function periodNote(month: YearMonth, period: YearPeriod): string {
+    const startsHere =
+        period.starts_on >= month.starts_on && period.starts_on <= month.ends_on;
+    const endsHere =
+        period.ends_on >= month.starts_on && period.ends_on <= month.ends_on;
+
+    if (startsHere && endsHere) {
+        return `${period.label} de ${rangeFormatter.format(asDate(period.starts_on))} a ${rangeFormatter.format(asDate(period.ends_on))}`;
+    }
+
+    if (startsHere) {
+        return `${period.label} desde ${rangeFormatter.format(asDate(period.starts_on))}`;
+    }
+
+    if (endsHere) {
+        return `${period.label} até ${rangeFormatter.format(asDate(period.ends_on))}`;
+    }
+
+    return period.label;
+}
+
+function periodContext(month: YearMonth): string {
+    return periodsOf(month)
+        .map((period) => periodNote(month, period))
+        .join(' · ');
 }
 
 function assessmentsLabel(count: number): string {
@@ -87,7 +160,7 @@ const description = computed(() => {
         return 'O ano letivo inteiro, de uma vez.';
     }
 
-    return `${props.academicYear.label} · ${props.periods.length === 1 ? '1 período' : `${props.periods.length} períodos`} · ${assessmentsLabel(props.assessmentsTotal)} · ${eventsLabel(props.eventsTotal)}`;
+    return `${props.academicYear.label} · ${props.periodsCountLabel} · ${assessmentsLabel(props.assessmentsTotal)} · ${eventsLabel(props.eventsTotal)}`;
 });
 </script>
 
@@ -162,11 +235,14 @@ const description = computed(() => {
                     class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 rounded-lg px-3 py-2.5"
                     :class="periodTint(periods, period.ulid)"
                 >
+                    <!--
+                        O nome do período já diz a espécie — «1.º Semestre», «2.º
+                        Período» — e repeti-la a seguir não acrescenta nada.
+                    -->
                     <span class="text-sm">
                         <span class="font-medium">{{ period.label }}</span>
                         <span class="opacity-80">
-                            · {{ period.kind_label }} ·
-                            {{ periodRange(period) }}</span
+                            · {{ periodRange(period) }}</span
                         >
                     </span>
                     <span
@@ -192,11 +268,7 @@ const description = computed(() => {
                     :key="month.value"
                     :href="`/calendar?month=${month.value}`"
                     class="flex flex-col gap-2 rounded-xl border p-3 transition-colors outline-none hover:border-foreground/40 focus-visible:ring-2 focus-visible:ring-ring"
-                    :class="
-                        month.period_ulids.length > 0
-                            ? periodTint(periods, month.period_ulids[0] as string)
-                            : ''
-                    "
+                    :class="monthTint(month)"
                     :aria-label="monthLabel(month)"
                     :data-month="month.value"
                 >
@@ -211,46 +283,46 @@ const description = computed(() => {
                         >
                     </span>
 
+                    <!--
+                        UM MÊS INTEIRAMENTE DENTRO DE UM PERÍODO diz só o nome
+                        dele: é o caso simples, e não precisa de mais nada. Um
+                        mês de transição — dois períodos, ou um que começa ou
+                        acaba a meio — diz onde é que ele realmente começa ou
+                        acaba, porque a cor sozinha diria que o mês é todo dele.
+                    -->
                     <span
                         v-if="periodsOf(month).length > 0"
                         class="text-xs opacity-80"
                         >{{
-                            periodsOf(month)
-                                .map((period) => period.label)
-                                .join(' · ')
+                            fullyContainedPeriod(month)
+                                ? periodsOf(month)
+                                      .map((period) => period.label)
+                                      .join(' · ')
+                                : periodContext(month)
                         }}</span
                     >
 
                     <!--
-                        Indicadores compactos, nunca a lista: um traço por
-                        avaliação até seis, e o número escrito sempre. Os
-                        acontecimentos entram aqui pela MESMA regra da Fase 5.2
-                        — uma contagem, e nunca os nomes: a esta escala o que se
-                        procura é a forma do ano, e ler os acontecimentos um a
-                        um é o que a vista de Mês faz, a um clique deste mesmo
-                        cartão.
+                        Uma contagem escrita, nunca a lista: os acontecimentos
+                        entram aqui pela MESMA regra da Fase 5.2 — uma contagem,
+                        e nunca os nomes: a esta escala o que se procura é a
+                        forma do ano, e ler os acontecimentos um a um é o que a
+                        vista de Mês faz, a um clique deste mesmo cartão.
+
+                        Os traços que aqui estavam ao lado do número foram-se
+                        embora: repetiam em desenho, e com um tecto de seis, o
+                        número que já estava escrito a seu lado — não eram uma
+                        repartição por período nem por espécie, não eram nada
+                        que o número não dissesse melhor.
                     -->
                     <span class="mt-auto flex flex-wrap items-center gap-1.5">
-                        <template v-if="month.assessments_count > 0">
-                            <span
-                                class="flex items-center gap-1.5 rounded-md border border-foreground/25 bg-background/80 px-2 py-0.5 text-xs font-medium"
-                            >
-                                <ClipboardCheck
-                                    class="size-3"
-                                    aria-hidden="true"
-                                />
-                                {{ assessmentsLabel(month.assessments_count) }}
-                            </span>
-                            <span class="flex gap-0.5" aria-hidden="true">
-                                <span
-                                    v-for="mark in marks(
-                                        month.assessments_count,
-                                    )"
-                                    :key="mark"
-                                    class="h-3 w-1 rounded-full bg-foreground/50"
-                                />
-                            </span>
-                        </template>
+                        <span
+                            v-if="month.assessments_count > 0"
+                            class="flex items-center gap-1.5 rounded-md border border-foreground/25 bg-background/80 px-2 py-0.5 text-xs font-medium"
+                        >
+                            <ClipboardCheck class="size-3" aria-hidden="true" />
+                            {{ assessmentsLabel(month.assessments_count) }}
+                        </span>
                         <span v-else class="text-xs text-muted-foreground"
                             >Sem avaliações</span
                         >

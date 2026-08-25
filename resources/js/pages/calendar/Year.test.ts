@@ -25,10 +25,18 @@ function period(overrides: Partial<YearPeriod> = {}): YearPeriod {
     };
 }
 
+/** O último dia real do mês, tal como o servidor o envia. */
+function lastDayOf(value: string): string {
+    const [year, monthNumber] = value.split('-').map(Number) as [number, number];
+
+    return new Date(Date.UTC(year, monthNumber, 0)).toISOString().slice(0, 10);
+}
+
 function month(value: string, overrides: Record<string, unknown> = {}) {
     return {
         value,
         starts_on: `${value}-01`,
+        ends_on: lastDayOf(value),
         assessments_count: 0,
         events_count: 0,
         period_ulids: [] as string[],
@@ -48,6 +56,7 @@ function mountPage(overrides: Partial<InstanceType<typeof Year>['$props']> = {})
             },
             months: [month('2026-09'), month('2026-10'), month('2026-11')],
             periods: [],
+            periodsCountLabel: '0 períodos',
             assessmentsTotal: 0,
             eventsTotal: 0,
             ...overrides,
@@ -96,6 +105,7 @@ describe('calendar/Year', () => {
                     assessments_count: 1,
                 }),
             ],
+            periodsCountLabel: '2 períodos',
             assessmentsTotal: 4,
         });
 
@@ -148,6 +158,187 @@ describe('calendar/Year', () => {
 
         expect(october.text()).toContain('1.º Período');
         expect(october.text()).toContain('2.º Período');
+    });
+
+    /**
+     * «2 SEMESTRES», E NÃO «2 PERÍODOS». Quantos são e de que espécie são é uma
+     * pergunta cuja resposta está escrita no `kind` de cada período, e é lá que
+     * ela é respondida — no servidor. Esta página escreve o que lhe é dado e
+     * não volta a derivar o plural a partir do número, porque derivá-lo aqui
+     * seria voltar a dizer «períodos» a um ano que tem semestres.
+     */
+    it('writes the server\'s own count of the year\'s períodos, verbatim', () => {
+        const semesters = mountPage({
+            periods: [
+                period({
+                    ulid: 'sem-1',
+                    label: '1.º Semestre',
+                    kind: 'semester',
+                    kind_label: 'Semestre',
+                    starts_on: '2026-09-11',
+                    ends_on: '2027-01-29',
+                }),
+                period({
+                    ulid: 'sem-2',
+                    label: '2.º Semestre',
+                    kind: 'semester',
+                    kind_label: 'Semestre',
+                    sequence: 2,
+                    starts_on: '2027-02-11',
+                    ends_on: '2027-08-31',
+                }),
+            ],
+            periodsCountLabel: '2 semestres',
+        });
+
+        expect(semesters.text()).toContain('2 semestres');
+        expect(semesters.text()).not.toContain('2 períodos');
+
+        // E a mesma página escreve «3 períodos» quando é isso que lhe dizem: o
+        // que muda é o dado, e nunca uma regra escondida aqui.
+        expect(mountPage({ periodsCountLabel: '3 períodos' }).text()).toContain(
+            '3 períodos',
+        );
+    });
+
+    // -------------------------------------------------- os meses de transição
+
+    /**
+     * UM MÊS DE TRANSIÇÃO NÃO É DE NINGUÉM. Setembro, num ano de semestres que
+     * abre a 11 de setembro, aparecia pintado de uma ponta à outra com a cor do
+     * 1.º Semestre — o que é falso sobre os dez primeiros dias do mês, e é a
+     * mesma tinta que apagava o intervalo entre dois períodos.
+     */
+    it('never paints a whole month in the colour of a período that only covers part of it', () => {
+        const semester = period({
+            ulid: 'sem-1',
+            label: '1.º Semestre',
+            kind: 'semester',
+            kind_label: 'Semestre',
+            starts_on: '2026-09-11',
+            ends_on: '2027-01-29',
+        });
+
+        const wrapper = mountPage({
+            months: [
+                month('2026-09', { period_ulids: ['sem-1'] }),
+                month('2026-10', { period_ulids: ['sem-1'] }),
+                month('2027-01', { period_ulids: ['sem-1'] }),
+            ],
+            periods: [semester],
+            periodsCountLabel: '1 semestre',
+        });
+
+        const september = wrapper.find('[data-month="2026-09"]');
+        const october = wrapper.find('[data-month="2026-10"]');
+        const january = wrapper.find('[data-month="2027-01"]');
+
+        // Setembro: o semestre só abre a 11, e o cartão di-lo em vez de o pintar.
+        expect(september.classes().join(' ')).not.toContain('bg-sky-100/70');
+        expect(september.text()).toContain('1.º Semestre desde 11/09');
+
+        // Outubro está inteiro dentro dele: o caso simples, tal e qual como era.
+        expect(october.classes().join(' ')).toContain('bg-sky-100/70');
+        expect(october.text()).toContain('1.º Semestre');
+        expect(october.text()).not.toContain('desde');
+        expect(october.text()).not.toContain('até');
+
+        // Janeiro: o semestre fecha a 29, e o que vem depois não é dele.
+        expect(january.classes().join(' ')).not.toContain('bg-sky-100/70');
+        expect(january.text()).toContain('1.º Semestre até 29/01');
+    });
+
+    it('says where the next período begins in the month it begins in', () => {
+        const second = period({
+            ulid: 'sem-2',
+            label: '2.º Semestre',
+            kind: 'semester',
+            kind_label: 'Semestre',
+            sequence: 2,
+            starts_on: '2027-02-11',
+            ends_on: '2027-08-31',
+        });
+
+        const wrapper = mountPage({
+            months: [
+                month('2027-02', { period_ulids: ['sem-2'] }),
+                month('2027-03', { period_ulids: ['sem-2'] }),
+            ],
+            periods: [second],
+            periodsCountLabel: '2 semestres',
+        });
+
+        const february = wrapper.find('[data-month="2027-02"]');
+
+        expect(february.classes().join(' ')).not.toContain('bg-sky-100/70');
+        expect(february.text()).toContain('2.º Semestre desde 11/02');
+        // E março, inteiramente dentro dele, volta a ser o caso simples.
+        expect(wrapper.find('[data-month="2027-03"]').classes().join(' ')).toContain(
+            'bg-sky-100/70',
+        );
+    });
+
+    it('leaves a month touched by two períodos in neither of their colours', () => {
+        const first = period({ ulid: 'p1', ends_on: '2026-10-10' });
+        const second = period({
+            ulid: 'p2',
+            label: '2.º Período',
+            sequence: 2,
+            starts_on: '2026-10-20',
+            ends_on: '2026-12-18',
+        });
+
+        const wrapper = mountPage({
+            months: [month('2026-10', { period_ulids: ['p1', 'p2'] })],
+            periods: [first, second],
+            periodsCountLabel: '2 períodos',
+        });
+
+        const october = wrapper.find('[data-month="2026-10"]');
+        const classes = october.classes().join(' ');
+
+        expect(classes).not.toContain('bg-sky-100/70');
+        expect(classes).not.toContain('bg-amber-100/70');
+        // As duas metades do mês, ditas por extenso, e o intervalo entre elas
+        // deixado por dizer em vez de ser pintado de uma cor qualquer.
+        expect(october.text()).toContain('1.º Período até 10/10');
+        expect(october.text()).toContain('2.º Período desde 20/10');
+    });
+
+    it('writes both ends when a período begins and ends inside the same month', () => {
+        const brief = period({
+            ulid: 'p-brief',
+            label: 'Módulo A',
+            kind: 'module',
+            kind_label: 'Módulo',
+            starts_on: '2026-10-05',
+            ends_on: '2026-10-23',
+        });
+
+        const wrapper = mountPage({
+            months: [month('2026-10', { period_ulids: ['p-brief'] })],
+            periods: [brief],
+            periodsCountLabel: '1 módulo',
+        });
+
+        const october = wrapper.find('[data-month="2026-10"]');
+
+        expect(october.classes().join(' ')).not.toContain('bg-sky-100/70');
+        expect(october.text()).toContain('Módulo A de 5/10 a 23/10');
+    });
+
+    it('says nothing at all about períodos in a month no período touches', () => {
+        const wrapper = mountPage({
+            months: [month('2027-02')],
+            periods: [period({ ends_on: '2026-12-18' })],
+            periodsCountLabel: '1 período',
+        });
+
+        const february = wrapper.find('[data-month="2027-02"]');
+
+        expect(february.classes().join(' ')).not.toContain('bg-sky-100/70');
+        expect(february.text()).not.toContain('Período');
+        expect(february.text()).not.toContain('desde');
     });
 
     it('distinguishes a count of avaliações from a período band by more than colour', () => {
@@ -241,10 +432,28 @@ describe('calendar/Year', () => {
             assessmentsTotal: 12,
         });
 
-        // A synopsis: no per-day cells anywhere, and the indicator marks are
-        // capped rather than one per avaliação.
+        // A synopsis: no per-day cells anywhere, and a written count.
         expect(wrapper.findAll('[data-date]')).toHaveLength(0);
-        expect(wrapper.findAll('[data-month="2026-10"] span[aria-hidden="true"] span')).toHaveLength(6);
+        expect(wrapper.text()).toContain('12 avaliações');
+    });
+
+    /**
+     * OS TRAÇOS FORAM-SE EMBORA. Desenhavam, com um tecto de seis, o mesmo
+     * número que já estava escrito a um centímetro deles — não eram uma
+     * repartição por período nem por espécie, não eram nada que o número não
+     * dissesse melhor.
+     */
+    it('draws no decorative tick marks beside a count it has already written', () => {
+        const wrapper = mountPage({
+            months: [month('2026-10', { assessments_count: 12, period_ulids: ['period-1'] })],
+            periods: [period({ assessments_count: 12 })],
+            assessmentsTotal: 12,
+        });
+
+        expect(
+            wrapper.findAll('[data-month="2026-10"] span[aria-hidden="true"] span'),
+        ).toHaveLength(0);
+        expect(wrapper.html()).not.toContain('bg-foreground/50');
         expect(wrapper.text()).toContain('12 avaliações');
     });
 

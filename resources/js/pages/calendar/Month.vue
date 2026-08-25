@@ -15,7 +15,7 @@ import {
     Users,
 } from '@lucide/vue';
 import type { Component } from 'vue';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
@@ -311,6 +311,31 @@ function goToMonth(month: string): void {
 const panelOpen = ref(false);
 const editing = ref<CalendarEvent | null>(null);
 
+/**
+ * O painel a mostrar a pergunta em vez do formulário. Confirmar é confirmado
+ * DENTRO do mesmo painel — com o mesmo desenho das outras confirmações
+ * destrutivas desta aplicação (ver PasskeyItem.vue) — e não numa caixa do
+ * navegador que não se parece com nada do resto da página. Não há aqui um
+ * segundo Dialog: é o MESMO que já está aberto a trocar o que mostra.
+ */
+const confirmingDelete = ref(false);
+
+/**
+ * Fechar por qualquer via — o X do próprio Dialog, a tecla Escape, o
+ * «Cancelar», ou uma gravação bem sucedida — deixa o painel pronto a abrir
+ * outra vez no formulário, e nunca a meio de uma pergunta que já ninguém fez.
+ */
+watch(panelOpen, (open) => {
+    if (!open) {
+        confirmingDelete.value = false;
+    }
+});
+
+function closePanel(): void {
+    confirmingDelete.value = false;
+    panelOpen.value = false;
+}
+
 const form = useForm<{
     type: CalendarEventType;
     title: string;
@@ -351,6 +376,7 @@ function defaultDate(): string {
  */
 function openCreate(date?: string): void {
     editing.value = null;
+    confirmingDelete.value = false;
     form.defaults({
         type: 'meeting',
         title: '',
@@ -368,6 +394,7 @@ function openCreate(date?: string): void {
 
 function openEvent(event: CalendarEvent): void {
     editing.value = event;
+    confirmingDelete.value = false;
     form.defaults({
         type: event.type,
         title: event.title,
@@ -409,21 +436,13 @@ function submit(): void {
 }
 
 /**
- * Confirmado antes de submeter, com o mesmo `window.confirm` que todas as
- * outras ações destrutivas desta aplicação já usam.
- *
  * Eliminar um acontecimento elimina UM ACONTECIMENTO: as avaliações, a
  * estrutura do ano letivo e o horário têm ciclos de vida inteiramente próprios
- * e não são tocados — e o texto diz isso, para ninguém ter de o adivinhar.
+ * e não são tocados — e o texto da pergunta diz isso, para ninguém ter de o
+ * adivinhar.
  */
 function destroyEvent(event: CalendarEvent): void {
-    const confirmed = window.confirm(
-        `Eliminar «${event.title}»? Só este acontecimento é eliminado — as avaliações e a estrutura do ano letivo não são afetadas.`,
-    );
-
-    if (!confirmed) {
-        return;
-    }
+    confirmingDelete.value = false;
 
     useForm({}).delete(`/calendar/acontecimentos/${event.ulid}`, {
         preserveScroll: true,
@@ -562,10 +581,14 @@ function destroyEvent(event: CalendarEvent): void {
                     class="rounded-md px-2.5 py-1.5 text-xs"
                     :class="periodTint(periods, period.ulid)"
                 >
+                    <!--
+                        O nome do período já diz a espécie — «1.º Semestre»,
+                        «2.º Período» — e repeti-la a seguir («1.º Semestre ·
+                        Semestre») não acrescenta nada a ninguém. Fica o nome e
+                        as datas, que é o que aqui falta saber.
+                    -->
                     <span class="font-medium">{{ period.label }}</span>
-                    <span class="opacity-80">
-                        · {{ period.kind_label }} · {{ periodRange(period) }}</span
-                    >
+                    <span class="opacity-80"> · {{ periodRange(period) }}</span>
                 </p>
             </section>
             <p v-else class="text-sm text-muted-foreground">
@@ -698,10 +721,25 @@ function destroyEvent(event: CalendarEvent): void {
                                         aria-hidden="true"
                                     />
                                     <span class="min-w-0">
+                                        <!--
+                                            A HORA DE INÍCIO ao lado da espécie,
+                                            e SÓ quando ela existe: um
+                                            acontecimento sem hora é um dia
+                                            inteiro, e escrever-lhe uma hora
+                                            qualquer seria inventá-la. A agenda
+                                            de ecrã estreito continua a dar o
+                                            intervalo inteiro, que é o que lá
+                                            cabe.
+                                        -->
                                         <span
                                             class="block truncate text-[0.6rem] font-semibold tracking-wide"
                                             :class="eventBadgeClasses(item.event.type)"
-                                            >{{ item.event.type_short_label }}</span
+                                            >{{ item.event.type_short_label
+                                            }}{{
+                                                item.event.starts_at
+                                                    ? ` · ${item.event.starts_at}`
+                                                    : ''
+                                            }}</span
                                         >
                                         <span class="block truncate">{{
                                             item.event.title
@@ -834,15 +872,49 @@ function destroyEvent(event: CalendarEvent): void {
         -->
         <Dialog v-model:open="panelOpen">
             <DialogContent class="max-h-[85vh] max-w-2xl overflow-y-auto">
-                <form class="space-y-4" @submit.prevent="submit">
+                <!--
+                    A PERGUNTA, no MESMO painel e não num segundo Dialog por
+                    cima deste: enquanto ela está no ar o formulário sai da
+                    frente, e cancelar traz o formulário de volta exatamente
+                    como estava, sem ter pedido nada ao servidor.
+                -->
+                <div v-if="confirmingDelete && editing" class="space-y-4">
+                    <DialogHeader>
+                        <DialogTitle>Eliminar acontecimento?</DialogTitle>
+                        <DialogDescription>
+                            «{{ editing.title }}» será eliminada. As avaliações e
+                            a estrutura do ano letivo não serão afetadas.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <DialogFooter class="gap-2">
+                        <Button
+                            type="button"
+                            variant="secondary"
+                            data-cancel-delete
+                            @click="confirmingDelete = false"
+                        >
+                            Cancelar
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="destructive"
+                            data-confirm-delete
+                            @click="destroyEvent(editing)"
+                        >
+                            <Trash2 class="size-4" /> Eliminar
+                        </Button>
+                    </DialogFooter>
+                </div>
+
+                <form v-else class="space-y-4" @submit.prevent="submit">
                     <DialogHeader>
                         <DialogTitle>{{
                             editing ? 'Acontecimento' : 'Novo acontecimento'
                         }}</DialogTitle>
                         <DialogDescription>
-                            Uma reunião, uma atividade, uma visita de estudo ou
-                            outra coisa marcada numa data. É teu: só tu o vês e
-                            só tu o alteras.
+                            Regista uma reunião, atividade, visita de estudo ou
+                            outro acontecimento relevante.
                         </DialogDescription>
                     </DialogHeader>
 
@@ -972,24 +1044,45 @@ function destroyEvent(event: CalendarEvent): void {
                     </div>
 
                     <DialogFooter class="gap-2 sm:justify-between">
+                        <!--
+                            Eliminar PERGUNTA, e não elimina: o pedido só parte
+                            depois da confirmação, que acontece neste mesmo
+                            painel.
+                        -->
                         <Button
                             v-if="editing"
                             type="button"
                             variant="ghost"
                             class="text-red-600 dark:text-red-500"
                             data-delete-event
-                            @click="destroyEvent(editing)"
+                            @click="confirmingDelete = true"
                         >
                             <Trash2 class="size-4" /> Eliminar
                         </Button>
                         <span v-else />
-                        <Button type="submit" :disabled="form.processing">
-                            {{
-                                editing
-                                    ? 'Guardar alterações'
-                                    : 'Adicionar ao calendário'
-                            }}
-                        </Button>
+                        <!--
+                            SAIR ESCRITO, e não só o X do canto: fechar sem
+                            guardar é uma escolha a sério, e uma escolha a sério
+                            tem um botão com nome. O X continua a funcionar, e
+                            faz exatamente o mesmo.
+                        -->
+                        <div class="flex flex-wrap gap-2">
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                data-cancel-event
+                                @click="closePanel()"
+                            >
+                                Cancelar
+                            </Button>
+                            <Button type="submit" :disabled="form.processing">
+                                {{
+                                    editing
+                                        ? 'Guardar alterações'
+                                        : 'Adicionar ao calendário'
+                                }}
+                            </Button>
+                        </div>
                     </DialogFooter>
                 </form>
             </DialogContent>

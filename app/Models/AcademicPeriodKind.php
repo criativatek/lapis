@@ -25,4 +25,21 @@ enum AcademicPeriodKind: string
             self::Other => __('Outro'),
         };
     }
+
+    /**
+     * The same label in the plural, for counting them out loud — «2 semestres»,
+     * «3 períodos». A year is named by the shape its períodos really have, and
+     * that shape is already written down here; nothing needs to be inferred
+     * from a label's text.
+     */
+    public function pluralLabel(): string
+    {
+        return match ($this) {
+            self::Semester => __('Semestres'),
+            self::Term => __('Períodos'),
+            self::Trimester => __('Trimestres'),
+            self::Module => __('Módulos'),
+            self::Other => __('Outros'),
+        };
+    }
 }

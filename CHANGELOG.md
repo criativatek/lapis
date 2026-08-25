@@ -2,6 +2,34 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.69.2] — 2026-08-25
+
+### Fixed
+
+- **Dez pontos de polimento no "Calendário do Ano Letivo" e no elemento de avaliação, encontrados na validação manual real das Fases 5.1–5.3.** Nenhum toca na arquitetura, nos dados ou no comportamento já aprovados — só na forma como são apresentados.
+
+  **Um acontecimento com hora passa a mostrar essa hora no cartão do mês** — "REUNIÃO · 16:30" em vez de só "REUNIÃO" — e não só no painel de detalhe. Um acontecimento de dia inteiro continua sem hora nenhuma, verdadeira ou inventada.
+
+  **Eliminar um acontecimento deixa de abrir a caixa nativa do navegador** ("lapis.test diz…") **e passa a perguntar dentro do próprio painel**, com o mesmo desenho das outras confirmações destrutivas da aplicação: "Eliminar acontecimento? «Reunião de Departamento» será eliminada. As avaliações e a estrutura do ano letivo não serão afetadas." — Cancelar volta ao formulário sem pedir nada ao servidor; só Eliminar o faz.
+
+  **A faixa de um período deixa de repetir a sua própria espécie** — "1.º Semestre · Semestre · 11/09 – 29/01" passa a "1.º Semestre · 11/09 – 29/01" — nas vistas de Mês e de Ano.
+
+  **A vista de Ano deixa de chamar "períodos" a um ano de semestres.** O resumo passa a nomear a estrutura real do ano — "2 semestres", "3 períodos", "1 trimestre" — lida do tipo canónico de cada período (`AcademicPeriodKind`) e não adivinhada; um ano com tipos misturados usa o nome neutro "período", nunca inventado.
+
+  **Um mês deixa de ser pintado inteiro com a cor de um período que só o toca em parte.** Setembro, quando um semestre só começa a 11, já não aparece com a cor desse semestre do dia 1 ao 30 — só um mês inteiramente coberto por um único período recebe a sua cor; um mês de transição fica neutro e diz por escrito onde o período realmente começa ou acaba ("1.º Semestre desde 11/09", "1.º Semestre até 29/01"), e um intervalo sem período nenhum deixa de ser atribuído a um vizinho por engano.
+
+  **Abrir uma avaliação a partir do Calendário passa a oferecer "← Voltar ao Calendário", para o mesmo mês de onde se partiu** — em vez de sempre "← Voltar à turma" — pelo mesmo mecanismo de endereço (`?from=…`) que "Avaliações" já usa, sem qualquer novo destino aceite do lado do servidor.
+
+  **A data de uma avaliação passa a aparecer em português — "13/09/2026"** — em vez do formato técnico "2026-09-13", nos dois sítios da página em que aparecia.
+
+  **A descrição do formulário de acontecimentos deixa de prometer uma regra de privacidade em texto de utilizador**, e passa a dizer simplesmente o que se pode lá registar.
+
+  **O formulário de acontecimentos ganha um "Cancelar" explícito**, ao lado do botão principal, em criação e em edição — o X do painel continua a funcionar exactamente como antes.
+
+  **Os tracinhos junto de "3 avaliações", na vista de Ano, foram retirados**: repetiam em desenho, com um tecto de seis, o número que já estava escrito ao lado — não distinguiam período nem espécie, e não diziam nada que o número não dissesse melhor.
+
+  A checklist de turmas do formulário de acontecimentos mantém-se como está: não existe no projeto nenhum componente de seleção múltipla pesquisável para reutilizar, e construir um de propósito para este polimento ficaria fora do âmbito — regista-se como dívida de UX para quando o número de turmas por professor o justificar.
+
 ## [0.69.1] — 2026-08-25
 
 ### Fixed

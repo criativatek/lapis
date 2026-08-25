@@ -258,6 +258,31 @@ describe('calendar/Month', () => {
         expect(entry.find('svg').exists()).toBe(true);
     });
 
+    /**
+     * O NOME DE UM PERÍODO JÁ DIZ A ESPÉCIE — «1.º Semestre», «2.º Período» — e
+     * a faixa escrevia-a outra vez logo a seguir («1.º Semestre · Semestre ·
+     * 11/09 – 29/01»), o que não acrescentava nada a ninguém.
+     */
+    it('names a período once, without repeating its kind right after it', () => {
+        const semester = period({
+            label: '1.º Semestre',
+            kind: 'semester',
+            kind_label: 'Semestre',
+            starts_on: '2026-09-11',
+            ends_on: '2027-01-29',
+        });
+
+        const legend = mountPage({ periods: [semester] }).find(
+            'section[aria-label="Períodos deste mês"]',
+        );
+
+        expect(legend.text()).toContain('1.º Semestre');
+        expect(legend.text()).not.toContain('· Semestre ·');
+        expect(legend.text()).not.toContain('Semestre · Semestre');
+        // As datas continuam lá: é o que a faixa tem para dizer que o nome não diz.
+        expect(legend.text()).toContain('–');
+    });
+
     it('names a período where it begins and where it changes, not in all thirty cells', () => {
         const first = period({ ulid: 'p1', label: '1.º Período', ends_on: '2026-10-10' });
         const second = period({ ulid: 'p2', label: '2.º Período', starts_on: '2026-10-11' });
@@ -476,6 +501,112 @@ describe('calendar/Month', () => {
         expect(entry.text()).toContain('REUNIÃO');
         expect(entry.text()).toContain('Conselho de turma');
         expect(entry.find('svg').exists()).toBe(true);
+    });
+
+    /**
+     * A HORA DE INÍCIO no próprio cartão. «Às 16:30» e «durante o dia» são
+     * coisas diferentes, e a grelha do mês dizia-as exatamente da mesma
+     * maneira: o professor tinha de abrir o acontecimento para saber a que
+     * horas era.
+     */
+    it('writes the start time on the card of an acontecimento that has one', () => {
+        const wrapper = mountPage({
+            days: octoberDays(
+                covering(event({ starts_at: '16:30', ends_at: '17:00' })),
+            ),
+        });
+
+        expect(
+            wrapper.find('[data-date="2026-10-15"] [data-event-ulid="event-a"]').text(),
+        ).toContain('REUNIÃO · 16:30');
+    });
+
+    /**
+     * E NUNCA UMA HORA INVENTADA: a ausência de hora é informação — é o dia
+     * inteiro — e não uma hora que ninguém chegou a escrever.
+     */
+    it('writes no time at all on an acontecimento that lasts the whole day', () => {
+        const wrapper = mountPage({ days: octoberDays(covering(event())) });
+
+        const card = wrapper.find(
+            '[data-date="2026-10-15"] [data-event-ulid="event-a"]',
+        );
+
+        expect(card.text()).toContain('REUNIÃO');
+        expect(card.text()).toContain('Conselho de turma');
+        expect(card.text()).not.toContain('·');
+        expect(card.text()).not.toContain(':');
+    });
+
+    it('writes the start time the same way for each of the four kinds', () => {
+        const kinds = [
+            { type: 'meeting', short: 'REUNIÃO' },
+            { type: 'activity', short: 'ATIVIDADE' },
+            { type: 'field_trip', short: 'VISITA' },
+            { type: 'other', short: 'OUTRO' },
+        ] as const;
+
+        const wrapper = mountPage({
+            days: octoberDays((date) =>
+                date === '2026-10-15'
+                    ? {
+                          events: kinds.map((kind) =>
+                              event({
+                                  ulid: `event-${kind.type}`,
+                                  type: kind.type,
+                                  type_short_label: kind.short,
+                                  starts_at: '09:05',
+                                  ends_at: '10:35',
+                              }),
+                          ),
+                      }
+                    : {},
+            ),
+            itemsPerDay: 4,
+        });
+
+        for (const kind of kinds) {
+            expect(
+                wrapper.find(`[data-event-ulid="event-${kind.type}"]`).text(),
+            ).toContain(`${kind.short} · 09:05`);
+        }
+    });
+
+    /**
+     * O «+N mais» abre a MESMA marcação, e por isso a hora vem com ela: um
+     * acontecimento escondido atrás do limite do dia não é um acontecimento
+     * diferente.
+     */
+    it('keeps the start time on the cards that «+N mais» reveals', async () => {
+        const wrapper = mountPage({
+            days: octoberDays((date) =>
+                date === '2026-10-15'
+                    ? {
+                          assessments: [
+                              assessment({ ulid: 'i1', title: 'Ficha A' }),
+                              assessment({ ulid: 'i2', title: 'Ficha B' }),
+                              assessment({ ulid: 'i3', title: 'Ficha C' }),
+                          ],
+                          events: [
+                              event({
+                                  ulid: 'escondido',
+                                  title: 'Reunião escondida',
+                                  starts_at: '18:00',
+                                  ends_at: null,
+                              }),
+                          ],
+                      }
+                    : {},
+            ),
+        });
+
+        await wrapper
+            .find('[data-date="2026-10-15"] [data-overflow]')
+            .trigger('click');
+
+        expect(
+            wrapper.find('[data-event-ulid="escondido"]').text(),
+        ).toContain('REUNIÃO · 18:00');
     });
 
     it('gives each of the four kinds its own written label and its own icon', () => {
@@ -773,8 +904,14 @@ describe('calendar/Month', () => {
         expect(panelInput('event-ends-on')?.value).toBe('');
     });
 
-    it('asks for confirmation before deleting, and does nothing when refused', async () => {
-        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    /**
+     * A CONFIRMAÇÃO É DA APLICAÇÃO, e não do navegador: acontece dentro do
+     * mesmo painel que já estava aberto — com o mesmo desenho das outras
+     * confirmações destrutivas desta aplicação (ver PasskeyItem.vue) — e não
+     * numa caixa cinzenta que não se parece com nada do resto da página.
+     */
+    it('asks inside its own panel before deleting, and sends nothing while it asks', async () => {
+        const confirmSpy = vi.spyOn(window, 'confirm');
         const wrapper = mountPage({ days: octoberDays(covering(event())) });
 
         await wrapper.find('[data-event-ulid="event-a"]').trigger('click');
@@ -785,12 +922,17 @@ describe('calendar/Month', () => {
             ?.click();
         await nextTick();
 
-        expect(confirmSpy).toHaveBeenCalled();
+        // A pergunta, no sítio do formulário, e com o nome verdadeiro lá dentro.
+        expect(panelText()).toContain('Eliminar acontecimento?');
+        expect(panelText()).toContain(
+            '«Conselho de turma» será eliminada. As avaliações e a estrutura do ano letivo não serão afetadas.',
+        );
+        // Nenhum pedido partiu ainda, e nenhuma caixa do navegador foi aberta.
         expect(formDelete).not.toHaveBeenCalled();
+        expect(confirmSpy).not.toHaveBeenCalled();
     });
 
-    it('deletes only once the teacher has confirmed', async () => {
-        vi.spyOn(window, 'confirm').mockReturnValue(true);
+    it('returns to the form when the confirmation is refused, without ever asking the server', async () => {
         const wrapper = mountPage({ days: octoberDays(covering(event())) });
 
         await wrapper.find('[data-event-ulid="event-a"]').trigger('click');
@@ -798,6 +940,33 @@ describe('calendar/Month', () => {
 
         document.body
             .querySelector<HTMLButtonElement>('[data-delete-event]')
+            ?.click();
+        await nextTick();
+
+        document.body
+            .querySelector<HTMLButtonElement>('[data-cancel-delete]')
+            ?.click();
+        await nextTick();
+
+        // O formulário está de volta, tal como estava, e nada foi eliminado.
+        expect(panelText()).not.toContain('Eliminar acontecimento?');
+        expect(panelInput('event-title')?.value).toBe('Conselho de turma');
+        expect(formDelete).not.toHaveBeenCalled();
+    });
+
+    it('deletes only once the teacher has confirmed inside the panel', async () => {
+        const wrapper = mountPage({ days: octoberDays(covering(event())) });
+
+        await wrapper.find('[data-event-ulid="event-a"]').trigger('click');
+        await nextTick();
+
+        document.body
+            .querySelector<HTMLButtonElement>('[data-delete-event]')
+            ?.click();
+        await nextTick();
+
+        document.body
+            .querySelector<HTMLButtonElement>('[data-confirm-delete]')
             ?.click();
         await nextTick();
 
@@ -805,6 +974,81 @@ describe('calendar/Month', () => {
             '/calendar/acontecimentos/event-a',
             expect.anything(),
         );
+    });
+
+    it('never opens on the confirmation, however the panel was last left', async () => {
+        const wrapper = mountPage({ days: octoberDays(covering(event())) });
+
+        await wrapper.find('[data-event-ulid="event-a"]').trigger('click');
+        await nextTick();
+        document.body
+            .querySelector<HTMLButtonElement>('[data-delete-event]')
+            ?.click();
+        await nextTick();
+        expect(panelText()).toContain('Eliminar acontecimento?');
+
+        // Reaberto — pelo botão explícito, que é outro caminho — está no
+        // formulário e não a meio de uma pergunta que já ninguém fez.
+        await wrapper.find('[data-new-event]').trigger('click');
+        await nextTick();
+
+        expect(panelText()).not.toContain('Eliminar acontecimento?');
+        expect(panelText()).toContain('Adicionar ao calendário');
+    });
+
+    /**
+     * SAIR TEM NOME. Fechar sem guardar é uma escolha a sério, e uma escolha a
+     * sério tem um botão escrito — não só o X do canto, que continua a
+     * funcionar e a fazer exatamente o mesmo.
+     */
+    it('closes the panel from an explicit «Cancelar», submitting nothing', async () => {
+        const wrapper = mountPage();
+
+        await wrapper.find('[data-new-event]').trigger('click');
+        await nextTick();
+        expect(panelText()).toContain('Adicionar ao calendário');
+
+        const cancel = document.body.querySelector<HTMLButtonElement>(
+            '[data-cancel-event]',
+        );
+        expect(cancel).not.toBeNull();
+        expect(cancel?.textContent).toContain('Cancelar');
+
+        cancel?.click();
+        await nextTick();
+
+        expect(formPost).not.toHaveBeenCalled();
+        expect(formPut).not.toHaveBeenCalled();
+        expect(formDelete).not.toHaveBeenCalled();
+    });
+
+    it('offers the same «Cancelar» when an existing acontecimento is being edited', async () => {
+        const wrapper = mountPage({ days: octoberDays(covering(event())) });
+
+        await wrapper.find('[data-event-ulid="event-a"]').trigger('click');
+        await nextTick();
+
+        expect(
+            document.body.querySelector('[data-cancel-event]'),
+        ).not.toBeNull();
+        expect(panelText()).toContain('Guardar alterações');
+    });
+
+    /**
+     * A COPY DO FORMULÁRIO não promete privacidade nenhuma: dizer «só tu o vês»
+     * é uma promessa sobre uma versão futura que esta não pode garantir.
+     */
+    it('describes the form without promising who can see it', async () => {
+        const wrapper = mountPage();
+
+        await wrapper.find('[data-new-event]').trigger('click');
+        await nextTick();
+
+        expect(panelText()).toContain(
+            'Regista uma reunião, atividade, visita de estudo ou outro acontecimento relevante.',
+        );
+        expect(panelText()).not.toContain('só tu o vês');
+        expect(panelText()).not.toContain('É teu');
     });
 
     /**

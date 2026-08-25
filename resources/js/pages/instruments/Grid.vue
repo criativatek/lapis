@@ -30,6 +30,16 @@ import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTon
 // unchanged "voltar à turma".
 const cameFromAssessments = new URLSearchParams(window.location.search).get('from') === 'assessments';
 
+// O mesmo mecanismo, para o Calendário: quem chegou aqui de uma célula do mês
+// volta ao MÊS de onde partiu, e não ao mês de hoje. O «month» vem no endereço
+// e vai só para /calendar — nunca para um destino arbitrário — e a rota volta a
+// validá-lo no servidor (CalendarMonthRequest), pelo que este teste de formato é
+// apenas uma sanidade: evita construir um link visivelmente inválido.
+const calendarParams = new URLSearchParams(window.location.search);
+const calendarMonth = calendarParams.get('month');
+const cameFromCalendar =
+    calendarParams.get('from') === 'calendar' && calendarMonth !== null && /^\d{4}-\d{2}$/.test(calendarMonth);
+
 type Item = {
     id: number;
     code: string;
@@ -92,6 +102,25 @@ const props = defineProps<{
     states: StateOption[];
     scaleBands: { label: string; band_min: string; band_max: string; sequence: number; is_negative: boolean }[];
 }>();
+
+/**
+ * A data da avaliação como se escreve em Portugal — «13/09/2026», e não o
+ * «2026-09-13» com que o servidor a transporta.
+ *
+ * O par `${data}T00:00:00Z` + `timeZone: 'UTC'` é o mesmo idioma que o
+ * Calendário já usa para ler uma data «Y-m-d» sem a deixar escorregar um dia
+ * para trás no fuso.
+ */
+const appliedOnDateFormatter = new Intl.DateTimeFormat('pt-PT', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    timeZone: 'UTC',
+});
+
+const appliedOnLabel = computed(() =>
+    appliedOnDateFormatter.format(new Date(`${props.instrument.applied_on}T00:00:00Z`)),
+);
 
 type Cell = { state: string; points: number | null; reason: string | null; lock_version: number };
 
@@ -818,7 +847,9 @@ const completeBlockedReason = computed<string | null>(() => {
     // to resolve and nothing to conclude. The count was telling the truth; it
     // was answering a question nobody had asked (§2).
     if (props.instrument.applicable_count === 0) {
-        return `Esta avaliação está datada de ${props.instrument.applied_on} e nenhum aluno da turma estava inscrito nessa data, por isso não se aplica a ninguém. Corrija a data da avaliação em «Editar elemento de avaliação».`;
+        // A MESMA data, escrita da MESMA maneira que no cabeçalho: a mesma
+        // página não pode escrever a mesma data de duas formas diferentes.
+        return `Esta avaliação está datada de ${appliedOnLabel.value} e nenhum aluno da turma estava inscrito nessa data, por isso não se aplica a ninguém. Corrija a data da avaliação em «Editar elemento de avaliação».`;
     }
 
     const count = props.instrument.pending_count;
@@ -901,13 +932,20 @@ function revertCancellation(): void {
     <div class="space-y-4 p-4">
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
-                <Heading :title="instrument.title" :description="`${instrument.class_label} · ${instrument.period} · ${instrument.applied_on}`" />
+                <Heading :title="instrument.title" :description="`${instrument.class_label} · ${instrument.period} · ${appliedOnLabel}`" />
                 <Link
                     v-if="cameFromAssessments"
                     :href="`/assessments/${instrument.ulid}`"
                     class="text-sm text-muted-foreground hover:underline"
                 >
                     ← Voltar a Avaliações
+                </Link>
+                <Link
+                    v-else-if="cameFromCalendar"
+                    :href="`/calendar?month=${calendarMonth}`"
+                    class="text-sm text-muted-foreground hover:underline"
+                >
+                    ← Voltar ao Calendário
                 </Link>
                 <Link v-else :href="`/classes/${instrument.class_ulid}`" class="text-sm text-muted-foreground hover:underline">
                     ← Voltar à turma
