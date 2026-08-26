@@ -16,6 +16,10 @@ const sidebarNavItems: NavItem[] = [
         href: editProfile(),
     },
     {
+        title: 'Plano',
+        href: '/settings/plan',
+    },
+    {
         title: 'Segurança',
         href: editSecurity(),
     },

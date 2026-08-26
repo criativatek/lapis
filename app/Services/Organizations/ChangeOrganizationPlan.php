@@ -7,6 +7,8 @@ use App\Models\OrganizationSubscription;
 use App\Models\Plan;
 use App\Models\SubscriptionStatus;
 use App\Support\Entitlements\Entitlements;
+use App\Support\Trial\TrialEligibility;
+use App\Support\Trial\TrialException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -40,7 +42,10 @@ use Illuminate\Support\Facades\DB;
  */
 class ChangeOrganizationPlan
 {
-    public function __construct(protected Entitlements $entitlements) {}
+    public function __construct(
+        protected Entitlements $entitlements,
+        protected TrialEligibility $trialEligibility,
+    ) {}
 
     /**
      * Puts the organization on a plan, now.
@@ -83,6 +88,79 @@ class ChangeOrganizationPlan
             $this->entitlements->flush();
 
             return $created;
+        });
+    }
+
+    /**
+     * Starts a voluntary, time-boxed Pro trial for the organization, now.
+     *
+     * Two rows are created in the same transaction, not one:
+     *
+     *  - The Trial itself: `$trialPlan`, `status = Trial`, `starts_at = now()`,
+     *    `ends_at = now()->addDays($days)`.
+     *  - A dormant Base-plan fallback: `$fallbackPlan`, `status = Active`,
+     *    `starts_at` = the Trial's OWN `ends_at` (the identical instant, never
+     *    recomputed), `ends_at = null`. It grants nothing today —
+     *    `isInForce()` already requires `starts_at <= now()` — and simply
+     *    starts mattering the moment the Trial's window closes. No job, no
+     *    scheduler, nothing has to "wake up": the row sits there and
+     *    `isInForce()`/`Entitlements` do the rest, with no gap and no overlap
+     *    against the Trial (inclusive `starts_at`, exclusive `ends_at`, same
+     *    boundary convention as everywhere else).
+     *
+     * Whatever was in force is superseded exactly like `to()` does — a Base
+     * subscription in force is closed at `now()`, becoming `Expired`.
+     *
+     * Eligibility-by-history (§4 of the trial brief: a Trial-status row must
+     * never have existed before for this organization, or defensively for any
+     * other Personal organization of the same owner) is re-checked HERE,
+     * against the LOCKED organization, not before. That is what makes two
+     * concurrent activation requests unable to both succeed: whichever one
+     * gets the row lock first creates its Trial and commits; the second sees
+     * that Trial in its own re-check and is refused, never a race on a value
+     * read before either one had the lock.
+     *
+     * Deliberately policy-free: `$days` arrives already resolved by the
+     * caller (`App\Support\Trial\TrialPolicy`) rather than read from config
+     * in here, the same way `$trialPlan`/`$fallbackPlan` arrive already
+     * resolved instead of being looked up by a hardcoded plan key.
+     *
+     * @throws TrialException when the organization (or another Personal
+     *                        organization of the same owner) has ever had a
+     *                        Trial subscription before.
+     */
+    public function startProTrial(Organization $organization, Plan $trialPlan, Plan $fallbackPlan, int $days): OrganizationSubscription
+    {
+        return DB::transaction(function () use ($organization, $trialPlan, $fallbackPlan, $days): OrganizationSubscription {
+            $locked = $this->lock($organization);
+
+            if ($this->trialEligibility->usedBefore($locked)) {
+                throw TrialException::alreadyUsed();
+            }
+
+            $startsAt = Carbon::now();
+            $endsAt = $startsAt->copy()->addDays($days);
+
+            $this->supersede($this->subscriptionsOf($locked), $startsAt);
+
+            $trial = OrganizationSubscription::withoutGlobalScope('organization')->create([
+                'organization_id' => $locked->getKey(),
+                'plan_id' => $trialPlan->getKey(),
+                'status' => SubscriptionStatus::Trial,
+                'starts_at' => $startsAt,
+                'ends_at' => $endsAt,
+            ]);
+
+            OrganizationSubscription::withoutGlobalScope('organization')->create([
+                'organization_id' => $locked->getKey(),
+                'plan_id' => $fallbackPlan->getKey(),
+                'status' => SubscriptionStatus::Active,
+                'starts_at' => $endsAt,
+            ]);
+
+            $this->entitlements->flush();
+
+            return $trial;
         });
     }
 

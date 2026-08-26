@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Settings\PlanController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SchoolIdentityController;
 use App\Http\Controllers\Settings\SecurityController;
@@ -22,6 +23,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // resolved from the URL, so there is no cross-account surface to guard.
     Route::post('settings/account-closure', [ProfileController::class, 'requestClosure'])->name('account.closure.request');
     Route::delete('settings/account-closure', [ProfileController::class, 'cancelClosure'])->name('account.closure.cancel');
+
+    // A voluntary, self-service Pro trial (§Trial). No {organization} parameter,
+    // same reasoning as account-closure above: always the current organization,
+    // never one resolved from the URL.
+    Route::get('settings/plan', [PlanController::class, 'edit'])->name('settings.plan.edit');
+    Route::post('settings/plan/trial', [PlanController::class, 'activateTrial'])->name('settings.plan.activate-trial');
 
     Route::get('settings/security', [SecurityController::class, 'edit'])
         ->middleware(RequirePassword::class)
