@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Link, router, usePage } from '@inertiajs/vue3';
-import { Building2, Check, LogOut, Settings } from '@lucide/vue';
+import { Building2, Check, LogOut, Settings, ShieldCheck } from '@lucide/vue';
 import { computed } from 'vue';
 import {
     DropdownMenuGroup,
@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import UserInfo from '@/components/UserInfo.vue';
 import { logout } from '@/routes';
+import { index as platformBackoffice } from '@/routes/admin/accounts';
 import { edit } from '@/routes/profile';
 import type { Auth, User } from '@/types';
 
@@ -26,6 +27,13 @@ const auth = computed(() => page.props.auth as Auth);
 // ever had the one organization everybody starts with (§17 of the multi-user
 // brief): no switcher, no current-organization line, exactly today's menu.
 const hasMultipleOrganizations = computed(() => auth.value.organizations.length > 1);
+
+// The SaaS operator's way back into the backoffice, and the only entry point
+// the application offers — before this, /admin was reachable only by typing the
+// URL. Deliberately NOT derived from `organization.is_owner` nor from any
+// module: an institutional administrator administers an ORGANIZATION and must
+// never see this. Hiding it is presentation; `EnsurePlatformAdmin` is the gate.
+const isPlatformAdmin = computed(() => auth.value.is_platform_admin === true);
 
 function switchTo(ulid: string): void {
     if (ulid === auth.value.organization?.ulid) {
@@ -73,6 +81,26 @@ const handleLogout = () => {
             </Link>
         </DropdownMenuItem>
     </DropdownMenuGroup>
+
+    <!-- Its own group, never folded into «Configurações»: this leaves the
+         teacher-facing app entirely, and the label says «da plataforma» so it
+         cannot read as the tenant's «Administração Institucional». -->
+    <template v-if="isPlatformAdmin">
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup>
+            <DropdownMenuItem :as-child="true">
+                <Link
+                    class="block w-full cursor-pointer"
+                    :href="platformBackoffice()"
+                    data-test="platform-admin-link"
+                >
+                    <ShieldCheck class="mr-2 h-4 w-4" />
+                    Administração da plataforma
+                </Link>
+            </DropdownMenuItem>
+        </DropdownMenuGroup>
+    </template>
+
     <DropdownMenuSeparator />
     <DropdownMenuItem :as-child="true">
         <Link

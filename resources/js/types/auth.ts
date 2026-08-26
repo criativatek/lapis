@@ -19,6 +19,9 @@ export type Organization = {
 
 export type Auth = {
     user: User;
+    // The SaaS operator, not a role inside the organization: it has nothing to
+    // do with `organization.is_owner` or the `institution_admin` module.
+    is_platform_admin: boolean;
     organization: Organization | null;
     organizations: Organization[];
 };

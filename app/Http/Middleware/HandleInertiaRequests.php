@@ -76,6 +76,13 @@ class HandleInertiaRequests extends Middleware
             'appVersion' => config('app.version'),
             'auth' => [
                 'user' => $user,
+                // The ONE thing the client is told about the backoffice: whether
+                // to draw its entry point. A boolean, never the operator's reach
+                // — no account list, no counts, nothing an ordinary teacher's
+                // payload should not also be able to carry. Presentation only:
+                // `EnsurePlatformAdmin` is what actually guards /admin, and a
+                // forged `true` here buys a link to a 403.
+                'is_platform_admin' => $user?->isPlatformAdmin() ?? false,
                 'organization' => $hasOrganization ? [
                     'ulid' => $currentOrganization->get()->ulid,
                     'name' => $currentOrganization->get()->name,

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { Link, router, usePage } from '@inertiajs/vue3';
-import { LogOut, Mail, ShieldCheck, UserPlus, Users } from '@lucide/vue';
+import { ArrowLeft, LogOut, Mail, ShieldCheck, UserPlus, Users } from '@lucide/vue';
 import { computed } from 'vue';
 import { Toaster } from '@/components/ui/sonner';
+import { dashboard } from '@/routes';
 
 const page = usePage();
 const userName = computed(() => (page.props.auth as { user?: { name?: string } } | undefined)?.user?.name ?? '');
@@ -47,7 +48,16 @@ function logout(): void {
             </nav>
 
             <div class="border-t border-border p-3 text-sm">
-                <Link href="/dashboard" class="block rounded-md px-3 py-2 text-muted-foreground hover:bg-muted/40">← Voltar à app</Link>
+                <!-- The way out of operator mode and back into the teacher-facing
+                     application. Named for the product, not for «a app», so it is
+                     unambiguous which of the two areas it lands in. -->
+                <Link
+                    :href="dashboard()"
+                    class="flex items-center gap-2 rounded-md px-3 py-2 text-muted-foreground hover:bg-muted/40"
+                    data-test="back-to-app"
+                >
+                    <ArrowLeft class="size-4" /> Voltar ao LÁPIS
+                </Link>
                 <button type="button" class="mt-1 flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-muted-foreground hover:bg-muted/40" @click="logout">
                     <LogOut class="size-4" /> Terminar sessão
                 </button>

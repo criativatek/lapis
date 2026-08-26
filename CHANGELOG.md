@@ -2,6 +2,18 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.74.1] — 2026-08-26
+
+### Fixed
+
+- **O backoffice da plataforma deixa de ser acessível apenas escrevendo o endereço à mão.** O `/admin` existe desde a Fatia 1, mas nenhuma parte da aplicação lá levava: o menu lateral é construído a partir dos módulos que a organização tem, e o operador do SaaS não é um módulo de organização nenhuma — pelo que a única forma de lá entrar era escrever o URL. Passa a haver uma entrada explícita, **«Administração da plataforma»**, no dropdown da conta, a abrir a rota canónica `admin.accounts.index`.
+
+  **Só o operador a vê, e é coisa distinta de «Administração Institucional».** O que decide a entrada é `is_platform_admin`, uma propriedade da pessoa — não `organization.is_owner`, não o módulo `institution_admin`. Um administrador institucional continua a ver «Administração Institucional» na sidebar, que administra o *tenant* dele, e nunca vê esta entrada. As duas ficam separadas no sítio, no ícone e na palavra: uma diz «da plataforma», a outra «Institucional».
+
+  **Esconder o link não é o controlo de acesso, e continua a não ser.** Para o ecrã, o cliente recebe **um único booleano**, `auth.is_platform_admin` — nenhuma lista de contas, nenhuma contagem, nada que o payload de um professor comum não pudesse também transportar. Quem force esse valor no cliente compra um link para um 403: `EnsurePlatformAdmin` permanece a autoridade, e a flag é lida da base de dados a cada pedido. Por isso também **não é preciso terminar sessão** depois de `lapis:make-admin` — a navegação seguinte já mostra a entrada.
+
+- **Sair do backoffice passa a dizer para onde se vai.** «← Voltar à app» dizia «a app» dentro de uma aplicação com duas áreas. Passa a **«Voltar ao LÁPIS»**, para o `/dashboard` da aplicação normal. A navegação própria do backoffice — Contas, Nova conta, Email (SMTP) — mantém-se intacta.
+
 ## [0.74.0] — 2026-08-26
 
 ### Added

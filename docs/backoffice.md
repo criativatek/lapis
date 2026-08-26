@@ -28,7 +28,31 @@ plink -ssh -hostkey SHA256:5a6uWUkxyqr3DhZCwveJEviWXDAOVQ72ndMgqDYpjHs -batch \
 por este comando ou pelo botão «conceder admin» dentro do backoffice. A flag é uma coluna
 booleana em `users`, não um papel/tabela de permissões (YAGNI: há um só tipo de operador).
 
-Depois: login normal em `/login` e o menu leva a `/admin`.
+Depois: login normal em `/login`, e o **dropdown da conta** (canto inferior da
+sidebar, no nome do utilizador) passa a mostrar **«Administração da plataforma»**,
+que abre `/admin` — a rota canónica `admin.accounts.index`.
+
+## Como se lá chega
+
+O link é desenhado a partir de **um único booleano partilhado**,
+`auth.is_platform_admin` (`HandleInertiaRequests::share`). É a única coisa que o
+cliente sabe sobre o backoffice: não vai no payload nenhuma lista de contas,
+nenhuma contagem, nada que o payload de um professor comum não pudesse também
+transportar.
+
+- **Só o operador o vê.** `is_platform_admin` é uma propriedade da PESSOA, não da
+  organização. Não é `organization.is_owner` e não é o módulo `institution_admin`:
+  um administrador institucional continua a ver «Administração Institucional» na
+  sidebar — que administra o *tenant* dele — e nunca vê esta entrada.
+- **Esconder o link não é o controlo de acesso.** `EnsurePlatformAdmin` continua a
+  ser a autoridade; um `true` forjado no cliente compra um link para um 403.
+- **Não é preciso terminar sessão.** A flag é lida da BD a cada pedido, e o prop é
+  partilhado em cada resposta Inertia — assim que o `lapis:make-admin` corre, a
+  navegação seguinte já mostra a entrada.
+
+Dentro do backoffice, o `AdminLayout` tem a sua própria navegação (Contas · Nova
+conta · Email (SMTP)) e **«Voltar ao LÁPIS»**, que devolve o operador ao
+`/dashboard` da aplicação normal.
 
 ## O que se faz lá
 
@@ -92,6 +116,8 @@ domínio) **só escuta 587**. 465/25/2525 estão fechados. Config correta:
 
 ## Verificar end-to-end
 
-1. `lapis:make-admin <email>` → login → `/admin`.
+1. `lapis:make-admin <email>` → login → dropdown da conta → «Administração da
+   plataforma» → `/admin` → «Voltar ao LÁPIS» → `/dashboard`. Com um professor
+   normal, a entrada não existe e `/admin` escrito à mão dá 403.
 2. Configurar SMTP (587/TLS acima) → «Enviar email de teste» para um inbox real → toast verde + email chega.
 3. Registar um professor em `/register` com email real → recebe o email de verificação.
