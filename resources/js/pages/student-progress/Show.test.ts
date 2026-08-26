@@ -11,6 +11,12 @@ vi.mock('@inertiajs/vue3', async () => {
         Head: defineComponent({ setup: (_, { slots }) => () => h('div', slots.default?.()) }),
         Link: defineComponent({ inheritAttrs: false, setup: (_, { attrs, slots }) => () => h('a', attrs, slots.default?.()) }),
         router: { get: vi.fn(), post: routerPost },
+        // The print action's label reads `usePage().props.modules` — the same
+        // established pattern as assessments/Index.vue's `canImportGrids` —
+        // so it needs a page object here too. Empty by default: these tests
+        // are about Pro gating of the interpretive sections, not the print
+        // action's label.
+        usePage: vi.fn(() => ({ props: { modules: [] } })),
     };
 });
 

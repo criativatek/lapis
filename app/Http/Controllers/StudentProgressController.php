@@ -12,6 +12,7 @@ use App\Services\Ai\AiRequestFailed;
 use App\Services\Ai\AiUnavailable;
 use App\Services\Assessment\Progress\BuildStudentFactualAlerts;
 use App\Services\Assessment\Progress\BuildStudentInsights;
+use App\Services\Assessment\Progress\BuildStudentPrintDocument;
 use App\Services\Assessment\Progress\BuildStudentProgress;
 use App\Services\Assessment\Progress\BuildStudentStrengths;
 use App\Services\Assessment\Progress\StudentProgressNarrative;
@@ -69,6 +70,7 @@ class StudentProgressController extends Controller
         protected BuildStudentFactualAlerts $factualAlerts,
         protected BuildStudentStrengths $strengths,
         protected BuildStudentInsights $insights,
+        protected BuildStudentPrintDocument $printDocument,
         protected InterventionStrategySuggester $suggester,
         protected Entitlements $entitlements,
     ) {}
@@ -237,6 +239,64 @@ class StudentProgressController extends Controller
                 // one never lands in browser history.
                 'suggestStrategy' => route('student-progress.suggest-strategy', ['class' => $class->ulid, 'enrollment' => $enrollment->ulid]),
             ],
+        ]);
+    }
+
+    /**
+     * A print/PDF-ready document of the same student's year — ONE PRINT
+     * INFRASTRUCTURE whose composition adapts to `Entitlements`, never a
+     * separate Base/Pro engine and never a second entitlements system (§ print
+     * brief). This reuses the exact same collaborators and the exact same
+     * assembly `student()` already uses — nothing here is recomputed
+     * differently, and no figure gets a second opinion.
+     *
+     * THE READING IS ALWAYS CANONICAL. A printed document is a snapshot for a
+     * meeting, not an interactive screen; the `leitura` toggle exists so a
+     * teacher can look at the panel two ways, and neither way makes sense as
+     * a persistent artefact somebody carries into a room (§26: it reflects
+     * the current state, once, at the moment it is opened).
+     *
+     * THE ANALYTICAL LAYER IS NOT EVEN COMPUTED when the capability is
+     * absent (§9) — `$pro` stays null and never reaches
+     * `BuildStudentPrintDocument`, exactly as `student()` already refuses to
+     * compute `insights` for a Base organization.
+     */
+    public function print(SchoolClass $class, Enrollment $enrollment): Response
+    {
+        Gate::authorize('view', $class);
+
+        // Same tenancy guard as the panel — no shortcuts for the print route.
+        abort_if((int) $enrollment->class_id !== (int) $class->getKey(), 404);
+
+        $progress = $this->progress->for($class, $enrollment);
+
+        $period = ($progress['selectedPeriod']['id'] ?? null) === null
+            ? null
+            : AcademicPeriod::find((int) $progress['selectedPeriod']['id']);
+
+        $factualAlerts = $this->factualAlerts->for($class, $enrollment, $progress, $period);
+        $strengths = $this->strengths->for($class, $enrollment, $progress, $period);
+        $allowsAdvancedAnalytics = $this->entitlements->allows('advanced_analytics');
+
+        $pro = null;
+
+        if ($allowsAdvancedAnalytics) {
+            $previousAlerts = $this->previousPeriodAlerts($class, $enrollment, $progress, $period);
+            $pro = $this->insights->for($progress, $factualAlerts, $previousAlerts, $strengths);
+        }
+
+        $document = $this->printDocument->for($progress, $factualAlerts, $strengths, $pro, $allowsAdvancedAnalytics);
+
+        return Inertia::render('student-progress/Print', [
+            ...$progress,
+            'narrative' => $this->narrative->for($progress),
+            'factualAlerts' => $factualAlerts,
+            'strengths' => $strengths,
+            // GATED ON THE SERVER, same as the panel (§15): a Base
+            // organization's props simply do not contain this key.
+            ...($pro === null ? [] : ['pro' => $pro]),
+            'document' => $document,
+            'generatedAt' => now()->toDateString(),
         ]);
     }
 

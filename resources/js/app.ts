@@ -14,6 +14,11 @@ createInertiaApp({
         switch (true) {
             case name === 'Welcome':
                 return null;
+            // A print/PDF view is a document, not a screen: no sidebar, no
+            // nav, no app chrome of any kind. General on purpose, so the next
+            // print view gets this for free without a second special case.
+            case name.endsWith('/Print'):
+                return null;
             case name.startsWith('auth/'):
                 return AuthLayout;
             case name.startsWith('admin/'):

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import {
     AlertTriangle,
     CalendarClock,
@@ -9,6 +9,7 @@ import {
     MessageCircle,
     NotebookPen,
     Plus,
+    Printer,
     Sparkles,
     Star,
     UserMinus,
@@ -316,6 +317,20 @@ const props = defineProps<{
 }>();
 
 const CARD = `${card('plain')} p-5`;
+
+// --------------------------------------------------------------- impressão
+
+/**
+ * The label names what the printed document WILL contain — never a plan
+ * name. Read through the same established pattern the rest of the app
+ * already uses for a client-side label decision (assessments/Index.vue's
+ * `canImportGrids`): the effective module list `HandleInertiaRequests`
+ * already shares, never a second entitlements read (§5, §19 of the print
+ * brief).
+ */
+const canPrintSynthesis = computed(() => usePage().props.modules.includes('advanced_analytics'));
+const printLabel = computed(() => (canPrintSynthesis.value ? 'Imprimir síntese' : 'Imprimir ficha'));
+const printHref = computed(() => `/classes/${props.schoolClass.ulid}/evolucao/${props.student.ulid}/imprimir`);
 
 // ------------------------------------------------------------------- leitura
 
@@ -717,6 +732,19 @@ const PURPOSE_LABEL: Record<string, string> = {
                 >
                     Outro aluno da turma
                 </Link>
+
+                <!-- A discreet action, never a document engine of its own —
+                     opens the print route in a new tab, with no interactive
+                     chrome expected to end up on the printed page (§5, §6). -->
+                <a
+                    :href="printHref"
+                    target="_blank"
+                    rel="noopener"
+                    class="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 hover:bg-muted/40"
+                >
+                    <Printer class="size-3.5" />
+                    {{ printLabel }}
+                </a>
 
                 <!-- Pro: a synthesis of what is already computed below, never
                      a document and never a second round-trip (§13, §9 of the

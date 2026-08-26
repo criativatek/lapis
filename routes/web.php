@@ -520,6 +520,10 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // Through the ENROLMENT, never a student id: a result belongs to the
         // (student, class) pair, and a student who left still has a year (§58).
         Route::get('classes/{class}/evolucao/{enrollment}', [StudentProgressController::class, 'student'])->name('student-progress.student');
+        // Print/PDF (HTML+CSS print, no server-side engine) — one document
+        // whose composition adapts to `Entitlements`, never a second engine.
+        // Same guards, same binding, same tenancy as the panel above.
+        Route::get('classes/{class}/evolucao/{enrollment}/imprimir', [StudentProgressController::class, 'print'])->name('student-progress.print');
         // «Sugestão de estratégia (IA)» (§13). Gated by `ai_assistance` inside
         // the controller, on the server — same throttle as «Aperfeiçoar
         // redação», the same AI budget this installation already meters.
