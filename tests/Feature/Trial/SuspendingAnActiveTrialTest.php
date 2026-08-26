@@ -228,7 +228,13 @@ class SuspendingAnActiveTrialTest extends TestCase
         $this->assertFalse($scheduled->fresh()->isInForce());
 
         // Only the organization's own real subscription (Base) was suspended,
-        // not the never-in-force scheduled Trial.
+        // not the never-in-force scheduled Trial. "Not counted" here means
+        // exactly that — excluded from suspend()'s own $suspended tally, the
+        // count the admin controller uses to decide whether to log an audit
+        // event. It does NOT mean excluded from trial history: `status` was
+        // never touched above, so TrialEligibility::usedBefore() must still
+        // see this row and report true, collapsed or not.
         $this->assertSame(1, $suspended);
+        $this->assertTrue(app(TrialEligibility::class)->usedBefore($organization->fresh()));
     }
 }
