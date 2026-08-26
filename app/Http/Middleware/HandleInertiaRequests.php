@@ -100,7 +100,15 @@ class HandleInertiaRequests extends Middleware
             'nav' => fn () => $hasOrganization
                 ? app(NavigationBuilder::class)->forCurrentOrganization()
                 : ['sections' => [], 'footer' => []],
+            // The two lists say different things and must stay apart: `modules`
+            // is ALLOWED — full use, writes included — and every component
+            // already written against it keeps that exact meaning.
+            // `readOnlyModules` is the modules a suspended organization may
+            // still consult but not change. A key in neither is locked. This
+            // lets a screen tell "you cannot do this" from "you cannot do this
+            // right now" without ever asking about plans or subscriptions.
             'modules' => fn () => app(Entitlements::class)->modules(),
+            'readOnlyModules' => fn () => app(Entitlements::class)->readOnlyModules(),
             // The header context selectors. Academic year reads the same
             // heuristic AcademicYearRetentionClassifier already uses and tests
             // (single Active year, else most recent by starts_on) — never

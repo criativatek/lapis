@@ -22,7 +22,10 @@ declare module '@inertiajs/core' {
             appVersion: string;
             auth: Auth;
             nav: SharedNav;
+            /** Module keys in full use — writes included. */
             modules: string[];
+            /** Module keys that may be consulted but not changed (suspended subscription). */
+            readOnlyModules: string[];
             scope: WorkScope;
             selectableAcademicYears: SelectableAcademicYear[];
             sidebarOpen: boolean;

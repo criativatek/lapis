@@ -11,10 +11,19 @@ use Illuminate\Support\Facades\Route;
 /**
  * Turns config/navigation.php into the menu this organization actually sees.
  *
- * Items whose module the organization is not entitled to are dropped here, so a
+ * Items whose module the organization cannot even READ are dropped here, so a
  * Base teacher is never even sent the Pro items. This is presentation — the real
  * gate is the `module:` middleware on each route (§8.2) — but it uses the same
  * Entitlements service, so the two cannot disagree.
+ *
+ * Visibility is `canRead()`, not `allows()`, and the difference is the whole
+ * point of the three access states: a suspended organization's modules resolve
+ * to `ReadOnly`, which `RequireModule` still serves GETs for. Filtering the
+ * menu by `allows()` would hide exactly the pages that suspension is supposed
+ * to leave consultable — reachable by typed URL but not by navigation, which is
+ * not what "os dados não desaparecem" means. `allows()`/`modules()` keep their
+ * Allowed-only meaning and stay the right question for anything that WRITES;
+ * this asks the weaker question because it is only deciding what to show.
  *
  * `owner_only` items (Fatia 3's Equipa) go a step further: entitlement is a
  * property of the ORGANIZATION's plan, not of who is asking, so it cannot by
@@ -34,7 +43,7 @@ class NavigationBuilder
         $sections = [];
 
         foreach (config('navigation.sections') as $section) {
-            $items = $this->allowedItems($section['items']);
+            $items = $this->visibleItems($section['items']);
 
             if ($items !== []) {
                 $sections[] = ['label' => $section['label'], 'items' => $items];
@@ -43,7 +52,7 @@ class NavigationBuilder
 
         return [
             'sections' => $sections,
-            'footer' => $this->allowedItems(config('navigation.footer')),
+            'footer' => $this->visibleItems(config('navigation.footer')),
         ];
     }
 
@@ -51,12 +60,12 @@ class NavigationBuilder
      * @param  list<array<string, mixed>>  $items
      * @return list<array<string, mixed>>
      */
-    protected function allowedItems(array $items): array
+    protected function visibleItems(array $items): array
     {
-        $allowed = [];
+        $visible = [];
 
         foreach ($items as $item) {
-            if ($item['module'] !== null && ! $this->entitlements->allows($item['module'])) {
+            if ($item['module'] !== null && ! $this->entitlements->canRead($item['module'])) {
                 continue;
             }
 
@@ -66,7 +75,7 @@ class NavigationBuilder
 
             $routeName = $item['route'] ?? $item['key'];
 
-            $allowed[] = [
+            $visible[] = [
                 'key' => $item['key'],
                 'label' => $item['label'],
                 // One line saying what the page is for, shown in the sidebar
@@ -85,7 +94,7 @@ class NavigationBuilder
             ];
         }
 
-        return $allowed;
+        return $visible;
     }
 
     protected function isOwnerOfCurrentOrganization(): bool
