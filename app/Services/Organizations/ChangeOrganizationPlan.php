@@ -173,19 +173,79 @@ class ChangeOrganizationPlan
      * account that is suspended, and not with one that quietly fell back to an
      * older plan.
      *
-     * `ends_at` is deliberately left alone. A suspension is a pause, not an end,
-     * and leaving the window open is what lets reactivate() resume the same
-     * subscription rather than invent a new one. Rows that were already closed
-     * are not touched at all — suspending is about what is in force, never about
-     * rewriting the past.
+     * For an ordinary subscription in force, `ends_at` is deliberately left
+     * alone and only `status` moves to Suspended. A suspension is a pause, not
+     * an end, and leaving the window open is what lets reactivate() resume the
+     * same subscription rather than invent a new one. Rows that were already
+     * closed are not touched at all — suspending is about what is in force,
+     * never about rewriting the past.
+     *
+     * Two shapes get different treatment, for the same reason `supersede()`
+     * treats them differently from an ordinary Active row:
+     *
+     *  - A Trial in force is never relabelled away from Trial, not even by a
+     *    suspension — the same exception `supersede()` already makes, because
+     *    a future feature depends on `status = Trial` surviving forever as an
+     *    immutable historical fact. Only its window is cut short,
+     *    `ends_at = now()`, permanently — a suspended trial does not wait out
+     *    the suspension and resume with days remaining; it ends, exactly like
+     *    being superseded would. (Defensively, a Trial scheduled to start
+     *    later — which cannot happen today, trials always start immediately —
+     *    is collapsed to a zero-width window instead, the same way
+     *    `supersede()`'s own scheduled bucket handles one.)
+     *  - A subscription scheduled to start later that would eventually grant
+     *    access (the dormant Base fallback `startProTrial()` leaves behind, or
+     *    defensively anything shaped like it) is not merely skipped, because
+     *    "not currently in force" is exactly what lets it silently become
+     *    effective the moment its `starts_at` arrives — undoing the
+     *    suspension with nobody touching anything. It is repurposed instead
+     *    into the suspended placeholder: `starts_at` pulled back to now,
+     *    `status` set to Suspended. That is precisely the shape
+     *    `reactivate()` already knows how to find and resume, so reactivating
+     *    later lands the organization back on whatever plan this row already
+     *    carries — Base, for the trial-fallback case — never on a resurrected
+     *    Pro and never with the trial's remaining days restored. (A future row
+     *    that already grants nothing is left alone; not expected to occur
+     *    today, kept only for symmetry with `supersede()`'s own generality.)
+     *
+     * These two cases are checked before the generic "in force" fallthrough,
+     * so an in-force Trial is always caught by the Trial case and never falls
+     * through to being overwritten with `status = Suspended`.
      */
     public function suspend(Organization $organization): int
     {
         return DB::transaction(function () use ($organization): int {
             $locked = $this->lock($organization);
+            $now = Carbon::now();
             $suspended = 0;
 
             foreach ($this->subscriptionsOf($locked) as $subscription) {
+                $scheduled = $subscription->starts_at->greaterThan($now);
+
+                if ($subscription->status === SubscriptionStatus::Trial && $subscription->isInForce()) {
+                    $subscription->forceFill(['ends_at' => $now])->save();
+                    $suspended++;
+
+                    continue;
+                }
+
+                if ($scheduled && $subscription->status === SubscriptionStatus::Trial) {
+                    $subscription->forceFill(['ends_at' => $subscription->starts_at])->save();
+
+                    continue;
+                }
+
+                if ($scheduled && $subscription->status->grantsAccess()) {
+                    $subscription->forceFill(['starts_at' => $now, 'status' => SubscriptionStatus::Suspended])->save();
+                    $suspended++;
+
+                    continue;
+                }
+
+                if ($scheduled) {
+                    continue;
+                }
+
                 if (! $subscription->isInForce()) {
                     continue;
                 }
