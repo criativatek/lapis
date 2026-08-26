@@ -12,6 +12,7 @@ use App\Services\Import\Correction\GenericSpreadsheetParser;
 use App\Services\Import\Correction\IntuitivoXlsxParser;
 use App\Services\Import\Correction\PlickersCsvParser;
 use App\Support\Entitlements\Entitlements;
+use App\Support\Limits\Limits;
 use App\Support\Release\BuildStamp;
 use App\Support\Tenancy\CurrentOrganization;
 use Carbon\CarbonImmutable;
@@ -38,6 +39,7 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->singleton(CurrentOrganization::class);
         $this->app->singleton(Entitlements::class);
+        $this->app->singleton(Limits::class);
 
         // Which correction-grid formats LÁPIS can read is decided in exactly one
         // place. A new parser is registered here and the interface, the upload

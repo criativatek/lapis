@@ -12,6 +12,7 @@ use App\Models\Subject;
 use App\Models\User;
 use App\Services\StudentEnrollmentService;
 use App\Support\Import\RosterImportTempStorage;
+use App\Support\Limits\Limits;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -646,7 +647,7 @@ class RosterImportTest extends TestCase
         // for one row, to exercise the try/finally cleanup guarantee under a
         // genuine thrown exception rather than merely reading the code.
         $this->app->bind(StudentEnrollmentService::class, function ($app) {
-            return new class($app->make(CurrentOrganization::class)) extends StudentEnrollmentService
+            return new class($app->make(CurrentOrganization::class), $app->make(Limits::class)) extends StudentEnrollmentService
             {
                 public function enrollNew(SchoolClass $class, array $data): Enrollment
                 {

@@ -3,8 +3,12 @@
 namespace App\Services;
 
 use App\Models\Enrollment;
+use App\Models\EnrollmentStatus;
+use App\Models\Organization;
 use App\Models\SchoolClass;
 use App\Models\Student;
+use App\Support\Limits\LimitKey;
+use App\Support\Limits\Limits;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -16,7 +20,10 @@ use Illuminate\Support\Str;
  */
 class StudentEnrollmentService
 {
-    public function __construct(protected CurrentOrganization $currentOrganization) {}
+    public function __construct(
+        protected CurrentOrganization $currentOrganization,
+        protected Limits $limits,
+    ) {}
 
     /**
      * @param  array{name: string, class_number?: int|null, enrolled_on?: string|null, school_number?: string|null, birth_date?: string|null, photo_path?: string|null, import_note?: string|null, status?: string, status_reason?: string|null}  $data
@@ -24,6 +31,26 @@ class StudentEnrollmentService
     public function enrollNew(SchoolClass $class, array $data): Enrollment
     {
         return DB::transaction(function () use ($class, $data): Enrollment {
+            $status = $data['status'] ?? EnrollmentStatus::Active->value;
+
+            // This always creates a brand-new Student, so the only question
+            // is whether the enrolment it is born with is itself Active
+            // (§Lote 3): a roster row can arrive already TransferredOut/Left
+            // (EnrollmentSituation, a code the school's own file already
+            // carried for a student appearing here for the first time), and
+            // that student was never "active" for even one instant — nothing
+            // to guard, nothing consumed.
+            if ($status === EnrollmentStatus::Active->value) {
+                // Row-locked BEFORE counting usage — same Organization-lock
+                // pattern as ClassService::create(), see its own comment.
+                $organization = Organization::query()
+                    ->whereKey($this->currentOrganization->id())
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                $this->limits->assertCanIncreaseFor($organization, LimitKey::ActiveStudents);
+            }
+
             $student = Student::create(['pseudonym_code' => $this->uniquePseudonym()]);
 
             $student->identity()->create([
@@ -44,7 +71,7 @@ class StudentEnrollmentService
                 'student_id' => $student->id,
                 'class_number' => $data['class_number'] ?? null,
                 'enrolled_on' => $enrolledOn,
-                'status' => $data['status'] ?? 'active',
+                'status' => $status,
                 // Why, when the roster said so. Null for a plain enrolment.
                 'status_reason' => $data['status_reason'] ?? null,
                 'is_late_entry' => $isLate,
@@ -119,6 +146,37 @@ class StudentEnrollmentService
     public function fillFromRoster(Enrollment $enrollment, array $data): Enrollment
     {
         return DB::transaction(function () use ($enrollment, $data): Enrollment {
+            // The real "reactivation" path (§Lote 3): a re-import can flip an
+            // existing enrolment's status back to Active (a student who had
+            // left reappears on the school's own file). Guarded ONLY when
+            // that is genuinely a NEW unit of usage — computed BEFORE the
+            // update below is applied, and excluding this same enrolment
+            // from the "already active elsewhere" check, so a student with
+            // two enrolments in this organization who is already active via
+            // the other one is never double-counted or wrongly blocked.
+            $reactivatesStudent = isset($data['situation'])
+                && $data['situation']['status'] === EnrollmentStatus::Active->value
+                && $enrollment->status !== EnrollmentStatus::Active;
+
+            if ($reactivatesStudent) {
+                $organization = Organization::query()
+                    ->whereKey($this->currentOrganization->id())
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                $alreadyActiveElsewhere = Enrollment::query()
+                    ->withoutGlobalScope('organization')
+                    ->where('organization_id', $organization->getKey())
+                    ->where('student_id', $enrollment->student_id)
+                    ->whereKeyNot($enrollment->getKey())
+                    ->active()
+                    ->exists();
+
+                if (! $alreadyActiveElsewhere) {
+                    $this->limits->assertCanIncreaseFor($organization, LimitKey::ActiveStudents);
+                }
+            }
+
             $student = $enrollment->student;
 
             $identityFields = array_filter([

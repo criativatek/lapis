@@ -72,6 +72,22 @@ class SchoolClass extends Model
     }
 
     /**
+     * Turmas that count towards the `active_classes` quota (§Lote 3):
+     * `Preparation` and `Active` together — the same "still open" cluster
+     * `scopeNeedingReassignment()` above already groups, which is the
+     * precedent this scope reuses rather than inventing a second grouping.
+     * `Closed`/`Archived` never count, though no code path reaches either
+     * status yet — both are reserved for a future archive workflow.
+     *
+     * @param  Builder<SchoolClass>  $query
+     * @return Builder<SchoolClass>
+     */
+    public function scopeCountingTowardsLimit(Builder $query): Builder
+    {
+        return $query->whereIn('status', [ClassStatus::Preparation, ClassStatus::Active]);
+    }
+
+    /**
      * The turmas one teacher actually teaches (§23), via the class_teachers
      * pivot and on top of this model's own organization scope — never a
      * colleague's turma, never another organization's.

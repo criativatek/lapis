@@ -82,6 +82,18 @@ class EntitlementsSeeder extends Seeder
     ];
 
     /**
+     * Quantitative caps (§Lote 3, distinct from the module catalogue above:
+     * "may use" vs "how much"). `"unlimited"` is the literal string, never
+     * `null` — see `App\Support\Limits\Limits::parse()`. Institucional's
+     * `unlimited` here is a temporary default: the real institutional
+     * contractual limit is out of scope for this Lote and is left for a
+     * future one to define.
+     */
+    protected const BASE_LIMITS = ['active_classes' => 8, 'active_students' => 300];
+
+    protected const UNLIMITED = ['active_classes' => 'unlimited', 'active_students' => 'unlimited'];
+
+    /**
      * The full catalogue's keys, for callers outside this class that need to
      * verify every capability is real (CatalogCoherenceTest) without exposing
      * the MODULES const — and its human names — wholesale.
@@ -100,15 +112,15 @@ class EntitlementsSeeder extends Seeder
         }
 
         $plans = [
-            ['key' => 'base', 'name' => 'LÁPIS Base', 'sort_order' => 1, 'modules' => self::BASE_MODULES],
-            ['key' => 'pro', 'name' => 'LÁPIS Pro', 'sort_order' => 2, 'modules' => self::PRO_MODULES],
-            ['key' => 'institutional', 'name' => 'LÁPIS Institucional', 'sort_order' => 3, 'modules' => self::INSTITUTIONAL_MODULES],
+            ['key' => 'base', 'name' => 'LÁPIS Base', 'sort_order' => 1, 'modules' => self::BASE_MODULES, 'limits' => self::BASE_LIMITS],
+            ['key' => 'pro', 'name' => 'LÁPIS Pro', 'sort_order' => 2, 'modules' => self::PRO_MODULES, 'limits' => self::UNLIMITED],
+            ['key' => 'institutional', 'name' => 'LÁPIS Institucional', 'sort_order' => 3, 'modules' => self::INSTITUTIONAL_MODULES, 'limits' => self::UNLIMITED],
         ];
 
         foreach ($plans as $definition) {
             $plan = Plan::updateOrCreate(
                 ['key' => $definition['key']],
-                ['name' => $definition['name'], 'sort_order' => $definition['sort_order']],
+                ['name' => $definition['name'], 'sort_order' => $definition['sort_order'], 'limits' => $definition['limits']],
             );
 
             $plan->modules()->sync(
