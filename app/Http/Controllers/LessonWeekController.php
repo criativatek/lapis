@@ -9,6 +9,8 @@ use App\Models\AcademicYear;
 use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Lessons\WeeklyLessonsQuery;
+use App\Support\Entitlements\AccessState;
+use App\Support\Entitlements\Entitlements;
 use App\Support\Retention\ResolveSelectedAcademicYear;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
@@ -26,6 +28,7 @@ class LessonWeekController extends Controller implements HasMiddleware
         private readonly WeeklyLessonsQuery $weeklyLessons,
         private readonly MaterializeLessonsForWeek $materializeLessons,
         private readonly ResolveSelectedAcademicYear $resolveAcademicYear,
+        private readonly Entitlements $entitlements,
     ) {}
 
     /** @return list<string> */
@@ -45,7 +48,16 @@ class LessonWeekController extends Controller implements HasMiddleware
         // estritamente limitada à semana pedida — nunca ao ano letivo
         // inteiro nem a qualquer outra semana. Uma sessão de suporte
         // continua a não escrever nada em nome do professor.
-        if ($academicYear !== null && ! $request->session()->has('impersonator_id')) {
+        //
+        // E NÃO ESCREVE NADA QUANDO O MÓDULO ESTÁ `ReadOnly` (§Lote 2): uma
+        // assinatura suspensa deixa consultar as aulas já existentes da
+        // semana, mas `RequireModule` já deixa este GET passar precisamente
+        // porque é uma leitura — sem esta verificação extra, abrir a semana
+        // continuaria, incorretamente, a criar aulas novas durante a
+        // suspensão. `Allowed` continua a materializar exatamente como antes.
+        if ($academicYear !== null
+            && ! $request->session()->has('impersonator_id')
+            && $this->entitlements->accessState('lessons') === AccessState::Allowed) {
             $this->materializeLessons->execute(
                 $this->user($request),
                 $academicYear,

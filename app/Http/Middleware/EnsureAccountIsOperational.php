@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Http\Middleware\Concerns\ChecksSafeHttpMethod;
 use App\Support\Tenancy\CurrentOrganization;
 use Closure;
 use Illuminate\Http\Request;
@@ -12,13 +13,15 @@ use Symfony\Component\HttpFoundation\Response;
  * current organization is in a recoverable closure window (§6, §11 of the
  * lifecycle brief).
  *
- * Deliberately never blocks a GET/HEAD: someone in closure can still browse
- * everything they could before — read access was never the concern, and
- * refusing it would turn a recoverable, low-drama pause into something that
- * looks broken. What is refused is the next WRITE: creating a class,
- * grading, inviting a member, editing the school's identity. That single
- * rule covers every "não permitir" in §6 and §11 at once, because every item
- * on both lists is a mutation.
+ * Deliberately never blocks a safe method (GET/HEAD/OPTIONS — see
+ * ChecksSafeHttpMethod, shared with RequireModule's own read/write
+ * distinction, §Lote 2): someone in closure can still browse everything they
+ * could before — read access was never the concern, and refusing it would
+ * turn a recoverable, low-drama pause into something that looks broken. What
+ * is refused is the next WRITE: creating a class, grading, inviting a member,
+ * editing the school's identity. That single rule covers every "não
+ * permitir" in §6 and §11 at once, because every item on both lists is a
+ * mutation.
  *
  * An explicit allow-list, not a block-list: the routes a person in closure
  * is still allowed to use (cancel, export, switch organization, sign out,
@@ -31,6 +34,8 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class EnsureAccountIsOperational
 {
+    use ChecksSafeHttpMethod;
+
     /**
      * @var list<string>
      */
@@ -58,7 +63,7 @@ class EnsureAccountIsOperational
 
     public function handle(Request $request, Closure $next): Response
     {
-        if ($request->isMethod('GET') || $request->isMethod('HEAD')) {
+        if ($this->requestIsSafe($request)) {
             return $next($request);
         }
 

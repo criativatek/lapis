@@ -161,6 +161,36 @@ class WeeklyLessonsTest extends TestCase
     }
 
     #[Test]
+    public function a_read_only_lessons_module_shows_existing_lessons_but_materializes_nothing_new(): void
+    {
+        // §Lote 2: a suspended subscription puts `lessons` in ReadOnly, and
+        // `RequireModule` now lets a GET through for that state. Without the
+        // guard in LessonWeekController::index(), that GET would still create
+        // NEW Lesson rows — a real correctness bug ReadOnly would otherwise
+        // introduce. A lesson from BEFORE the suspension must still show.
+        [$teacher, $organization, $year, $schoolClass] = $this->context();
+        $existing = $this->tenant($organization, fn (): Lesson => $this->lesson($schoolClass, $teacher, '2026-09-07 09:00:00'));
+        $this->tenant($organization, fn () => RecurringLessonSlot::create($this->slot($schoolClass, 3)));
+
+        $this->suspendPro($organization);
+
+        $this->actingAs($teacher)->withSession([
+            'organization_id' => $organization->id,
+            'academic_year_id' => $year->id,
+        ])->get('/lessons?week=2026-09-09')->assertOk()->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->component('lessons/Index')
+                ->has('lessons', 1)
+                ->where('lessons.0.ulid', $existing->ulid),
+        );
+
+        // The recurring slot falls on Wednesday (day 3) of this same week —
+        // Allowed would have materialized it (see the tests above); ReadOnly
+        // must not.
+        $this->assertDatabaseCount('lessons', 1);
+    }
+
+    #[Test]
     public function opening_an_adjacent_week_materializes_only_that_week(): void
     {
         [$teacher, $organization, $year, $schoolClass] = $this->context();
@@ -298,6 +328,20 @@ class WeeklyLessonsTest extends TestCase
     {
         OrganizationSubscription::withoutGlobalScope('organization')->where('organization_id', $organization->id)->delete();
         OrganizationSubscription::withoutGlobalScope('organization')->create(['organization_id' => $organization->id, 'plan_id' => Plan::where('key', 'pro')->firstOrFail()->id, 'status' => SubscriptionStatus::Active, 'starts_at' => Carbon::now()->subDay()]);
+        app(Entitlements::class)->flush();
+    }
+
+    /**
+     * The exact shape `ChangeOrganizationPlan::suspend()` leaves behind:
+     * status flipped to Suspended, `ends_at` left untouched (open) — the
+     * "most recent subscription overall is Suspended" case that resolves to
+     * `ReadOnly` rather than `Locked`.
+     */
+    private function suspendPro(Organization $organization): void
+    {
+        OrganizationSubscription::withoutGlobalScope('organization')
+            ->where('organization_id', $organization->id)
+            ->update(['status' => SubscriptionStatus::Suspended]);
         app(Entitlements::class)->flush();
     }
 
