@@ -71,7 +71,7 @@ class ChangeOrganizationPlan
                 return $inForce->first();
             }
 
-            $this->closeOpenSubscriptions($subscriptions, $changedAt);
+            $this->supersede($subscriptions, $changedAt);
 
             $created = OrganizationSubscription::withoutGlobalScope('organization')->create([
                 'organization_id' => $locked->getKey(),
@@ -157,7 +157,7 @@ class ChangeOrganizationPlan
 
             // Anything else that would now be in force alongside it is closed —
             // the invariant holds regardless of what the data looked like before.
-            $this->closeOpenSubscriptions($subscriptions->reject(fn (OrganizationSubscription $s): bool => $s->is($resumable)), $now);
+            $this->supersede($subscriptions->reject(fn (OrganizationSubscription $s): bool => $s->is($resumable)), $now);
 
             $this->entitlements->flush();
 
@@ -176,28 +176,57 @@ class ChangeOrganizationPlan
     }
 
     /**
-     * Ends every subscription whose window is still open.
+     * Supersedes whatever the organization already had, at the instant a new
+     * subscription takes its place.
      *
-     * `ends_at` says WHEN a subscription stopped applying; `status` says how it
-     * stands. So a suspended one being superseded keeps saying «suspended» — that
-     * is why it stopped — and merely gains the date. Only a subscription that
-     * still grants access is turned into `Expired`, and one that already carries
-     * an `ends_at` is left exactly as it is.
+     * Every subscription belonging to the organization falls into exactly one
+     * of three shapes:
+     *
+     *  - Already closed: not scheduled to start later, and its own `ends_at`
+     *    already fell at or before `$changedAt`. History. Left exactly as it
+     *    is — not even a save() — because `RepairOverlappingSubscriptionsTest`
+     *    and every reader of the past depend on it staying untouched.
+     *  - Scheduled to start later (`starts_at > $changedAt`): a fallback row
+     *    pre-created to take over automatically, or a trial set up ahead of
+     *    time. It must never be allowed to take effect, but setting
+     *    `ends_at = $changedAt` would end it before it starts. Collapsed
+     *    instead to a zero-width window, `ends_at = starts_at`: no interval
+     *    is ever incoherent, and `isInForce()` can never return true for it —
+     *    at every instant either `starts_at <= now` still fails, or it holds
+     *    and `ends_at > now` already fails.
+     *  - In force right now, whether open-ended or carrying a pre-set future
+     *    `ends_at` that has not arrived yet (a time-boxed trial, say): cut
+     *    short at `ends_at = $changedAt`.
+     *
+     * `status` follows `ends_at` in what it says happened, with one
+     * exception: a Trial is NEVER relabelled away from Trial here, not even
+     * one being voided before it ever took effect — a future feature depends
+     * on `status = Trial` surviving forever as an immutable historical fact.
+     * Anything else that still grants access becomes `Expired`; a Suspended
+     * row stays Suspended, because superseding is not what changed it.
      *
      * @param  Collection<int, OrganizationSubscription>  $subscriptions
      */
-    protected function closeOpenSubscriptions($subscriptions, Carbon $closedAt): void
+    protected function supersede($subscriptions, Carbon $changedAt): void
     {
         foreach ($subscriptions as $subscription) {
-            if ($subscription->ends_at !== null) {
+            $scheduled = $subscription->starts_at->greaterThan($changedAt);
+
+            $alreadyClosed = ! $scheduled
+                && $subscription->ends_at !== null
+                && $subscription->ends_at->lessThanOrEqualTo($changedAt);
+
+            if ($alreadyClosed) {
                 continue;
             }
 
             $subscription->forceFill([
-                'ends_at' => $closedAt,
-                'status' => $subscription->status->grantsAccess()
-                    ? SubscriptionStatus::Expired
-                    : $subscription->status,
+                'ends_at' => $scheduled ? $subscription->starts_at : $changedAt,
+                'status' => match (true) {
+                    $subscription->status === SubscriptionStatus::Trial => SubscriptionStatus::Trial,
+                    $subscription->status->grantsAccess() => SubscriptionStatus::Expired,
+                    default => $subscription->status,
+                },
             ])->save();
         }
     }
