@@ -47,6 +47,6 @@ class ActivateProTrial
         $trialPlan = Plan::where('key', 'pro')->firstOrFail();
         $fallbackPlan = Plan::where('key', 'base')->firstOrFail();
 
-        return $this->changePlan->startProTrial($organization, $trialPlan, $fallbackPlan, $this->policy->proDays());
+        return $this->changePlan->startProTrial($organization, $user, $trialPlan, $fallbackPlan, $this->policy->proDays());
     }
 }

@@ -2,6 +2,14 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.74.2] — 2026-08-27
+
+### Fixed
+
+- **Ativar o período experimental Pro deixa de poder substituir silenciosamente um plano administrativo em vigor.** `ActivateProTrial` só verificava o TIPO da organização (Pessoal) e quem era o seu responsável — nunca QUAL plano estava realmente em vigor. Isso permitia a uma organização Pessoal já colocada manualmente no plano Institucional (o caso real que expôs o problema: duas organizações Pessoais atribuídas administrativamente ao plano Institucional) ativar um Trial na mesma, substituindo o Institucional por um Trial Pro e agendando um regresso automático ao Base — destruindo sem aviso uma atribuição administrativa. O único ciclo autorizado passa a estar explícito e a ser reforçado: **Base (em vigor) → Trial Pro → Base**. `TrialEligibility` ganha a regra canónica — a organização tem de ter exactamente uma subscrição em vigor, e essa subscrição tem de ser o plano Base — e `ChangeOrganizationPlan::startProTrial()` volta a verificá-la, já com a linha da organização bloqueada, imediatamente antes de qualquer escrita. Uma organização Pessoal em Pro, em Institucional, suspensa ou sem nenhuma subscrição em vigor deixa de poder alguma vez iniciar um Trial.
+
+- **O ecrã de Plano deixa de oferecer o Trial a uma organização Pessoal já no plano Institucional.** O mesmo engano existia na apresentação: `PlanController::edit()` decidia o estado `'institucional'` a partir do TIPO da organização, não do plano em vigor — pelo que uma organização Pessoal no plano Institucional não caía em nenhum ramo e acabava, por omissão, classificada como `'eligible'`, mostrando o botão de ativação por cima de um plano atribuído por um operador. O estado passa a ler-se do plano realmente em vigor, e ganha ainda um estado por omissão novo para quando nada está em vigor (uma organização suspensa, ou sem qualquer subscrição) e o Trial nunca foi usado — deixando de ser lido, por engano, como "elegível".
+
 ## [0.74.1] — 2026-08-26
 
 ### Fixed

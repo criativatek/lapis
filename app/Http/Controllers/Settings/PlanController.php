@@ -6,7 +6,6 @@ use App\Actions\Organizations\ActivateProTrial;
 use App\Http\Controllers\Concerns\RefusesDuringImpersonation;
 use App\Http\Controllers\Controller;
 use App\Models\OrganizationSubscription;
-use App\Models\OrganizationType;
 use App\Models\SubscriptionStatus;
 use App\Services\Organizations\ChangeOrganizationPlan;
 use App\Support\Tenancy\CurrentOrganization;
@@ -25,9 +24,14 @@ use Inertia\Response;
  * `state` is computed once, here, from exactly the same primitives every
  * other plan-aware screen already reads — `ChangeOrganizationPlan::inForce()`
  * (the same "what is in force" `Entitlements`/the admin backoffice use) and
- * `TrialEligibility` (the once-per-account history check `ChangeOrganizationPlan::startProTrial()`
- * re-checks under lock). The page itself never derives a plan/trial state
- * from anything else.
+ * `TrialEligibility` (`usedBefore()`, the once-per-account history check, and
+ * `canActivate()`, the canonical "may this organization start a trial right
+ * now" rule — both re-checked again under lock by
+ * `ChangeOrganizationPlan::startProTrial()`). The 'institutional' state is
+ * keyed off the IN-FORCE PLAN's key, never `$organization->type`: a Personal
+ * organization an operator put on the Institutional plan must read as
+ * `'institutional'` here too, not fall through to `'eligible'`. The page
+ * itself never derives a plan/trial state from anything else.
  */
 class PlanController extends Controller
 {
@@ -41,18 +45,19 @@ class PlanController extends Controller
         protected ActivateProTrial $activateProTrial,
     ) {}
 
-    public function edit(): Response
+    public function edit(Request $request): Response
     {
         $organization = $this->currentOrganization->get();
         $inForce = $this->changePlan->inForce($organization);
         $usedTrialBefore = $this->trialEligibility->usedBefore($organization);
 
         $state = match (true) {
-            $organization->type === OrganizationType::Institutional => 'institutional',
             $inForce?->status === SubscriptionStatus::Trial => 'trial_active',
+            $inForce?->plan?->key === 'institutional' => 'institutional',
             $inForce?->plan?->key === 'pro' => 'pro_active',
+            $this->trialEligibility->canActivate($organization, $request->user()) => 'eligible',
             $usedTrialBefore => 'trial_expired',
-            default => 'eligible',
+            default => 'unavailable',
         };
 
         return Inertia::render('settings/Plan', [

@@ -11,12 +11,12 @@ import { Button } from '@/components/ui/button';
  *
  * `state` arrives already computed server-side (App\Http\Controllers\Settings\PlanController::edit)
  * — this page never re-derives it from `currentPlanName`/`trial`/`usedTrialBefore`,
- * it only decides what to SHOW for each of the five states. `proDays` always
+ * it only decides what to SHOW for each of the six states. `proDays` always
  * comes from the prop, never a literal, so the trial length stays whatever
  * TRIAL_PRO_DAYS/config('trial.pro_days') says.
  */
 
-type PlanState = 'eligible' | 'trial_active' | 'trial_expired' | 'pro_active' | 'institutional';
+type PlanState = 'eligible' | 'trial_active' | 'trial_expired' | 'pro_active' | 'institutional' | 'unavailable';
 
 type Trial = {
     starts_at: string;
@@ -106,6 +106,14 @@ function formatDate(iso: string): string {
         <!-- institutional: plan name only — no trial copy of any kind. -->
         <div v-else-if="state === 'institutional'" class="space-y-2 rounded-lg border border-border p-4">
             <h3 class="text-sm font-medium">Plano atual: {{ currentPlanName }}</h3>
+        </div>
+
+        <!-- unavailable: nothing in force to offer a trial against (e.g. a
+             suspended organization, or one with no subscription at all) —
+             no trial copy, no button, current plan name only if there is one. -->
+        <div v-else-if="state === 'unavailable'" class="space-y-2 rounded-lg border border-border p-4">
+            <h3 v-if="currentPlanName" class="text-sm font-medium">Plano atual: {{ currentPlanName }}</h3>
+            <p class="text-sm text-muted-foreground">De momento não há nenhuma ação disponível sobre o plano desta organização.</p>
         </div>
     </div>
 </template>

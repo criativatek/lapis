@@ -367,6 +367,242 @@ class ActivateProTrialTest extends TestCase
         $this->assertCount(1, $this->subscriptions($organization));
     }
 
+    // ------------------------------------------- the currently in-force plan
+    //
+    // The only authorized cycle is Base (in force) → Trial Pro → Base. A
+    // Personal organization on Pro, on Institutional, suspended, or with no
+    // subscription in force at all must never be allowed to start a trial,
+    // regardless of `usedBefore()`.
+
+    #[Test]
+    public function a_personal_organization_currently_on_paid_pro_is_not_eligible_for_a_trial(): void
+    {
+        $user = User::factory()->create();
+        $organization = $user->personalOrganization();
+        app(ChangeOrganizationPlan::class)->to($organization->fresh(), $this->plan('pro'));
+
+        $before = $this->subscriptions($organization)->map(fn (OrganizationSubscription $s) => $s->getAttributes())->all();
+
+        try {
+            app(ActivateProTrial::class)->activate($user, $organization->fresh());
+            $this->fail('Expected TrialException.');
+        } catch (TrialException $exception) {
+            $this->assertSame('Este tipo de organização não é elegível para o período experimental Pro.', $exception->getMessage());
+        }
+
+        $after = $this->subscriptions($organization)->map(fn (OrganizationSubscription $s) => $s->getAttributes())->all();
+        $this->assertSame($before, $after, 'the refused attempt changed and created nothing');
+    }
+
+    #[Test]
+    public function the_http_route_rejects_a_personal_organization_currently_on_paid_pro(): void
+    {
+        $user = User::factory()->create();
+        $organization = $user->personalOrganization();
+        app(ChangeOrganizationPlan::class)->to($organization->fresh(), $this->plan('pro'));
+
+        $this->actingAs($user)->withSession(['organization_id' => $organization->id])
+            ->post('/settings/plan/trial')
+            ->assertSessionHasErrors(['trial' => 'Este tipo de organização não é elegível para o período experimental Pro.']);
+
+        $this->assertCount(2, $this->subscriptions($organization), 'no trial row created');
+        $this->assertSame('pro', $this->subscriptions($organization)->last()->plan->key, 'still on Pro, untouched');
+    }
+
+    /**
+     * The exact production shape this hotfix exists for: a Personal-type
+     * organization an operator administratively assigned the Institutional
+     * plan. Before this fix, `ActivateProTrial` never looked at WHICH plan
+     * was in force, only at the organization's TYPE — so this organization
+     * could start a Trial, silently superseding the administrative
+     * assignment and scheduling an automatic "return to Base".
+     */
+    #[Test]
+    public function a_personal_organization_administratively_put_on_institutional_is_not_eligible_for_a_trial(): void
+    {
+        $user = User::factory()->create();
+        $organization = $user->personalOrganization();
+        app(ChangeOrganizationPlan::class)->to($organization->fresh(), $this->plan('institutional'));
+
+        $institutional = $this->subscriptions($organization)->last();
+        $snapshot = $institutional->getAttributes();
+
+        try {
+            app(ActivateProTrial::class)->activate($user, $organization->fresh());
+            $this->fail('Expected TrialException.');
+        } catch (TrialException $exception) {
+            $this->assertSame('Este tipo de organização não é elegível para o período experimental Pro.', $exception->getMessage());
+        }
+
+        $institutional->refresh();
+        $this->assertSame($snapshot, $institutional->getAttributes(), 'the Institutional subscription is left byte-for-byte untouched');
+        $this->assertTrue($institutional->isInForce(), 'still in force after the refused attempt');
+        $this->assertCount(2, $this->subscriptions($organization), 'no new row created');
+    }
+
+    #[Test]
+    public function the_http_route_rejects_a_personal_organization_administratively_put_on_institutional(): void
+    {
+        $user = User::factory()->create();
+        $organization = $user->personalOrganization();
+        app(ChangeOrganizationPlan::class)->to($organization->fresh(), $this->plan('institutional'));
+
+        $institutional = $this->subscriptions($organization)->last();
+        $snapshot = $institutional->getAttributes();
+
+        $this->actingAs($user)->withSession(['organization_id' => $organization->id])
+            ->post('/settings/plan/trial')
+            ->assertSessionHasErrors(['trial' => 'Este tipo de organização não é elegível para o período experimental Pro.']);
+
+        $institutional->refresh();
+        $this->assertSame($snapshot, $institutional->getAttributes(), 'the Institutional subscription is left byte-for-byte untouched');
+        $this->assertCount(2, $this->subscriptions($organization), 'no new row created');
+    }
+
+    #[Test]
+    public function an_institutional_type_organization_is_rejected_regardless_of_which_plan_it_currently_carries(): void
+    {
+        // The type guard runs first, before any plan is even considered — an
+        // Institutional-type organization is never eligible, whatever plan an
+        // operator happens to have put it on.
+        $owner = User::factory()->withoutOrganization()->create();
+        $organization = Organization::factory()->institutional()->create(['owner_id' => $owner->getKey()]);
+        $organization->members()->attach($owner, ['joined_at' => now()]);
+        OrganizationSubscription::withoutGlobalScope('organization')->create([
+            'organization_id' => $organization->getKey(),
+            'plan_id' => $this->plan('base')->getKey(),
+            'status' => SubscriptionStatus::Active,
+            'starts_at' => now(),
+        ]);
+
+        try {
+            app(ActivateProTrial::class)->activate($owner, $organization->fresh());
+            $this->fail('Expected TrialException.');
+        } catch (TrialException $exception) {
+            $this->assertSame('Este tipo de organização não é elegível para o período experimental Pro.', $exception->getMessage());
+        }
+
+        $this->assertCount(1, $this->subscriptions($organization), 'the Base subscription is untouched, nothing new created');
+    }
+
+    #[Test]
+    public function a_suspended_personal_organization_is_not_eligible_for_a_trial(): void
+    {
+        $user = User::factory()->create();
+        $organization = $user->personalOrganization();
+        $this->subscriptions($organization)->first()->forceFill(['status' => SubscriptionStatus::Suspended])->save();
+
+        try {
+            app(ActivateProTrial::class)->activate($user, $organization->fresh());
+            $this->fail('Expected TrialException.');
+        } catch (TrialException $exception) {
+            $this->assertSame('Este tipo de organização não é elegível para o período experimental Pro.', $exception->getMessage());
+        }
+
+        $this->assertCount(1, $this->subscriptions($organization), 'nothing created');
+        $this->assertSame(SubscriptionStatus::Suspended, $this->subscriptions($organization)->first()->status, 'still suspended, untouched');
+    }
+
+    #[Test]
+    public function the_http_route_rejects_a_suspended_personal_organization(): void
+    {
+        $user = User::factory()->create();
+        $organization = $user->personalOrganization();
+        $this->subscriptions($organization)->first()->forceFill(['status' => SubscriptionStatus::Suspended])->save();
+
+        $this->actingAs($user)->withSession(['organization_id' => $organization->id])
+            ->post('/settings/plan/trial')
+            ->assertSessionHasErrors(['trial' => 'Este tipo de organização não é elegível para o período experimental Pro.']);
+
+        $this->assertCount(1, $this->subscriptions($organization));
+        $this->assertSame(SubscriptionStatus::Suspended, $this->subscriptions($organization)->first()->status);
+    }
+
+    #[Test]
+    public function a_personal_organization_with_no_subscription_at_all_is_not_eligible_for_a_trial(): void
+    {
+        // Defensive: no code path today leaves an organization with zero
+        // subscriptions, but the eligibility rule must fail safe rather than
+        // treat "nothing in force" as if it were Base.
+        $user = User::factory()->create();
+        $organization = $user->personalOrganization();
+        OrganizationSubscription::withoutGlobalScope('organization')->where('organization_id', $organization->getKey())->delete();
+        $this->assertCount(0, $this->subscriptions($organization));
+
+        try {
+            app(ActivateProTrial::class)->activate($user, $organization->fresh());
+            $this->fail('Expected TrialException.');
+        } catch (TrialException $exception) {
+            $this->assertSame('Este tipo de organização não é elegível para o período experimental Pro.', $exception->getMessage());
+        }
+
+        $this->assertCount(0, $this->subscriptions($organization), 'still nothing — not treated as Base');
+    }
+
+    /**
+     * Defensive-only, per TrialEligibility::hasEligibleBasePlan()'s own
+     * docblock: no current code path schedules a future plan change
+     * (`ChangeOrganizationPlan::to()` always writes `starts_at = now()`), but
+     * if one existed, a trial's `supersede()` call would silently void it —
+     * exactly the shape `supersede()` itself already defends against
+     * defensively for scenarios its own callers cannot currently produce.
+     */
+    #[Test]
+    public function a_scheduled_future_non_base_change_that_would_be_silently_voided_blocks_a_trial(): void
+    {
+        $user = User::factory()->create();
+        $organization = $user->personalOrganization();
+
+        $future = OrganizationSubscription::withoutGlobalScope('organization')->create([
+            'organization_id' => $organization->getKey(),
+            'plan_id' => $this->plan('pro')->getKey(),
+            'status' => SubscriptionStatus::Active,
+            'starts_at' => now()->addDays(10),
+        ]);
+        $snapshot = $future->fresh()->getAttributes();
+
+        try {
+            app(ActivateProTrial::class)->activate($user, $organization->fresh());
+            $this->fail('Expected TrialException.');
+        } catch (TrialException $exception) {
+            $this->assertSame('Este tipo de organização não é elegível para o período experimental Pro.', $exception->getMessage());
+        }
+
+        $future->refresh();
+        $this->assertSame($snapshot, $future->getAttributes(), 'the scheduled future change is left byte-for-byte untouched');
+        $this->assertCount(2, $this->subscriptions($organization), 'no dormant Base fallback and no trial were created');
+    }
+
+    /**
+     * Mirrors `the_eligibility_recheck_sees_a_trial_committed_after_the_action_was_resolved`
+     * above, but for a plan change landing in the gap instead of a competing
+     * trial: proves `ChangeOrganizationPlan::startProTrial()` re-reads which
+     * plan is in force from the LOCKED row, strictly after `lock()`, never
+     * from a value fixed at container-resolution time — the exact race this
+     * hotfix closes (an operator's plan change committed between the page
+     * load that showed "eligible" and this call must be honored).
+     */
+    #[Test]
+    public function the_eligibility_recheck_sees_a_plan_change_committed_after_the_action_was_resolved(): void
+    {
+        $user = User::factory()->create();
+        $organization = $user->personalOrganization();
+
+        $action = app(ActivateProTrial::class);
+
+        app(ChangeOrganizationPlan::class)->to($organization->fresh(), $this->plan('institutional'));
+
+        try {
+            $action->activate($user, $organization->fresh());
+            $this->fail('Expected TrialException.');
+        } catch (TrialException $exception) {
+            $this->assertSame('Este tipo de organização não é elegível para o período experimental Pro.', $exception->getMessage());
+        }
+
+        $this->assertSame('institutional', $this->subscriptions($organization)->last()->plan->key, 'the plan change is honored, not overridden');
+        $this->assertCount(2, $this->subscriptions($organization), 'no trial row created despite the race');
+    }
+
     // ------------------------------------------------------ tenant isolation
 
     #[Test]

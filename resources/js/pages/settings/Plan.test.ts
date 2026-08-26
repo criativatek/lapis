@@ -29,7 +29,7 @@ vi.mock('@inertiajs/vue3', () => ({
 const wrappers: VueWrapper[] = [];
 
 type Props = {
-    state: 'eligible' | 'trial_active' | 'trial_expired' | 'pro_active' | 'institutional';
+    state: 'eligible' | 'trial_active' | 'trial_expired' | 'pro_active' | 'institutional' | 'unavailable';
     proDays: number;
     currentPlanName: string | null;
     trial: { starts_at: string; ends_at: string; days_remaining: number } | null;
@@ -144,5 +144,36 @@ describe('settings/Plan — institutional', () => {
         expect(wrapper.text().toLowerCase()).not.toContain('experimental');
         expect(wrapper.text().toLowerCase()).not.toContain('trial');
         expect(wrapper.text().toLowerCase()).not.toContain('pro por');
+    });
+
+    // This is a frontend test driven directly by the `state` prop, unaffected
+    // by the backend change that made 'institutional' key off the in-force
+    // PLAN rather than the organization's TYPE (App\Http\Controllers\Settings\PlanController::edit)
+    // — confirmed here rather than assumed: any string of 'institutional'
+    // renders the same way regardless of which organization shape produced it.
+    it('renders the same way for a Personal organization administratively put on the Institutional plan', () => {
+        const wrapper = mountPage({ state: 'institutional', currentPlanName: 'LÁPIS Institucional' });
+
+        expect(wrapper.find('button').exists()).toBe(false);
+        expect(wrapper.text()).toContain('LÁPIS Institucional');
+    });
+});
+
+describe('settings/Plan — unavailable', () => {
+    it('renders no trial copy and no button, but shows the current plan name when there is one', () => {
+        const wrapper = mountPage({ state: 'unavailable', currentPlanName: 'LÁPIS Base' });
+
+        expect(wrapper.find('button').exists()).toBe(false);
+        expect(wrapper.text()).toContain('LÁPIS Base');
+        expect(wrapper.text().toLowerCase()).not.toContain('experimental');
+        expect(wrapper.text().toLowerCase()).not.toContain('trial');
+        expect(wrapper.text().toLowerCase()).not.toContain('pro por');
+    });
+
+    it('renders with no plan name at all when there is none (e.g. no subscription in force)', () => {
+        const wrapper = mountPage({ state: 'unavailable', currentPlanName: null });
+
+        expect(wrapper.find('button').exists()).toBe(false);
+        expect(wrapper.text()).not.toContain('Plano atual');
     });
 });

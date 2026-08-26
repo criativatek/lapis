@@ -6,6 +6,7 @@ use App\Models\Organization;
 use App\Models\OrganizationSubscription;
 use App\Models\Plan;
 use App\Models\SubscriptionStatus;
+use App\Models\User;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Trial\TrialEligibility;
 use App\Support\Trial\TrialException;
@@ -111,14 +112,27 @@ class ChangeOrganizationPlan
      * Whatever was in force is superseded exactly like `to()` does — a Base
      * subscription in force is closed at `now()`, becoming `Expired`.
      *
-     * Eligibility-by-history (§4 of the trial brief: a Trial-status row must
-     * never have existed before for this organization, or defensively for any
-     * other Personal organization of the same owner) is re-checked HERE,
-     * against the LOCKED organization, not before. That is what makes two
-     * concurrent activation requests unable to both succeed: whichever one
-     * gets the row lock first creates its Trial and commits; the second sees
-     * that Trial in its own re-check and is refused, never a race on a value
-     * read before either one had the lock.
+     * EVERY eligibility condition — history AND which plan is currently in
+     * force — is re-checked HERE, against the LOCKED organization, not
+     * before. That is what makes two concurrent activation requests unable
+     * to both succeed, and what stops a plan change landing in the gap
+     * between the caller's own pre-lock reads and this call from being
+     * silently superseded by a trial: whichever request gets the row lock
+     * first commits; the second re-reads live state under that same lock and
+     * is refused, never acting on a value read before either one had it.
+     *
+     *  - `TrialEligibility::usedBefore()`: a Trial-status row must never have
+     *    existed before for this organization, or defensively for any other
+     *    Personal organization of the same owner.
+     *  - `TrialEligibility::canActivate()`: the organization must still be
+     *    Personal, still owned by `$user`, and — the rule this parameter
+     *    exists to enforce — currently on an eligible Base plan. Without
+     *    this, an organization an operator put on Institutional (or Pro)
+     *    between page load and this call would have that administrative
+     *    assignment silently superseded by a Trial. `canActivate()`
+     *    re-checks `usedBefore()` internally too; that duplication is
+     *    harmless — one extra cheap query — and means every condition is
+     *    genuinely re-evaluated here, not assumed from before the lock.
      *
      * Deliberately policy-free: `$days` arrives already resolved by the
      * caller (`App\Support\Trial\TrialPolicy`) rather than read from config
@@ -127,15 +141,21 @@ class ChangeOrganizationPlan
      *
      * @throws TrialException when the organization (or another Personal
      *                        organization of the same owner) has ever had a
-     *                        Trial subscription before.
+     *                        Trial subscription before, or is not currently
+     *                        eligible (wrong type, not owned by `$user`, or
+     *                        not currently on an eligible Base plan).
      */
-    public function startProTrial(Organization $organization, Plan $trialPlan, Plan $fallbackPlan, int $days): OrganizationSubscription
+    public function startProTrial(Organization $organization, User $user, Plan $trialPlan, Plan $fallbackPlan, int $days): OrganizationSubscription
     {
-        return DB::transaction(function () use ($organization, $trialPlan, $fallbackPlan, $days): OrganizationSubscription {
+        return DB::transaction(function () use ($organization, $user, $trialPlan, $fallbackPlan, $days): OrganizationSubscription {
             $locked = $this->lock($organization);
 
             if ($this->trialEligibility->usedBefore($locked)) {
                 throw TrialException::alreadyUsed();
+            }
+
+            if (! $this->trialEligibility->canActivate($locked, $user)) {
+                throw TrialException::notEligible();
             }
 
             $startsAt = Carbon::now();
