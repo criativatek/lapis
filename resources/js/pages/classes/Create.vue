@@ -35,6 +35,11 @@ const availableProfiles = computed(() =>
     props.profiles.filter((profile) => profile.subject_id === form.subject_id),
 );
 
+// `limit` (App\Support\Limits\Limits::assertCanIncreaseFor) is never a field
+// of this form — read through a string index the same way
+// academic-years/Form.vue does for its own dynamic error keys.
+const limitError = computed(() => (form.errors as Record<string, string>).limit);
+
 function submit(): void {
     form.post('/classes', { preserveScroll: true });
 }
@@ -87,6 +92,7 @@ function submit(): void {
                 </div>
             </div>
 
+            <InputError :message="limitError" />
             <Button type="submit" :disabled="form.processing">Criar turma</Button>
         </form>
     </div>

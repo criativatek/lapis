@@ -71,6 +71,19 @@ class ActiveClassesLimitTest extends TestCase
         return app(Limits::class)->usageFor($this->user->personalOrganization()->fresh(), LimitKey::ActiveClasses);
     }
 
+    /**
+     * The actual `errors.limit` message(s) flashed to the session by the
+     * request just made — read the same way `assertSessionHasErrors()` does
+     * internally (`session.store`), never via `Limits` directly, so this
+     * proves what a real HTTP response handed the teacher.
+     *
+     * @return array<int, string>
+     */
+    protected function limitErrorMessages(): array
+    {
+        return app('session.store')->get('errors')->getBag('default')->get('limit');
+    }
+
     // ------------------------------------------------------- 1 / 2: o limite
 
     #[Test]
@@ -94,7 +107,25 @@ class ActiveClassesLimitTest extends TestCase
             ->assertRedirect()
             ->assertSessionHasErrors('limit');
 
+        // The teacher sees the real configured limit and an explicit
+        // assurance that nothing already on record was touched — not a
+        // generic "operation failed" message (§Tarefa 1).
+        $messages = $this->limitErrorMessages();
+        $this->assertNotEmpty($messages);
+        $this->assertStringContainsString('8', $messages[0], 'quotes the real configured limit');
+        $this->assertStringContainsString('turmas', $messages[0]);
+        $this->assertStringContainsString('mantidos', $messages[0], 'confirms existing data is kept');
+
+        // ...and the blocked attempt really did create nothing: usage and
+        // the raw row count agree, in the SAME test as the message check.
         $this->assertSame(8, $this->activeClassCount(), 'the blocked attempt created nothing');
+        $this->assertSame(
+            8,
+            SchoolClass::withoutGlobalScope('organization')
+                ->where('organization_id', $this->user->personalOrganization()->getKey())
+                ->count(),
+            'no class row exists beyond the 8 seeded ones',
+        );
     }
 
     // ------------------------------------------------------- 3: o que conta

@@ -154,11 +154,11 @@ class Limits
         // configured number to quote back to the teacher.
         return match ($key) {
             LimitKey::ActiveClasses => __(
-                'Atingiu o limite de :limit turmas ativas do seu plano. Para criar outra, reduza primeiro o número de turmas ativas.',
+                'Atingiu o limite de :limit turmas ativas do seu plano. Os dados existentes são mantidos — para criar outra, reduza primeiro o número de turmas ativas.',
                 ['limit' => $limit->value()],
             ),
             LimitKey::ActiveStudents => __(
-                'Atingiu o limite de :limit alunos ativos do seu plano. Para inscrever outro, reduza primeiro o número de alunos ativos.',
+                'Atingiu o limite de :limit alunos ativos do seu plano. Os dados existentes são mantidos — para inscrever outro, reduza primeiro o número de alunos ativos.',
                 ['limit' => $limit->value()],
             ),
         };

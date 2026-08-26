@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, router, useForm } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import FileInput from '@/components/FileInput.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
@@ -167,6 +167,12 @@ function submit(): void {
         `/classes/${props.schoolClassUlid}/roster-imports/${props.token}/confirm`,
     );
 }
+
+// `limit` (App\Support\Limits\Limits::assertCanIncreaseFor, tripped by a
+// reactivation via fillFromRoster()) is never a field of this form — read
+// through a string index the same way academic-years/Form.vue does for its
+// own dynamic error keys.
+const limitError = computed(() => (form.errors as Record<string, string>).limit);
 </script>
 
 <template>
@@ -377,17 +383,20 @@ function submit(): void {
                 alunos ficam sem foto.
             </p>
 
-            <div class="flex items-center gap-3">
-                <Button
-                    type="button"
-                    :disabled="form.processing || !!photosFile"
-                    @click="submit"
-                    >Confirmar importação</Button
-                >
-                <span class="text-sm text-muted-foreground">
-                    {{ form.rows.filter((r) => r.include).length }} de
-                    {{ form.rows.length }} serão inscritos.
-                </span>
+            <div class="space-y-2">
+                <div class="flex items-center gap-3">
+                    <Button
+                        type="button"
+                        :disabled="form.processing || !!photosFile"
+                        @click="submit"
+                        >Confirmar importação</Button
+                    >
+                    <span class="text-sm text-muted-foreground">
+                        {{ form.rows.filter((r) => r.include).length }} de
+                        {{ form.rows.length }} serão inscritos.
+                    </span>
+                </div>
+                <InputError :message="limitError" />
             </div>
         </div>
     </div>

@@ -139,6 +139,11 @@ function enroll(): void {
     });
 }
 
+// `limit` (App\Support\Limits\Limits::assertCanIncreaseFor) is never a field
+// of the enrollment form — read through a string index the same way
+// academic-years/Form.vue does for its own dynamic error keys.
+const enrollmentLimitError = computed(() => (form.errors as Record<string, string>).limit);
+
 // Correcting a student already enrolled. Kept separate from the enrollment
 // form above so an open correction never clobbers a half-typed new student.
 const editDialogOpen = ref(false);
@@ -458,6 +463,7 @@ function submitPhotos(): void {
                 <Button type="submit" :disabled="form.processing"
                     ><UserPlus class="size-4" /> Inscrever</Button
                 >
+                <InputError :message="enrollmentLimitError" class="sm:col-span-4" />
             </form>
             <p class="text-xs text-muted-foreground">
                 O nome fica guardado de forma cifrada e separada. Só o código

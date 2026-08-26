@@ -16,8 +16,8 @@ use App\Support\Limits\LimitKey;
 use App\Support\Limits\Limits;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
-use Illuminate\Validation\ValidationException;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -86,6 +86,19 @@ class ActiveStudentsLimitTest extends TestCase
         return app(Limits::class)->usageFor($this->user->personalOrganization()->fresh(), LimitKey::ActiveStudents);
     }
 
+    /**
+     * The actual `errors.limit` message(s) flashed to the session by the
+     * request just made — read the same way `assertSessionHasErrors()` does
+     * internally (`session.store`), never via `Limits` directly, so this
+     * proves what a real HTTP response handed the teacher.
+     *
+     * @return array<int, string>
+     */
+    protected function limitErrorMessages(): array
+    {
+        return app('session.store')->get('errors')->getBag('default')->get('limit');
+    }
+
     // ------------------------------------------------------- 1 / 2: o limite
 
     #[Test]
@@ -107,7 +120,25 @@ class ActiveStudentsLimitTest extends TestCase
 
         $this->postStudent($class, 'Aluno 301')->assertSessionHasErrors('limit');
 
+        // The teacher sees the real configured limit and an explicit
+        // assurance that nothing already on record was touched — not a
+        // generic "operation failed" message (§Tarefa 1).
+        $messages = $this->limitErrorMessages();
+        $this->assertNotEmpty($messages);
+        $this->assertStringContainsString('300', $messages[0], 'quotes the real configured limit');
+        $this->assertStringContainsString('alunos', $messages[0]);
+        $this->assertStringContainsString('mantidos', $messages[0], 'confirms existing data is kept');
+
+        // ...and the blocked attempt really did create nothing: usage and
+        // the raw row count agree, in the SAME test as the message check.
         $this->assertSame(300, $this->activeStudentCount(), 'the blocked attempt created nothing');
+        $this->assertSame(
+            300,
+            Student::withoutGlobalScope('organization')
+                ->where('organization_id', $this->user->personalOrganization()->getKey())
+                ->count(),
+            'no student row exists beyond the 300 seeded ones',
+        );
     }
 
     // -------------------------------------------------------- 3: o que conta
@@ -129,6 +160,14 @@ class ActiveStudentsLimitTest extends TestCase
 
     // -------------------------------------------------------- 5: reativação
 
+    /**
+     * Reactivation via a real roster re-import — `RosterImportController::confirm()`
+     * (`classes.roster-imports.confirm`), not a direct call into
+     * `StudentEnrollmentService::fillFromRoster()`. `situation_code: 'X'`
+     * (`EnrollmentSituation::Enrolled`) is exactly what a school's own export
+     * uses for "matriculado", and is what the confirm loop translates into the
+     * Active status that would grow usage here.
+     */
     #[Test]
     public function reactivating_a_student_via_fill_from_roster_is_blocked_at_the_limit(): void
     {
@@ -141,13 +180,41 @@ class ActiveStudentsLimitTest extends TestCase
             fn (): Enrollment => Enrollment::factory()->recycle($organization)->create(['class_id' => $class->id, 'status' => 'left']),
         );
 
-        $this->expectException(ValidationException::class);
+        $response = $this->actingAs($this->user)->post(
+            "/classes/{$class->ulid}/roster-imports/".Str::uuid().'/confirm',
+            [
+                'rows' => [[
+                    'name' => 'Aluno Reativado',
+                    'class_number' => null,
+                    'birth_date' => null,
+                    'situation_code' => 'X',
+                    'note' => null,
+                    'process_number' => null,
+                    'photo_index' => null,
+                    'photo_extension' => null,
+                    'include' => true,
+                    'enrollment_id' => $departed->id,
+                ]],
+            ],
+        );
 
-        app(CurrentOrganization::class)->runFor($organization, function () use ($departed): void {
-            app(StudentEnrollmentService::class)->fillFromRoster($departed, [
-                'situation' => ['status' => EnrollmentStatus::Active->value, 'status_reason' => null],
-            ]);
-        });
+        $response->assertSessionHasErrors('limit');
+
+        $messages = $this->limitErrorMessages();
+        $this->assertNotEmpty($messages);
+        $this->assertStringContainsString('300', $messages[0], 'quotes the real configured limit');
+        $this->assertStringContainsString('alunos', $messages[0]);
+        $this->assertStringContainsString('mantidos', $messages[0], 'confirms existing data is kept');
+
+        // The blocked reimport left the existing enrollment exactly as it
+        // was — still not Active — and usage unchanged, in the SAME test as
+        // the message check.
+        $this->assertSame(
+            EnrollmentStatus::Left,
+            $departed->fresh()->status,
+            'the blocked reactivation via re-import left the enrollment status untouched',
+        );
+        $this->assertSame(300, $this->activeStudentCount());
     }
 
     #[Test]
