@@ -11,6 +11,7 @@ use App\Models\InterventionContext;
 use App\Models\InterventionDescriptionSource;
 use App\Models\InterventionDomainRelation;
 use App\Models\InterventionEffectiveness;
+use App\Models\InterventionPurpose;
 use App\Models\InterventionReview;
 use App\Models\InterventionStatus;
 use App\Models\InterventionTargetType;
@@ -97,6 +98,28 @@ class InterventionController extends Controller
             // edited, and what is kept is what was applied (§55).
             'objective' => $objective === '' ? null : $objective,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     */
+    protected function resolvePurpose(array $validated): ?InterventionPurpose
+    {
+        $purpose = $validated['purpose'] ?? null;
+
+        return $purpose === null ? null : InterventionPurpose::from($purpose);
+    }
+
+    /**
+     * Free text, trimmed, empty means «not recorded» rather than an empty
+     * string sitting in the column — the same reading `objective` already
+     * gets in resolveReasoning().
+     */
+    protected function resolveFreeText(?string $value): ?string
+    {
+        $value = is_string($value) ? trim($value) : '';
+
+        return $value === '' ? null : $value;
     }
 
     /**
@@ -252,6 +275,10 @@ class InterventionController extends Controller
             'evaluationAdaptations' => $framework->evaluationAdaptations(),
             'effectivenessOptions' => InterventionEffectiveness::options(),
             'statusOptions' => InterventionStatus::options(),
+            // Recuperação / Consolidação / Melhoria (§8) — a real, equally
+            // weighted choice of three, never pre-selected: null means «não
+            // especificada» and stays null until the teacher picks one.
+            'purposeOptions' => InterventionPurpose::options(),
             // THE SAME LIBRARY RELATÓRIOS USES, not a second one. A difficulty
             // carries the strategies that answer IT, and each strategy states
             // the objective it serves — which is what lets the form suggest
@@ -281,6 +308,12 @@ class InterventionController extends Controller
      * refusing to load or naming somebody who should not be named in a new
      * record (§19, §20).
      *
+     * ALSO CARRIES A SUGGESTED STRATEGY, when Acompanhamento do Aluno's
+     * «Adicionar estratégia» / «Adaptar sugestão» sent one (§13 of the AI
+     * brief). Only read alongside a resolved `aluno` — the same reasoning
+     * that already governs the rest of this method: a suggestion arriving
+     * with nobody it is about is not opened on anybody.
+     *
      * @return array<string, mixed>|null
      */
     protected function prefillFrom(Request $request, SchoolClass $class): ?array
@@ -297,11 +330,51 @@ class InterventionController extends Controller
             return null;
         }
 
+        $domainId = filter_var($request->query('dominio'), FILTER_VALIDATE_INT, FILTER_NULL_ON_FAILURE);
+        $domain = $domainId === null
+            ? null
+            : Domain::query()
+                ->where('subject_id', $class->subject_id)
+                ->whereKey($domainId)
+                ->first();
+
         return [
             'target_type' => InterventionTargetType::Student->value,
             'enrollment_ids' => [$enrollment->id],
             'name' => optional($enrollment->student->identity)->display_name,
+            'domain_relation' => $domain === null
+                ? InterventionDomainRelation::None->value
+                : InterventionDomainRelation::Specific->value,
+            'domain_id' => $domain?->getKey(),
+            'suggestion' => [
+                'motive_label' => $this->queryText($request, 'motivo', 300),
+                'strategy_label' => $this->queryText($request, 'estrategia', 300),
+                'objective' => $this->queryText($request, 'objetivo', 1000),
+                'description' => $this->queryText($request, 'aplicacao', 5000),
+                'purpose' => InterventionPurpose::tryFrom((string) $request->query('finalidade'))?->value,
+                'frequency' => $this->queryText($request, 'frequencia', 200),
+                'tracking_indicator' => $this->queryText($request, 'indicador', 300),
+                'review_suggestion' => $this->queryText($request, 'revisao', 500),
+            ],
         ];
+    }
+
+    /**
+     * A query string value, trimmed and capped — never trusted at whatever
+     * length it arrives at, exactly like every other free-text field this
+     * controller validates.
+     */
+    protected function queryText(Request $request, string $key, int $max): ?string
+    {
+        $value = $request->query($key);
+
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $value = trim($value);
+
+        return $value === '' ? null : mb_substr($value, 0, $max);
     }
 
     public function store(Request $request, SchoolClass $class): RedirectResponse
@@ -325,6 +398,9 @@ class InterventionController extends Controller
                 'class_id' => $class->id,
                 ...$reasoning,
                 'review_on' => $validated['review_on'] ?? null,
+                'purpose' => $this->resolvePurpose($validated),
+                'frequency' => $this->resolveFreeText($validated['frequency'] ?? null),
+                'tracking_indicator' => $this->resolveFreeText($validated['tracking_indicator'] ?? null),
                 // Kept in step with the pivot for the single-student case, so
                 // the pre-existing column never goes stale (see the model).
                 'enrollment_id' => $validated['target_type'] === InterventionTargetType::Student->value
@@ -425,6 +501,9 @@ class InterventionController extends Controller
             $intervention->fill([
                 ...$reasoning,
                 'review_on' => $validated['review_on'] ?? null,
+                'purpose' => $this->resolvePurpose($validated),
+                'frequency' => $this->resolveFreeText($validated['frequency'] ?? null),
+                'tracking_indicator' => $this->resolveFreeText($validated['tracking_indicator'] ?? null),
                 'enrollment_id' => $validated['target_type'] === InterventionTargetType::Student->value
                     ? $participantIds[0]
                     : null,
@@ -611,6 +690,12 @@ class InterventionController extends Controller
             'strategy_code' => ['nullable', 'string', 'max:64'],
             'strategy_label' => ['nullable', 'string', 'max:300'],
             'objective' => ['nullable', 'string', 'max:1000'],
+            // Recuperação / Consolidação / Melhoria (§8). Never required: a
+            // teacher who has not thought about the finalidade yet leaves it
+            // unspecified rather than being forced to guess one.
+            'purpose' => ['nullable', Rule::enum(InterventionPurpose::class)],
+            'frequency' => ['nullable', 'string', 'max:200'],
+            'tracking_indicator' => ['nullable', 'string', 'max:300'],
             'available_for_reports' => ['boolean'],
             // How the legal framing should be settled. Never the framing's
             // source — that is the server's to decide (see resolveLegalFraming).
@@ -837,6 +922,13 @@ class InterventionController extends Controller
             'objective' => PedagogicalText::meaningful($intervention->objective),
             'review_on' => $intervention->review_on?->toDateString(),
             'needs_review' => $intervention->needsReview(),
+            // Recuperação / Consolidação / Melhoria (§8). Null on a row
+            // recorded before this existed — shown as «não especificada»,
+            // never guessed.
+            'purpose' => $intervention->purpose?->value,
+            'purpose_label' => $intervention->purpose?->label(),
+            'frequency' => PedagogicalText::meaningful($intervention->frequency),
+            'tracking_indicator' => PedagogicalText::meaningful($intervention->tracking_indicator),
             // Derived from the follow-ups, never stored beside them (§59).
             'effectiveness' => $intervention->currentEffectiveness()?->value,
             'effectiveness_label' => $intervention->currentEffectiveness()?->label(),

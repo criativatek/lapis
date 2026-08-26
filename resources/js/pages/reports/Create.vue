@@ -41,6 +41,14 @@ type TemplateRow = {
     included: string[];
 };
 
+/**
+ * Richer prefill hints, resolved and checked server-side — the same
+ * mechanism `type` already is. Arriving from Acompanhamento do Aluno's
+ * «Gerar relatório», this is how turma/aluno/período reach the form without
+ * being re-picked by hand.
+ */
+type Preselected = { class_id: number; enrollment_id: number | null; academic_period_id: number | null };
+
 const props = defineProps<{
     type: string;
     availableTypes: Option[];
@@ -51,14 +59,15 @@ const props = defineProps<{
     recordKinds: RecordKind[];
     templates: TemplateRow[];
     preferredTemplate: string | null;
+    preselected: Preselected | null;
 }>();
 
 const form = useForm({
     type: props.type,
-    class_id: props.classes[0]?.id ?? null,
+    class_id: props.preselected?.class_id ?? props.classes[0]?.id ?? null,
     academic_year_id: props.academicYears[0]?.id ?? null,
-    academic_period_id: null as number | null,
-    enrollment_id: null as number | null,
+    academic_period_id: props.preselected?.academic_period_id ?? null,
+    enrollment_id: props.preselected?.enrollment_id ?? null,
     interim_assessment_id: null as number | null,
     tone: props.tones[0]?.value ?? 'objective',
     title: '',
@@ -101,12 +110,22 @@ async function loadContext(classId: number | null) {
     }
 }
 
+// The prefill from `preselected` survives exactly the first run of this
+// watcher — the one Vue fires immediately on mount for the class it starts
+// on. Any class change the teacher makes afterwards clears período/aluno as
+// it always did, because a different turma invalidates both.
+let classWatcherInitialised = false;
+
 watch(
     () => form.class_id,
     (classId) => {
-        form.academic_period_id = null;
-        form.enrollment_id = null;
-        form.interim_assessment_id = null;
+        if (classWatcherInitialised) {
+            form.academic_period_id = null;
+            form.enrollment_id = null;
+            form.interim_assessment_id = null;
+        }
+
+        classWatcherInitialised = true;
         void loadContext(classId);
     },
     { immediate: true },

@@ -77,6 +77,30 @@ class NarrativeTest extends TestCase
         $this->assertSame('100%', Phrase::percentage('100.0'));
     }
 
+    /**
+     * Regression test for the panel review's round-2 bug: a canonical value
+     * still carrying the engine's own internal scale (`Bc::SCALE`, ten
+     * decimals) reaching `Phrase::number()`/`percentage()` used to come back
+     * merely relocalised — «77.766927» became «77,766927» — because the
+     * method only stripped trailing zeros and never actually rounded. Every
+     * call site already wrapped its value in `Phrase::percentage()`
+     * correctly; the shared formatter itself was the leak. Rounded HALF UP
+     * to one decimal, matching how the rest of the app (`pct()`,
+     * `formatPoints()` on the frontend) already displays a figure.
+     */
+    #[Test]
+    public function it_rounds_a_raw_canonical_value_to_one_decimal_rather_than_only_relocaling_it(): void
+    {
+        $this->assertSame('77,8', Phrase::number('77.766927'));
+        $this->assertSame('82,2', Phrase::number('82.187500'));
+        $this->assertSame('73,3', Phrase::number('73.333333'));
+        $this->assertSame('80,1', Phrase::number('80.078125'));
+        $this->assertSame('77,8%', Phrase::percentage('77.766927'));
+        // Never a raw, many-decimal comma string leaking through — the
+        // exact shape the bug produced («59,433584%»).
+        $this->assertDoesNotMatchRegularExpression('/,\d{2,}/', (string) Phrase::percentage('59.433584'));
+    }
+
     #[Test]
     public function absence_of_a_figure_is_null_and_never_zero(): void
     {

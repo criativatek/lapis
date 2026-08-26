@@ -27,7 +27,7 @@ export function pct(value: string | null): string {
         return '—';
     }
 
-    return `${Number(value).toFixed(1)}%`;
+    return `${Number(value).toFixed(1).replace('.', ',')}%`;
 }
 
 /**

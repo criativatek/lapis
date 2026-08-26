@@ -2,6 +2,30 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.74.0] — 2026-08-26
+
+### Added
+
+- **«Acompanhamento → Aluno» passa a ser um painel de decisão, e não apenas uma leitura do ano.** O ecrã que já existia — resultados, domínios, classificações, autoavaliações, registos, intervenções — ganha três leituras que antes o professor tinha de montar sozinho a percorrer tabelas: **Atenção**, factos que pedem alguma coisa (TPC por realizar, ocorrências nomeadas uma a uma pela sua gravidade real, uma intervenção cuja data de revisão já passou, um domínio sem registos de acompanhamento, uma autoavaliação submetida por analisar); **Pontos fortes**, a metade que faltava, com o domínio mais alto e o de maior subida nomeados e distinguidos entre si; e a ligação a Relatórios pré-preenchida com aluno, turma, ano e período, em vez de uma lista filtrada onde tudo era escolhido outra vez.
+
+  A filosofia é deliberada e está escrita no código: **atenção + progresso + potencial**, nunca só a primeira. Um painel que só soubesse listar problemas seria um retrato incompleto do aluno.
+
+- **A camada interpretativa é Pro, e é gated no servidor.** Estado 360º (rendimento, tendência, regularidade, empenho académico, atitudes e comportamento, acompanhamento, pontos fortes, margem de progressão), alertas analíticos, sinais positivos, «o que mudou», evolução observada após uma estratégia, potencialidades, próximo passo e «preparar conversa» exigem `advanced_analytics` — e uma organização Base não recebe a chave no payload, em vez de a receber e o ecrã escondê-la. Esconder um cartão é apresentação; não o calcular é a resposta.
+
+  Cada dimensão tem um estado neutro explícito e usa-o: sem elementos suficientes, o LÁPIS assinala a limitação em vez de forçar uma leitura. Nenhuma frase prevê uma nota futura, e nenhuma atribui a uma estratégia a causa de um resultado — «foi observada evolução positiva após o início da estratégia» é o registo, e é correlação no tempo, nunca causa.
+
+- **Estratégias e medidas ganham finalidade: Recuperação, Consolidação e Melhoria.** «Melhoria» é uma finalidade de primeira classe, não uma nota de rodapé da recuperação: um ponto forte também merece um passo seguinte. Junto dela, frequência e indicador de acompanhamento, todos opcionais — uma intervenção anterior a esta versão não tem finalidade, e é mostrada como «não especificada», nunca arrumada à força numa das três.
+
+- **«Sugestões pedagógicas (IA)» — o professor escolhe a finalidade e o domínio, e decide sempre.** O LÁPIS propõe uma combinação inicial por finalidade, justificada com o número real que a sustenta, e o professor aceita-a ou escolhe outra. A resposta é uma proposta estruturada (nome, objetivo, aplicação, frequência, indicador, revisão) que **nunca cria uma intervenção sozinha**: adicionar, adaptar, gerar outra ou ignorar são quatro gestos do professor, e o registo só nasce no formulário que já existia, submetido por ele.
+
+  O que sai para o motor é o mínimo: ano, disciplina, domínio, finalidade, o padrão factual observado e as estratégias já aplicadas. Nome, email e número de processo do aluno nunca acompanham o pedido — e um objetivo escrito pelo professor que os contenha é recusado antes de qualquer chamada.
+
+### Fixed
+
+- **A barra de contexto deixa de contradizer a página que está por baixo dela.** Disciplina, ano e turma estavam fixos a vazio em toda a aplicação; num ecrã que já sabia de que turma se tratava, o cabeçalho continuava a dizer «—». Passam a refletir a turma que a própria rota já resolveu, com a mesma verificação de acesso que o resto da página faz. O período mantém-se por preencher: nada na aplicação estabelece hoje um «período atual» canónico como estabelece uma turma, e inventar um seria pior do que deixá-lo vazio.
+
+- **Um número deixa de chegar ao ecrã com a precisão interna do motor de cálculo.** `Phrase::number()` — a única porta por onde uma figura canónica se torna texto, e partilhada com os Relatórios — relocalizava o valor mas nunca o arredondava: quem lhe entregasse «77.766927» lia «77,766927%» numa frase, ainda que todos os sítios que a chamavam estivessem corretos. Passa a arredondar à casa decimal que a aplicação mostra, sobre a própria string decimal, sem nunca converter para vírgula flutuante. Um inteiro continua a ler-se «71%», e não «71,0%».
+
 ## [0.73.0] — 2026-08-25
 
 ### Added

@@ -53,6 +53,11 @@ type Intervention = {
     objective: string | null;
     review_on: string | null;
     needs_review: boolean;
+    /** Recuperação / Consolidação / Melhoria. Null on a row recorded before this existed. */
+    purpose: string | null;
+    purpose_label: string | null;
+    frequency: string | null;
+    tracking_indicator: string | null;
     /** Derived from the follow-ups — what the teacher last observed. */
     effectiveness: string | null;
     effectiveness_label: string | null;
@@ -113,6 +118,8 @@ const props = defineProps<{
     evaluationAdaptations: { value: string; label: string }[];
     effectivenessOptions: { value: string; label: string; short_label: string }[];
     statusOptions: { value: string; label: string }[];
+    /** Recuperação / Consolidação / Melhoria (§8) — three, equally weighted. */
+    purposeOptions: { value: string; label: string; description: string }[];
     /**
      * The SAME library Relatórios uses, not a second one. Possibly empty — a
      * school that never seeded one types its own words and the module works
@@ -131,8 +138,29 @@ const props = defineProps<{
         needs_review?: boolean | null;
     };
     interventions: Intervention[];
-    /** Arriving from a student's page, with that student already chosen (§17). */
-    prefill: { target_type: TargetType; enrollment_ids: number[]; name: string | null } | null;
+    /**
+     * Arriving from a student's page, with that student already chosen
+     * (§17) — and, arriving from «Adicionar estratégia» / «Adaptar
+     * sugestão» on Acompanhamento do Aluno, a suggested strategy the
+     * teacher still has to submit (§13 of the AI brief).
+     */
+    prefill: {
+        target_type: TargetType;
+        enrollment_ids: number[];
+        name: string | null;
+        domain_relation: DomainRelation;
+        domain_id: number | null;
+        suggestion?: {
+            motive_label: string | null;
+            strategy_label: string | null;
+            objective: string | null;
+            description: string | null;
+            purpose: string | null;
+            frequency: string | null;
+            tracking_indicator: string | null;
+            review_suggestion: string | null;
+        };
+    } | null;
 }>();
 
 const today = new Date().toISOString().slice(0, 10);
@@ -154,6 +182,10 @@ type FormData = {
     strategy_label: string;
     objective: string;
     review_on: string;
+    /** Recuperação / Consolidação / Melhoria — null until the teacher picks one (§8). */
+    purpose: string | null;
+    frequency: string;
+    tracking_indicator: string;
     description: string;
     started_on: string;
     available_for_reports: boolean;
@@ -164,19 +196,24 @@ type FormData = {
     evaluation_adaptation_code: string | null;
 };
 
+const suggestion = props.prefill?.suggestion ?? null;
+
 const form = useForm<FormData>({
     target_type: props.prefill?.target_type ?? 'student',
     enrollment_ids: props.prefill?.enrollment_ids ?? (props.enrollments[0] ? [props.enrollments[0].id] : []),
     intervention_type: props.types[0]?.value ?? '',
-    domain_relation: 'none',
-    domain_id: null,
+    domain_relation: props.prefill?.domain_relation ?? 'none',
+    domain_id: props.prefill?.domain_id ?? null,
     motive_code: null,
-    motive_label: '',
+    motive_label: suggestion?.motive_label ?? '',
     strategy_code: null,
-    strategy_label: '',
-    objective: '',
+    strategy_label: suggestion?.strategy_label ?? '',
+    objective: suggestion?.objective ?? '',
     review_on: '',
-    description: '',
+    purpose: suggestion?.purpose ?? null,
+    frequency: suggestion?.frequency ?? '',
+    tracking_indicator: suggestion?.tracking_indicator ?? '',
+    description: suggestion?.description ?? '',
     started_on: today,
     available_for_reports: true,
     legal_framing: null,
@@ -468,6 +505,9 @@ function edit(intervention: Intervention): void {
     form.strategy_label = intervention.strategy ?? '';
     form.objective = intervention.objective ?? '';
     form.review_on = intervention.review_on ?? '';
+    form.purpose = intervention.purpose;
+    form.frequency = intervention.frequency ?? '';
+    form.tracking_indicator = intervention.tracking_indicator ?? '';
     form.description = intervention.description ?? '';
     form.started_on = intervention.started_on.slice(0, 10);
     form.available_for_reports = intervention.available_for_reports;
@@ -662,6 +702,13 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
 
         <p class="text-xs text-muted-foreground">As estratégias e medidas apoiam o acompanhamento pedagógico e não alteram automaticamente a classificação.</p>
 
+        <!-- §13 do apoio de IA: uma proposta, nunca um registo. Os campos
+             abaixo ficam pré-preenchidos e editáveis — nada fica gravado
+             enquanto o formulário não for submetido. -->
+        <p v-if="suggestion" class="rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
+            Formulário pré-preenchido a partir de uma sugestão de estratégia (IA). Reveja e adapte antes de registar.
+        </p>
+
         <form class="space-y-3 rounded-lg border border-border p-4" @submit.prevent="submit">
             <label class="block text-sm">
                 <span class="mb-1 block text-xs text-muted-foreground">Destinatário</span>
@@ -844,7 +891,76 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
                     <p class="text-xs text-muted-foreground">
                         A partir desta data a intervenção aparece como «revisão pendente».
                     </p>
+                    <p v-if="suggestion?.review_suggestion" class="text-xs text-primary">
+                        Sugestão da IA: {{ suggestion.review_suggestion }}. Escolha a data que considerar adequada.
+                    </p>
                     <p v-if="form.errors.review_on" class="text-xs text-red-600">{{ form.errors.review_on }}</p>
+                </div>
+            </fieldset>
+
+            <!-- §8: finalidade, frequência e indicador de acompanhamento.
+                 Three finalidades, equally weighted — Melhoria is a real
+                 option and not an afterthought after Recuperação/Consolidação. -->
+            <fieldset class="space-y-3 rounded-lg border border-border p-3">
+                <legend class="px-1 text-xs font-medium text-muted-foreground">
+                    Finalidade e acompanhamento <span class="font-normal">(opcional)</span>
+                </legend>
+
+                <div class="space-y-1.5">
+                    <span class="block text-xs text-muted-foreground">Finalidade</span>
+                    <div class="grid gap-2 sm:grid-cols-3">
+                        <label
+                            v-for="option in purposeOptions"
+                            :key="option.value"
+                            class="flex cursor-pointer flex-col gap-0.5 rounded-lg border p-2.5 text-xs"
+                            :class="form.purpose === option.value ? 'border-primary bg-primary/5' : 'border-border'"
+                        >
+                            <span class="flex items-center gap-2">
+                                <input v-model="form.purpose" type="radio" :value="option.value" class="size-3.5" />
+                                <span class="font-medium">{{ option.label }}</span>
+                            </span>
+                            <span class="text-muted-foreground">{{ option.description }}</span>
+                        </label>
+                    </div>
+                    <button
+                        v-if="form.purpose !== null"
+                        type="button"
+                        class="text-xs text-muted-foreground hover:underline"
+                        @click="form.purpose = null"
+                    >
+                        Limpar seleção — não especificada
+                    </button>
+                    <p v-if="form.errors.purpose" class="text-xs text-red-600">{{ form.errors.purpose }}</p>
+                </div>
+
+                <div class="grid gap-3 sm:grid-cols-2">
+                    <div class="space-y-1.5">
+                        <label for="frequency" class="block text-xs text-muted-foreground">Frequência (opcional)</label>
+                        <input
+                            id="frequency"
+                            v-model="form.frequency"
+                            type="text"
+                            maxlength="200"
+                            class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                            placeholder="Ex.: 2x por semana"
+                        />
+                        <p v-if="form.errors.frequency" class="text-xs text-red-600">{{ form.errors.frequency }}</p>
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <label for="tracking-indicator" class="block text-xs text-muted-foreground">
+                            Indicador de acompanhamento (opcional)
+                        </label>
+                        <input
+                            id="tracking-indicator"
+                            v-model="form.tracking_indicator"
+                            type="text"
+                            maxlength="300"
+                            class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                            placeholder="Ex.: n.º de leituras concluídas por semana"
+                        />
+                        <p v-if="form.errors.tracking_indicator" class="text-xs text-red-600">{{ form.errors.tracking_indicator }}</p>
+                    </div>
                 </div>
             </fieldset>
 
@@ -1035,8 +1151,18 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
                             <span class="text-xs uppercase tracking-wide">Objetivo:</span>
                             {{ intervention.objective }}
                         </p>
+                        <p v-if="intervention.tracking_indicator" class="text-sm text-muted-foreground">
+                            <span class="text-xs uppercase tracking-wide">Indicador:</span>
+                            {{ intervention.tracking_indicator }}
+                        </p>
 
                         <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                            <!-- Null shows nothing — «não especificada» is not
+                                 printed on every older row (§8). -->
+                            <span v-if="intervention.purpose_label" class="rounded-full bg-muted px-2 py-0.5">
+                                {{ intervention.purpose_label }}
+                            </span>
+                            <span v-if="intervention.frequency">{{ intervention.frequency }}</span>
                             <span v-if="intervention.domain_label">{{ intervention.domain_label }}</span>
                             <!-- What the TEACHER observed, never derived from a
                                  result that moved (§26). -->

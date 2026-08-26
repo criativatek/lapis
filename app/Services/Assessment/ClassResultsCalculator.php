@@ -69,42 +69,7 @@ class ClassResultsCalculator
             return [];
         }
 
-        // The columns are CHECK-constrained to these sets, but the match narrows
-        // the DB string to the engine's literal-union types and falls back safely.
-        $absence = match ($version->absence_mode) {
-            'exclude_all', 'zero_all', 'zero_unjustified_only', 'exclude_all_warn' => $version->absence_mode,
-            default => 'exclude_all_warn',
-        };
-        $rounding = match ($version->rounding_mode) {
-            'half_up', 'half_down', 'half_even', 'ceil', 'floor', 'none' => $version->rounding_mode,
-            default => 'half_up',
-        };
-        $stage = match ($version->rounding_stage) {
-            'final_only', 'each_domain', 'each_stage' => $version->rounding_stage,
-            default => 'final_only',
-        };
-
-        $rule = new CalculationRule(
-            absenceMode: $absence,
-            roundingMode: $rounding,
-            roundingScale: $version->rounding_scale,
-            roundingStage: $stage,
-        );
-
-        /** @var array<int, string> $domainWeights */
-        $domainWeights = $version->domains()->pluck('weight_percent', 'domain_id')->all();
-
-        /** @var list<ScaleBand> $scaleBands */
-        $scaleBands = $version->scale->levels()
-            ->whereNotNull('band_min_normalized')
-            ->whereNotNull('band_max_normalized')
-            ->get()
-            ->map(fn ($level): ScaleBand => new ScaleBand(
-                id: $level->id,
-                bandMin: (string) $level->band_min_normalized,
-                bandMax: (string) $level->band_max_normalized,
-            ))
-            ->all();
+        [$rule, $domainWeights, $scaleBands] = $this->calculationConfiguration($version);
 
         // Instruments that may count: flagged as counting, in a state the engine
         // reads. A period result sees only its period; an accumulated result sees
@@ -142,6 +107,86 @@ class ClassResultsCalculator
         }
 
         return $results;
+    }
+
+    /**
+     * One student's result in each instrument, through the same engine and
+     * frozen profile rules used by period and accumulated results.
+     *
+     * @param  Collection<int, Instrument>  $instruments
+     * @return array<int, CalculationOutcome>
+     */
+    public function forInstruments(SchoolClass $class, Enrollment $enrollment, Collection $instruments): array
+    {
+        $version = $class->profileVersion;
+
+        if ($version === null || $instruments->isEmpty()) {
+            return [];
+        }
+
+        [$rule, $domainWeights, $scaleBands] = $this->calculationConfiguration($version);
+
+        foreach ($instruments as $instrument) {
+            $instrument->loadMissing('items.domainAllocations');
+        }
+
+        $scores = StudentItemScore::query()
+            ->where('enrollment_id', $enrollment->getKey())
+            ->whereIn('instrument_id', $instruments->pluck('id'))
+            ->get()
+            ->keyBy(fn (StudentItemScore $score) => $score->enrollment_id.':'.$score->instrument_item_id);
+
+        $results = [];
+
+        foreach ($instruments as $instrument) {
+            $inputs = $this->scoreInputsFor($enrollment, collect([$instrument]), $scores);
+            $results[(int) $instrument->getKey()] = $this->engine->calculate($inputs, $domainWeights, $rule, $scaleBands);
+        }
+
+        return $results;
+    }
+
+    /**
+     * @return array{0: CalculationRule, 1: array<int, string>, 2: list<ScaleBand>}
+     */
+    protected function calculationConfiguration(AssessmentProfileVersion $version): array
+    {
+        $absence = match ($version->absence_mode) {
+            'exclude_all', 'zero_all', 'zero_unjustified_only', 'exclude_all_warn' => $version->absence_mode,
+            default => 'exclude_all_warn',
+        };
+        $rounding = match ($version->rounding_mode) {
+            'half_up', 'half_down', 'half_even', 'ceil', 'floor', 'none' => $version->rounding_mode,
+            default => 'half_up',
+        };
+        $stage = match ($version->rounding_stage) {
+            'final_only', 'each_domain', 'each_stage' => $version->rounding_stage,
+            default => 'final_only',
+        };
+
+        $rule = new CalculationRule(
+            absenceMode: $absence,
+            roundingMode: $rounding,
+            roundingScale: $version->rounding_scale,
+            roundingStage: $stage,
+        );
+
+        /** @var array<int, string> $domainWeights */
+        $domainWeights = $version->domains()->pluck('weight_percent', 'domain_id')->all();
+
+        /** @var list<ScaleBand> $scaleBands */
+        $scaleBands = $version->scale->levels()
+            ->whereNotNull('band_min_normalized')
+            ->whereNotNull('band_max_normalized')
+            ->get()
+            ->map(fn ($level): ScaleBand => new ScaleBand(
+                id: $level->id,
+                bandMin: (string) $level->band_min_normalized,
+                bandMax: (string) $level->band_max_normalized,
+            ))
+            ->all();
+
+        return [$rule, $domainWeights, $scaleBands];
     }
 
     /**

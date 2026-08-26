@@ -71,6 +71,12 @@ class StudentProgressNarrative
      * Whichever the teacher is looking at is the one described, and the sentence
      * says which moment it is relative to rather than leaving «subiu» floating.
      *
+     * NAMED BY LABEL ONLY, NEVER BY DATE. The two periods being compared are
+     * named once, by label — never with their end date folded into the same
+     * clause. The date lives exactly once on the page, inside "Base da
+     * comparação" (Show.vue); repeating it here as well as there was the
+     * exact double-naming this sentence used to do (§3 of the panel review).
+     *
      * @param  array<string, mixed>  $progress
      */
     protected function movement(array $progress): ?string
@@ -84,26 +90,41 @@ class StudentProgressNarrative
             return null;
         }
 
-        $points = ltrim((string) $movement['points'], '-');
-        $formatted = Phrase::number($points);
+        $comparison = $progress['sinceLast'] ?? null;
 
-        if ($formatted === null) {
+        if (! is_array($comparison)
+            || ! isset($comparison['from_label'], $comparison['to_label'])
+            || ! is_string($comparison['from'] ?? null)
+            || ! is_string($comparison['to'] ?? null)) {
             return null;
         }
 
-        // «Manteve-se» has no quantity: saying «uma variação de 0,0 pontos» is
-        // a longer way of saying nothing moved.
-        if ($movement['direction'] === 'flat') {
-            return 'Relativamente ao momento comparável anterior, o resultado manteve-se.';
+        $points = ltrim((string) $movement['points'], '-');
+        $formatted = Phrase::number($points);
+        $from = Phrase::percentage($comparison['from']);
+        $to = Phrase::percentage($comparison['to']);
+
+        if ($formatted === null || $from === null || $to === null) {
+            return null;
         }
 
-        return Phrase::sentence(
-            'Relativamente ao momento comparável anterior, observa-se uma',
-            $movement['direction'] === 'up' ? 'subida' : 'descida',
-            'de',
-            $formatted,
-            $points === '1' || $points === '1,0' ? 'ponto percentual' : 'pontos percentuais',
-        );
+        $fromLabel = (string) $comparison['from_label'];
+        $toLabel = (string) $comparison['to_label'];
+        // NEVER THE BARE WORD "resultado" WHEN A NAMED READING APPLIES. The
+        // label BuildStudentProgress already resolved — "Média Ponderada" or
+        // "Média Ponderada Acumulada" — is the metric actually shown above
+        // this sentence, lowercased only for it to read as flowing prose
+        // (§7 of the panel review). "resultado" survives solely as the last
+        // resort when no label reached this payload at all.
+        $reading = mb_strtolower((string) ($progress['reading']['label'] ?? 'resultado'));
+
+        if ($movement['direction'] === 'flat') {
+            return "Do {$fromLabel} para o {$toLabel}, a {$reading} passou de {$from} para {$to} — sem variação ({$formatted} p.p.).";
+        }
+
+        $direction = $movement['direction'] === 'up' ? 'subida' : 'descida';
+
+        return "Do {$fromLabel} para o {$toLabel}, a {$reading} passou de {$from} para {$to} — {$direction} de {$formatted} p.p.";
     }
 
     /**
@@ -128,11 +149,22 @@ class StudentProgressNarrative
             return null;
         }
 
+        $highestValue = Phrase::percentage($highest['value'] ?? null);
+        $lowestValue = Phrase::percentage($lowest['value'] ?? null);
+
+        if ($highestValue === null || $lowestValue === null) {
+            return null;
+        }
+
         return Phrase::sentence(
             'O resultado mais elevado regista-se em',
             (string) $highest['name'],
+            'com',
+            $highestValue,
             'e o mais baixo em',
             (string) $lowest['name'],
+            'com',
+            $lowestValue,
         );
     }
 

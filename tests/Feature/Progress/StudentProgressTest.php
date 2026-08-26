@@ -455,8 +455,9 @@ class StudentProgressTest extends TestCase
             $this->assertArrayHasKey($key, $highlights);
 
             if ($highlights[$key] !== null) {
-                // A domain id and a name. No difficulty, no cause, no advice.
-                $this->assertSame(['domain_id', 'name'], array_keys($highlights[$key]));
+                // A domain id, a name and the value it was compared on. No
+                // difficulty, no cause, no advice.
+                $this->assertSame(['domain_id', 'name', 'value'], array_keys($highlights[$key]));
             }
         }
     }

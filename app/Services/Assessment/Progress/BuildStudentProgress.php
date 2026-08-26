@@ -7,12 +7,15 @@ use App\Models\AcademicPeriod;
 use App\Models\Enrollment;
 use App\Models\EvidenceKind;
 use App\Models\EvidenceRecord;
+use App\Models\Instrument;
 use App\Models\InterimAssessment;
 use App\Models\Intervention;
 use App\Models\SchoolClass;
 use App\Services\Assessment\BuildClassStatistics;
 use App\Services\Assessment\BuildResultsProgression;
+use App\Services\Assessment\ClassResultsCalculator;
 use App\Services\Assessment\PrimaryResultScope;
+use App\Services\Assessment\ScaleProposalResolver;
 use App\Support\Assessment\DecisionScale;
 use Illuminate\Support\Collection;
 
@@ -63,6 +66,8 @@ class BuildStudentProgress
         protected BuildResultsProgression $progression,
         protected BuildClassStatistics $statistics,
         protected PrimaryResultScope $scope,
+        protected ClassResultsCalculator $calculator,
+        protected ScaleProposalResolver $proposals,
     ) {}
 
     /**
@@ -116,16 +121,20 @@ class BuildStudentProgress
                     : 'Só os elementos realizados no período analisado.',
             ],
             'periods' => $this->periodPayload($progression['periods'], $scopes),
-            'selectedPeriod' => $statistics['selected_period'] ?? null,
+            'selectedPeriod' => $this->selectedPeriodPayload($statistics['selected_period'] ?? null, $periods),
             'headline' => $this->headline($row, $reading),
             'moments' => $moments,
             'classifications' => $this->classifications($line),
             'selfAssessments' => $this->selfAssessments($line),
             'domains' => $this->domains($progression['domains'], $row, $line),
-            'sinceLast' => $this->sinceLast($line, $scopes, $reading),
+            'sinceLast' => $this->sinceLast($line, $scopes, $reading, $periods),
             'classComparison' => $this->classComparison($statistics, $row, $reading),
             'records' => $this->records($class, $enrollment),
             'interventions' => $this->interventions($class, $enrollment),
+            // The recent avaliações themselves, including this student's own
+            // result when the canonical calculation can resolve one, so the
+            // timeline names both what was applied and what actually changed.
+            'recentInstruments' => $this->recentInstruments($class, $enrollment),
         ];
     }
 
@@ -615,7 +624,12 @@ class BuildStudentProgress
      * picking by array order and calling it a result.
      *
      * @param  list<array<string, mixed>>  $rows
-     * @return array<string, mixed>
+     * @return array{
+     *     highest: array{domain_id: int, name: string, value: string}|null,
+     *     lowest: array{domain_id: int, name: string, value: string}|null,
+     *     largest_rise: array{domain_id: int, name: string, value: string}|null,
+     *     largest_fall: array{domain_id: int, name: string, value: string}|null
+     * }
      */
     protected function domainHighlights(array $rows): array
     {
@@ -648,7 +662,7 @@ class BuildStudentProgress
     /**
      * @param  list<array<string, mixed>>  $rows
      * @param  callable(array<string, mixed>): string  $value
-     * @return array<string, mixed>|null
+     * @return array{domain_id: int, name: string, value: string}|null
      */
     protected function singleBest(array $rows, callable $value, bool $highest): ?array
     {
@@ -680,7 +694,11 @@ class BuildStudentProgress
             }
         }
 
-        return $tied ? null : ['domain_id' => $best['domain_id'], 'name' => $best['name']];
+        return $tied ? null : [
+            'domain_id' => (int) $best['domain_id'],
+            'name' => (string) $best['name'],
+            'value' => $value($best),
+        ];
     }
 
     // -------------------------------------------------- desde o momento anterior
@@ -695,9 +713,10 @@ class BuildStudentProgress
      *
      * @param  list<array<string, mixed>>  $line
      * @param  array<int, string>  $scopes
+     * @param  Collection<int, AcademicPeriod>  $periods
      * @return array<string, mixed>|null
      */
-    protected function sinceLast(array $line, array $scopes, string $reading): ?array
+    protected function sinceLast(array $line, array $scopes, string $reading, Collection $periods): ?array
     {
         $withValue = array_values(array_filter(
             $line,
@@ -717,6 +736,8 @@ class BuildStudentProgress
         return [
             'from_label' => (string) $previous['period_label'],
             'to_label' => (string) $current['period_label'],
+            'from_date' => $periods->get((int) $previous['period_id'])?->ends_on->toDateString(),
+            'to_date' => $periods->get((int) $current['period_id'])?->ends_on->toDateString(),
             'from' => $previous[$key] ?? null,
             'to' => $current[$key] ?? null,
             'classification_from' => $this->decidedLevel($previous['classification'] ?? null),
@@ -941,6 +962,13 @@ class BuildStudentProgress
                 // The date the teacher chose, and nothing else — never a rule
                 // like "30 days without follow-up" (see Intervention::needsReview()).
                 'needs_review' => $intervention->needsReview(),
+                // Recuperação / Consolidação / Melhoria, and the teacher's own
+                // frequency and indicador de acompanhamento. Absent on a row
+                // recorded before this existed (§8) — never guessed.
+                'purpose' => $intervention->purpose?->value,
+                'purpose_label' => $intervention->purpose?->label(),
+                'frequency' => $intervention->frequency,
+                'tracking_indicator' => $intervention->tracking_indicator,
             ];
         }
 
@@ -949,6 +977,98 @@ class BuildStudentProgress
             'individual' => count(array_filter($rows, fn (array $row): bool => $row['is_individual'])),
             'needing_review' => count(array_filter($rows, fn (array $row): bool => $row['needs_review'])),
             'rows' => $rows,
+        ];
+    }
+
+    /**
+     * The class's own recent avaliações, with one student's own result
+     * resolved through ClassResultsCalculator. The arithmetic stays in the
+     * same CalculationEngine and frozen profile rules used everywhere else;
+     * this method only asks for one outcome per instrument and compares the
+     * resulting normalized values in chronological order.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function recentInstruments(SchoolClass $class, Enrollment $enrollment): array
+    {
+        $instruments = Instrument::query()
+            ->where('class_id', $class->getKey())
+            ->with(['type', 'items.domainAllocations'])
+            ->orderByDesc('applied_on')
+            ->orderByDesc('id')
+            ->limit(8)
+            ->get();
+
+        $outcomes = $this->calculator->forInstruments($class, $enrollment, $instruments);
+        $chronological = $instruments->sortBy([
+            ['applied_on', 'asc'],
+            ['id', 'asc'],
+        ])->values();
+        $byInstrument = [];
+        $previous = null;
+
+        foreach ($chronological as $instrument) {
+            $outcome = $outcomes[(int) $instrument->getKey()] ?? null;
+            $value = $outcome?->normalizedValue === null
+                ? null
+                : Bc::round(Bc::of($outcome->normalizedValue), BuildResultsProgression::PRECISION, 'half_up');
+            $level = $this->proposals->bandFor($class->profileVersion?->scale, $outcome?->normalizedValue);
+
+            $byInstrument[(int) $instrument->getKey()] = [
+                'result' => $value,
+                'scale_label' => $level?->label,
+                'evolution' => $this->instrumentEvolution($previous, $value),
+            ];
+
+            if ($value !== null) {
+                $previous = $value;
+            }
+        }
+
+        $rows = [];
+
+        foreach ($instruments as $instrument) {
+            $rows[] = [
+                'ulid' => $instrument->ulid,
+                'title' => $instrument->title,
+                'type' => $instrument->type?->name,
+                'applied_on' => $instrument->applied_on->toDateString(),
+                'status' => $instrument->status->label(),
+                'counts_toward_classification' => (bool) $instrument->counts_toward_classification,
+                ...($byInstrument[(int) $instrument->getKey()] ?? [
+                    'result' => null,
+                    'scale_label' => null,
+                    'evolution' => null,
+                ]),
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * The same adjacent-result convention used by BuildResultsProgression:
+     * rounded values, a signed difference in percentage points, and no answer
+     * when either side is absent.
+     *
+     * @return array{direction: string, points: string}|null
+     */
+    protected function instrumentEvolution(?string $previous, ?string $current): ?array
+    {
+        if ($previous === null || $current === null) {
+            return null;
+        }
+
+        $difference = Bc::sub(Bc::of($current), Bc::of($previous));
+        $comparison = Bc::compare(Bc::of($current), Bc::of($previous));
+
+        return [
+            'direction' => match (true) {
+                $comparison > 0 => 'up',
+                $comparison < 0 => 'down',
+                default => 'flat',
+            },
+            'points' => Bc::round($difference, BuildResultsProgression::PRECISION, 'half_up'),
         ];
     }
 
@@ -973,6 +1093,29 @@ class BuildStudentProgress
         }
 
         return $rows;
+    }
+
+    /**
+     * Add dates already loaded for the selected period, so the query-free
+     * insights layer can constrain qualitative records to the same window.
+     *
+     * @param  array<string, mixed>|null  $selected
+     * @param  Collection<int, AcademicPeriod>  $periods
+     * @return array<string, mixed>|null
+     */
+    protected function selectedPeriodPayload(?array $selected, Collection $periods): ?array
+    {
+        if ($selected === null) {
+            return null;
+        }
+
+        $period = $periods->get((int) $selected['id']);
+
+        return [
+            ...$selected,
+            'starts_on' => $period?->starts_on->toDateString(),
+            'ends_on' => $period?->ends_on->toDateString(),
+        ];
     }
 
     /**

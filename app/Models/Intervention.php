@@ -38,12 +38,15 @@ use Illuminate\Support\Carbon;
  * @property int|null $domain_id
  * @property InterventionTargetType $target_type
  * @property InterventionType|null $intervention_type
+ * @property InterventionPurpose|null $purpose
  * @property string|null $motive_code
  * @property string|null $motive_label
  * @property string|null $strategy_code
  * @property string|null $strategy_label
  * @property string|null $objective
  * @property Carbon|null $review_on
+ * @property string|null $frequency
+ * @property string|null $tracking_indicator
  * @property InterventionDomainRelation $domain_relation
  * @property string $title
  * @property string|null $description
@@ -62,10 +65,11 @@ use Illuminate\Support\Carbon;
  */
 #[Fillable([
     'class_id', 'enrollment_id', 'academic_period_id', 'domain_id',
-    'target_type', 'intervention_type', 'domain_relation',
+    'target_type', 'intervention_type', 'purpose', 'domain_relation',
     'motive_code', 'motive_label', 'strategy_code', 'strategy_label', 'objective',
     'title', 'description', 'description_source',
     'status', 'started_on', 'expected_end_on', 'review_on', 'concluded_on',
+    'frequency', 'tracking_indicator',
     'include_in_report', 'available_for_reports',
     'support_measure_level', 'support_measure_code', 'evaluation_adaptation_code',
     'legal_mapping_source', 'created_by',
@@ -92,6 +96,7 @@ class Intervention extends Model
         return [
             'target_type' => InterventionTargetType::class,
             'intervention_type' => InterventionType::class,
+            'purpose' => InterventionPurpose::class,
             'domain_relation' => InterventionDomainRelation::class,
             'description_source' => InterventionDescriptionSource::class,
             'status' => InterventionStatus::class,

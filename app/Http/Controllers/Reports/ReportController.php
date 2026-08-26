@@ -156,7 +156,54 @@ class ReportController extends Controller
             // which one is pre-selected so a common case needs no choice.
             'templates' => $this->templates->optionsFor($this->user(), $type),
             'preferredTemplate' => $this->templates->preferredFor($this->user(), $type)?->ulid,
+            // Richer prefill hints — the same mechanism `type` already is,
+            // taught to carry more. Arriving from Acompanhamento do Aluno's
+            // «Gerar relatório», this is how the teacher's turma/aluno/período
+            // reach the form without being re-picked by hand.
+            'preselected' => $this->preselectedFrom($request),
         ]);
+    }
+
+    /**
+     * Turma, aluno and período from a query string, resolved and checked
+     * against each other — never trusted as-is.
+     *
+     * A QUERY PARAMETER IS A SUGGESTION FROM A LINK, NOT AN INSTRUCTION. A
+     * ulid or id that does not resolve, that does not belong to this
+     * teacher, or that does not belong to the class it arrived with, is
+     * silently dropped — the screen still opens, with less prefilled, rather
+     * than refusing to load or trusting an id the teacher does not actually
+     * have (the same principle InterventionController::prefillFrom already
+     * applies to `aluno`).
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function preselectedFrom(Request $request): ?array
+    {
+        $classUlid = $request->query('class');
+        $class = is_string($classUlid) && $classUlid !== ''
+            ? SchoolClass::where('ulid', $classUlid)->first()
+            : null;
+
+        if ($class === null || ! Gate::allows('view', $class)) {
+            return null;
+        }
+
+        $enrollmentUlid = $request->query('enrollment');
+        $enrollment = is_string($enrollmentUlid) && $enrollmentUlid !== ''
+            ? Enrollment::where('ulid', $enrollmentUlid)->where('class_id', $class->id)->first()
+            : null;
+
+        $periodId = $request->query('period');
+        $period = is_numeric($periodId)
+            ? AcademicPeriod::where('academic_year_id', $class->academic_year_id)->find((int) $periodId)
+            : null;
+
+        return [
+            'class_id' => $class->id,
+            'enrollment_id' => $enrollment?->id,
+            'academic_period_id' => $period?->id,
+        ];
     }
 
     /**

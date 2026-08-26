@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\AcademicYear;
+use App\Models\SchoolClass;
 use App\Models\Subject;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Navigation\NavigationBuilder;
@@ -10,6 +11,7 @@ use App\Support\Retention\ClosureStatusPresenter;
 use App\Support\Retention\ResolveSelectedAcademicYear;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -55,6 +57,19 @@ class HandleInertiaRequests extends Middleware
             is_int($sessionSelectedId) ? $sessionSelectedId : null,
         );
 
+        // The class genuinely in view, when the matched route already bound
+        // one — never re-resolved from a raw id, and never shown before the
+        // same `view` check every controller already runs for it. Runs by
+        // the time this middleware executes: SubstituteBindings is part of
+        // the framework's own `web` group, ahead of everything appended
+        // here, so `route('class')` is already the model, not its ulid.
+        $boundClass = $request->route('class');
+        $scopedClass = $boundClass instanceof SchoolClass
+            && $user !== null
+            && Gate::forUser($user)->allows('view', $boundClass)
+            ? $boundClass
+            : null;
+
         return [
             ...parent::share($request),
             'name' => config('app.name'),
@@ -89,9 +104,12 @@ class HandleInertiaRequests extends Middleware
             // The header context selectors. Academic year reads the same
             // heuristic AcademicYearRetentionClassifier already uses and tests
             // (single Active year, else most recent by starts_on) — never
-            // invented here. Subject/gradeLevel/class/period stay null: there
-            // is no canonical "current" one to read yet, and guessing would be
-            // exactly the kind of invented data this prop was built to avoid.
+            // invented here. Subject/gradeLevel/class come from the route's
+            // own bound SchoolClass when the current route resolved one —
+            // real context the page already has, not a guess. `period` stays
+            // null: no route establishes a single canonical "current" period
+            // the way a class does, and guessing one would be exactly the
+            // kind of invented data this prop was built to avoid.
             'selectableAcademicYears' => fn () => $hasOrganization
                 ? $academicYears
                     ->take(4)
@@ -104,10 +122,10 @@ class HandleInertiaRequests extends Middleware
                 : [],
             'scope' => fn () => [
                 'academicYear' => $selectedAcademicYear?->label,
-                'subject' => null,
+                'subject' => $scopedClass?->subject->name,
                 'hasSubjects' => $hasOrganization && Subject::query()->exists(),
-                'gradeLevel' => null,
-                'class' => null,
+                'gradeLevel' => $scopedClass?->grade_level,
+                'class' => $scopedClass?->label,
                 'period' => null,
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',

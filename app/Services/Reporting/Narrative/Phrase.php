@@ -2,6 +2,8 @@
 
 namespace App\Services\Reporting\Narrative;
 
+use App\Domain\Assessment\Bc;
+
 /**
  * The deterministic sentence layer (§42).
  *
@@ -120,8 +122,20 @@ class Phrase
     }
 
     /**
-     * A canonical decimal as Portuguese writes it: comma, and no trailing
-     * zeros that the rest of the application does not show either.
+     * A canonical decimal as Portuguese writes it: comma, one decimal at
+     * most, and no trailing zeros that the rest of the application does not
+     * show either.
+     *
+     * ROUNDS — IT DOES NOT ONLY RELOCALE. A value arriving here can still
+     * carry the engine's own internal scale (`Bc::SCALE`, ten decimals —
+     * «77.766927»), because this is the one place that turns a canonical
+     * figure into prose; a caller is never expected to pre-round before
+     * calling it. Without this step, every «already wraps it in
+     * Phrase::percentage()» call site would be true and the sentence would
+     * still read «77,766927%» — a raw value merely relocalised, not
+     * rounded, which is the exact bug this method exists to prevent (§1 of
+     * the panel review). Rounded on the decimal string itself, through
+     * `Bc::round()`, so no float ever touches a figure here either (§24.4).
      *
      * Returns null for null. Absence is not «0,0» (§41).
      */
@@ -136,6 +150,8 @@ class Phrase
         if (! is_numeric($text)) {
             return null;
         }
+
+        $text = Bc::round(Bc::of($text), 1, 'half_up');
 
         // Trim to the precision the rest of the app shows, then drop trailing
         // zeros: «66,40» and «66,4» are the same number and only one of them

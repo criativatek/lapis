@@ -520,6 +520,12 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // Through the ENROLMENT, never a student id: a result belongs to the
         // (student, class) pair, and a student who left still has a year (§58).
         Route::get('classes/{class}/evolucao/{enrollment}', [StudentProgressController::class, 'student'])->name('student-progress.student');
+        // «Sugestão de estratégia (IA)» (§13). Gated by `ai_assistance` inside
+        // the controller, on the server — same throttle as «Aperfeiçoar
+        // redação», the same AI budget this installation already meters.
+        Route::post('classes/{class}/evolucao/{enrollment}/sugestao-estrategia', [StudentProgressController::class, 'suggestStrategy'])
+            ->middleware('throttle:report-writing-assistant')
+            ->name('student-progress.suggest-strategy');
     });
 
     // Records — the teacher's logbook (§14). Qualitative evidence, never a grade.
