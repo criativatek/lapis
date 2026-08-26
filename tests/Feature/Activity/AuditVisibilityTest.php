@@ -4,10 +4,15 @@ namespace Tests\Feature\Activity;
 
 use App\Models\AuditEvent;
 use App\Models\Organization;
+use App\Models\OrganizationSubscription;
+use App\Models\Plan;
+use App\Models\SubscriptionStatus;
 use App\Models\User;
 use App\Services\Audit\AuditLog;
+use App\Support\Entitlements\Entitlements;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -25,6 +30,12 @@ use Tests\TestCase;
  * organization's owner IS the only person who ever acts there, so the "owner
  * sees everything" branch and the "member sees only their own" branch return
  * identical rows — the uniform rule produces the right answer for free.
+ *
+ * `audit_log` is an Institucional-plan module (Lote 1): every organization
+ * exercised here for its HTTP behaviour needs that plan on top of being an
+ * "institutional" (multi-member) ORGANIZATION TYPE — the two are independent
+ * axes, and the visibility rule under test is unaffected by which plan is
+ * attached, so subscribing here changes nothing about what these tests prove.
  */
 class AuditVisibilityTest extends TestCase
 {
@@ -40,8 +51,30 @@ class AuditVisibilityTest extends TestCase
 
         $organization = Organization::factory()->institutional()->create(['owner_id' => $owner->id]);
         $organization->members()->attach([$owner->id, $member->id], ['joined_at' => now()]);
+        $this->subscribeToInstitutionalPlan($organization);
 
         return [$organization, $owner, $member];
+    }
+
+    /**
+     * Gives an organization the `audit_log` module by putting it on the
+     * Institucional plan — the same subscribe-then-flush idiom used by
+     * RequireModuleTest and PublicSelfAssessmentTest.
+     */
+    private function subscribeToInstitutionalPlan(Organization $organization): void
+    {
+        OrganizationSubscription::withoutGlobalScope('organization')
+            ->where('organization_id', $organization->getKey())
+            ->delete();
+
+        OrganizationSubscription::withoutGlobalScope('organization')->create([
+            'organization_id' => $organization->getKey(),
+            'plan_id' => Plan::where('key', 'institutional')->firstOrFail()->getKey(),
+            'status' => SubscriptionStatus::Active,
+            'starts_at' => Carbon::now()->subDay(),
+        ]);
+
+        app(Entitlements::class)->flush();
     }
 
     private function recordEvent(Organization $organization, ?User $causer, string $event = 'test.event'): AuditEvent
@@ -183,6 +216,7 @@ class AuditVisibilityTest extends TestCase
         $admin = User::factory()->create();
         $admin->forceFill(['is_platform_admin' => true])->save();
         $organization = $admin->personalOrganization();
+        $this->subscribeToInstitutionalPlan($organization);
 
         $this->recordEvent($organization, $admin, 'admin.own_action');
 
@@ -226,6 +260,7 @@ class AuditVisibilityTest extends TestCase
     {
         $teacher = User::factory()->create();
         $organization = $teacher->personalOrganization();
+        $this->subscribeToInstitutionalPlan($organization);
 
         $this->recordEvent($organization, $teacher, 'teacher.own_action');
 
@@ -234,5 +269,37 @@ class AuditVisibilityTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->where('scope', 'organization')
                 ->has('events', 1));
+    }
+
+    // ------------------------------------------------------- F: plan gating (Lote 1)
+
+    #[Test]
+    public function a_base_organization_is_blocked_from_the_activity_page(): void
+    {
+        // A brand-new personal organization is on the Base plan by default
+        // (CreatePersonalOrganization) — audit_log is Institucional-only.
+        $teacher = User::factory()->create();
+
+        $this->actingAs($teacher)->get('/activity')->assertForbidden();
+    }
+
+    #[Test]
+    public function a_pro_organization_is_also_blocked_from_the_activity_page(): void
+    {
+        // audit_log sits above Pro too — only the Institucional plan carries it.
+        $teacher = User::factory()->create();
+
+        OrganizationSubscription::withoutGlobalScope('organization')
+            ->where('organization_id', $teacher->personalOrganization()->getKey())
+            ->delete();
+        OrganizationSubscription::withoutGlobalScope('organization')->create([
+            'organization_id' => $teacher->personalOrganization()->getKey(),
+            'plan_id' => Plan::where('key', 'pro')->firstOrFail()->getKey(),
+            'status' => SubscriptionStatus::Active,
+            'starts_at' => Carbon::now()->subDay(),
+        ]);
+        app(Entitlements::class)->flush();
+
+        $this->actingAs($teacher)->get('/activity')->assertForbidden();
     }
 }

@@ -4,11 +4,14 @@ namespace Tests\Feature\Organizations;
 
 use App\Actions\Organizations\CreateInstitutionalOrganization;
 use App\Models\Organization;
+use App\Models\OrganizationSubscription;
 use App\Models\Plan;
 use App\Models\Subject;
+use App\Models\SubscriptionStatus;
 use App\Models\User;
 use App\Support\Entitlements\Entitlements;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -207,8 +210,18 @@ class OrganizationSwitchTest extends TestCase
     #[Test]
     public function audit_visibility_still_follows_ownership_of_whichever_organization_is_current(): void
     {
+        // audit_log (Lote 1) is Institucional-only — both organizations this
+        // test switches between need that plan, or the /activity assertions
+        // below would 403 before ever reaching the visibility rule under test.
         $teacher = User::factory()->create();
-        $school = Organization::factory()->institutional()->withMember($teacher)->create();
+        $this->subscribeToInstitutionalPlan($teacher->personalOrganization());
+
+        $school = app(CreateInstitutionalOrganization::class)->create(
+            'Escola Secundária X',
+            User::factory()->withoutOrganization()->create(),
+            Plan::where('key', 'institutional')->firstOrFail(),
+        );
+        $school->members()->attach($teacher, ['joined_at' => now()]);
 
         // In their own personal organization, the teacher is the owner and sees
         // the whole (their own) trail — unchanged from Fatia 1.
@@ -218,6 +231,22 @@ class OrganizationSwitchTest extends TestCase
         // Fatia 1's member-scoped rule applies in the new context too.
         $this->actingAs($teacher)->post('/organizations/switch', ['organization' => $school->ulid]);
         $this->actingAs($teacher)->get('/activity')->assertInertia(fn ($page) => $page->where('scope', 'own'));
+    }
+
+    private function subscribeToInstitutionalPlan(Organization $organization): void
+    {
+        OrganizationSubscription::withoutGlobalScope('organization')
+            ->where('organization_id', $organization->getKey())
+            ->delete();
+
+        OrganizationSubscription::withoutGlobalScope('organization')->create([
+            'organization_id' => $organization->getKey(),
+            'plan_id' => Plan::where('key', 'institutional')->firstOrFail()->getKey(),
+            'status' => SubscriptionStatus::Active,
+            'starts_at' => Carbon::now()->subDay(),
+        ]);
+
+        app(Entitlements::class)->flush();
     }
 
     // ---------------------------------------------------------------------- settings

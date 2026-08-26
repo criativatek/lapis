@@ -5,14 +5,19 @@ namespace Tests\Feature\Assessment;
 use App\Models\AuditEvent;
 use App\Models\Classification;
 use App\Models\ClassificationScope;
+use App\Models\OrganizationSubscription;
+use App\Models\Plan;
 use App\Models\SchoolClass;
+use App\Models\SubscriptionStatus;
 use App\Models\User;
 use App\Services\Assessment\ConfirmClassification;
 use App\Services\Assessment\ProposeClassifications;
 use App\Services\Assessment\PublishClassifications;
+use App\Support\Entitlements\Entitlements;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use LogicException;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -127,6 +132,20 @@ class AuditTrailTest extends TestCase
     {
         $teacher = User::factory()->create(['email' => 'ana.martins@lapis.test']);
         $this->seed(DemoDataSeeder::class);
+
+        // audit_log (Lote 1) is Institucional-only — the Base plan this factory
+        // creates by default would 403 on /activity before ever reaching the
+        // assertions this test actually cares about.
+        OrganizationSubscription::withoutGlobalScope('organization')
+            ->where('organization_id', $teacher->personalOrganization()->getKey())
+            ->delete();
+        OrganizationSubscription::withoutGlobalScope('organization')->create([
+            'organization_id' => $teacher->personalOrganization()->getKey(),
+            'plan_id' => Plan::where('key', 'institutional')->firstOrFail()->getKey(),
+            'status' => SubscriptionStatus::Active,
+            'starts_at' => Carbon::now()->subDay(),
+        ]);
+        app(Entitlements::class)->flush();
 
         app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () use ($teacher): void {
             $class = SchoolClass::where('label', '7.º A')->firstOrFail();

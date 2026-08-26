@@ -33,10 +33,7 @@ class EntitlementsSeeder extends Seeder
         'records' => 'Registos',
         'interventions' => 'Intervenções',
         'student_progress' => 'Evolução do Aluno',
-        'class_analysis' => 'Análise da Turma',
         'reports' => 'Relatórios',
-        'imports' => 'Importações',
-        'data_protection' => 'Proteção de Dados',
 
         // Pro.
         'calendar' => 'Agenda do Ano Letivo',
@@ -63,14 +60,13 @@ class EntitlementsSeeder extends Seeder
         'institution_admin' => 'Administração Institucional',
         'institution_library' => 'Biblioteca Institucional',
         'institution_reports' => 'Relatórios Agregados',
-        'institution_policies' => 'Políticas Institucionais',
         'audit_log' => 'Auditoria e Segurança',
     ];
 
     protected const BASE_MODULES = [
         'assessment_profiles', 'classes', 'students', 'instruments', 'assessments',
         'results', 'self_assessments', 'records', 'interventions', 'student_progress',
-        'class_analysis', 'reports', 'imports', 'data_protection',
+        'reports',
     ];
 
     protected const PRO_MODULES = [
@@ -82,9 +78,20 @@ class EntitlementsSeeder extends Seeder
 
     protected const INSTITUTIONAL_MODULES = [
         ...self::PRO_MODULES,
-        'institution_admin', 'institution_library', 'institution_reports',
-        'institution_policies', 'audit_log',
+        'institution_admin', 'institution_library', 'institution_reports', 'audit_log',
     ];
+
+    /**
+     * The full catalogue's keys, for callers outside this class that need to
+     * verify every capability is real (CatalogCoherenceTest) without exposing
+     * the MODULES const — and its human names — wholesale.
+     *
+     * @return list<string>
+     */
+    public static function moduleKeys(): array
+    {
+        return array_keys(self::MODULES);
+    }
 
     public function run(): void
     {

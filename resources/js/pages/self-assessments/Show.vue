@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { ChevronRight } from '@lucide/vue';
+import { computed } from 'vue';
 import Heading from '@/components/Heading.vue';
 
 type Row = {
@@ -18,6 +19,12 @@ const props = defineProps<{
 }>();
 
 const selectedPeriod = () => props.periods.find((period) => period.selected) ?? null;
+
+// The entitlement decides whether the entry point exists at all. Hiding it is
+// presentation only — the route itself is gated by `module:self_assessment_links`
+// on the server, so this is convenience rather than access control (same
+// pattern as assessments/Index.vue's canImportGrids).
+const canSeeLinks = computed(() => usePage().props.modules.includes('self_assessment_links'));
 
 function selectPeriod(ulid: string): void {
     router.get(`/classes/${props.schoolClass.ulid}/self-assessments/${ulid}`, {}, { preserveScroll: true });
@@ -57,7 +64,7 @@ function open(row: Row): void {
                     </button>
                 </div>
                 <Link
-                    v-if="selectedPeriod()"
+                    v-if="canSeeLinks && selectedPeriod()"
                     :href="`/classes/${schoolClass.ulid}/self-assessments/${selectedPeriod()?.ulid}/links`"
                     class="rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted/40"
                 >

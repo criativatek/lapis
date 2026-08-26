@@ -101,7 +101,12 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         ->name('academic-years.select');
 
     // Audit trail (§22.4) — read-only view of the organization's recorded events.
-    Route::get('activity', [ActivityController::class, 'index'])->name('activity.index');
+    // Institucional-only capability: the visibility scoping inside AuditEvent
+    // (owner sees all, member sees only their own) is a layer on top of this
+    // gate, not a substitute for it.
+    Route::get('activity', [ActivityController::class, 'index'])
+        ->middleware('module:audit_log')
+        ->name('activity.index');
 
     // Academic years are the temporal foundation (§9). Reached from the header
     // year selector, not the sidebar — the year is a context, not a menu item.
