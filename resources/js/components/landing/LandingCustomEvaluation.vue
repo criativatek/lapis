@@ -53,9 +53,11 @@ const claims = [
                 <p
                     class="mt-4 text-base leading-relaxed text-pretty text-muted-foreground sm:text-lg"
                 >
-                    Cada escola pode organizar a avaliação de forma
-                    diferente. O LÁPIS permite configurar essa estrutura e
-                    aplicá-la de forma consistente ao trabalho do professor.
+                    Organize critérios de avaliação, ponderações, instrumentos
+                    de avaliação e classificações sem depender de múltiplas
+                    folhas de cálculo. Cada escola organiza a avaliação de forma
+                    diferente, e o LÁPIS aplica essa estrutura de forma
+                    consistente ao trabalho do professor.
                 </p>
 
                 <dl class="mt-9 space-y-5">
@@ -85,7 +87,10 @@ const claims = [
             </RevealOnScroll>
 
             <RevealOnScroll :delay="150" variant="scale" class="min-w-0">
-                <ProductWindow path="lapis.pt/assessment-profiles/matematica-9">
+                <ProductWindow
+                    path="lapis.pt/assessment-profiles/matematica-9"
+                    label="Ecrã de um perfil de avaliação no LÁPIS: os domínios com os nomes da escola, a ponderação de cada um e a escala em vigor."
+                >
                     <ProfilePreview />
                 </ProductWindow>
             </RevealOnScroll>

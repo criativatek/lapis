@@ -28,6 +28,8 @@ type Stage = {
     title: string;
     line: string;
     path: string;
+    /** Alt text for the mock beside it — see ProductWindow. */
+    label: string;
     modules: readonly string[];
 };
 
@@ -36,8 +38,9 @@ const stages: readonly Stage[] = [
         key: 'organizar',
         tab: 'Organizar',
         title: 'As suas turmas, sem as escrever outra vez',
-        line: 'Importe a pauta que a escola já lhe deu — nomes, números e fotografias no mesmo passo.',
+        line: 'Gestão de turmas e de alunos a partir da pauta que a escola já lhe deu — nomes, números e fotografias no mesmo passo.',
         path: 'lapis.pt/classes/9b',
+        label: 'Ecrã de uma turma no LÁPIS: a lista de alunos importada da pauta, com número, nome e fotografia.',
         modules: ['Turmas', 'Alunos', 'Importações'],
     },
     {
@@ -46,6 +49,7 @@ const stages: readonly Stage[] = [
         title: 'Uma grelha que sabe o que aconteceu',
         line: 'Faltou, foi dispensado, não se aplica, ainda está por corrigir. Oito estados, e o cálculo trata cada um como deve.',
         path: 'lapis.pt/instruments/teste-1/grelha',
+        label: 'Grelha de correção de um instrumento de avaliação no LÁPIS, com a cotação por questão e os estados de cada aluno.',
         modules: [
             'Elementos de Avaliação',
             'Grelhas de correção',
@@ -56,8 +60,9 @@ const stages: readonly Stage[] = [
         key: 'acompanhar',
         tab: 'Acompanhar',
         title: 'A turma inteira num ecrã',
-        line: 'Distribuição pela escala, desempenho por domínio e o movimento de um período para o seguinte.',
+        line: 'Acompanhamento do progresso dos alunos: distribuição pela escala, desempenho por domínio e o movimento de um período para o seguinte.',
         path: 'lapis.pt/classes/9b/results/estatistica',
+        label: 'Análise de resultados de uma turma no LÁPIS: distribuição pela escala e desempenho por domínio.',
         modules: [
             'Análise da Turma',
             'Evolução do Aluno',
@@ -70,24 +75,34 @@ const stages: readonly Stage[] = [
         title: 'O que fez fica registado',
         line: 'Estratégias, medidas e observações do dia a dia — no processo do aluno, fora do cálculo.',
         path: 'lapis.pt/classes/9b/interventions',
+        label: 'Estratégias e medidas registadas para um aluno no LÁPIS, com a dificuldade, o objetivo e o acompanhamento.',
         modules: ['Estratégias e Medidas', 'Registos'],
     },
     {
         key: 'documentar',
         tab: 'Documentar',
         title: 'O relatório já vem meio escrito',
-        line: 'As secções partem do que já registou. Finalizar fixa o documento; corrigir depois deriva outro.',
+        line: 'Relatórios de avaliação cujas secções partem do que já registou. Finalizar fixa o documento; corrigir depois deriva outro.',
         path: 'lapis.pt/reports/2o-periodo',
+        label: 'Relatório de avaliação em edição no LÁPIS, com secções compostas a partir dos dados já registados.',
         modules: ['Relatórios', 'Pautas e Quadro-síntese', 'Exportações'],
     },
 ];
 
-/** The capabilities a plan above Base unlocks — said once, compactly. */
+/**
+ * The capabilities a plan above Base unlocks — said once, compactly.
+ *
+ * Every entry is a module that really exists in the catalogue
+ * (`EntitlementsSeeder`); the comparison table further down is the full
+ * answer, and this is the pointer to it.
+ */
 const beyondBase = [
+    { name: 'Análises avançadas e tendências', plan: 'Pro' },
+    { name: 'Sugestões pedagógicas com IA', plan: 'Pro' },
     { name: 'Importação de grelhas de correção', plan: 'Pro' },
     { name: 'Exportação para o INOVAR', plan: 'Pro' },
     { name: 'Ligações de autoavaliação', plan: 'Pro' },
-    { name: 'Apoio à redação', plan: 'Pro' },
+    { name: 'Apoio à redação de relatórios', plan: 'Pro' },
     { name: 'Equipa e convites', plan: 'Institucional' },
 ] as const;
 
@@ -117,8 +132,8 @@ function onKeydown(event: KeyboardEvent): void {
     <LandingSection
         id="funcionalidades"
         eyebrow="Funcionalidades"
-        title="Um ano letivo, de ponta a ponta."
-        lead="Organizar, avaliar, acompanhar, intervir e documentar — pela ordem por que o trabalho acontece."
+        title="Um ano letivo de ponta a ponta: turmas, avaliação e acompanhamento."
+        lead="Organizar, avaliar, acompanhar, intervir e documentar — pela ordem por que o trabalho do professor acontece."
     >
         <RevealOnScroll>
             <div
@@ -186,7 +201,11 @@ function onKeydown(event: KeyboardEvent): void {
             </div>
 
             <div class="min-w-0">
-                <ProductWindow :key="stage.key" :path="stage.path">
+                <ProductWindow
+                    :key="stage.key"
+                    :path="stage.path"
+                    :label="stage.label"
+                >
                     <RosterPreview v-if="stage.key === 'organizar'" />
                     <GridPreview v-else-if="stage.key === 'avaliar'" />
                     <AnalysisPreview v-else-if="stage.key === 'acompanhar'" />

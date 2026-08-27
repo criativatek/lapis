@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { Head, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
+import LandingAi from '@/components/landing/LandingAi.vue';
 import LandingBenefits from '@/components/landing/LandingBenefits.vue';
 import LandingBrandStory from '@/components/landing/LandingBrandStory.vue';
 import LandingCompare from '@/components/landing/LandingCompare.vue';
 import LandingCustomEvaluation from '@/components/landing/LandingCustomEvaluation.vue';
+import LandingDailyWork from '@/components/landing/LandingDailyWork.vue';
 import LandingFaq from '@/components/landing/LandingFaq.vue';
 import LandingFeatures from '@/components/landing/LandingFeatures.vue';
 import LandingFinalCta from '@/components/landing/LandingFinalCta.vue';
@@ -58,7 +60,15 @@ const authenticated = computed(() => page.props.auth.user !== null);
 </script>
 
 <template>
-    <Head title="LÁPIS — Mais simples. Mais tempo." />
+    <!--
+        MUST MATCH App\Support\Seo\LandingSeo::TITLE, which is what the server
+        renders and what a crawler reads. The formatter in app.ts leaves a
+        title that already names the brand alone, so this one survives intact
+        instead of coming out as «… - LAPIS».
+    -->
+    <Head
+        title="LÁPIS | Plataforma para Professores — Avaliação, Turmas e IA"
+    />
 
     <div class="min-h-screen bg-background text-foreground">
         <a
@@ -77,6 +87,8 @@ const authenticated = computed(() => page.props.auth.user !== null);
             <LandingHowItWorks />
             <LandingCustomEvaluation />
             <LandingFeatures />
+            <LandingDailyWork />
+            <LandingAi />
             <LandingRules />
             <LandingBenefits />
             <LandingSecurity />

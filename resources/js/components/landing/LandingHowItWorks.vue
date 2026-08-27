@@ -38,8 +38,8 @@ const steps: readonly Step[] = [
     <LandingSection
         id="como-funciona"
         eyebrow="Como funciona"
-        title="Quatro passos, e o ano fica montado."
-        lead="A configuração faz-se uma vez. Depois é só registar o que já faria."
+        title="Quatro passos, e o ano letivo fica montado."
+        lead="Critérios de avaliação, turmas e instrumentos configuram-se uma vez. Depois é só registar o que já faria."
     >
         <ol class="grid gap-8 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6">
             <li

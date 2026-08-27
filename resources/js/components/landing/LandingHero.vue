@@ -32,22 +32,31 @@ defineProps<{ authenticated: boolean }>();
                 <h1
                     class="mt-6 text-4xl font-semibold tracking-tight text-balance sm:text-5xl lg:text-[3.4rem] lg:leading-[1.05]"
                 >
-                    Mais simples. Mais tempo para o que realmente importa.
+                    Menos peso administrativo. Mais espaço para ser professor.
                 </h1>
 
+                <!--
+                    THE SENTENCE UNDER THE H1 IS THE ONE THAT HAS TO SAY WHAT
+                    THIS IS. The headline is a position, and a position alone
+                    leaves both a visitor and a crawler guessing for another
+                    two screens. This names the product category and the five
+                    things it does, in the words somebody would have typed to
+                    arrive here.
+                -->
                 <p
                     class="mt-6 max-w-xl text-lg leading-relaxed text-pretty text-foreground"
                 >
-                    Avaliação, acompanhamento e organização do trabalho
-                    docente de forma simples e integrada.
+                    O LÁPIS é uma plataforma para professores que reúne
+                    avaliação de alunos, gestão de turmas, acompanhamento
+                    pedagógico, aulas, sumários e relatórios num único lugar.
                 </p>
 
                 <p
                     class="mt-3 max-w-xl leading-relaxed text-pretty text-muted-foreground"
                 >
-                    Turmas, critérios e elementos de avaliação reunidos num
-                    só lugar. Informação clara para classificar, acompanhar
-                    e criar relatórios.
+                    Software de avaliação pensado para a forma como os
+                    professores realmente trabalham — com IA que interpreta a
+                    informação e um professor que decide sempre.
                 </p>
 
                 <div class="mt-9 flex flex-wrap items-center gap-3">
@@ -82,7 +91,10 @@ defineProps<{ authenticated: boolean }>();
             </RevealOnScroll>
 
             <RevealOnScroll :delay="150" variant="scale" class="min-w-0">
-                <ProductWindow path="lapis.pt/classes/9b/classifications">
+                <ProductWindow
+                    path="lapis.pt/classes/9b/classifications"
+                    label="Ecrã de classificações de uma turma no LÁPIS: a proposta calculada para cada aluno, a menção na escala da escola e a confirmação do professor."
+                >
                     <ClassificationPreview />
                 </ProductWindow>
             </RevealOnScroll>

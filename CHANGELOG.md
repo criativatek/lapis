@@ -2,6 +2,36 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.76.0] — 2026-08-27
+
+### Added
+
+- **A página pública passa a dizer o que o LÁPIS é — para quem lê e para quem indexa.** O `<h1>` era «Mais simples. Mais tempo para o que realmente importa.»: uma posição, não um produto. Passa a **«Menos peso administrativo. Mais espaço para ser professor.»**, imediatamente seguido da frase que faltava — *«O LÁPIS é uma plataforma para professores que reúne avaliação de alunos, gestão de turmas, acompanhamento pedagógico, aulas, sumários e relatórios num único lugar.»* Nenhuma das expressões que descrevem este produto — plataforma para professores, avaliação de alunos, gestão de turmas, acompanhamento pedagógico — aparecia uma única vez na página inteira.
+
+- **Duas secções para as duas metades do produto que a página nunca mencionava.** «Funcionalidades» percorre o ano de avaliação — organizar, avaliar, acompanhar, intervir, documentar — e nenhuma dessas cinco etapas é o horário, a aula, o sumário ou a agenda, que é a maior parte do que um professor abre numa terça-feira. **«O dia a dia»** (`#dia-a-dia`) nomeia as quatro, todas reais e todas Pro. E **«Inteligência artificial»** (`#ia`) diz o que a IA faz — interpreta resultados já calculados, identifica potencialidades, propõe estratégias e o próximo passo, aperfeiçoa a redação de um relatório — e, com o mesmo destaque, o que nunca faz: **IA sugere, professor decide**, nenhuma classificação atribuída, alterada ou decidida por um modelo.
+
+- **`robots.txt` e `sitemap.xml` passam a ser rotas.** Ambos têm de nomear o endereço do próprio site, e um ficheiro estático não o sabe: um `robots.txt` com `https://lapispro.com` lá dentro anunciava o sitemap de produção a partir de qualquer instalação local. `SeoController` usa `url()` e está certo em todos os ambientes por construção. O `public/robots.txt` foi eliminado no mesmo passo — um ficheiro real ali é servido pelo servidor web antes de o Laravel ver o pedido, e a rota nunca chegaria a correr.
+
+- **`App\Support\Seo\LandingSeo`** — título, descrição, canonical, `featureList` e `offers` num só sítio. As mesmas quatro frases eram precisas três e quatro vezes cada (`<title>`, `og:title`, `twitter:title`; descrição em mais três), e literais que têm de concordar são outras tantas oportunidades para deixarem de concordar — de forma invisível, porque nada renderiza mal: a página apenas começa a dizer ao Google uma coisa diferente da que diz ao LinkedIn. Com os valores numa classe, `LandingSeoTest` consegue verificar que o título cabe numa página de resultados, que a descrição cabe num *snippet* e que os preços do *structured data* são exatamente os aprovados.
+
+### Changed
+
+- **Título e descrição.** De «LÁPIS — Mais simples. Mais tempo.» para **«LÁPIS | Plataforma para Professores — Avaliação, Turmas e IA»** (60 caracteres, dentro do que uma página de resultados mostra antes de cortar). A descrição passa a abrir com o que o produto é em três palavras, em vez de com um slogan, e a fechar na posição que o distingue de um gerador de texto. O Open Graph e o Twitter ganham títulos próprios, mais curtos, porque um cartão social corta mais cedo.
+
+- **O `<title>` deixa de dizer duas coisas diferentes.** O servidor renderizava «LÁPIS — Mais simples. Mais tempo.» e, depois da hidratação, o formatador do `app.ts` acrescentava « - LAPIS» ao que o componente pedia — pelo que o separador do browser e o que o robô lia nunca foram a mesma string. O `<Head>` passa a usar um `<title>` filho, que não atravessa o formatador.
+
+- **`featureList` no *structured data*.** Com SSR desligado, o JSON-LD é a única descrição substancial e legível por máquinas que existe no HTML antes de correr uma linha de JavaScript. Passa a listar quinze capacidades reais do catálogo de módulos, e dois `offers` com os preços aprovados: Base a 0 € (com `priceValidUntil` no fim do ano letivo para que o «gratuito em 2026/27» não fique a valer para sempre) e Pro a 44,90 €. Sem `aggregateRating`, sem `review`, sem contagens de utilizadores.
+
+- **As Perguntas passam de dez a dezassete**, com as que respondem a intenção de pesquisa real — o que é o LÁPIS, gerir várias turmas, acompanhar a evolução dos alunos, horário/aulas/sumários, se usa IA, se a IA decide classificações, quanto custa o Pro, se há solução para escolas. Os preços e os limites vêm agora de `commercial.ts`, e não de literais escritos ao lado.
+
+- **Copy semântica distribuída pelas secções existentes**, em vez de concentrada no topo: gestão de turmas e alunos em «Organizar», acompanhamento do progresso em «Acompanhar», relatórios de avaliação em «Documentar», critérios/ponderações/instrumentos em «O modelo da sua escola». «Análises avançadas» e «Sugestões pedagógicas com IA» juntam-se à lista de capacidades dos planos superiores, onde faltavam.
+
+- **Os mocks de produto ganham texto alternativo.** Não são imagens — são DOM —, pelo que um leitor de ecrã percorria a tabela do mock e lia uma coluna de números sem saber que ecrã estava a ver. `ProductWindow` aceita agora um `label`, e as seis utilizações dizem que ecrã do LÁPIS estão a mostrar.
+
+### Security
+
+- **Todas as páginas que não são a página pública passam a ser `noindex, nofollow`.** A aplicação do professor está atrás de autenticação e não tem nada para posicionar, mas duas rotas públicas chegam a um browser sem sessão: a autoavaliação assinada que um aluno abre e um convite institucional. Nenhuma delas deve alguma vez aparecer num resultado de pesquisa, e «precisa de assinatura» deixa de ser resposta a partir do momento em que alguém cola a ligação onde um *crawler* a lê.
+
 ## [0.75.1] — 2026-08-27
 
 ### Fixed

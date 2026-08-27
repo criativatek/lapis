@@ -35,7 +35,19 @@ import AppTour from './AppTour.vue';
  * is the affordance — the frame answers before it is clicked.
  */
 
-defineProps<{ path: string }>();
+/**
+ * `label` is the alt text these illustrations never had. They are not images —
+ * they are DOM, so a screen reader walks the mock's own table and reads a
+ * column of numbers with no idea what screen it is looking at. One sr-only
+ * sentence before the mock says which part of the application this is, and it
+ * is the same sentence a sighted reader gets from the surrounding heading.
+ *
+ * Optional, because a mock in a section whose heading already names it does
+ * not need it repeated.
+ */
+withDefaults(defineProps<{ path: string; label?: string }>(), {
+    label: undefined,
+});
 
 const open = ref(false);
 </script>
@@ -66,6 +78,8 @@ const open = ref(false);
                     {{ path }}
                 </span>
             </div>
+
+            <p v-if="label" class="sr-only">{{ label }}</p>
 
             <slot />
 

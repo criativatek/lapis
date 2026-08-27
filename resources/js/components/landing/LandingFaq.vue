@@ -3,6 +3,14 @@ import { Link } from '@inertiajs/vue3';
 import { ArrowRight, Plus } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import { register } from '@/routes';
+import {
+    BASE_ACTIVE_CLASSES,
+    BASE_ACTIVE_STUDENTS,
+    FOUNDER_DEADLINE,
+    FOUNDER_PRICE_PER_YEAR,
+    FOUNDER_SEATS,
+    PRO_PRICE_PER_YEAR,
+} from './commercial';
 import RevealOnScroll from './RevealOnScroll.vue';
 
 /**
@@ -14,15 +22,57 @@ import RevealOnScroll from './RevealOnScroll.vue';
  * Every answer here is a promise about what the product does today. An answer
  * that would need a feature that does not exist says so instead.
  */
+/**
+ * THE FIGURES COME FROM `commercial.ts`, never from a literal typed here. An
+ * answer quoting a price the plan cards no longer quote is worse than no
+ * answer, and it is the kind of drift nobody notices until a reader does.
+ *
+ * The order is search intent, not product structure: what the thing IS, then
+ * what it does, then what it costs, then the details somebody only asks once
+ * they are interested. Every answer is about the product as it is today — one
+ * that would need a feature that does not exist says so instead.
+ */
 const questions = [
     {
-        question: 'Posso experimentar sem pagar?',
-        answer: 'Pode. Criar conta dá-lhe uma organização própria já com o plano LÁPIS Base ativo, e não é pedido cartão em passo nenhum. O Base é gratuito no ano letivo 2026/27. Dentro da aplicação pode ainda ativar, uma vez, um período experimental de 30 dias do LÁPIS Pro — também sem cartão, e no fim volta ao Base sem perder nada do que registou.',
+        question: 'O que é o LÁPIS?',
+        answer: 'É uma plataforma para professores que reúne a avaliação de alunos, a gestão de turmas, o acompanhamento pedagógico, as aulas, os sumários e os relatórios num único lugar — em vez de os espalhar por folhas de cálculo, documentos e cadernos.',
+    },
+    {
+        question: 'Posso gerir várias turmas e vários alunos?',
+        answer: `Sim. A gestão de turmas e de alunos é o ponto de partida, e as turmas podem ser importadas da pauta que a escola já lhe deu. O plano Base inclui até ${BASE_ACTIVE_CLASSES} turmas e ${BASE_ACTIVE_STUDENTS} alunos ativos; o Pro e o Institucional não têm esse limite.`,
     },
     {
         question:
-            'Posso usar os meus critérios, com os meus nomes e os meus pesos?',
-        answer: 'É o ponto de partida da aplicação: os domínios com os nomes da sua escola, a ponderação de cada um, os elementos que entram e a escala em que a classificação é dada.',
+            'Posso usar os meus critérios de avaliação, com os meus nomes e os meus pesos?',
+        answer: 'É o ponto de partida da aplicação: os domínios com os nomes da sua escola, a ponderação de cada um, os instrumentos de avaliação que entram e a escala em que a classificação é dada.',
+    },
+    {
+        question: 'O LÁPIS acompanha a evolução dos alunos?',
+        answer: 'Sim. O acompanhamento do progresso de cada aluno reúne resultados, domínios, classificações, autoavaliações, registos e estratégias na mesma vista. No plano Pro acrescenta a leitura interpretativa: tendências, regularidade, pontos fortes, margem de progressão e o próximo passo pedagógico.',
+    },
+    {
+        question: 'O LÁPIS inclui horário, aulas e sumários?',
+        answer: 'Inclui, no plano Pro: o horário do professor, a semana de aulas, o sumário como centro de cada aula, o planeamento em sequências reutilizáveis e a agenda do ano letivo, com períodos, interrupções e feriados.',
+    },
+    {
+        question: 'O LÁPIS utiliza inteligência artificial?',
+        answer: 'Utiliza, no plano Pro, e sempre como apoio. A IA pedagógica ajuda a interpretar resultados já calculados, a identificar potencialidades, a propor estratégias e a aperfeiçoar a redação de um relatório. Não gera a avaliação nem substitui o julgamento do professor.',
+    },
+    {
+        question: 'A IA decide as classificações?',
+        answer: 'Não. Nenhuma classificação é atribuída, alterada ou decidida por um modelo. O cálculo é determinístico e explicável, o LÁPIS propõe a partir do perfil e do que está registado, e a confirmação é sempre do professor. Se decidir diferente da proposta, a diferença e a razão ficam registadas.',
+    },
+    {
+        question: 'Existe uma versão gratuita?',
+        answer: 'O LÁPIS Base é gratuito no ano letivo 2026/27 e fica ativo assim que criar conta, sem cartão em passo nenhum. Dentro da aplicação pode ainda ativar, uma vez, um período experimental de 30 dias do LÁPIS Pro — no fim volta ao Base sem perder nada do que registou.',
+    },
+    {
+        question: 'Quanto custa o LÁPIS Pro?',
+        answer: `${PRO_PRICE_PER_YEAR}, em subscrição anual — não existe pagamento mensal. Os primeiros ${FOUNDER_SEATS} professores a aderirem podem beneficiar da condição Membro Fundador, ${FOUNDER_PRICE_PER_YEAR}, disponível até ${FOUNDER_DEADLINE} ou até esses lugares estarem preenchidos, consoante o que ocorrer primeiro. É o mesmo plano Pro, numa condição de adesão distinta.`,
+    },
+    {
+        question: 'Existe uma solução para escolas e agrupamentos?',
+        answer: 'Existe: o LÁPIS Institucional, com preço sob consulta. Acrescenta ao Pro a gestão de vários professores, os modelos e perfis de avaliação institucionais, a visão agregada e a governação — coordenação à escala da escola, sem retirar autonomia pedagógica a cada professor.',
     },
     {
         question: 'Funciona com períodos e com semestres?',
@@ -38,25 +88,21 @@ const questions = [
     },
     {
         question: 'Consigo tirar de lá o que lá pus?',
-        answer: 'Relatórios em PDF e Word, pautas e quadros-síntese, e grelhas de correção para imprimir. No plano Pro, também a exportação das menções de um período para a grelha do INOVAR.',
+        answer: 'Relatórios de avaliação em PDF e Word, pautas e quadros-síntese, e grelhas de correção para imprimir. No plano Pro, também a exportação das menções de um período para a grelha do INOVAR. A exportação dos seus próprios dados existe em todos os planos.',
     },
     {
         question: 'Há limite de turmas, de alunos ou de testes?',
-        answer: 'O plano Base inclui até 8 turmas e 300 alunos ativos; turmas e alunos arquivados não contam. O Pro e o Institucional não têm esse limite. Nenhum plano limita elementos de avaliação. Chegar a um limite impede criar mais — nunca apaga o que já lá está.',
+        answer: `O plano Base inclui até ${BASE_ACTIVE_CLASSES} turmas e ${BASE_ACTIVE_STUDENTS} alunos ativos; turmas e alunos arquivados não contam. O Pro e o Institucional não têm esse limite. Nenhum plano limita instrumentos de avaliação. Chegar a um limite impede criar mais — nunca apaga o que já lá está.`,
     },
     {
         question: 'Funciona no telemóvel?',
         answer: 'Funciona no browser do telemóvel e do tablet, sem instalar nada. As grelhas com muitas colunas continuam a pedir um ecrã maior — como aconteceria numa folha de cálculo.',
     },
     {
-        question: 'Quem decide a classificação final?',
-        answer: 'O professor, sempre. O LÁPIS calcula e propõe a partir do perfil e do que está registado; a confirmação é sua. Se decidir diferente da proposta, a diferença e a razão ficam registadas.',
-    },
-    {
         question: 'E se eu precisar de mudar o perfil a meio do ano?',
         answer: 'Alterar um perfil ativo cria uma nova versão. Uma turma com resultados só muda depois de lhe ser mostrado o impacto e de o confirmar — e o que já foi avaliado continua a apontar para a versão com que foi avaliado.',
     },
-] as const;
+];
 </script>
 
 <template>

@@ -48,6 +48,7 @@ use App\Http\Controllers\ResultsController;
 use App\Http\Controllers\RosterImportController;
 use App\Http\Controllers\ScaleController;
 use App\Http\Controllers\SelfAssessmentController;
+use App\Http\Controllers\SeoController;
 use App\Http\Controllers\StudentPhotoController;
 use App\Http\Controllers\StudentProgressController;
 use App\Http\Controllers\SubjectController;
@@ -59,6 +60,14 @@ use Illuminate\Support\Facades\Route;
 // The public landing page. A GET (not Route::inertia) because the plan cards
 // are read from the entitlement tables — see HomeController.
 Route::get('/', HomeController::class)->name('home');
+
+// robots.txt and sitemap.xml, served by the application so both can name the
+// site's own address instead of a domain frozen into a file in public/.
+// See SeoController — the old public/robots.txt was deleted with this, because
+// a real file there is answered by the web server and this route would never
+// have run.
+Route::get('robots.txt', [SeoController::class, 'robots'])->name('seo.robots');
+Route::get('sitemap.xml', [SeoController::class, 'sitemap'])->name('seo.sitemap');
 
 // Not tenant data — the changelog is the same for everyone, so it stays
 // outside the 'organization' group (no tenant resolution needed).

@@ -7,9 +7,7 @@ import RevealOnScroll from './RevealOnScroll.vue';
     <LandingSection eyebrow="Porquê LÁPIS?" warm centered>
         <RevealOnScroll>
             <div class="mx-auto max-w-2xl text-center">
-                <p
-                    class="text-4xl font-semibold tracking-tight sm:text-5xl"
-                >
+                <p class="text-4xl font-semibold tracking-tight sm:text-5xl">
                     LÁPIS
                 </p>
                 <p
@@ -39,8 +37,8 @@ import RevealOnScroll from './RevealOnScroll.vue';
                 <p
                     class="mx-auto mt-7 max-w-xl text-lg font-medium tracking-tight text-balance sm:text-xl"
                 >
-                    Uma ferramenta pensada para simplificar o trabalho
-                    docente sem minimizar o que realmente importa.
+                    Software para professores, pensado para simplificar o
+                    trabalho docente sem minimizar o que realmente importa.
                 </p>
             </div>
         </RevealOnScroll>

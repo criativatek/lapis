@@ -65,7 +65,7 @@ export type PlanCommercial = {
 export const PLAN_COPY: Record<string, PlanCommercial> = {
     base: {
         headline: 'Tudo o que precisa para organizar, avaliar e acompanhar.',
-        body: 'Para o professor que procura uma ferramenta completa para gerir o essencial do seu trabalho pedagógico.',
+        body: 'Para o professor que procura uma ferramenta completa para a gestão de turmas, a avaliação e o acompanhamento de alunos.',
         priceLead: 'Gratuito no ano letivo 2026/27',
         price: '0 €',
         priceNote:
@@ -113,7 +113,7 @@ export const PLAN_COPY: Record<string, PlanCommercial> = {
     institutional: {
         headline:
             'Uma linguagem comum para toda a escola, sem retirar autonomia ao professor.',
-        body: 'Tudo o que existe no Pro, acrescentando ferramentas próprias para coordenação e gestão à escala da instituição.',
+        body: 'Tudo o que existe no Pro, acrescentando a gestão pedagógica à escala da instituição — uma plataforma para escolas e agrupamentos que coordenam vários professores.',
         price: 'Sob consulta',
         priceNote:
             'Adaptado ao número de professores e às necessidades da instituição.',

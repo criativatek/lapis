@@ -31,7 +31,11 @@ const version = computed(() => usePage().props.appVersion);
         >
             <div>
                 <span class="flex items-center gap-2.5">
+                    <!-- Decorative: the word LÁPIS is right beside it, so a
+                         screen reader announcing the mark too would just read
+                         the brand twice. -->
                     <span
+                        aria-hidden="true"
                         class="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground"
                     >
                         <AppLogoIcon class="size-5" />

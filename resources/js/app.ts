@@ -9,7 +9,24 @@ import { initializeFlashToast } from '@/lib/flashToast';
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
 createInertiaApp({
-    title: (title) => (title ? `${title} - ${appName}` : appName),
+    /**
+     * A page title that already names the brand is used as it is.
+     *
+     * The landing page carries a complete, deliberately-sized title from
+     * `App\Support\Seo\LandingSeo` — appending the app name to it produced
+     * «… - LAPIS», which both overflowed the length a result page renders and
+     * made the tab disagree with the server-rendered `<title>` a crawler
+     * reads. Inertia's head manager runs this over a `<title>` CHILD of
+     * `<Head>` too, not only over the `title` prop, so there is no way to opt
+     * out from the component — it has to be decided here.
+     */
+    title: (title) => {
+        if (!title) {
+            return appName;
+        }
+
+        return /l[áa]pis/i.test(title) ? title : `${title} - ${appName}`;
+    },
     layout: (name) => {
         switch (true) {
             case name === 'Welcome':

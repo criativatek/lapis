@@ -26,8 +26,8 @@ const problems = [
     <LandingSection
         tinted
         eyebrow="O problema"
-        title="Durante anos, a avaliação viveu espalhada por ficheiros."
-        lead="Foi assim que muitos professores organizaram o seu trabalho durante muito tempo. Funcionou, mas hoje já existem formas mais simples de fazer o mesmo com mais clareza."
+        title="Durante anos, a avaliação de alunos viveu espalhada por ficheiros."
+        lead="Foi assim que muitos professores organizaram a gestão de turmas e a avaliação durante muito tempo. Funcionou, mas hoje já existem formas mais simples de fazer o mesmo com mais clareza."
     >
         <div
             class="grid gap-px overflow-hidden rounded-2xl border border-border/70 bg-border/70 sm:grid-cols-2"
@@ -64,8 +64,9 @@ const problems = [
             <p
                 class="mt-10 max-w-2xl text-lg leading-relaxed font-medium tracking-tight text-balance sm:text-xl"
             >
-                O que antes exigia vários ficheiros pode agora ser feito no
-                LÁPIS, de forma mais simples, organizada e transparente.
+                O que antes exigia vários ficheiros pode agora ser feito numa só
+                plataforma de apoio ao professor, de forma mais simples,
+                organizada e transparente.
             </p>
         </RevealOnScroll>
     </LandingSection>

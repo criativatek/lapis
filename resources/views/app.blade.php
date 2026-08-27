@@ -46,42 +46,48 @@
              the bundle has run, which is after a crawler has already read the
              document. The tab title stays in the component; everything a robot
              reads has to be in the response. --}}
-        @if (($page['component'] ?? null) === 'Welcome')
-            @php($landingDescription = 'Avaliação, acompanhamento e organização do trabalho docente num único lugar. O LÁPIS reúne perfis de avaliação, turmas, elementos de avaliação e grelhas de correção, e propõe classificações de forma explicável.')
-            <meta name="description" content="{{ $landingDescription }}">
-            <link rel="canonical" href="{{ url('/') }}">
+        @php($isLanding = ($page['component'] ?? null) === 'Welcome')
+
+        @if ($isLanding)
+            <meta name="description" content="{{ \App\Support\Seo\LandingSeo::DESCRIPTION }}">
+            <link rel="canonical" href="{{ \App\Support\Seo\LandingSeo::canonical() }}">
+            {{-- max-image-preview:large is what lets a result carry a picture at
+                 all once an og:image exists; max-snippet:-1 stops Google
+                 trimming the snippet shorter than the description written for
+                 it. Both are inert until they matter, and free to state now. --}}
+            <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
             <meta property="og:type" content="website">
             <meta property="og:site_name" content="LÁPIS">
             <meta property="og:locale" content="pt_PT">
-            <meta property="og:url" content="{{ url('/') }}">
-            <meta property="og:title" content="LÁPIS — Mais simples. Mais tempo.">
-            <meta property="og:description" content="{{ $landingDescription }}">
-            {{-- summary, not summary_large_image: there is no OG image asset yet,
-                 and the large card renders as a broken box without one. --}}
+            <meta property="og:url" content="{{ \App\Support\Seo\LandingSeo::canonical() }}">
+            <meta property="og:title" content="{{ \App\Support\Seo\LandingSeo::SOCIAL_TITLE }}">
+            <meta property="og:description" content="{{ \App\Support\Seo\LandingSeo::SOCIAL_DESCRIPTION }}">
+            {{-- summary, not summary_large_image: there is still no og:image
+                 asset, and the large card renders as a broken box without one.
+                 When one exists, add og:image / twitter:image here and switch
+                 this to summary_large_image in the same edit. --}}
             <meta name="twitter:card" content="summary">
-            <meta name="twitter:title" content="LÁPIS — Mais simples. Mais tempo.">
-            <meta name="twitter:description" content="{{ $landingDescription }}">
-            @php($landingStructuredData = [
-                '@context' => 'https://schema.org',
-                '@type' => 'SoftwareApplication',
-                'name' => 'LÁPIS',
-                'alternateName' => 'Laboratório de Apoio ao Professor, Informação e Simplificação',
-                'applicationCategory' => 'EducationalApplication',
-                'operatingSystem' => 'Web',
-                'inLanguage' => 'pt-PT',
-                'url' => url('/'),
-                'description' => $landingDescription,
-            ])
+            <meta name="twitter:title" content="{{ \App\Support\Seo\LandingSeo::SOCIAL_TITLE }}">
+            <meta name="twitter:description" content="{{ \App\Support\Seo\LandingSeo::SOCIAL_DESCRIPTION }}">
             <script type="application/ld+json">
-                {!! json_encode($landingStructuredData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) !!}
+                {!! json_encode(\App\Support\Seo\LandingSeo::structuredData(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) !!}
             </script>
+        @else
+            {{-- EVERY OTHER PAGE IS OUT OF THE INDEX. The teacher-facing app is
+                 behind auth and has nothing to rank for, but two public routes
+                 do reach a browser without a login: the signed self-assessment
+                 a student opens, and an institutional invitation. Neither
+                 should ever appear in a search result, and «it needs a
+                 signature» is not an answer once somebody pastes the link
+                 somewhere a crawler reads. --}}
+            <meta name="robots" content="noindex, nofollow">
         @endif
 
         @fonts
 
         @vite(['resources/css/app.css', 'resources/js/app.ts', "resources/js/pages/{$page['component']}.vue"])
         <x-inertia::head>
-            <title>{{ ($page['component'] ?? null) === 'Welcome' ? 'LÁPIS — Mais simples. Mais tempo.' : config('app.name', 'Laravel') }}</title>
+            <title>{{ $isLanding ? \App\Support\Seo\LandingSeo::TITLE : config('app.name', 'Laravel') }}</title>
         </x-inertia::head>
     </head>
     <body class="font-sans antialiased">
