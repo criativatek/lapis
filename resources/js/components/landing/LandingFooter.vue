@@ -57,7 +57,8 @@ const version = computed(() => usePage().props.appVersion);
                     :class="CHROME_MUTED"
                 >
                     Laboratório de Apoio ao Professor, Informação e
-                    Simplificação. Feito para professores portugueses.
+                    Simplificação. Uma plataforma criada para apoiar professores
+                    na avaliação, organização e acompanhamento pedagógico.
                 </p>
             </div>
 

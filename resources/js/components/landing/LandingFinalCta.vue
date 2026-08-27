@@ -38,9 +38,9 @@ defineProps<{ authenticated: boolean }>();
                 <p
                     class="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-pretty text-muted-foreground"
                 >
-                    O LÁPIS não pretende substituir o professor. Pretende dar ao
-                    professor melhor informação, melhor organização e mais tempo
-                    para exercer o seu julgamento profissional.
+                    O LÁPIS não pretende substituir o professor. Pretende
+                    dar-lhe melhor informação, melhor organização e mais tempo
+                    para tomar decisões pedagógicas com confiança.
                 </p>
 
                 <p

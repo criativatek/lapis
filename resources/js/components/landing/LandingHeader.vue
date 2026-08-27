@@ -136,7 +136,8 @@ const items: readonly LandingNavItem[] = LANDING_NAV;
                     <span
                         class="mt-1 block text-[12px] leading-tight"
                         :class="CHROME_MUTED"
-                        >Mais simples. Mais tempo para o que realmente importa.</span
+                        >Plataforma para professores. Avaliação, organização e
+                        acompanhamento num só lugar.</span
                     >
                 </span>
             </Link>
