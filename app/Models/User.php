@@ -33,6 +33,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property Carbon|null $deactivated_at
  * @property Carbon|null $closure_requested_at
  * @property Carbon|null $scheduled_deletion_at
+ * @property Carbon|null $anonymized_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -60,6 +61,7 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
             'deactivated_at' => 'datetime',
             'closure_requested_at' => 'datetime',
             'scheduled_deletion_at' => 'datetime',
+            'anonymized_at' => 'datetime',
         ];
     }
 

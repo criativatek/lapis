@@ -178,9 +178,121 @@ relatórios administrativos existentes) — lista, só de leitura:
   só a contagem, nunca a listagem, e nunca purgados.
 
 `php artisan retention:status` (opção `--json`) expõe tudo isto. **Não
-apaga nada** — é intencionalmente um comando dry-run; não existe (nesta
-fatia) nenhum comando que elimine uma conta, organização, ano letivo ou
-evento de auditoria com base nesta elegibilidade.
+apaga nada** — é intencionalmente um comando dry-run. O seu par, o comando
+que age, é `retention:execute`, descrito a seguir.
+
+## Execução do encerramento — `retention:execute`
+
+Até 2026-08-27 esta secção não existia, e era esse o buraco: pedir o
+encerramento começava uma contagem de 60 dias que chegava a zero **e não
+fazia nada**. Os dados ficavam onde estavam, indefinidamente.
+
+### Porque anonimiza em vez de apagar
+
+Não é uma escolha de conveniência, é o que o esquema permite. Há **34 chaves
+estrangeiras `ON DELETE RESTRICT` para `users`** (todos os `created_by`,
+`confirmed_by`, `reviewed_by`, `activated_by`…) e **40 para
+`organizations`**. A decisiva: `audit_events.causer_id` é RESTRICT em todas
+as organizações — e o próprio `RequestPersonalAccountClosure` grava
+`account.closure_requested` com essa pessoa como causer. **Pedir o
+encerramento escreve a linha que torna impossível apagar essa conta.**
+
+Isto não é um acidente para contornar. `AdminAccountController::destroy` já
+recusa apagar uma conta com dados e diz porquê; o princípio está escrito lá:
+apagar histórico para fazer um delete passar «não está em cima da mesa
+(§22.4, §31)». `DeleteUserAccount` sempre só funcionou numa conta que nunca
+chegou a ser nada, e é por isso que **não** é o executor.
+
+Então a identidade sai e as linhas ficam. O esquema já pôs os dados pessoais
+em sítios nomeados — `users` para o professor, `student_identities`
+(`display_name` e `school_number` cifrados) para o aluno, com `students` a
+guardar só um pseudónimo. Esvaziar esses é o que apagamento significa aqui:
+uma classificação, um registo ou um relatório sobrevivem, e deixam de dizer
+respeito a pessoa identificável.
+
+### O que faz, por categoria
+
+| Categoria | Ação |
+|---|---|
+| `users` — nome, email, `email_verified_at` | **Anonimizado**: nome genérico, email `anonimizado-{ulid}@invalido.local` |
+| `users` — password, `remember_token`, 2FA | **Invalidado**: password passa a um valor que não é hash válido, 2FA e token limpos |
+| `users.deactivated_at`, `anonymized_at` | **Carimbados**: `EnsureUserIsActive` recusa a sessão; `anonymized_at` é o que torna o comando idempotente |
+| `passkeys`, `sessions` (do utilizador) | **Eliminados** |
+| `student_identities` da organização pessoal | **Eliminados** — é isto que remove toda a PII de aluno |
+| `organization_identities` da organização pessoal | **Eliminados** |
+| Fotografias de aluno dessa organização | **Eliminadas** do disco |
+| `organizations.name` da organização pessoal | **Anonimizado** (a organização fica: 40 chaves RESTRICT apontam-lhe) |
+| Turmas, avaliações, registos, relatórios | **Preservados**, agora sem se referirem a pessoa identificável |
+| Organização institucional de que seja membro | **Intocada**, incluindo a membership |
+
+### Organizações institucionais
+
+Quem é responsável (`owner_id`) de uma instituição **não consegue sequer
+pedir** o encerramento (`RequestPersonalAccountClosure` recusa e manda
+transferir a responsabilidade primeiro). Logo, na execução, a pessoa só pode
+ser membro — e a saída de um membro não pode levar as turmas, os alunos nem
+as avaliações de uma escola. **A membership fica deliberadamente**: a conta já
+não consegue autenticar-se, e remover a linha deixaria `class_teachers`
+(também RESTRICT) órfão para aulas que aconteceram mesmo.
+
+> **A armadilha que isto já apanhou.** `StudentIdentity` **não** usa
+> `BelongsToOrganization`: tem coluna `organization_id` mas nenhum scope
+> global. Um `runFor($org, fn () => StudentIdentity::query()->delete())`
+> **não filtra nada** e esvazia a tabela de todas as organizações da
+> plataforma. Aconteceu na primeira versão desta ação e foi o teste de
+> isolamento que o apanhou. Qualquer consulta a este modelo tem de filtrar
+> `organization_id` explicitamente.
+
+### Ordem: ficheiros primeiro, base de dados depois
+
+Os caminhos das fotografias vivem nas linhas que estão prestes a ser
+apagadas. Uma paragem entre os dois passos deixa linhas órfãs a apontar para
+ficheiros que já não existem — e a execução seguinte termina o trabalho,
+porque é idempotente. A ordem inversa deixaria ficheiros que ninguém
+voltaria a encontrar.
+
+### Comando e agendamento
+
+```bash
+php artisan retention:execute --dry-run   # conta e lista, sem alterar nada
+php artisan retention:execute             # executa
+php artisan retention:execute --limit=50  # lote menor
+```
+
+Agendado **diariamente às 03:40** (fuso da aplicação, Europe/Lisbon) em
+`routes/console.php`, com `withoutOverlapping()`. Diário e não horário: a
+janela mede-se em dias.
+
+**O dry run não imprime dados pessoais** — só ids internos e a data do
+pedido. É algo que um operador corre para decidir se avança, não uma forma de
+ler os nomes de quem pediu para ser esquecido.
+
+### Falhas
+
+Cada conta é a sua própria unidade de trabalho. Uma que falhe é registada no
+log (só o id, nunca a pessoa), contada, e o comando **continua para a
+seguinte** — depois sai com código diferente de zero, para que o scheduler
+não reporte `DONE` por cima de um encerramento que não aconteceu. Como a
+operação é idempotente, a execução seguinte volta a tentar.
+
+Uma fotografia que se recuse a ser apagada é registada e **não aborta** o
+encerramento: deixar a conta identificável porque um ficheiro estava
+bloqueado seria o pior dos dois resultados.
+
+### Auditoria
+
+Um evento `account.closure_executed` por encerramento, com `subject` a conta
+e **`causer` a null** — ninguém fez isto, foi um agendamento; atribuí-lo à
+pessoa que está a ser anonimizada seria falso e seria guardar o id dela em
+mais um sítio. As propriedades são **contagens**, nunca nomes, emails ou
+dados de aluno.
+
+### Nunca correr à mão contra contas reais
+
+Este é o único comando da aplicação que remove a identidade de uma pessoa, e
+não tem confirmação interativa. Correr `retention:execute` em produção sem
+autorização explícita é executar apagamentos definitivos. Para inspecionar,
+usar sempre `--dry-run` ou `retention:status`.
 
 Visibilidade equivalente, só de leitura, no backoffice
 (`AdminAccountController::show`, `admin/AccountShow.vue`): o estado de

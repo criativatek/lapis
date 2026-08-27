@@ -2,6 +2,22 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.77.0] — 2026-08-27
+
+### Added
+
+- **O encerramento de conta passa a ser executado.** Pedir o encerramento, a janela de 60 dias, o `scheduled_deletion_at`, os banners e o `retention:status` existiam todos — e **nada, em momento algum, o levava a cabo**. Uma pessoa podia pedir que a sua conta fosse encerrada, ver a contagem chegar a zero, e os dados ficavam exactamente onde estavam, indefinidamente. `retention:execute` é a metade que faltava, agendada diariamente às 03:40.
+
+  **Anonimiza em vez de apagar, porque é o que o esquema permite.** Há 34 chaves estrangeiras `ON DELETE RESTRICT` para `users` — todos os `created_by`, `confirmed_by`, `reviewed_by` — e 40 para `organizations`. A decisiva: `audit_events.causer_id` é RESTRICT em todas as organizações, e o próprio `RequestPersonalAccountClosure` grava `account.closure_requested` com essa pessoa como causer. **Pedir o encerramento escreve a linha que torna impossível apagar essa conta.** Não é um acidente a contornar: o `AdminAccountController::destroy` já recusava apagar contas com dados, e o princípio está escrito lá — apagar histórico para fazer um delete passar «não está em cima da mesa (§22.4, §31)».
+
+  Então a identidade sai e as linhas ficam. O nome, o email, a password, o 2FA, as passkeys e as sessões desaparecem de `users`; as `student_identities` e as `organization_identities` da organização pessoal são eliminadas, com as fotografias no disco — e é isso que remove toda a PII de aluno, porque `students` só guarda um pseudónimo. Uma classificação, um registo ou um relatório sobrevivem, e deixam de dizer respeito a pessoa identificável.
+
+  **Uma organização institucional nunca é tocada.** Quem é responsável por uma não consegue sequer pedir o encerramento; na execução só pode ser membro, e a saída de um membro não leva as turmas nem os alunos de uma escola. A membership fica deliberadamente: a conta já não autentica, e removê-la deixaria `class_teachers` órfão para aulas que aconteceram mesmo.
+
+### Fixed
+
+- **Uma primeira versão desta ação apagava as identidades de alunos de todas as organizações da plataforma.** `StudentIdentity` **não** usa `BelongsToOrganization` — tem coluna `organization_id` mas nenhum scope global, porque é sempre alcançada através do aluno a que pertence. Um `runFor($org, fn () => StudentIdentity::query()->delete())` não filtra coisa nenhuma e esvazia a tabela inteira. O teste de isolamento apanhou-o antes de sair daqui: um encerramento levava consigo os alunos de um estranho. A consulta passa a filtrar `organization_id` explicitamente, e o aviso ficou escrito no código e na documentação, porque é uma armadilha que a próxima pessoa encontraria da mesma maneira.
+
 ## [0.76.1] — 2026-08-27
 
 ### Fixed

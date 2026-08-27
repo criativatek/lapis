@@ -33,3 +33,19 @@ Schedule::command('data-exports:prune')->hourly();
 // backup can carry real students' pseudonymised data, so it is not kept
 // indefinitely either. See App\Console\Commands\PruneDataImports.
 Schedule::command('data-imports:prune')->hourly();
+
+// The account closures whose 60-day recovery window has ended. Until this line
+// existed, asking to close an account started a countdown that reached zero and
+// did nothing — see App\Console\Commands\ExecuteAccountClosures.
+//
+// DAILY, NOT HOURLY: the window is measured in days, so running it twenty-four
+// times a day buys nothing and gives twenty-four chances a day to hit the same
+// locked file. 03:40 (Europe/Lisbon, the application's timezone) is quiet and
+// deliberately not on the hour, away from the hourly prunes above.
+//
+// `withoutOverlapping()` because a run that meets a slow filesystem must not be
+// joined by the next one working the same account: the operation is idempotent,
+// but two processes anonymising the same row is not something to rely on.
+Schedule::command('retention:execute')
+    ->dailyAt('03:40')
+    ->withoutOverlapping();
