@@ -61,6 +61,47 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Responsável pelo tratamento (RGPD)
+    |--------------------------------------------------------------------------
+    |
+    | Quem responde legalmente pelo tratamento de dados pessoais no LÁPIS, e
+    | para onde um titular escreve a exercer os seus direitos.
+    |
+    | TUDO A NULL POR OMISSÃO, E ISSO É DELIBERADO. Nada no repositório dizia
+    | quem é a entidade responsável — nem nome, nem NIF, nem morada, nem
+    | endereço de privacidade — e inventar qualquer um deles seria pôr uma
+    | afirmação falsa numa página que existe precisamente para ser verdadeira.
+    | A Política de Privacidade mostra, para cada valor em falta, que está por
+    | definir, em vez de mostrar um nome plausível.
+    |
+    | `LegalDocumentsTest` falha se algum destes valores contiver um exemplo
+    | disfarçado de facto.
+    |
+    */
+
+    'legal' => [
+
+        'controller_name' => env('LAPIS_LEGAL_CONTROLLER_NAME'),
+
+        'controller_vat' => env('LAPIS_LEGAL_CONTROLLER_VAT'),
+
+        'controller_address' => env('LAPIS_LEGAL_CONTROLLER_ADDRESS'),
+
+        // Onde se exercem os direitos do titular. Distinto do contacto
+        // comercial em `platform_settings.contact_email`.
+        'privacy_email' => env('LAPIS_LEGAL_PRIVACY_EMAIL'),
+
+        // Datas de entrada em vigor de cada documento (YYYY-MM-DD). Escritas à
+        // mão porque uma alteração ao texto legal é um ato deliberado, não algo
+        // que deva mover-se sozinho a cada deploy.
+        'terms_effective_from' => env('LAPIS_LEGAL_TERMS_DATE', '2026-08-27'),
+
+        'privacy_effective_from' => env('LAPIS_LEGAL_PRIVACY_DATE', '2026-08-27'),
+
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Writing assistant
     |--------------------------------------------------------------------------
     |

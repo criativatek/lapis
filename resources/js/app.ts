@@ -31,6 +31,13 @@ createInertiaApp({
         switch (true) {
             case name === 'Welcome':
                 return null;
+            // As páginas legais são documentos públicos, e trazem o seu próprio
+            // cabeçalho e rodapé. Sem este caso caíam no `default` e montavam o
+            // AppLayout — o shell da aplicação autenticada, que lê
+            // `auth.user.name` e rebenta quando não há sessão. Falhava só em
+            // ecrãs largos, porque é aí que o menu de utilizador é desenhado.
+            case name.startsWith('legal/'):
+                return null;
             // A print/PDF view is a document, not a screen: no sidebar, no
             // nav, no app chrome of any kind. General on purpose, so the next
             // print view gets this for free without a second special case.

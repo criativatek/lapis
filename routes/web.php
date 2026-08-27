@@ -30,6 +30,7 @@ use App\Http\Controllers\InstrumentController;
 use App\Http\Controllers\InterimAssessmentController;
 use App\Http\Controllers\InterventionController;
 use App\Http\Controllers\InvitationAcceptanceController;
+use App\Http\Controllers\LegalController;
 use App\Http\Controllers\LessonController;
 use App\Http\Controllers\LessonScheduleController;
 use App\Http\Controllers\LessonSequenceController;
@@ -68,6 +69,11 @@ Route::get('/', HomeController::class)->name('home');
 // have run.
 Route::get('robots.txt', [SeoController::class, 'robots'])->name('seo.robots');
 Route::get('sitemap.xml', [SeoController::class, 'sitemap'])->name('seo.sitemap');
+
+// As páginas legais. Públicas, sem 'auth' e sem 'organization': quem precisa
+// de as ler antes de criar conta tem de as conseguir abrir sem ter conta.
+Route::get('termos', [LegalController::class, 'terms'])->name('legal.terms');
+Route::get('privacidade', [LegalController::class, 'privacy'])->name('legal.privacy');
 
 // Not tenant data — the changelog is the same for everyone, so it stays
 // outside the 'organization' group (no tenant resolution needed).

@@ -1,0 +1,244 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Support\Legal\LegalDocuments;
+use App\Support\Seo\LandingSeo;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
+use PHPUnit\Framework\Attributes\Test;
+use Tests\TestCase;
+
+/**
+ * As duas páginas que a auditoria de prontidão marcou como P0.
+ *
+ * O que estes testes protegem não é o layout — é a honestidade. Uma página de
+ * privacidade que abre com uma morada inventada é pior do que não existir, e a
+ * forma de garantir que isso não acontece é falhar a build quando acontecer.
+ */
+class LegalPagesTest extends TestCase
+{
+    use RefreshDatabase;
+
+    #[Test]
+    public function both_pages_are_public_and_need_no_account(): void
+    {
+        $this->get('/termos')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->component('legal/Document'));
+
+        $this->get('/privacidade')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->component('legal/Document'));
+    }
+
+    /**
+     * Alguém que procure «política de privacidade LÁPIS» tem de lá chegar sem
+     * passar pela landing. Cada uma canonicaliza-se a si própria, não à raiz —
+     * um canonical para `/` diria ao motor de busca que a página não existe
+     * como resultado.
+     */
+    #[Test]
+    public function both_pages_are_indexable_and_canonical_to_themselves(): void
+    {
+        config(['lapis.public_url' => 'https://lapispro.com']);
+
+        $terms = $this->get('/termos')->assertOk();
+        $terms->assertSee('<link rel="canonical" href="https://lapispro.com/termos">', false);
+        $terms->assertSee('name="robots" content="index, follow', false);
+
+        $privacy = $this->get('/privacidade')->assertOk();
+        $privacy->assertSee('<link rel="canonical" href="https://lapispro.com/privacidade">', false);
+        $privacy->assertSee('name="robots" content="index, follow', false);
+    }
+
+    #[Test]
+    public function the_sitemap_and_robots_list_them(): void
+    {
+        config(['lapis.public_url' => 'https://lapispro.com']);
+
+        $this->get('/sitemap.xml')
+            ->assertOk()
+            ->assertSee('<loc>https://lapispro.com/termos</loc>', false)
+            ->assertSee('<loc>https://lapispro.com/privacidade</loc>', false);
+
+        $this->get('/robots.txt')
+            ->assertOk()
+            ->assertSee('Allow: /termos', false)
+            ->assertSee('Allow: /privacidade', false);
+    }
+
+    /**
+     * NADA FICTÍCIO APRESENTADO COMO FACTO. Nenhum destes valores existia no
+     * projeto, e a página tem de dizer «por definir» em vez de inventar um.
+     * Este teste falha no dia em que alguém encher um placeholder com um nome
+     * plausível para «ficar bem» antes da revisão jurídica.
+     */
+    #[Test]
+    public function no_invented_controller_identity_is_presented_as_fact(): void
+    {
+        config([
+            'lapis.legal.controller_name' => null,
+            'lapis.legal.controller_vat' => null,
+            'lapis.legal.controller_address' => null,
+            'lapis.legal.privacy_email' => null,
+        ]);
+
+        $controller = LegalDocuments::controller();
+
+        $this->assertFalse($controller['complete']);
+        $this->assertNull($controller['name']);
+        $this->assertNull($controller['privacy_email']);
+
+        $this->get('/privacidade')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('controller.complete', false)
+                ->where('controller.name', null)
+            );
+    }
+
+    /** Quando os valores existem, são apresentados — e `complete` diz que sim. */
+    #[Test]
+    public function a_configured_controller_identity_is_shown(): void
+    {
+        config([
+            'lapis.legal.controller_name' => 'Entidade Exemplo, Lda.',
+            'lapis.legal.controller_vat' => '999999990',
+            'lapis.legal.controller_address' => 'Rua Exemplo 1, Leiria',
+            'lapis.legal.privacy_email' => 'privacidade@exemplo.pt',
+        ]);
+
+        $controller = LegalDocuments::controller();
+
+        $this->assertTrue($controller['complete']);
+        $this->assertSame('privacidade@exemplo.pt', $controller['privacy_email']);
+    }
+
+    /**
+     * O conteúdo mínimo que a auditoria exigiu. Assertado sobre o payload do
+     * Inertia — que está no HTML — e não sobre o DOM: o SSR está desligado.
+     */
+    #[Test]
+    public function the_privacy_policy_covers_what_it_has_to_cover(): void
+    {
+        $headings = collect(LegalDocuments::privacy()['sections'])->pluck('heading');
+
+        foreach ([
+            'Responsável pelo tratamento',
+            'Dados do professor',
+            'Dados dos alunos',
+            'Dados técnicos',
+            'Ficheiros',
+            'Para que usamos os dados',
+            'Fundamento do tratamento',
+            'Inteligência artificial',
+            'Durante quanto tempo',
+            'Os seus direitos',
+            'Dados de menores',
+            'Segurança',
+            'Cookies',
+            'Subprocessadores e terceiros',
+        ] as $required) {
+            $this->assertTrue($headings->contains($required), "Falta a secção «{$required}».");
+        }
+    }
+
+    #[Test]
+    public function the_terms_cover_what_they_have_to_cover(): void
+    {
+        $headings = collect(LegalDocuments::terms()['sections'])->pluck('heading');
+
+        foreach ([
+            'O que é o LÁPIS',
+            'A sua conta',
+            'Utilização aceitável',
+            'Dados pedagógicos e decisões',
+            'Disponibilidade e evolução',
+            'Planos e condições comerciais',
+            'Encerramento da conta',
+            'Propriedade intelectual',
+            'Limitação de responsabilidade',
+            'Alterações a estes Termos',
+        ] as $required) {
+            $this->assertTrue($headings->contains($required), "Falta a secção «{$required}».");
+        }
+    }
+
+    /**
+     * A descrição da IA tem de dizer a mesma coisa que o código faz: sugere,
+     * não decide, e pode estar desligada. E não pode nomear um fornecedor —
+     * não há nenhum configurado.
+     */
+    #[Test]
+    public function the_ai_section_promises_only_what_the_product_does(): void
+    {
+        $ai = collect(LegalDocuments::privacy()['sections'])
+            ->firstWhere('heading', 'Inteligência artificial');
+
+        $text = implode(' ', $ai['body']);
+
+        $this->assertStringContainsString('sugere', $text);
+        $this->assertStringContainsString('professor decide', mb_strtolower($text));
+        $this->assertStringContainsString('desativadas', $text);
+
+        // Nenhum fornecedor nomeado: nenhum está configurado.
+        foreach (['OpenAI', 'Anthropic', 'Google', 'Gemini', 'Azure', 'Mistral'] as $vendor) {
+            $this->assertStringNotContainsString($vendor, $text);
+        }
+    }
+
+    /**
+     * A retenção não pode prometer o que a Fatia 3 deixou por fazer: a
+     * diferenciação Base +2 / Pro +5 não está implementada, e a política não a
+     * pode afirmar.
+     */
+    #[Test]
+    public function the_retention_section_does_not_promise_unimplemented_rules(): void
+    {
+        $retention = collect(LegalDocuments::privacy()['sections'])
+            ->firstWhere('heading', 'Durante quanto tempo');
+
+        $text = implode(' ', $retention['body']);
+
+        $this->assertStringNotContainsString('dois anos letivos', mb_strtolower($text));
+        $this->assertStringNotContainsString('cinco anos letivos', mb_strtolower($text));
+        $this->assertStringNotContainsString('instantânea', mb_strtolower($text));
+        $this->assertStringContainsString('validação jurídica', $text);
+    }
+
+    /** Só cookies estritamente necessários — auditado, e por isso sem banner. */
+    #[Test]
+    public function the_cookie_section_matches_the_audit(): void
+    {
+        $cookies = collect(LegalDocuments::privacy()['sections'])
+            ->firstWhere('heading', 'Cookies');
+
+        $text = mb_strtolower(implode(' ', $cookies['body']));
+
+        $this->assertStringContainsString('estritamente necessários', $text);
+        $this->assertStringContainsString('não usa cookies de publicidade', $text);
+        $this->assertStringContainsString('não é apresentado um pedido de consentimento', $text);
+    }
+
+    /** Ambos os documentos têm de dizer desde quando valem. */
+    #[Test]
+    public function both_documents_carry_an_effective_date(): void
+    {
+        foreach ([LegalDocuments::terms(), LegalDocuments::privacy()] as $document) {
+            $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}$/', $document['effective_from']);
+        }
+    }
+
+    /** A landing continua a responder e a canonicalizar-se à raiz. */
+    #[Test]
+    public function the_landing_page_is_unaffected(): void
+    {
+        config(['lapis.public_url' => 'https://lapispro.com']);
+
+        $this->get(route('home'))
+            ->assertOk()
+            ->assertSee('<link rel="canonical" href="'.LandingSeo::canonical().'">', false)
+            ->assertInertia(fn (Assert $page) => $page->component('Welcome'));
+    }
+}

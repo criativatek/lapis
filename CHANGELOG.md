@@ -2,6 +2,24 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.78.0] — 2026-08-27
+
+### Added
+
+- **Termos de Utilização e Política de Privacidade, em `/termos` e `/privacidade`.** Não existiam — e a aplicação trata dados de alunos, na maioria menores. Era o último dos quatro P0 da auditoria de prontidão, e o único que não era código a faltar mas uma obrigação por cumprir.
+
+  **Cada frase foi escrita a partir do que o código faz, e verificada no código.** A identidade do aluno está cifrada e o resto da aplicação usa um pseudónimo — porque é o que `student_identities` e `students` fazem. As sessões guardam IP e navegador; o registo de atividade não. Não há analytics, marketing nem qualquer serviço de terceiros a carregar no navegador: os tipos de letra são servidos do próprio domínio. Os cookies são três, todos necessários ou de funcionamento, e por isso não há pedido de consentimento a inventar.
+
+  **Onde o produto não permitia concluir, o texto diz que está por definir.** A identidade do responsável não existia em lado nenhum do repositório: os quatro valores estão em `config/lapis.php`, todos a `null`, e a página mostra «Por definir» em cada linha em vez de um nome plausível. Há um teste que falha se alguém os encher com um exemplo. Os subprocessadores existem mas a relação jurídica não está clara, pelo que **nenhum é nomeado**. Não se declara lei aplicável, foro, transferências internacionais, DPO nem certificações — nada disso foi validado.
+
+  A secção de IA descreve o que o código faz e nada mais: sugere, não decide, nomes e números saem substituídos, e pode estar desligada — como está. A de retenção descreve os prazos técnicos reais e **não afirma** a diferenciação Base +2 / Pro +5 da Matriz, que não está implementada.
+
+  O texto vive em `App\Support\Legal\LegalDocuments` e não nos componentes Vue: com o SSR desligado, texto escrito num `.vue` não chega à resposta e nenhum teste de servidor lhe poderia tocar. Daqui viaja no payload do Inertia, e doze testes afirmam o que lá está.
+
+### Fixed
+
+- **As páginas legais montavam o shell da aplicação autenticada e rebentavam.** O resolvedor de layout em `app.ts` não tinha caso para `legal/`, pelo que caíam no `default` e recebiam o `AppLayout` — que lê `auth.user.name` e falha sem sessão. Só se via em ecrãs largos, que é onde o menu de utilizador é desenhado; em telemóvel a página parecia correta. São documentos públicos e passam a não ter layout, como a landing.
+
 ## [0.77.0] — 2026-08-27
 
 ### Added

@@ -50,6 +50,12 @@ class SeoController extends Controller
             'Disallow: /register',
             'Disallow: /settings',
             '',
+            // Explícito, apesar de o `Allow: /$` acima só cobrir a raiz: estas
+            // duas são públicas e devem ser encontráveis por quem procure a
+            // política de privacidade do LÁPIS sem passar pela landing.
+            'Allow: /termos',
+            'Allow: /privacidade',
+            '',
             'Sitemap: '.LandingSeo::canonical().'/sitemap.xml',
             '',
         ];
@@ -61,14 +67,33 @@ class SeoController extends Controller
 
     public function sitemap(): Response
     {
+        $root = LandingSeo::canonical();
+
+        // A landing e os dois documentos legais — as únicas páginas públicas
+        // que existem. As legais mudam raramente e não competem com a landing,
+        // daí `yearly` e uma prioridade menor.
+        $pages = [
+            ['loc' => $root, 'changefreq' => 'weekly', 'priority' => '1.0'],
+            ['loc' => $root.'/termos', 'changefreq' => 'yearly', 'priority' => '0.3'],
+            ['loc' => $root.'/privacidade', 'changefreq' => 'yearly', 'priority' => '0.3'],
+        ];
+
+        $entries = '';
+
+        foreach ($pages as $page) {
+            $entries .= <<<XML
+
+                <url>
+                    <loc>{$this->escape($page['loc'])}</loc>
+                    <changefreq>{$page['changefreq']}</changefreq>
+                    <priority>{$page['priority']}</priority>
+                </url>
+            XML;
+        }
+
         $xml = <<<XML
         <?xml version="1.0" encoding="UTF-8"?>
-        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-            <url>
-                <loc>{$this->escape(LandingSeo::canonical())}</loc>
-                <changefreq>weekly</changefreq>
-                <priority>1.0</priority>
-            </url>
+        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{$entries}
         </urlset>
 
         XML;

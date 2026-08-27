@@ -3,6 +3,7 @@ import { Link, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import AppLogoIcon from '@/components/AppLogoIcon.vue';
 import { dashboard, login, register } from '@/routes';
+import { privacy, terms } from '@/routes/legal';
 import {
     CHROME_BORDER,
     CHROME_LINK,
@@ -12,11 +13,15 @@ import {
 import { LANDING_NAV } from './navigation';
 
 /**
- * Product and account links only.
+ * Produto, conta e os documentos legais.
  *
- * There is deliberately no «Termos», «Privacidade» or «Contacto» column: those
- * pages do not exist yet, and a footer full of links that go nowhere costs more
- * credibility than an empty column saves.
+ * A coluna legal esteve deliberadamente ausente enquanto as páginas não
+ * existiam — um rodapé cheio de links que não vão a lado nenhum custa mais
+ * credibilidade do que uma coluna vazia poupa. Agora existem, e são o primeiro
+ * sítio onde alguém as procura.
+ *
+ * Ainda não há «Contacto»: o endereço público é uma definição de plataforma que
+ * pode não estar preenchida, e o mesmo raciocínio de então continua a aplicar-se.
  */
 
 defineProps<{ authenticated: boolean }>();
@@ -121,11 +126,28 @@ const version = computed(() => usePage().props.appVersion);
 
         <div class="border-t" :class="CHROME_BORDER">
             <div
-                class="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 px-6 py-5 text-xs sm:px-8"
+                class="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-3 px-6 py-5 text-xs sm:px-8"
                 :class="CHROME_MUTED"
             >
                 <span>LÁPIS v{{ version }}</span>
-                <span>Mais simples. Mais tempo.</span>
+
+                <nav
+                    aria-label="Documentos legais"
+                    class="flex flex-wrap items-center gap-x-5 gap-y-2"
+                >
+                    <Link
+                        :href="terms()"
+                        class="rounded transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                        :class="CHROME_LINK"
+                        >Termos de Utilização</Link
+                    >
+                    <Link
+                        :href="privacy()"
+                        class="rounded transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                        :class="CHROME_LINK"
+                        >Política de Privacidade</Link
+                    >
+                </nav>
             </div>
         </div>
     </footer>

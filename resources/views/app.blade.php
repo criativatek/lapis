@@ -46,9 +46,23 @@
              the bundle has run, which is after a crawler has already read the
              document. The tab title stays in the component; everything a robot
              reads has to be in the response. --}}
-        @php($isLanding = ($page['component'] ?? null) === 'Welcome')
+        @php($component = $page['component'] ?? null)
+        @php($isLanding = $component === 'Welcome')
+        {{-- As páginas legais são públicas e devem ser encontráveis: alguém que
+             procure «política de privacidade LÁPIS» tem de lá chegar sem passar
+             pela landing. Cada uma canonicaliza-se a si própria, não à raiz. --}}
+        @php($isLegal = $component === 'legal/Document')
+        @php($publicPath = $isLegal ? request()->path() : '/')
+        @php($publicUrl = \App\Support\Seo\LandingSeo::canonical().($publicPath === '/' ? '' : '/'.$publicPath))
 
-        @if ($isLanding)
+        @if ($isLegal)
+            <link rel="canonical" href="{{ $publicUrl }}">
+            <meta name="robots" content="index, follow, max-snippet:-1">
+            <meta property="og:type" content="article">
+            <meta property="og:site_name" content="LÁPIS">
+            <meta property="og:locale" content="pt_PT">
+            <meta property="og:url" content="{{ $publicUrl }}">
+        @elseif ($isLanding)
             <meta name="description" content="{{ \App\Support\Seo\LandingSeo::DESCRIPTION }}">
             <link rel="canonical" href="{{ \App\Support\Seo\LandingSeo::canonical() }}">
             {{-- max-image-preview:large is what lets a result carry a picture at
