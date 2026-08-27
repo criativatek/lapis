@@ -41,22 +41,38 @@ importa perceber.
 |---|---|---|
 | Termos de Utilização | A relação comercial e de utilização | contraparte |
 | Política de Privacidade | Os dados da **conta do professor** | **responsável pelo tratamento** |
-| Acordo de Tratamento de Dados | Os dados dos **alunos** | **subcontratante do professor** |
+| Acordo de Tratamento de Dados | Os dados dos **alunos** | **subcontratante do responsável pelo tratamento** |
 
-**A repartição é a decisão estrutural desta fatia.** O professor decide que
-alunos existem, que dados sobre eles são registados e para que servem — logo é
-ele quem determina as finalidades, e é ele o responsável. O Lapispro guarda,
-calcula e devolve, seguindo o que ele determinou.
+**A repartição é a decisão estrutural desta fatia — e não pode pressupor quem é
+o responsável.** Um professor pode exercer a atividade a título próprio e
+determinar ele mesmo as finalidades: é então o responsável. Outro atua sob a
+autoridade de uma escola ou agrupamento, e nesse caso a responsável é a
+instituição. **Os textos não escolhem por ele.** O princípio publicado é:
 
-Reclamar uma base legal própria sobre dados pedagógicos seria afirmar um poder
-de decisão sobre a avaliação de menores que o produto não tem e não quer. Há um
-teste (`the_controller_processor_split_is_stated_in_both_directions`) que falha
-no dia em que alguém escrever o contrário.
+> «Quem introduz dados de alunos no Lapispro deve fazê-lo enquanto responsável
+> pelo tratamento ou devidamente autorizado pelo responsável pelo tratamento
+> competente. Quando a HORIZONLEVEL trata esses dados apenas para prestar o
+> serviço, atua como subcontratante.»
+
+**Não há gate, declaração nem caixa de seleção** a exigir que alguém diga em que
+qualidade age. A formulação comporta as duas situações e não obriga o professor
+a fazer, no ecrã de registo, uma qualificação jurídica que pode não saber fazer.
+
+O que é constante é o outro lado, e é isso que a Política declara em vez de uma
+afirmação sobre quem é o responsável:
+
+> «Relativamente aos dados pedagógicos dos alunos tratados por conta do
+> responsável pelo tratamento, a HORIZONLEVEL não determina as respetivas
+> finalidades pedagógicas nem define a base jurídica aplicável.»
+
+Há um teste (`the_controller_processor_split_is_stated_in_both_directions`) que
+falha se algum documento voltar a afirmar genericamente que o professor é o
+responsável, ou se a HORIZONLEVEL passar a reclamar finalidades próprias.
 
 **O Acordo é deliberadamente curto.** Não é um contrato negociado com um cliente
-empresarial: é o enquadramento de um professor que criou conta sozinho e vai lá
-pôr os alunos da sua turma. Vinte páginas com cláusulas de auditoria presencial
-não seriam mais protetoras — seriam apenas menos lidas.
+empresarial: é o enquadramento do acesso feito através de uma conta individual.
+Vinte páginas com cláusulas de auditoria presencial não seriam mais protetoras —
+seriam apenas menos lidas.
 
 ## Bases legais — só para a conta
 
@@ -71,7 +87,7 @@ ponderação aponta para uma restrição concreta: o registo de atividade não g
 IP nem navegador.
 
 **Nenhuma destas bases é invocada para os dados dos alunos**, que são tratados
-por conta do professor.
+por conta do responsável pelo tratamento.
 
 ## Aceitação dos Termos
 
@@ -220,9 +236,10 @@ Antes de criar a primeira organização institucional real, tem de estar fechado
 
 - [ ] **Contrato institucional** — a relação comercial com a escola ou
       agrupamento, distinta dos Termos individuais.
-- [ ] **Acordo de subcontratação institucional** — com a instituição como
-      responsável, e não o professor. Documento próprio; o de
-      `/tratamento-de-dados` é para o caso individual e diz-lo expressamente.
+- [ ] **Acordo de subcontratação institucional** — celebrado com a instituição,
+      para a utilização com vários professores sob administração comum.
+      Documento próprio; o de `/tratamento-de-dados` enquadra o acesso por conta
+      individual e diz-lo expressamente.
 - [ ] **Papéis internos** — administrador, coordenador, professor: quem vê o quê
       dentro da instituição, e com que fundamento.
 - [ ] **Prazos de conservação acordados** com a instituição, incluindo o que
@@ -270,10 +287,15 @@ documentos** — há teste a garanti-lo.
 
 - **Lei portuguesa**, declarada.
 - **Foro prudente:** «os tribunais territorialmente competentes nos termos da
-  lei». **Nunca um foro exclusivo** — uma cláusula de foro exclusivo contra quem
-  contrata como consumidor é precisamente do género que um tribunal
-  desconsidera, e o professor individual contrata como consumidor. Há um teste
-  que falha se «foro exclusivo» ou «comarca de Leiria» entrarem no texto.
+  lei». **Nunca um foro exclusivo** — uma cláusula de foro exclusivo é do género
+  que um tribunal desconsidera quando contraposta a normas imperativas, e não há
+  vantagem em arriscá-la. Há um teste que falha se «foro exclusivo» ou «comarca
+  de Leiria» entrarem no texto.
+- **Consumidor: nunca assumido.** Um professor pode contratar no exercício de
+  uma atividade profissional e não ser consumidor. Os Termos não o qualificam:
+  usam uma ressalva condicional — «quando lhe seja aplicável a legislação de
+  proteção dos consumidores, mantém integralmente os direitos que dela
+  resultem» — que é verdadeira nos dois casos. Há um teste a garanti-lo.
 - **Autoridade de controlo: CNPD**, nomeada.
 
 ## Pontos que continuam a exigir validação jurídica

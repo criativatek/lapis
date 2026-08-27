@@ -85,7 +85,7 @@ defineProps<{ authenticated: boolean }>();
 
                 <p class="mt-5 text-sm leading-relaxed text-muted-foreground">
                     Sem cartão. O plano
-                    <span class="font-medium text-foreground">Lapispro Base</span>
+                    <span class="font-medium text-foreground">Base</span>
                     fica ativo de imediato.
                 </p>
             </RevealOnScroll>

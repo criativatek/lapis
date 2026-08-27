@@ -22,13 +22,18 @@ namespace App\Support\Legal;
  *   Privacidade é o erro que faz uma plataforma parecer estar a decidir
  *   finalidades pedagógicas que não decide.
  *
- * A REPARTIÇÃO É A ESPINHA DE TUDO O QUE SE SEGUE. O professor decide que
- * alunos existem, que dados sobre eles são registados e para que servem — é
- * ele quem determina as finalidades, e é por isso o responsável. O Lapispro
- * guarda, calcula e devolve, seguindo o que ele determinou. Escrever o
- * contrário — reclamar uma base legal própria sobre dados pedagógicos —
- * seria afirmar um poder de decisão sobre a avaliação de menores que o
- * produto não tem e não quer.
+ * A REPARTIÇÃO É A ESPINHA DE TUDO O QUE SE SEGUE, E NÃO PODE PRESSUPOR QUEM
+ * É O RESPONSÁVEL. Um professor pode exercer a atividade a título próprio e
+ * determinar ele mesmo as finalidades — e ser o responsável. Outro atua sob a
+ * autoridade de uma escola ou agrupamento, e nesse caso o responsável é a
+ * instituição. Os documentos não escolhem por ele: dizem que quem introduz
+ * dados de alunos deve fazê-lo enquanto responsável ou devidamente autorizado
+ * pelo responsável competente, e comportam as duas situações.
+ *
+ * O que é constante é o outro lado: quando a HORIZONLEVEL trata esses dados
+ * apenas para prestar o serviço, atua como subcontratante. Não determina as
+ * finalidades pedagógicas nem define a base jurídica aplicável — e é isso, e
+ * não uma afirmação sobre quem é o responsável, que os textos declaram.
  *
  * ESTÁ EM PHP E NÃO NOS COMPONENTES VUE por uma razão prática: o SSR do
  * Inertia está desligado, pelo que texto escrito dentro de um `.vue` não
@@ -179,7 +184,8 @@ class LegalDocuments
                     'body' => [
                         'São duas relações diferentes, e vale a pena distingui-las porque as consequências são diferentes.',
                         'Quanto aos dados da sua conta — nome, email, autenticação, plano, segurança e suporte — a '.self::entity().' é a responsável pelo tratamento. Está descrito na Política de Privacidade.',
-                        'Quanto aos dados dos seus alunos, é o professor quem decide que alunos existem, que informação sobre eles é registada e para que serve. Nessa parte o responsável é o professor, e o Lapispro é subcontratante: trata esses dados por sua conta e segundo as suas instruções. As condições dessa relação estão no Acordo de Tratamento de Dados, que faz parte integrante destes Termos.',
+                        'Quanto aos dados dos alunos, quem os introduz no Lapispro deve fazê-lo enquanto responsável pelo tratamento ou devidamente autorizado pelo responsável pelo tratamento competente. Isso abrange tanto o professor que exerce a atividade a título próprio e determina ele mesmo as finalidades, como o professor que atua sob a autoridade de uma escola ou agrupamento — caso em que a responsável é a instituição.',
+                        'Quando a HORIZONLEVEL, LDA trata esses dados apenas para prestar o serviço, atua como subcontratante. As condições dessa relação estão no Acordo de Tratamento de Dados, que faz parte integrante destes Termos.',
                     ],
                 ],
                 [
@@ -222,7 +228,7 @@ class LegalDocuments
                     'body' => [
                         'O Lapispro é uma ferramenta de apoio. Não substitui o julgamento profissional do professor nem as obrigações da instituição de ensino.',
                         'Na medida permitida pela lei aplicável, não respondemos por decisões pedagógicas tomadas com apoio da ferramenta, nem por perdas resultantes de utilização contrária a estes Termos.',
-                        'Nada nestes Termos exclui ou limita responsabilidades que a lei não permita excluir ou limitar, nem afeta os direitos que a lei confere a quem contrata na qualidade de consumidor.',
+                        'Nada nestes Termos exclui ou limita responsabilidades que a lei não permita excluir ou limitar. Quando lhe seja aplicável a legislação de proteção dos consumidores, mantém integralmente os direitos que dela resultem.',
                     ],
                 ],
                 [
@@ -237,7 +243,7 @@ class LegalDocuments
                     'body' => [
                         'A estes Termos aplica-se a lei portuguesa.',
                         'Para a resolução de qualquer litígio emergente destes Termos são competentes os tribunais territorialmente competentes nos termos da lei.',
-                        'Se utilizar o Lapispro na qualidade de consumidor, mantém integralmente os direitos que a lei lhe reconhece nessa qualidade, incluindo o recurso aos meios de resolução alternativa de litígios de consumo legalmente previstos.',
+                        'Quando lhe seja aplicável a legislação de proteção dos consumidores, mantém integralmente os direitos que dela resultem, incluindo o recurso aos meios de resolução alternativa de litígios de consumo legalmente previstos.',
                     ],
                 ],
             ],
@@ -263,8 +269,9 @@ class LegalDocuments
                     'body' => [
                         'O Lapispro é um serviço disponibilizado pela '.self::entity().'. Os elementos completos de identificação — NIF e morada — estão no fim desta página.',
                         'Sobre os dados da sua conta, essa entidade é a responsável pelo tratamento: é ela que decide para que servem e como são tratados. É deste conjunto que esta página trata.',
-                        'Sobre os dados dos seus alunos, não. É o professor quem decide que alunos existem, que informação sobre eles regista e para que a usa — e é por isso o responsável pelo tratamento. O Lapispro é subcontratante: guarda, calcula e devolve, seguindo o que o professor determinou, e não usa esses dados para finalidades próprias. As condições dessa relação estão no Acordo de Tratamento de Dados.',
-                        'Não reclamamos, para os dados pedagógicos dos alunos, qualquer fundamento próprio de tratamento. Fazê-lo seria afirmar um poder de decisão sobre a avaliação de menores que o produto não tem.',
+                        'Sobre os dados dos alunos, não. Quem os introduz no Lapispro deve fazê-lo enquanto responsável pelo tratamento ou devidamente autorizado pelo responsável pelo tratamento competente — o que abrange tanto o professor que exerce a atividade a título próprio como aquele que atua sob a autoridade de uma escola ou agrupamento.',
+                        'Quando a HORIZONLEVEL, LDA trata esses dados apenas para prestar o serviço, atua como subcontratante: guarda, calcula e devolve segundo as instruções recebidas, e não os usa para finalidades próprias. As condições dessa relação estão no Acordo de Tratamento de Dados.',
+                        'Relativamente aos dados pedagógicos dos alunos tratados por conta do responsável pelo tratamento, a HORIZONLEVEL não determina as respetivas finalidades pedagógicas nem define a base jurídica aplicável.',
                         'Para exercer os seus direitos ou colocar qualquer questão sobre privacidade, escreva para '.self::contact('privacy_email').'.',
                     ],
                 ],
@@ -281,13 +288,13 @@ class LegalDocuments
                 [
                     'heading' => 'Dados dos alunos',
                     'body' => [
-                        'Descrevem-se aqui por transparência — para que saiba o que a plataforma guarda —, mas o responsável por eles é o professor, e o regime aplicável é o do Acordo de Tratamento de Dados.',
+                        'Descrevem-se aqui por transparência — para que saiba o que a plataforma guarda —, mas o regime aplicável é o do Acordo de Tratamento de Dados, e as finalidades são determinadas pelo responsável pelo tratamento, não por nós.',
                         'Os dados de identificação do aluno — nome e, quando indicado, número de processo — são guardados numa tabela separada e cifrados. O resto da aplicação trabalha com um pseudónimo, não com o nome.',
                         'Isto é pseudonimização, não anonimização: o professor continua a poder ver quem é cada aluno, porque precisa disso para trabalhar. O que se reduz é a exposição da identidade em tudo o resto. A anonimização — a remoção efetiva da relação com a pessoa — acontece no encerramento da conta, descrito mais abaixo.',
                         'Não é necessário anonimizar os alunos antes de os introduzir: a proteção é aplicada pelo Lapispro.',
-                        'Podem ainda existir data de nascimento e fotografia, quando o professor as introduz.',
+                        'Podem ainda existir data de nascimento e fotografia, quando são introduzidas.',
                         'Dados pedagógicos: turmas e inscrições, classificações e resultados por domínio, instrumentos de avaliação, registos de acompanhamento, autoavaliações, estratégias e medidas, e relatórios.',
-                        'O aluno não tem conta, sessão nem acesso próprio ao Lapispro. Os seus dados são introduzidos e geridos pelo professor.',
+                        'O aluno não tem conta, sessão nem acesso próprio ao Lapispro. Os seus dados são introduzidos e geridos através da conta do professor.',
                     ],
                 ],
                 [
@@ -323,7 +330,7 @@ class LegalDocuments
                         'Execução do contrato: criar e manter a conta, disponibilizar as funcionalidades do plano, prestar suporte e gerir o encerramento. Sem estes tratamentos não há serviço.',
                         'Cumprimento de obrigações legais: conservar o que a lei obrigue a conservar, dar resposta a pedidos legítimos de autoridades, e cumprir as obrigações fiscais e contabilísticas associadas a um plano pago.',
                         'Interesse legítimo: manter a segurança da plataforma e das contas, prevenir e detetar utilização abusiva, manter o registo de atividade e as cópias de segurança, e assegurar a integridade e a continuidade do serviço. Ponderámos este interesse contra os seus direitos e restringimos os dados ao mínimo que estas finalidades exigem — o registo de atividade, por exemplo, não guarda endereço IP nem identificador de navegador.',
-                        'Estes fundamentos aplicam-se aos dados da sua conta. Não são invocados para os dados pedagógicos dos seus alunos: esses são tratados por conta do professor, nos termos do Acordo de Tratamento de Dados.',
+                        'Estes fundamentos aplicam-se aos dados da sua conta. Não são invocados para os dados pedagógicos dos alunos: esses são tratados por conta do responsável pelo tratamento, nos termos do Acordo de Tratamento de Dados.',
                         'Quando um tratamento assentar no seu consentimento, será pedido de forma separada e pode ser retirado a qualquer momento, sem afetar o que foi feito antes.',
                     ],
                 ],
@@ -340,10 +347,10 @@ class LegalDocuments
                     'heading' => 'Dados de menores',
                     'body' => [
                         'A maioria dos alunos cujos dados são tratados no Lapispro são menores de idade, e o tratamento é feito com esse pressuposto em todas as decisões técnicas do produto.',
-                        'O Lapispro não é oferecido a menores nem a encarregados de educação. Os alunos não criam conta, não iniciam sessão e não acedem à aplicação; os seus dados são introduzidos e geridos exclusivamente pelo professor. Por isso não recolhemos nem verificamos consentimento parental: não é sobre um consentimento dado ao Lapispro que este tratamento assenta.',
-                        'É o professor — ou, quando for o caso, a escola — quem responde por existir fundamento legítimo para tratar os dados dos alunos no exercício da atividade educativa, e por introduzir apenas os dados necessários.',
+                        'O Lapispro não é oferecido a menores nem a encarregados de educação. Os alunos não criam conta, não iniciam sessão e não acedem à aplicação; os seus dados são introduzidos e geridos através da conta do professor. Por isso não recolhemos nem verificamos consentimento parental: não é sobre um consentimento dado ao Lapispro que este tratamento assenta.',
+                        'Cabe ao responsável pelo tratamento — o professor que exerça a atividade a título próprio, ou a escola ou agrupamento sob cuja autoridade ele atue — assegurar que existe fundamento legítimo para tratar os dados dos alunos no exercício da atividade educativa, e que apenas são introduzidos os dados necessários.',
                         'Do lado do Lapispro, aplicamos minimização — a aplicação trabalha com um pseudónimo e não com o nome —, cifragem da identidade, isolamento entre organizações e controlo de acesso verificado no servidor.',
-                        'Pedidos relativos aos dados de um aluno devem ser dirigidos ao professor ou à escola, que são quem responde por eles. Se nos chegar um pedido desses, encaminhamo-lo e prestamos a assistência que nos for pedida.',
+                        'Pedidos relativos aos dados de um aluno devem ser dirigidos ao responsável pelo tratamento — o professor ou a escola, consoante o caso. Se nos chegar um pedido desses, encaminhamo-lo e prestamos a assistência que nos for pedida.',
                     ],
                 ],
                 [
@@ -380,7 +387,7 @@ class LegalDocuments
                         'Apagamento: pode pedir o encerramento da conta a partir das definições, com o efeito e o prazo descritos acima.',
                         'Limitação, oposição e portabilidade: não existe um mecanismo automático na aplicação; exercem-se pelo mesmo endereço. Quando a portabilidade se aplique, entregamos os dados abrangidos em formato estruturado e de uso corrente.',
                         'A exportação disponível dentro da aplicação é uma funcionalidade do produto, pensada para lhe devolver o seu trabalho e permitir reimportá-lo. É útil para exercer estes direitos, mas não se confunde com eles nem esgota o direito de portabilidade, cujo âmbito é definido pela lei e não por nós.',
-                        'Sobre os dados dos seus alunos, os direitos dos titulares exercem-se perante o professor, que é o responsável. O Lapispro presta-lhe a assistência necessária para lhes dar resposta, nos termos do Acordo de Tratamento de Dados.',
+                        'Sobre os dados dos alunos, os direitos dos titulares exercem-se perante o responsável pelo tratamento — o professor ou a escola, consoante o caso. O Lapispro presta a assistência necessária para lhes dar resposta, nos termos do Acordo de Tratamento de Dados.',
                         'Tem o direito de apresentar reclamação junto da autoridade de controlo. Em Portugal, é a Comissão Nacional de Proteção de Dados (CNPD).',
                     ],
                 ],
@@ -454,7 +461,7 @@ class LegalDocuments
         return [
             'title' => 'Acordo de Tratamento de Dados',
             'effective_from' => (string) config('lapis.legal.processing_effective_from'),
-            'intro' => 'Quando regista os seus alunos no Lapispro, é o professor quem decide que dados existem e para que servem — e o Lapispro trata-os por sua conta. Este documento descreve as condições dessa relação. É deliberadamente curto, porque um acordo que ninguém lê não protege ninguém.',
+            'intro' => 'Quando são registados alunos no Lapispro, as finalidades desses dados são determinadas pelo responsável pelo tratamento, e o Lapispro trata-os por conta dele. Este documento descreve as condições dessa relação. É deliberadamente curto, porque um acordo que ninguém lê não protege ninguém.',
             'related' => [
                 ['label' => 'Termos de Utilização', 'href' => '/termos'],
                 ['label' => 'Política de Privacidade', 'href' => '/privacidade'],
@@ -471,25 +478,26 @@ class LegalDocuments
                 [
                     'heading' => 'Quem é quem',
                     'body' => [
-                        'O professor titular da conta é o responsável pelo tratamento dos dados dos seus alunos. É quem decide que alunos regista, que informação sobre eles guarda, e para que a usa.',
-                        'A '.self::entity().' é a subcontratante. Trata esses dados por conta do professor, para lhe prestar o serviço, e não para finalidades próprias.',
-                        'Esta repartição vale para a utilização individual. Quando uma escola ou agrupamento passar a utilizar o Lapispro, o responsável passa a ser a instituição e as condições serão fixadas em documento próprio — que ainda não existe, porque essa utilização ainda não está disponível.',
+                        'Quem introduz dados de alunos no Lapispro deve fazê-lo enquanto responsável pelo tratamento ou devidamente autorizado pelo responsável pelo tratamento competente.',
+                        'Isto abrange duas situações, e este acordo aplica-se às duas. O professor que exerce a atividade a título próprio e determina ele mesmo as finalidades do tratamento é o responsável. O professor que atua sob a autoridade de uma escola ou agrupamento trata os dados no âmbito dessa autoridade, e o responsável é a instituição.',
+                        'A '.self::entity().' é a subcontratante em qualquer das situações: quando trata esses dados apenas para prestar o serviço, atua por conta do responsável pelo tratamento e não para finalidades próprias. Não determina as finalidades pedagógicas nem define a base jurídica aplicável.',
+                        'A utilização do Lapispro por escolas e agrupamentos, com vários professores sob uma administração comum, ainda não está disponível para adesão, e será enquadrada em documento próprio quando estiver. Até lá, este acordo é o enquadramento do acesso feito através de uma conta individual.',
                     ],
                 ],
                 [
                     'heading' => 'Objeto, duração e natureza do tratamento',
                     'body' => [
                         'Objeto: a prestação do Lapispro enquanto plataforma de gestão de turmas, avaliação e acompanhamento pedagógico.',
-                        'Natureza e finalidade: recolher, guardar, organizar, calcular, consultar e devolver os dados que o professor regista, exclusivamente para lhe prestar o serviço que contratou.',
+                        'Natureza e finalidade: recolher, guardar, organizar, calcular, consultar e devolver os dados registados através da conta, exclusivamente para prestar o serviço contratado.',
                         'Duração: enquanto a conta existir, e depois durante o período de recuperação previsto nos Termos.',
-                        'Titulares dos dados: os alunos do professor.',
+                        'Titulares dos dados: os alunos cujos dados sejam registados através da conta.',
                         'Categorias de dados: identificação do aluno (nome e, quando indicado, número de processo), eventualmente data de nascimento e fotografia, e dados pedagógicos — turmas e inscrições, classificações e resultados, instrumentos de avaliação, registos de acompanhamento, autoavaliações, estratégias e medidas, e relatórios.',
                     ],
                 ],
                 [
                     'heading' => 'As suas instruções',
                     'body' => [
-                        'Os dados dos alunos são tratados apenas de acordo com as instruções do professor. Essas instruções são, na prática, aquilo que o professor faz na aplicação e o que estes documentos preveem.',
+                        'Os dados dos alunos são tratados apenas de acordo com as instruções recebidas através da conta, dadas em nome do responsável pelo tratamento. Essas instruções são, na prática, aquilo que é feito na aplicação e o que estes documentos preveem.',
                         'Não usamos os dados dos alunos para finalidades próprias, não os cruzamos com dados de outra organização, não os usamos para publicidade nem para criar perfis comerciais, e não os usamos para desenvolver ou treinar modelos de inteligência artificial.',
                         'Se alguma vez formos obrigados por lei a tratar esses dados de outra forma, informamo-lo antes de o fazer, salvo se a própria lei o proibir.',
                     ],
@@ -517,18 +525,18 @@ class LegalDocuments
                     ],
                 ],
                 [
-                    'heading' => 'Apoio ao cumprimento das suas obrigações',
+                    'heading' => 'Apoio ao responsável pelo tratamento',
                     'body' => [
-                        'Se um aluno, ou quem o representa, exercer perante si um direito — acesso, retificação, apagamento, limitação, oposição ou portabilidade — prestamos-lhe a assistência razoável para lhe dar resposta. Boa parte pode fazê-la diretamente na aplicação: consultar, corrigir e exportar.',
-                        'Se recebermos um pedido desses dirigido a nós, encaminhamo-lo para si e não lhe respondemos em seu lugar.',
+                        'Se um aluno, ou quem o representa, exercer um direito perante o responsável pelo tratamento — acesso, retificação, apagamento, limitação, oposição ou portabilidade — prestamos a assistência razoável para lhe dar resposta. Boa parte pode ser feita diretamente na aplicação: consultar, corrigir e exportar.',
+                        'Se recebermos um pedido desses dirigido a nós, encaminhamo-lo para o titular da conta e não respondemos em lugar do responsável pelo tratamento.',
                         'Prestamos também a assistência razoável no que respeite à segurança do tratamento, à notificação de violações de dados e a eventuais avaliações de impacto, na medida da informação de que dispomos.',
                     ],
                 ],
                 [
                     'heading' => 'Violações de dados pessoais',
                     'body' => [
-                        'Se tomarmos conhecimento de uma violação de dados pessoais que afete os dados dos seus alunos, informamo-lo sem demora injustificada, com a informação de que dispusermos: o que aconteceu, que dados foram afetados, que consequências prováveis identificámos e que medidas tomámos.',
-                        'A notificação à autoridade de controlo e, quando for o caso, aos titulares, compete-lhe a si enquanto responsável. Damos-lhe a informação necessária para o poder fazer.',
+                        'Se tomarmos conhecimento de uma violação de dados pessoais que afete dados de alunos registados através da sua conta, informamo-lo sem demora injustificada, com a informação de que dispusermos: o que aconteceu, que dados foram afetados, que consequências prováveis identificámos e que medidas tomámos.',
+                        'A notificação à autoridade de controlo e, quando for o caso, aos titulares, compete ao responsável pelo tratamento. Damos a informação necessária para o poder fazer.',
                     ],
                 ],
                 [

@@ -19,7 +19,7 @@ import type { LandingPlan } from './types';
 /**
  * The three plans, and nothing else. Base, Pro, Institucional — there is no
  * fourth card, and the Fundador condition below is deliberately NOT one: it
- * is a launch price on the same Lapispro Pro, so it is attached to that card
+ * is a launch price on the same Pro plan, so it is attached to that card
  * (the strip at its foot) and expanded in a band underneath, never presented
  * as a plan a visitor could choose instead of Pro.
  *

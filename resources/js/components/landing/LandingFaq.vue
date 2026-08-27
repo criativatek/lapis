@@ -64,15 +64,15 @@ const questions = [
     },
     {
         question: 'Existe uma versão gratuita?',
-        answer: 'O Lapispro Base é gratuito no ano letivo 2026/27 e fica ativo assim que criar conta, sem cartão em passo nenhum. Dentro da aplicação pode ainda ativar, uma vez, um período experimental de 30 dias do Lapispro Pro — no fim volta ao Base sem perder nada do que registou.',
+        answer: 'O plano Base é gratuito no ano letivo 2026/27 e fica ativo assim que criar conta, sem cartão em passo nenhum. Dentro da aplicação pode ainda ativar, uma vez, um período experimental de 30 dias do plano Pro — no fim volta ao Base sem perder nada do que registou.',
     },
     {
-        question: 'Quanto custa o Lapispro Pro?',
+        question: 'Quanto custa o plano Pro?',
         answer: `${PRO_PRICE_PER_YEAR}, em subscrição anual — não existe pagamento mensal. Os primeiros ${FOUNDER_SEATS} professores a aderirem podem beneficiar da condição Membro Fundador, ${FOUNDER_PRICE_PER_YEAR}, disponível até ${FOUNDER_DEADLINE} ou até esses lugares estarem preenchidos, consoante o que ocorrer primeiro. É o mesmo plano Pro, numa condição de adesão distinta.`,
     },
     {
         question: 'Existe uma solução para escolas e agrupamentos?',
-        answer: 'Existe o Lapispro Institucional, que acrescenta ao Pro a gestão de vários professores, os modelos e perfis de avaliação institucionais, a visão agregada e a governação — coordenação à escala da escola, sem retirar autonomia pedagógica a cada professor. Ainda não está disponível para adesão: falta fechar o enquadramento contratual com as escolas. Fale connosco e avisamos quando abrir.',
+        answer: 'Existe o plano Institucional, que acrescenta ao Pro a gestão de vários professores, os modelos e perfis de avaliação institucionais, a visão agregada e a governação — coordenação à escala da escola, sem retirar autonomia pedagógica a cada professor. Ainda não está disponível para adesão: falta fechar o enquadramento contratual com as escolas. Fale connosco e avisamos quando abrir.',
     },
     {
         question: 'Funciona com períodos e com semestres?',

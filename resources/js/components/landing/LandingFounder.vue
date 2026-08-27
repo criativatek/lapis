@@ -13,7 +13,7 @@ import {
 import RevealOnScroll from './RevealOnScroll.vue';
 
 /**
- * The launch condition on Lapispro Pro — NOT a fourth plan, and shaped so it
+ * The launch condition on the Pro plan — NOT a fourth plan, and shaped so it
  * cannot be mistaken for one.
  *
  * It is a band, not a card: it sits inside the Planos section, directly under

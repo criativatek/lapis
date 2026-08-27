@@ -25,12 +25,13 @@ use Illuminate\Support\Facades\DB;
  * it is.
  *
  * ⚠️ ANTES DA PRIMEIRA ORGANIZAÇÃO INSTITUCIONAL REAL. O Lapispro lança para
- * professores individuais. No caso individual o professor é o responsável
- * pelo tratamento dos dados dos seus alunos e o Lapispro é subcontratante,
- * e o enquadramento está em `/tratamento-de-dados`. Uma escola muda a
- * figura: o responsável passa a ser a instituição, com um contrato e um
- * acordo de subcontratação próprios, papéis internos definidos e prazos de
- * conservação acordados — nada disso existe hoje.
+ * professores individuais. Nesse caso o enquadramento está em
+ * `/tratamento-de-dados`: quem introduz dados de alunos fá-lo enquanto
+ * responsável pelo tratamento ou autorizado pelo responsável competente, e o
+ * Lapispro é subcontratante. Uma escola a utilizar a plataforma com vários
+ * professores sob administração comum exige um contrato e um acordo de
+ * subcontratação celebrados com a instituição, papéis internos definidos e
+ * prazos de conservação acordados — nada disso existe hoje.
  *
  * Não há caminho self-service para aqui: esta ação só é alcançável por um
  * administrador da plataforma (`AdminAccountController`), e é esse o portão.

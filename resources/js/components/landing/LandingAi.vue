@@ -106,9 +106,9 @@ const uses = [
                         <a
                             href="#planos"
                             class="rounded font-medium text-foreground underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                            >Lapispro Pro</a
+                            >plano Pro</a
                         >
-                        e do Lapispro Institucional.
+                        e do Institucional.
                     </p>
                 </div>
             </RevealOnScroll>

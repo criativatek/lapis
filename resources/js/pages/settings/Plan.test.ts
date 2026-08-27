@@ -111,25 +111,25 @@ describe('settings/Plan — trial_active', () => {
 
 describe('settings/Plan — trial_expired', () => {
     it('renders no activation button and the already-used message', () => {
-        const wrapper = mountPage({ state: 'trial_expired', currentPlanName: 'Lapispro Base' });
+        const wrapper = mountPage({ state: 'trial_expired', currentPlanName: 'Base' });
 
         expect(wrapper.find('button').exists()).toBe(false);
         expect(wrapper.text()).toContain('já foi utilizado');
-        expect(wrapper.text()).toContain('Lapispro Base');
+        expect(wrapper.text()).toContain('Base');
     });
 });
 
 describe('settings/Plan — pro_active', () => {
     it('shows the used-before note when usedTrialBefore is true', () => {
-        const wrapper = mountPage({ state: 'pro_active', currentPlanName: 'Lapispro Pro', usedTrialBefore: true });
+        const wrapper = mountPage({ state: 'pro_active', currentPlanName: 'Pro', usedTrialBefore: true });
 
         expect(wrapper.find('button').exists()).toBe(false);
-        expect(wrapper.text()).toContain('Lapispro Pro');
+        expect(wrapper.text()).toContain('Pro');
         expect(wrapper.text()).toContain('anteriormente');
     });
 
     it('shows no such note when usedTrialBefore is false', () => {
-        const wrapper = mountPage({ state: 'pro_active', currentPlanName: 'Lapispro Pro', usedTrialBefore: false });
+        const wrapper = mountPage({ state: 'pro_active', currentPlanName: 'Pro', usedTrialBefore: false });
 
         expect(wrapper.text()).not.toContain('anteriormente');
     });
@@ -137,10 +137,10 @@ describe('settings/Plan — pro_active', () => {
 
 describe('settings/Plan — institutional', () => {
     it('renders no trial-related text or button anywhere on the page', () => {
-        const wrapper = mountPage({ state: 'institutional', currentPlanName: 'Lapispro Institucional' });
+        const wrapper = mountPage({ state: 'institutional', currentPlanName: 'Institucional' });
 
         expect(wrapper.find('button').exists()).toBe(false);
-        expect(wrapper.text()).toContain('Lapispro Institucional');
+        expect(wrapper.text()).toContain('Institucional');
         expect(wrapper.text().toLowerCase()).not.toContain('experimental');
         expect(wrapper.text().toLowerCase()).not.toContain('trial');
         expect(wrapper.text().toLowerCase()).not.toContain('pro por');
@@ -152,19 +152,19 @@ describe('settings/Plan — institutional', () => {
     // — confirmed here rather than assumed: any string of 'institutional'
     // renders the same way regardless of which organization shape produced it.
     it('renders the same way for a Personal organization administratively put on the Institutional plan', () => {
-        const wrapper = mountPage({ state: 'institutional', currentPlanName: 'Lapispro Institucional' });
+        const wrapper = mountPage({ state: 'institutional', currentPlanName: 'Institucional' });
 
         expect(wrapper.find('button').exists()).toBe(false);
-        expect(wrapper.text()).toContain('Lapispro Institucional');
+        expect(wrapper.text()).toContain('Institucional');
     });
 });
 
 describe('settings/Plan — unavailable', () => {
     it('renders no trial copy and no button, but shows the current plan name when there is one', () => {
-        const wrapper = mountPage({ state: 'unavailable', currentPlanName: 'Lapispro Base' });
+        const wrapper = mountPage({ state: 'unavailable', currentPlanName: 'Base' });
 
         expect(wrapper.find('button').exists()).toBe(false);
-        expect(wrapper.text()).toContain('Lapispro Base');
+        expect(wrapper.text()).toContain('Base');
         expect(wrapper.text().toLowerCase()).not.toContain('experimental');
         expect(wrapper.text().toLowerCase()).not.toContain('trial');
         expect(wrapper.text().toLowerCase()).not.toContain('pro por');

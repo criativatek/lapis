@@ -6,6 +6,26 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > anteriores a 0.79.0 mantêm o nome com que foram escritas: um changelog é um
 > registo do que aconteceu, e reescrevê-lo apagaria a própria mudança de marca.
 
+## [0.79.1] — 2026-08-27
+
+### Changed
+
+- **Os planos passam a chamar-se Base, Pro e Institucional.** A marca já dá o contexto: num produto chamado Lapispro, «Lapispro Pro» repete-a sem acrescentar nada, e o cartão de preços dizia-a três vezes na mesma linha de visão. Chaves, slugs, entitlements e lógica de acesso intactos — só o `name` que a apresentação lê, propagado pelo `updateOrCreate` do `EntitlementsSeeder`.
+
+- **Nenhum documento afirma que o professor é o responsável pelo tratamento.** Afirmava, e era um pressuposto que não se sustenta: um professor que trate dados de alunos sob a autoridade de uma escola não é o responsável — a instituição é. Atribuir-lhe genericamente essa qualidade atribuía-lhe também obrigações que podem não ser suas.
+
+  Os três documentos passam a assentar no princípio, e não numa escolha por ele: **«Quem introduz dados de alunos no Lapispro deve fazê-lo enquanto responsável pelo tratamento ou devidamente autorizado pelo responsável pelo tratamento competente. Quando a HORIZONLEVEL trata esses dados apenas para prestar o serviço, atua como subcontratante.»** O Acordo diz as duas situações por extenso — o professor a título próprio, e o professor sob autoridade de escola ou agrupamento — e aplica-se às duas.
+
+  **Sem gate, sem declaração, sem caixa de seleção.** A formulação comporta os dois casos precisamente para não obrigar ninguém a fazer, num ecrã de registo, uma qualificação jurídica que pode não saber fazer.
+
+- **A Política troca retórica por facto.** «Não reclamamos [...] fundamento próprio [...] Fazê-lo seria afirmar um poder de decisão sobre a avaliação de menores que o produto não tem» dá lugar a **«Relativamente aos dados pedagógicos dos alunos tratados por conta do responsável pelo tratamento, a HORIZONLEVEL não determina as respetivas finalidades pedagógicas nem define a base jurídica aplicável.»** Diz a mesma coisa, é verificável, e não argumenta.
+
+- **Nenhum documento assume que o professor é consumidor.** Podia contratar no exercício de uma atividade profissional e não o ser. As duas passagens que o classificavam passam a uma ressalva condicional — **«Quando lhe seja aplicável a legislação de proteção dos consumidores, mantém integralmente os direitos que dela resultem»** — verdadeira nos dois casos. Lei portuguesa e tribunais territorialmente competentes nos termos da lei, inalterados.
+
+### Added
+
+- Dois testes de guarda: `no_document_asserts_that_every_teacher_is_the_controller` varre os três documentos por sete formulações que atribuiriam a qualidade de responsável a todo o professor, e `no_document_assumes_the_teacher_is_a_consumer` faz o mesmo para a qualificação de consumidor.
+
 ## [0.79.0] — 2026-08-27
 
 ### Changed

@@ -434,14 +434,14 @@ class LegalPagesTest extends TestCase
     }
 
     /**
-     * A REPARTIÇÃO RESPONSÁVEL/SUBCONTRATANTE, que é a decisão jurídica
-     * estrutural desta fatia.
+     * A REPARTIÇÃO RESPONSÁVEL/SUBCONTRATANTE — E O QUE ELA NÃO PODE PRESSUPOR.
      *
      * A HORIZONLEVEL é responsável pelos dados da conta e subcontratante dos
-     * dados dos alunos. Se algum dia a Política reclamar um fundamento próprio
-     * sobre dados pedagógicos, este teste é o que rebenta — porque isso seria
-     * afirmar um poder de decisão sobre a avaliação de menores que o produto
-     * não tem.
+     * dados dos alunos. Quem é o responsável destes últimos **depende do
+     * professor**: um que exerça a atividade a título próprio determina ele
+     * mesmo as finalidades; outro atua sob a autoridade de uma escola, e aí a
+     * responsável é a instituição. Os textos comportam as duas situações e não
+     * escolhem por ninguém.
      */
     #[Test]
     public function the_controller_processor_split_is_stated_in_both_directions(): void
@@ -453,19 +453,98 @@ class LegalPagesTest extends TestCase
 
         $this->assertStringContainsString('responsável pelo tratamento', $text);
         $this->assertStringContainsString('subcontratante', $text);
-        $this->assertStringContainsString('É o professor quem decide', $text);
         $this->assertStringContainsString(
-            'Não reclamamos, para os dados pedagógicos dos alunos, qualquer fundamento próprio de tratamento',
+            'deve fazê-lo enquanto responsável pelo tratamento ou devidamente autorizado pelo responsável pelo tratamento competente',
+            $text,
+        );
+
+        // A formulação sóbria, factual, sobre o que a HORIZONLEVEL não faz —
+        // que é uma afirmação verificável, ao contrário de uma sobre quem é o
+        // responsável.
+        $this->assertStringContainsString(
+            'não determina as respetivas finalidades pedagógicas nem define a base jurídica aplicável',
             $text,
         );
 
         $processing = collect(LegalDocuments::processing()['sections'])
             ->firstWhere('heading', 'Quem é quem');
 
+        $agreement = implode(' ', $processing['body']);
+
         $this->assertStringContainsString(
-            'O professor titular da conta é o responsável pelo tratamento',
-            implode(' ', $processing['body']),
+            'Quem introduz dados de alunos no Lapispro deve fazê-lo enquanto responsável pelo tratamento',
+            $agreement,
         );
+
+        // As duas situações, ditas por extenso.
+        $this->assertStringContainsString('a título próprio', $agreement);
+        $this->assertStringContainsString('sob a autoridade de uma escola ou agrupamento', $agreement);
+    }
+
+    /**
+     * NENHUM DOCUMENTO AFIRMA QUE TODO O PROFESSOR É O RESPONSÁVEL.
+     *
+     * Um professor que trate dados de alunos sob a autoridade de uma escola não
+     * é o responsável — a instituição é. Um texto que o afirmasse genericamente
+     * atribuiria a um professor uma qualidade jurídica que ele pode não ter, e
+     * com ela obrigações que não são suas. Este teste varre os três documentos
+     * à procura dessa afirmação, em qualquer das formas em que ela já esteve
+     * escrita.
+     */
+    #[Test]
+    public function no_document_asserts_that_every_teacher_is_the_controller(): void
+    {
+        foreach ([
+            'termos' => LegalDocuments::terms(),
+            'privacidade' => LegalDocuments::privacy(),
+            'tratamento de dados' => LegalDocuments::processing(),
+        ] as $name => $document) {
+            $text = (string) json_encode($document, JSON_UNESCAPED_UNICODE);
+
+            foreach ([
+                'o responsável é o professor',
+                'o professor é o responsável',
+                'O professor titular da conta é o responsável',
+                'responsável por eles é o professor',
+                'por conta do professor',
+                'exercem-se perante o professor',
+                'e é por isso o responsável pelo tratamento',
+            ] as $forbidden) {
+                $this->assertStringNotContainsString(
+                    $forbidden,
+                    $text,
+                    "«{$forbidden}» reapareceu em {$name}: pressupõe que todo o professor é o responsável.",
+                );
+            }
+        }
+    }
+
+    /**
+     * NENHUM DOCUMENTO ASSUME QUE TODO O PROFESSOR É CONSUMIDOR.
+     *
+     * Um professor pode contratar no exercício de uma atividade profissional e
+     * não ser consumidor. A ressalva é condicional — «quando lhe seja aplicável
+     * a legislação de proteção dos consumidores» —, o que é verdadeiro nos dois
+     * casos e não classifica ninguém.
+     */
+    #[Test]
+    public function no_document_assumes_the_teacher_is_a_consumer(): void
+    {
+        $terms = (string) json_encode(LegalDocuments::terms(), JSON_UNESCAPED_UNICODE);
+
+        $this->assertSame(
+            2,
+            mb_substr_count($terms, 'Quando lhe seja aplicável a legislação de proteção dos consumidores'),
+        );
+
+        foreach ([
+            'na qualidade de consumidor',
+            'enquanto consumidor',
+            'que a lei confere a quem contrata na qualidade de consumidor',
+            'Se utilizar o Lapispro na qualidade de consumidor',
+        ] as $forbidden) {
+            $this->assertStringNotContainsString($forbidden, $terms);
+        }
     }
 
     /**
@@ -488,7 +567,7 @@ class LegalPagesTest extends TestCase
         $this->assertStringContainsString('Ponderámos este interesse', $text);
 
         $this->assertStringContainsString(
-            'Não são invocados para os dados pedagógicos dos seus alunos',
+            'Não são invocados para os dados pedagógicos dos alunos: esses são tratados por conta do responsável pelo tratamento',
             $text,
         );
     }
@@ -573,8 +652,12 @@ class LegalPagesTest extends TestCase
         $this->assertStringContainsString('não se confunde com eles nem esgota o direito de portabilidade', $text);
 
         // E os direitos sobre os dados dos alunos exercem-se perante o
-        // professor, não perante nós.
-        $this->assertStringContainsString('exercem-se perante o professor', $text);
+        // responsável pelo tratamento, não perante nós — seja ele o professor
+        // ou a escola.
+        $this->assertStringContainsString(
+            'exercem-se perante o responsável pelo tratamento — o professor ou a escola, consoante o caso',
+            $text,
+        );
     }
 
     /**
@@ -700,7 +783,7 @@ class LegalPagesTest extends TestCase
             ->firstWhere('heading', 'Quem é quem');
 
         $this->assertStringContainsString(
-            'que ainda não existe, porque essa utilização ainda não está disponível',
+            'ainda não está disponível para adesão, e será enquadrada em documento próprio quando estiver',
             implode(' ', $processing['body']),
         );
     }

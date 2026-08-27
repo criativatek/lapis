@@ -74,7 +74,7 @@ defineProps<{ authenticated: boolean }>();
                 </div>
 
                 <p class="mt-5 text-sm text-muted-foreground">
-                    Não é necessário cartão de crédito. O plano Lapispro Base fica
+                    Não é necessário cartão de crédito. O plano Base fica
                     ativo de imediato.
                     <!-- «Já tenho conta» was a button here before the two CTAs
                          above were fixed by the commercial brief. It stays, as

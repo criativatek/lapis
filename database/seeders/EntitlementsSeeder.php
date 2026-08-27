@@ -112,9 +112,9 @@ class EntitlementsSeeder extends Seeder
         }
 
         $plans = [
-            ['key' => 'base', 'name' => 'Lapispro Base', 'sort_order' => 1, 'modules' => self::BASE_MODULES, 'limits' => self::BASE_LIMITS],
-            ['key' => 'pro', 'name' => 'Lapispro Pro', 'sort_order' => 2, 'modules' => self::PRO_MODULES, 'limits' => self::UNLIMITED],
-            ['key' => 'institutional', 'name' => 'Lapispro Institucional', 'sort_order' => 3, 'modules' => self::INSTITUTIONAL_MODULES, 'limits' => self::UNLIMITED],
+            ['key' => 'base', 'name' => 'Base', 'sort_order' => 1, 'modules' => self::BASE_MODULES, 'limits' => self::BASE_LIMITS],
+            ['key' => 'pro', 'name' => 'Pro', 'sort_order' => 2, 'modules' => self::PRO_MODULES, 'limits' => self::UNLIMITED],
+            ['key' => 'institutional', 'name' => 'Institucional', 'sort_order' => 3, 'modules' => self::INSTITUTIONAL_MODULES, 'limits' => self::UNLIMITED],
         ];
 
         foreach ($plans as $definition) {

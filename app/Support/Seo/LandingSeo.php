@@ -136,7 +136,7 @@ class LandingSeo
         return [
             [
                 '@type' => 'Offer',
-                'name' => 'Lapispro Base',
+                'name' => 'Base',
                 'price' => '0',
                 'priceCurrency' => 'EUR',
                 'priceValidUntil' => '2027-08-31',
@@ -145,7 +145,7 @@ class LandingSeo
             ],
             [
                 '@type' => 'Offer',
-                'name' => 'Lapispro Pro',
+                'name' => 'Pro',
                 'price' => '44.90',
                 'priceCurrency' => 'EUR',
                 'description' => 'Subscrição anual. Não existe pagamento mensal.',
