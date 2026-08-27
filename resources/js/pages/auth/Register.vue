@@ -8,6 +8,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { login } from '@/routes';
+import {
+    privacy,
+    processing as processingAgreement,
+    terms,
+} from '@/routes/legal';
 import { store } from '@/routes/register';
 
 defineProps<{
@@ -110,6 +115,19 @@ defineOptions({
                 Criar conta
             </Button>
         </div>
+
+        <p class="-mt-2 text-center text-xs leading-relaxed text-muted-foreground">
+            Ao criar conta aceita os
+            <TextLink :href="terms()" class="underline underline-offset-4"
+                >Termos de Utilização</TextLink
+            >, incluindo o
+            <TextLink :href="processingAgreement()" class="underline underline-offset-4"
+                >Acordo de Tratamento de Dados</TextLink
+            >, e confirma ter lido a
+            <TextLink :href="privacy()" class="underline underline-offset-4"
+                >Política de Privacidade</TextLink
+            >.
+        </p>
 
         <div class="text-center text-sm text-muted-foreground">
             Já tem conta?

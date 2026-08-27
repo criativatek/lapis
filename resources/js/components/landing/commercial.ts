@@ -116,7 +116,7 @@ export const PLAN_COPY: Record<string, PlanCommercial> = {
         body: 'Tudo o que existe no Pro, acrescentando a gestão pedagógica à escala da instituição — uma plataforma para escolas e agrupamentos que coordenam vários professores.',
         price: 'Sob consulta',
         priceNote:
-            'Adaptado ao número de professores e às necessidades da instituição.',
+            'Ainda não disponível para adesão. Fale connosco e avisamos quando abrir.',
         cta: 'Falar connosco',
         features: [
             'Múltiplos professores, membros e licenças',

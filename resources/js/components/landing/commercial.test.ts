@@ -318,7 +318,7 @@ describe('the voucher field', () => {
     it('never claims a code was accepted', async () => {
         const wrapper = voucher();
 
-        await wrapper.find('input').setValue('LAPIS-1234-5678');
+        await wrapper.find('input').setValue('LAPISPRO-1234-5678');
         await wrapper.find('form').trigger('submit');
 
         const status = wrapper.find('#voucher-status').text();

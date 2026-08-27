@@ -54,13 +54,13 @@ class EntitlementsSeeder extends Seeder
         // them one by one would make the commercial offer depend on which
         // parsers happen to exist (§3).
         'correction_grid_import' => 'Importação de Grelhas de Correção',
-        'inovar_export' => 'Exportação para o INOVAR',
+        'inovar_export' => 'Grelhas preparadas para o INOVAR',
 
         // Institucional.
         'institution_admin' => 'Administração Institucional',
         'institution_library' => 'Biblioteca Institucional',
         'institution_reports' => 'Relatórios Agregados',
-        'audit_log' => 'Auditoria e Segurança',
+        'audit_log' => 'Registo de Auditoria',
     ];
 
     protected const BASE_MODULES = [

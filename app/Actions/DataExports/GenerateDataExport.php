@@ -72,7 +72,7 @@ use ZipArchive;
  * Two files, two audiences (a manual-validation finding: the original
  * CSV-per-entity ZIP was technically correct but unreadable in Excel):
  *
- * - `Exportacao-LAPIS.xlsx` — for the teacher. Human names, not ids; the
+ * - `Exportacao-Lapispro.xlsx` — for the teacher. Human names, not ids; the
  *   exact terminology the rest of the product already uses (Média
  *   Ponderada, Elementos de Avaliação, Estratégias e Medidas, …); one
  *   workbook, one sheet per domain, formatted to open cleanly.
@@ -298,7 +298,7 @@ class GenerateDataExport
             throw new RuntimeException('Não foi possível criar o ficheiro de exportação.');
         }
 
-        $zip->addFromString('Exportacao-LAPIS.xlsx', $xlsxBytes);
+        $zip->addFromString('Exportacao-Lapispro.xlsx', $xlsxBytes);
         $zip->addFromString('backup-lapis.json', $this->technicalBackup(
             $organization,
             $user,
@@ -1791,7 +1791,7 @@ class GenerateDataExport
         próprias turmas e o que lhes está associado. Não inclui trabalho
         pedagógico de colegas, nem dados de outras organizações.
 
-        Exportacao-LAPIS.xlsx
+        Exportacao-Lapispro.xlsx
           Ficheiro para consulta e utilização — abra no Excel ou equivalente.
           Nomes de turmas, alunos e disciplinas em vez de identificadores
           técnicos, uma folha por tipo de dado.

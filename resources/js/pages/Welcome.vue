@@ -64,11 +64,9 @@ const authenticated = computed(() => page.props.auth.user !== null);
         MUST MATCH App\Support\Seo\LandingSeo::TITLE, which is what the server
         renders and what a crawler reads. The formatter in app.ts leaves a
         title that already names the brand alone, so this one survives intact
-        instead of coming out as «… - LAPIS».
+        instead of coming out as «… - Lapispro».
     -->
-    <Head
-        title="Lapispro | Plataforma para Professores — Avaliação, Turmas e IA"
-    />
+    <Head title="Lapispro | Plataforma para Professores — Avaliação e Turmas" />
 
     <div class="min-h-screen bg-background text-foreground">
         <a

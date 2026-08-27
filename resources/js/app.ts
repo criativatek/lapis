@@ -14,8 +14,8 @@ createInertiaApp({
      *
      * The landing page carries a complete, deliberately-sized title from
      * `App\Support\Seo\LandingSeo` — appending the app name to it produced
-     * «… - LAPIS», which both overflowed the length a result page renders and
-     * made the tab disagree with the server-rendered `<title>` a crawler
+     * «… - Lapispro», which both overflowed the length a result page renders
+     * and made the tab disagree with the server-rendered `<title>` a crawler
      * reads. Inertia's head manager runs this over a `<title>` CHILD of
      * `<Head>` too, not only over the `title` prop, so there is no way to opt
      * out from the component — it has to be decided here.
@@ -25,7 +25,7 @@ createInertiaApp({
             return appName;
         }
 
-        return /l[áa]pis/i.test(title) ? title : `${title} - ${appName}`;
+        return /lapispro/i.test(title) ? title : `${title} - ${appName}`;
     },
     layout: (name) => {
         switch (true) {

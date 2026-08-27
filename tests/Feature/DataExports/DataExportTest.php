@@ -86,8 +86,8 @@ class DataExportTest extends TestCase
      */
     private function openWorkbook(ZipArchive $zip): Spreadsheet
     {
-        $bytes = $zip->getFromName('Exportacao-LAPIS.xlsx');
-        $this->assertNotFalse($bytes, 'Exportacao-LAPIS.xlsx tem de existir no ZIP.');
+        $bytes = $zip->getFromName('Exportacao-Lapispro.xlsx');
+        $this->assertNotFalse($bytes, 'Exportacao-Lapispro.xlsx tem de existir no ZIP.');
 
         $tempPath = tempnam(sys_get_temp_dir(), 'lapis_export_test_');
         file_put_contents($tempPath, $bytes);
@@ -127,7 +127,7 @@ class DataExportTest extends TestCase
         $export = DataExport::withoutGlobalScope('organization')->where('requested_by', $owner->id)->firstOrFail();
         $zip = $this->extractZip(Storage::disk('local')->path($export->disk_path));
 
-        $this->assertNotFalse($zip->locateName('Exportacao-LAPIS.xlsx'));
+        $this->assertNotFalse($zip->locateName('Exportacao-Lapispro.xlsx'));
         $this->assertNotFalse($zip->locateName('backup-lapis.json'));
         $this->assertNotFalse($zip->locateName('README.txt'));
     }
@@ -344,7 +344,7 @@ class DataExportTest extends TestCase
         // README.txt is explanatory copy that legitimately NAMES what is
         // excluded ("Não inclui... password...") — scanning it for these
         // words would flag the exact sentence that promises they're absent.
-        // Exportacao-LAPIS.xlsx is a binary format; a raw substring scan on
+        // Exportacao-Lapispro.xlsx is a binary format; a raw substring scan on
         // it is still meaningful (these words would never legitimately
         // appear in the compressed XML either) and costs nothing extra.
         $forbidden = ['password', 'remember_token', 'two_factor', 'token_hash', 'recovery_code'];

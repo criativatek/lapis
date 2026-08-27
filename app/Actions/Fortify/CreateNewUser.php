@@ -6,6 +6,7 @@ use App\Actions\Organizations\CreatePersonalOrganization;
 use App\Concerns\PasswordValidationRules;
 use App\Concerns\ProfileValidationRules;
 use App\Models\User;
+use App\Support\Legal\LegalDocuments;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Laravel\Fortify\Contracts\CreatesNewUsers;
@@ -23,6 +24,15 @@ class CreateNewUser implements CreatesNewUsers
      * an account with no organization would authenticate but have no tenant to
      * resolve, and every request would then 403.
      *
+     * A ACEITAÇÃO DOS TERMOS É ESCRITA AQUI, NA MESMA TRANSAÇÃO, e a versão vem
+     * de `LegalDocuments` e não do pedido. Um campo de formulário a dizer que
+     * versão foi aceite é um campo que o cliente pode alterar — e uma conta
+     * que afirma ter aceite uma versão que nunca esteve em vigor prova menos
+     * do que não afirmar nada.
+     *
+     * NÃO SE GUARDA IP NEM NAVEGADOR. Ver a migração
+     * `add_terms_acceptance_to_users` para a razão.
+     *
      * @param  array<string, string>  $input
      */
     public function create(array $input): User
@@ -38,6 +48,11 @@ class CreateNewUser implements CreatesNewUsers
                 'email' => $input['email'],
                 'password' => $input['password'],
             ]);
+
+            $user->forceFill([
+                'terms_version' => LegalDocuments::termsVersion(),
+                'terms_accepted_at' => now(),
+            ])->save();
 
             $this->createPersonalOrganization->create($user);
 

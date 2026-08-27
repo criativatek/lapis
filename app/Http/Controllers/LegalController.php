@@ -35,4 +35,21 @@ class LegalController extends Controller
             'controller' => LegalDocuments::controller(),
         ]);
     }
+
+    /**
+     * O Acordo de Tratamento de Dados.
+     *
+     * PÚBLICO E INDEXÁVEL COMO OS OUTROS DOIS, apesar de só se aplicar a quem
+     * já tem conta: um professor que esteja a decidir se põe ali os alunos da
+     * sua turma tem de o poder ler ANTES de criar conta. Um acordo de
+     * subcontratação que só se lê depois de aceite é um acordo que ninguém
+     * leu.
+     */
+    public function processing(): Response
+    {
+        return Inertia::render('legal/Document', [
+            'document' => LegalDocuments::processing(),
+            'controller' => LegalDocuments::controller(),
+        ]);
+    }
 }

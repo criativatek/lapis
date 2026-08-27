@@ -74,6 +74,7 @@ Route::get('sitemap.xml', [SeoController::class, 'sitemap'])->name('seo.sitemap'
 // de as ler antes de criar conta tem de as conseguir abrir sem ter conta.
 Route::get('termos', [LegalController::class, 'terms'])->name('legal.terms');
 Route::get('privacidade', [LegalController::class, 'privacy'])->name('legal.privacy');
+Route::get('tratamento-de-dados', [LegalController::class, 'processing'])->name('legal.processing');
 
 // Not tenant data — the changelog is the same for everyone, so it stays
 // outside the 'organization' group (no tenant resolution needed).

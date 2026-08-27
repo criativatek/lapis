@@ -55,6 +55,7 @@ class SeoController extends Controller
             // política de privacidade do Lapispro sem passar pela landing.
             'Allow: /termos',
             'Allow: /privacidade',
+            'Allow: /tratamento-de-dados',
             '',
             'Sitemap: '.LandingSeo::canonical().'/sitemap.xml',
             '',
@@ -69,13 +70,14 @@ class SeoController extends Controller
     {
         $root = LandingSeo::canonical();
 
-        // A landing e os dois documentos legais — as únicas páginas públicas
+        // A landing e os três documentos legais — as únicas páginas públicas
         // que existem. As legais mudam raramente e não competem com a landing,
         // daí `yearly` e uma prioridade menor.
         $pages = [
             ['loc' => $root, 'changefreq' => 'weekly', 'priority' => '1.0'],
             ['loc' => $root.'/termos', 'changefreq' => 'yearly', 'priority' => '0.3'],
             ['loc' => $root.'/privacidade', 'changefreq' => 'yearly', 'priority' => '0.3'],
+            ['loc' => $root.'/tratamento-de-dados', 'changefreq' => 'yearly', 'priority' => '0.3'],
         ];
 
         $entries = '';

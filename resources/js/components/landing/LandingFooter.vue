@@ -3,7 +3,7 @@ import { Link, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import AppLogoIcon from '@/components/AppLogoIcon.vue';
 import { dashboard, login, register } from '@/routes';
-import { privacy, terms } from '@/routes/legal';
+import { privacy, processing, terms } from '@/routes/legal';
 import {
     CHROME_BORDER,
     CHROME_LINK,
@@ -145,6 +145,12 @@ const version = computed(() => usePage().props.appVersion);
                         class="rounded transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                         :class="CHROME_LINK"
                         >Política de Privacidade</Link
+                    >
+                    <Link
+                        :href="processing()"
+                        class="rounded transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                        :class="CHROME_LINK"
+                        >Acordo de Tratamento de Dados</Link
                     >
                 </nav>
             </div>

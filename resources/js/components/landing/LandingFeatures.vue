@@ -100,7 +100,7 @@ const beyondBase = [
     { name: 'Análises avançadas e tendências', plan: 'Pro' },
     { name: 'Sugestões pedagógicas com IA', plan: 'Pro' },
     { name: 'Importação de grelhas de correção', plan: 'Pro' },
-    { name: 'Exportação para o INOVAR', plan: 'Pro' },
+    { name: 'Grelhas preparadas para o INOVAR', plan: 'Pro' },
     { name: 'Ligações de autoavaliação', plan: 'Pro' },
     { name: 'Apoio à redação de relatórios', plan: 'Pro' },
     { name: 'Equipa e convites', plan: 'Institucional' },

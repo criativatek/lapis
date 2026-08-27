@@ -23,6 +23,19 @@ use Illuminate\Support\Facades\DB;
  * CreatePersonalOrganization uses — the FIRST subscription of a brand-new
  * organization is written in exactly one place, whichever kind of organization
  * it is.
+ *
+ * ⚠️ ANTES DA PRIMEIRA ORGANIZAÇÃO INSTITUCIONAL REAL. O Lapispro lança para
+ * professores individuais. No caso individual o professor é o responsável
+ * pelo tratamento dos dados dos seus alunos e o Lapispro é subcontratante,
+ * e o enquadramento está em `/tratamento-de-dados`. Uma escola muda a
+ * figura: o responsável passa a ser a instituição, com um contrato e um
+ * acordo de subcontratação próprios, papéis internos definidos e prazos de
+ * conservação acordados — nada disso existe hoje.
+ *
+ * Não há caminho self-service para aqui: esta ação só é alcançável por um
+ * administrador da plataforma (`AdminAccountController`), e é esse o portão.
+ * A lista do que tem de estar fechado antes de o atravessar está em
+ * `docs/legal.md`, secção «Portão institucional».
  */
 class CreateInstitutionalOrganization
 {

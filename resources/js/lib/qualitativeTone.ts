@@ -1,6 +1,6 @@
 /**
  * Maps a scale band to a semantic colour tone by its STRUCTURE — is_negative
- * and sequence — never by comparing its label text. LAPIS supports custom
+ * and sequence — never by comparing its label text. Lapispro supports custom
  * and future translated scales; a mapper keyed on "Bom" or "Muito Bom" would
  * silently lose its colour the day either changes. is_negative is an
  * explicit failing/passing flag already carried by every scale level;

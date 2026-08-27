@@ -72,7 +72,7 @@ const questions = [
     },
     {
         question: 'Existe uma solução para escolas e agrupamentos?',
-        answer: 'Existe: o Lapispro Institucional, com preço sob consulta. Acrescenta ao Pro a gestão de vários professores, os modelos e perfis de avaliação institucionais, a visão agregada e a governação — coordenação à escala da escola, sem retirar autonomia pedagógica a cada professor.',
+        answer: 'Existe o Lapispro Institucional, que acrescenta ao Pro a gestão de vários professores, os modelos e perfis de avaliação institucionais, a visão agregada e a governação — coordenação à escala da escola, sem retirar autonomia pedagógica a cada professor. Ainda não está disponível para adesão: falta fechar o enquadramento contratual com as escolas. Fale connosco e avisamos quando abrir.',
     },
     {
         question: 'Funciona com períodos e com semestres?',

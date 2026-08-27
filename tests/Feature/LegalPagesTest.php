@@ -180,20 +180,22 @@ class LegalPagesTest extends TestCase
         $headings = collect(LegalDocuments::privacy()['sections'])->pluck('heading');
 
         foreach ([
-            'Responsável pelo tratamento',
+            'Quem responde pelo quê',
             'Dados do professor',
             'Dados dos alunos',
             'Dados técnicos',
             'Ficheiros',
             'Para que usamos os dados',
-            'Fundamento do tratamento',
+            'Com que fundamento tratamos os dados da sua conta',
+            'Categorias especiais de dados',
+            'Dados de menores',
             'Inteligência artificial',
             'Durante quanto tempo',
             'Os seus direitos',
-            'Dados de menores',
             'Segurança',
             'Cookies e armazenamento no navegador',
-            'Subprocessadores e terceiros',
+            'Subcontratantes',
+            'Transferências internacionais',
         ] as $required) {
             $this->assertTrue($headings->contains($required), "Falta a secção «{$required}».");
         }
@@ -207,14 +209,17 @@ class LegalPagesTest extends TestCase
         foreach ([
             'O que é o Lapispro',
             'A sua conta',
+            'Aceitação e versões destes Termos',
             'Utilização aceitável',
             'Dados pedagógicos e decisões',
+            'Proteção de dados: quem responde pelo quê',
             'Disponibilidade e evolução',
             'Planos e condições comerciais',
             'Encerramento da conta',
             'Propriedade intelectual',
             'Limitação de responsabilidade',
             'Alterações a estes Termos',
+            'Lei aplicável e resolução de litígios',
         ] as $required) {
             $this->assertTrue($headings->contains($required), "Falta a secção «{$required}».");
         }
@@ -244,9 +249,14 @@ class LegalPagesTest extends TestCase
     }
 
     /**
-     * A retenção não pode prometer o que a Fatia 3 deixou por fazer: a
-     * diferenciação Base +2 / Pro +5 não está implementada, e a política não a
-     * pode afirmar.
+     * A retenção diz os prazos que uma rotina cumpre, e cala-se sobre os
+     * outros.
+     *
+     * Quatro números são executados por código: o encerramento de conta, a
+     * disponibilidade de uma exportação, a rotação dos registos técnicos e a
+     * das cópias de segurança. A diferenciação Base +2 / Pro +5 da Matriz
+     * continua por implementar, e a eliminação por antiguidade de dados
+     * pedagógicos também — nenhuma das duas pode ser afirmada.
      */
     #[Test]
     public function the_retention_section_does_not_promise_unimplemented_rules(): void
@@ -259,7 +269,47 @@ class LegalPagesTest extends TestCase
         $this->assertStringNotContainsString('dois anos letivos', mb_strtolower($text));
         $this->assertStringNotContainsString('cinco anos letivos', mb_strtolower($text));
         $this->assertStringNotContainsString('instantânea', mb_strtolower($text));
-        $this->assertStringContainsString('validação jurídica', $text);
+
+        // O que nenhuma rotina apaga, o texto diz que não apaga.
+        $this->assertStringContainsString('não existe hoje eliminação automática por antiguidade', $text);
+        $this->assertStringContainsString('Não está definido um prazo automático de eliminação', $text);
+    }
+
+    /**
+     * OS PRAZOS PUBLICADOS SÃO OS QUE O CÓDIGO EXECUTA. O texto não escreve
+     * «60 dias» à mão: lê `config('retention.*')`, que é o mesmo sítio de onde
+     * `retention:execute` e `data-exports:prune` leem. Este teste falha no dia
+     * em que alguém mudar um dos números e a página continuar a prometer o
+     * antigo.
+     */
+    #[Test]
+    public function the_published_retention_periods_are_the_ones_the_code_enforces(): void
+    {
+        config([
+            'retention.personal_account_closure_days' => 45,
+            'retention.data_export_availability_hours' => 12,
+        ]);
+
+        $retention = collect(LegalDocuments::privacy()['sections'])
+            ->firstWhere('heading', 'Durante quanto tempo');
+
+        $this->assertStringContainsString(
+            'período de recuperação de 45 dias',
+            implode(' ', $retention['body']),
+        );
+        $this->assertStringContainsString(
+            'disponíveis 12 horas',
+            implode(' ', $retention['body']),
+        );
+
+        // E o mesmo prazo nos Termos e no Acordo, que descrevem o mesmo
+        // encerramento. Três documentos, um número.
+        foreach ([LegalDocuments::terms(), LegalDocuments::processing()] as $document) {
+            $this->assertStringContainsString(
+                '45 dias',
+                (string) json_encode($document, JSON_UNESCAPED_UNICODE),
+            );
+        }
     }
 
     /** Só cookies estritamente necessários — auditado, e por isso sem banner. */
@@ -272,13 +322,15 @@ class LegalPagesTest extends TestCase
         $text = mb_strtolower(implode(' ', $cookies['body']));
 
         $this->assertStringContainsString('estritamente necessários', $text);
-        $this->assertStringContainsString('não usa cookies de publicidade', $text);
-        $this->assertStringContainsString('não é apresentado um pedido de consentimento', $text);
+        $this->assertStringContainsString('não há cookies de publicidade', $text);
+        $this->assertStringContainsString('não é apresentado pedido de consentimento', $text);
 
-        // Sem conclusão jurídica absoluta: a auditoria técnica não encontrou
-        // cookies não essenciais, o que não é o mesmo que decidir a questão
-        // legal. E o armazenamento local é declarado, não só os cookies.
-        $this->assertStringContainsString('sujeita a validação jurídica', $text);
+        // SEM CONCLUSÃO JURÍDICA ABSOLUTA. O que a página afirma é o que a
+        // auditoria técnica encontrou; decidir que nenhum destes elementos
+        // exige consentimento é uma qualificação jurídica, e a página diz isso
+        // em vez de a fazer.
+        $this->assertStringContainsString('sujeita a validação', $text);
+        $this->assertStringContainsString('passará a ser pedido', $text);
         $this->assertStringContainsString('armazenamento local', $text);
     }
 
@@ -323,6 +375,345 @@ class LegalPagesTest extends TestCase
     public function both_documents_carry_an_effective_date(): void
     {
         foreach ([LegalDocuments::terms(), LegalDocuments::privacy()] as $document) {
+            $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}$/', $document['effective_from']);
+        }
+    }
+
+    /**
+     * A terceira página existe, é pública, e é encontrável.
+     *
+     * PÚBLICA APESAR DE SÓ SE APLICAR A QUEM TEM CONTA. Um professor que esteja
+     * a decidir se põe ali os alunos da sua turma tem de poder ler o acordo de
+     * subcontratação ANTES de criar conta. Um acordo que só se lê depois de
+     * aceite é um acordo que ninguém leu.
+     */
+    #[Test]
+    public function the_processing_agreement_is_public_indexable_and_listed(): void
+    {
+        config(['lapis.public_url' => 'https://lapispro.com']);
+
+        $page = $this->get('/tratamento-de-dados')->assertOk();
+
+        $page->assertInertia(fn (Assert $page) => $page->component('legal/Document'));
+        $page->assertSee('<link rel="canonical" href="https://lapispro.com/tratamento-de-dados">', false);
+        $page->assertSee('name="robots" content="index, follow', false);
+
+        $this->get('/sitemap.xml')
+            ->assertOk()
+            ->assertSee('<loc>https://lapispro.com/tratamento-de-dados</loc>', false);
+
+        $this->get('/robots.txt')
+            ->assertOk()
+            ->assertSee('Allow: /tratamento-de-dados', false);
+    }
+
+    /**
+     * Três documentos que se remetem uns para os outros, e nenhum que se remeta
+     * a si próprio. Um «ver também» que aponta para a página em que já se está
+     * é ruído.
+     */
+    #[Test]
+    public function the_three_documents_link_to_each_other(): void
+    {
+        $expected = [
+            '/termos' => LegalDocuments::terms(),
+            '/privacidade' => LegalDocuments::privacy(),
+            '/tratamento-de-dados' => LegalDocuments::processing(),
+        ];
+
+        foreach ($expected as $self => $document) {
+            $hrefs = array_column($document['related'], 'href');
+
+            $this->assertCount(2, $hrefs);
+            $this->assertNotContains($self, $hrefs);
+
+            foreach (array_diff(array_keys($expected), [$self]) as $other) {
+                $this->assertContains($other, $hrefs);
+            }
+        }
+    }
+
+    /**
+     * A REPARTIÇÃO RESPONSÁVEL/SUBCONTRATANTE, que é a decisão jurídica
+     * estrutural desta fatia.
+     *
+     * A HORIZONLEVEL é responsável pelos dados da conta e subcontratante dos
+     * dados dos alunos. Se algum dia a Política reclamar um fundamento próprio
+     * sobre dados pedagógicos, este teste é o que rebenta — porque isso seria
+     * afirmar um poder de decisão sobre a avaliação de menores que o produto
+     * não tem.
+     */
+    #[Test]
+    public function the_controller_processor_split_is_stated_in_both_directions(): void
+    {
+        $privacy = collect(LegalDocuments::privacy()['sections'])
+            ->firstWhere('heading', 'Quem responde pelo quê');
+
+        $text = implode(' ', $privacy['body']);
+
+        $this->assertStringContainsString('responsável pelo tratamento', $text);
+        $this->assertStringContainsString('subcontratante', $text);
+        $this->assertStringContainsString('É o professor quem decide', $text);
+        $this->assertStringContainsString(
+            'Não reclamamos, para os dados pedagógicos dos alunos, qualquer fundamento próprio de tratamento',
+            $text,
+        );
+
+        $processing = collect(LegalDocuments::processing()['sections'])
+            ->firstWhere('heading', 'Quem é quem');
+
+        $this->assertStringContainsString(
+            'O professor titular da conta é o responsável pelo tratamento',
+            implode(' ', $processing['body']),
+        );
+    }
+
+    /**
+     * Os fundamentos são os três que se aplicam à CONTA, e nenhum é invocado
+     * para os dados dos alunos.
+     */
+    #[Test]
+    public function the_legal_bases_cover_the_account_and_never_the_pedagogical_data(): void
+    {
+        $bases = collect(LegalDocuments::privacy()['sections'])
+            ->firstWhere('heading', 'Com que fundamento tratamos os dados da sua conta');
+
+        $text = implode(' ', $bases['body']);
+
+        $this->assertStringContainsString('Execução do contrato', $text);
+        $this->assertStringContainsString('Cumprimento de obrigações legais', $text);
+        $this->assertStringContainsString('Interesse legítimo', $text);
+
+        // O interesse legítimo tem de vir ponderado, não afirmado.
+        $this->assertStringContainsString('Ponderámos este interesse', $text);
+
+        $this->assertStringContainsString(
+            'Não são invocados para os dados pedagógicos dos seus alunos',
+            $text,
+        );
+    }
+
+    /**
+     * Menores: descreve-se a posição, e NÃO se recolhe consentimento parental.
+     *
+     * O Lapispro não é oferecido a menores nem a encarregados de educação, e
+     * não existe caminho na aplicação por onde um consentimento parental
+     * entrasse. Dizer que se recolhe seria descrever um mecanismo que não
+     * existe — que é a forma mais fácil de uma página legal passar a mentir.
+     */
+    #[Test]
+    public function the_minors_section_states_the_position_without_claiming_parental_consent(): void
+    {
+        $minors = collect(LegalDocuments::privacy()['sections'])
+            ->firstWhere('heading', 'Dados de menores');
+
+        $text = implode(' ', $minors['body']);
+
+        $this->assertStringContainsString('menores de idade', $text);
+        $this->assertStringContainsString('não recolhemos nem verificamos consentimento parental', $text);
+        $this->assertStringContainsString('não é oferecido a menores', mb_strtolower($text));
+
+        // E não se promete um mecanismo que não existe em lado nenhum.
+        $full = mb_strtolower((string) json_encode(LegalDocuments::privacy(), JSON_UNESCAPED_UNICODE));
+        $this->assertStringNotContainsString('autorização do encarregado de educação', $full);
+        $this->assertStringNotContainsString('mediante consentimento dos pais', $full);
+    }
+
+    /**
+     * Categorias especiais: o modelo de dados não tem campo nenhum para elas, e
+     * é isso que a página diz — ver `docs/domain-model.md` §11.3, «sem dados de
+     * saúde, NEE ou categorias especiais».
+     */
+    #[Test]
+    public function the_special_categories_section_matches_the_data_model(): void
+    {
+        $special = collect(LegalDocuments::privacy()['sections'])
+            ->firstWhere('heading', 'Categorias especiais de dados');
+
+        $text = implode(' ', $special['body']);
+
+        $this->assertStringContainsString('não foi concebido para tratar categorias especiais', $text);
+        $this->assertStringContainsString('não tem campos de saúde nem de necessidades educativas especiais', $text);
+        $this->assertStringContainsString('texto livre', $text);
+
+        // As medidas de suporte descrevem a ação do professor, não o estatuto
+        // formal do aluno — a distinção que `SupportMeasureLevel` documenta.
+        $this->assertStringContainsString('Não afirmam nem inferem o estatuto formal do aluno', $text);
+    }
+
+    /**
+     * A autoridade tem nome, e é o certo para Portugal.
+     */
+    #[Test]
+    public function the_supervisory_authority_is_named(): void
+    {
+        $rights = collect(LegalDocuments::privacy()['sections'])
+            ->firstWhere('heading', 'Os seus direitos');
+
+        $text = implode(' ', $rights['body']);
+
+        $this->assertStringContainsString('Comissão Nacional de Proteção de Dados (CNPD)', $text);
+    }
+
+    /**
+     * A EXPORTAÇÃO NÃO É O DIREITO DE PORTABILIDADE, e a página não os
+     * confunde. São coisas diferentes: uma é uma funcionalidade do produto, o
+     * outro é um direito cujo âmbito a lei define. Apresentar a primeira como
+     * cumprimento integral do segundo é a forma educada de o restringir.
+     */
+    #[Test]
+    public function the_export_feature_is_not_presented_as_the_portability_right(): void
+    {
+        $rights = collect(LegalDocuments::privacy()['sections'])
+            ->firstWhere('heading', 'Os seus direitos');
+
+        $text = implode(' ', $rights['body']);
+
+        $this->assertStringContainsString('é uma funcionalidade do produto', $text);
+        $this->assertStringContainsString('não se confunde com eles nem esgota o direito de portabilidade', $text);
+
+        // E os direitos sobre os dados dos alunos exercem-se perante o
+        // professor, não perante nós.
+        $this->assertStringContainsString('exercem-se perante o professor', $text);
+    }
+
+    /**
+     * Lei portuguesa, e um foro prudente. NUNCA «foro exclusivo de Leiria»:
+     * uma cláusula de foro exclusivo contra quem contrata como consumidor é
+     * precisamente do género que um tribunal desconsidera.
+     */
+    #[Test]
+    public function the_governing_law_is_portuguese_and_the_forum_is_not_exclusive(): void
+    {
+        $law = collect(LegalDocuments::terms()['sections'])
+            ->firstWhere('heading', 'Lei aplicável e resolução de litígios');
+
+        $text = implode(' ', $law['body']);
+
+        $this->assertStringContainsString('lei portuguesa', $text);
+        $this->assertStringContainsString('tribunais territorialmente competentes nos termos da lei', $text);
+
+        $lower = mb_strtolower($text);
+        $this->assertStringNotContainsString('foro exclusivo', $lower);
+        $this->assertStringNotContainsString('comarca de leiria', $lower);
+        $this->assertStringNotContainsString('com renúncia a qualquer outro', $lower);
+    }
+
+    /**
+     * Só os fornecedores que se conseguem comprovar. Contabo e Cloudflare estão
+     * documentados em `docs/deployment.md`; o servidor de correio é configurado
+     * pelo operador no backoffice e não é comprovável a partir do repositório —
+     * e por isso não é nomeado.
+     */
+    #[Test]
+    public function only_verifiable_subprocessors_are_named(): void
+    {
+        $subprocessors = collect(LegalDocuments::privacy()['sections'])
+            ->firstWhere('heading', 'Subcontratantes');
+
+        $text = implode(' ', $subprocessors['body']);
+
+        $this->assertStringContainsString('Contabo GmbH', $text);
+        $this->assertStringContainsString('Cloudflare, Inc.', $text);
+        $this->assertStringContainsString('Não nomeamos aqui o fornecedor', $text);
+
+        // Nenhum fornecedor plausível mas não verificado.
+        foreach (['Mailgun', 'Postmark', 'SendGrid', 'Resend', 'Amazon', 'Google Cloud', 'Azure'] as $unverified) {
+            $this->assertStringNotContainsString($unverified, $text);
+        }
+    }
+
+    /**
+     * As transferências são ditas com prudência: o que se sabe, e o que ainda
+     * não se pode afirmar.
+     */
+    #[Test]
+    public function international_transfers_are_stated_prudently(): void
+    {
+        $transfers = collect(LegalDocuments::privacy()['sections'])
+            ->firstWhere('heading', 'Transferências internacionais');
+
+        $text = implode(' ', $transfers['body']);
+
+        $this->assertStringContainsString('Alemanha', $text);
+        $this->assertStringContainsString('Estados Unidos da América', $text);
+        $this->assertStringContainsString('está em curso', $text);
+
+        // Nenhuma garantia que ninguém verificou.
+        $lower = mb_strtolower($text);
+        $this->assertStringNotContainsString('todos os dados são tratados exclusivamente', $lower);
+        $this->assertStringNotContainsString('cláusulas contratuais-tipo', $lower);
+    }
+
+    /**
+     * As garantias sobre IA mantêm-se, e NÃO é feita nenhuma classificação de
+     * risco ao abrigo do Regulamento da IA.
+     *
+     * Essa qualificação é jurídica, depende de análise, e uma página que a
+     * afirme está a decidir uma questão que não decidiu. A nota interna vive em
+     * `docs/legal.md`, que é onde pertence.
+     */
+    #[Test]
+    public function the_ai_section_makes_no_regulatory_risk_classification(): void
+    {
+        $ai = collect(LegalDocuments::privacy()['sections'])
+            ->firstWhere('heading', 'Inteligência artificial');
+
+        $text = implode(' ', $ai['body']);
+
+        // As garantias que já existiam continuam lá.
+        $this->assertStringContainsString('sugere', $text);
+        $this->assertStringContainsString('substituídos por designações genéricas', $text);
+        $this->assertStringContainsString('não são usados para treinar modelos', mb_strtolower($text));
+        $this->assertStringContainsString('Não existem decisões automatizadas', $text);
+
+        // E nenhuma classificação regulamentar.
+        $lower = mb_strtolower($text);
+        foreach ([
+            'risco elevado',
+            'alto risco',
+            'risco limitado',
+            'risco mínimo',
+            'regulamento da ia',
+            'ai act',
+        ] as $classification) {
+            $this->assertStringNotContainsString($classification, $lower);
+        }
+    }
+
+    /**
+     * O Institucional não está disponível, e nenhum documento promete um
+     * contrato institucional que não existe.
+     */
+    #[Test]
+    public function no_document_promises_an_institutional_contract_that_does_not_exist(): void
+    {
+        $terms = collect(LegalDocuments::terms()['sections'])
+            ->firstWhere('heading', 'Planos e condições comerciais');
+
+        $this->assertStringContainsString(
+            'ainda não está disponível para adesão',
+            implode(' ', $terms['body']),
+        );
+
+        $processing = collect(LegalDocuments::processing()['sections'])
+            ->firstWhere('heading', 'Quem é quem');
+
+        $this->assertStringContainsString(
+            'que ainda não existe, porque essa utilização ainda não está disponível',
+            implode(' ', $processing['body']),
+        );
+    }
+
+    /** Os três documentos têm de dizer desde quando valem. */
+    #[Test]
+    public function every_document_carries_an_effective_date(): void
+    {
+        foreach ([
+            LegalDocuments::terms(),
+            LegalDocuments::privacy(),
+            LegalDocuments::processing(),
+        ] as $document) {
             $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}$/', $document['effective_from']);
         }
     }

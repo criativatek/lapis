@@ -6,6 +6,64 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > anteriores a 0.79.0 mantêm o nome com que foram escritas: um changelog é um
 > registo do que aconteceu, e reescrevê-lo apagaria a própria mudança de marca.
 
+## [0.79.0] — 2026-08-27
+
+### Changed
+
+- **O produto passa a chamar-se Lapispro, em `lapispro.com`.** 185 ficheiros, e um critério de corte só: substituiu-se o que um utilizador lê, não o que o sistema usa para se identificar a si próprio.
+
+  **Substituído:** landing, autenticação, aplicação, menus, títulos, emails, páginas legais, FAQ, título e descrição meta, Open Graph, JSON-LD, rodapé, relatórios gerados, documentação, `APP_NAME` (alimenta `VITE_APP_NAME` e `MAIL_FROM_NAME`), e os nomes dos ficheiros que o professor descarrega — um ZIP chamado `LAPIS-exportacao` mostra o nome antigo a quem o abre meses depois.
+
+  **Intocado:** comandos artisan (`lapis:build-package`, `lapis:make-admin`, `lapis:release-check`, `lapis:repair-overlapping-subscriptions`), `config/lapis.php` e as chaves que lê, os NOMES das variáveis `LAPIS_*`, `DB_DATABASE=lapis`, `LapisGridContract`/`LapisGridDeclaration` e os nomes definidos `LAPIS_GRID` / `LAPIS_ITEM_*` dentro dos ficheiros Excel. O último é um contrato de compatibilidade: renomeá-lo partia todas as grelhas que um professor já descarregou. Renomear qualquer um dos outros é uma migração de infraestrutura, não um rebranding.
+
+  **O acrónimo desapareceu.** «Laboratório de Apoio ao Professor, Informação e Simplificação» já não descreve nada — as iniciais deixaram de coincidir com o nome. Vivia em quatro sítios, incluindo uma secção da landing que assentava inteiramente nele, com as letras destacadas. Essa secção ganhou texto novo sobre a ferramenta; os outros três perderam-no sem substituto.
+
+  **O CHANGELOG não foi reescrito.** As entradas anteriores mantêm o nome com que foram escritas, com uma nota no topo a dizer porquê: reescrevê-lo apagaria a própria mudança de marca.
+
+  **O título SEO perdeu uma palavra.** «Lapispro» é três caracteres mais longo do que «LÁPIS» e empurrou o título para 63, acima dos 60 que um resultado de pesquisa mostra. Saiu «IA» e não «Turmas» — «gestão de turmas» é uma pesquisa que um professor faz, e a IA continua na descrição, no Open Graph, num cabeçalho de secção e no corpo da página.
+
+- **Os documentos legais passam a três, porque são três figuras jurídicas.** A Política de Privacidade descrevia os dados dos alunos como se a plataforma respondesse por eles; não responde. Quem decide que alunos existem, que dados sobre eles são registados e para que servem é o professor — logo é ele o responsável pelo tratamento, e o Lapispro é subcontratante.
+
+  A Política passa a cobrir só o que a HORIZONLEVEL decide: a conta, a segurança, o suporte, a relação comercial. Os dados dos alunos mudam-se para um **Acordo de Tratamento de Dados** próprio, em `/tratamento-de-dados`, público e indexável como os outros dois — um acordo de subcontratação que só se lê depois de aceite é um acordo que ninguém leu.
+
+  **Reclamar uma base legal própria sobre dados pedagógicos seria afirmar um poder de decisão sobre a avaliação de menores que o produto não tem.** Há um teste que falha no dia em que alguém escrever o contrário.
+
+- **Bases legais declaradas, e só para a conta.** Execução do contrato, obrigação jurídica e interesse legítimo. O interesse legítimo vem ponderado, não apenas invocado, e a ponderação aponta para uma restrição concreta que já existia no código: o registo de atividade não guarda IP nem navegador.
+
+- **Os prazos de conservação passam a ser os que o código executa.** O texto lê `config/retention.php`, que é o mesmo sítio de onde `retention:execute` e `data-exports:prune` leem — um documento legal que diz «60 dias» enquanto o comando apaga aos 90 é pior do que um que não diz prazo nenhum. Publicam-se cinco prazos reais; **não se publicam** os dois valores que existem na configuração mas que nenhuma rotina cumpre (retenção pedagógica por antiguidade e purga do registo de auditoria), e a página diz que não existem em vez de os afirmar.
+
+- **Subcontratantes: só os que se conseguem comprovar.** Contabo (alojamento) e Cloudflare (rede), ambos documentados em `docs/deployment.md`. O servidor de correio é configurado pelo operador no backoffice e não é comprovável a partir do repositório — a página diz isso em vez de nomear um fornecedor plausível, e há um teste que falha se aparecer um. As transferências são ditas com o que se sabe e com o que ainda não se pode afirmar: nenhum mecanismo de transferência é invocado, porque nenhum foi verificado.
+
+- **Lei portuguesa e um foro prudente** — «os tribunais territorialmente competentes nos termos da lei», nunca um foro exclusivo. O professor individual contrata como consumidor, e uma cláusula de foro exclusivo contra um consumidor é do género que um tribunal desconsidera. A autoridade de controlo passa a ter nome: **CNPD**.
+
+- **Menores, sem inventar um mecanismo que não existe.** O Lapispro não é oferecido a menores nem a encarregados de educação, e não há caminho na aplicação por onde um consentimento parental entrasse. O texto diz que não o recolhe nem verifica, em vez de descrever uma recolha que não acontece.
+
+- **Categorias especiais, ditas a partir do modelo de dados.** Não há campo nenhum que peça saúde ou NEE — é uma exclusão deliberada, documentada em `docs/domain-model.md` §11.3. O que existe é texto livre, e o texto pede que não se escreva lá o que não há fundamento para tratar. As medidas de suporte descrevem a ação do professor e não o estatuto formal do aluno, que é a distinção que `SupportMeasureLevel` já fazia no código.
+
+- **A exportação deixa de ser apresentada como o direito de portabilidade.** São coisas diferentes: uma é uma funcionalidade do produto, o outro é um direito cujo âmbito a lei define, e apresentar a primeira como cumprimento integral do segundo é a forma educada de o restringir.
+
+- **«Exportação para o INOVAR» passa a «Grelhas preparadas para o INOVAR».** Não existe exportação para o INOVAR: o professor descarrega a grelha do INOVAR, carrega-a aqui, e o Lapispro devolve-a preenchida. O rótulo antigo prometia uma integração que não existe. Na mesma auditoria, **«Auditoria e Segurança» passa a «Registo de Auditoria»** — «e Segurança» num módulo institucional diz, por omissão, que os outros planos não a têm, e o isolamento por organização, a cifra da identidade do aluno, os dois passos e as passkeys existem em todos.
+
+### Added
+
+- **Registo da aceitação dos Termos** (`users.terms_version`, `users.terms_accepted_at`), escrito na mesma transação da conta. Uma repartição de responsabilidades que ninguém consegue demonstrar ter sido aceite não é uma repartição: é uma página no sítio.
+
+  **A versão é a data de entrada em vigor**, e não um número à parte — dois valores que têm de concordar são duas oportunidades para deixarem de concordar. **Vem do servidor, nunca do pedido:** um campo de formulário a dizer que versão foi aceite é um campo que o cliente altera. **Não se guarda IP nem navegador** — seria recolher dados de tráfego, com base legal mais frágil, para uma finalidade que duas colunas já cumprem, e há um teste a garantir que a tabela não ganha onde os pôr. **Sem caixa de seleção:** aceitar os Termos é condição do contrato, não uma escolha separada, e uma checkbox obrigatória não acrescenta consentimento nenhum — só um passo entre o professor e a conta.
+
+- **Testes de regressão da marca** (`BrandingTest`). Um rebranding é uma substituição em 185 ficheiros, e o que falha numa dessas não rebenta: uma página fica com o nome antigo, mais ninguém repara, e passa a haver duas marcas em produção. Duas camadas, porque o SSR está desligado: o que o servidor renderiza testa-se sobre a resposta, e o que vive só num `.vue` testa-se sobre o código-fonte. Apanhou logo dois: `APP_NAME` no ambiente de testes, e o `<Head>` do `Welcome.vue` — cujo comentário já dizia «MUST MATCH `LandingSeo::TITLE`», sem nada a impor. Divergiram nesta própria fatia.
+
+### Fixed
+
+- **O `<Head>` da landing voltou a coincidir com o título renderizado pelo servidor**, e passou a haver um teste a exigi-lo. Encurtar a constante para caber nos 60 caracteres deixara o componente com o título antigo — sintoma invisível: o separador diz uma coisa, o crawler lê outra.
+
+- **O formatador de títulos deixou de reconhecer a marca por acidente.** `/l[áa]pis/i` continuava a acertar em «Lapispro» por coincidência do rebranding; passa a `/lapispro/i`.
+
+### Deferred
+
+- **O módulo Institucional não está disponível para adesão**, e o lançamento é para professores individuais. A landing di-lo, a FAQ di-lo, os Termos dizem-no, e o Acordo de Tratamento de Dados diz que o documento institucional **ainda não existe**.
+
+  **O portão já é estrutural, não uma promessa:** não há caminho self-service para uma organização institucional — `CreateInstitutionalOrganization` só é alcançável por um administrador da plataforma. A lista do que tem de estar fechado antes de a atravessar (contrato institucional, acordo de subcontratação com a instituição como responsável, papéis internos, prazos acordados) está em `docs/legal.md`, e o docblock da ação remete para lá.
+
 ## [0.78.0] — 2026-08-27
 
 ### Added

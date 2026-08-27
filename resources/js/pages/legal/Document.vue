@@ -22,11 +22,14 @@ import LandingHeader from '@/components/landing/LandingHeader.vue';
 
 type Section = { heading: string; body: string[] };
 
+type Related = { label: string; href: string };
+
 type LegalDocument = {
     title: string;
     effective_from: string;
     intro: string;
     sections: Section[];
+    related: Related[];
 };
 
 type Controller = {
@@ -104,6 +107,24 @@ const identity = computed(() =>
 
                 <p class="mt-3 text-sm text-muted-foreground">
                     Em vigor desde {{ effectiveFrom }}
+                </p>
+
+                <p
+                    v-if="document.related.length"
+                    class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground"
+                >
+                    <span>Ver também:</span>
+                    <template
+                        v-for="(item, index) in document.related"
+                        :key="item.href"
+                    >
+                        <span v-if="index > 0" aria-hidden="true">·</span>
+                        <a
+                            :href="item.href"
+                            class="rounded underline underline-offset-4 transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                            >{{ item.label }}</a
+                        >
+                    </template>
                 </p>
 
                 <p

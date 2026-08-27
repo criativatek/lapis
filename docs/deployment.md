@@ -321,6 +321,15 @@ entrada, e é o Laravel que decide o que está devido.
 
 ### A entrada
 
+> **Os marcadores dizem `LAPIS` e continuam a dizer.** O produto passou a
+> chamar-se Lapispro em 0.79.0, mas estes delimitadores identificam blocos que
+> **já existem no crontab do servidor**, e a instalação idempotente apaga por
+> intervalo de marcador (`sed '/^# >>> LAPIS/,/^# <<< LAPIS/d'`). Renomeá-los
+> aqui deixaria de encontrar os blocos instalados: a limpeza não apagaria nada,
+> a instalação acrescentaria um segundo par, e passaria a haver duas entradas de
+> scheduler a correr de minuto a minuto. O mesmo vale para `LAPIS_KEEP_*` em
+> `scripts/backup-database.sh` e para `/home/lapis`.
+
 Instalada no **crontab do `lapis-deploy`** (`crontab -e` como esse utilizador —
 é quem é dono do código e pertence ao grupo `lapis`, pelo que consegue apagar
 o que o php-fpm escreveu em `storage/app/private/*`, a `770`):

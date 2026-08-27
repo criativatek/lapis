@@ -31,7 +31,7 @@ export type TurmaTone =
  * Seis tons, e a ordem não tem significado nenhum: são apenas seis gavetas
  * para onde o `ulid` cai. Seis chegam para a semana de um professor sem que a
  * página vire um arco-íris, e param antes dos vermelhos e verdes fortes que,
- * noutras páginas do LAPIS, querem dizer «negativa» e «positiva».
+ * noutras páginas do Lapispro, querem dizer «negativa» e «positiva».
  */
 export const TURMA_TONES: readonly TurmaTone[] = [
     'blue',
@@ -62,7 +62,7 @@ export const TURMA_TONES: readonly TurmaTone[] = [
  *
  * ISTO É DESTA PÁGINA, e não da aplicação: o tom de uma turma é o que a separa
  * das turmas que estão AO PÉ DELA no horário, e não uma identidade que a siga
- * por todo o LAPIS.
+ * por todo o Lapispro.
  */
 export function assignTurmaTones(
     ulids: readonly string[],

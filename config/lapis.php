@@ -111,6 +111,10 @@ return [
 
         'privacy_effective_from' => env('LAPIS_LEGAL_PRIVACY_DATE', '2026-08-27'),
 
+        // O Acordo de Tratamento de Dados — o professor como responsável, o
+        // Lapispro como subcontratante dos dados dos alunos.
+        'processing_effective_from' => env('LAPIS_LEGAL_PROCESSING_DATE', '2026-08-27'),
+
     ],
 
     /*

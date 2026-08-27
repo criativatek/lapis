@@ -82,7 +82,7 @@ class DataExportController extends Controller
         }
 
         $organizationSlug = str($dataExport->organization->name)->slug()->limit(40, '')->value();
-        $filename = 'LAPIS-exportacao-'.$organizationSlug.'-'.$dataExport->created_at->toDateString().'.zip';
+        $filename = 'Lapispro-exportacao-'.$organizationSlug.'-'.$dataExport->created_at->toDateString().'.zip';
 
         return Storage::disk('local')->download($dataExport->disk_path, $filename);
     }
