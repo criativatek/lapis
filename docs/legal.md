@@ -1,4 +1,4 @@
-# Páginas legais — Termos e Privacidade
+| Identidade do responsável | `config('lapis.legal.*')` — confirmada, ver abaixo |# Páginas legais — Termos e Privacidade
 
 > ⚠️ **TEXTO INICIAL TÉCNICO/FACTUAL — REQUER REVISÃO JURÍDICA ANTES DA
 > DIVULGAÇÃO A UTILIZADORES REAIS.**
@@ -16,7 +16,7 @@
 | `/termos` | `LegalController::terms` → `legal/Document` |
 | `/privacidade` | `LegalController::privacy` → `legal/Document` |
 | Texto | [`App\Support\Legal\LegalDocuments`](../app/Support/Legal/LegalDocuments.php) |
-| Identidade do responsável | `config('lapis.legal.*')`, tudo `null` por omissão |
+| Identidade do responsável | `config('lapis.legal.*')` — confirmada, ver abaixo |
 | Testes | [`tests/Feature/LegalPagesTest.php`](../tests/Feature/LegalPagesTest.php) |
 
 Públicas, sem `auth` e sem `organization`: quem precisa de as ler antes de
@@ -50,41 +50,59 @@ Cada afirmação foi verificada no código antes de ser escrita:
 | Limpezas automáticas de ficheiros temporários | `routes/console.php`, cinco tarefas horárias |
 | Cópias de segurança regulares | `scripts/backup-database.sh`, cron diário |
 
-## Identidade do responsável — **em falta**
+## Identidade do responsável — **confirmada (2026-08-27)**
 
-Nada no repositório dizia quem é a entidade responsável. Os quatro valores
-estão em `config/lapis.php` e **todos a `null`**:
+| | |
+|---|---|
+| Entidade | HORIZONLEVEL, LDA |
+| NIF | 513354166 |
+| Morada | Rua do Verde Pinho, n.º 133, 2415-609 Leiria, Portugal |
+| Privacidade / RGPD | `privacidade@lapispro.com` |
 
-```
-LAPIS_LEGAL_CONTROLLER_NAME=
-LAPIS_LEGAL_CONTROLLER_VAT=
-LAPIS_LEGAL_CONTROLLER_ADDRESS=
-LAPIS_LEGAL_PRIVACY_EMAIL=
-```
+**São defaults em `config/lapis.php`, não apenas variáveis de ambiente.** São um
+facto sobre o produto, idêntico em todas as instalações; deixá-los só no `.env`
+significaria que produção mostraria «Por definir» até alguém se lembrar de
+definir quatro variáveis — exatamente a falha que isto existe para fechar. As
+variáveis `LAPIS_LEGAL_*` continuam a existir para quem precise de as sobrepor.
 
-Enquanto estiverem vazios, a página mostra **«Por definir»** em cada linha e um
-aviso de que serão acrescentados — nunca um nome plausível. Há um teste que
-falha se alguém encher um destes com um exemplo para «ficar bem».
+O mecanismo de «Por definir» **mantém-se** para o caso de uma instalação as
+limpar, e continua testado.
 
-**Isto é um gate antes de qualquer divulgação pública.** Uma política de
-privacidade sem responsável identificado não cumpre o RGPD.
+## Contactos oficiais, e onde cada um é usado
+
+| Endereço | Usado em |
+|---|---|
+| `privacidade@lapispro.com` | Privacidade: «Responsável pelo tratamento» e «Os seus direitos» |
+| `suporte@lapispro.com` | Privacidade: finalidade «Suporte» |
+| `contas@lapispro.com` | Termos: «A sua conta» — uma única vez |
+
+Cada um aparece onde tem motivo para estar, e não espalhado. Há um teste que
+verifica que `contas@` aparece **exatamente uma vez** e que não entra na
+Política de Privacidade.
+
+**A Criativatek não é a entidade jurídica e não aparece em nenhum dos
+documentos** — há teste a garanti-lo. Se vier a fazer sentido mencioná-la como
+marca ou estrutura comercial, a formulação é decidida antes, não aqui.
+
+> **Nota técnica, fora do âmbito desta fatia:** o remetente do email
+> transacional em produção continua a ser `lapis@criativatek.com`. O
+> alinhamento com `contas@lapispro.com` é uma fatia própria.
 
 ## Pontos que exigem validação jurídica
 
 Escritos de forma prudente, e todos por confirmar:
 
-1. **Identidade do responsável** — nome, NIF, morada e endereço de privacidade. Em falta.
-2. **Bases legais** — o texto diz «execução do contrato» para os dados do professor e remete a responsabilidade dos dados de aluno para o professor/instituição. A repartição exata de responsabilidades (responsável vs. subcontratante) não foi validada.
-3. **Dados de menores** — o enquadramento aplicável, e o que o LÁPIS deve exigir da instituição, está por confirmar.
-4. **Subprocessadores** — alojamento, rede e email transacional existem, mas a relação jurídica não está clara e **nenhum é nomeado**. A secção está criada e vazia de propósito.
-5. **Retenção** — os prazos técnicos reais estão descritos em termos gerais. A diferenciação Base +2 / Pro +5 da Matriz **não está implementada** e por isso **não é afirmada**.
-6. **Limitação de responsabilidade** — formulação prudente, sem cláusulas agressivas, mas não validada.
-7. **Direitos dos titulares** — os que a aplicação suporta estão descritos; limitação e oposição remetem para contacto. Falta confirmar o conjunto exato aplicável.
-8. **Lei aplicável e jurisdição** — **não estão declaradas**. Nenhum foro foi escolhido.
-9. **Transferências internacionais** — **não são mencionadas**, por não haver informação verificada sobre a localização dos subprocessadores.
-10. **Autoridade de controlo** — referida genericamente, sem nomear entidade.
-11. **Cookies** — a auditoria técnica não encontrou cookies não essenciais, e por isso não há pedido de consentimento. A conclusão jurídica de que nenhum é necessário fica por confirmar.
-12. **Fornecedor de IA** — nenhum está configurado. Antes de ativar IA real, tem de ser identificado nesta página como subprocessador.
+1. **Bases legais** — o texto diz «execução do contrato» para os dados do professor e remete a responsabilidade dos dados de aluno para o professor/instituição. A repartição exata de responsabilidades (responsável vs. subcontratante) não foi validada.
+2. **Dados de menores** — o enquadramento aplicável, e o que o LÁPIS deve exigir da instituição, está por confirmar.
+3. **Subprocessadores** — alojamento, rede e email transacional existem, mas a relação jurídica não está clara e **nenhum é nomeado**. A secção está criada e vazia de propósito.
+4. **Retenção** — os prazos técnicos reais estão descritos em termos gerais. A diferenciação Base +2 / Pro +5 da Matriz **não está implementada** e por isso **não é afirmada**.
+5. **Limitação de responsabilidade** — formulação prudente, sem cláusulas agressivas, mas não validada.
+6. **Direitos dos titulares** — os que a aplicação suporta estão descritos; limitação e oposição remetem para contacto. Falta confirmar o conjunto exato aplicável.
+7. **Lei aplicável e jurisdição** — **não estão declaradas**. Nenhum foro foi escolhido.
+8. **Transferências internacionais** — **não são mencionadas**, por não haver informação verificada sobre a localização dos subprocessadores.
+9. **Autoridade de controlo** — referida genericamente, sem nomear entidade.
+10. **Cookies** — a auditoria técnica não encontrou cookies não essenciais, e por isso não há pedido de consentimento. A conclusão jurídica de que nenhum é necessário fica por confirmar.
+11. **Fornecedor de IA** — nenhum está configurado. Antes de ativar IA real, tem de ser identificado nesta página como subprocessador.
 
 ## Quando o texto mudar
 

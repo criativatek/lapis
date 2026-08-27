@@ -98,6 +98,61 @@ class LegalPagesTest extends TestCase
             );
     }
 
+    /**
+     * A identidade em vigor é a real, e chega à página.
+     *
+     * Estes valores foram confirmados a 2026-08-27 e são defaults do config —
+     * não variáveis de ambiente. Se voltassem a depender só do `.env`,
+     * produção mostraria «Por definir» até alguém definir quatro variáveis, que
+     * é exatamente a falha que esta fatia existe para fechar.
+     */
+    #[Test]
+    public function the_confirmed_controller_identity_is_in_force(): void
+    {
+        $controller = LegalDocuments::controller();
+
+        $this->assertTrue($controller['complete']);
+        $this->assertSame('HORIZONLEVEL, LDA', $controller['name']);
+        $this->assertSame('513354166', $controller['vat']);
+        $this->assertStringContainsString('Leiria', (string) $controller['address']);
+        $this->assertSame('privacidade@lapispro.com', $controller['privacy_email']);
+
+        $this->get('/privacidade')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('controller.complete', true)
+                ->where('controller.name', 'HORIZONLEVEL, LDA')
+            );
+    }
+
+    /**
+     * Cada endereço no sítio onde tem motivo para estar, e não espalhado.
+     * `contas@` aparece uma única vez, na secção da conta dos Termos.
+     */
+    #[Test]
+    public function each_official_contact_is_used_where_it_belongs(): void
+    {
+        $privacy = json_encode(LegalDocuments::privacy(), JSON_UNESCAPED_UNICODE);
+        $terms = json_encode(LegalDocuments::terms(), JSON_UNESCAPED_UNICODE);
+
+        // Privacidade: o endereço de RGPD, e o de suporte na finalidade «suporte».
+        $this->assertStringContainsString('privacidade@lapispro.com', (string) $privacy);
+        $this->assertStringContainsString('suporte@lapispro.com', (string) $privacy);
+        $this->assertStringNotContainsString('contas@lapispro.com', (string) $privacy);
+
+        // Termos: só o de conta.
+        $this->assertStringContainsString('contas@lapispro.com', (string) $terms);
+        $this->assertSame(1, mb_substr_count((string) $terms, 'contas@lapispro.com'));
+
+        // A entidade prestadora, dita por extenso nos dois documentos.
+        $this->assertStringContainsString('HORIZONLEVEL, LDA', (string) $terms);
+        $this->assertStringContainsString('HORIZONLEVEL, LDA', (string) $privacy);
+
+        // A Criativatek não é a entidade jurídica e não aparece.
+        $this->assertStringNotContainsString('Criativatek', (string) $terms);
+        $this->assertStringNotContainsString('Criativatek', (string) $privacy);
+    }
+
     /** Quando os valores existem, são apresentados — e `complete` diz que sim. */
     #[Test]
     public function a_configured_controller_identity_is_shown(): void

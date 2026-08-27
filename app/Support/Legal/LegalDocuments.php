@@ -8,10 +8,13 @@ namespace App\Support\Legal;
  *
  * Cada frase aqui foi escrita a partir do que o código faz, verificado no
  * código, e não a partir de um modelo de termos genérico. Onde o produto não
- * permitia concluir com segurança — a base legal de um tratamento, a
- * identidade do responsável, os subprocessadores — o texto diz que está por
- * definir em vez de afirmar. Ver `docs/legal.md` para a lista dos pontos que
- * dependem de validação jurídica.
+ * permite concluir com segurança — a base legal de um tratamento, os
+ * subprocessadores, a lei aplicável — o texto diz que está por definir em vez
+ * de afirmar. Ver `docs/legal.md` para a lista dos pontos que dependem de
+ * validação jurídica.
+ *
+ * A identidade do responsável esteve nessa lista até 2026-08-27 e já não está:
+ * está confirmada em `config('lapis.legal.*')` e é apresentada por extenso.
  *
  * ESTÁ EM PHP E NÃO NOS COMPONENTES VUE por uma razão prática: o SSR do
  * Inertia está desligado, pelo que texto escrito dentro de um `.vue` não
@@ -52,6 +55,18 @@ class LegalDocuments
     }
 
     /**
+     * Um contacto oficial, ou uma formulação que não promete um endereço que
+     * não existe.
+     *
+     * Os três estão configurados; este fallback existe para que uma instalação
+     * que os limpe não passe a mostrar a palavra «null» a meio de uma frase.
+     */
+    private static function contact(string $key): string
+    {
+        return self::setting($key) ?? 'o contacto indicado nesta página';
+    }
+
+    /**
      * @return array{title: string, effective_from: string, intro: string, sections: list<array{heading: string, body: list<string>}>}
      */
     public static function terms(): array
@@ -64,6 +79,7 @@ class LegalDocuments
                 [
                     'heading' => 'O que é o LÁPIS',
                     'body' => [
+                        'O LÁPIS é um serviço disponibilizado pela '.(self::setting('controller_name') ?? 'entidade responsável indicada no fim desta página').'.',
                         'O LÁPIS — Laboratório de Apoio ao Professor, Informação e Simplificação — é uma plataforma para professores que reúne a gestão de turmas e alunos, os critérios e instrumentos de avaliação, o cálculo e a decisão de classificações, o acompanhamento pedagógico, as aulas e sumários, e os relatórios.',
                         'Destina-se a professores e a instituições de ensino. Não é uma plataforma para alunos nem para encarregados de educação: não existe registo, sessão ou acesso próprio para estes.',
                     ],
@@ -74,6 +90,7 @@ class LegalDocuments
                         'A conta é pessoal. Ao criá-la, é gerada uma organização própria onde o seu trabalho fica isolado do de qualquer outra pessoa.',
                         'É responsável por manter as suas credenciais em segurança e por tudo o que for feito através da sua conta. O LÁPIS disponibiliza autenticação em dois passos e chaves de acesso (passkeys); recomendamos que use pelo menos uma delas.',
                         'Os dados que indica ao criar a conta devem ser verdadeiros e atuais.',
+                        'Se detetar uma utilização indevida da sua conta, ou precisar de ajuda com o acesso, contacte '.self::contact('accounts_email').'.',
                     ],
                 ],
                 [
@@ -158,7 +175,9 @@ class LegalDocuments
                 [
                     'heading' => 'Responsável pelo tratamento',
                     'body' => [
-                        'Os dados de identificação da entidade responsável estão indicados no fim desta página, juntamente com o endereço para exercer os seus direitos.',
+                        'O LÁPIS é um serviço disponibilizado pela '.(self::setting('controller_name') ?? 'entidade indicada no fim desta página').', que é a responsável pelo tratamento dos dados pessoais aqui descritos.',
+                        'Os elementos completos de identificação — NIF e morada — estão no fim desta página.',
+                        'Para exercer os seus direitos ou colocar qualquer questão sobre privacidade, escreva para '.self::contact('privacy_email').'.',
                     ],
                 ],
                 [
@@ -200,7 +219,7 @@ class LegalDocuments
                         'Prestar o serviço: autenticar a sua conta, organizar turmas e alunos, calcular e propor classificações, acompanhar a evolução dos alunos, produzir relatórios e organizar o trabalho letivo.',
                         'Segurança e auditoria: proteger as contas, detetar utilização indevida e manter um registo de quem fez o quê.',
                         'Cópias de segurança, para permitir a recuperação em caso de incidente.',
-                        'Suporte, quando nos contacta.',
+                        'Suporte, quando nos contacta através de '.self::contact('support_email').'.',
                         'Responder a pedidos de exportação ou de eliminação de dados.',
                         'Não usamos os dados para publicidade, para criar perfis comerciais, nem para os vender ou ceder a terceiros.',
                     ],
@@ -241,7 +260,7 @@ class LegalDocuments
                         'Acesso e retificação: pode consultar e corrigir os seus dados e os dados que introduziu diretamente na aplicação.',
                         'Portabilidade: pode exportar os seus dados a partir da aplicação, em qualquer plano, num ficheiro que pode guardar ou reimportar.',
                         'Eliminação: pode pedir o encerramento da conta a partir das definições, com o efeito descrito acima.',
-                        'Limitação, oposição e quaisquer outros direitos aplicáveis: não existe um mecanismo automático na aplicação; exercem-se por contacto connosco.',
+                        'Limitação, oposição e quaisquer outros direitos aplicáveis: não existe um mecanismo automático na aplicação; exercem-se escrevendo para '.self::contact('privacy_email').'.',
                         'Tem também o direito de apresentar reclamação junto da autoridade de controlo competente.',
                     ],
                 ],

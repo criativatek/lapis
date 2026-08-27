@@ -67,29 +67,42 @@ return [
     | Quem responde legalmente pelo tratamento de dados pessoais no LÁPIS, e
     | para onde um titular escreve a exercer os seus direitos.
     |
-    | TUDO A NULL POR OMISSÃO, E ISSO É DELIBERADO. Nada no repositório dizia
-    | quem é a entidade responsável — nem nome, nem NIF, nem morada, nem
-    | endereço de privacidade — e inventar qualquer um deles seria pôr uma
-    | afirmação falsa numa página que existe precisamente para ser verdadeira.
-    | A Política de Privacidade mostra, para cada valor em falta, que está por
-    | definir, em vez de mostrar um nome plausível.
+    | SÃO DEFAULTS DO CONFIG, NÃO APENAS VARIÁVEIS DE AMBIENTE. Estiveram a
+    | `null` enquanto ninguém os tinha confirmado, e a página mostrava «Por
+    | definir» em vez de inventar um nome. Confirmados (2026-08-27), passam a
+    | valores por omissão: são um facto sobre o produto, idêntico em todas as
+    | instalações, e deixá-los só no `.env` significaria que produção mostraria
+    | «Por definir» até alguém se lembrar de definir quatro variáveis — que é
+    | exatamente a falha que isto existe para fechar. O `env()` mantém-se para
+    | quem precise de os sobrepor.
     |
-    | `LegalDocumentsTest` falha se algum destes valores contiver um exemplo
-    | disfarçado de facto.
+    | `LegalPagesTest` verifica que os valores em vigor são estes e não um
+    | exemplo, e que a página nunca apresenta um placeholder como facto.
     |
     */
 
     'legal' => [
 
-        'controller_name' => env('LAPIS_LEGAL_CONTROLLER_NAME'),
+        'controller_name' => env('LAPIS_LEGAL_CONTROLLER_NAME', 'HORIZONLEVEL, LDA'),
 
-        'controller_vat' => env('LAPIS_LEGAL_CONTROLLER_VAT'),
+        'controller_vat' => env('LAPIS_LEGAL_CONTROLLER_VAT', '513354166'),
 
-        'controller_address' => env('LAPIS_LEGAL_CONTROLLER_ADDRESS'),
+        'controller_address' => env(
+            'LAPIS_LEGAL_CONTROLLER_ADDRESS',
+            'Rua do Verde Pinho, n.º 133, 2415-609 Leiria, Portugal',
+        ),
 
         // Onde se exercem os direitos do titular. Distinto do contacto
-        // comercial em `platform_settings.contact_email`.
-        'privacy_email' => env('LAPIS_LEGAL_PRIVACY_EMAIL'),
+        // comercial em `platform_settings.contact_email`, e distinto do
+        // suporte: quem escreve sobre os seus dados não deve ter de passar
+        // pela caixa de entrada geral.
+        'privacy_email' => env('LAPIS_LEGAL_PRIVACY_EMAIL', 'privacidade@lapispro.com'),
+
+        // Apoio à utilização do serviço.
+        'support_email' => env('LAPIS_LEGAL_SUPPORT_EMAIL', 'suporte@lapispro.com'),
+
+        // Conta e autenticação. Referido apenas onde há motivo real.
+        'accounts_email' => env('LAPIS_LEGAL_ACCOUNTS_EMAIL', 'contas@lapispro.com'),
 
         // Datas de entrada em vigor de cada documento (YYYY-MM-DD). Escritas à
         // mão porque uma alteração ao texto legal é um ato deliberado, não algo
