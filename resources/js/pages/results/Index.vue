@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3';
-import { PieChart } from '@lucide/vue';
+import { Head, Link, usePage } from '@inertiajs/vue3';
+import { PieChart, Plus } from '@lucide/vue';
+import { computed } from 'vue';
 import Heading from '@/components/Heading.vue';
+import { Button } from '@/components/ui/button';
 
 /**
  * Acompanhamento > Turma — choose whose year to read.
@@ -27,6 +29,12 @@ type ClassRow = {
 defineProps<{
     classes: ClassRow[];
 }>();
+
+// The entitlement decides whether the entry point exists at all. Hiding it is
+// presentation only — the routes themselves are gated by `module:` on the
+// server, so this is convenience rather than access control (same pattern
+// assessments/Index.vue's `canImportGrids` already uses).
+const canCreateClass = computed(() => usePage().props.modules.includes('classes'));
 </script>
 
 <template>
@@ -41,6 +49,9 @@ defineProps<{
         <div v-if="classes.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
             <PieChart class="mx-auto mb-3 size-8 text-muted-foreground" />
             <p class="text-sm text-muted-foreground">Ainda não tem turmas.</p>
+            <Button v-if="canCreateClass" as-child class="mt-3">
+                <Link href="/classes/create"><Plus class="size-4" /> Criar a primeira turma</Link>
+            </Button>
         </div>
 
         <ul v-else class="divide-y divide-border overflow-hidden rounded-lg border border-border">

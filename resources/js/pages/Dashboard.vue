@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3';
-import { ArrowRight, BarChart3, CheckCircle2, Circle, ClipboardList, Send, Users } from '@lucide/vue';
+import { Head, Link, router } from '@inertiajs/vue3';
+import { ArrowRight, BarChart3, CheckCircle2, Circle, ClipboardList, Send, Users, X } from '@lucide/vue';
 import { computed } from 'vue';
+import { Button } from '@/components/ui/button';
 
 type ClassCard = {
     ulid: string;
@@ -22,15 +23,37 @@ type ReadinessItem = {
     cta: { label: string; href: string } | null;
 };
 
+// Same shape as ReadinessItem minus `is_next` — "Primeiros passos" is a
+// checklist of independent facts, not a sequence, so every unfinished item
+// keeps its own call to action rather than just the "next" one.
+type FirstStepsItem = {
+    id: string;
+    name: string;
+    description: string;
+    completed: boolean;
+    cta: { label: string; href: string } | null;
+};
+
 const props = defineProps<{
     teacherName: string;
     classes: ClassCard[];
     readiness: { is_ready: boolean; items: ReadinessItem[] };
+    firstSteps: { dismissed: boolean; all_done: boolean; items: FirstStepsItem[] };
     totals: { classes: number; pending_confirmation: number; pending_publication: number };
 }>();
 
 // First name only — a warmer greeting than the full registered name.
 const firstName = computed(() => props.teacherName.split(' ')[0]);
+
+// Never a modal, never blocking: an old, fully-adopted account already shows
+// nothing (all_done), the same way readiness() shows nothing once configured.
+const showFirstSteps = computed(() => !props.firstSteps.dismissed && !props.firstSteps.all_done);
+
+function dismissFirstSteps(): void {
+    // Never touches progress — there is none stored to touch. Only hides the
+    // card; findable again later from A2's Help Center (not built yet).
+    router.post('/dashboard/onboarding-dismissal', {}, { preserveScroll: true });
+}
 
 const summary = computed(() => [
     { label: 'Turmas', value: props.totals.classes, icon: Users },
@@ -49,6 +72,45 @@ const summary = computed(() => [
                 <p class="text-sm text-muted-foreground">Aqui está o que precisa da sua atenção.</p>
             </div>
             <Link href="/activity" class="text-sm text-muted-foreground hover:underline">Registo de atividade</Link>
+        </div>
+
+        <!-- "Primeiros passos" (A1a) — a separate, dismissible adoption
+             checklist. Never a modal, never blocks navigation, and shown
+             independently of the readiness checklist below: an account can be
+             fully configured and still not have used the app yet, or vice
+             versa. -->
+        <div v-if="showFirstSteps" class="mx-auto max-w-3xl rounded-xl border border-border p-4 sm:p-5">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <h2 class="text-base font-semibold">Primeiros passos</h2>
+                    <p class="mt-1 text-sm text-muted-foreground">Continue quando quiser — nada aqui bloqueia o resto da aplicação.</p>
+                </div>
+                <Button variant="ghost" size="icon" aria-label="Dispensar primeiros passos" @click="dismissFirstSteps">
+                    <X class="size-4" aria-hidden="true" />
+                </Button>
+            </div>
+
+            <ul class="mt-4 space-y-2" aria-label="Primeiros passos">
+                <li
+                    v-for="item in firstSteps.items"
+                    :key="item.id"
+                    class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3"
+                >
+                    <div class="flex min-w-0 items-center gap-3">
+                        <CheckCircle2 v-if="item.completed" class="size-5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                        <Circle v-else class="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                        <div class="min-w-0">
+                            <p class="text-sm font-medium">{{ item.name }}</p>
+                            <p class="text-xs text-muted-foreground">{{ item.description }}</p>
+                        </div>
+                        <span class="sr-only">{{ item.completed ? 'Concluído' : 'Por fazer' }}</span>
+                    </div>
+
+                    <Link v-if="item.cta" :href="item.cta.href" class="shrink-0 text-sm font-medium text-primary hover:underline">
+                        {{ item.cta.label }}
+                    </Link>
+                </li>
+            </ul>
         </div>
 
         <div v-if="!readiness.is_ready" class="mx-auto max-w-3xl">

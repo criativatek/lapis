@@ -47,6 +47,9 @@ function destroy(profile: Profile): void {
             <p class="text-sm text-muted-foreground">
                 Ainda não tem perfis de avaliação. Crie o primeiro para definir domínios e ponderações.
             </p>
+            <Button v-if="canManage" as-child class="mt-3">
+                <Link href="/assessment-profiles/create"><Plus class="size-4" /> Criar o primeiro perfil</Link>
+            </Button>
         </div>
 
         <div v-else class="overflow-hidden rounded-lg border border-border">

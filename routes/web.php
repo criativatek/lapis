@@ -36,6 +36,7 @@ use App\Http\Controllers\LessonScheduleController;
 use App\Http\Controllers\LessonSequenceController;
 use App\Http\Controllers\LessonWeekController;
 use App\Http\Controllers\NationalHolidaySuggestionController;
+use App\Http\Controllers\OnboardingController;
 use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\OrganizationMembershipController;
 use App\Http\Controllers\PublicSelfAssessmentController;
@@ -108,6 +109,12 @@ Route::middleware('throttle:60,1')->get('invitations/{token}', [InvitationAccept
 // organization must be resolved before the request reaches a controller.
 Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     Route::get('dashboard', DashboardController::class)->name('dashboard');
+
+    // The "Primeiros passos" card's own state (A1a, Onboarding & Help) — see
+    // OnboardingController. POST to hide it, DELETE to bring it back, same
+    // request/cancel shape as settings/account-closure.
+    Route::post('dashboard/onboarding-dismissal', [OnboardingController::class, 'dismiss'])->name('onboarding.dismiss');
+    Route::delete('dashboard/onboarding-dismissal', [OnboardingController::class, 'restore'])->name('onboarding.restore');
 
     // Which organization the session is acting for (Fatia 2). The membership
     // check lives in the controller, not a route param binding — a stranger's

@@ -7,7 +7,10 @@ use App\Models\AcademicYearStatus;
 use App\Models\AssessmentProfile;
 use App\Models\Classification;
 use App\Models\ClassificationStatus;
+use App\Models\Enrollment;
+use App\Models\Instrument;
 use App\Models\SchoolClass;
+use App\Models\StudentItemScore;
 use App\Models\Subject;
 use App\Models\User;
 use App\Support\Retention\AcademicYearRetentionClassifier;
@@ -77,6 +80,7 @@ class DashboardController extends Controller
                 $currentAcademicYear,
                 $currentAcademicYearClasses,
             ),
+            'firstSteps' => $this->firstSteps($teacher, $currentAcademicYearClasses),
             'totals' => [
                 'classes' => $classCards->count(),
                 'pending_confirmation' => $classCards->sum('pending_confirmation'),
@@ -169,6 +173,78 @@ class DashboardController extends Controller
         return [
             'is_ready' => $nextItemIndex === false,
             'items' => array_values($items->all()),
+        ];
+    }
+
+    /**
+     * "Primeiros passos" (A1a, Onboarding & Help) — whether this teacher has
+     * actually STARTED USING the app, not whether the account is configured.
+     * A deliberately different question from readiness() above, kept in its
+     * own method/prop/ids so the two never influence one another — item 1
+     * happens to read the same underlying fact as readiness()'s own `class`
+     * item (reusing the collection already computed in __invoke(), not a
+     * second query), but that is the only thing they share.
+     *
+     * Same principle as readiness(): every item is derived live from whether
+     * the real thing already exists, never a stored checkbox. The one piece
+     * of state this feature persists at all — `onboarding_dismissed_at` — only
+     * ever says whether the card is hidden; it is never read to decide
+     * whether a step is complete.
+     *
+     * @param  Collection<int, SchoolClass>  $currentAcademicYearClasses
+     * @return array{dismissed: bool, all_done: bool, items: list<array{id: string, name: string, description: string, completed: bool, cta: array{label: string, href: string}|null}>}
+     */
+    private function firstSteps(User $teacher, Collection $currentAcademicYearClasses): array
+    {
+        $hasClass = $currentAcademicYearClasses->isNotEmpty();
+        $hasStudent = Enrollment::query()->active()->exists();
+        $hasInstrument = Instrument::query()->exists();
+        $hasResult = StudentItemScore::query()->exists();
+
+        // Only fetched when actually needed for a CTA target below — never to
+        // decide completeness, which the exists() checks above already settled.
+        $classForEnrollment = $hasClass && ! $hasStudent ? $currentAcademicYearClasses->first() : null;
+        $instrumentForResult = $hasInstrument && ! $hasResult ? Instrument::query()->latest('id')->first() : null;
+
+        $items = [
+            [
+                'id' => 'class',
+                'name' => 'Turma criada',
+                'description' => $hasClass ? 'Já criou a sua primeira turma.' : 'O primeiro passo: crie a sua primeira turma.',
+                'completed' => $hasClass,
+                'cta' => $hasClass ? null : ['label' => 'Criar turma', 'href' => route('classes.create')],
+            ],
+            [
+                'id' => 'student',
+                'name' => 'Aluno inscrito',
+                'description' => $hasStudent ? 'Já tem pelo menos um aluno inscrito.' : 'Inscreva o primeiro aluno numa turma.',
+                'completed' => $hasStudent,
+                'cta' => $classForEnrollment === null
+                    ? null
+                    : ['label' => 'Inscrever aluno', 'href' => route('classes.show', $classForEnrollment)],
+            ],
+            [
+                'id' => 'instrument',
+                'name' => 'Instrumento criado',
+                'description' => $hasInstrument ? 'Já criou um elemento de avaliação.' : 'Crie o primeiro elemento de avaliação.',
+                'completed' => $hasInstrument,
+                'cta' => $hasInstrument ? null : ['label' => 'Criar elemento de avaliação', 'href' => route('instruments.create-picker')],
+            ],
+            [
+                'id' => 'result',
+                'name' => 'Resultado registado',
+                'description' => $hasResult ? 'Já registou pelo menos um resultado.' : 'Registe o primeiro resultado na grelha de correção.',
+                'completed' => $hasResult,
+                'cta' => $instrumentForResult === null
+                    ? null
+                    : ['label' => 'Registar resultado', 'href' => route('instruments.show', $instrumentForResult)],
+            ],
+        ];
+
+        return [
+            'dismissed' => $teacher->hasDismissedOnboarding(),
+            'all_done' => collect($items)->every(fn (array $item): bool => $item['completed']),
+            'items' => $items,
         ];
     }
 

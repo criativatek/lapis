@@ -36,6 +36,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property Carbon|null $anonymized_at
  * @property string|null $terms_version
  * @property Carbon|null $terms_accepted_at
+ * @property Carbon|null $onboarding_dismissed_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -65,6 +66,7 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
             'scheduled_deletion_at' => 'datetime',
             'anonymized_at' => 'datetime',
             'terms_accepted_at' => 'datetime',
+            'onboarding_dismissed_at' => 'datetime',
         ];
     }
 
@@ -119,6 +121,17 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
     public function isClosureRequested(): bool
     {
         return $this->closure_requested_at !== null;
+    }
+
+    /**
+     * Whether this teacher dismissed the "Primeiros passos" onboarding card
+     * (A1a, Onboarding & Help). The only thing this ever gates is whether the
+     * card is shown — the progress it displays is computed live elsewhere
+     * (DashboardController::firstSteps()) and is never affected by this flag.
+     */
+    public function hasDismissedOnboarding(): bool
+    {
+        return $this->onboarding_dismissed_at !== null;
     }
 
     /**
