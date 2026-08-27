@@ -50,7 +50,7 @@ final class ConfigurationSharingController extends Controller
         $audit->record('configuration_package.exported', causer: $request->user(), summary: __('Pacote de configuração exportado.'), properties: ['components' => $package['components']]);
 
         return response(json_encode($package, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), 200, [
-            'Content-Type' => 'application/json; charset=UTF-8', 'Content-Disposition' => 'attachment; filename="lapis-configuracao-'.now()->format('Y-m-d').'.json"',
+            'Content-Type' => 'application/json; charset=UTF-8', 'Content-Disposition' => 'attachment; filename="Lapispro-configuracao-'.now()->format('Y-m-d').'.json"',
         ]);
     }
 

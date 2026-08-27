@@ -2,9 +2,19 @@
 
 namespace Tests\Feature;
 
+use App\Mail\OrganizationInvitationMail;
+use App\Models\OrganizationInvitation;
+use App\Models\OrganizationSubscription;
+use App\Models\Plan;
+use App\Models\Subject;
+use App\Models\SubscriptionStatus;
+use App\Models\User;
+use App\Support\Entitlements\Entitlements;
 use App\Support\Legal\LegalDocuments;
 use App\Support\Seo\LandingSeo;
+use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -202,6 +212,7 @@ class BrandingTest extends TestCase
         $sources = [
             base_path('app/Http/Controllers/DataExportController.php'),
             base_path('app/Actions/DataExports/GenerateDataExport.php'),
+            base_path('app/Http/Controllers/ConfigurationSharingController.php'),
         ];
 
         foreach ($sources as $source) {
@@ -209,6 +220,117 @@ class BrandingTest extends TestCase
 
             $this->assertStringNotContainsString('LAPIS-exportacao', $contents);
             $this->assertStringNotContainsString('Exportacao-LAPIS', $contents);
+        }
+    }
+
+    /**
+     * A aplicação autenticada — o que o professor vê todos os dias.
+     *
+     * As páginas públicas já estavam cobertas, e o dashboard não estava. É a
+     * superfície mais vista do produto e a que mais tempo levaria a alguém
+     * reparar que ficou para trás, porque quem lá entra todos os dias deixa de
+     * ler o cabeçalho.
+     */
+    #[Test]
+    public function the_authenticated_application_names_the_product(): void
+    {
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('dashboard'))
+            ->assertOk();
+
+        $html = (string) $response->getContent();
+
+        $this->assertStringContainsString('Lapispro', $html);
+        $this->assertStringNotContainsString('LÁPIS', $html);
+        $this->assertStringNotContainsString('Lápis', $html);
+        $this->assertDoesNotMatchRegularExpression('/\bLAPIS\b(?!_)/', $html);
+    }
+
+    /**
+     * O email de convite é a primeira coisa que alguém de fora lê do produto,
+     * e chega sem a aplicação à volta: se o assunto trouxer o nome antigo, é
+     * essa a marca que fica na caixa de entrada.
+     */
+    #[Test]
+    public function the_invitation_email_carries_the_new_brand(): void
+    {
+        $inviter = User::factory()->create(['name' => 'Ana Pereira']);
+        $organization = $inviter->personalOrganization();
+
+        $invitation = new OrganizationInvitation;
+        $invitation->expires_at = Carbon::now()->addDays(7);
+
+        $mail = new OrganizationInvitationMail($invitation, $organization, $inviter, 'token-de-teste');
+        $rendered = $mail->build();
+
+        $subject = (string) $rendered->subject;
+        $body = (string) $rendered->render();
+
+        foreach (['assunto' => $subject, 'corpo' => $body] as $part => $text) {
+            $this->assertStringContainsString('Lapispro', $text, "O {$part} do convite não nomeia o produto.");
+            $this->assertStringNotContainsString('LÁPIS', $text, "O {$part} do convite ainda traz a marca antiga.");
+            $this->assertDoesNotMatchRegularExpression('/\bLAPIS\b(?!_)/', $text, "O {$part} do convite ainda traz a marca antiga.");
+        }
+    }
+
+    /**
+     * O pacote de configuração é um ficheiro que um professor envia a outro,
+     * e o nome com que chega é marca. O `kind` lá dentro NÃO é
+     * (`lapis_configuration_package` é validado com `in:` e renomeá-lo
+     * rejeitaria todos os pacotes já exportados), e por isso afirma-se aqui
+     * que ele fica exatamente como está.
+     */
+    #[Test]
+    public function the_configuration_package_downloads_under_the_new_brand(): void
+    {
+        $user = User::factory()->create();
+        $organization = $user->personalOrganization();
+
+        OrganizationSubscription::withoutGlobalScope('organization')
+            ->where('organization_id', $organization->id)->delete();
+        OrganizationSubscription::withoutGlobalScope('organization')->create([
+            'organization_id' => $organization->id,
+            'plan_id' => Plan::query()->where('key', 'pro')->firstOrFail()->id,
+            'status' => SubscriptionStatus::Active,
+            'starts_at' => Carbon::now()->subDay(),
+        ]);
+        app(Entitlements::class)->flush();
+
+        $subject = app(CurrentOrganization::class)->runFor(
+            $organization,
+            fn (): Subject => Subject::query()->create(['name' => 'Matemática', 'code' => 'MAT']),
+        );
+
+        $response = $this->actingAs($user)
+            ->post('/configuracao/partilhar', ['subjects' => [$subject->ulid]])
+            ->assertOk();
+
+        $disposition = (string) $response->headers->get('Content-Disposition');
+
+        $this->assertStringContainsString('Lapispro-configuracao-', $disposition);
+        $this->assertDoesNotMatchRegularExpression('/filename="lapis-/i', $disposition);
+
+        // O contrato de compatibilidade continua de pé.
+        $this->assertStringContainsString('"kind": "lapis_configuration_package"', (string) $response->getContent());
+    }
+
+    /**
+     * `APP_NAME` alimenta o `<title>` de todas as páginas autenticadas, o
+     * `MAIL_FROM_NAME` e o `name` partilhado pelo Inertia. Um ambiente
+     * versionado que ainda diga o nome antigo reintroduz a marca antiga em
+     * três sítios de uma vez — foi o que aconteceu ao `.env.testing.example`.
+     */
+    #[Test]
+    public function every_versioned_environment_example_declares_the_new_app_name(): void
+    {
+        foreach (['.env.example', '.env.testing.example'] as $file) {
+            $contents = (string) file_get_contents(base_path($file));
+
+            $this->assertMatchesRegularExpression(
+                '/^APP_NAME=Lapispro$/m',
+                $contents,
+                "{$file} não declara APP_NAME=Lapispro.",
+            );
         }
     }
 }

@@ -6,6 +6,29 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > anteriores a 0.79.0 mantêm o nome com que foram escritas: um changelog é um
 > registo do que aconteceu, e reescrevê-lo apagaria a própria mudança de marca.
 
+## [0.79.2] — 2026-08-27
+
+Auditoria de fecho do rebranding, fora da landing. A landing não foi tocada.
+
+### Fixed
+
+- **O pacote de configuração descarregava-se como `lapis-configuracao-<data>.json`.** É um ficheiro que um professor envia a outro, e o nome com que chega é marca — passou despercebido em 0.79.0 porque o nome está numa `Content-Disposition`, e não numa string que uma busca por texto visível apanhe. Passa a `Lapispro-configuracao-<data>.json`.
+
+  O `kind` lá dentro — `lapis_configuration_package` — fica exatamente como está: é validado com `in:`, e renomeá-lo rejeitaria todos os pacotes já exportados.
+
+- **`.env.testing.example` ainda declarava `APP_NAME=LAPIS`.** É um ficheiro versionado, e `APP_NAME` alimenta três sítios de uma vez: o `<title>` de todas as páginas autenticadas, o `MAIL_FROM_NAME` e o `name` que o Inertia partilha com os layouts de autenticação. Quem montasse um ambiente de testes a partir dele reintroduzia a marca antiga nos três.
+
+### Added
+
+- **Quatro testes de guarda nas superfícies que faltavam** a `BrandingTest`, escolhidas por serem as que ninguém revisita: a aplicação autenticada (o dashboard — a superfície mais vista do produto, e a que mais tempo levaria a alguém notar que ficou para trás), o email de convite (assunto e corpo — chega sem a aplicação à volta, e é a primeira coisa que alguém de fora lê), o nome do pacote de configuração descarregado, e o `APP_NAME` dos ambientes versionados.
+
+  `downloadable_file_names_carry_the_new_brand` passa também a varrer o `ConfigurationSharingController`.
+
+### Unchanged
+
+- **Os identificadores internos ficam todos.** `config/lapis.php` e as chaves que lê, os nomes das variáveis `LAPIS_*`, os comandos artisan `lapis:*`, `DB_DATABASE=lapis`, `lapis_testing`, `LapisGridContract`/`LapisGridDeclaration`, os nomes definidos `LAPIS_GRID` / `LAPIS_ITEM_*` dentro dos ficheiros Excel, `backup-lapis.json` (nome de entrada dentro do ZIP, lido de volta por `ReadBackupUpload`), as versões de prompt `lapis-rewrite/1` e `lapis-intervention-suggestion/2` (persistidas em `prompt_version`, onde são registo de auditoria), e os prefixos `tempnam()`. Nenhum deles chega ao utilizador; renomear qualquer um é uma migração, não um rebranding.
+
+- **Dois fixtures de teste continuam a dizer `product.name = "LAPIS"`**, agora com o motivo escrito por cima: representam um pacote exportado ANTES do rebranding, que é o que existe no disco de quem já exportou. O campo é informativo e nunca validado, e mantê-los assim afirma que um pacote antigo continua a importar.
 ## [0.79.1] — 2026-08-27
 
 ### Changed

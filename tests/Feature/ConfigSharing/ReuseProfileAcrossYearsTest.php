@@ -170,7 +170,14 @@ final class ReuseProfileAcrossYearsTest extends TestCase
         });
     }
 
-    /** @return array<string, mixed> */
+    /**
+     * Um pacote exportado ANTES do rebranding, que é o que existe no disco de
+     * quem já exportou: `product.name` diz «LAPIS». O campo é informativo e
+     * nunca é validado, e mantê-lo assim aqui afirma que um pacote antigo
+     * continua a importar. Não substituir por «Lapispro».
+     *
+     * @return array<string, mixed>
+     */
     private function sourcePackage(): array
     {
         return [
