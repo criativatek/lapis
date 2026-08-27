@@ -2,6 +2,18 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.75.1] — 2026-08-27
+
+### Fixed
+
+- **A comparação atribuía ao Pro uma capacidade que é do Base.** «Pontos fortes e potencialidades» estava numa linha só, marcada apenas para Pro e Institucional — mas `BuildStudentStrengths` é **Base** e está escrito no próprio ficheiro que o é: reúne o domínio mais elevado, a subida já calculada, um registo positivo e um objetivo que um acompanhamento marcou como cumprido, tudo a partir do que já estava guardado. O que o Pro acrescenta não é ter pontos fortes, é **nomeá-los sem lhe perguntarem**. A linha passa a ser duas, e a fronteira da Matriz fica legível na tabela: **«Registos positivos e evidência factual»** (Base · Pro · Institucional) e **«Identificação automática de pontos fortes e potencialidades»** (Pro · Institucional). Os cartões acompanham — o Base diz «com registos positivos», o Pro diz «Identificação automática de…».
+
+- **«IA aplicada à avaliação» era uma funcionalidade que não existe.** O produto tem duas capacidades de IA — «Sugestões pedagógicas (IA)» sobre estratégias e medidas, e «Aperfeiçoar redação» sobre uma secção de relatório — e **nenhuma toca numa classificação**. A linha é removida da tabela em vez de reescrita: nomear uma terceira capacidade porque ela aparece na matriz seria inventá-la na página. Ficam as duas que correspondem a código real, e a nota sob a tabela continua a dizer o que a IA faz e onde para. No cartão Pro, «IA pedagógica, na avaliação e nos relatórios» passa a **«IA pedagógica: sugere estratégias e ajuda a aperfeiçoar relatórios»**.
+
+  **IA sugere, professor decide** — e nada na página passa a poder ser lido de outra maneira.
+
+- **O exemplo do campo de contacto no backoffice deixa de ser um endereço com aspeto de definitivo.** O `placeholder` passa a `Ex.: geral@exemplo.pt`, na linha dos restantes exemplos do formulário. O endereço real continua a ser dado em `/admin/settings`, e o botão «Falar connosco» continua a não ser apresentado enquanto lá não estiver nada.
+
 ## [0.75.0] — 2026-08-27
 
 ### Added

@@ -86,7 +86,7 @@ function sendTest(): void {
             <div class="border-t border-border pt-4">
                 <label class="text-sm">
                     <span class="mb-1 block font-medium">Endereço de contacto público</span>
-                    <input v-model="form.contact_email" type="email" placeholder="Ex.: geral@lapispro.com" class="w-full rounded-md border border-border bg-background px-3 py-2 sm:max-w-sm" />
+                    <input v-model="form.contact_email" type="email" placeholder="Ex.: geral@exemplo.pt" class="w-full rounded-md border border-border bg-background px-3 py-2 sm:max-w-sm" />
                     <span v-if="form.errors.contact_email" class="mt-1 block text-xs text-red-600">{{ form.errors.contact_email }}</span>
                 </label>
                 <p class="mt-1.5 text-xs text-muted-foreground">

@@ -229,6 +229,56 @@ describe('the comparison table', () => {
         ).toBe('included');
     });
 
+    /**
+     * Base SHOWS positive facts about a student; Pro NAMES them without being
+     * asked. One row that read «Pontos fortes e potencialidades → Pro» hid a
+     * Base capability (`BuildStudentStrengths`) behind a paywall it does not
+     * actually sit behind.
+     */
+    it('keeps factual positives in Base and only their reading in Pro', () => {
+        const [base, pro] = plans();
+
+        const factual = COMPARE_ROWS.find(
+            (row) => row.label === 'Registos positivos e evidência factual',
+        )!;
+        const interpreted = COMPARE_ROWS.find((row) =>
+            row.label.startsWith('Identificação automática de pontos fortes'),
+        )!;
+
+        expect(availability(factual, base.key, base.moduleKeys)).toBe(
+            'included',
+        );
+        expect(availability(factual, pro.key, pro.moduleKeys)).toBe('included');
+
+        expect(availability(interpreted, base.key, base.moduleKeys)).toBe(
+            'absent',
+        );
+        expect(availability(interpreted, pro.key, pro.moduleKeys)).toBe(
+            'included',
+        );
+    });
+
+    /**
+     * The code has two AI features — strategy suggestions and the report
+     * writing assistant — and no third one that touches a classification. A
+     * row named for one would be a capability invented on the page.
+     */
+    it('names only the AI the product actually has', () => {
+        const aiRows = COMPARE_ROWS.filter((row) =>
+            row.label.startsWith('IA '),
+        ).map((row) => row.label);
+
+        expect(aiRows).toEqual(['IA pedagógica', 'IA aplicada a relatórios']);
+        expect(aiRows).not.toContain('IA aplicada à avaliação');
+
+        // And the page says out loud where the AI stops.
+        const text = mount(LandingCompare, {
+            props: { plans: plans() },
+        }).text();
+
+        expect(text).toContain('Não atribui nem decide classificações.');
+    });
+
     it('marks what the offer defines and the product has not built as «em preparação»', () => {
         const licences = COMPARE_ROWS.find(
             (row) => row.label === 'Gestão de licenças',

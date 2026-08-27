@@ -76,7 +76,7 @@ export const PLAN_COPY: Record<string, PlanCommercial> = {
             'Turmas e alunos',
             'Perfis e critérios de avaliação, com os seus pesos',
             'Instrumentos e classificações',
-            'Acompanhamento factual do aluno, com pontos fortes',
+            'Acompanhamento factual do aluno, com registos positivos',
             'Registos',
             'Autoavaliação',
             'Estratégias e medidas manuais',
@@ -101,11 +101,11 @@ export const PLAN_COPY: Record<string, PlanCommercial> = {
             'Análises avançadas, tendências e regularidade',
             'Alertas inteligentes',
             'Estado 360º do aluno',
-            'Pontos fortes, potencialidades e margem de progressão',
+            'Identificação automática de pontos fortes, potencialidades e margem de progressão',
             'Apoio à definição do próximo passo pedagógico',
             'Acompanhamento da eficácia das estratégias',
             'Sínteses avançadas',
-            'IA pedagógica, na avaliação e nos relatórios',
+            'IA pedagógica: sugere estratégias e ajuda a aperfeiçoar relatórios',
             'Backups e importações avançadas',
         ],
         boundary: 'Pro cruza, interpreta e ajuda a agir.',
@@ -188,6 +188,14 @@ export const COMPARE_ROWS: readonly CompareRow[] = [
         modules: ['instruments', 'assessments'],
     },
     { label: 'Acompanhamento factual do aluno', modules: ['student_progress'] },
+    // The positive half of the factual panel really is Base — see
+    // BuildStudentStrengths, which gathers the highest domain, a rise already
+    // computed and a met objective out of what is already stored. What Pro
+    // adds is the READING of it, two rows below.
+    {
+        label: 'Registos positivos e evidência factual',
+        modules: ['records', 'student_progress'],
+    },
     { label: 'Autoavaliação manual', modules: ['self_assessments'] },
     { label: 'Estratégias e medidas manuais', modules: ['interventions'] },
     { label: 'Relatórios essenciais', modules: ['reports'] },
@@ -201,14 +209,22 @@ export const COMPARE_ROWS: readonly CompareRow[] = [
     },
     { label: 'Alertas e atenção automática', modules: ['advanced_analytics'] },
     { label: 'Estado 360º', modules: ['advanced_analytics'] },
+    // The Pro half of the same subject: not «has strengths», but «names them
+    // without being asked». `BuildStudentInsights` is what reads the figures
+    // the Base row above already shows.
     {
-        label: 'Pontos fortes e potencialidades',
+        label: 'Identificação automática de pontos fortes e potencialidades',
         modules: ['advanced_analytics'],
     },
     { label: 'Margem de progressão', modules: ['advanced_analytics'] },
     { label: 'Próximo passo pedagógico', modules: ['advanced_analytics'] },
+    // Two AI rows, because the product has two AI features: «Sugestões
+    // pedagógicas (IA)» over strategies, and «Aperfeiçoar redação» over a
+    // report section. There is deliberately no third row for AI «applied to
+    // assessment» — nothing in the code lets a model touch a classification,
+    // and naming a capability the product does not have would be inventing
+    // one.
     { label: 'IA pedagógica', modules: ['ai_assistance'] },
-    { label: 'IA aplicada à avaliação', modules: ['ai_assistance'] },
     {
         label: 'IA aplicada a relatórios',
         modules: ['ai_assistance', 'report_pedagogical_analysis'],
