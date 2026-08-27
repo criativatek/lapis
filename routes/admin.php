@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminAccountController;
+use App\Http\Controllers\Admin\AdminCommercialController;
 use App\Http\Controllers\Admin\AdminImpersonateController;
 use App\Http\Controllers\Admin\AdminSettingsController;
 use Illuminate\Support\Facades\Route;
@@ -50,6 +51,22 @@ Route::middleware(['auth', 'verified', 'platform-admin'])
         // organization with more than one member — attaching an EXISTING user.
         // Not an invitation; that is Fatia 3.
         Route::post('accounts/{organization}/members', [AdminAccountController::class, 'addMember'])->name('accounts.members.add');
+
+        // Admin > Comercial. Read-first: the two writes it carries record FACTS
+        // about an account (money received, the condition it was sold under) and
+        // never grant it anything — changing a plan stays in `accounts.plan`
+        // above, where it always was.
+        //
+        // `export` and `payments` BEFORE `{organization}`, for the same reason
+        // `accounts/create` comes before its own wildcard: otherwise "export"
+        // binds as an organization ulid and 404s.
+        Route::get('commercial', [AdminCommercialController::class, 'index'])->name('commercial.index');
+        Route::get('commercial/export', [AdminCommercialController::class, 'export'])->name('commercial.export');
+        Route::post('commercial/payments/{payment}/refund', [AdminCommercialController::class, 'refundPayment'])->name('commercial.payments.refund');
+        Route::post('commercial/payments/{payment}/void', [AdminCommercialController::class, 'voidPayment'])->name('commercial.payments.void');
+        Route::get('commercial/{organization}', [AdminCommercialController::class, 'show'])->name('commercial.show');
+        Route::post('commercial/{organization}/condition', [AdminCommercialController::class, 'setCommercialCondition'])->name('commercial.condition');
+        Route::post('commercial/{organization}/payments', [AdminCommercialController::class, 'storePayment'])->name('commercial.payments.store');
 
         // System email (SMTP) settings.
         Route::get('settings', [AdminSettingsController::class, 'edit'])->name('settings.edit');

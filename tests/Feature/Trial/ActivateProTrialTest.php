@@ -6,9 +6,11 @@ use App\Actions\Organizations\ActivateProTrial;
 use App\Models\Organization;
 use App\Models\OrganizationSubscription;
 use App\Models\Plan;
+use App\Models\SubscriptionPayment;
 use App\Models\SubscriptionStatus;
 use App\Models\User;
 use App\Services\Organizations\ChangeOrganizationPlan;
+use App\Support\Commercial\CommercialMetrics;
 use App\Support\Trial\TrialException;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Collection;
@@ -132,16 +134,33 @@ class ActivateProTrialTest extends TestCase
     }
 
     #[Test]
-    public function no_billing_or_payment_table_exists_for_the_trial_to_touch(): void
+    public function the_trial_touches_no_money_at_all(): void
     {
-        // Confirmed by grep across app/ and database/migrations: no billing,
-        // payment, invoice or card table/model exists anywhere in this
-        // codebase (§8.2 — no payment provider in the MVP). The trial is
-        // entirely a date-window change on organization_subscriptions, the
-        // same table every other plan change already writes to.
+        // THIS TEST USED TO ASSERT THAT NO PAYMENT TABLE EXISTED ANYWHERE.
+        // That was true when it was written (§8.2 — no payment provider in the
+        // MVP) and is deliberately no longer true: `subscription_payments` now
+        // records payments an operator received outside the application, so the
+        // backoffice can report real revenue instead of multiplying Pro
+        // accounts by a list price.
+        //
+        // What the old assertion was actually protecting is unchanged, and is
+        // what is asserted here instead: A TRIAL COSTS NOTHING AND RECORDS
+        // NOTHING FINANCIAL. It remains entirely a date-window change on
+        // `organization_subscriptions` — no card, no charge, no payment row,
+        // and therefore not a single cent of revenue.
+        $user = User::factory()->create();
+        $organization = $user->personalOrganization();
+
+        app(ActivateProTrial::class)->activate($user, $organization->fresh());
+
+        $this->assertSame(0, SubscriptionPayment::withoutGlobalScope('organization')->count());
+        $this->assertSame(0, app(CommercialMetrics::class)->revenue()['total_cents']);
+
+        // And still no gateway, invoice, card or checkout table — the half of
+        // the original guarantee that this slice did not change.
         $tables = collect(Schema::getTables())->pluck('name')->map(fn (string $name): string => strtolower($name));
 
-        foreach (['billing', 'payment', 'invoice', 'card', 'checkout'] as $needle) {
+        foreach (['billing', 'invoice', 'card', 'checkout'] as $needle) {
             $this->assertEmpty(
                 $tables->filter(fn (string $name) => str_contains($name, $needle))->all(),
                 "Unexpected billing-related table matching [{$needle}].",

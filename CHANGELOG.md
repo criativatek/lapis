@@ -6,6 +6,99 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > anteriores a 0.79.0 mantêm o nome com que foram escritas: um changelog é um
 > registo do que aconteceu, e reescrevê-lo apagaria a própria mudança de marca.
 
+## [0.80.0] — 2026-08-28
+
+Backoffice comercial para o superadministrador, construído sobre uma separação
+que o modelo não tinha: **plano ≠ condição comercial ≠ pagamento**.
+
+### Added
+
+- **`Admin > Comercial`** (`/admin/commercial`) — contas, subscrições e receita
+  numa área própria, reservada ao operador da plataforma. Cartões de resumo,
+  listagem paginada com filtros, detalhe comercial por conta e exportação CSV.
+
+- **Condição comercial na subscrição** (`organization_subscriptions.commercial_condition`).
+  «Membro Fundador» **não é um quarto plano** — é uma condição de adesão ao Pro,
+  e um Fundador tem direito exactamente aos mesmos módulos que um Pro standard.
+  `Entitlements` nunca lê esta coluna, por desenho: marcar uma conta como
+  Fundadora não lhe dá nada. As condições são `standard`, `founder`, `voucher`,
+  `admin_grant`, `institutional`, `legacy` e `other`; `trial` **não** é
+  armazenado, porque `status = trial` já o regista de forma imutável, e duplicá-lo
+  criaria dois sítios para discordarem.
+
+- **`subscription_payments`** — dinheiro que entrou mesmo, e mais nada. Valor em
+  cêntimos inteiros, moeda, estado, método, referência, condição comercial no
+  momento do pagamento, código de voucher como texto literal, período pago, data
+  de recebimento, autoria e metadata. Sem gateway, sem dados de cartão, sem
+  factura ou recibo — nada disso está no âmbito.
+
+- **Registo manual de pagamento recebido.** Como não há gateway, esta é a única
+  forma de entrar dinheiro no sistema: uma transferência ou MB WAY que alguém
+  confirmou, lançada depois. Registar um pagamento **não mexe no plano** — pagar
+  não é provisionar.
+
+- **Correcção sem reescrita.** O modelo recusa, ao nível do próprio Eloquent,
+  qualquer update que toque no valor, na moeda, na data de recebimento, na
+  organização, no período ou em quem registou. Só o estado se move, e sempre com
+  motivo e autoria: **reembolso** (o dinheiro voltou) ou **anulação** (o registo
+  estava errado). Corrigir um valor mal lançado é anular com motivo e registar o
+  certo — duas linhas e uma trilha, nunca uma linha que mudou de sentido.
+
+- **Auditoria comercial** — `commercial.condition_set`, `commercial.payment_recorded`,
+  `commercial.payment_refunded` e `commercial.payment_voided`, na trilha da
+  organização-alvo, como todas as acções de operador. O detalhe da conta mostra-as
+  a par de `admin.plan_changed`, `admin.subscription_suspended` e
+  `admin.subscription_reactivated`.
+
+### Changed
+
+- **`ActivateProTrialTest` deixou de afirmar que não existe nenhuma tabela de
+  pagamentos.** Era verdade quando foi escrito e passou a ser deliberadamente
+  falso. O que aquele teste protegia continua igual, e é o que passou a afirmar:
+  **um trial não toca em dinheiro** — nenhuma linha de pagamento, nenhum cêntimo
+  de receita, e continua a não haver gateway, factura, cartão ou checkout.
+
+### Regra de receita
+
+Receita é a soma dos pagamentos com estado `paid`, agrupada por `paid_at` — a
+data em que o dinheiro chegou, nunca a data em que alguém o lançou. `pending`,
+`failed`, `cancelled` e `refunded` não contam. **Nunca** `nº de contas Pro ×
+preço de tabela`: essa conta estaria errada para todas as linhas desta base de
+dados, porque uma subscrição Pro pode existir por condição de lançamento,
+voucher, trial, concessão administrativa ou acordo institucional, e nenhuma
+dessas é 44,90 €.
+
+Sem pagamentos registados, o valor correcto é **0 €**, e o painel diz porquê em
+vez de preencher o espaço com uma estimativa.
+
+### Dados históricos
+
+**Nada foi preenchido retroactivamente.** Todas as subscrições existentes ficam
+com `commercial_condition` a NULL, apresentado como «Origem não registada» — não
+«standard». Uma conta Pro de hoje pode ter chegado ali por concessão do operador,
+por um trial que converteu ou por uma condição de lançamento, e a base de dados
+nunca guardou a evidência para as distinguir. Um valor errado com ar de certo é
+pior do que um desconhecido honesto, por isso é o operador que marca cada uma.
+
+`trial` é a excepção que não precisa de backfill: deriva de `status = trial`,
+que `ChangeOrganizationPlan::supersede()` já preserva para sempre.
+
+### Privacidade
+
+A área comercial não transporta um único dado pedagógico (§19). Nem aluno, nem
+turma, nem classificação, nem relatório — o entitlement em vigor é enviado como
+**contagem**, não como lista de chaves, precisamente para que `students`,
+`classes` e `reports` não apareçam sequer como nomes num payload comercial. Os
+únicos dados pessoais presentes são o nome e o email do titular da conta, que é
+o mínimo para gerir uma subscrição.
+
+### Vouchers
+
+Continuam **sem backend**. Não há tabela de vouchers, campanha, validação nem
+resgate, e esta fatia não inventou nenhum: o código é guardado como texto literal
+porque escrevê-lo é registar um facto, ao passo que resolvê-lo seria inventar um
+sistema que não existe. A `LandingVoucher` continua exactamente como estava.
+
 ## [0.79.2] — 2026-08-27
 
 Auditoria de fecho do rebranding, fora da landing. A landing não foi tocada.

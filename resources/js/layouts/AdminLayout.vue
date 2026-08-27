@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Link, router, usePage } from '@inertiajs/vue3';
-import { ArrowLeft, LogOut, Mail, ShieldCheck, UserPlus, Users } from '@lucide/vue';
+import { ArrowLeft, Banknote, LogOut, Mail, ShieldCheck, UserPlus, Users } from '@lucide/vue';
 import { computed } from 'vue';
 import { Toaster } from '@/components/ui/sonner';
 import { dashboard } from '@/routes';
@@ -8,10 +8,11 @@ import { dashboard } from '@/routes';
 const page = usePage();
 const userName = computed(() => (page.props.auth as { user?: { name?: string } } | undefined)?.user?.name ?? '');
 
-// Nav grows as backoffice slices land (accounts → create → SMTP).
+// Nav grows as backoffice slices land (accounts → create → comercial → SMTP).
 const nav = [
     { label: 'Contas', href: '/admin', icon: Users, active: (path: string) => path === '/admin' || (path.startsWith('/admin/accounts') && path !== '/admin/accounts/create') },
     { label: 'Nova conta', href: '/admin/accounts/create', icon: UserPlus, active: (path: string) => path === '/admin/accounts/create' },
+    { label: 'Comercial', href: '/admin/commercial', icon: Banknote, active: (path: string) => path.startsWith('/admin/commercial') },
     { label: 'Email (SMTP)', href: '/admin/settings', icon: Mail, active: (path: string) => path === '/admin/settings' },
 ];
 

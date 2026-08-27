@@ -61,11 +61,103 @@ conta · Email (SMTP)) e **«Voltar ao Lapispro»**, que devolve o operador ao
 | **Contas** (`/admin`) | Lista **todas** as organizações (cross-org), com dono, plano, estado da subscrição e verificação. Pesquisa por nome/email, paginada. |
 | **Detalhe da conta** | Verificar email do dono · mudar plano (Base/Pro/Institucional) · suspender/reativar subscrição · conceder/revogar admin · **impersonar**. |
 | **Nova conta** (`/admin/accounts/create`) | Provisiona professor+organização+plano de uma vez. Email já verificado (contas provisionadas saltam a verificação). Password opcional — em branco gera uma temporária. |
+| **Comercial** (`/admin/commercial`) | Contas, subscrições, condição comercial e **receita real** — ver abaixo. |
 | **Email (SMTP)** (`/admin/settings`) | Configura o email do sistema **e o endereço de contacto público** — ver abaixo. |
 
 **Mudar plano** cria uma **nova subscrição** com `starts_at` mais recente (a antiga fica no
 histórico) e faz `flush()` aos entitlements. Duas subscrições no mesmo segundo desempatam
 por `id` — a mais recente ganha.
+
+## Comercial (`/admin/commercial`)
+
+> **Plano ≠ condição comercial ≠ pagamento.** É a regra que esta área existe para tornar
+> difícil de quebrar.
+
+**Três coisas diferentes, em três sítios diferentes:**
+
+| Conceito | Onde vive | O que responde |
+|---|---|---|
+| **Plano** | `organization_subscriptions.plan_id` | O que a conta **pode usar**. |
+| **Condição comercial** | `organization_subscriptions.commercial_condition` | Em que **termos** lá chegou. |
+| **Pagamento** | `subscription_payments` | Dinheiro que **entrou mesmo**. |
+
+**«Membro Fundador» não é um plano.** É `plan = pro` + `commercial_condition = founder`, e
+um Fundador tem direito exactamente aos mesmos módulos que um Pro standard.
+`App\Support\Entitlements\Entitlements` **nunca lê** a coluna — marcar uma conta como
+Fundadora não lhe dá nada.
+
+**`trial` não é armazenado.** Deriva-se de `status = trial`, que
+`ChangeOrganizationPlan::supersede()` já preserva para sempre — ver
+`App\Support\Commercial\SubscriptionCondition::keyOf()`, que é a precedência canónica
+(status Trial → coluna → NULL) e o único sítio onde ela está escrita.
+
+**NULL é «Origem não registada», não «standard».** Nenhuma subscrição existente foi
+preenchida retroactivamente: uma conta Pro pode ter chegado ali por concessão, por um
+trial que converteu ou por uma condição de lançamento, e a base de dados nunca guardou a
+evidência. O operador marca cada uma à mão. **A condição nunca é inferida pelo valor
+pago.**
+
+### Como se calcula a receita
+
+```
+receita = SUM(subscription_payments.amount_cents) WHERE status = 'paid'
+          agrupada por paid_at (a data em que o dinheiro chegou)
+```
+
+`pending`, `failed`, `cancelled` e `refunded` **não contam** —
+`App\Models\PaymentStatus::countsAsRevenue()` é a única autoridade, e é um `match` sem
+braço `default`, para que acrescentar um estado sem decidir se é receita seja um erro de
+compilação e não um total silenciosamente errado.
+
+**Nunca** `nº de contas Pro × 44,90`. Sem pagamentos registados, o valor correcto é **0 €**
+— e o painel diz porquê.
+
+### Registar e corrigir pagamentos
+
+Não há gateway. Um pagamento entra por **registo manual** de algo que já foi recebido
+(transferência, MB WAY). Registar um pagamento **não mexe no plano**.
+
+**Um pagamento registado é imutável onde interessa.** `App\Models\SubscriptionPayment`
+recusa, no `booted()`, qualquer update que toque no valor, na moeda, na `paid_at`, na
+organização, no período, na condição ou em quem o registou. Só o grupo do estado se move:
+
+| Correcção | Estado | Quando |
+|---|---|---|
+| **Reembolso** | `refunded` | O dinheiro voltou ao cliente. Só a partir de `paid`. **Apenas total** — o esquema tem um valor só, e um reembolso parcial não seria representável com honestidade. |
+| **Anulação** | `cancelled` | O registo estava errado (lançado duas vezes, conta errada, valor errado). |
+
+Ambas exigem **motivo** e ficam com **autoria e data**. Corrigir um valor mal lançado é
+anular com motivo e registar o certo — duas linhas e uma trilha, nunca uma linha que mudou
+de sentido. Um pagamento já corrigido não pode ser corrigido outra vez.
+
+É isto que torna «o preço histórico é preservado» uma propriedade do esquema e não uma
+promessa num documento: quando o preço do Pro mudar, não existe caminho de código que
+consiga levar o novo valor a um pagamento antigo.
+
+### Vouchers
+
+**Não há backend de vouchers** — nem tabela, nem campanha, nem validação, nem resgate. O
+código é guardado como **texto literal** no pagamento, porque escrevê-lo é registar um
+facto e resolvê-lo seria inventar um sistema que não existe. A `LandingVoucher` continua
+a não validar nada.
+
+### Institucional
+
+Sem adesão self-service e **sem preço automático**. Aparece como plano na listagem; não
+gera receita nenhuma até alguém registar um pagamento real.
+
+### Privacidade (§19)
+
+A área comercial **não transporta um único dado pedagógico**. O entitlement em vigor vai
+como **contagem**, não como lista de chaves, para que `students`/`classes`/`reports` não
+apareçam sequer como nomes num payload comercial. Os únicos dados pessoais são o nome e o
+email do titular — o mínimo para gerir uma subscrição.
+`CommercialPrivacyAndExportTest` guarda isto.
+
+### Exportação
+
+CSV da listagem, **respeitando os filtros no ecrã**, só para superadmin, com BOM UTF-8
+(senão o Excel abre «Condição» como mojibake) e sem uma única coluna pedagógica.
 
 ## Impersonar (suporte)
 
