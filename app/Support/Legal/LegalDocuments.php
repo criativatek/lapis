@@ -87,7 +87,8 @@ class LegalDocuments
                 [
                     'heading' => 'A sua conta',
                     'body' => [
-                        'A conta é pessoal. Ao criá-la, é gerada uma organização própria onde o seu trabalho fica isolado do de qualquer outra pessoa.',
+                        'A conta é pessoal. Ao criá-la, é gerada a sua organização pessoal — o espaço onde o seu trabalho fica isolado do de qualquer outra pessoa.',
+                        'Pode também pertencer a organizações institucionais, criadas por uma escola ou agrupamento. Nesse caso os dados aí registados pertencem à instituição, não à sua conta, e continuam a existir independentemente dela.',
                         'É responsável por manter as suas credenciais em segurança e por tudo o que for feito através da sua conta. O LÁPIS disponibiliza autenticação em dois passos e chaves de acesso (passkeys); recomendamos que use pelo menos uma delas.',
                         'Os dados que indica ao criar a conta devem ser verdadeiros e atuais.',
                         'Se detetar uma utilização indevida da sua conta, ou precisar de ajuda com o acesso, contacte '.self::contact('accounts_email').'.',
@@ -131,7 +132,7 @@ class LegalDocuments
                     'body' => [
                         'Pode pedir o encerramento da sua conta a partir das definições.',
                         'O pedido inicia um período de recuperação, durante o qual pode cancelá-lo e a conta volta ao normal. Durante esse período, a conta fica limitada a leitura e à exportação dos seus dados.',
-                        'Terminado esse período, o encerramento é executado: os dados que o identificam a si e aos seus alunos são removidos, e as credenciais deixam de permitir autenticação.',
+                        'Terminado esse período, o encerramento é executado: os dados que o identificam a si são removidos, as credenciais deixam de permitir autenticação, e os dados identificativos dos alunos da sua organização pessoal são eliminados.',
                         'Não prometemos eliminação instantânea. Alguma informação é conservada quando é necessária à integridade dos registos ou ao registo de atividade — nesses casos deixa de estar associada a uma pessoa identificável. A Política de Privacidade descreve isto em detalhe.',
                         'O encerramento da sua conta não elimina dados de uma organização institucional de que seja apenas membro: esses pertencem à instituição.',
                     ],
@@ -175,7 +176,8 @@ class LegalDocuments
                 [
                     'heading' => 'Responsável pelo tratamento',
                     'body' => [
-                        'O LÁPIS é um serviço disponibilizado pela '.(self::setting('controller_name') ?? 'entidade indicada no fim desta página').', que é a responsável pelo tratamento dos dados pessoais aqui descritos.',
+                        'O LÁPIS é um serviço disponibilizado pela '.(self::setting('controller_name') ?? 'entidade indicada no fim desta página').'.',
+                        'É essa entidade que responde pelos tratamentos descritos nesta página relativos à prestação do serviço. Quanto aos dados dos alunos, a repartição de responsabilidades entre o LÁPIS e a escola ou o professor que os introduz está sujeita a validação jurídica, e será precisada nesta página.',
                         'Os elementos completos de identificação — NIF e morada — estão no fim desta página.',
                         'Para exercer os seus direitos ou colocar qualquer questão sobre privacidade, escreva para '.self::contact('privacy_email').'.',
                     ],
@@ -184,7 +186,7 @@ class LegalDocuments
                     'heading' => 'Dados do professor',
                     'body' => [
                         'Nome e endereço de email, indicados por si ao criar a conta.',
-                        'Dados de autenticação: uma versão cifrada da palavra-passe, que nunca é guardada em texto legível, e — se as ativar — os segredos de autenticação em dois passos e as suas chaves de acesso (passkeys).',
+                        'Dados de autenticação. A palavra-passe nunca é guardada, nem em texto legível nem cifrada: o que fica é uma representação criptográfica irreversível (hash), a partir da qual a palavra-passe não pode ser reconstituída. Se as ativar, ficam também os segredos de autenticação em dois passos e as suas chaves de acesso (passkeys).',
                         'A organização a que pertence, as suas configurações de avaliação e as suas preferências de interface.',
                         'O estado da sua conta e do seu plano, incluindo pedidos de encerramento e períodos experimentais.',
                     ],
@@ -193,6 +195,8 @@ class LegalDocuments
                     'heading' => 'Dados dos alunos',
                     'body' => [
                         'Os dados de identificação do aluno — nome e, quando indicado, número de processo — são guardados numa tabela separada e cifrados. O resto da aplicação trabalha com um pseudónimo, não com o nome.',
+                        'Isto é pseudonimização, não anonimização: o professor continua a poder ver quem é cada aluno, porque precisa disso para trabalhar. O que se reduz é a exposição da identidade em tudo o resto. A anonimização — a remoção efetiva da relação com a pessoa — acontece no encerramento da conta, descrito mais abaixo.',
+                        'Não é necessário anonimizar os alunos antes de os introduzir: a proteção é aplicada pelo LÁPIS.',
                         'Podem ainda existir data de nascimento e fotografia, quando o professor ou a instituição as introduzem.',
                         'Dados pedagógicos: turmas e inscrições, classificações e resultados por domínio, instrumentos de avaliação, registos de acompanhamento, autoavaliações, estratégias e medidas, e relatórios.',
                         'O aluno não tem conta, sessão nem acesso próprio ao LÁPIS. Os seus dados são introduzidos e geridos pelo professor ou pela instituição.',
@@ -246,7 +250,7 @@ class LegalDocuments
                     'heading' => 'Durante quanto tempo',
                     'body' => [
                         'Os dados são conservados pelo período necessário às finalidades do serviço e de acordo com as políticas aplicáveis a cada tipo de informação.',
-                        'Pedido de encerramento de conta: existe um período de recuperação, durante o qual pode cancelar o pedido. Terminado esse período, os dados que o identificam a si e aos seus alunos são removidos.',
+                        'Pedido de encerramento de conta: existe um período de recuperação, durante o qual pode cancelar o pedido. Terminado esse período, os dados que o identificam a si são removidos, e com eles os dados identificativos dos alunos da sua organização pessoal — é aqui, e só aqui, que há anonimização no sentido próprio: a relação com a pessoa deixa de existir e não pode ser reposta. Os dados de uma organização institucional de que seja apenas membro não são afetados: pertencem à instituição.',
                         'Exportações dos seus dados: ficam disponíveis por um período curto e são depois eliminadas automaticamente.',
                         'Ficheiros temporários de importações não confirmadas: eliminados automaticamente pouco depois.',
                         'Registo de atividade: conservado por um período alargado, por ser o registo de segurança de quem fez o quê.',
@@ -281,26 +285,27 @@ class LegalDocuments
                         'Os dados de identificação dos alunos são cifrados na base de dados; o resto da aplicação usa um pseudónimo.',
                         'Cada organização só acede aos seus próprios dados, e essa separação é imposta no servidor, não apenas escondida na interface.',
                         'Todas as autorizações são verificadas no servidor. Esconder um botão nunca é o controlo de acesso.',
-                        'As palavras-passe são guardadas apenas em forma cifrada, e estão disponíveis autenticação em dois passos e chaves de acesso.',
+                        'As palavras-passe não são guardadas: fica apenas uma representação criptográfica irreversível. Estão disponíveis autenticação em dois passos e chaves de acesso.',
                         'Existem cópias de segurança regulares da base de dados e um registo de atividade imutável.',
                         'Nenhum sistema é totalmente seguro, e não prometemos segurança absoluta. Procuramos reduzir o risco e responder com rapidez a qualquer incidente.',
                     ],
                 ],
                 [
-                    'heading' => 'Cookies',
+                    'heading' => 'Cookies e armazenamento no navegador',
                     'body' => [
-                        'O LÁPIS usa apenas cookies estritamente necessários e de funcionamento. Não usa cookies de publicidade, de marketing ou de análise de tráfego, nem carrega serviços de terceiros no seu navegador.',
+                        'O LÁPIS usa apenas cookies estritamente necessários e de funcionamento. Não usa cookies de publicidade, de marketing ou de análise de tráfego, nem carrega serviços de terceiros no seu navegador — os tipos de letra são servidos do nosso próprio domínio.',
                         'Cookie de sessão: mantém a sua autenticação entre páginas.',
                         'Cookie de proteção contra falsificação de pedidos (CSRF): protege os formulários.',
                         'Preferências de interface: o tema claro/escuro e o estado do menu lateral.',
-                        'Por não existirem cookies não essenciais, não é apresentado um pedido de consentimento.',
+                        'Além de cookies, o LÁPIS guarda no armazenamento local do seu navegador a preferência de tema e rascunhos de grelhas de correção ainda por submeter. Os rascunhos ficam apenas no seu equipamento, nunca são enviados por si só, e são removidos quando a grelha é guardada.',
+                        'Não identificámos cookies de finalidade não essencial, pelo que não é apresentado um pedido de consentimento. Esta avaliação está sujeita a validação jurídica.',
                     ],
                 ],
                 [
                     'heading' => 'Subprocessadores e terceiros',
                     'body' => [
-                        'O LÁPIS recorre a serviços de terceiros para alojamento, entrega de rede e envio de email transacional.',
-                        'A lista identificada de subprocessadores, com as respetivas finalidades e localizações, está por publicar e será acrescentada a esta página. Enquanto isso não acontecer, não indicamos nomes que não possamos confirmar.',
+                        'O LÁPIS recorre a serviços de terceiros para alojamento, entrega de rede e envio de email transacional. Estes serviços tratam dados por nossa conta e apenas para essas finalidades.',
+                        'A lista identificada de subprocessadores, com as respetivas finalidades e localizações, está por publicar e será acrescentada a esta página. Enquanto isso não acontecer, não indicamos nomes que não possamos confirmar, nem afirmamos onde os dados são processados.',
                         'Não vendemos nem cedemos dados pessoais a terceiros.',
                     ],
                 ],

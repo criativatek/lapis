@@ -192,7 +192,7 @@ class LegalPagesTest extends TestCase
             'Os seus direitos',
             'Dados de menores',
             'Segurança',
-            'Cookies',
+            'Cookies e armazenamento no navegador',
             'Subprocessadores e terceiros',
         ] as $required) {
             $this->assertTrue($headings->contains($required), "Falta a secção «{$required}».");
@@ -267,13 +267,55 @@ class LegalPagesTest extends TestCase
     public function the_cookie_section_matches_the_audit(): void
     {
         $cookies = collect(LegalDocuments::privacy()['sections'])
-            ->firstWhere('heading', 'Cookies');
+            ->firstWhere('heading', 'Cookies e armazenamento no navegador');
 
         $text = mb_strtolower(implode(' ', $cookies['body']));
 
         $this->assertStringContainsString('estritamente necessários', $text);
         $this->assertStringContainsString('não usa cookies de publicidade', $text);
         $this->assertStringContainsString('não é apresentado um pedido de consentimento', $text);
+
+        // Sem conclusão jurídica absoluta: a auditoria técnica não encontrou
+        // cookies não essenciais, o que não é o mesmo que decidir a questão
+        // legal. E o armazenamento local é declarado, não só os cookies.
+        $this->assertStringContainsString('sujeita a validação jurídica', $text);
+        $this->assertStringContainsString('armazenamento local', $text);
+    }
+
+    /**
+     * A palavra-passe não é «cifrada» — é reduzida a um hash irreversível. A
+     * diferença importa: cifrado sugere que alguém, com a chave, a poderia ler.
+     */
+    #[Test]
+    public function the_password_is_described_as_a_hash_and_never_as_encrypted(): void
+    {
+        $privacy = json_encode(LegalDocuments::privacy(), JSON_UNESCAPED_UNICODE);
+
+        $this->assertStringContainsString('representação criptográfica irreversível', (string) $privacy);
+        $this->assertStringNotContainsString('versão cifrada da palavra-passe', (string) $privacy);
+        $this->assertStringNotContainsString('palavras-passe são guardadas apenas em forma cifrada', (string) $privacy);
+    }
+
+    /**
+     * Encerrar a conta não pode prometer apagar dados de uma escola. Só a
+     * organização pessoal é do titular — ver `AnonymiseClosedAccount`, que
+     * nunca toca numa organização institucional.
+     */
+    #[Test]
+    public function closure_never_promises_to_delete_institutional_student_data(): void
+    {
+        $terms = json_encode(LegalDocuments::terms(), JSON_UNESCAPED_UNICODE);
+        $privacy = json_encode(LegalDocuments::privacy(), JSON_UNESCAPED_UNICODE);
+
+        foreach ([$terms, $privacy] as $document) {
+            $this->assertStringContainsString('organização pessoal', (string) $document);
+        }
+
+        $this->assertStringContainsString(
+            'não elimina dados de uma organização institucional',
+            (string) $terms,
+        );
+        $this->assertStringContainsString('pertencem à instituição', (string) $privacy);
     }
 
     /** Ambos os documentos têm de dizer desde quando valem. */

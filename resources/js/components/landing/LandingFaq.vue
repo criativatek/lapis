@@ -83,6 +83,10 @@ const questions = [
         answer: 'A estrutura serve — unidades curriculares, semestres, ponderações por componente. Mas o vocabulário e algumas exportações são do sistema português: é uma ferramenta de avaliação flexível, não uma plataforma académica.',
     },
     {
+        question: 'Tenho de anonimizar os meus alunos antes de os inserir?',
+        answer: 'Não. O LÁPIS foi desenhado para reduzir a exposição da identidade dos alunos. Os dados identificativos são protegidos separadamente e o restante sistema trabalha, sempre que possível, com pseudónimos internos.',
+    },
+    {
         question: 'Os dados dos meus alunos estão seguros?',
         answer: 'O nome e o número de processo ficam numa tabela separada e cifrada; o resto da aplicação usa um pseudónimo. Cada organização só acede ao que é seu, imposto no servidor. A conta protege-se com dois passos ou passkey.',
     },

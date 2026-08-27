@@ -1,4 +1,4 @@
-| Identidade do responsável | `config('lapis.legal.*')` — confirmada, ver abaixo |# Páginas legais — Termos e Privacidade
+# Páginas legais — Termos e Privacidade
 
 > ⚠️ **TEXTO INICIAL TÉCNICO/FACTUAL — REQUER REVISÃO JURÍDICA ANTES DA
 > DIVULGAÇÃO A UTILIZADORES REAIS.**
@@ -41,6 +41,8 @@ Cada afirmação foi verificada no código antes de ser escrita:
 | Sessões guardam IP e navegador | migração `sessions`: `ip_address`, `user_agent` |
 | Registo de atividade **não** guarda IP nem navegador | migração `audit_events` — só causer, evento, subject, summary, properties |
 | Só cookies necessários e funcionais | `config/session.php`, `HandleAppearance` (`appearance`), `HandleInertiaRequests` (`sidebar_state`) |
+| Armazenamento local: tema e rascunhos de grelha | `useAppearance.ts`, `useGridDraft.ts` — ficam no equipamento, nunca são enviados por si só |
+| Palavra-passe é hash irreversível, não cifra | `User`, cast `'password' => 'hashed'` |
 | Sem analytics, marketing ou terceiros no browser | procura por gtag/GA/GTM/Hotjar/Meta/Segment/PostHog/Sentry/Matomo/Plausible: **zero ocorrências** |
 | Tipos de letra alojados no próprio domínio | HTML de produção: `https://lapispro.com/build/assets/instrument-sans-*.woff2` — nenhum pedido a terceiros |
 | IA envia texto pseudonimizado e com números mascarados | `ReportWritingAssistant`, `PseudonymMap`, `ProtectedFacts`, `RewriteGuard` |
