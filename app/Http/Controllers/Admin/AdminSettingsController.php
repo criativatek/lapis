@@ -16,6 +16,12 @@ use Inertia\Response;
  * Platform SMTP settings — the system mail used for verification, password reset
  * and invites. Stored in the DB and applied over the .env at boot
  * (AppServiceProvider). The password is write-only from the UI.
+ *
+ * It also holds `contact_email`, which is NOT mail configuration: it is the
+ * address the public landing page invites an institution to write to. It sits
+ * here because it is the same kind of thing — one platform-wide value an
+ * operator changes without a deploy — and because putting it next to
+ * `mail_from_address` is the only place somebody would think to look for it.
  */
 class AdminSettingsController extends Controller
 {
@@ -31,6 +37,7 @@ class AdminSettingsController extends Controller
                 'mail_encryption' => $settings->mail_encryption,
                 'mail_from_address' => $settings->mail_from_address,
                 'mail_from_name' => $settings->mail_from_name,
+                'contact_email' => $settings->contact_email,
                 'password_set' => filled($settings->mail_password),
             ],
         ]);
@@ -46,6 +53,7 @@ class AdminSettingsController extends Controller
             'mail_encryption' => ['nullable', Rule::in(['tls', 'ssl'])],
             'mail_from_address' => ['nullable', 'email', 'max:255'],
             'mail_from_name' => ['nullable', 'string', 'max:255'],
+            'contact_email' => ['nullable', 'email', 'max:255'],
         ]);
 
         $settings = PlatformSetting::current();

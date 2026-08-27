@@ -17,7 +17,7 @@ import RevealOnScroll from './RevealOnScroll.vue';
 const questions = [
     {
         question: 'Posso experimentar sem pagar?',
-        answer: 'Pode. Criar conta dá-lhe uma organização própria já com o plano LÁPIS Base ativo, e não é pedido cartão em passo nenhum. Os preços dos planos Pro e Institucional ainda não foram anunciados.',
+        answer: 'Pode. Criar conta dá-lhe uma organização própria já com o plano LÁPIS Base ativo, e não é pedido cartão em passo nenhum. O Base é gratuito no ano letivo 2026/27. Dentro da aplicação pode ainda ativar, uma vez, um período experimental de 30 dias do LÁPIS Pro — também sem cartão, e no fim volta ao Base sem perder nada do que registou.',
     },
     {
         question:
@@ -42,7 +42,7 @@ const questions = [
     },
     {
         question: 'Há limite de turmas, de alunos ou de testes?',
-        answer: 'Os planos atuais não definem limites de turmas, de alunos ou de elementos de avaliação. O que distingue os planos é quais os módulos que estão ligados.',
+        answer: 'O plano Base inclui até 8 turmas e 300 alunos ativos; turmas e alunos arquivados não contam. O Pro e o Institucional não têm esse limite. Nenhum plano limita elementos de avaliação. Chegar a um limite impede criar mais — nunca apaga o que já lá está.',
     },
     {
         question: 'Funciona no telemóvel?',

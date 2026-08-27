@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\PlatformSetting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -25,23 +26,46 @@ class LandingPageTest extends TestCase
     }
 
     /**
-     * The pricing cards say «tudo do Base, mais…», so the second and third plan
-     * must carry only their own additions. A plan that repeated the whole list
-     * would render three identical columns.
+     * Every ✓ in the comparison table is derived from these keys, so they are
+     * the payload's whole job. A plan that sent display names instead would
+     * render as missing capabilities it has the moment somebody renames a
+     * module in the seeder.
      */
-    public function test_each_plan_after_the_first_lists_only_what_it_adds(): void
+    public function test_each_plan_carries_the_entitlement_keys_the_comparison_reads(): void
     {
         $plans = $this->get(route('home'))->viewData('page')['props']['plans'];
 
-        $this->assertSame($plans[0]['modules'], $plans[0]['adds']);
+        $keys = array_column($plans, 'moduleKeys', 'key');
 
-        $this->assertContains('Perfis de Avaliação', $plans[0]['modules']);
-        $this->assertNotContains('Perfis de Avaliação', $plans[1]['adds']);
-        $this->assertContains('Apoio de IA', $plans[1]['adds']);
-        $this->assertContains('Administração Institucional', $plans[2]['adds']);
+        // The three rows the table's Base / Pro / Institucional split hangs on.
+        $this->assertContains('assessment_profiles', $keys['base']);
+        $this->assertNotContains('advanced_analytics', $keys['base']);
+        $this->assertContains('advanced_analytics', $keys['pro']);
+        $this->assertNotContains('institution_admin', $keys['pro']);
+        $this->assertContains('institution_admin', $keys['institutional']);
 
-        // Institucional still carries everything, even though it only ADDS five.
-        $this->assertContains('Perfis de Avaliação', $plans[2]['modules']);
+        // Each plan still contains everything the one below it does: the cards
+        // say «tudo do Base, mais…», and that has to be true.
+        $this->assertEmpty(array_diff($keys['base'], $keys['pro']));
+        $this->assertEmpty(array_diff($keys['pro'], $keys['institutional']));
+    }
+
+    /**
+     * «Falar connosco» must have somewhere to go. With no address configured
+     * the page is told so and drops the button, rather than inventing one or
+     * falling back to the system no-reply sender.
+     */
+    public function test_the_contact_address_comes_from_the_platform_settings(): void
+    {
+        $this->get(route('home'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->where('contactEmail', null));
+
+        PlatformSetting::current()->update(['contact_email' => 'geral@exemplo.pt']);
+
+        $this->get(route('home'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->where('contactEmail', 'geral@exemplo.pt'));
     }
 
     /**

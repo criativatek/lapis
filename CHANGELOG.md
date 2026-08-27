@@ -2,6 +2,36 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.75.0] — 2026-08-27
+
+### Added
+
+- **A página pública passa a apresentar a oferta comercial completa: três planos, preços, condição Fundador, comparação e voucher.** A secção «Planos» deixa de dizer «preço por anunciar» e passa a **Um LÁPIS para cada forma de trabalhar** — três cartões com a mensagem principal de cada plano, o que inclui, o preço e a fronteira conceptual que os separa: **Base regista e mostra · Pro cruza, interpreta e ajuda a agir · Institucional coordena, partilha e agrega**. Base **gratuito no ano letivo 2026/27 (0 €)**, Pro **44,90 €/ano**, Institucional **sob consulta**.
+
+  **Continuam a existir exatamente três planos.** A oferta **Membro Fundador · 2026** — **29,90 €/ano em vez de 44,90 €/ano**, para os primeiros 250 professores ou até 31 de dezembro de 2026, o que ocorrer primeiro — é uma **condição comercial do LÁPIS Pro**, e está construída para não poder ser lida como um quarto plano: uma faixa dentro da secção Planos, ancorada no cartão Pro, que nunca repete a lista de funcionalidades e diz explicitamente «não é um plano diferente».
+
+  **A faturação é anual, e só anual.** Não há alternador Mensal/Anual e não existe preço mensal cobrável. Os valores «equivalente a menos de 3,75 €/mês» e «equivalente a menos de 2,50 €/mês» aparecem apenas como equivalência de leitura, em itálico e ao lado da frase «Subscrição anual. Não existe pagamento mensal.» — há um teste que remove essas duas equivalências do texto renderizado e falha se sobrar qualquer `/mês` na página.
+
+- **«Compare os planos» — uma tabela derivada das tabelas de entitlements, não escrita à mão.** Cada linha declara as **chaves de módulo** que exige (`advanced_analytics`, `institution_admin`, …) e o plano responde se as tem, a partir do `moduleKeys` que o `HomeController` agora envia. Mover um módulo entre planos no `EntitlementsSeeder` muda a tabela no pedido seguinte, sem ninguém se lembrar de a editar — que é a razão de `plan_module` ser dados (§4.3).
+
+  **Três estados, não dois.** Uma linha que a matriz comercial coloca num plano mas que o produto ainda não implementa é apresentada como **«Em preparação»**, nunca com ✓: omiti-la deturparia a oferta, e assinalá-la como disponível deturparia o produto. Hoje são três — Gestão de licenças, Configuração partilhada e Calendário institucional.
+
+  **Desktop lê-se como tabela; no telemóvel é um acordeão por plano** (`<details>` nativo, como as Perguntas), com as mesmas linhas e os mesmos sinais, lido para baixo em vez de ao lado. Nenhum dos dois provoca scroll horizontal na página.
+
+- **Bloco de voucher, honesto por construção.** Um campo discreto que aceita um código e **nunca finge validá-lo**: não existe backend de vouchers, por isso a página não responde «voucher aplicado» nem «código inválido» — responde que a confirmação é feita ao criar a conta, e o ponto de integração futuro é uma única função (`submit()`).
+
+- **Endereço de contacto público, editável no backoffice.** `platform_settings.contact_email` — distinto do remetente do sistema — dá destino ao botão **«Falar connosco»** do plano Institucional. **Enquanto não estiver preenchido, o botão não é apresentado**, em vez de apontar para um endereço que ninguém lê ou para o no-reply do sistema.
+
+### Changed
+
+- **O último bloco da página passa a ser «Menos trabalho sobre os dados. Mais tempo para trabalhar com os alunos.»**, com a frase que sustenta o produto inteiro dita **uma só vez**, no fim: **«O professor decide. O LÁPIS simplifica o caminho.»** As três mensagens-chave ficam distribuídas por secções diferentes — a carga administrativa nos Planos, a autonomia do professor no fecho, e «o LÁPIS organiza, calcula e acompanha; o professor observa, decide e ensina» sob a comparação, junto à nota que diz o que a IA faz e o que nunca faz.
+
+- **A IA é descrita pelo que realmente faz.** Sob a tabela: sugere estratégias e ajuda a aperfeiçoar a redação de um relatório; **não atribui nem decide classificações**. Nada na página sugere que a IA decide pelo professor.
+
+### Fixed
+
+- **Duas respostas das Perguntas tinham deixado de ser verdade.** «Os planos atuais não definem limites de turmas, de alunos ou de elementos de avaliação» contradizia as quotas que `App\Support\Limits\Limits` e o `EntitlementsSeeder` já impõem no servidor (`{"active_classes":8,"active_students":300}` no Base) — passa a dizer o que o Base realmente inclui (**até 8 turmas e 300 alunos ativos**, arquivados não contam, e chegar ao limite impede criar mais, nunca apaga). «Os preços dos planos Pro e Institucional ainda não foram anunciados» deixou de ser verdade com esta versão, e passa a nomear o **período experimental Pro de 30 dias** que a [0.74.0] introduziu.
+
 ## [0.74.2] — 2026-08-27
 
 ### Fixed

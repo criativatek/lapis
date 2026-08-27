@@ -61,7 +61,7 @@ conta · Email (SMTP)) e **«Voltar ao LÁPIS»**, que devolve o operador ao
 | **Contas** (`/admin`) | Lista **todas** as organizações (cross-org), com dono, plano, estado da subscrição e verificação. Pesquisa por nome/email, paginada. |
 | **Detalhe da conta** | Verificar email do dono · mudar plano (Base/Pro/Institucional) · suspender/reativar subscrição · conceder/revogar admin · **impersonar**. |
 | **Nova conta** (`/admin/accounts/create`) | Provisiona professor+organização+plano de uma vez. Email já verificado (contas provisionadas saltam a verificação). Password opcional — em branco gera uma temporária. |
-| **Email (SMTP)** (`/admin/settings`) | Configura o email do sistema — ver abaixo. |
+| **Email (SMTP)** (`/admin/settings`) | Configura o email do sistema **e o endereço de contacto público** — ver abaixo. |
 
 **Mudar plano** cria uma **nova subscrição** com `starts_at` mais recente (a antiga fica no
 histórico) e faz `flush()` aos entitlements. Duas subscrições no mesmo segundo desempatam
@@ -86,6 +86,20 @@ ficam presos em `/email/verify`.
   a guardada.
 - Botão **«Enviar email de teste»** com destinatário à escolha («Enviar teste para») —
   reporta sucesso/erro num toast com a mensagem exata do servidor SMTP.
+
+### Endereço de contacto público
+
+No mesmo ecrã, e **distinto do remetente do sistema**: `contact_email` é o endereço para
+onde uma instituição escreve, e é o destino do botão **«Falar connosco»** do plano
+Institucional na página pública.
+
+- Enquanto estiver **vazio**, esse botão **não é apresentado** — o cartão fica com o preço
+  e o texto complementar, e nada aponta para um endereço que ninguém lê. Nunca cai para o
+  `mail_from_address` (esse é o no-reply do sistema).
+- Validado como email no servidor: um erro de escrita não chega a produzir um `mailto:`
+  partido para todos os visitantes.
+- É o **primeiro passo antes de anunciar a página pública** — ver
+  `HomeController` e `resources/js/components/landing/LandingPricing.vue`.
 
 ### Encriptação → porta
 

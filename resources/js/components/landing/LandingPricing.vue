@@ -1,158 +1,197 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
-import { Check, ChevronDown } from '@lucide/vue';
-import { computed } from 'vue';
+import { ArrowRight, Check } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
-import { register } from '@/routes';
+import { dashboard, register } from '@/routes';
+import { edit as planSettings } from '@/routes/settings/plan';
+import {
+    FALLBACK_PLAN,
+    FOUNDER,
+    FOUNDER_PRICE_PER_YEAR,
+    PLAN_COPY,
+} from './commercial';
+import type { PlanCommercial } from './commercial';
+import LandingFounder from './LandingFounder.vue';
 import LandingSection from './LandingSection.vue';
 import RevealOnScroll from './RevealOnScroll.vue';
 import type { LandingPlan } from './types';
 
 /**
- * The plan cards, built from the entitlement tables.
+ * The three plans, and nothing else. Base, Pro, Institucional — there is no
+ * fourth card, and the Fundador condition below is deliberately NOT one: it
+ * is a launch price on the same LÁPIS Pro, so it is attached to that card
+ * (the strip at its foot) and expanded in a band underneath, never presented
+ * as a plan a visitor could choose instead of Pro.
  *
- * NO PRICE IS SHOWN, because none is defined anywhere in the product — the
- * commercial composition of the plans is a business decision that is explicitly
- * not ours to invent (CLAUDE.md §31). What each plan CARRIES is real and comes
- * from the database, so the cards are honest about the part that is decided.
+ * THE ORDER AND THE NAMES COME FROM THE DATABASE, the prices and the copy
+ * from `commercial.ts`. `plan_module` is data on purpose (§4.3), so which
+ * capabilities a plan carries is never typed into a component — see
+ * LandingCompare, which derives every ✓ from `moduleKeys`.
  *
- * The Base line is not a placeholder: registering creates a personal
- * organization already subscribed to Base, and nothing asks for payment.
+ * PRO CARRIES A LIGHT VISUAL LEAD, and no invented label. There is no «mais
+ * popular» badge: nobody has counted, and a badge that claims a fact nobody
+ * measured is the kind of thing a teacher who has been sold software before
+ * notices immediately. The lead is a border, a ring and one line of copy.
+ *
+ * WHERE THE BUTTONS GO. Nothing on this page sells: there is no checkout, and
+ * payments are on the ask-first list (CLAUDE.md §31). «Começar gratuitamente»
+ * and «Escolher Pro» both open the registration form — which really does
+ * create an organization on the Base plan, with a voluntary 30-day Pro trial
+ * available inside — and a signed-in visitor is sent to their own plan screen
+ * instead of registering twice. «Falar connosco» is a mailto to the address
+ * the operator configured; with no address configured the button is not
+ * rendered at all, rather than pointing somewhere nobody reads.
  */
 
-const props = defineProps<{ plans: LandingPlan[] }>();
+const props = defineProps<{
+    plans: LandingPlan[];
+    authenticated: boolean;
+    contactEmail: string | null;
+}>();
 
-type PlanCopy = {
-    audience: string;
-    price: string;
-    priceNote: string;
-    recommended?: boolean;
-};
+const copyFor = (plan: LandingPlan): PlanCommercial =>
+    PLAN_COPY[plan.key] ?? FALLBACK_PLAN;
 
-const COPY: Record<string, PlanCopy> = {
-    base: {
-        audience: 'Todas as suas turmas num só sítio.',
-        price: 'Incluído ao criar conta',
-        priceNote: 'Não é pedido cartão.',
-    },
-    pro: {
-        audience: 'Importar, exportar e escrever mais depressa.',
-        price: 'Preço por anunciar',
-        priceNote: 'Comece no Base. Mudar de plano não obriga a recomeçar.',
-        recommended: true,
-    },
-    institutional: {
-        audience: 'Para escolas e agrupamentos que trabalham em equipa.',
-        price: 'Preço por anunciar',
-        priceNote: 'Convites, membros e auditoria.',
-    },
-};
+const isPro = (plan: LandingPlan): boolean => plan.key === 'pro';
 
-const FALLBACK: PlanCopy = {
-    audience: 'Um plano do LÁPIS.',
-    price: 'Preço por anunciar',
-    priceNote: 'Ver a comparação completa abaixo.',
-};
-
-/**
- * A card lists at most this many modules.
- *
- * The Base plan carries fourteen, which made a card taller than a laptop
- * screen — and a pricing section a visitor has to scroll through twice is a
- * pricing section that gets skipped. The remainder is counted, and the full
- * table is one click below.
- */
-const SHOWN_PER_CARD = 6;
-
-/** What a card lists: its own modules for the first plan, the additions after. */
-function highlighted(plan: LandingPlan, index: number): string[] {
-    return (index === 0 ? plan.modules : plan.adds).slice(0, SHOWN_PER_CARD);
+/** True when the card's action leaves the app, so it is an <a>, not a <Link>. */
+function isExternal(plan: LandingPlan): boolean {
+    return plan.key === 'institutional';
 }
 
-function remaining(plan: LandingPlan, index: number): number {
-    return Math.max(
-        0,
-        (index === 0 ? plan.modules : plan.adds).length - SHOWN_PER_CARD,
-    );
+/** Whether this card shows a button at all. */
+function hasAction(plan: LandingPlan): boolean {
+    return !isExternal(plan) || props.contactEmail !== null;
 }
 
-const copyFor = (plan: LandingPlan): PlanCopy => COPY[plan.key] ?? FALLBACK;
+/** «Falar connosco» — only ever called once `hasAction` has said there is one. */
+function mailtoHref(plan: LandingPlan): string {
+    const subject = `${plan.name} — pedido de informação`;
 
-/** Every module in the catalogue, in the order the largest plan lists them. */
-const allModules = computed<string[]>(() => {
-    const seen: string[] = [];
+    return `mailto:${props.contactEmail}?subject=${encodeURIComponent(subject)}`;
+}
 
-    for (const plan of props.plans) {
-        for (const module of plan.modules) {
-            if (!seen.includes(module)) {
-                seen.push(module);
-            }
-        }
+/** Where the two self-service calls to action go. There is no checkout. */
+function visitHref(plan: LandingPlan) {
+    if (!props.authenticated) {
+        return register();
     }
 
-    return seen;
-});
+    return plan.key === 'pro' ? planSettings() : dashboard();
+}
 </script>
 
 <template>
     <LandingSection
         id="planos"
         eyebrow="Planos"
-        title="Três planos, e a mesma aplicação por baixo."
-        lead="O que muda é o que está ligado, não a qualidade do que faz."
+        title="Um LÁPIS para cada forma de trabalhar."
+        lead="Menos peso administrativo. Mais espaço para ser professor. O que muda entre os planos não é a qualidade do que faz — é até onde o LÁPIS o acompanha."
     >
         <div v-if="plans.length" class="grid gap-5 lg:grid-cols-3">
             <RevealOnScroll
                 v-for="(plan, index) in plans"
                 :key="plan.key"
                 :delay="index * 90"
+                class="h-full"
             >
                 <article
                     class="group flex h-full flex-col rounded-2xl border bg-card p-7 shadow-sm transition-[transform,box-shadow,border-color] duration-500 ease-out hover:shadow-xl motion-safe:hover:-translate-y-1.5"
                     :class="
-                        copyFor(plan).recommended
+                        isPro(plan)
                             ? 'border-primary/60 ring-1 ring-primary/25 dark:border-(--brand-amber)/50 dark:ring-(--brand-amber)/20'
                             : 'border-border/70'
                     "
                 >
-                    <div class="flex items-center gap-2">
-                        <h3 class="font-semibold tracking-tight">
-                            {{ plan.name }}
-                        </h3>
-                        <span
-                            v-if="copyFor(plan).recommended"
-                            class="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold tracking-[0.08em] text-primary-foreground uppercase"
+                    <h3 class="font-semibold tracking-tight">
+                        {{ plan.name }}
+                    </h3>
+
+                    <p
+                        class="mt-3 text-[17px] leading-snug font-semibold tracking-tight text-balance"
+                    >
+                        {{ copyFor(plan).headline }}
+                    </p>
+
+                    <p
+                        class="mt-2.5 text-sm leading-relaxed text-pretty text-muted-foreground"
+                    >
+                        {{ copyFor(plan).body }}
+                    </p>
+
+                    <!-- The price block. Fixed order everywhere: the lead line
+                         when the figure needs context, the figure, the note. -->
+                    <div class="mt-6 border-t border-border/70 pt-5">
+                        <p
+                            v-if="copyFor(plan).priceLead"
+                            class="text-[11px] font-semibold tracking-[0.1em] text-primary uppercase dark:text-(--brand-amber)"
                         >
-                            Recomendado
-                        </span>
+                            {{ copyFor(plan).priceLead }}
+                        </p>
+                        <p
+                            class="mt-1.5 flex flex-wrap items-baseline gap-x-1.5 text-3xl font-semibold tracking-tight text-balance"
+                        >
+                            {{ copyFor(plan).price }}
+                            <span
+                                v-if="copyFor(plan).priceUnit"
+                                class="text-sm font-normal text-muted-foreground"
+                                >{{ copyFor(plan).priceUnit }}</span
+                            >
+                        </p>
+                        <p
+                            class="mt-1.5 text-xs leading-relaxed text-pretty text-muted-foreground"
+                            :class="isPro(plan) ? 'italic' : undefined"
+                        >
+                            {{ copyFor(plan).priceNote }}
+                        </p>
+                        <p
+                            v-if="copyFor(plan).priceFootnote"
+                            class="mt-1 text-xs leading-relaxed text-pretty text-muted-foreground/80"
+                        >
+                            {{ copyFor(plan).priceFootnote }}
+                        </p>
                     </div>
 
-                    <p
-                        class="mt-2 min-h-[2.5rem] text-sm leading-relaxed text-muted-foreground"
-                    >
-                        {{ copyFor(plan).audience }}
-                    </p>
-
-                    <p
-                        class="mt-5 text-xl font-semibold tracking-tight text-balance"
-                    >
-                        {{ copyFor(plan).price }}
-                    </p>
-                    <p
-                        class="mt-1.5 text-xs leading-relaxed text-muted-foreground"
-                    >
-                        {{ copyFor(plan).priceNote }}
-                    </p>
-
                     <Button
+                        v-if="hasAction(plan)"
                         as-child
-                        class="mt-5 w-full"
-                        :variant="
-                            copyFor(plan).recommended ? 'default' : 'outline'
-                        "
+                        class="group/cta mt-5 w-full"
+                        :variant="isPro(plan) ? 'default' : 'outline'"
                     >
-                        <Link :href="register()">Criar conta</Link>
+                        <a v-if="isExternal(plan)" :href="mailtoHref(plan)">
+                            {{ copyFor(plan).cta }}
+                            <ArrowRight
+                                aria-hidden="true"
+                                class="transition-transform duration-300 group-hover/cta:translate-x-0.5"
+                            />
+                        </a>
+                        <Link v-else :href="visitHref(plan)">
+                            {{ copyFor(plan).cta }}
+                            <ArrowRight
+                                aria-hidden="true"
+                                class="transition-transform duration-300 group-hover/cta:translate-x-0.5"
+                            />
+                        </Link>
                     </Button>
+
+                    <!-- The Fundador condition, said on the Pro card itself so
+                         nobody has to scroll to learn that 44,90 € is not the
+                         only figure. The band below carries the detail. -->
+                    <a
+                        v-if="isPro(plan)"
+                        href="#fundadores"
+                        class="mt-3 block rounded-lg border border-primary/30 bg-accent/70 px-3.5 py-2.5 text-xs leading-relaxed transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none dark:border-(--brand-amber)/30 dark:bg-(--brand-amber)/10 dark:hover:bg-(--brand-amber)/15"
+                    >
+                        <span
+                            class="font-semibold tracking-tight text-accent-foreground dark:text-(--brand-amber)"
+                        >
+                            {{ FOUNDER.badge }}
+                        </span>
+                        <span class="mt-0.5 block text-muted-foreground">
+                            {{ FOUNDER_PRICE_PER_YEAR }} para os primeiros 250
+                            professores. Mesmo plano, mesma aplicação.
+                        </span>
+                    </a>
 
                     <p
                         class="mt-6 border-t border-border/70 pt-4 text-[11px] font-semibold tracking-[0.1em] text-muted-foreground uppercase"
@@ -166,109 +205,29 @@ const allModules = computed<string[]>(() => {
 
                     <ul class="mt-3 space-y-1.5 text-sm">
                         <li
-                            v-for="module in highlighted(plan, index)"
-                            :key="module"
+                            v-for="feature in copyFor(plan).features"
+                            :key="feature"
                             class="flex gap-2.5"
                         >
                             <Check
                                 aria-hidden="true"
                                 class="mt-0.5 size-3.5 shrink-0 text-primary transition-transform duration-500 group-hover:scale-110 dark:text-(--brand-amber)"
                             />
-                            <span class="text-muted-foreground">{{
-                                module
+                            <span class="text-pretty text-muted-foreground">{{
+                                feature
                             }}</span>
                         </li>
-                        <li
-                            v-if="remaining(plan, index) > 0"
-                            class="pt-1 pl-6 text-xs text-muted-foreground/80"
-                        >
-                            e mais {{ remaining(plan, index) }} módulos
-                        </li>
                     </ul>
+
+                    <p
+                        class="mt-6 border-t border-border/70 pt-4 text-sm font-medium tracking-tight text-balance"
+                    >
+                        {{ copyFor(plan).boundary }}
+                    </p>
                 </article>
             </RevealOnScroll>
         </div>
 
-        <RevealOnScroll v-if="plans.length">
-            <details class="group mt-8">
-                <summary
-                    class="inline-flex cursor-pointer list-none items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none [&::-webkit-details-marker]:hidden"
-                >
-                    <span class="text-muted-foreground group-open:hidden"
-                        >Comparar os três planos lado a lado</span
-                    >
-                    <span class="hidden text-muted-foreground group-open:inline"
-                        >Fechar a comparação</span
-                    >
-                    <ChevronDown
-                        aria-hidden="true"
-                        class="size-4 text-muted-foreground transition-transform group-open:rotate-180"
-                    />
-                </summary>
-
-                <div
-                    class="mt-4 overflow-x-auto rounded-2xl border border-border/70"
-                >
-                    <table class="w-full min-w-[32rem] text-left text-sm">
-                        <caption class="sr-only">
-                            Módulos incluídos em cada plano
-                        </caption>
-                        <thead
-                            class="bg-muted/50 text-[11px] font-medium tracking-[0.06em] text-muted-foreground uppercase"
-                        >
-                            <tr>
-                                <th scope="col" class="px-4 py-2.5 font-medium">
-                                    Módulo
-                                </th>
-                                <th
-                                    v-for="plan in plans"
-                                    :key="plan.key"
-                                    scope="col"
-                                    class="px-3 py-2.5 text-center font-medium whitespace-nowrap"
-                                >
-                                    {{ plan.name.replace('LÁPIS ', '') }}
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-border">
-                            <tr
-                                v-for="module in allModules"
-                                :key="module"
-                                class="transition-colors duration-300 hover:bg-muted/40"
-                            >
-                                <th
-                                    scope="row"
-                                    class="px-4 py-2.5 text-left font-normal"
-                                >
-                                    {{ module }}
-                                </th>
-                                <td
-                                    v-for="plan in plans"
-                                    :key="plan.key"
-                                    class="px-3 py-2.5 text-center"
-                                >
-                                    <Check
-                                        v-if="plan.modules.includes(module)"
-                                        aria-hidden="true"
-                                        class="mx-auto size-4 text-emerald-600 dark:text-emerald-400"
-                                    />
-                                    <span
-                                        v-else
-                                        aria-hidden="true"
-                                        class="text-muted-foreground/50"
-                                        >—</span
-                                    >
-                                    <span class="sr-only">{{
-                                        plan.modules.includes(module)
-                                            ? 'incluído'
-                                            : 'não incluído'
-                                    }}</span>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </details>
-        </RevealOnScroll>
+        <LandingFounder :authenticated="authenticated" />
     </LandingSection>
 </template>

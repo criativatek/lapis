@@ -9,6 +9,7 @@ type Settings = {
     mail_encryption: string | null;
     mail_from_address: string | null;
     mail_from_name: string | null;
+    contact_email: string | null;
     password_set: boolean;
 };
 
@@ -22,6 +23,7 @@ const form = useForm({
     mail_encryption: props.settings.mail_encryption ?? '',
     mail_from_address: props.settings.mail_from_address ?? '',
     mail_from_name: props.settings.mail_from_name ?? '',
+    contact_email: props.settings.contact_email ?? '',
 });
 
 const testTo = ref('');
@@ -79,6 +81,17 @@ function sendTest(): void {
                     <span class="mb-1 block font-medium">Remetente (nome)</span>
                     <input v-model="form.mail_from_name" type="text" placeholder="Ex.: LÁPIS" class="w-full rounded-md border border-border bg-background px-3 py-2" />
                 </label>
+            </div>
+
+            <div class="border-t border-border pt-4">
+                <label class="text-sm">
+                    <span class="mb-1 block font-medium">Endereço de contacto público</span>
+                    <input v-model="form.contact_email" type="email" placeholder="Ex.: geral@lapispro.com" class="w-full rounded-md border border-border bg-background px-3 py-2 sm:max-w-sm" />
+                    <span v-if="form.errors.contact_email" class="mt-1 block text-xs text-red-600">{{ form.errors.contact_email }}</span>
+                </label>
+                <p class="mt-1.5 text-xs text-muted-foreground">
+                    Onde uma instituição escreve. É este endereço que dá destino ao botão <strong>«Falar connosco»</strong> do plano Institucional na página pública — enquanto estiver vazio, esse botão não é apresentado. Não é o remetente do sistema acima.
+                </p>
             </div>
 
             <div class="flex flex-wrap items-end justify-between gap-2 border-t border-border pt-4">

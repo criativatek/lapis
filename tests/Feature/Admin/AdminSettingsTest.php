@@ -71,6 +71,28 @@ class AdminSettingsTest extends TestCase
         );
     }
 
+    /**
+     * The public contact address is edited here, not in the code: it is what
+     * «Falar connosco» on the landing page opens, and it must be changeable
+     * without a deploy. It is validated as an email so a typo cannot ship a
+     * broken mailto to every visitor.
+     */
+    #[Test]
+    public function the_operator_sets_the_public_contact_address(): void
+    {
+        $this->actingAs($this->admin())->put('/admin/settings', [
+            'contact_email' => 'geral@exemplo.pt',
+        ])->assertRedirect();
+
+        $this->assertSame('geral@exemplo.pt', PlatformSetting::current()->publicContactEmail());
+
+        $this->actingAs($this->admin())->put('/admin/settings', [
+            'contact_email' => 'nao-e-um-email',
+        ])->assertSessionHasErrors('contact_email');
+
+        $this->assertSame('geral@exemplo.pt', PlatformSetting::current()->publicContactEmail());
+    }
+
     #[Test]
     public function a_teacher_cannot_open_the_settings(): void
     {

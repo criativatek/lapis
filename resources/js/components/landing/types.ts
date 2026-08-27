@@ -1,9 +1,11 @@
-/** One plan card, as HomeController sends it. */
+/** One plan, as HomeController sends it. */
 export type LandingPlan = {
     key: string;
     name: string;
-    /** Every module the plan carries. */
-    modules: string[];
-    /** Only what it adds to the plan below it — empty for the first one. */
-    adds: string[];
+    /**
+     * Every module the plan carries, by entitlement key. The comparison table
+     * asks «does this plan carry `advanced_analytics`», which a display name
+     * cannot answer without breaking the day somebody renames one.
+     */
+    moduleKeys: string[];
 };

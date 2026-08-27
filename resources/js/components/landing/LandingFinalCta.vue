@@ -5,6 +5,16 @@ import { Button } from '@/components/ui/button';
 import { dashboard, login, register } from '@/routes';
 import RevealOnScroll from './RevealOnScroll.vue';
 
+/**
+ * The last thing on the page, and the one place the whole argument is stated
+ * as a position rather than as a feature.
+ *
+ * «O professor decide. O LÁPIS simplifica o caminho.» is the pillar sentence
+ * of the product, and it is deliberately said HERE and nowhere else on the
+ * page: repeated in three sections it would read as a slogan, said once at
+ * the end it reads as a commitment.
+ */
+
 defineProps<{ authenticated: boolean }>();
 </script>
 
@@ -22,13 +32,21 @@ defineProps<{ authenticated: boolean }>();
                 <h2
                     class="text-3xl font-semibold tracking-tight text-balance sm:text-4xl"
                 >
-                    A próxima etapa pode correr melhor do que a última.
+                    Menos trabalho sobre os dados. Mais tempo para trabalhar com
+                    os alunos.
                 </h2>
                 <p
                     class="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-pretty text-muted-foreground"
                 >
-                    Crie o seu perfil de avaliação, importe uma turma e veja o
-                    LÁPIS a trabalhar com a sua realidade.
+                    O LÁPIS não pretende substituir o professor. Pretende dar ao
+                    professor melhor informação, melhor organização e mais tempo
+                    para exercer o seu julgamento profissional.
+                </p>
+
+                <p
+                    class="mx-auto mt-8 max-w-xl text-xl font-semibold tracking-tight text-balance sm:text-2xl"
+                >
+                    O professor decide. O LÁPIS simplifica o caminho.
                 </p>
 
                 <div class="mt-9 flex flex-wrap justify-center gap-3">
@@ -37,7 +55,7 @@ defineProps<{ authenticated: boolean }>();
                             {{
                                 authenticated
                                     ? 'Ir para o painel'
-                                    : 'Experimentar LÁPIS'
+                                    : 'Começar gratuitamente'
                             }}
                             <ArrowRight
                                 aria-hidden="true"
@@ -46,18 +64,30 @@ defineProps<{ authenticated: boolean }>();
                         </Link>
                     </Button>
                     <Button
-                        v-if="!authenticated"
                         as-child
                         variant="outline"
                         size="lg"
+                        class="transition-transform duration-300 motion-safe:hover:-translate-y-0.5"
                     >
-                        <Link :href="login()">Já tenho conta</Link>
+                        <a href="#planos">Conhecer o Pro</a>
                     </Button>
                 </div>
 
                 <p class="mt-5 text-sm text-muted-foreground">
-                    Não é necessário cartão de crédito. O plano LÁPIS Base
-                    fica ativo de imediato.
+                    Não é necessário cartão de crédito. O plano LÁPIS Base fica
+                    ativo de imediato.
+                    <!-- «Já tenho conta» was a button here before the two CTAs
+                         above were fixed by the commercial brief. It stays, as
+                         a link: the header and the footer both carry it, but
+                         the foot of the page is where somebody who scrolled
+                         the whole thing looks for it. -->
+                    <template v-if="!authenticated">
+                        <Link
+                            :href="login()"
+                            class="rounded font-medium text-foreground underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                            >Já tenho conta</Link
+                        >.
+                    </template>
                 </p>
             </RevealOnScroll>
         </div>

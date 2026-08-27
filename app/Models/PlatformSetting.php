@@ -17,10 +17,11 @@ use Illuminate\Database\Eloquent\Model;
  * @property string|null $mail_encryption
  * @property string|null $mail_from_address
  * @property string|null $mail_from_name
+ * @property string|null $contact_email
  */
 #[Fillable([
     'mail_mailer', 'mail_host', 'mail_port', 'mail_username', 'mail_password',
-    'mail_encryption', 'mail_from_address', 'mail_from_name',
+    'mail_encryption', 'mail_from_address', 'mail_from_name', 'contact_email',
 ])]
 class PlatformSetting extends Model
 {
@@ -41,5 +42,18 @@ class PlatformSetting extends Model
     public function mailConfigured(): bool
     {
         return filled($this->mail_host);
+    }
+
+    /**
+     * The address the public site invites people to write to, or null.
+     *
+     * NEVER FALLS BACK TO `mail_from_address`: that one is the system sender,
+     * usually a no-reply nobody reads. An unanswered mailbox is worse than no
+     * call to action, so the landing page is told the truth — nothing — and
+     * renders accordingly.
+     */
+    public function publicContactEmail(): ?string
+    {
+        return filled($this->contact_email) ? $this->contact_email : null;
     }
 }

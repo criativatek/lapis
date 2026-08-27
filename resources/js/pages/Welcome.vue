@@ -3,6 +3,7 @@ import { Head, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import LandingBenefits from '@/components/landing/LandingBenefits.vue';
 import LandingBrandStory from '@/components/landing/LandingBrandStory.vue';
+import LandingCompare from '@/components/landing/LandingCompare.vue';
 import LandingCustomEvaluation from '@/components/landing/LandingCustomEvaluation.vue';
 import LandingFaq from '@/components/landing/LandingFaq.vue';
 import LandingFeatures from '@/components/landing/LandingFeatures.vue';
@@ -15,6 +16,7 @@ import LandingPricing from '@/components/landing/LandingPricing.vue';
 import LandingProblem from '@/components/landing/LandingProblem.vue';
 import LandingRules from '@/components/landing/LandingRules.vue';
 import LandingSecurity from '@/components/landing/LandingSecurity.vue';
+import LandingVoucher from '@/components/landing/LandingVoucher.vue';
 import type { LandingPlan } from '@/components/landing/types';
 
 /**
@@ -30,7 +32,15 @@ import type { LandingPlan } from '@/components/landing/types';
  * title, which the browser applies after hydration anyway.
  */
 
-defineProps<{ plans: LandingPlan[] }>();
+defineProps<{
+    plans: LandingPlan[];
+    /**
+     * Where «Falar connosco» writes to, from the platform settings. Null when
+     * the operator has not set one — the Institucional card then renders
+     * without the button rather than pointing at a mailbox nobody reads.
+     */
+    contactEmail: string | null;
+}>();
 
 const page = usePage();
 const authenticated = computed(() => page.props.auth.user !== null);
@@ -70,7 +80,13 @@ const authenticated = computed(() => page.props.auth.user !== null);
             <LandingRules />
             <LandingBenefits />
             <LandingSecurity />
-            <LandingPricing :plans="plans" />
+            <LandingPricing
+                :plans="plans"
+                :authenticated="authenticated"
+                :contact-email="contactEmail"
+            />
+            <LandingCompare :plans="plans" />
+            <LandingVoucher />
             <LandingFaq />
             <LandingFinalCta :authenticated="authenticated" />
         </main>
