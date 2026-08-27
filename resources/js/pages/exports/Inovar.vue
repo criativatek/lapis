@@ -128,7 +128,7 @@ function noteDownloadStarted(): void {
         <section class="space-y-3 rounded-lg border border-border p-4">
             <h2 class="text-sm font-semibold">1 · Carregar a grelha do INOVAR</h2>
             <p class="text-sm text-muted-foreground">
-                Descarregue a grelha no INOVAR e carregue-a aqui. O LÁPIS preenche as menções e devolve
+                Descarregue a grelha no INOVAR e carregue-a aqui. O Lapispro preenche as menções e devolve
                 <strong>o mesmo ficheiro</strong> — nada mais é alterado.
             </p>
 

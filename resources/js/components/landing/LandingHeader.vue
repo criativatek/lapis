@@ -121,7 +121,7 @@ const items: readonly LandingNavItem[] = LANDING_NAV;
             <Link
                 href="/"
                 class="flex items-center gap-2.5 rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                aria-label="LÁPIS — página inicial"
+                aria-label="Lapispro — página inicial"
             >
                 <span
                     class="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground"
@@ -131,7 +131,7 @@ const items: readonly LandingNavItem[] = LANDING_NAV;
                 <span class="hidden sm:block">
                     <span
                         class="block text-[17px] leading-none font-semibold tracking-tight"
-                        >LÁPIS</span
+                        >Lapispro</span
                     >
                     <span
                         class="mt-1 block text-[12px] leading-tight"
@@ -178,7 +178,7 @@ const items: readonly LandingNavItem[] = LANDING_NAV;
                         <Link :href="login()">Entrar</Link>
                     </Button>
                     <Button as-child size="sm">
-                        <Link :href="register()">Experimentar LÁPIS</Link>
+                        <Link :href="register()">Experimentar Lapispro</Link>
                     </Button>
                 </template>
 

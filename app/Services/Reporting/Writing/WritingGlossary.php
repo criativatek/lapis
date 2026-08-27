@@ -68,7 +68,7 @@ class WritingGlossary
     /** The glossary as it appears in the prompt. */
     public static function forPrompt(): string
     {
-        $lines = ['TERMINOLOGIA DO LÁPIS — usa exatamente estes termos e não os substituas:'];
+        $lines = ['TERMINOLOGIA DO Lapispro — usa exatamente estes termos e não os substituas:'];
 
         foreach (self::PRESERVE as $term => $meaning) {
             $lines[] = '- «'.$term.'»: '.$meaning.'.';

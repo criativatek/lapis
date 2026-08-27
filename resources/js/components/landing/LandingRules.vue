@@ -12,11 +12,11 @@ import RevealOnScroll from './RevealOnScroll.vue';
 const rules = [
     {
         claim: 'Vazio nunca é zero.',
-        body: 'Uma avaliação ainda por preencher não conta como zero. O LÁPIS distingue o que falta avaliar de uma classificação de zero.',
+        body: 'Uma avaliação ainda por preencher não conta como zero. O Lapispro distingue o que falta avaliar de uma classificação de zero.',
     },
     {
         claim: '«Não aplicável» fica fora do cálculo.',
-        body: 'Se um critério, questão ou domínio não se aplica, o LÁPIS exclui-o do cálculo e recalcula o resultado apenas com o que era efetivamente avaliável.',
+        body: 'Se um critério, questão ou domínio não se aplica, o Lapispro exclui-o do cálculo e recalcula o resultado apenas com o que era efetivamente avaliável.',
     },
     {
         claim: 'Quem chega mais tarde não é penalizado.',

@@ -79,7 +79,7 @@ function sendTest(): void {
                 </label>
                 <label class="text-sm">
                     <span class="mb-1 block font-medium">Remetente (nome)</span>
-                    <input v-model="form.mail_from_name" type="text" placeholder="Ex.: LÁPIS" class="w-full rounded-md border border-border bg-background px-3 py-2" />
+                    <input v-model="form.mail_from_name" type="text" placeholder="Ex.: Lapispro" class="w-full rounded-md border border-border bg-background px-3 py-2" />
                 </label>
             </div>
 

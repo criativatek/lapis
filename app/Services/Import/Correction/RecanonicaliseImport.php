@@ -54,7 +54,7 @@ class RecanonicaliseImport
         $mapping = ImportMapping::fromArray($import->mapping_snapshot);
 
         // Only a sheet the teacher DESCRIBED is re-read from its description.
-        // A file that explained itself — a LÁPIS grid — was canonicalised once,
+        // A file that explained itself — a Lapispro grid — was canonicalised once,
         // at upload, against a contract no later answer changes; re-parsing it
         // here would also throw away a refusal already recorded against it.
         if (! $mapping->describesATable()) {

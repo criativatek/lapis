@@ -5,7 +5,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * One session of restoring a LÁPIS-generated backup (Fatia 6). Mirrors
+ * One session of restoring a Lapispro-generated backup (Fatia 6). Mirrors
  * `correction_imports` (2026_08_15_000100) deliberately — same shape, same
  * reasoning: `stored_path` is a random name on the private disk,
  * `original_filename` is metadata only and never becomes a path,

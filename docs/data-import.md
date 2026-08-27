@@ -18,7 +18,7 @@ organizações, conflito irresolúvel ou ambiguidade de titularidade, a linha em
 causa é classificada `invalid` e mostrada na pré-visualização — nunca
 inferida, nunca escrita à força. O professor decide; o sistema propõe.
 
-## O que é um backup do LÁPIS
+## O que é um backup do Lapispro
 
 O ficheiro carregado é ou o ZIP completo que `GenerateDataExport` produz
 (`technicalBackup()`), ou apenas o `backup-lapis.json` lá dentro,
@@ -86,7 +86,7 @@ chave — a qualquer profundidade — que contenha `password`, `remember_token`,
 `two_factor`, `passkey`, `session`, `api_key`/`api_token`, `smtp`,
 `invitation_token`, `token_hash`, `token`, `csrf`, `encryption_key`,
 `app_key` ou `secret`. Encontrar uma só destas rejeita o ficheiro inteiro —
-um genuíno backup do LÁPIS nunca as contém a esta profundidade, e o custo de
+um genuíno backup do Lapispro nunca as contém a esta profundidade, e o custo de
 um falso positivo (pedir para tentar de novo) é seguro; o custo de um falso
 negativo não seria.
 
@@ -252,7 +252,7 @@ Deliberadamente fora do âmbito desta fatia (ver §101 do briefing original):
   linha
 - Restauro de membros, convites, ou do dono da organização
 - Criação automática de contas de utilizador
-- Importação de backups de terceiros fora do formato do LÁPIS
+- Importação de backups de terceiros fora do formato do Lapispro
 - Assinatura criptográfica do backup
 
 Dívida futura específica do esquema pedagógico (`ReportTemplate`,

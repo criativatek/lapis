@@ -9,7 +9,7 @@ import RevealOnScroll from './RevealOnScroll.vue';
  * The last thing on the page, and the one place the whole argument is stated
  * as a position rather than as a feature.
  *
- * «O professor decide. O LÁPIS simplifica o caminho.» is the pillar sentence
+ * «O professor decide. O Lapispro simplifica o caminho.» is the pillar sentence
  * of the product, and it is deliberately said HERE and nowhere else on the
  * page: repeated in three sections it would read as a slogan, said once at
  * the end it reads as a commitment.
@@ -38,7 +38,7 @@ defineProps<{ authenticated: boolean }>();
                 <p
                     class="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-pretty text-muted-foreground"
                 >
-                    O LÁPIS não pretende substituir o professor. Pretende
+                    O Lapispro não pretende substituir o professor. Pretende
                     dar-lhe melhor informação, melhor organização e mais tempo
                     para tomar decisões pedagógicas com confiança.
                 </p>
@@ -46,7 +46,7 @@ defineProps<{ authenticated: boolean }>();
                 <p
                     class="mx-auto mt-8 max-w-xl text-xl font-semibold tracking-tight text-balance sm:text-2xl"
                 >
-                    O professor decide. O LÁPIS simplifica o caminho.
+                    O professor decide. O Lapispro simplifica o caminho.
                 </p>
 
                 <div class="mt-9 flex flex-wrap justify-center gap-3">
@@ -74,7 +74,7 @@ defineProps<{ authenticated: boolean }>();
                 </div>
 
                 <p class="mt-5 text-sm text-muted-foreground">
-                    Não é necessário cartão de crédito. O plano LÁPIS Base fica
+                    Não é necessário cartão de crédito. O plano Lapispro Base fica
                     ativo de imediato.
                     <!-- «Já tenho conta» was a button here before the two CTAs
                          above were fixed by the commercial brief. It stays, as

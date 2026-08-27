@@ -5,7 +5,7 @@ namespace App\Domain\Reporting;
 /**
  * Whether the planning was carried out (§18).
  *
- * PURELY THE TEACHER'S STATEMENT. LÁPIS does not hold a planning — it holds
+ * PURELY THE TEACHER'S STATEMENT. Lapispro does not hold a planning — it holds
  * instruments, scores and grades — so nothing here is derived from anything.
  * That is also why the section is available on the Base plan: writing
  * «a planificação foi parcialmente cumprida» from an answer the teacher gave is

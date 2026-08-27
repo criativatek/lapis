@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Construir o módulo semanal de aulas, sumários, planeamento, sequências, cumprimento, continuidade, TPC e faltas sobre os domínios canónicos do LÁPIS.
+**Goal:** Construir o módulo semanal de aulas, sumários, planeamento, sequências, cumprimento, continuidade, TPC e faltas sobre os domínios canónicos do Lapispro.
 
 **Architecture:** Um agregado normalizado separa ocorrência, plano, sumário, notas, recursos e cumprimento. Sequências são templates que produzem cópias operacionais independentes; TPC, faltas e atrasos continuam em `EvidenceRecord`. Cada slice é vertical, tenant-scoped, recusado durante impersonation e fecha com testes, browser, versão/changelog e `composer ci:check` executado pelo utilizador.
 

@@ -530,7 +530,7 @@ class ReportTemplateTest extends TestCase
             ->put("/reports/modelos/{$system->ulid}", ['name' => 'Alterado'])
             ->assertForbidden();
 
-        $this->assertSame('Relatório de turma — padrão LÁPIS', $this->asTenant(fn () => $system->fresh()->name));
+        $this->assertSame('Relatório de turma — padrão Lapispro', $this->asTenant(fn () => $system->fresh()->name));
     }
 
     #[Test]
@@ -550,7 +550,7 @@ class ReportTemplateTest extends TestCase
             ->latest('id')
             ->firstOrFail());
 
-        $this->assertSame('Cópia de Relatório de turma — padrão LÁPIS', $copy->name);
+        $this->assertSame('Cópia de Relatório de turma — padrão Lapispro', $copy->name);
         $this->assertSame($this->teacher->id, $copy->user_id);
         $this->assertSame($system->settings, $copy->settings);
     }

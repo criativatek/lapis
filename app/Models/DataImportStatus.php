@@ -6,7 +6,7 @@ namespace App\Models;
  * Where a backup restore session has got to.
  *
  * Short by design, mirroring CorrectionImportStatus: uploaded → validated →
- * imported. No "needs mapping" state — unlike a correction grid, a LÁPIS
+ * imported. No "needs mapping" state — unlike a correction grid, a Lapispro
  * backup has no ambiguous column mapping for a teacher to resolve; every
  * row is already classified (new/existing/conflict/unsupported) by the
  * preview builder itself.

@@ -3,7 +3,7 @@ import { CircleAlert } from '@lucide/vue';
 
 /**
  * A faithful reduction of the Classificações screen: the weighted average, what
- * LÁPIS proposes from it, and the teacher's decision — in that reading order,
+ * Lapispro proposes from it, and the teacher's decision — in that reading order,
  * which is the order the real page uses (§10).
  *
  * The data is representative, not real, and every column shown here exists.

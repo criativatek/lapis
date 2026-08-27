@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ __('Convite — LÁPIS') }}</title>
+    <title>{{ __('Convite — Lapispro') }}</title>
 </head>
 <body style="margin:0; padding:0; background-color:#f4f4f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color:#18181b;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5; padding:32px 16px;">
@@ -12,9 +12,9 @@
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px; background-color:#ffffff; border-radius:8px; padding:32px;">
                     <tr>
                         <td>
-                            <h1 style="font-size:18px; margin:0 0 16px;">{{ __('LÁPIS') }}</h1>
+                            <h1 style="font-size:18px; margin:0 0 16px;">{{ __('Lapispro') }}</h1>
                             <p style="font-size:15px; line-height:1.6; margin:0 0 16px;">
-                                {{ __(':inviter convidou-o para se juntar a :organization no LÁPIS.', ['inviter' => $inviterName, 'organization' => $organizationName]) }}
+                                {{ __(':inviter convidou-o para se juntar a :organization no Lapispro.', ['inviter' => $inviterName, 'organization' => $organizationName]) }}
                             </p>
                             <p style="text-align:center; margin:24px 0;">
                                 <a href="{{ $acceptUrl }}" style="display:inline-block; background-color:#18181b; color:#ffffff; text-decoration:none; padding:12px 24px; border-radius:6px; font-size:15px;">

@@ -37,7 +37,7 @@ class EnsureUserIsActive
         // On the login form's own field, so the message lands where the person
         // is looking rather than in a flash they have to go find.
         return redirect()->route('login')->withErrors([
-            'email' => __('A sua conta foi desativada. Contacte o suporte do LÁPIS.'),
+            'email' => __('A sua conta foi desativada. Contacte o suporte do Lapispro.'),
         ]);
     }
 }

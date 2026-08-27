@@ -95,7 +95,7 @@ marca ou estrutura comercial, a formulação é decidida antes, não aqui.
 Escritos de forma prudente, e todos por confirmar:
 
 1. **Bases legais** — o texto diz «execução do contrato» para os dados do professor e remete a responsabilidade dos dados de aluno para o professor/instituição. A repartição exata de responsabilidades (responsável vs. subcontratante) não foi validada.
-2. **Dados de menores** — o enquadramento aplicável, e o que o LÁPIS deve exigir da instituição, está por confirmar.
+2. **Dados de menores** — o enquadramento aplicável, e o que o Lapispro deve exigir da instituição, está por confirmar.
 3. **Subprocessadores** — alojamento, rede e email transacional existem, mas a relação jurídica não está clara e **nenhum é nomeado**. A secção está criada e vazia de propósito.
 4. **Retenção** — os prazos técnicos reais estão descritos em termos gerais. A diferenciação Base +2 / Pro +5 da Matriz **não está implementada** e por isso **não é afirmada**.
 5. **Limitação de responsabilidade** — formulação prudente, sem cláusulas agressivas, mas não validada.

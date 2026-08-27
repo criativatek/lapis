@@ -1,4 +1,4 @@
-# LÁPIS — Modelo de Domínio da Avaliação
+# Lapispro — Modelo de Domínio da Avaliação
 
 **Estado:** proposta de desenho — *design gate*. Nenhuma migration deve ser escrita antes de este documento ser aprovado.
 **Versão:** 0.1 (julho 2026)
@@ -80,7 +80,7 @@ ACOMPANHAMENTO (paralelo; nunca entra no calculo sem regra explicita)
 
 **Quatro camadas, quatro naturezas.** *Regra* é versionada e congelada. *Recolha* é facto observado, editável enquanto o instrumento não fecha. *Resultado* é derivado e recomputável a qualquer momento. *Decisão* é humana e imutável.
 
-A fronteira entre **Resultado** e **Decisão** é o ponto onde o LÁPIS deixa de calcular e o professor assume (§3.3). Nada atravessa essa fronteira sem passar por `classifications`. Esta é a razão pela qual `student_overall_results` e `classifications` são tabelas distintas apesar de terem quase a mesma granularidade: a primeira pode ser destruída e recalculada à vontade, a segunda nunca.
+A fronteira entre **Resultado** e **Decisão** é o ponto onde o Lapispro deixa de calcular e o professor assume (§3.3). Nada atravessa essa fronteira sem passar por `classifications`. Esta é a razão pela qual `student_overall_results` e `classifications` são tabelas distintas apesar de terem quase a mesma granularidade: a primeira pode ser destruída e recalculada à vontade, a segunda nunca.
 
 ---
 ## 2. Tabelas
@@ -1008,7 +1008,7 @@ Acrescentar códigos aqui **não exige migration**: a coluna é `VARCHAR(64)` se
 | `InterventionLegalFramework` | interface: como uma jurisdição, num período da sua história, lê o catálogo |
 | `PortugalInclusiveEducationFramework` | **uma implementação**, não o núcleo. Contém toda a taxonomia portuguesa |
 | `NullLegalFramework` | ausência de enquadramento — um estado **válido**, não degradado |
-| `LegalFrameworkRegistry` | os frameworks que o LÁPIS sabe aplicar. Um só, hoje |
+| `LegalFrameworkRegistry` | os frameworks que o Lapispro sabe aplicar. Um só, hoje |
 | `LegalFrameworkResolver` | escolhe o framework a partir de **jurisdição + data** |
 
 **Resolução.** `organizations.jurisdiction` (ISO 3166-1 alpha-2, nullable) → se nula, `config('lapis.default_jurisdiction')` → se o registry não cobrir essa jurisdição nessa data, `NullLegalFramework`.
@@ -1086,10 +1086,10 @@ Excel/CSV · Intuitivo · Google Forms · Plickers · outra
         ↓
    validação
         ↓
-   persistência normal do LÁPIS
+   persistência normal do Lapispro
 ```
 
-**O adaptador nunca cria modelos do LÁPIS.** `Instrument`, `InstrumentGroup`,
+**O adaptador nunca cria modelos do Lapispro.** `Instrument`, `InstrumentGroup`,
 `InstrumentItem` e `StudentItemScore` são escritos só depois da confirmação do
 professor. `InstrumentBuilder` e `CalculationEngine` não conhecem — e não devem
 conhecer — nenhuma plataforma de origem.
@@ -1100,7 +1100,7 @@ conhecer — nenhuma plataforma de origem.
    alunos, questões e pontuações, e o assistente mapeia para os
    `InstrumentGroup`/`InstrumentItem` que existem.
 2. **Criar um instrumento a partir da grelha** — o professor não o criou. De
-   `Aluno | Oralidade Q1 | Oralidade Q2 | Gramática Q1 | Gramática Q2` o LÁPIS
+   `Aluno | Oralidade Q1 | Oralidade Q2 | Gramática Q1 | Gramática Q2` o Lapispro
    pode **propor** um instrumento com dois grupos e duas questões cada, e importar
    os resultados depois de confirmado.
 

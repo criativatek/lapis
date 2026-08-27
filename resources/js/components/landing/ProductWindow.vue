@@ -12,7 +12,7 @@ import {
 import AppTour from './AppTour.vue';
 
 /**
- * A neutral application frame around a mock of a real LÁPIS screen.
+ * A neutral application frame around a mock of a real Lapispro screen.
  *
  * The chrome is deliberately generic — three dots and a path pill, no browser
  * branding — so the frame reads as "this is the product" without pretending to
@@ -90,7 +90,7 @@ const open = ref(false);
                     type="button"
                     class="absolute inset-0 z-10 hidden cursor-pointer rounded-2xl focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none lg:block"
                 >
-                    <span class="sr-only">Ver o LÁPIS por dentro</span>
+                    <span class="sr-only">Ver o Lapispro por dentro</span>
                 </button>
             </DialogTrigger>
 
@@ -99,14 +99,14 @@ const open = ref(false);
                 class="pointer-events-none absolute right-3 bottom-3 z-20 hidden translate-y-1 items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-[11px] font-medium text-primary-foreground opacity-0 shadow-lg transition-all duration-300 group-focus-within/window:translate-y-0 group-focus-within/window:opacity-100 group-hover/window:translate-y-0 group-hover/window:opacity-100 lg:inline-flex"
             >
                 <Maximize2 class="size-3" />
-                Ver o LÁPIS por dentro
+                Ver o Lapispro por dentro
             </span>
         </div>
 
         <DialogContent class="max-h-[92vh] overflow-y-auto sm:max-w-[76rem]">
             <DialogHeader class="text-left">
                 <DialogTitle class="text-xl tracking-tight"
-                    >O LÁPIS por dentro</DialogTitle
+                    >O Lapispro por dentro</DialogTitle
                 >
                 <DialogDescription>
                     O interface como ele é: o menu, o contexto no cabeçalho e

@@ -7,7 +7,7 @@ use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
- * Where an uploaded LÁPIS backup sits while it is validated and reviewed —
+ * Where an uploaded Lapispro backup sits while it is validated and reviewed —
  * on the private `local` disk, never `public`, never web-reachable. Same
  * shape and reasoning as CorrectionImportTempStorage: a random stored name,
  * an extension taken from an allowlist rather than from what the upload

@@ -120,7 +120,7 @@ const logoSrc = computed<string | null>(() => (
             <Heading
                 variant="small"
                 title="Identidade da escola"
-                description="Os dados institucionais que encabeçam os relatórios e outros documentos gerados pelo LÁPIS."
+                description="Os dados institucionais que encabeçam os relatórios e outros documentos gerados pelo Lapispro."
             />
 
             <p

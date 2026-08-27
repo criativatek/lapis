@@ -32,7 +32,7 @@ class SpreadsheetZipSafety
      * Active content, refused at the door rather than ignored later.
      *
      * A macro project and an external link are both instructions to do something
-     * when the file is opened. LÁPIS opens spreadsheets for a living and has no
+     * when the file is opened. Lapispro opens spreadsheets for a living and has no
      * business carrying either, so their mere presence disqualifies the package —
      * it is not enough that this reader would not run them (§27).
      *

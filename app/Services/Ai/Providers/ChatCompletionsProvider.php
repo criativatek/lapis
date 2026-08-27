@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\Http;
  * which puts «pick an AI provider» on the ask-first list).
  *
  * THE INSTRUCTION AND THE TEXT TRAVEL AS DIFFERENT ROLES (§30). `system` carries
- * what LÁPIS wants; `user` carries the teacher's paragraph. They are never
+ * what Lapispro wants; `user` carries the teacher's paragraph. They are never
  * concatenated, so a report containing «ignora as instruções acima» arrives as
  * content — which is what it is.
  *

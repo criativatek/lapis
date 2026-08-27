@@ -36,7 +36,7 @@ const version = computed(() => usePage().props.appVersion);
         >
             <div>
                 <span class="flex items-center gap-2.5">
-                    <!-- Decorative: the word LÁPIS is right beside it, so a
+                    <!-- Decorative: the word Lapispro is right beside it, so a
                          screen reader announcing the mark too would just read
                          the brand twice. -->
                     <span
@@ -48,7 +48,7 @@ const version = computed(() => usePage().props.appVersion);
                     <span>
                         <span
                             class="block text-[15px] leading-none font-semibold tracking-tight"
-                            >LÁPIS</span
+                            >Lapispro</span
                         >
                         <span
                             class="mt-0.5 block text-[11px] leading-none"
@@ -61,9 +61,8 @@ const version = computed(() => usePage().props.appVersion);
                     class="mt-5 max-w-sm text-sm leading-relaxed"
                     :class="CHROME_MUTED"
                 >
-                    Laboratório de Apoio ao Professor, Informação e
-                    Simplificação. Uma plataforma criada para apoiar professores
-                    na avaliação, organização e acompanhamento pedagógico.
+                    Uma plataforma criada para apoiar professores na
+                    avaliação, organização e acompanhamento pedagógico.
                 </p>
             </div>
 
@@ -129,7 +128,7 @@ const version = computed(() => usePage().props.appVersion);
                 class="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-3 px-6 py-5 text-xs sm:px-8"
                 :class="CHROME_MUTED"
             >
-                <span>LÁPIS v{{ version }}</span>
+                <span>Lapispro v{{ version }}</span>
 
                 <nav
                     aria-label="Documentos legais"

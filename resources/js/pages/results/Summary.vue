@@ -307,8 +307,8 @@ function proposalText(proposal: Proposal | undefined): string {
                             </th>
                             <th
                                 class="sticky top-[33px] z-20 border-b border-border bg-primary/5 px-2 py-1 text-center text-xs font-medium"
-                                :title="`Proposta do LÁPIS — ${period.label}`"
-                                :aria-label="`Proposta do LÁPIS — ${period.label}`"
+                                :title="`Proposta do Lapispro — ${period.label}`"
+                                :aria-label="`Proposta do Lapispro — ${period.label}`"
                                 scope="col"
                             >
                                 Prop.
@@ -456,7 +456,7 @@ function proposalText(proposal: Proposal | undefined): string {
                                     {{ period.classification.final.code }}
                                     <Lock v-if="period.classification.is_published" class="size-3 font-normal opacity-60" />
                                 </span>
-                                <span v-else class="text-muted-foreground" title="Ainda por atribuir — o LÁPIS propõe, o professor decide.">—</span>
+                                <span v-else class="text-muted-foreground" title="Ainda por atribuir — o Lapispro propõe, o professor decide.">—</span>
                             </td>
                         </template>
                     </tr>
@@ -472,7 +472,7 @@ function proposalText(proposal: Proposal | undefined): string {
                 anterior — sempre valores do próprio período, nunca acumulados —, <strong>Acum.</strong> é a
                 <strong>Média Ponderada Acumulada</strong> e a <strong>Menção</strong> é a banda dessa acumulada na
                 escala do perfil<template v-if="schoolClass.scale_name"> ({{ schoolClass.scale_name }})</template>;
-                fica "—" quando a escala não tem banda definida — o LÁPIS não infere limiares. O <strong>A</strong> em
+                fica "—" quando a escala não tem banda definida — o Lapispro não infere limiares. O <strong>A</strong> em
                 expoente é a autoavaliação do aluno nesse domínio. No bloco <strong>Síntese</strong> ficam, por período, a Média Ponderada, a evolução, a
                 acumulada, a <strong>Proposta</strong>, a <strong>Autoavaliação</strong> global e o
                 <strong>{{ decision.label }}</strong><template v-if="schoolClass.scale_name"> na escala

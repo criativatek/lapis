@@ -111,7 +111,7 @@ class BuildImportPreview
             $mappedId = $mapping->items[$item->sourceKey] ?? null;
 
             // Associating with an existing instrument: the cotação already
-            // configured in LÁPIS wins, and is shown so the teacher sees which
+            // configured in Lapispro wins, and is shown so the teacher sees which
             // number is going to be used (§24).
             $existingPoints = null;
 
@@ -184,7 +184,7 @@ class BuildImportPreview
                 $earned = Bc::add($earned, Bc::of($result->resolvedAgainst($worth)->pointsEarned ?? '0'));
             }
 
-            // No cotação decided yet, or nothing judged: no LÁPIS result to show.
+            // No cotação decided yet, or nothing judged: no Lapispro result to show.
             // Deliberately null rather than 0 — the distinction the whole feature
             // is built on.
             $student['lapis_percentage'] = ($judged === 0 || Bc::isZero($possible))
@@ -310,7 +310,7 @@ class BuildImportPreview
     }
 
     /**
-     * Where LÁPIS and the source disagree, and by how much.
+     * Where Lapispro and the source disagree, and by how much.
      *
      * Two checks the file makes possible: the sections' cotações against the
      * total the export declares, and each student's marks against the total the
@@ -394,7 +394,7 @@ class BuildImportPreview
      * The same number, in the simple mode: what the platform said.
      *
      * There is no arithmetic to disagree about here — the classification was
-     * decided on the platform and LÁPIS records it, so the two columns of the
+     * decided on the platform and Lapispro records it, so the two columns of the
      * review screen agree by construction. It is still computed rather than
      * copied, because on an existing instrument the result lands on an item with
      * its own cotação, and this is where that would show if it ever failed to
@@ -528,7 +528,7 @@ class BuildImportPreview
      *
      * Nothing about cotações or question structure is ever asked for in the
      * simple mode. The platform already produced the classification; demanding
-     * twenty cotações before LÁPIS will accept a number it is not going to use
+     * twenty cotações before Lapispro will accept a number it is not going to use
      * would be the whole problem this rewrite exists to remove.
      *
      * @param  list<array<string, mixed>>  $items
@@ -684,10 +684,10 @@ class BuildImportPreview
     }
 
     /**
-     * Where LÁPIS and the source disagree, said out loud.
+     * Where Lapispro and the source disagree, said out loud.
      *
      * Never resolved silently and never allowed to change a mark: the source
-     * total is provenance, LÁPIS computes its own, and a source that weights its
+     * total is provenance, Lapispro computes its own, and a source that weights its
      * questions differently will legitimately disagree (§27, §28). So these are
      * warnings the teacher accepts knowingly, not errors that block.
      *
@@ -707,7 +707,7 @@ class BuildImportPreview
                 IssueCode::SourceTotalMismatch,
                 'As cotações dos grupos somam '.$reconciliation['groups_total']
                     .', mas o ficheiro declara um total de '.$reconciliation['source_total']
-                    .'. O LÁPIS usa a soma dos grupos.',
+                    .'. O Lapispro usa a soma dos grupos.',
                 ['groups_total' => $reconciliation['groups_total'], 'source_total' => $reconciliation['source_total']],
             )->toArray();
         }

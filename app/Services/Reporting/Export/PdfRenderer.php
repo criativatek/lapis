@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\View;
  *
  * DOMPDF, AND NOTHING THAT NEEDS A BROWSER. A headless-Chrome renderer produces
  * prettier output and needs Node, Chromium and a working sandbox on every
- * machine LÁPIS runs on — including a teacher's Herd install. This is pure PHP,
+ * machine Lapispro runs on — including a teacher's Herd install. This is pure PHP,
  * has no binary dependency, and lays out what the template was written for.
  *
  * ISOLATED ON PURPOSE. `isRemoteEnabled` stays FALSE: the document must not be

@@ -5,7 +5,7 @@ namespace App\Domain\Reporting;
 /**
  * How the teacher characterises behaviour (§9).
  *
- * THE SYSTEM NEVER PICKS ONE. LÁPIS holds disciplinary occurrences and merit
+ * THE SYSTEM NEVER PICKS ONE. Lapispro holds disciplinary occurrences and merit
  * records; it does not hold behaviour. Eight incidents in a class of twenty-six
  * is a count, not a characterisation, and turning one into the other is exactly
  * the inference §12 forbids. So this is asked, never derived — and «não

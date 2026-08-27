@@ -7,7 +7,7 @@
 
 §7.1 requires shared-database, shared-schema multi-organization isolation with an `organization_id` on every tenant-owned entity, and explicitly warns: *"Não uses global scopes de forma cega se puderem esconder erros."* §31 forbids adopting a multi-tenancy package that reshapes the architecture without approval.
 
-LÁPIS holds grades belonging to minors. A cross-tenant leak here is a personal-data breach, not a bug report.
+Lapispro holds grades belonging to minors. A cross-tenant leak here is a personal-data breach, not a bug report.
 
 The obvious starting point was Plaanly, the team's existing Laravel SaaS. Its tenancy is `app/Traits/HasCompanyScope.php:12`:
 

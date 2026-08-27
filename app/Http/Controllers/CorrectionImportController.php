@@ -145,7 +145,7 @@ class CorrectionImportController extends Controller
             'mapping_snapshot' => (new ImportMapping(resultMode: $source->defaultResultMode()))->toArray(),
         ]), 'ao guardar a análise do ficheiro');
 
-        // A grid LÁPIS produced arrives already answered: which evaluation,
+        // A grid Lapispro produced arrives already answered: which evaluation,
         // which question in which column, which student on which row. Checked
         // against the database here — never taken on the file's word — and if
         // any of it fails the import stays open on the ordinary questions (§6).

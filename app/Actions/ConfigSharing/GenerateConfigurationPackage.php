@@ -57,8 +57,8 @@ final class GenerateConfigurationPackage
 
         return [
             'kind' => 'lapis_configuration_package', 'schema_version' => 1, 'exported_at' => now()->toIso8601String(),
-            'product' => ['name' => 'LÁPIS', 'version' => (string) config('app.version')],
-            'provenance' => ['note' => 'Informativo, nunca usado para autorizar escrita.', 'organization_name' => $identity->official_name ?? $identity->short_name ?? 'LÁPIS'],
+            'product' => ['name' => 'Lapispro', 'version' => (string) config('app.version')],
+            'provenance' => ['note' => 'Informativo, nunca usado para autorizar escrita.', 'organization_name' => $identity->official_name ?? $identity->short_name ?? 'Lapispro'],
             'components' => $components, 'payload' => $payload,
         ];
     }

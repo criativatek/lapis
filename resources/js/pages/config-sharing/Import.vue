@@ -67,7 +67,7 @@ function submit(): void {
 
         <form class="space-y-5" @submit.prevent="submit">
             <div class="space-y-2">
-                <span id="configuration-file-label" class="block text-sm font-medium">Ficheiro de configuração LÁPIS</span>
+                <span id="configuration-file-label" class="block text-sm font-medium">Ficheiro de configuração Lapispro</span>
 
                 <div class="relative">
                     <!-- The native input stays mounted and covers the whole zone

@@ -79,7 +79,7 @@ const identity = computed(() =>
 </script>
 
 <template>
-    <Head :title="`${document.title} — LÁPIS`" />
+    <Head :title="`${document.title} — Lapispro`" />
 
     <div class="min-h-screen bg-background text-foreground">
         <a

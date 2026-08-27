@@ -316,7 +316,7 @@ class IntuitivoGroupedImportTest extends CorrectionImportHttpTest
         $this->confirm($this->uploadWorkbook());
 
         app(CurrentOrganization::class)->runFor($this->organization, function (): void {
-            // Twenty-five questions in the file, four items in LÁPIS. The marks
+            // Twenty-five questions in the file, four items in Lapispro. The marks
             // belong to the sections, not to the questions (§34.9).
             $this->assertSame(4, InstrumentItem::where('instrument_id', $this->instrument()->getKey())->count());
             $this->assertSame(24, StudentItemScore::count());
@@ -436,9 +436,9 @@ class IntuitivoGroupedImportTest extends CorrectionImportHttpTest
         $messages = array_column($preview['issues'], 'message');
         $this->assertNotEmpty(array_filter($messages, fn (string $m): bool => str_contains($m, 'declara um total')));
 
-        // A warning, not a refusal: LÁPIS uses its own arithmetic and says so.
+        // A warning, not a refusal: Lapispro uses its own arithmetic and says so.
         $this->assertTrue($preview['can_confirm'] === false || $preview['can_confirm'] === true);
-        $this->assertStringContainsString('O LÁPIS usa a soma dos grupos', implode(' ', $messages));
+        $this->assertStringContainsString('O Lapispro usa a soma dos grupos', implode(' ', $messages));
     }
 
     #[Test]

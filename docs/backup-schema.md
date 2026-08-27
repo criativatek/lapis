@@ -10,7 +10,7 @@ restaurar. O mecanismo — passos, autorização, transação, limpeza — está
 
 ## Princípio, repetido de propósito
 
-**O backup transporta FACTOS; o LÁPIS calcula RESULTADOS.** Nenhuma coleção
+**O backup transporta FACTOS; o Lapispro calcula RESULTADOS.** Nenhuma coleção
 descrita abaixo contém uma média, uma evolução, uma estatística de turma ou
 qualquer outro valor derivado — esses são sempre recalculados, depois do
 restauro, pelos serviços canónicos (`BuildResultsProgression`,
@@ -29,7 +29,7 @@ arquitetura.
 | 3 | `LegacyCompatible` | Só turmas/alunos/inscrições com `enrolled_on`; elementos de avaliação e classificações não existiam ainda no formato — linhas que os precisassem seriam `unsupported` |
 | 2 | `LegacyCompatible` | Como a 3, mas sem `enrollments[].enrolled_on` — uma inscrição sem essa data não pode ser **criada** em segurança |
 | < 2 | `Invalid` | Ficheiro recusado por inteiro |
-| > 5 | `UnsupportedNewer` | Ficheiro recusado por inteiro — backup de uma versão do LÁPIS mais recente do que este código entende |
+| > 5 | `UnsupportedNewer` | Ficheiro recusado por inteiro — backup de uma versão do Lapispro mais recente do que este código entende |
 
 `App\Support\Import\Backup\BackupSchemaCompatibility` é a única fonte desta
 tabela em código (`CURRENT = 5`, `MINIMUM_SUPPORTED = 2`). Não existe

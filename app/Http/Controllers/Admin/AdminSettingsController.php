@@ -78,8 +78,8 @@ class AdminSettingsController extends Controller
         $email = $validated['test_to'] ?? $request->user()->email;
 
         try {
-            Mail::raw('Email de teste do LÁPIS — o SMTP está configurado corretamente.', fn ($message) => $message
-                ->to($email)->subject('LÁPIS — teste de SMTP'));
+            Mail::raw('Email de teste do Lapispro — o SMTP está configurado corretamente.', fn ($message) => $message
+                ->to($email)->subject('Lapispro — teste de SMTP'));
 
             Inertia::flash('toast', ['type' => 'success', 'message' => __("Email de teste enviado para {$email}.")]);
         } catch (\Throwable $exception) {

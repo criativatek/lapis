@@ -8,7 +8,7 @@ namespace App\Domain\Reporting;
  * WHY THIS EXISTS AT ALL. A bare list — «assinalam-se: a participação, a
  * autonomia, a organização» — tells the reader nothing: they cannot know
  * whether those were the class's strengths or its gaps, and the system must not
- * decide for them. A valence LÁPIS invented would be exactly the inference §13
+ * decide for them. A valence Lapispro invented would be exactly the inference §13
  * rules out; a valence the teacher chose is their own statement, and is
  * reportable.
  *

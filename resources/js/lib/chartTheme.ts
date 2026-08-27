@@ -1,5 +1,5 @@
 /**
- * The LÁPIS chart design system.
+ * The Lapispro chart design system.
  *
  * Chart.js is the drawing engine and nothing else. Everything about how a chart
  * LOOKS is decided here, once, so that five charts on a page are recognisably

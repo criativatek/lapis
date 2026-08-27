@@ -84,7 +84,7 @@ function confirm(): void {
         </div>
 
         <p class="text-sm text-muted-foreground">
-            Ficheiro criado no LÁPIS em {{ createdOn }}<template v-if="productVersion"> (v{{ productVersion }})</template>.
+            Ficheiro criado no Lapispro em {{ createdOn }}<template v-if="productVersion"> (v{{ productVersion }})</template>.
         </p>
 
         <div class="flex items-start gap-3 rounded-lg border border-primary/25 bg-primary/5 p-4 text-sm">

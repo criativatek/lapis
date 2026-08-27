@@ -12,7 +12,7 @@ use App\Services\Reporting\ReportContext;
 /**
  * «Cumprimento da planificação» (§18).
  *
- * ENTIRELY THE TEACHER'S STATEMENT, TRANSCRIBED. LÁPIS holds instruments,
+ * ENTIRELY THE TEACHER'S STATEMENT, TRANSCRIBED. Lapispro holds instruments,
  * scores and grades; it does not hold a planning, so there is nothing here to
  * derive and nothing to infer. What this does is turn four answers and some
  * optional free text into a paragraph that reads like a person wrote it — which

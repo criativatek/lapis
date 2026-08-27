@@ -15,7 +15,7 @@ defineProps<{
     <Head title="Novidades" />
 
     <div class="mx-auto w-full max-w-3xl space-y-6 p-4">
-        <Heading title="Novidades" description="Histórico de alterações e funcionalidades do LÁPIS." />
+        <Heading title="Novidades" description="Histórico de alterações e funcionalidades do Lapispro." />
 
         <div v-if="entries.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
             <p class="text-sm text-muted-foreground">Ainda não há registo de alterações.</p>

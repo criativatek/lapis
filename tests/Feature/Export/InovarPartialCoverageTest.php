@@ -334,7 +334,7 @@ class InovarPartialCoverageTest extends TestCase
     {
         // `annulled` leaves an element out of the fraction without raising the ⚠
         // — this profile's absence rule flags absences and nothing else. Listing
-        // it here would tell a teacher a result is partial when LÁPIS never said
+        // it here would tell a teacher a result is partial when Lapispro never said
         // it was. The word «Elemento anulado» exists for the day a profile's
         // rule does flag it; it is not manufactured here.
         $this->assertNotReported(ResultState::Annulled);

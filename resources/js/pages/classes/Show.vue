@@ -473,7 +473,7 @@ function submitPhotos(): void {
 
         <!--
           Dados administrativos: the school's own identifiers, kept out of the
-          way. Optional everywhere in LÁPIS — a class typed in by hand works
+          way. Optional everywhere in Lapispro — a class typed in by hand works
           without them — and needed the day somebody exports to INOVAR.
         -->
         <details v-if="students.length" class="rounded-lg border border-border">

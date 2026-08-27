@@ -117,7 +117,7 @@ function hasNoApplicableStudents(assessment: Assessment): boolean {
             </Link>
             <p v-else class="max-w-xs text-xs text-muted-foreground">
                 A importação de resultados de outras plataformas de aplicação de testes está disponível no
-                LÁPIS&nbsp;Pro.
+                Lapispro&nbsp;Pro.
             </p>
         </div>
 

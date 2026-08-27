@@ -25,7 +25,7 @@ import RevealOnScroll from './RevealOnScroll.vue';
 
 const uses = [
     {
-        title: 'Interpreta resultados que o LÁPIS já calculou',
+        title: 'Interpreta resultados que o Lapispro já calculou',
         body: 'Tendências, regularidade e o que mudou de um período para o seguinte — a partir dos números, nunca em vez deles.',
     },
     {
@@ -38,7 +38,7 @@ const uses = [
     },
     {
         title: 'Aperfeiçoa a redação de um relatório',
-        body: 'Reescreve o que o LÁPIS já compôs. Números e datas saem como marcadores e um guarda recusa o que voltar alterado.',
+        body: 'Reescreve o que o Lapispro já compôs. Números e datas saem como marcadores e um guarda recusa o que voltar alterado.',
     },
 ] as const;
 </script>
@@ -49,7 +49,7 @@ const uses = [
         warm
         eyebrow="Inteligência artificial"
         title="IA para professores, com o professor sempre no controlo."
-        lead="A IA pedagógica do LÁPIS não escreve a avaliação por si. Lê a informação que já registou, ajuda a compreender o que ela pode significar e propõe um caminho — que o professor confirma, corrige ou descarta."
+        lead="A IA pedagógica do Lapispro não escreve a avaliação por si. Lê a informação que já registou, ajuda a compreender o que ela pode significar e propõe um caminho — que o professor confirma, corrige ou descarta."
     >
         <div
             class="grid gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:gap-16"
@@ -95,7 +95,7 @@ const uses = [
                     >
                         Nenhuma classificação é atribuída, alterada ou decidida
                         por um modelo. O cálculo é determinístico e explicável,
-                        a proposta é do LÁPIS, e a confirmação é sempre do
+                        a proposta é do Lapispro, e a confirmação é sempre do
                         professor — com o que entrou no resultado disponível
                         para consulta.
                     </p>
@@ -106,9 +106,9 @@ const uses = [
                         <a
                             href="#planos"
                             class="rounded font-medium text-foreground underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                            >LÁPIS Pro</a
+                            >Lapispro Pro</a
                         >
-                        e do LÁPIS Institucional.
+                        e do Lapispro Institucional.
                     </p>
                 </div>
             </RevealOnScroll>

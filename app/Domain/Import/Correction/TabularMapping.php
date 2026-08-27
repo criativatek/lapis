@@ -59,7 +59,7 @@ final readonly class TabularMapping
         /**
          * An optional column carrying the source's own total, kept for
          * reconciliation. It is shown and compared, never substituted for what
-         * LÁPIS computes (§31).
+         * Lapispro computes (§31).
          */
         public ?string $totalColumn = null,
     ) {}

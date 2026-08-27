@@ -921,7 +921,7 @@ class InterventionTest extends TestCase
     {
         ['class' => $class, 'enrollments' => $enrollments, 'teacher' => $teacher] = $this->seedClass();
 
-        // Explicitly somewhere LÁPIS has no law for. The pedagogical module
+        // Explicitly somewhere Lapispro has no law for. The pedagogical module
         // must keep working in full — refusing to record what a teacher did
         // because the app lacks that country's legislation would be absurd.
         $teacher->personalOrganization()->update(['jurisdiction' => 'ES']);

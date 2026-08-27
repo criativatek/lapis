@@ -11,7 +11,7 @@ use App\Models\ReportType;
 use Illuminate\Database\Seeder;
 
 /**
- * The templates LÁPIS ships with (§22).
+ * The templates Lapispro ships with (§22).
  *
  * ONE PER REPORT TYPE, NOT ONE PER PLAN. A single template can serve Base, Pro
  * and Institucional because SectionPlan filters it through the school's
@@ -46,7 +46,7 @@ class ReportTemplatesSeeder extends Seeder
                 [
                     'user_id' => null,
                     'report_type' => $type,
-                    'name' => $type->label().' — padrão LÁPIS',
+                    'name' => $type->label().' — padrão Lapispro',
                     'description' => $this->descriptionFor($type),
                     'settings' => [
                         'sections' => $this->sectionsFor($type),

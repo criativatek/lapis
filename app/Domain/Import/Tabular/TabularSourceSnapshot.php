@@ -6,7 +6,7 @@ namespace App\Domain\Import\Tabular;
  * A whole file, read as sheets of cells, with nothing decided about it.
  *
  * This is the pre-canonical stage the two known formats never needed. Plickers
- * and Intuitivo have shapes LÁPIS can recognise, so their parsers go straight to
+ * and Intuitivo have shapes Lapispro can recognise, so their parsers go straight to
  * the canonical vocabulary. A sheet the teacher made up has no shape anyone can
  * recognise, and the honest order is therefore: read the rectangle → show it →
  * let the teacher say what it means → only then canonicalise (§5).

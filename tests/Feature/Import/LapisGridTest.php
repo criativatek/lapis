@@ -31,10 +31,10 @@ use Tests\Fixtures\Import\GenericSpreadsheetBuilder;
 use ZipArchive;
 
 /**
- * The grid LÁPIS writes, and reads back without asking anything.
+ * The grid Lapispro writes, and reads back without asking anything.
  *
  * The generic importer works and is too much work for a file this application
- * produced itself. Intuitivo is easy because LÁPIS knows the contract in
+ * produced itself. Intuitivo is easy because Lapispro knows the contract in
  * advance; this gives our own grid the same standing — download it, fill in the
  * marks, bring it back, done.
  *
@@ -342,7 +342,7 @@ class LapisGridTest extends CorrectionImportHttpTest
             "ESCRITA\nDESC · Desconto por extensão (desconto)",
         ], $headings);
 
-        // And no total: LÁPIS computes from the items and the instrument's own
+        // And no total: Lapispro computes from the items and the instrument's own
         // rules, so a total in the file would be a second answer to one question.
         $this->assertNull($sheet->getCell('H1')->getValue());
 

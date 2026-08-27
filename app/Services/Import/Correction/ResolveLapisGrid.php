@@ -15,7 +15,7 @@ use App\Models\InstrumentStatus;
 use App\Support\Import\WithoutLeakingTheGrid;
 
 /**
- * Turns what a LÁPIS grid CLAIMS into what the database will actually allow.
+ * Turns what a Lapispro grid CLAIMS into what the database will actually allow.
  *
  * This is where the file stops being believed. Everything the workbook carries
  * is an identifier a teacher could have typed into a cell, and every one of
@@ -55,19 +55,19 @@ class ResolveLapisGrid
         $instrument = $this->instrumentFor($import, (string) $grid->instrument->externalId);
 
         if ($instrument === null) {
-            return $this->refuse($import, $grid, __('Esta grelha LÁPIS não corresponde a nenhuma avaliação desta turma que ainda possa receber resultados.'));
+            return $this->refuse($import, $grid, __('Esta grelha Lapispro não corresponde a nenhuma avaliação desta turma que ainda possa receber resultados.'));
         }
 
         $items = $this->items($grid, $instrument);
 
         if ($items === null) {
-            return $this->refuse($import, $grid, __('Esta grelha LÁPIS tem perguntas que já não pertencem a esta avaliação. A avaliação pode ter sido alterada depois de a grelha ter sido descarregada.'));
+            return $this->refuse($import, $grid, __('Esta grelha Lapispro tem perguntas que já não pertencem a esta avaliação. A avaliação pode ter sido alterada depois de a grelha ter sido descarregada.'));
         }
 
         $students = $this->students($grid, $import);
 
         if ($students === null) {
-            return $this->refuse($import, $grid, __('Esta grelha LÁPIS tem alunos que não pertencem a esta turma.'));
+            return $this->refuse($import, $grid, __('Esta grelha Lapispro tem alunos que não pertencem a esta turma.'));
         }
 
         $mapping = new ImportMapping(
@@ -206,7 +206,7 @@ class ResolveLapisGrid
                 // to the ordinary mapping questions from here.
                 'source_metadata' => [...($import->source_metadata ?? []), 'lapis_grid' => false],
             ])->save();
-        }, 'ao recusar uma grelha LÁPIS alterada');
+        }, 'ao recusar uma grelha Lapispro alterada');
 
         return false;
     }

@@ -371,7 +371,7 @@ class GenerateDataExport
             ['Organização', $organization->name],
             ['Tipo de organização', $organization->type->value === 'institutional' ? 'Institucional' : 'Pessoal'],
             ['Data da exportação', Carbon::now()],
-            ['Versão do LÁPIS', (string) config('app.version')],
+            ['Versão do Lapispro', (string) config('app.version')],
             ['Anos letivos incluídos', $academicYears === '' ? '—' : $academicYears],
             ['Nº de turmas', $classes->count()],
             ['Nº de alunos', $students->count()],
@@ -1782,7 +1782,7 @@ class GenerateDataExport
         $hours = $this->retentionPolicy->dataExportAvailabilityHours();
 
         return <<<TXT
-        LÁPIS — exportação de dados
+        Lapispro — exportação de dados
 
         Organização: {$organization->name}
         Gerado em: {$this->now()}
@@ -1797,7 +1797,7 @@ class GenerateDataExport
           técnicos, uma folha por tipo de dado.
 
         backup-lapis.json
-          Cópia técnica estruturada, para futura compatibilidade com o LÁPIS
+          Cópia técnica estruturada, para futura compatibilidade com o Lapispro
           (importação/restauro). Não se destina a leitura direta.
 
         Não inclui, em nenhuma circunstância: password, autenticação de dois

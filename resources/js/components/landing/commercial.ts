@@ -16,12 +16,12 @@
  * monthly/annual toggle, and nothing anywhere charges by the month.
  */
 
-/** LÁPIS Pro, list price. */
+/** Lapispro Pro, list price. */
 export const PRO_PRICE = '44,90 €';
 export const PRO_PRICE_PER_YEAR = '44,90 € / ano';
 export const PRO_MONTHLY_EQUIVALENT = 'equivalente a menos de 3,75 €/mês';
 
-/** The launch condition on that same LÁPIS Pro — not a fourth plan. */
+/** The launch condition on that same Lapispro Pro — not a fourth plan. */
 export const FOUNDER_PRICE = '29,90 €';
 export const FOUNDER_PRICE_PER_YEAR = '29,90 € / ano';
 export const FOUNDER_MONTHLY_EQUIVALENT = 'equivalente a menos de 2,50 €/mês';
@@ -135,7 +135,7 @@ export const PLAN_COPY: Record<string, PlanCommercial> = {
 };
 
 export const FALLBACK_PLAN: PlanCommercial = {
-    headline: 'Um plano do LÁPIS.',
+    headline: 'Um plano do Lapispro.',
     body: 'Veja a comparação detalhada mais abaixo.',
     price: 'Sob consulta',
     priceNote: 'Fale connosco para saber o que inclui.',
@@ -147,19 +147,19 @@ export const FALLBACK_PLAN: PlanCommercial = {
 export const FOUNDER = {
     badge: 'Membro Fundador · 2026',
     title: 'Faça parte dos primeiros 250.',
-    body: 'Os primeiros professores a aderirem ao LÁPIS Pro poderão beneficiar de uma condição exclusiva de lançamento.',
+    body: 'Os primeiros professores a aderirem ao Lapispro Pro poderão beneficiar de uma condição exclusiva de lançamento.',
     /** Said plainly, because §9 asks the visitor to understand it immediately. */
     clarification:
-        'Não é um plano diferente. São exatamente as mesmas funcionalidades do LÁPIS Pro, numa condição de adesão distinta.',
+        'Não é um plano diferente. São exatamente as mesmas funcionalidades do Lapispro Pro, numa condição de adesão distinta.',
     eligibility: `Disponível até ${FOUNDER_DEADLINE} ou até serem atingidos os primeiros ${FOUNDER_SEATS} Membros Fundadores, consoante o que ocorrer primeiro.`,
     benefits: [
         'Condição comercial exclusiva',
         'Prioridade na análise de problemas reportados',
         'Consideração preferencial das propostas de novas funcionalidades',
-        'Participação privilegiada na evolução do LÁPIS',
+        'Participação privilegiada na evolução do Lapispro',
     ],
     closing:
-        'O mesmo LÁPIS Pro. Uma condição especial para quem acreditou desde o início.',
+        'O mesmo Lapispro Pro. Uma condição especial para quem acreditou desde o início.',
     cta: 'Quero ser Membro Fundador',
 } as const;
 
@@ -265,10 +265,10 @@ export function availability(
 
 /** The three sentences, in plan order. Repeated verbatim from the plan cards. */
 export const BOUNDARIES = [
-    { plan: 'LÁPIS Base', sentence: 'Base regista e mostra.' },
-    { plan: 'LÁPIS Pro', sentence: 'Pro cruza, interpreta e ajuda a agir.' },
+    { plan: 'Lapispro Base', sentence: 'Base regista e mostra.' },
+    { plan: 'Lapispro Pro', sentence: 'Pro cruza, interpreta e ajuda a agir.' },
     {
-        plan: 'LÁPIS Institucional',
+        plan: 'Lapispro Institucional',
         sentence: 'Institucional coordena, partilha e agrega.',
     },
 ] as const;

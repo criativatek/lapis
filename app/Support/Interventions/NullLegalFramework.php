@@ -8,7 +8,7 @@ use Carbon\CarbonInterface;
 /**
  * No legal framework — a fully valid state, not a degraded one.
  *
- * It applies to an organization in a jurisdiction LÁPIS has no framework for,
+ * It applies to an organization in a jurisdiction Lapispro has no framework for,
  * and to one that never stated a jurisdiction while the compatibility default
  * is switched off. In both cases the teacher registers interventions exactly as
  * usual: type, target, domain, description, dates, status, effectiveness,

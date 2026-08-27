@@ -19,7 +19,7 @@ import type { LandingPlan } from './types';
 /**
  * The three plans, and nothing else. Base, Pro, Institucional — there is no
  * fourth card, and the Fundador condition below is deliberately NOT one: it
- * is a launch price on the same LÁPIS Pro, so it is attached to that card
+ * is a launch price on the same Lapispro Pro, so it is attached to that card
  * (the strip at its foot) and expanded in a band underneath, never presented
  * as a plan a visitor could choose instead of Pro.
  *
@@ -85,8 +85,8 @@ function visitHref(plan: LandingPlan) {
     <LandingSection
         id="planos"
         eyebrow="Planos"
-        title="Um LÁPIS para cada forma de trabalhar."
-        lead="Menos peso administrativo. Mais espaço para ser professor. O que muda entre os planos não é a qualidade do que faz — é até onde o LÁPIS o acompanha."
+        title="Um Lapispro para cada forma de trabalhar."
+        lead="Menos peso administrativo. Mais espaço para ser professor. O que muda entre os planos não é a qualidade do que faz — é até onde o Lapispro o acompanha."
     >
         <div v-if="plans.length" class="grid gap-5 lg:grid-cols-3">
             <RevealOnScroll

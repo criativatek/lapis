@@ -57,7 +57,7 @@ const capabilities: readonly Capability[] = [
         id="dia-a-dia"
         eyebrow="O dia a dia"
         title="Planeie aulas, organize sumários e consulte o horário na mesma plataforma."
-        lead="A organização do trabalho do professor não vive só na avaliação. O LÁPIS Pro traz o horário, a gestão de aulas, o planeamento de aulas e a agenda para junto das turmas e das classificações."
+        lead="A organização do trabalho do professor não vive só na avaliação. O Lapispro Pro traz o horário, a gestão de aulas, o planeamento de aulas e a agenda para junto das turmas e das classificações."
     >
         <dl
             class="grid gap-8 sm:grid-cols-2 sm:gap-x-10 lg:grid-cols-4 lg:gap-6"
@@ -92,7 +92,7 @@ const capabilities: readonly Capability[] = [
                 <a
                     href="#planos"
                     class="rounded font-medium text-foreground underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                    >LÁPIS Pro</a
+                    >Lapispro Pro</a
                 >.
             </p>
         </RevealOnScroll>

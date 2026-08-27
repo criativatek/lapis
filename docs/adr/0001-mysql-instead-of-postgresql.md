@@ -25,11 +25,11 @@ What was actually compared, for this application:
 | Indexable JSON | Postgres `JSONB` + GIN is better. But §21.7 restricts JSON to "configurações verdadeiramente flexíveis e versionadas" — three columns in the whole design. **Small edge to Postgres, not decisive** |
 | Row Level Security | Postgres only. **The one real advantage** |
 
-RLS was the only argument with weight, and it does not survive contact with how this application is built. Using it means a non-superuser role plus `SET LOCAL app.org_id` on every request, job and console command. The isolation LÁPIS actually relies on is the container-resolved tenant (ADR-0002), Policies, and the isolation tests — all engine-independent, and all already proven by `tests/Feature/Tenancy/`.
+RLS was the only argument with weight, and it does not survive contact with how this application is built. Using it means a non-superuser role plus `SET LOCAL app.org_id` on every request, job and console command. The isolation Lapispro actually relies on is the container-resolved tenant (ADR-0002), Policies, and the isolation tests — all engine-independent, and all already proven by `tests/Feature/Tenancy/`.
 
-Against that, every other system this team runs — Plaanly, track2lab, impacto — is MySQL. Choosing Postgres would make LÁPIS the only project with different backups, tooling and operational habits, in exchange for a feature that would not be switched on.
+Against that, every other system this team runs — Plaanly, track2lab, impacto — is MySQL. Choosing Postgres would make Lapispro the only project with different backups, tooling and operational habits, in exchange for a feature that would not be switched on.
 
-The spec chose PostgreSQL as a sound default, not because LÁPIS needs something MySQL lacks.
+The spec chose PostgreSQL as a sound default, not because Lapispro needs something MySQL lacks.
 
 ## Consequences
 

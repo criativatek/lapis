@@ -16,7 +16,7 @@ namespace App\Domain\Assessment;
  *  - NoResult      nothing to compute (no elements). "—", never a zero and
  *                  never the lowest level of the scale (§9 rule 5).
  *  - Unconfigured  there is a result, but this scale has no bands to translate
- *                  it with. LÁPIS does not invent thresholds (§10.4, CLAUDE.md
+ *                  it with. Lapispro does not invent thresholds (§10.4, CLAUDE.md
  *                  open question 1) — the teacher assigns the level.
  *  - Resolved      the profile's scale answered.
  */

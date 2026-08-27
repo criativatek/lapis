@@ -129,7 +129,7 @@ class ResultsScreenTest extends TestCase
     {
         $screen = $this->screen();
 
-        $this->assertStringContainsString('Diferente da proposta do LÁPIS.', $screen);
+        $this->assertStringContainsString('Diferente da proposta do Lapispro.', $screen);
         // Neutral: no amber, no alert, no demand for a reason (§7).
         $this->assertStringNotContainsString('differs_from_proposal" class="text-amber', $screen);
     }

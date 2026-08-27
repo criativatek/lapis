@@ -52,7 +52,7 @@ class SeoController extends Controller
             '',
             // Explícito, apesar de o `Allow: /$` acima só cobrir a raiz: estas
             // duas são públicas e devem ser encontráveis por quem procure a
-            // política de privacidade do LÁPIS sem passar pela landing.
+            // política de privacidade do Lapispro sem passar pela landing.
             'Allow: /termos',
             'Allow: /privacidade',
             '',

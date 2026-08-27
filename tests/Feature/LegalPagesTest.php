@@ -33,7 +33,7 @@ class LegalPagesTest extends TestCase
     }
 
     /**
-     * Alguém que procure «política de privacidade LÁPIS» tem de lá chegar sem
+     * Alguém que procure «política de privacidade Lapispro» tem de lá chegar sem
      * passar pela landing. Cada uma canonicaliza-se a si própria, não à raiz —
      * um canonical para `/` diria ao motor de busca que a página não existe
      * como resultado.
@@ -205,7 +205,7 @@ class LegalPagesTest extends TestCase
         $headings = collect(LegalDocuments::terms()['sections'])->pluck('heading');
 
         foreach ([
-            'O que é o LÁPIS',
+            'O que é o Lapispro',
             'A sua conta',
             'Utilização aceitável',
             'Dados pedagógicos e decisões',

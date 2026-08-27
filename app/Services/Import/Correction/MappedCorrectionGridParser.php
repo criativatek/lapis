@@ -11,7 +11,7 @@ use App\Domain\Import\Correction\ImportMapping;
  *
  * Plickers and Intuitivo do not implement this and must never be made to: their
  * exports declare their own structure, and putting them through a mapping screen
- * would be asking a teacher to describe a file LÁPIS already understands (§7).
+ * would be asking a teacher to describe a file Lapispro already understands (§7).
  *
  * Anything that needs to know whether a source can be re-described asks for this
  * interface rather than comparing against a source name. That is the same rule

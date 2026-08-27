@@ -9,6 +9,6 @@ maxTurns: 25
 Explora rapidamente o projeto e devolve apenas informação concreta e relevante.
 Não escrevas nem alteres código.
 
-Contexto LÁPIS: SaaS de avaliação (Laravel + Vue/Inertia). Ao mapear, distingue
+Contexto Lapispro: SaaS de avaliação (Laravel + Vue/Inertia). Ao mapear, distingue
 sempre o que é tenant-owned (passa pelo global scope da organização) do que é
 transversal. Fonte da verdade do domínio: `docs/domain-model.md` e `CLAUDE.md`.

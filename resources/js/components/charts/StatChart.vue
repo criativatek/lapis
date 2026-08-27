@@ -18,7 +18,7 @@ import { animation, chromeColours, columnDepthPlugin, externalTooltipHandler, pr
 import type { TooltipResolver, TooltipState } from '@/lib/chartTheme';
 
 /**
- * One chart, dressed in LÁPIS and readable without seeing it.
+ * One chart, dressed in Lapispro and readable without seeing it.
  *
  * THREE THINGS TRAVEL TOGETHER HERE.
  *

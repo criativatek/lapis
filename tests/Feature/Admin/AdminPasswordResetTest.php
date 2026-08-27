@@ -202,7 +202,7 @@ class AdminPasswordResetTest extends TestCase
         ])->assertSessionHasNoErrors();
 
         $this->post('/login', ['email' => $owner->email, 'password' => 'New-secure-password-123!'])
-            ->assertSessionHasErrors(['email' => 'A sua conta foi desativada. Contacte o suporte do LÁPIS.']);
+            ->assertSessionHasErrors(['email' => 'A sua conta foi desativada. Contacte o suporte do Lapispro.']);
         $this->assertGuest();
     }
 

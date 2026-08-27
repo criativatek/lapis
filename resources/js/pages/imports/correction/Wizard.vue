@@ -101,7 +101,7 @@ type Reconciliation = {
  *
  * Present only for a source whose file does not explain itself. Plickers and
  * Intuitivo send null here and never see any of the screen below, because a
- * mapping form for a file LÁPIS already understands is a form asking somebody to
+ * mapping form for a file Lapispro already understands is a form asking somebody to
  * type in what is already known.
  */
 type TabularCellView = {
@@ -142,7 +142,7 @@ type TabularDescription = {
         result_columns?: string[];
     };
     table?: TableState;
-    /** True when the workbook carries the LÁPIS grid contract. */
+    /** True when the workbook carries the Lapispro grid contract. */
     lapis_grid?: boolean;
     lapis_grid_refusal?: string | null;
 };
@@ -392,7 +392,7 @@ const isTabular = computed(() => props.tabular !== null);
 const tabularReadable = computed(() => props.tabular?.readable === true);
 
 /**
- * A workbook LÁPIS produced, recognised by its own contract.
+ * A workbook Lapispro produced, recognised by its own contract.
  *
  * Everything the mapping panel below asks about — which sheet, which column
  * holds the names, what the numbers are out of, which domain each one counts
@@ -402,7 +402,7 @@ const tabularReadable = computed(() => props.tabular?.readable === true);
 const isLapisGrid = computed(() => props.tabular?.lapis_grid === true);
 
 /**
- * The evaluation a recognised LÁPIS grid came from.
+ * The evaluation a recognised Lapispro grid came from.
  *
  * The grid names its own instrument, and an instrument in this model IS the
  * concrete evaluation — it carries the class, the date and the period. So there
@@ -1100,7 +1100,7 @@ const typeName = computed(
                         correspondência com os alunos da turma.
                     </template>
                     <template v-else>
-                        Diga ao LÁPIS onde estão os resultados nesta folha de
+                        Diga ao Lapispro onde estão os resultados nesta folha de
                         cálculo.
                     </template>
                 </p>
@@ -1140,7 +1140,7 @@ const typeName = computed(
                 v-else-if="isLapisGrid"
                 class="rounded-md border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"
             >
-                <p class="font-semibold">Grelha LÁPIS reconhecida</p>
+                <p class="font-semibold">Grelha Lapispro reconhecida</p>
                 <p class="mt-1">
                     {{ preview.counts.students_in_file }}
                     {{
@@ -1177,7 +1177,7 @@ const typeName = computed(
                             {{ studentColumnName }}.
                         </template>
                         <template v-else>
-                            Responda a estas perguntas e o LÁPIS lê os
+                            Responda a estas perguntas e o Lapispro lê os
                             resultados.
                         </template>
                     </p>
@@ -1458,7 +1458,7 @@ const typeName = computed(
                                     class="h-9 rounded-md border border-input bg-background px-3 text-sm"
                                 />
                                 <p class="text-xs text-muted-foreground">
-                                    O LÁPIS não deduz o máximo a partir da melhor
+                                    O Lapispro não deduz o máximo a partir da melhor
                                     nota da turma.
                                 </p>
                             </div>
@@ -1531,7 +1531,7 @@ const typeName = computed(
                                     </select>
                                     <p class="text-xs text-muted-foreground">
                                         Serve para conferir contas. Nunca
-                                        substitui o cálculo do LÁPIS.
+                                        substitui o cálculo do Lapispro.
                                     </p>
                                 </div>
                             </div>
@@ -1625,7 +1625,7 @@ const typeName = computed(
                                 Aluno no ficheiro
                             </th>
                             <th class="px-3 py-2 font-medium">
-                                Aluno no LÁPIS
+                                Aluno no Lapispro
                             </th>
                             <th class="px-3 py-2 text-right font-medium">
                                 {{ sourceResultLabel }}
@@ -1678,7 +1678,7 @@ const typeName = computed(
                                 -->
                                 <select
                                     v-model="form.students[student.source_key]"
-                                    :aria-label="`Aluno do LÁPIS para ${student.display_name ?? student.source_key}`"
+                                    :aria-label="`Aluno do Lapispro para ${student.display_name ?? student.source_key}`"
                                     class="h-8 w-full min-w-56 rounded-md border border-input bg-transparent px-2 text-sm"
                                 >
                                     <option :value="undefined">
@@ -1805,7 +1805,7 @@ const typeName = computed(
                     class="text-xs text-muted-foreground"
                 >
                     Faltam decidir {{ undecidedStudents }} alunos: escolha o
-                    aluno do LÁPIS ou ignore a linha.
+                    aluno do Lapispro ou ignore a linha.
                 </span>
             </div>
         </section>
@@ -2371,7 +2371,7 @@ const typeName = computed(
                             class="text-xs text-muted-foreground"
                         >
                             O ficheiro não indica domínios curriculares e o
-                            LÁPIS não os infere pelo texto das perguntas.
+                            Lapispro não os infere pelo texto das perguntas.
                         </p>
                     </div>
 
@@ -2642,7 +2642,7 @@ const typeName = computed(
                                 v-if="!simple"
                                 class="px-3 py-2 text-right font-medium"
                             >
-                                Resultado LÁPIS
+                                Resultado Lapispro
                             </th>
                             <th class="px-3 py-2 font-medium">Estado</th>
                         </tr>
@@ -2695,7 +2695,7 @@ const typeName = computed(
                 </table>
             </div>
 
-            <!-- The two numbers side by side, and what LÁPIS does about it: its
+            <!-- The two numbers side by side, and what Lapispro does about it: its
                  own arithmetic, always. A source total is provenance (§27). -->
             <p
                 v-if="grouped && preview.reconciliation.applicable"
@@ -2718,7 +2718,7 @@ const typeName = computed(
                     cujo total no ficheiro não coincide com as próprias
                     classificações.
                 </template>
-                O resultado do LÁPIS resulta sempre das classificações
+                O resultado do Lapispro resulta sempre das classificações
                 importadas, nunca do total da origem.
             </p>
 
@@ -2729,7 +2729,7 @@ const typeName = computed(
             </p>
             <p v-else class="text-xs text-muted-foreground">
                 O resultado da plataforma é apresentado como referência. O
-                resultado LÁPIS reflete as cotações definidas nesta avaliação,
+                resultado Lapispro reflete as cotações definidas nesta avaliação,
                 por isso os dois podem divergir sem que nenhum esteja errado.
             </p>
 

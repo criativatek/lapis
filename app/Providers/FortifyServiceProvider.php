@@ -67,7 +67,7 @@ class FortifyServiceProvider extends ServiceProvider
 
             if ($user->isDeactivated()) {
                 throw ValidationException::withMessages([
-                    Fortify::username() => __('A sua conta foi desativada. Contacte o suporte do LÁPIS.'),
+                    Fortify::username() => __('A sua conta foi desativada. Contacte o suporte do Lapispro.'),
                 ]);
             }
 

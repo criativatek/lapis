@@ -133,14 +133,14 @@ class IntuitivoXlsxParser implements CorrectionGridParser
         $spreadsheet = $this->open($absolutePath);
 
         if ($spreadsheet === null) {
-            return $this->refuse($originalFilename, 'Este formato de ficheiro Intuitivo ainda não é reconhecido pelo LÁPIS.');
+            return $this->refuse($originalFilename, 'Este formato de ficheiro Intuitivo ainda não é reconhecido pelo Lapispro.');
         }
 
         try {
             $sheet = $spreadsheet->getSheetByName(self::SHEET);
 
             if ($sheet === null) {
-                return $this->refuse($originalFilename, 'Este formato de ficheiro Intuitivo ainda não é reconhecido pelo LÁPIS.');
+                return $this->refuse($originalFilename, 'Este formato de ficheiro Intuitivo ainda não é reconhecido pelo Lapispro.');
             }
 
             return $this->read($sheet, $originalFilename);
@@ -538,7 +538,7 @@ class IntuitivoXlsxParser implements CorrectionGridParser
         }
 
         if (str_starts_with($text, '=')) {
-            throw new UnreadableIntuitivoSheet("A célula {$coordinate} contém uma fórmula. O LÁPIS não executa fórmulas.");
+            throw new UnreadableIntuitivoSheet("A célula {$coordinate} contém uma fórmula. O Lapispro não executa fórmulas.");
         }
 
         return $text;

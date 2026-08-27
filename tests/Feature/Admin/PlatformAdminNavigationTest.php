@@ -82,7 +82,7 @@ class PlatformAdminNavigationTest extends TestCase
     }
 
     /**
-     * «Voltar ao LÁPIS» in AdminLayout points at the dashboard. Its href is
+     * «Voltar ao Lapispro» in AdminLayout points at the dashboard. Its href is
      * asserted in AdminLayout.test.ts; what needs proving on the server is that
      * the destination actually serves the teacher-facing app to the operator —
      * the backoffice runs outside the `organization` middleware, so a platform

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Backup diário da base de dados do LÁPIS.
+# Backup diário da base de dados do Lapispro.
 #
 # PORQUÊ ESTE FICHEIRO EXISTE. Até 2026-08-27 os únicos dumps em produção eram
 # manuais, feitos à mão antes de alguns deploys — o mais recente tinha dois dias

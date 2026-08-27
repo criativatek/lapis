@@ -46,13 +46,13 @@ afterEach(() => {
 });
 
 describe('AdminLayout — the way back into the application', () => {
-    it('offers «Voltar ao LÁPIS», pointing at the dashboard', () => {
+    it('offers «Voltar ao Lapispro», pointing at the dashboard', () => {
         const wrapper = mountLayout();
 
         const link = wrapper.find('[data-test="back-to-app"]');
 
         expect(link.exists()).toBe(true);
-        expect(link.text()).toContain('Voltar ao LÁPIS');
+        expect(link.text()).toContain('Voltar ao Lapispro');
         expect(link.attributes('href')).toBe('/dashboard');
     });
 

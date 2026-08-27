@@ -3,7 +3,7 @@
 namespace App\Domain\Import\Timetable;
 
 /**
- * One block of the timetable as the FILE describes it — never as LÁPIS knows it.
+ * One block of the timetable as the FILE describes it — never as Lapispro knows it.
  *
  * Every field here belongs to the PDF: `classRaw` is the string "7º C" that
  * somebody's school-management system printed, not a SchoolClass; `subjectRaw`

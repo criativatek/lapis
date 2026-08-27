@@ -49,7 +49,7 @@
         @php($component = $page['component'] ?? null)
         @php($isLanding = $component === 'Welcome')
         {{-- As páginas legais são públicas e devem ser encontráveis: alguém que
-             procure «política de privacidade LÁPIS» tem de lá chegar sem passar
+             procure «política de privacidade Lapispro» tem de lá chegar sem passar
              pela landing. Cada uma canonicaliza-se a si própria, não à raiz. --}}
         @php($isLegal = $component === 'legal/Document')
         @php($publicPath = $isLegal ? request()->path() : '/')
@@ -59,7 +59,7 @@
             <link rel="canonical" href="{{ $publicUrl }}">
             <meta name="robots" content="index, follow, max-snippet:-1">
             <meta property="og:type" content="article">
-            <meta property="og:site_name" content="LÁPIS">
+            <meta property="og:site_name" content="Lapispro">
             <meta property="og:locale" content="pt_PT">
             <meta property="og:url" content="{{ $publicUrl }}">
         @elseif ($isLanding)
@@ -71,7 +71,7 @@
                  it. Both are inert until they matter, and free to state now. --}}
             <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
             <meta property="og:type" content="website">
-            <meta property="og:site_name" content="LÁPIS">
+            <meta property="og:site_name" content="Lapispro">
             <meta property="og:locale" content="pt_PT">
             <meta property="og:url" content="{{ \App\Support\Seo\LandingSeo::canonical() }}">
             <meta property="og:title" content="{{ \App\Support\Seo\LandingSeo::SOCIAL_TITLE }}">

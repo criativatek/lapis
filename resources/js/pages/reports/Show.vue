@@ -618,7 +618,7 @@ function derive() {
                 <div>
                     <h2 class="font-medium">Caracterização</h2>
                     <p class="mt-1 text-sm text-muted-foreground">
-                        O LÁPIS não dispõe de informação para caracterizar comportamento, atitude ou cumprimento da
+                        O Lapispro não dispõe de informação para caracterizar comportamento, atitude ou cumprimento da
                         planificação. O que indicar aqui é seu — e é o que dá origem às secções correspondentes.
                     </p>
                 </div>
@@ -694,7 +694,7 @@ function derive() {
                     <div v-if="library && characterisation.asks_difficulties" class="space-y-2 border-t border-border pt-4">
                         <Label>Dificuldades identificadas</Label>
                         <p class="text-xs text-muted-foreground">
-                            O LÁPIS não infere dificuldades a partir dos resultados. Estas são as que validar — e
+                            O Lapispro não infere dificuldades a partir dos resultados. Estas são as que validar — e
                             as estratégias que escolher ficam ligadas a cada uma.
                         </p>
                         <DifficultyPicker

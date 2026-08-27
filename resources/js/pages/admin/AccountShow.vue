@@ -396,7 +396,7 @@ function destroy(): void {
                 </button>
             </form>
             <p class="text-xs text-muted-foreground">
-                Tem de já ter conta no LÁPIS. Continua também na sua própria organização pessoal, se tiver uma.
+                Tem de já ter conta no Lapispro. Continua também na sua própria organização pessoal, se tiver uma.
             </p>
         </section>
 

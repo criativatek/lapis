@@ -74,7 +74,7 @@ function formatDate(value: string): string {
         <div class="flex flex-wrap items-start justify-between gap-4">
             <Heading
                 title="Relatórios"
-                description="Documentos que descrevem o que os dados dizem — escritos pelo LÁPIS, decididos por si."
+                description="Documentos que descrevem o que os dados dizem — escritos pelo Lapispro, decididos por si."
             />
 
             <Button v-if="availableTypes.length > 0" as-child>

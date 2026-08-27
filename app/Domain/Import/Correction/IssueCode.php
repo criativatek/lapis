@@ -27,7 +27,7 @@ enum IssueCode: string
     /** A cell that could be read more than one way — never resolved by guessing. */
     case AmbiguousValue = 'ambiguous_value';
 
-    /** The source's own total disagrees with what LÁPIS computes from the same elements. */
+    /** The source's own total disagrees with what Lapispro computes from the same elements. */
     case SourceTotalMismatch = 'source_total_mismatch';
 
     /** The file's shape is not something this parser can read honestly. */

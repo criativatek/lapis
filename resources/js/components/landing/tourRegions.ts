@@ -34,7 +34,7 @@ export const TOUR_STOPS: readonly TourStop[] = [
     },
     {
         key: 'decision',
-        title: 'A proposta é do LÁPIS. A decisão é sua',
+        title: 'A proposta é do Lapispro. A decisão é sua',
         body: 'Média ponderada, proposta na escala, e a sua classificação ao lado. Decidir diferente da proposta fica registado com a razão.',
     },
     {

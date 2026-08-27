@@ -108,7 +108,7 @@ const user = computed(() => page.props.auth.user);
             </div>
             <div class="rounded-lg border border-border p-4 text-sm">
                 <Link href="/data-imports/create" class="font-medium text-primary hover:underline">Importar dados</Link>
-                <p class="mt-1 text-muted-foreground">Restaure dados a partir de uma exportação criada pelo LÁPIS.</p>
+                <p class="mt-1 text-muted-foreground">Restaure dados a partir de uma exportação criada pelo Lapispro.</p>
             </div>
         </div>
     </div>

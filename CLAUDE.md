@@ -1,6 +1,6 @@
-# CLAUDE.md — LÁPIS
+# CLAUDE.md — Lapispro
 
-**Laboratório de Apoio ao Professor, Informação e Simplificação** — *Mais tempo para ensinar*
+*Mais simples. Mais tempo.*
 
 Modular web app for Portuguese basic/secondary schoolteachers: assessment profiles, classes, instruments, grading grids, deterministic classification proposals, evidence, reports.
 

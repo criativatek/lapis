@@ -28,16 +28,19 @@ namespace App\Support\Seo;
 class LandingSeo
 {
     /**
-     * 60 characters, which is inside what a result page renders before it
+     * 59 characters, which is inside what a result page renders before it
      * truncates — brand first (this is a branded product), then the phrase the
-     * page is actually competing for, then the three things it does.
+     * page is actually competing for, then what it does.
      *
-     * «IA» rather than «IA pedagógica» is a deliberate trade: the longer form
-     * pushed the title to 70 characters and cost the visible «Turmas». The
-     * full phrase is carried by the description, the Open Graph title, a
-     * section heading and the body copy, where it has room.
+     * THE REBRAND COST THIS TITLE THREE CHARACTERS AND ONE WORD. «Lapispro» is
+     * three longer than «LÁPIS», which pushed the previous wording to 63 and
+     * over the limit, and something had to go. «IA» went rather than «Turmas»:
+     * «gestão de turmas» is a query a Portuguese teacher actually types, while
+     * two letters of «IA» in a title win nothing that the description, the
+     * Open Graph title, a section heading and the body copy do not already
+     * carry with room to say it properly.
      */
-    public const TITLE = 'LÁPIS | Plataforma para Professores — Avaliação, Turmas e IA';
+    public const TITLE = 'Lapispro | Plataforma para Professores — Avaliação e Turmas';
 
     /**
      * 157 characters. Says what the product IS in the first three words,
@@ -48,7 +51,7 @@ class LandingSeo
     public const DESCRIPTION = 'Plataforma para professores: gestão de turmas, avaliação de alunos, acompanhamento pedagógico, aulas, sumários e relatórios. A IA sugere; o professor decide.';
 
     /** Shorter, because a social card truncates harder than a result page. */
-    public const SOCIAL_TITLE = 'LÁPIS — Plataforma para Professores';
+    public const SOCIAL_TITLE = 'Lapispro — Plataforma para Professores';
 
     public const SOCIAL_DESCRIPTION = 'Avaliação de alunos, gestão de turmas, acompanhamento pedagógico, aulas, sumários, relatórios e IA pedagógica numa única plataforma para professores.';
 
@@ -133,7 +136,7 @@ class LandingSeo
         return [
             [
                 '@type' => 'Offer',
-                'name' => 'LÁPIS Base',
+                'name' => 'Lapispro Base',
                 'price' => '0',
                 'priceCurrency' => 'EUR',
                 'priceValidUntil' => '2027-08-31',
@@ -142,7 +145,7 @@ class LandingSeo
             ],
             [
                 '@type' => 'Offer',
-                'name' => 'LÁPIS Pro',
+                'name' => 'Lapispro Pro',
                 'price' => '44.90',
                 'priceCurrency' => 'EUR',
                 'description' => 'Subscrição anual. Não existe pagamento mensal.',
@@ -163,8 +166,7 @@ class LandingSeo
         return [
             '@context' => 'https://schema.org',
             '@type' => 'SoftwareApplication',
-            'name' => 'LÁPIS',
-            'alternateName' => 'Laboratório de Apoio ao Professor, Informação e Simplificação',
+            'name' => 'Lapispro',
             'applicationCategory' => 'EducationalApplication',
             'applicationSubCategory' => 'Software de avaliação para professores',
             'operatingSystem' => 'Web',

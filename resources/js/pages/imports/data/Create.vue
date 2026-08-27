@@ -38,7 +38,7 @@ function submit(): void {
         <div>
             <Heading
                 title="Importar dados"
-                description="Restaure dados a partir de uma exportação criada pelo LÁPIS."
+                description="Restaure dados a partir de uma exportação criada pelo Lapispro."
             />
             <Link
                 href="/settings/profile"
@@ -94,7 +94,7 @@ function submit(): void {
                 </p>
 
                 <p id="import-file-hint" class="text-xs text-muted-foreground">
-                    Aceita o ZIP completo de uma exportação do LÁPIS, ou apenas
+                    Aceita o ZIP completo de uma exportação do Lapispro, ou apenas
                     o ficheiro backup-lapis.json. O ficheiro é guardado
                     temporariamente em privado e eliminado após a importação ou
                     cancelamento.

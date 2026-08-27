@@ -21,7 +21,7 @@ final readonly class ImportMapping
 
     public const MODE_ASSOCIATE = 'associate_existing';
 
-    /** Keep whatever LÁPIS already has for a cell the file also carries. */
+    /** Keep whatever Lapispro already has for a cell the file also carries. */
     public const CONFLICT_KEEP = 'keep';
 
     /** Replace it with what the file says. */
@@ -35,7 +35,7 @@ final readonly class ImportMapping
 
     /**
      * Import the correction question by question, with cotações decided in
-     * LÁPIS. Everything the source says about totals is then ignored — the
+     * Lapispro. Everything the source says about totals is then ignored — the
      * modes are separate arithmetic and are never blended (§8).
      */
     public const RESULT_PER_QUESTION = 'per_question';

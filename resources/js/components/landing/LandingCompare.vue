@@ -37,7 +37,7 @@ import type { LandingPlan } from './types';
 const props = defineProps<{ plans: LandingPlan[] }>();
 
 const shortName = (plan: LandingPlan): string =>
-    plan.name.replace('LÁPIS ', '');
+    plan.name.replace('Lapispro ', '');
 
 function markFor(row: CompareRow, plan: LandingPlan): RowAvailability {
     return availability(row, plan.key, plan.moduleKeys);
@@ -73,7 +73,7 @@ const hasPlanned = () =>
             >
                 <table class="w-full min-w-[40rem] text-left text-sm">
                     <caption class="sr-only">
-                        Funcionalidades incluídas em cada plano do LÁPIS
+                        Funcionalidades incluídas em cada plano do Lapispro
                     </caption>
                     <thead
                         class="bg-muted/50 text-[11px] font-medium tracking-[0.06em] text-muted-foreground uppercase"
@@ -224,9 +224,9 @@ const hasPlanned = () =>
                     arquivados não contam para estes limites.
                 </p>
                 <p>
-                    A IA do LÁPIS sugere e reescreve texto — propõe estratégias
+                    A IA do Lapispro sugere e reescreve texto — propõe estratégias
                     e ajuda a aperfeiçoar a redação de um relatório. Não atribui
-                    nem decide classificações. O LÁPIS organiza, calcula e
+                    nem decide classificações. O Lapispro organiza, calcula e
                     acompanha. O professor observa, decide e ensina.
                 </p>
             </div>

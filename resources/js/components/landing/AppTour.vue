@@ -5,7 +5,7 @@ import type { TourRegion } from './tourRegions';
 import { TOUR_STOPS } from './tourRegions';
 
 /**
- * «O LÁPIS por dentro» — the shell, with one explanation per region.
+ * «O Lapispro por dentro» — the shell, with one explanation per region.
  *
  * TWO WAYS IN, ON PURPOSE. Pointing at a region of the picture lights its
  * explanation; moving through the list lights the region. The list is the

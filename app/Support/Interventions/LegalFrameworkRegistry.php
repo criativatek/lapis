@@ -5,7 +5,7 @@ namespace App\Support\Interventions;
 use Carbon\CarbonInterface;
 
 /**
- * Every legal framework LÁPIS knows how to apply.
+ * Every legal framework Lapispro knows how to apply.
  *
  * One entry today. A second Portuguese version (the revision approved in 2026
  * with effect announced for 2027) becomes a second entry with its own effective
@@ -33,7 +33,7 @@ final class LegalFrameworkRegistry
     /**
      * The framework in force in a jurisdiction on a date, or null when none is.
      *
-     * Null here means "LÁPIS has nothing for this place and time" — the caller
+     * Null here means "Lapispro has nothing for this place and time" — the caller
      * turns that into NullLegalFramework. It must never become a fallback to
      * some other jurisdiction's framework.
      */

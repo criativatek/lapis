@@ -25,7 +25,7 @@ use App\Services\Reporting\ReportContext;
  *
  * NO METHODOLOGICAL NOTE IN THE BODY (§3). That a self-assessment does not
  * enter the calculation is true, obvious to the reader of a school report, and
- * a sentence about how LÁPIS works rather than about the class. It belongs in a
+ * a sentence about how Lapispro works rather than about the class. It belongs in a
  * manual, not in the document a parent reads.
  */
 class ClassSelfAssessmentComposer implements SectionComposer

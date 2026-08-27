@@ -51,7 +51,7 @@ transportar.
   navegação seguinte já mostra a entrada.
 
 Dentro do backoffice, o `AdminLayout` tem a sua própria navegação (Contas · Nova
-conta · Email (SMTP)) e **«Voltar ao LÁPIS»**, que devolve o operador ao
+conta · Email (SMTP)) e **«Voltar ao Lapispro»**, que devolve o operador ao
 `/dashboard` da aplicação normal.
 
 ## O que se faz lá
@@ -131,7 +131,7 @@ domínio) **só escuta 587**. 465/25/2525 estão fechados. Config correta:
 ## Verificar end-to-end
 
 1. `lapis:make-admin <email>` → login → dropdown da conta → «Administração da
-   plataforma» → `/admin` → «Voltar ao LÁPIS» → `/dashboard`. Com um professor
+   plataforma» → `/admin` → «Voltar ao Lapispro» → `/dashboard`. Com um professor
    normal, a entrada não existe e `/admin` escrito à mão dá 403.
 2. Configurar SMTP (587/TLS acima) → «Enviar email de teste» para um inbox real → toast verde + email chega.
 3. Registar um professor em `/register` com email real → recebe o email de verificação.

@@ -1,6 +1,6 @@
-# LÁPIS
+# Lapispro
 
-**Laboratório de Apoio ao Professor, Informação e Simplificação** — *Mais tempo para ensinar*
+*Mais simples. Mais tempo.*
 
 App web modular para professores do básico e secundário em Portugal: perfis de
 avaliação, turmas, instrumentos, grelhas, propostas de classificação

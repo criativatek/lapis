@@ -8,7 +8,7 @@ use App\Domain\Import\Tabular\TabularSourceSnapshot;
  * Reads one container format into a rectangle of cells. Nothing else.
  *
  * A reader knows about bytes, delimiters, encodings and sheets. It does not know
- * what a student is, what a mark is, or that LÁPIS exists — which is what lets
+ * what a student is, what a mark is, or that Lapispro exists — which is what lets
  * the CSV one and the XLSX one be genuinely interchangeable, and what makes the
  * mapping and canonicalisation above them written exactly once (§40).
  */

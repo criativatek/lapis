@@ -25,7 +25,7 @@ use Tests\Fixtures\Import\GenericSpreadsheetBuilder;
  * The teacher's own spreadsheet, all the way through.
  *
  * The whole journey, because the interesting claim is not that a CSV can be
- * parsed — it is that a file LÁPIS has never seen ends up in the same place as a
+ * parsed — it is that a file Lapispro has never seen ends up in the same place as a
  * Plickers export: one Instrument, ordinary items, ordinary domain allocations,
  * ordinary scores, and a CalculationEngine that never learns where any of it
  * came from (§41).
@@ -511,7 +511,7 @@ class GenericSpreadsheetImportTest extends CorrectionImportHttpTest
             $items = Instrument::firstOrFail()->items()->orderBy('id')->get();
 
             // …and Bruno's marks are still 10 and 10. The file's 99 changed
-            // nothing: LÁPIS computes, the source reconciles (§31).
+            // nothing: Lapispro computes, the source reconciles (§31).
             $this->assertSame('10.0000', (string) StudentItemScore::where('instrument_item_id', $items[0]->id)
                 ->where('enrollment_id', $this->roll['Bruno Teste'])->firstOrFail()->points_earned);
             $this->assertSame('10.0000', (string) StudentItemScore::where('instrument_item_id', $items[1]->id)

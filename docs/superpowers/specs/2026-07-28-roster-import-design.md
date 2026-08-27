@@ -12,7 +12,7 @@ Esta é a primeira vez que a Questão Q6 (§13 do `domain-model.md`, "importaç�
 
 ## Decisões tomadas no brainstorming
 
-1. **Fotos ficam guardadas no LÁPIS** (não é só uma ajuda visual no momento do upload — decisão A, escolhida depois de comparação lado a lado).
+1. **Fotos ficam guardadas no Lapispro** (não é só uma ajuda visual no momento do upload — decisão A, escolhida depois de comparação lado a lado).
 2. **Repetente, ASE, PLNM** entram como uma nota de texto livre por inscrição (`enrollments.import_note`), tal como vêm do ficheiro, sem afetar nenhum cálculo. **NEE nunca é lido nem guardado** — exclusão arquitetural já existente (`docs/domain-model.md` linha 186: "Sem dados de saúde, NEE ou categorias especiais... uma futura `student_support_measures` exige especificação, fundamento e proteção reforçada próprios").
 3. **Formatos aceites: Excel (lista) + Word (fotos).** PDF não é suportado nesta funcionalidade — confirmado que o Intuitivo exporta ambos os ficheiros também nestes formatos, estruturalmente muito mais fiáveis de ler do que um relatório PDF impresso.
 4. **Sem subsistema `import_jobs`** — nada de histórico persistente de importações nem relatório de erros gravado em tabela própria (isso ficou desenhado em `domain-model.md` §10.4/§12 mas explicitamente descartado para já, por ser um âmbito muito maior do que o pedido). O que existe é um fluxo simples: carregar → pré-visualizar → confirmar.

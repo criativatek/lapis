@@ -7,7 +7,7 @@ namespace App\Domain\Import\Correction;
  *
  * Plickers' «Score 75%», Intuitivo's «Total», a teacher's spreadsheet «Total do
  * domínio». They are kept in their own list, apart from results, for one reason:
- * they are conclusions, and LÁPIS draws its own. CalculationEngine is sovereign
+ * they are conclusions, and Lapispro draws its own. CalculationEngine is sovereign
  * (§75); a summary is worth carrying because comparing the two afterwards can
  * catch a misread file, not because it may replace the calculation.
  *

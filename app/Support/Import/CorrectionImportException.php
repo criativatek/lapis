@@ -16,7 +16,7 @@ class CorrectionImportException extends RuntimeException
 {
     public static function notEntitled(): self
     {
-        return new self(__('A importação de resultados de outras plataformas está disponível no LÁPIS Pro.'));
+        return new self(__('A importação de resultados de outras plataformas está disponível no Lapispro Pro.'));
     }
 
     public static function notReady(): self

@@ -30,7 +30,7 @@ class ChangelogParserTest extends TestCase
     public function it_parses_versions_dates_categories_and_items_in_order(): void
     {
         $path = $this->writeFixture(<<<'MD'
-        # Changelog — LÁPIS
+        # Changelog — Lapispro
 
         Formato: Keep a Changelog.
 

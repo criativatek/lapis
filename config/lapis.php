@@ -64,7 +64,7 @@ return [
     | Responsável pelo tratamento (RGPD)
     |--------------------------------------------------------------------------
     |
-    | Quem responde legalmente pelo tratamento de dados pessoais no LÁPIS, e
+    | Quem responde legalmente pelo tratamento de dados pessoais no Lapispro, e
     | para onde um titular escreve a exercer os seus direitos.
     |
     | SÃO DEFAULTS DO CONFIG, NÃO APENAS VARIÁVEIS DE AMBIENTE. Estiveram a
@@ -118,7 +118,7 @@ return [
     | Writing assistant
     |--------------------------------------------------------------------------
     |
-    | The optional layer that REPHRASES text LÁPIS already wrote. It is never a
+    | The optional layer that REPHRASES text Lapispro already wrote. It is never a
     | source of fact: the deterministic composers produce the sentences, and
     | this can only make them read better. Everything about it is off until an
     | operator turns it on.

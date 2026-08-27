@@ -35,7 +35,7 @@ const code = ref('');
 const status = ref<'idle' | 'empty' | 'pending'>('idle');
 
 const PENDING =
-    'Guarde este código. A confirmação é feita ao criar a conta ou já dentro do LÁPIS — esta página não valida códigos.';
+    'Guarde este código. A confirmação é feita ao criar a conta ou já dentro do Lapispro — esta página não valida códigos.';
 
 function submit(): void {
     const trimmed = code.value.trim();
@@ -76,7 +76,7 @@ function submit(): void {
                             class="mt-2 text-sm leading-relaxed text-pretty text-muted-foreground"
                         >
                             Alguns professores poderão beneficiar de condições
-                            especiais de acesso atribuídas pelo LÁPIS. Introduza
+                            especiais de acesso atribuídas pelo Lapispro. Introduza
                             o seu código para ativar o benefício associado.
                         </p>
                     </div>
@@ -96,7 +96,7 @@ function submit(): void {
                                 autocomplete="off"
                                 autocapitalize="characters"
                                 spellcheck="false"
-                                placeholder="Ex.: LAPIS-XXXX-XXXX"
+                                placeholder="Ex.: LAPISPRO-XXXX-XXXX"
                                 class="sm:flex-1"
                                 :aria-invalid="status === 'empty'"
                                 aria-describedby="voucher-status"

@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
 /**
- * One session of restoring a LÁPIS-generated backup (Fatia 6).
+ * One session of restoring a Lapispro-generated backup (Fatia 6).
  *
  * Holds the conversation — the file, what was read and validated from it,
  * what got created/matched/skipped — never a duplicate of the pedagogical

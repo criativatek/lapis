@@ -32,7 +32,7 @@ class ClassificationDecisionException extends RuntimeException
      */
     public static function alreadyPublished(): self
     {
-        return new self(__('Esta classificação já foi publicada. Uma decisão publicada só muda por substituição, e esse mecanismo ainda não existe no LÁPIS.'));
+        return new self(__('Esta classificação já foi publicada. Uma decisão publicada só muda por substituição, e esse mecanismo ainda não existe no Lapispro.'));
     }
 
     public static function notChangeable(): self

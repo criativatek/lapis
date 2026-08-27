@@ -150,7 +150,7 @@ class CanonicalCorrectionGridTest extends TestCase
     #[Test]
     public function summaries_are_kept_apart_from_results(): void
     {
-        // «75%» is a conclusion the source drew. LÁPIS draws its own, and the
+        // «75%» is a conclusion the source drew. Lapispro draws its own, and the
         // day the two disagree the reason must be visible rather than merged
         // away (§19, §75).
         $grid = new CanonicalCorrectionGrid(

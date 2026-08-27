@@ -10,7 +10,7 @@ default do CloudPanel («Hello World :-)»). SSH aberto (porta 22), painel na 84
 
 ## Estado
 
-**Em produção** desde 2026-07-27: `https://lapis.criativatek.com` serve o LÁPIS,
+**Em produção** desde 2026-07-27: `https://lapis.criativatek.com` serve o Lapispro,
 migrações + os três seeders de referência (`ReferenceDataSeeder` — ver «Passos»
 abaixo) corridos, Cloudflare + HTTPS ativos. Backoffice `/admin` no ar.
 
@@ -121,7 +121,7 @@ mais traiçoeiro, em que o número da versão bate certo mas o código é de out
 commit. Sem carimbo no pacote, o comando falha em vez de encolher os ombros.
 
 Para saber o que lá está sem comparar nada — `php artisan lapis:release-check`
-sozinho, ou o `php artisan about`, que traz a mesma informação na secção LÁPIS.
+sozinho, ou o `php artisan about`, que traz a mesma informação na secção Lapispro.
 
 **Confirmar sempre que a extração escreveu mesmo.** O `tar` devolve estado de
 erro global mas o script continua, e `grep version` sozinho não prova que os
@@ -342,7 +342,7 @@ o que o php-fpm escreveu em `storage/app/private/*`, a `770`):
 
 ### Reinstalar sem duplicar — os dois blocos de uma vez
 
-O crontab do `lapis-deploy` tem **dois** blocos do LÁPIS, ambos delimitados por
+O crontab do `lapis-deploy` tem **dois** blocos do Lapispro, ambos delimitados por
 marcadores. Correr isto três vezes deixa **seis linhas**, não dezoito:
 
 ```bash
@@ -619,7 +619,7 @@ Manter `APP_ENV=production` para o Vite servir os assets compilados, não o dev 
 
 ## Checklist pós-deploy
 
-- [ ] `https://lapis.criativatek.com` mostra o LÁPIS (não o «Hello World»).
+- [ ] `https://lapis.criativatek.com` mostra o Lapispro (não o «Hello World»).
 - [ ] Registo/login funcionam; 2FA e passkey testados em HTTPS.
 - [ ] Os três seeders de `ReferenceDataSeeder` correram: `EntitlementsSeeder`
       (sem ele ninguém tem acesso a módulos), `SystemScalesSeeder` (sem ele não

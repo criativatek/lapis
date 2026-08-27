@@ -41,7 +41,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(Entitlements::class);
         $this->app->singleton(Limits::class);
 
-        // Which correction-grid formats LÁPIS can read is decided in exactly one
+        // Which correction-grid formats Lapispro can read is decided in exactly one
         // place. A new parser is registered here and the interface, the upload
         // rules and the source list all widen together — nothing else branches
         // on a source (§11).
@@ -58,7 +58,7 @@ class AppServiceProvider extends ServiceProvider
     }
 
     /**
-     * The optional layer that rephrases text LÁPIS already wrote.
+     * The optional layer that rephrases text Lapispro already wrote.
      *
      * Singletons, so a single request always talks to the same engine — which is
      * what lets a test script a sequence of answers and have them arrive in
@@ -142,7 +142,7 @@ class AppServiceProvider extends ServiceProvider
      */
     protected function describeRelease(): void
     {
-        AboutCommand::add('LÁPIS', fn (): array => [
+        AboutCommand::add('Lapispro', fn (): array => [
             'Version' => config('app.version'),
             'Commit' => BuildStamp::read()?->shortCommit() ?? '(sem carimbo de build)',
         ]);

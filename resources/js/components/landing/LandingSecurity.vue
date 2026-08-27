@@ -40,7 +40,7 @@ const guarantees: readonly Guarantee[] = [
         tinted
         eyebrow="Dados e privacidade"
         title="Dados de alunos exigem proteção desde a origem."
-        lead="A informação académica e pessoal está entre os dados mais sensíveis tratados pelo LÁPIS. A proteção faz parte da arquitetura do sistema, não é um acrescento posterior. Esta proteção é particularmente relevante quando estão envolvidos menores, mas aplica-se a todos os alunos e estudantes."
+        lead="A informação académica e pessoal está entre os dados mais sensíveis tratados pelo Lapispro. A proteção faz parte da arquitetura do sistema, não é um acrescento posterior. Esta proteção é particularmente relevante quando estão envolvidos menores, mas aplica-se a todos os alunos e estudantes."
     >
         <div
             class="grid gap-12 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:gap-16"
@@ -162,7 +162,7 @@ const guarantees: readonly Guarantee[] = [
                 class="mt-12 max-w-3xl text-sm leading-relaxed text-muted-foreground"
             >
                 A conformidade com o RGPD não depende apenas da tecnologia. O
-                LÁPIS incorpora medidas técnicas de proteção, incluindo
+                Lapispro incorpora medidas técnicas de proteção, incluindo
                 separação de dados, cifragem, isolamento entre contas e
                 registo de operações.
             </p>

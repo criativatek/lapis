@@ -892,7 +892,7 @@ function submit(intent: 'save' | 'prepare'): void {
 
         <section v-if="creationMode === 'quick'" class="space-y-5">
             <p class="text-sm text-muted-foreground">
-                Crie o elemento com os dados essenciais. O LÁPIS prepara automaticamente a estrutura base.
+                Crie o elemento com os dados essenciais. O Lapispro prepara automaticamente a estrutura base.
             </p>
 
             <div class="rounded-lg border border-border bg-muted/20 px-3 py-2.5">

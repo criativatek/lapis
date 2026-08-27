@@ -3,7 +3,7 @@
 namespace App\Domain\Import\Correction;
 
 /**
- * What makes a workbook a LÁPIS grid, stated formally.
+ * What makes a workbook a Lapispro grid, stated formally.
  *
  * The contract lives in the workbook's DEFINED NAMES — not in a sheet called
  * «Resultados», not in a tab called «Importar_LAPIS». A name is something a

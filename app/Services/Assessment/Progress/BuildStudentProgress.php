@@ -20,7 +20,7 @@ use App\Support\Assessment\DecisionScale;
 use Illuminate\Support\Collection;
 
 /**
- * One student's year, assembled from what LÁPIS already knows.
+ * One student's year, assembled from what Lapispro already knows.
  *
  * NOT A SECOND ENGINE, AND NOT EVEN A SECOND OPINION (§1). Every academic figure
  * on this page was decided before this class was called: the weighted averages

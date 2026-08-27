@@ -101,7 +101,7 @@ function submit(): void {
                 <span class="mb-1 block font-medium">Email do responsável</span>
                 <input v-model="form.owner_email" type="email" class="w-full rounded-md border border-border bg-background px-3 py-2" />
                 <span v-if="form.errors.owner_email" class="mt-1 block text-xs text-red-600">{{ form.errors.owner_email }}</span>
-                <span class="mt-1 block text-xs text-muted-foreground">Tem de já ter conta no LÁPIS.</span>
+                <span class="mt-1 block text-xs text-muted-foreground">Tem de já ter conta no Lapispro.</span>
             </label>
 
             <template v-else>

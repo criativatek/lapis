@@ -301,10 +301,10 @@ encerramento do dono e da própria organização, sem qualquer botão novo —
 
 ## Sobre a eliminação imediata (`profile.destroy`)
 
-O LÁPIS já tinha, desde o scaffold inicial (Fatia 0), um "Delete account"
+O Lapispro já tinha, desde o scaffold inicial (Fatia 0), um "Delete account"
 de auto-serviço imediato — `DELETE /settings/profile`, confirmação por
 password, sem janela de recuperação. Ficou por traduzir (ainda em inglês) e
-nunca foi adaptado ao domínio do LÁPIS.
+nunca foi adaptado ao domínio do Lapispro.
 
 Manter as duas vias lado a lado — uma imediata e irreversível, outra
 recuperável — anularia o propósito desta fatia: ninguém escolheria a

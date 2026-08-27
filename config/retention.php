@@ -8,7 +8,7 @@ return [
     |--------------------------------------------------------------------------
     |
     | These are the target retention windows for the different kinds of data
-    | LÁPIS holds. This file is the single source of truth for the numbers;
+    | Lapispro holds. This file is the single source of truth for the numbers;
     | App\Support\Retention\RetentionPolicy is the typed reader over it, and
     | App\Support\Retention\AcademicYearRetentionClassifier /
     | App\Support\Retention\ClosureRetention are the pure classification

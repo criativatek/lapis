@@ -6,7 +6,7 @@ const version = usePage().props.appVersion;
 
 <template>
     <footer class="flex items-center justify-between border-t border-border px-4 py-3 text-xs text-muted-foreground">
-        <span>LÁPIS v{{ version }}</span>
+        <span>Lapispro v{{ version }}</span>
         <Link href="/novidades" class="hover:underline">Novidades</Link>
     </footer>
 </template>

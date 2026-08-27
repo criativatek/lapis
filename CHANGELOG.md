@@ -1,6 +1,10 @@
-# Changelog — LÁPIS
+# Changelog — Lapispro
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
+
+> **Nota de marca.** O produto chamou-se LÁPIS até à versão 0.78.0. As entradas
+> anteriores a 0.79.0 mantêm o nome com que foram escritas: um changelog é um
+> registo do que aconteceu, e reescrevê-lo apagaria a própria mudança de marca.
 
 ## [0.78.0] — 2026-08-27
 

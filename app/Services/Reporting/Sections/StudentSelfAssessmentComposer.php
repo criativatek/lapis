@@ -44,7 +44,7 @@ class StudentSelfAssessmentComposer implements SectionComposer
         }
 
         // No methodological note (§3): that a self-assessment does not enter
-        // the calculation is a fact about LÁPIS, not about the student.
+        // the calculation is a fact about Lapispro, not about the student.
         return ComposedSection::of(
             Phrase::paragraph([
                 Phrase::sentence('Na sua autoavaliação, o aluno apreciou o desempenho global como', (string) $self['label']),

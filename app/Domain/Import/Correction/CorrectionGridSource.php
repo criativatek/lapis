@@ -5,7 +5,7 @@ namespace App\Domain\Import\Correction;
 /**
  * Where a correction grid came from.
  *
- * These are FILE FORMATS exported by other platforms, not integrations. LÁPIS
+ * These are FILE FORMATS exported by other platforms, not integrations. Lapispro
  * does not talk to Plickers or Intuitivo; it reads what a teacher exported from
  * them. Nothing here should ever be read as a promise of an API.
  *

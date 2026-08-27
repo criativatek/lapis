@@ -16,7 +16,7 @@ namespace App\Domain\Import\Tabular;
  *    read as 75%, because a teacher who marks out of one would be astonished
  *    (§24). The distinction cannot be recovered later, so it is captured here.
  *  - `isFormula` is true when the cell holds an expression rather than a value.
- *    LÁPIS never evaluates one; a column of formulas is refused with an
+ *    Lapispro never evaluates one; a column of formulas is refused with an
  *    explanation, not computed (§28).
  *
  * `number` holds what a person reading the sheet would see, as a decimal string:

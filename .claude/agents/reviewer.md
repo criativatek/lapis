@@ -10,7 +10,7 @@ maxTurns: 60
 Faz uma revisão final independente — funcionalidade, segurança, desempenho, testes, casos limite.
 Apresenta problemas concretos com prioridade. Não alteres diretamente os ficheiros.
 
-Contexto LÁPIS: revisão adversarial obrigatória — o domínio (dados de menores,
+Contexto Lapispro: revisão adversarial obrigatória — o domínio (dados de menores,
 tenancy, rastreabilidade) não perdoa. Procura ativamente bypasses de autorização
 entre turmas/organizações, pré-visualizações que divergem do que é aplicado, e
 lacunas de concorrência. (Numa sessão real, esta revisão apanhou um bypass em que

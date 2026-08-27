@@ -20,7 +20,7 @@ aqui**, e não por conservadorismo:
    mais eficaz alguma vez construída para o produzir: escreve «a turma revela
    falta de hábitos de estudo» com a mesma fluência com que escreve uma frase
    verdadeira, e ninguém que leia o documento consegue distinguir as duas.
-2. **Os dados são sobre menores.** A maioria dos alunos do LÁPIS são crianças.
+2. **Os dados são sobre menores.** A maioria dos alunos do Lapispro são crianças.
    «Enviar dados identificativos de alunos para um serviço externo» está na lista
    de coisas que não se fazem sem perguntar (CLAUDE.md §31).
 3. **Uma classificação é uma decisão de uma pessoa.** O sistema propõe; o
@@ -44,7 +44,7 @@ fonte de um facto porque nunca lhe é mostrado nenhum.
 
 O botão chama-se **«Aperfeiçoar redação»**. Não «Gerar relatório com IA».
 
-### 2. O LÁPIS não escolhe fornecedor
+### 2. O Lapispro não escolhe fornecedor
 
 `config/lapis.php` traz a tomada, não a ficha: sem driver por omissão, sem
 endpoint, sem modelo, sem chave. `AiTextProviders::isConfigured()` devolve
@@ -108,7 +108,7 @@ entra num documento sobre uma criança. A escolha entre as duas não é difícil
 
 A resposta aceite escreve `body` e marca `edited`. `generated_body` continua a
 ser o texto determinístico, e por isso **«restaurar texto automático» continua a
-restaurar o que o LÁPIS escreveu** — não o que um modelo disse. «Regenerar»
+restaurar o que o Lapispro escreveu** — não o que um modelo disse. «Regenerar»
 continua a significar reexecutar os compositores, e nunca chama IA.
 
 ### 7. O rasto não guarda texto
@@ -140,7 +140,7 @@ proteção de dados por direito próprio.
    vive no código e no menu da funcionalidade.
 2. **Sem consentimento por organização.** Configurar o motor é uma decisão do
    operador da instalação; uma escola dentro dessa instalação não tem forma de
-   recusar. Enquanto o LÁPIS for maioritariamente monoinstitucional isto é
+   recusar. Enquanto o Lapispro for maioritariamente monoinstitucional isto é
    equivalente, mas deixa de o ser no dia em que não for.
 3. **Sem medição de custos.** Os contadores de tokens são gravados desde o
    primeiro dia (`AiTextResponse::metrics()`), mas não há painel que os leia.

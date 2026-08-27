@@ -10,7 +10,7 @@ Everything a new developer needs. Nothing here depends on hidden state on one ma
 
 ## 1. Database
 
-LÁPIS uses MySQL, not PostgreSQL — see [ADR-0001](adr/0001-mysql-instead-of-postgresql.md) for why the spec was deviated from.
+Lapispro uses MySQL, not PostgreSQL — see [ADR-0001](adr/0001-mysql-instead-of-postgresql.md) for why the spec was deviated from.
 
 In DBngin, create (or start) a **MySQL 9.7** service. This project expects it on **port 3308**; 3306 and 3307 are other projects' services on this machine.
 

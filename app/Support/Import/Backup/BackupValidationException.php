@@ -15,7 +15,7 @@ class BackupValidationException extends RuntimeException
 {
     public static function notAZipOrJson(): self
     {
-        return new self(__('Este ficheiro não é uma exportação válida do LÁPIS.'));
+        return new self(__('Este ficheiro não é uma exportação válida do Lapispro.'));
     }
 
     public static function corruptZip(): self
@@ -25,7 +25,7 @@ class BackupValidationException extends RuntimeException
 
     public static function missingBackupEntry(): self
     {
-        return new self(__('Este ficheiro não é uma exportação válida do LÁPIS — não contém backup-lapis.json.'));
+        return new self(__('Este ficheiro não é uma exportação válida do Lapispro — não contém backup-lapis.json.'));
     }
 
     public static function unsafeZipEntry(): self
@@ -50,12 +50,12 @@ class BackupValidationException extends RuntimeException
 
     public static function unsupportedNewerSchema(): self
     {
-        return new self(__('Este backup foi criado por uma versão do LÁPIS que ainda não é suportada para restauro.'));
+        return new self(__('Este backup foi criado por uma versão do Lapispro que ainda não é suportada para restauro.'));
     }
 
     public static function unsupportedSchema(): self
     {
-        return new self(__('Este backup foi criado por uma versão do LÁPIS que ainda não é suportada para restauro.'));
+        return new self(__('Este backup foi criado por uma versão do Lapispro que ainda não é suportada para restauro.'));
     }
 
     public static function missingRequiredField(string $field): self
@@ -65,6 +65,6 @@ class BackupValidationException extends RuntimeException
 
     public static function suspiciousContent(): self
     {
-        return new self(__('Este ficheiro contém dados que nunca deveriam estar num backup do LÁPIS e não pode ser importado.'));
+        return new self(__('Este ficheiro contém dados que nunca deveriam estar num backup do Lapispro e não pode ser importado.'));
     }
 }

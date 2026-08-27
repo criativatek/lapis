@@ -938,7 +938,7 @@ class ClassStatisticsTest extends TestCase
     #[Test]
     public function the_proposal_is_never_read_as_the_grade_when_the_teacher_decided_otherwise(): void
     {
-        // LÁPIS proposed «4» for Ana. The teacher assigned «2».
+        // Lapispro proposed «4» for Ana. The teacher assigned «2».
         $this->proposeOnly(2);
         $this->assign('Ana', 2, '2');
 
@@ -1489,7 +1489,7 @@ class ClassStatisticsTest extends TestCase
     #[Test]
     public function a_numeric_decision_the_scale_cannot_read_is_unclassified_and_never_a_crossing(): void
     {
-        // «Escala 0 a 20» defines no qualitative levels, so LÁPIS has no
+        // «Escala 0 a 20» defines no qualitative levels, so Lapispro has no
         // statement about which side of it a «7» or a «14» sits on — and does
         // not invent one at 9,5 (§6). The decisions are real and the scale is
         // silent, which is a different answer from having no decision at all.

@@ -293,7 +293,7 @@ function dimensionClass(state: string): string {
         </div>
 
         <header class="doc-header">
-            <p class="doc-eyebrow">LÁPIS · Acompanhamento do Aluno</p>
+            <p class="doc-eyebrow">Lapispro · Acompanhamento do Aluno</p>
             <h1 class="doc-title">{{ document.title }}</h1>
             <h2 class="doc-student">{{ student.name }}</h2>
             <p class="doc-meta">

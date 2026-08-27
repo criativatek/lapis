@@ -5,7 +5,7 @@ namespace App\Services\Import\Correction;
 use App\Domain\Import\Correction\CorrectionGridSource;
 
 /**
- * Which sources LÁPIS can actually read, right now.
+ * Which sources Lapispro can actually read, right now.
  *
  * The enum lists the formats that exist in the world; this lists the ones that
  * have a parser. Keeping the two apart is what lets the interface offer exactly

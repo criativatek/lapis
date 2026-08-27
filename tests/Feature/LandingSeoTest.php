@@ -27,7 +27,7 @@ class LandingSeoTest extends TestCase
     public function the_title_fits_a_result_page_and_says_what_the_product_is(): void
     {
         $this->assertLessThanOrEqual(60, mb_strlen(LandingSeo::TITLE));
-        $this->assertStringContainsString('LÁPIS', LandingSeo::TITLE);
+        $this->assertStringContainsString('Lapispro', LandingSeo::TITLE);
         $this->assertStringContainsString('Professores', LandingSeo::TITLE);
     }
 

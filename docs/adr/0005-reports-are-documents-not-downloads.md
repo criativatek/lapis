@@ -126,5 +126,5 @@ mudança futura ao que um relatório regista exigisse uma migração **sobre o
 histórico**.
 
 **Renderizar o PDF com Chromium.** Produz melhor tipografia e exige Node,
-Chromium e uma sandbox funcional em cada máquina onde o LÁPIS corre — incluindo o
+Chromium e uma sandbox funcional em cada máquina onde o Lapispro corre — incluindo o
 Herd de um professor. `dompdf` é PHP puro e sem binário externo.

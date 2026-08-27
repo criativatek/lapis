@@ -329,7 +329,7 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                 <table class="w-full text-sm">
                     <thead class="bg-muted/50 text-left">
                         <!-- The same reading order as Resultados: the evidence,
-                             what LÁPIS proposes from it, what the student said,
+                             what Lapispro proposes from it, what the student said,
                              and then the decision (§10). -->
                         <tr>
                             <th class="px-3 py-2 font-medium">Aluno</th>
@@ -394,7 +394,7 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                                             :title="
                                                 row.classification.observation
                                                     ? `Diferente da proposta. ${row.classification.observation}`
-                                                    : 'Diferente da proposta do LÁPIS.'
+                                                    : 'Diferente da proposta do Lapispro.'
                                             "
                                         />
                                     </template>
@@ -426,7 +426,7 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                                     <span
                                         v-else-if="row.classification?.is_published"
                                         class="inline-flex items-center gap-1 text-xs text-muted-foreground"
-                                        title="Esta classificação já foi publicada. Uma decisão publicada só muda por substituição, e esse mecanismo ainda não existe no LÁPIS."
+                                        title="Esta classificação já foi publicada. Uma decisão publicada só muda por substituição, e esse mecanismo ainda não existe no Lapispro."
                                     >
                                         <Lock class="size-3" />Publicada
                                     </span>

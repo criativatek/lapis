@@ -74,13 +74,13 @@ class LegalDocuments
         return [
             'title' => 'Termos de Utilização',
             'effective_from' => (string) config('lapis.legal.terms_effective_from'),
-            'intro' => 'Estes Termos regulam a utilização do LÁPIS. Ao criar uma conta, está a aceitar o que aqui se descreve. Foram escritos para serem lidos: onde uma regra tem uma consequência prática, ela está dita por extenso.',
+            'intro' => 'Estes Termos regulam a utilização do Lapispro. Ao criar uma conta, está a aceitar o que aqui se descreve. Foram escritos para serem lidos: onde uma regra tem uma consequência prática, ela está dita por extenso.',
             'sections' => [
                 [
-                    'heading' => 'O que é o LÁPIS',
+                    'heading' => 'O que é o Lapispro',
                     'body' => [
-                        'O LÁPIS é um serviço disponibilizado pela '.(self::setting('controller_name') ?? 'entidade responsável indicada no fim desta página').'.',
-                        'O LÁPIS — Laboratório de Apoio ao Professor, Informação e Simplificação — é uma plataforma para professores que reúne a gestão de turmas e alunos, os critérios e instrumentos de avaliação, o cálculo e a decisão de classificações, o acompanhamento pedagógico, as aulas e sumários, e os relatórios.',
+                        'O Lapispro é um serviço disponibilizado pela '.(self::setting('controller_name') ?? 'entidade responsável indicada no fim desta página').'.',
+                        'O Lapispro é uma plataforma para professores que reúne a gestão de turmas e alunos, os critérios e instrumentos de avaliação, o cálculo e a decisão de classificações, o acompanhamento pedagógico, as aulas e sumários, e os relatórios.',
                         'Destina-se a professores e a instituições de ensino. Não é uma plataforma para alunos nem para encarregados de educação: não existe registo, sessão ou acesso próprio para estes.',
                     ],
                 ],
@@ -89,7 +89,7 @@ class LegalDocuments
                     'body' => [
                         'A conta é pessoal. Ao criá-la, é gerada a sua organização pessoal — o espaço onde o seu trabalho fica isolado do de qualquer outra pessoa.',
                         'Pode também pertencer a organizações institucionais, criadas por uma escola ou agrupamento. Nesse caso os dados aí registados pertencem à instituição, não à sua conta, e continuam a existir independentemente dela.',
-                        'É responsável por manter as suas credenciais em segurança e por tudo o que for feito através da sua conta. O LÁPIS disponibiliza autenticação em dois passos e chaves de acesso (passkeys); recomendamos que use pelo menos uma delas.',
+                        'É responsável por manter as suas credenciais em segurança e por tudo o que for feito através da sua conta. O Lapispro disponibiliza autenticação em dois passos e chaves de acesso (passkeys); recomendamos que use pelo menos uma delas.',
                         'Os dados que indica ao criar a conta devem ser verdadeiros e atuais.',
                         'Se detetar uma utilização indevida da sua conta, ou precisar de ajuda com o acesso, contacte '.self::contact('accounts_email').'.',
                     ],
@@ -97,14 +97,14 @@ class LegalDocuments
                 [
                     'heading' => 'Utilização aceitável',
                     'body' => [
-                        'Compromete-se a utilizar o LÁPIS apenas para fins legítimos relacionados com o seu trabalho pedagógico.',
+                        'Compromete-se a utilizar o Lapispro apenas para fins legítimos relacionados com o seu trabalho pedagógico.',
                         'Não deve tentar aceder a dados de outra organização, contornar os controlos de acesso, sobrecarregar deliberadamente o serviço, nem introduzir dados pessoais de terceiros sem fundamento legítimo para o fazer.',
                     ],
                 ],
                 [
                     'heading' => 'Dados pedagógicos e decisões',
                     'body' => [
-                        'O LÁPIS calcula, organiza e propõe. Não decide.',
+                        'O Lapispro calcula, organiza e propõe. Não decide.',
                         'A classificação final é sempre uma decisão do professor. O sistema apresenta uma proposta a partir do perfil de avaliação e do que está registado; a confirmação é sua, e se decidir de forma diferente da proposta, a diferença e a razão ficam registadas.',
                         'Quando as funcionalidades de inteligência artificial estão disponíveis, sugerem — nunca decidem, nunca atribuem ou alteram uma classificação, e nunca aplicam sozinhas uma estratégia. Cada sugestão é aceite, adaptada ou descartada por si.',
                         'A responsabilidade pedagógica pelo que regista e pelo que decide continua a ser sua e, quando aplicável, da sua instituição.',
@@ -113,7 +113,7 @@ class LegalDocuments
                 [
                     'heading' => 'Disponibilidade e evolução',
                     'body' => [
-                        'O LÁPIS é um serviço em evolução. Funcionalidades podem ser acrescentadas, alteradas ou substituídas, e o serviço pode ser interrompido para manutenção.',
+                        'O Lapispro é um serviço em evolução. Funcionalidades podem ser acrescentadas, alteradas ou substituídas, e o serviço pode ser interrompido para manutenção.',
                         'Procuramos manter o serviço disponível e avisar de interrupções planeadas, mas não garantimos disponibilidade ininterrupta.',
                         'Pode a qualquer momento exportar os seus dados a partir da aplicação.',
                     ],
@@ -121,7 +121,7 @@ class LegalDocuments
                 [
                     'heading' => 'Planos e condições comerciais',
                     'body' => [
-                        'Existem três planos: LÁPIS Base, LÁPIS Pro e LÁPIS Institucional. O que os distingue são as funcionalidades disponíveis e, no caso do Base, alguns limites quantitativos.',
+                        'Existem três planos: Lapispro Base, Lapispro Pro e Lapispro Institucional. O que os distingue são as funcionalidades disponíveis e, no caso do Base, alguns limites quantitativos.',
                         'Criar conta dá acesso ao plano Base. Pode estar disponível um período experimental do plano Pro, por tempo limitado e sem obrigação de pagamento.',
                         'Podem ser atribuídos códigos que dão acesso a condições especiais. As condições comerciais em vigor, incluindo preços e eventuais campanhas de lançamento, são as apresentadas na página pública no momento da adesão.',
                         'Terminar um plano superior não elimina dados: as funcionalidades correspondentes deixam de estar disponíveis e a informação já registada continua a existir, nos termos da Política de Privacidade.',
@@ -140,14 +140,14 @@ class LegalDocuments
                 [
                     'heading' => 'Propriedade intelectual',
                     'body' => [
-                        'O software, a marca e a apresentação do LÁPIS pertencem ao seu titular. Estes Termos não transferem qualquer direito sobre eles.',
-                        'O conteúdo que introduz — critérios, registos, textos, relatórios — continua a ser seu ou da sua instituição. O LÁPIS trata-o apenas para lhe prestar o serviço.',
+                        'O software, a marca e a apresentação do Lapispro pertencem ao seu titular. Estes Termos não transferem qualquer direito sobre eles.',
+                        'O conteúdo que introduz — critérios, registos, textos, relatórios — continua a ser seu ou da sua instituição. O Lapispro trata-o apenas para lhe prestar o serviço.',
                     ],
                 ],
                 [
                     'heading' => 'Limitação de responsabilidade',
                     'body' => [
-                        'O LÁPIS é uma ferramenta de apoio. Não substitui o julgamento profissional do professor nem as obrigações da instituição de ensino.',
+                        'O Lapispro é uma ferramenta de apoio. Não substitui o julgamento profissional do professor nem as obrigações da instituição de ensino.',
                         'Na medida permitida pela lei aplicável, não respondemos por decisões pedagógicas tomadas com apoio da ferramenta, nem por perdas resultantes de utilização contrária a estes Termos.',
                         'Nada nestes Termos exclui responsabilidades que a lei não permita excluir.',
                     ],
@@ -171,13 +171,13 @@ class LegalDocuments
         return [
             'title' => 'Política de Privacidade',
             'effective_from' => (string) config('lapis.legal.privacy_effective_from'),
-            'intro' => 'O LÁPIS trata dados pessoais de professores e de alunos — muitos deles menores. Esta página descreve que dados são tratados, para quê, durante quanto tempo, e o que pode exigir a qualquer momento.',
+            'intro' => 'O Lapispro trata dados pessoais de professores e de alunos — muitos deles menores. Esta página descreve que dados são tratados, para quê, durante quanto tempo, e o que pode exigir a qualquer momento.',
             'sections' => [
                 [
                     'heading' => 'Responsável pelo tratamento',
                     'body' => [
-                        'O LÁPIS é um serviço disponibilizado pela '.(self::setting('controller_name') ?? 'entidade indicada no fim desta página').'.',
-                        'É essa entidade que responde pelos tratamentos descritos nesta página relativos à prestação do serviço. Quanto aos dados dos alunos, a repartição de responsabilidades entre o LÁPIS e a escola ou o professor que os introduz está sujeita a validação jurídica, e será precisada nesta página.',
+                        'O Lapispro é um serviço disponibilizado pela '.(self::setting('controller_name') ?? 'entidade indicada no fim desta página').'.',
+                        'É essa entidade que responde pelos tratamentos descritos nesta página relativos à prestação do serviço. Quanto aos dados dos alunos, a repartição de responsabilidades entre o Lapispro e a escola ou o professor que os introduz está sujeita a validação jurídica, e será precisada nesta página.',
                         'Os elementos completos de identificação — NIF e morada — estão no fim desta página.',
                         'Para exercer os seus direitos ou colocar qualquer questão sobre privacidade, escreva para '.self::contact('privacy_email').'.',
                     ],
@@ -196,10 +196,10 @@ class LegalDocuments
                     'body' => [
                         'Os dados de identificação do aluno — nome e, quando indicado, número de processo — são guardados numa tabela separada e cifrados. O resto da aplicação trabalha com um pseudónimo, não com o nome.',
                         'Isto é pseudonimização, não anonimização: o professor continua a poder ver quem é cada aluno, porque precisa disso para trabalhar. O que se reduz é a exposição da identidade em tudo o resto. A anonimização — a remoção efetiva da relação com a pessoa — acontece no encerramento da conta, descrito mais abaixo.',
-                        'Não é necessário anonimizar os alunos antes de os introduzir: a proteção é aplicada pelo LÁPIS.',
+                        'Não é necessário anonimizar os alunos antes de os introduzir: a proteção é aplicada pelo Lapispro.',
                         'Podem ainda existir data de nascimento e fotografia, quando o professor ou a instituição as introduzem.',
                         'Dados pedagógicos: turmas e inscrições, classificações e resultados por domínio, instrumentos de avaliação, registos de acompanhamento, autoavaliações, estratégias e medidas, e relatórios.',
-                        'O aluno não tem conta, sessão nem acesso próprio ao LÁPIS. Os seus dados são introduzidos e geridos pelo professor ou pela instituição.',
+                        'O aluno não tem conta, sessão nem acesso próprio ao Lapispro. Os seus dados são introduzidos e geridos pelo professor ou pela instituição.',
                     ],
                 ],
                 [
@@ -213,7 +213,7 @@ class LegalDocuments
                 [
                     'heading' => 'Ficheiros',
                     'body' => [
-                        'Ficheiros que carrega — pautas, fotografias, grelhas de correção, cópias de segurança para importação — e ficheiros que o LÁPIS gera, como relatórios e exportações dos seus dados.',
+                        'Ficheiros que carrega — pautas, fotografias, grelhas de correção, cópias de segurança para importação — e ficheiros que o Lapispro gera, como relatórios e exportações dos seus dados.',
                         'Os ficheiros temporários de importações que não chegam a ser confirmadas são eliminados automaticamente, sem intervenção sua.',
                     ],
                 ],
@@ -232,16 +232,16 @@ class LegalDocuments
                     'heading' => 'Fundamento do tratamento',
                     'body' => [
                         'O tratamento dos dados do professor assenta na execução do contrato de prestação do serviço e no cumprimento de obrigações legais aplicáveis.',
-                        'Quanto aos dados dos alunos, o professor ou a instituição de ensino determinam a finalidade e devem dispor de fundamento legítimo para o seu tratamento no exercício da atividade educativa. O LÁPIS trata esses dados por conta de quem os introduz.',
-                        'O enquadramento exato de cada tratamento, incluindo a repartição de responsabilidades entre o LÁPIS e a instituição, está sujeito a validação jurídica.',
+                        'Quanto aos dados dos alunos, o professor ou a instituição de ensino determinam a finalidade e devem dispor de fundamento legítimo para o seu tratamento no exercício da atividade educativa. O Lapispro trata esses dados por conta de quem os introduz.',
+                        'O enquadramento exato de cada tratamento, incluindo a repartição de responsabilidades entre o Lapispro e a instituição, está sujeito a validação jurídica.',
                     ],
                 ],
                 [
                     'heading' => 'Inteligência artificial',
                     'body' => [
-                        'A IA do LÁPIS sugere. O professor decide. Nenhuma classificação é atribuída, alterada ou decidida por um modelo, e nenhuma estratégia é aplicada automaticamente.',
-                        'Quando disponível, é usada para ajudar a interpretar resultados que o LÁPIS já calculou, propor estratégias pedagógicas e aperfeiçoar a redação de um relatório já composto.',
-                        'Antes de qualquer texto sair da aplicação, os nomes que o LÁPIS conhece são substituídos por designações genéricas e todos os números e datas por marcadores. Não são enviados o resto do relatório, a turma, a pauta, os resultados, as classificações, as autoavaliações, os registos, a identidade da escola nem o nome do professor. O que volta é verificado antes de ser apresentado, e é recusado se vier com um valor alterado.',
+                        'A IA do Lapispro sugere. O professor decide. Nenhuma classificação é atribuída, alterada ou decidida por um modelo, e nenhuma estratégia é aplicada automaticamente.',
+                        'Quando disponível, é usada para ajudar a interpretar resultados que o Lapispro já calculou, propor estratégias pedagógicas e aperfeiçoar a redação de um relatório já composto.',
+                        'Antes de qualquer texto sair da aplicação, os nomes que o Lapispro conhece são substituídos por designações genéricas e todos os números e datas por marcadores. Não são enviados o resto do relatório, a turma, a pauta, os resultados, as classificações, as autoavaliações, os registos, a identidade da escola nem o nome do professor. O que volta é verificado antes de ser apresentado, e é recusado se vier com um valor alterado.',
                         'As funcionalidades de IA podem estar desativadas. Quando não existe um motor configurado, a aplicação funciona na mesma e as opções de IA não ficam disponíveis.',
                         'Não está atualmente identificado um fornecedor de IA. Quando existir, será identificado nesta página como subprocessador antes de qualquer tratamento real.',
                     ],
@@ -271,10 +271,10 @@ class LegalDocuments
                 [
                     'heading' => 'Dados de menores',
                     'body' => [
-                        'A maioria dos alunos cujos dados são tratados no LÁPIS são menores de idade, e o tratamento é feito com esse pressuposto.',
+                        'A maioria dos alunos cujos dados são tratados no Lapispro são menores de idade, e o tratamento é feito com esse pressuposto.',
                         'Os alunos não criam contas nem acedem à aplicação. Os seus dados são introduzidos e geridos exclusivamente por professores e instituições autorizados.',
                         'Cabe ao professor e à instituição assegurar que existe fundamento legítimo para tratar esses dados e que apenas são introduzidos os dados necessários.',
-                        'Do lado do LÁPIS, aplicamos minimização — a aplicação trabalha com um pseudónimo e não com o nome —, cifragem da identidade, isolamento entre organizações e controlo de acesso verificado no servidor.',
+                        'Do lado do Lapispro, aplicamos minimização — a aplicação trabalha com um pseudónimo e não com o nome —, cifragem da identidade, isolamento entre organizações e controlo de acesso verificado no servidor.',
                         'O enquadramento aplicável ao tratamento de dados de menores está sujeito a validação jurídica.',
                     ],
                 ],
@@ -293,18 +293,18 @@ class LegalDocuments
                 [
                     'heading' => 'Cookies e armazenamento no navegador',
                     'body' => [
-                        'O LÁPIS usa apenas cookies estritamente necessários e de funcionamento. Não usa cookies de publicidade, de marketing ou de análise de tráfego, nem carrega serviços de terceiros no seu navegador — os tipos de letra são servidos do nosso próprio domínio.',
+                        'O Lapispro usa apenas cookies estritamente necessários e de funcionamento. Não usa cookies de publicidade, de marketing ou de análise de tráfego, nem carrega serviços de terceiros no seu navegador — os tipos de letra são servidos do nosso próprio domínio.',
                         'Cookie de sessão: mantém a sua autenticação entre páginas.',
                         'Cookie de proteção contra falsificação de pedidos (CSRF): protege os formulários.',
                         'Preferências de interface: o tema claro/escuro e o estado do menu lateral.',
-                        'Além de cookies, o LÁPIS guarda no armazenamento local do seu navegador a preferência de tema e rascunhos de grelhas de correção ainda por submeter. Os rascunhos ficam apenas no seu equipamento, nunca são enviados por si só, e são removidos quando a grelha é guardada.',
+                        'Além de cookies, o Lapispro guarda no armazenamento local do seu navegador a preferência de tema e rascunhos de grelhas de correção ainda por submeter. Os rascunhos ficam apenas no seu equipamento, nunca são enviados por si só, e são removidos quando a grelha é guardada.',
                         'Não identificámos cookies de finalidade não essencial, pelo que não é apresentado um pedido de consentimento. Esta avaliação está sujeita a validação jurídica.',
                     ],
                 ],
                 [
                     'heading' => 'Subprocessadores e terceiros',
                     'body' => [
-                        'O LÁPIS recorre a serviços de terceiros para alojamento, entrega de rede e envio de email transacional. Estes serviços tratam dados por nossa conta e apenas para essas finalidades.',
+                        'O Lapispro recorre a serviços de terceiros para alojamento, entrega de rede e envio de email transacional. Estes serviços tratam dados por nossa conta e apenas para essas finalidades.',
                         'A lista identificada de subprocessadores, com as respetivas finalidades e localizações, está por publicar e será acrescentada a esta página. Enquanto isso não acontecer, não indicamos nomes que não possamos confirmar, nem afirmamos onde os dados são processados.',
                         'Não vendemos nem cedemos dados pessoais a terceiros.',
                     ],

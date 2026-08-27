@@ -17,7 +17,7 @@ use Tests\TestCase;
  * or adding a state to the map without the words that describe it.
  *
  * The distinction being defended is not cosmetic. "Insuficiente" claims the
- * evidence was not enough — and if that were true, LÁPIS should not have
+ * evidence was not enough — and if that were true, Lapispro should not have
  * produced a value at all. What actually happened is that a result exists and
  * rests on part of the applicable elements. That is "parcial".
  */
@@ -146,7 +146,7 @@ class CoverageTerminologyTest extends TestCase
         $labels = $this->labelSource();
 
         // `pending` is «not graded yet», which says nothing about whether anybody
-        // was there. In LÁPIS a blank is not a zero and no score is not an
+        // was there. In Lapispro a blank is not a zero and no score is not an
         // absence — so an unknown state gets a phrase that claims neither.
         $this->assertStringNotContainsString('pending:', $labels);
         $this->assertStringContainsString("?? 'Sem registo de avaliação'", $labels);

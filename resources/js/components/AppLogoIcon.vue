@@ -13,7 +13,7 @@ defineProps<Props>();
 </script>
 
 <template>
-    <!-- LÁPIS mark: an L formed by a pencil (amber body) and a clock hand,
+    <!-- Lapispro mark: an L formed by a pencil (amber body) and a clock hand,
          "mais tempo para ensinar". Uses currentColor for the L stroke so it
          inverts with the foreground; the pencil body stays amber. -->
     <svg

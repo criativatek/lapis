@@ -590,7 +590,7 @@ function joinPortuguese(items: string[]): string {
 function estado360Intro(dimensions: Dimension[]): string {
     const names = dimensions.map((dimension) => dimension.label.charAt(0).toLowerCase() + dimension.label.slice(1));
 
-    return `Síntese integrada de ${joinPortuguese(names)}. Quando não existem dados suficientes para uma dimensão, o LÁPIS assinala essa limitação.`;
+    return `Síntese integrada de ${joinPortuguese(names)}. Quando não existem dados suficientes para uma dimensão, o Lapispro assinala essa limitação.`;
 }
 
 // -------------------------------------------------------- preparar conversa

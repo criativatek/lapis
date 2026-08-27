@@ -67,7 +67,7 @@ const authenticated = computed(() => page.props.auth.user !== null);
         instead of coming out as «… - LAPIS».
     -->
     <Head
-        title="LÁPIS | Plataforma para Professores — Avaliação, Turmas e IA"
+        title="Lapispro | Plataforma para Professores — Avaliação, Turmas e IA"
     />
 
     <div class="min-h-screen bg-background text-foreground">

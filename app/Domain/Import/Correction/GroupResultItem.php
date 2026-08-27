@@ -5,7 +5,7 @@ namespace App\Domain\Import\Correction;
 use App\Domain\Assessment\Bc;
 
 /**
- * How «this section of the test scored N out of M» is written down in LÁPIS.
+ * How «this section of the test scored N out of M» is written down in Lapispro.
  *
  * The same decision as OverallResultItem, one level finer. The domain model
  * settled it in §4.2: the item is the one scoring unit, and anything assessed

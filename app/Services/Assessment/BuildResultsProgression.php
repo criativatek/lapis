@@ -406,7 +406,7 @@ class BuildResultsProgression
     }
 
     /**
-     * What LÁPIS proposed and what the teacher decided, kept apart.
+     * What Lapispro proposed and what the teacher decided, kept apart.
      *
      * @return array<string, mixed>
      */

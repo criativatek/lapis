@@ -18,7 +18,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * The organization's own plan, and the one self-service upgrade LÁPIS offers
+ * The organization's own plan, and the one self-service upgrade Lapispro offers
  * without any operator involved: a voluntary, time-boxed Pro trial (§Trial).
  *
  * `state` is computed once, here, from exactly the same primitives every

@@ -410,7 +410,7 @@ const needingReassignment = computed(() => {
                         </div>
                         <div>
                             <dt class="inline text-muted-foreground">
-                                Versão do LÁPIS:
+                                Versão do Lapispro:
                             </dt>
                             <dd class="inline">
                                 {{ dataImport.source_app_version ?? '—' }}

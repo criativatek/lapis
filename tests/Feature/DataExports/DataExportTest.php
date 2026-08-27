@@ -157,7 +157,7 @@ class DataExportTest extends TestCase
 
         $this->assertContains('Utilizador', $labels);
         $this->assertContains('Organização', $labels);
-        $this->assertContains('Versão do LÁPIS', $labels);
+        $this->assertContains('Versão do Lapispro', $labels);
         $this->assertContains('Nº de turmas', $labels);
     }
 

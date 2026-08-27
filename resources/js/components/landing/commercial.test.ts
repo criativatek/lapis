@@ -103,11 +103,11 @@ const INSTITUTIONAL_MODULES = [
 
 function plans() {
     return [
-        { key: 'base', name: 'LÁPIS Base', moduleKeys: [...BASE_MODULES] },
-        { key: 'pro', name: 'LÁPIS Pro', moduleKeys: [...PRO_MODULES] },
+        { key: 'base', name: 'Lapispro Base', moduleKeys: [...BASE_MODULES] },
+        { key: 'pro', name: 'Lapispro Pro', moduleKeys: [...PRO_MODULES] },
         {
             key: 'institutional',
-            name: 'LÁPIS Institucional',
+            name: 'Lapispro Institucional',
             moduleKeys: [...INSTITUTIONAL_MODULES],
         },
     ];

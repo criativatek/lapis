@@ -1,6 +1,6 @@
 # Workflow — desenvolvimento assistido por IA
 
-Como o LÁPIS é construído: um loop por *slice* vertical, uma equipa de agentes,
+Como o Lapispro é construído: um loop por *slice* vertical, uma equipa de agentes,
 e o Codex usado ativamente. Portável — vive no repo, não na config de uma pessoa.
 
 ## O loop por slice vertical

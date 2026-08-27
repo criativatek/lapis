@@ -676,7 +676,7 @@ class BuildClassStatistics
      * they are on now.
      *
      * THE DECISION, NOT THE ARITHMETIC. Passing and failing are things a
-     * teacher decides, and LÁPIS keeps four different statements about a
+     * teacher decides, and Lapispro keeps four different statements about a
      * student deliberately apart (§14): the Média Ponderada is what was
      * calculated, the proposal is what the system suggested, the self
      * assessment is what the student said, and the classification is what the

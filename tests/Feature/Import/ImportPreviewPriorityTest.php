@@ -102,7 +102,7 @@ class ImportPreviewPriorityTest extends CorrectionImportHttpTest
     {
         $wizard = $this->wizard();
 
-        foreach (['Aluno no ficheiro', 'Aluno no LÁPIS', 'Respostas', 'Estado'] as $column) {
+        foreach (['Aluno no ficheiro', 'Aluno no Lapispro', 'Respostas', 'Estado'] as $column) {
             $this->assertStringContainsString($column, $wizard);
         }
 
@@ -143,13 +143,13 @@ class ImportPreviewPriorityTest extends CorrectionImportHttpTest
         // Two different numbers, two different names. A source score is not a
         // classification and must never be dressed as one. The source's own
         // number is named by the source — «Resultado na plataforma» for a
-        // platform, «Resultado no ficheiro» for a spreadsheet — and the LÁPIS
-        // one is named here, always and only, as the LÁPIS one.
+        // platform, «Resultado no ficheiro» for a spreadsheet — and the Lapispro
+        // one is named here, always and only, as the Lapispro one.
         $this->assertStringContainsString('sourceResultLabel', $wizard);
-        $this->assertStringContainsString('Resultado LÁPIS', $wizard);
+        $this->assertStringContainsString('Resultado Lapispro', $wizard);
 
         foreach (CorrectionGridSource::cases() as $source) {
-            $this->assertStringNotContainsString('LÁPIS', $source->resultLabel());
+            $this->assertStringNotContainsString('Lapispro', $source->resultLabel());
         }
         // A short fragment on purpose: the sentence is wrapped across lines in
         // the template, and asserting the whole of it would break on reflow
@@ -165,7 +165,7 @@ class ImportPreviewPriorityTest extends CorrectionImportHttpTest
     #[Test]
     public function the_lapis_result_stays_empty_until_a_cotacao_is_decided(): void
     {
-        // The detailed mode, explicitly: it is the one where a LÁPIS result has
+        // The detailed mode, explicitly: it is the one where a Lapispro result has
         // to be built out of cotações, and so the one where it can be missing.
         $import = $this->upload();
         $mapping = $this->completeMapping();
@@ -177,7 +177,7 @@ class ImportPreviewPriorityTest extends CorrectionImportHttpTest
             ->get("/imports/correction/{$import->ulid}")
             ->viewData('page')['props']['preview']['students'];
 
-        // No cotação decided, so there is no LÁPIS result to show — and null,
+        // No cotação decided, so there is no Lapispro result to show — and null,
         // not zero, is how that is said.
         foreach ($students as $student) {
             $this->assertNull($student['lapis_percentage']);

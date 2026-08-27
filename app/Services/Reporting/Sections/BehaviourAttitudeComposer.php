@@ -16,7 +16,7 @@ use App\Services\Reporting\ReportContext;
 /**
  * «Comportamento e atitude face às aprendizagens» (§8, §9, §10, §11).
  *
- * EVERY WORD IN THIS SECTION IS THE TEACHER'S. LÁPIS holds disciplinary
+ * EVERY WORD IN THIS SECTION IS THE TEACHER'S. Lapispro holds disciplinary
  * occurrences and merit records; it does not hold behaviour, and it certainly
  * does not hold attitude. Eight incidents in a class of twenty-six is a count —
  * turning it into «a turma tem problemas de comportamento» is exactly the
@@ -105,7 +105,7 @@ class BehaviourAttitudeComposer implements SectionComposer
      * A bare list of nouns tells the reader nothing — «assinalam-se: a
      * participação, a autonomia» could mean either strength or gap. Grouping by
      * standing is what makes the sentence say something, and the standing is
-     * always a choice somebody made rather than a valence LÁPIS assigned (§11).
+     * always a choice somebody made rather than a valence Lapispro assigned (§11).
      */
     protected function indicatorParagraph(ReportContext $context): ?string
     {

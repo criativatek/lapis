@@ -132,7 +132,7 @@ class GenericSpreadsheetParser implements MappedCorrectionGridParser
             return $this->refuse($originalFilename, __('O ficheiro não tem nenhuma folha com dados.'));
         }
 
-        // A workbook LÁPIS produced says so, formally, and then there is nothing
+        // A workbook Lapispro produced says so, formally, and then there is nothing
         // to ask: the structure is a contract this build wrote and can read
         // back. Everything else falls through to the ordinary path (§16).
         //
@@ -252,7 +252,7 @@ class GenericSpreadsheetParser implements MappedCorrectionGridParser
                 if ($cell->isFormula) {
                     return $this->refuseGrid(
                         $originalFilename,
-                        __('Esta grelha LÁPIS tem fórmulas onde deviam estar os resultados. Substitua-as pelos valores antes de importar.'),
+                        __('Esta grelha Lapispro tem fórmulas onde deviam estar os resultados. Substitua-as pelos valores antes de importar.'),
                     );
                 }
 
@@ -271,7 +271,7 @@ class GenericSpreadsheetParser implements MappedCorrectionGridParser
         }
 
         if ($students === []) {
-            return $this->refuseGrid($originalFilename, __('Esta grelha LÁPIS não tem alunos.'));
+            return $this->refuseGrid($originalFilename, __('Esta grelha Lapispro não tem alunos.'));
         }
 
         return new CanonicalCorrectionGrid(

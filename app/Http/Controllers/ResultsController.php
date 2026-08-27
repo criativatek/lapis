@@ -160,7 +160,7 @@ class ResultsController extends Controller
                 // The student's own overall judgement — the answer to the global
                 // question, never the average of the per-domain ones (§5).
                 'self_assessment' => $progression[$row['enrollment']->getKey()]['self_assessment'] ?? null,
-                // What the teacher decided, beside what LÁPIS proposed (§6).
+                // What the teacher decided, beside what Lapispro proposed (§6).
                 'classification' => $progression[$row['enrollment']->getKey()]['classification'] ?? null,
             ], $results),
         ]);

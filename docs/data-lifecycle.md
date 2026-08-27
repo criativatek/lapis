@@ -1,7 +1,7 @@
 # Ciclo de vida dos dados — retenção, encerramento, backups
 
 Fatia 4, estendido na Fatia 5. Este documento descreve a **política técnica de
-conservação de dados** do LÁPIS: durante quanto tempo cada tipo de dado
+conservação de dados** do Lapispro: durante quanto tempo cada tipo de dado
 permanece identificável, recuperável, ou é alvo de limpeza técnica — e o que
 está efetivamente implementado versus apenas configurado/documentado.
 
@@ -11,15 +11,15 @@ organizações institucionais) está descrito em detalhe em
 política de retenção; aquele descreve o mecanismo.
 
 A Fatia 6 acrescenta o caminho inverso da exportação — restaurar um backup
-gerado pelo próprio LÁPIS — descrito em
+gerado pelo próprio Lapispro — descrito em
 [docs/data-import.md](data-import.md): o que é efetivamente restaurado, o que
 nunca é importado, e a limpeza automática do ficheiro carregado.
 
 ## O que esta política cobre e o que não cobre
 
-Este documento descreve o que o LÁPIS **se propõe** a fazer aos dados ao longo
+Este documento descreve o que o Lapispro **se propõe** a fazer aos dados ao longo
 do tempo, como decisão de produto e de engenharia. **Não é um parecer
-jurídico.** O LÁPIS aplica períodos de conservação definidos de acordo com a
+jurídico.** O Lapispro aplica períodos de conservação definidos de acordo com a
 finalidade dos dados e as obrigações aplicáveis — mas este documento não
 afirma qual é o período legalmente exigido para nenhuma categoria de dado, e
 não deve ser lido como tal. Os números aqui descritos são uma política de
@@ -102,7 +102,7 @@ técnicos, por ser o registo de quem fez o quê, não um detalhe operacional.
 
 **Nenhum dos dois está atualmente aplicado em código — e a Fatia 5
 deliberadamente não muda isto.** Não existe rotação de logs nem job de
-limpeza de `audit_events` no LÁPIS a esta data; nenhum foi adicionado. Isto é
+limpeza de `audit_events` no Lapispro a esta data; nenhum foi adicionado. Isto é
 uma lacuna documentada e trabalho futuro — não algo já em execução. Os
 valores em `config/retention.php` são o alvo a implementar, não uma descrição
 do comportamento atual do sistema.

@@ -46,7 +46,7 @@ defineProps<{ authenticated: boolean }>();
                 <p
                     class="mt-6 max-w-xl text-lg leading-relaxed text-pretty text-foreground"
                 >
-                    O LÁPIS é uma plataforma para professores que reúne
+                    O Lapispro é uma plataforma para professores que reúne
                     avaliação de alunos, gestão de turmas, acompanhamento
                     pedagógico, aulas, sumários e relatórios num único lugar.
                 </p>
@@ -65,7 +65,7 @@ defineProps<{ authenticated: boolean }>();
                             {{
                                 authenticated
                                     ? 'Ir para o painel'
-                                    : 'Experimentar LÁPIS'
+                                    : 'Experimentar Lapispro'
                             }}
                             <ArrowRight
                                 aria-hidden="true"
@@ -85,15 +85,15 @@ defineProps<{ authenticated: boolean }>();
 
                 <p class="mt-5 text-sm leading-relaxed text-muted-foreground">
                     Sem cartão. O plano
-                    <span class="font-medium text-foreground">LÁPIS Base</span>
+                    <span class="font-medium text-foreground">Lapispro Base</span>
                     fica ativo de imediato.
                 </p>
             </RevealOnScroll>
 
             <RevealOnScroll :delay="150" variant="scale" class="min-w-0">
                 <ProductWindow
-                    path="lapis.pt/classes/9b/classifications"
-                    label="Ecrã de classificações de uma turma no LÁPIS: a proposta calculada para cada aluno, a menção na escala da escola e a confirmação do professor."
+                    path="lapispro.com/classes/9b/classifications"
+                    label="Ecrã de classificações de uma turma no Lapispro: a proposta calculada para cada aluno, a menção na escala da escola e a confirmação do professor."
                 >
                     <ClassificationPreview />
                 </ProductWindow>

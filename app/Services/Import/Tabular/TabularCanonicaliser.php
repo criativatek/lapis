@@ -139,7 +139,7 @@ class TabularCanonicaliser
             if ($total !== null) {
                 // The source's own total, kept beside the marks so the wizard can
                 // show both. It is reconciliation, never a substitute for what
-                // LÁPIS computes (§31).
+                // Lapispro computes (§31).
                 $summaries[] = new CanonicalSummary(
                     scope: CanonicalSummary::SCOPE_STUDENT,
                     key: 'source_total',
@@ -360,7 +360,7 @@ class TabularCanonicaliser
         if ($formulas !== []) {
             $issues[] = ImportIssue::make(
                 IssueCode::UnsupportedStructure,
-                __('As colunas :colunas contêm fórmulas. O LÁPIS não executa fórmulas — exporte ou copie os valores antes de importar.', [
+                __('As colunas :colunas contêm fórmulas. O Lapispro não executa fórmulas — exporte ou copie os valores antes de importar.', [
                     'colunas' => implode(', ', array_keys($formulas)),
                 ]),
                 context: ['columns' => implode(',', array_keys($formulas))],
@@ -428,7 +428,7 @@ class TabularCanonicaliser
             && $table->overallMaximum === null) {
             $issues[] = ImportIssue::make(
                 IssueCode::UnsupportedStructure,
-                __('Indique a cotação máxima do resultado, ou assinale que a coluna já está em percentagem. O LÁPIS não deduz que 14 é 14 em 20.'),
+                __('Indique a cotação máxima do resultado, ou assinale que a coluna já está em percentagem. O Lapispro não deduz que 14 é 14 em 20.'),
                 context: ['field' => 'overall_maximum'],
                 severity: IssueSeverity::Error,
             );
@@ -466,7 +466,7 @@ class TabularCanonicaliser
         ?TabularSheet $sheet,
         int $resultColumns,
     ): array {
-        // `defined_names` is how the reader hands the LÁPIS contract to the
+        // `defined_names` is how the reader hands the Lapispro contract to the
         // parser. It is scratch data for one request, not a fact about the
         // import worth keeping, and provenance is not a place to put things
         // just because they were in reach.

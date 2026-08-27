@@ -5,7 +5,7 @@ namespace App\Domain\Import\Correction;
 /**
  * One student as the source names them — which is not the same as a student.
  *
- * Every field here belongs to the FILE, not to LÁPIS. A Plickers card number is
+ * Every field here belongs to the FILE, not to Lapispro. A Plickers card number is
  * a piece of cardboard, not an enrolment; a name in a spreadsheet is a string
  * somebody typed. Keeping them in their own object is what stops provider
  * columns leaking into Enrollment or StudentIdentity, and what makes the

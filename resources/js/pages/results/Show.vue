@@ -440,7 +440,7 @@ function post(row: Row, data: { final_scale_level_id: number | null; final_value
                                 <span
                                     v-if="row.classification.differs_from_proposal"
                                     class="ml-0.5 text-xs font-normal"
-                                    title="Diferente da proposta do LÁPIS."
+                                    title="Diferente da proposta do Lapispro."
                                 >·</span>
                             </button>
 
@@ -461,7 +461,7 @@ function post(row: Row, data: { final_scale_level_id: number | null; final_value
                                     type="button"
                                     class="rounded border border-border px-1.5 py-0.5 text-[11px] hover:bg-muted/40 disabled:opacity-50"
                                     :disabled="savingUlid !== null"
-                                    title="Adotar a proposta do LÁPIS"
+                                    title="Adotar a proposta do Lapispro"
                                     @click="useProposal(row)"
                                 >
                                     Usar proposta
@@ -483,10 +483,10 @@ function post(row: Row, data: { final_scale_level_id: number | null; final_value
                 <strong>Proposta</strong> traduz esse resultado para a escala de classificação
                 definida no perfil de avaliação<template v-if="schoolClass.scale_name">
                 ({{ schoolClass.scale_name }})</template>. Quando a escala ainda não tem bandas
-                definidas, a proposta fica por atribuir — o LÁPIS não infere limiares.
+                definidas, a proposta fica por atribuir — o Lapispro não infere limiares.
                 O <strong>{{ decision.label }}</strong> é a decisão do professor e nunca é
                 preenchido pela proposta: clique na célula para atribuir ou alterar, ou use
-                «Usar proposta» para adotar a do LÁPIS. Depois de <strong>publicada</strong>,
+                «Usar proposta» para adotar a do Lapispro. Depois de <strong>publicada</strong>,
                 a classificação fica fechada — a publicação faz-se em «Gerir classificações».
                 A <strong>Autoavaliação</strong> é o valor que o próprio aluno propôs na
                 escala — a resposta à pergunta global, nunca a média do que disse sobre cada

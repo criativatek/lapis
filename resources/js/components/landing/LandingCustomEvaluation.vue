@@ -48,7 +48,7 @@ const claims = [
                 <h2
                     class="mt-3 text-3xl font-semibold tracking-tight text-balance sm:text-4xl"
                 >
-                    O LÁPIS adapta-se ao modelo de avaliação da sua escola.
+                    O Lapispro adapta-se ao modelo de avaliação da sua escola.
                 </h2>
                 <p
                     class="mt-4 text-base leading-relaxed text-pretty text-muted-foreground sm:text-lg"
@@ -56,7 +56,7 @@ const claims = [
                     Organize critérios de avaliação, ponderações, instrumentos
                     de avaliação e classificações sem depender de múltiplas
                     folhas de cálculo. Cada escola organiza a avaliação de forma
-                    diferente, e o LÁPIS aplica essa estrutura de forma
+                    diferente, e o Lapispro aplica essa estrutura de forma
                     consistente ao trabalho do professor.
                 </p>
 
@@ -88,8 +88,8 @@ const claims = [
 
             <RevealOnScroll :delay="150" variant="scale" class="min-w-0">
                 <ProductWindow
-                    path="lapis.pt/assessment-profiles/matematica-9"
-                    label="Ecrã de um perfil de avaliação no LÁPIS: os domínios com os nomes da escola, a ponderação de cada um e a escala em vigor."
+                    path="lapispro.com/assessment-profiles/matematica-9"
+                    label="Ecrã de um perfil de avaliação no Lapispro: os domínios com os nomes da escola, a ponderação de cada um e a escala em vigor."
                 >
                     <ProfilePreview />
                 </ProductWindow>

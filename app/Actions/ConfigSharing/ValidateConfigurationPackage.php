@@ -26,7 +26,7 @@ final class ValidateConfigurationPackage
             throw ValidationException::withMessages(['file' => __('O pacote de configuração é inválido.')]);
         }
         if (($package['kind'] ?? null) !== 'lapis_configuration_package') {
-            throw ValidationException::withMessages(['file' => __('Este ficheiro não é um pacote de configuração do LÁPIS.')]);
+            throw ValidationException::withMessages(['file' => __('Este ficheiro não é um pacote de configuração do Lapispro.')]);
         }
         if (($package['schema_version'] ?? null) !== 1) {
             throw ValidationException::withMessages(['file' => __('A versão deste pacote de configuração não é suportada.')]);

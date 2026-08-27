@@ -7,7 +7,7 @@ namespace App\Models;
  *
  * THREE ORIGINS, AND THEY DIFFER IN WHO MAY CHANGE THEM rather than in what
  * they can express. A system template and an institutional one hold the same
- * kind of configuration; what separates them is that one is the LÁPIS default
+ * kind of configuration; what separates them is that one is the Lapispro default
  * and the other is a school's own standard.
  *
  * No `shared` and no `draft`. Neither has a meaning in this application yet,
@@ -15,7 +15,7 @@ namespace App\Models;
  */
 enum ReportTemplateKind: string
 {
-    /** Shipped with LÁPIS. Visible to everyone, editable by nobody. */
+    /** Shipped with Lapispro. Visible to everyone, editable by nobody. */
     case System = 'system';
 
     /** One teacher's own. Visible only to them. */
@@ -27,7 +27,7 @@ enum ReportTemplateKind: string
     public function label(): string
     {
         return match ($this) {
-            self::System => __('LÁPIS'),
+            self::System => __('Lapispro'),
             self::Personal => __('Pessoal'),
             self::Institutional => __('Escola'),
         };
@@ -36,7 +36,7 @@ enum ReportTemplateKind: string
     public function description(): string
     {
         return match ($this) {
-            self::System => __('Modelo fornecido pelo LÁPIS.'),
+            self::System => __('Modelo fornecido pelo Lapispro.'),
             self::Personal => __('Um modelo seu, visível apenas para si.'),
             self::Institutional => __('Modelo da escola, disponível para todos os seus professores.'),
         };

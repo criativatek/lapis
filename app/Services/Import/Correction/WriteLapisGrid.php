@@ -87,7 +87,7 @@ class WriteLapisGrid
         $name = (string) preg_replace('/[^\p{L}\p{N} \-.º]+/u', ' ', implode(' — ', $parts));
         $name = trim((string) preg_replace('/\s+/u', ' ', $name));
 
-        return ($name === '' ? 'Grelha LÁPIS' : $name).'.xlsx';
+        return ($name === '' ? 'Grelha Lapispro' : $name).'.xlsx';
     }
 
     /**
@@ -100,7 +100,7 @@ class WriteLapisGrid
         // The hidden one first, so the columns a teacher sees start where the
         // eye starts. Its heading is never read — the defined names carry the
         // contract — but a stray visible cell with no label reads as a mistake.
-        $sheet->setCellValue(LapisGridContract::COLUMN_ENROLLMENT.$row, 'LÁPIS');
+        $sheet->setCellValue(LapisGridContract::COLUMN_ENROLLMENT.$row, 'Lapispro');
         $sheet->setCellValue(LapisGridContract::COLUMN_NUMBER.$row, 'N.º');
         $sheet->setCellValue(LapisGridContract::COLUMN_NAME.$row, 'Nome');
 

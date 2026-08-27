@@ -10,7 +10,7 @@ use Illuminate\Contracts\Foundation\Application;
  * Whether there is an engine at all, and if so which one.
  *
  * «NOT CONFIGURED» IS A FIRST-CLASS ANSWER, not an exception waiting to happen.
- * LÁPIS ships with no vendor chosen, so the ordinary state of this class on a
+ * Lapispro ships with no vendor chosen, so the ordinary state of this class on a
  * fresh installation is `isConfigured() === false` — and the whole Relatórios
  * module has to keep working in exactly that state (§8). Screens ask this before
  * they offer anything, so nobody is shown a button that can only fail (§41).

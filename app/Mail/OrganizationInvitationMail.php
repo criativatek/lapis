@@ -27,7 +27,7 @@ class OrganizationInvitationMail extends Mailable
 
     public function build(): self
     {
-        return $this->subject(__(':organization convida-o para o LÁPIS', ['organization' => $this->organization->name]))
+        return $this->subject(__(':organization convida-o para o Lapispro', ['organization' => $this->organization->name]))
             ->view('emails.organization-invitation', [
                 'organizationName' => $this->organization->name,
                 'inviterName' => $this->inviter->name,

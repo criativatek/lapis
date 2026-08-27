@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * The decision boundary (§7, domain-model.md §7): where LÁPIS stops calculating
+ * The decision boundary (§7, domain-model.md §7): where Lapispro stops calculating
  * and the teacher takes over (§3.3). Nothing crosses into a grade without a row
  * in `classifications`.
  *

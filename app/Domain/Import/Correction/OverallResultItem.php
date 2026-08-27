@@ -5,7 +5,7 @@ namespace App\Domain\Import\Correction;
 use App\Domain\Assessment\Bc;
 
 /**
- * How «the platform already worked out a result» is written down in LÁPIS.
+ * How «the platform already worked out a result» is written down in Lapispro.
  *
  * It is not a new representation. `docs/domain-model.md` §4.2 already decided
  * that the item is the system's ONE scoring unit, and that something assessed

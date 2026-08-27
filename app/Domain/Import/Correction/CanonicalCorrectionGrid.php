@@ -21,7 +21,7 @@ namespace App\Domain\Import\Correction;
  *  - GROUP is not DOMAIN. Where a question sits and what it assesses are
  *    different decisions, and a source that names its sections «Leitura» has
  *    still said nothing about curriculum (§9).
- *  - SUMMARY is not RESULT. A source's own total is a conclusion it drew; LÁPIS
+ *  - SUMMARY is not RESULT. A source's own total is a conclusion it drew; Lapispro
  *    draws its own and remains sovereign (§19, §75).
  *  - UNRESOLVED is not ZERO. A blank is a question about a student, not an
  *    answer about them (§18).

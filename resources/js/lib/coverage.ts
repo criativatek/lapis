@@ -8,7 +8,7 @@
  * A state missing from this map gets neutral wording rather than an invented
  * one. That matters most for the states that are NOT here: a question nobody
  * has graded yet is `pending`, and calling it «Ausente» would be inventing an
- * event — in LÁPIS a blank is not a zero and no score is not an absence.
+ * event — in Lapispro a blank is not a zero and no score is not an absence.
  */
 export const RESULT_STATE_LABELS: Record<string, string> = {
     absent: 'Ausência',

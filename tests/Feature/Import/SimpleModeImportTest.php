@@ -26,7 +26,7 @@ use PHPUnit\Framework\Attributes\Test;
  * Importing the classification the platform already worked out.
  *
  * A teacher who ran a quiz on Plickers has a number for every student before
- * LÁPIS is opened at all. The old flow made them reconstruct twenty cotações
+ * Lapispro is opened at all. The old flow made them reconstruct twenty cotações
  * and twenty answer keys before it would accept that number — work whose entire
  * output was a figure that already existed, and which produced a DIFFERENT
  * figure the moment any question was worth more than another.

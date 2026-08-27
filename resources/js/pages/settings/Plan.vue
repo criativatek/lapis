@@ -6,7 +6,7 @@ import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 
 /**
- * The organization's own plan, and the one self-service upgrade LÁPIS offers
+ * The organization's own plan, and the one self-service upgrade Lapispro offers
  * without any operator involved: a voluntary, time-boxed Pro trial (§Trial).
  *
  * `state` arrives already computed server-side (App\Http\Controllers\Settings\PlanController::edit)

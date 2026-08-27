@@ -36,7 +36,7 @@ class ReleaseCheckCommand extends Command
         $expectedVersion = $this->stringOption('expect-version');
         $expectedCommit = $this->stringOption('expect-commit');
 
-        $this->line('LÁPIS');
+        $this->line('Lapispro');
         $this->line('  running version: '.($runningVersion !== '' ? $runningVersion : '(por declarar)'));
         $this->line('  running commit:  '.($runningCommit ?? '(sem carimbo)'));
 

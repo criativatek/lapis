@@ -21,7 +21,7 @@ import ClassificationPreview from './ClassificationPreview.vue';
 import type { TourRegion } from './tourRegions';
 
 /**
- * The LÁPIS shell, drawn at rest: the sidebar the teacher navigates by, the
+ * The Lapispro shell, drawn at rest: the sidebar the teacher navigates by, the
  * context selectors in the header, and one class open underneath.
  *
  * It is a MOCK and not the real AppLayout — the real one needs a resolved
@@ -119,7 +119,7 @@ function tone(region: TourRegion, active: TourRegion | null): string {
                 >
                     <AppLogoIcon class="size-4" />
                 </span>
-                <span class="text-[13px] font-semibold text-white">LÁPIS</span>
+                <span class="text-[13px] font-semibold text-white">Lapispro</span>
             </div>
 
             <nav

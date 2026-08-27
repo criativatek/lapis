@@ -4,9 +4,9 @@ namespace App\Support\Import\Backup;
 
 /**
  * Recursively walks a decoded backup payload looking for key names that
- * should never appear in a LÁPIS export (§7 of the import brief). Run
+ * should never appear in a Lapispro export (§7 of the import brief). Run
  * against the RAW decoded upload, before anything is whitelisted into
- * `canonical_snapshot` — a genuine LÁPIS backup never carries any of these
+ * `canonical_snapshot` — a genuine Lapispro backup never carries any of these
  * keys at any depth, so finding one is treated as a strong signal that the
  * file is not what it claims to be, not merely a field to drop silently.
  *

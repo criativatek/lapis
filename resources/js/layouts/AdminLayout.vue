@@ -30,7 +30,7 @@ function logout(): void {
                     <ShieldCheck class="size-4" />
                 </span>
                 <div class="leading-tight">
-                    <div class="text-sm font-semibold">LÁPIS</div>
+                    <div class="text-sm font-semibold">Lapispro</div>
                     <div class="text-xs text-muted-foreground">Backoffice</div>
                 </div>
             </div>
@@ -56,7 +56,7 @@ function logout(): void {
                     class="flex items-center gap-2 rounded-md px-3 py-2 text-muted-foreground hover:bg-muted/40"
                     data-test="back-to-app"
                 >
-                    <ArrowLeft class="size-4" /> Voltar ao LÁPIS
+                    <ArrowLeft class="size-4" /> Voltar ao Lapispro
                 </Link>
                 <button type="button" class="mt-1 flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-muted-foreground hover:bg-muted/40" @click="logout">
                     <LogOut class="size-4" /> Terminar sessão

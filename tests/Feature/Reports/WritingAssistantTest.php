@@ -311,7 +311,7 @@ class WritingAssistantTest extends TestCase
         $this->assertTrue($updated->edited);
 
         // THE POINT OF THE WHOLE SEPARATION: the deterministic text is still
-        // there, so «restaurar texto automático» restores what LÁPIS wrote and
+        // there, so «restaurar texto automático» restores what Lapispro wrote and
         // not what a model said (§21).
         $this->assertSame($generated, $updated->generated_body);
     }

@@ -34,7 +34,7 @@ import RevealOnScroll from './RevealOnScroll.vue';
  */
 const questions = [
     {
-        question: 'O que é o LÁPIS?',
+        question: 'O que é o Lapispro?',
         answer: 'É uma plataforma para professores que reúne a avaliação de alunos, a gestão de turmas, o acompanhamento pedagógico, as aulas, os sumários e os relatórios num único lugar — em vez de os espalhar por folhas de cálculo, documentos e cadernos.',
     },
     {
@@ -47,32 +47,32 @@ const questions = [
         answer: 'É o ponto de partida da aplicação: os domínios com os nomes da sua escola, a ponderação de cada um, os instrumentos de avaliação que entram e a escala em que a classificação é dada.',
     },
     {
-        question: 'O LÁPIS acompanha a evolução dos alunos?',
+        question: 'O Lapispro acompanha a evolução dos alunos?',
         answer: 'Sim. O acompanhamento do progresso de cada aluno reúne resultados, domínios, classificações, autoavaliações, registos e estratégias na mesma vista. No plano Pro acrescenta a leitura interpretativa: tendências, regularidade, pontos fortes, margem de progressão e o próximo passo pedagógico.',
     },
     {
-        question: 'O LÁPIS inclui horário, aulas e sumários?',
+        question: 'O Lapispro inclui horário, aulas e sumários?',
         answer: 'Inclui, no plano Pro: o horário do professor, a semana de aulas, o sumário como centro de cada aula, o planeamento em sequências reutilizáveis e a agenda do ano letivo, com períodos, interrupções e feriados.',
     },
     {
-        question: 'O LÁPIS utiliza inteligência artificial?',
+        question: 'O Lapispro utiliza inteligência artificial?',
         answer: 'Utiliza, no plano Pro, e sempre como apoio. A IA pedagógica ajuda a interpretar resultados já calculados, a identificar potencialidades, a propor estratégias e a aperfeiçoar a redação de um relatório. Não gera a avaliação nem substitui o julgamento do professor.',
     },
     {
         question: 'A IA decide as classificações?',
-        answer: 'Não. Nenhuma classificação é atribuída, alterada ou decidida por um modelo. O cálculo é determinístico e explicável, o LÁPIS propõe a partir do perfil e do que está registado, e a confirmação é sempre do professor. Se decidir diferente da proposta, a diferença e a razão ficam registadas.',
+        answer: 'Não. Nenhuma classificação é atribuída, alterada ou decidida por um modelo. O cálculo é determinístico e explicável, o Lapispro propõe a partir do perfil e do que está registado, e a confirmação é sempre do professor. Se decidir diferente da proposta, a diferença e a razão ficam registadas.',
     },
     {
         question: 'Existe uma versão gratuita?',
-        answer: 'O LÁPIS Base é gratuito no ano letivo 2026/27 e fica ativo assim que criar conta, sem cartão em passo nenhum. Dentro da aplicação pode ainda ativar, uma vez, um período experimental de 30 dias do LÁPIS Pro — no fim volta ao Base sem perder nada do que registou.',
+        answer: 'O Lapispro Base é gratuito no ano letivo 2026/27 e fica ativo assim que criar conta, sem cartão em passo nenhum. Dentro da aplicação pode ainda ativar, uma vez, um período experimental de 30 dias do Lapispro Pro — no fim volta ao Base sem perder nada do que registou.',
     },
     {
-        question: 'Quanto custa o LÁPIS Pro?',
+        question: 'Quanto custa o Lapispro Pro?',
         answer: `${PRO_PRICE_PER_YEAR}, em subscrição anual — não existe pagamento mensal. Os primeiros ${FOUNDER_SEATS} professores a aderirem podem beneficiar da condição Membro Fundador, ${FOUNDER_PRICE_PER_YEAR}, disponível até ${FOUNDER_DEADLINE} ou até esses lugares estarem preenchidos, consoante o que ocorrer primeiro. É o mesmo plano Pro, numa condição de adesão distinta.`,
     },
     {
         question: 'Existe uma solução para escolas e agrupamentos?',
-        answer: 'Existe: o LÁPIS Institucional, com preço sob consulta. Acrescenta ao Pro a gestão de vários professores, os modelos e perfis de avaliação institucionais, a visão agregada e a governação — coordenação à escala da escola, sem retirar autonomia pedagógica a cada professor.',
+        answer: 'Existe: o Lapispro Institucional, com preço sob consulta. Acrescenta ao Pro a gestão de vários professores, os modelos e perfis de avaliação institucionais, a visão agregada e a governação — coordenação à escala da escola, sem retirar autonomia pedagógica a cada professor.',
     },
     {
         question: 'Funciona com períodos e com semestres?',
@@ -84,7 +84,7 @@ const questions = [
     },
     {
         question: 'Tenho de anonimizar os meus alunos antes de os inserir?',
-        answer: 'Não. O LÁPIS foi desenhado para reduzir a exposição da identidade dos alunos. Os dados identificativos são protegidos separadamente e o restante sistema trabalha, sempre que possível, com pseudónimos internos.',
+        answer: 'Não. O Lapispro foi desenhado para reduzir a exposição da identidade dos alunos. Os dados identificativos são protegidos separadamente e o restante sistema trabalha, sempre que possível, com pseudónimos internos.',
     },
     {
         question: 'Os dados dos meus alunos estão seguros?',
@@ -144,7 +144,7 @@ const questions = [
                     </p>
                     <Button as-child class="group/cta mt-7">
                         <Link :href="register()">
-                            Experimentar LÁPIS
+                            Experimentar Lapispro
                             <ArrowRight
                                 aria-hidden="true"
                                 class="transition-transform duration-300 group-hover/cta:translate-x-0.5"

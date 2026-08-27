@@ -11,7 +11,7 @@ import AppLogoIcon from '@/components/AppLogoIcon.vue';
     <div class="ml-1 grid flex-1 text-left">
         <span
             class="truncate text-base leading-none font-semibold tracking-tight"
-            >LÁPIS</span
+            >Lapispro</span
         >
         <span class="truncate text-xs text-muted-foreground"
             >Mais simples. Mais tempo.</span

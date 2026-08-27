@@ -17,7 +17,7 @@ use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
 /**
- * How LÁPIS decides which law, if any, applies to an intervention.
+ * How Lapispro decides which law, if any, applies to an intervention.
  *
  * Two mistakes these tests exist to make impossible: applying one country's law
  * to another country's school, and letting a change in legislation reinterpret
@@ -57,7 +57,7 @@ class LegalFrameworkResolverTest extends TestCase
         config(['lapis.default_jurisdiction' => 'PT']);
 
         // The whole point of the fallback being jurisdiction-level rather than
-        // framework-level: naming a country LÁPIS has no law for means "no
+        // framework-level: naming a country Lapispro has no law for means "no
         // framework", not "use Portugal's".
         $framework = $this->resolver()->for($this->organization('ES'), Carbon::parse('2026-10-01'));
 

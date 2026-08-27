@@ -123,7 +123,7 @@ class Classification extends Model
     }
 
     /**
-     * What LÁPIS proposed. A conclusion the system drew, and never the record.
+     * What Lapispro proposed. A conclusion the system drew, and never the record.
      *
      * @return BelongsTo<ScaleLevel, $this>
      */

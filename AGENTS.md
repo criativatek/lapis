@@ -1,4 +1,4 @@
-# AGENTS.md — LÁPIS
+# AGENTS.md — Lapispro
 
 Instruções para agentes de código (Codex, e qualquer ferramenta que leia
 `AGENTS.md`). O Claude Code lê `CLAUDE.md`; este ficheiro é o espelho para o

@@ -50,7 +50,7 @@ final readonly class LapisGridDeclaration
         if ($version !== LapisGridContract::VERSION) {
             return self::refused(
                 $version,
-                __('Esta grelha LÁPIS foi criada por outra versão da aplicação e não pode ser importada automaticamente.'),
+                __('Esta grelha Lapispro foi criada por outra versão da aplicação e não pode ser importada automaticamente.'),
             );
         }
 
@@ -65,13 +65,13 @@ final readonly class LapisGridDeclaration
         }
 
         if ($itemsByColumn === []) {
-            return self::refused($version, __('Esta grelha LÁPIS não indica nenhuma pergunta e já não pode ser importada automaticamente.'));
+            return self::refused($version, __('Esta grelha Lapispro não indica nenhuma pergunta e já não pode ser importada automaticamente.'));
         }
 
         // One item in two columns would mean two marks for one question, and
         // whichever landed last would win in silence.
         if (count(array_unique($itemsByColumn)) !== count($itemsByColumn)) {
-            return self::refused($version, __('Esta grelha LÁPIS tem colunas repetidas e já não pode ser importada automaticamente.'));
+            return self::refused($version, __('Esta grelha Lapispro tem colunas repetidas e já não pode ser importada automaticamente.'));
         }
 
         ksort($itemsByColumn);
@@ -104,7 +104,7 @@ final readonly class LapisGridDeclaration
     public function reason(): string
     {
         return $this->refusal
-            ?? __('Esta grelha LÁPIS foi alterada na sua estrutura e já não pode ser importada automaticamente.');
+            ?? __('Esta grelha Lapispro foi alterada na sua estrutura e já não pode ser importada automaticamente.');
     }
 
     /**

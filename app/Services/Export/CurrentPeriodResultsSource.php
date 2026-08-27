@@ -9,7 +9,7 @@ use App\Services\Assessment\ClassResultsCalculator;
 use App\Services\Assessment\CoverageExplanation;
 
 /**
- * The period as it stands — the export LÁPIS has always done.
+ * The period as it stands — the export Lapispro has always done.
  *
  * Lifted out of InovarExportPreviewBuilder unchanged in behaviour: the same
  * accumulated mention from the same read model the Quadro Síntese shows, and

@@ -17,7 +17,7 @@ import type { Coverage } from '@/types';
  *
  *  - "Cobertura parcial" — there IS a result, built on part of the applicable
  *    elements. Calling that "insuficiente" would be a contradiction: if the
- *    coverage were genuinely insufficient, LÁPIS would not produce a value.
+ *    coverage were genuinely insufficient, Lapispro would not produce a value.
  *  - "Sem elementos avaliados" — no result, because nothing here can produce
  *    one yet. That is not partial coverage, it is the absence of coverage.
  *

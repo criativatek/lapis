@@ -126,7 +126,7 @@ class XlsxTabularReader implements TabularReader
     }
 
     /**
-     * The workbook's defined names, filtered to the ones LÁPIS writes.
+     * The workbook's defined names, filtered to the ones Lapispro writes.
      *
      * A NARROW read, and deliberately so. Defined names are the only part of a
      * workbook's structure this reader looks at beyond the cells, and it looks

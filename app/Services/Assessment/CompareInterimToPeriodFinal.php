@@ -20,7 +20,7 @@ use App\Models\SchoolClass;
  * The asymmetry is deliberate and worth naming: the interim is FROZEN and the
  * final is LIVE. A period that is still open will move, and a comparison run
  * tomorrow may differ — because the end of the period changed, never because
- * the photograph did. The day LÁPIS gains an official closing, persisting a
+ * the photograph did. The day Lapispro gains an official closing, persisting a
  * final snapshot beside the interim would make both sides frozen; nothing here
  * would have to change except where the second side is read from.
  *
