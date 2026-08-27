@@ -326,9 +326,9 @@ Instalada no **crontab do `lapis-deploy`** (`crontab -e` como esse utilizador �
 o que o php-fpm escreveu em `storage/app/private/*`, a `770`):
 
 ```cron
-# LAPIS scheduler — corre o Laravel Scheduler ao minuto. Ver docs/deployment.md.
-# Nao duplicar: as tarefas vivem em routes/console.php, nao aqui.
+# >>> LAPIS scheduler >>> (gerido por docs/deployment.md; nao editar a mao)
 * * * * * umask 002; cd /home/lapis/htdocs/lapis.criativatek.com && /usr/bin/php artisan schedule:run >> storage/logs/scheduler.log 2>&1
+# <<< LAPIS scheduler <<<
 ```
 
 - **`/usr/bin/php`** (→ `php8.4`), caminho absoluto: o cron não tem o `PATH` de
@@ -340,27 +340,32 @@ o que o php-fpm escreveu em `storage/app/private/*`, a `770`):
   `/var/spool/cron/crontabs` pelo `cron`, que arranca no boot. Não precisa de
   nada em `systemd` nem em `supervisor`.
 
-### Reinstalar sem duplicar
+### Reinstalar sem duplicar — os dois blocos de uma vez
 
-Correr isto três vezes deixa **três linhas**, não nove — preserva qualquer outra
-entrada do utilizador e reescreve só a nossa:
+O crontab do `lapis-deploy` tem **dois** blocos do LÁPIS, ambos delimitados por
+marcadores. Correr isto três vezes deixa **seis linhas**, não dezoito:
 
 ```bash
 APP=/home/lapis/htdocs/lapis.criativatek.com
-KEPT="$(crontab -l 2>/dev/null | grep -vE 'LAPIS scheduler|artisan schedule:run|routes/console\.php' || true)"
+KEPT="$(crontab -l 2>/dev/null | sed '/^# >>> LAPIS/,/^# <<< LAPIS/d' || true)"
 { printf '%s\n' "$KEPT" | sed '/^$/d'
-  echo "# LAPIS scheduler — corre o Laravel Scheduler ao minuto. Ver docs/deployment.md."
-  echo "# Nao duplicar: as tarefas vivem em routes/console.php, nao aqui."
+  echo "# >>> LAPIS scheduler >>> (gerido por docs/deployment.md; nao editar a mao)"
   echo "* * * * * umask 002; cd $APP && /usr/bin/php artisan schedule:run >> storage/logs/scheduler.log 2>&1"
+  echo "# <<< LAPIS scheduler <<<"
+  echo "# >>> LAPIS backup >>> (gerido por docs/deployment.md; nao editar a mao)"
+  echo "17 4 * * * bash $APP/scripts/backup-database.sh >> /home/lapis/backups/backup.log 2>&1"
+  echo "# <<< LAPIS backup <<<"
 } | crontab -
-crontab -l | grep -c 'artisan schedule:run'   # tem de dizer 1
-crontab -l | wc -l                            # tem de dizer 3
+crontab -l | grep -c 'artisan schedule:run'   # 1
+crontab -l | grep -c 'backup-database.sh'     # 1
+crontab -l | wc -l                            # 6
 ```
 
-**O filtro tem de apanhar as TRÊS linhas do bloco, não só a do comando.** A
-primeira versão filtrava por «LAPIS scheduler» e por «artisan schedule:run» — e
-a segunda linha de comentário não correspondia a nenhum dos dois, pelo que
-acumulava uma cópia por cada reinstalação. Inofensivo (é um comentário) e
+**Apagar por intervalo entre marcadores, nunca por conteúdo linha a linha.** As
+duas primeiras versões deste procedimento filtravam por texto de *algumas*
+linhas do bloco — e a linha de comentário que não correspondia a nenhum dos
+padrões acumulava uma cópia por cada reinstalação. Aconteceu duas vezes, com
+blocos diferentes, pela mesma razão. É inofensivo (são comentários) e
 exatamente o tipo de coisa que ninguém repara durante um ano.
 
 ### Como confirmar que está mesmo a correr
@@ -400,6 +405,153 @@ que correria às 03:00 de Lisboa, ou seja 04:00 do relógio do servidor.
 Cresce ~70 KB/dia (duas linhas por minuto quando nada está devido). **Não tem
 rotação configurada** — acrescentá-lo ao `logrotate` exige root e fica por
 fazer; entretanto, truncá-lo é seguro a qualquer momento.
+
+## Backups da base de dados
+
+**Até 2026-08-27 não havia backup automático nenhum.** Os únicos dumps eram
+manuais, feitos à mão antes de alguns deploys; o mais recente tinha dois dias e
+era anterior aos dois deploys desse mesmo dia. Uma base com dados de alunos sem
+cópia recuperável não é um risco operacional, é uma perda de dados à espera de
+acontecer.
+
+| | |
+|---|---|
+| Script | [`scripts/backup-database.sh`](../scripts/backup-database.sh) — versionado, corre da própria pasta da aplicação, atualizado por cada deploy |
+| Frequência | Diária, **04:17 do relógio do servidor** (03:17 em Lisboa) |
+| Destino | `/home/lapis/backups/` — **fora da aplicação e fora do web root** |
+| Formato | `lapis-{daily,monthly}-YYYYMMDD-HHMMSS.sql.gz` (gzip -9) |
+| Permissões | ficheiros `640 lapis-deploy:lapis`; pasta `770 lapis:lapis` |
+| Retenção | diários **30 dias**; mensais (dia 1) os **12 mais recentes** |
+| Credenciais | `~/.my.cnf` do `lapis-deploy`, modo `600` |
+| Log | `/home/lapis/backups/backup.log` |
+
+### Credenciais — nunca na linha de comando
+
+A password vive em `/home/lapis-deploy/.my.cnf` (`0600`), com secções
+`[client]` e `[mysqldump]`. **Não a passar em argumento**: uma password num
+argumento aparece no `ps` de qualquer utilizador da máquina. Para recriar o
+ficheiro a partir do `.env` da aplicação, sem nunca a imprimir:
+
+```bash
+APP=/home/lapis/htdocs/lapis.criativatek.com
+get() { sed -n "s/^$1=//p" "$APP/.env" | head -1 | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"; }
+umask 077
+printf '[client]\nuser=%s\npassword=%s\nhost=%s\nport=%s\n\n[mysqldump]\nuser=%s\npassword=%s\nhost=%s\nport=%s\n' \
+  "$(get DB_USERNAME)" "$(get DB_PASSWORD)" "$(get DB_HOST)" "$(get DB_PORT)" \
+  "$(get DB_USERNAME)" "$(get DB_PASSWORD)" "$(get DB_HOST)" "$(get DB_PORT)" > ~/.my.cnf
+chmod 600 ~/.my.cnf
+```
+
+### O que o script garante
+
+Escreve para `.tmp`, e só renomeia depois de três verificações: ficheiro não
+vazio, `gzip -t` válido, e o rodapé `-- Dump completed` que o `mysqldump` só
+escreve quando chega ao fim. **Um dump truncado que passe por bom é pior do que
+não ter dump nenhum**, porque só se descobre no dia da recuperação. A retenção
+corre **depois** de o novo backup estar válido — se o dump falhar, o script sai
+antes de apagar seja o que for e o backup de ontem sobrevive.
+
+Opções do `mysqldump` que não são cosméticas: `--no-tablespaces` (o utilizador
+da aplicação não tem `PROCESS` global e sem isto o dump nem começa) e
+`--set-gtid-purged=OFF` (sem isto o dump traz um `SET @@GLOBAL.gtid_purged` que
+exige `SUPER` para restaurar — precisamente o que não haverá no dia mau).
+
+### Cron
+
+Gerido em blocos delimitados, junto com o do scheduler:
+
+```cron
+# >>> LAPIS backup >>> (gerido por docs/deployment.md; nao editar a mao)
+17 4 * * * bash /home/lapis/htdocs/lapis.criativatek.com/scripts/backup-database.sh >> /home/lapis/backups/backup.log 2>&1
+# <<< LAPIS backup <<<
+```
+
+### Verificar o último backup
+
+```bash
+tail -5 /home/lapis/backups/backup.log      # OK/FALHOU, tamanho, duração, sha256
+ls -lt /home/lapis/backups/lapis-*.sql.gz | head -3
+F=$(ls -1t /home/lapis/backups/lapis-*.sql.gz | head -1)
+gzip -t "$F" && echo "gzip válido"
+gzip -dc "$F" | tail -2 | grep '^-- Dump completed' && echo "dump completo"
+gzip -dc "$F" | grep -c '^CREATE TABLE'     # tem de bater com o nº de tabelas
+```
+
+Uma linha `FALHOU` no log traz o `exit code`: `2` credenciais/`.env`, `3` dump
+vazio, `4` gzip inválido, `5` dump truncado. Em qualquer desses casos **o
+backup anterior está intacto** — resolver a causa e correr o script à mão.
+
+### Restaurar — e a regra que não se quebra
+
+**A base restaurada é sempre uma base temporária, e a aplicação nunca aponta
+para ela.** Não alterar `DB_DATABASE` em produção; não correr a aplicação
+contra a base de teste. A validação faz-se com as ferramentas de base de dados.
+
+O utilizador `lapis` tem `ALL PRIVILEGES ON lapis.*` e **não pode criar bases**,
+pelo que o ensaio de restauro não se faz no próprio servidor com essas
+credenciais. Duas vias:
+
+1. **CloudPanel → Databases**, criar `lapis_restore_test_YYYYMMDD_HHMM` com
+   utilizador próprio, restaurar, comparar, e apagar a base no painel. Fica no
+   mesmo motor de produção — é a via mais fiel.
+2. **Estação de trabalho**: trazer o dump e restaurar num MySQL local. Foi o que
+   se fez em 2026-08-27. Isolamento total; a ressalva é que o motor local pode
+   não ser a mesma versão, pelo que prova que o dump carrega e está íntegro sem
+   ser um ensaio no mesmo motor.
+
+```bash
+# 1. trazer e confirmar que não se corrompeu em trânsito
+scp lapis-prod:/home/lapis/backups/lapis-daily-XXXX.sql.gz .
+sha256sum lapis-daily-XXXX.sql.gz     # comparar com o do servidor
+
+# 2. base temporária, nome que não se confunde com produção
+mysql -h 127.0.0.1 -P 3308 -u root -e \
+  "CREATE DATABASE \`lapis_restore_test_YYYYMMDD_HHMM\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
+
+# 3. restaurar (exit 0 e stderr vazio)
+gzip -dc lapis-daily-XXXX.sql.gz | mysql -h 127.0.0.1 -P 3308 -u root lapis_restore_test_YYYYMMDD_HHMM
+
+# 4. comparar — a MESMA consulta nos dois lados, e juntar POR CHAVE
+LC_ALL=C sort prod.txt > prod.sorted; LC_ALL=C sort restored.txt > restored.sorted
+LC_ALL=C join -t $'\t' prod.sorted restored.sorted | awk -F'\t' '$2!=$3'
+
+# 5. apagar a base temporária e a cópia local do dump
+mysql -h 127.0.0.1 -P 3308 -u root -e "DROP DATABASE \`lapis_restore_test_YYYYMMDD_HHMM\`;"
+rm -f lapis-daily-XXXX.sql.gz
+```
+
+**Juntar por chave, não por posição.** As duas bases podem ordenar `ORDER BY 1`
+com collations diferentes, e um `paste` alinhado por linha produz então trinta e
+quatro «diferenças» que não existem — foi exatamente o que aconteceu à primeira
+tentativa. `join` na chave, ou não se está a comparar nada.
+
+Comparar, no mínimo: nº de tabelas, colunas, foreign keys e índices; `migrations`;
+e as contagens de `users`, `organizations`, `classes`, `students`,
+`enrollments`, `instruments`, `classifications`, `reports`, `evidence_records`,
+`interventions`. **Nunca extrair nomes, emails ou números de aluno** — o
+objetivo é estrutura e contagens. Para as colunas cifradas basta confirmar que
+o comprimento e o prefixo do ciphertext se mantêm; não é preciso decifrar nada.
+
+### Backup antes de deploy
+
+O **diário é a rede principal**. Um dump pré-deploy adicional é obrigatório
+apenas quando o deploy traz **migrations que alteram ou apagam dados
+existentes**, ou um comando de correção de dados. Um deploy só de frontend,
+copy ou documentação **não** precisa de dump — obrigar a um só cria lixo e
+ninguém o leva a sério ao fim de duas semanas.
+
+```bash
+bash scripts/backup-database.sh   # à mão, antes de um deploy com migrations de risco
+```
+
+### Risco residual: não há cópia fora deste servidor
+
+Os backups vivem no mesmo disco da base de dados. Protegem contra erro humano,
+migration má e corrupção lógica — **não** contra perda do servidor. Uma cópia
+offsite é a próxima melhoria operacional (P1); não foi criada aqui para não
+introduzir um serviço externo sem decisão.
+
+`backup.log` cresce ~1 linha por dia e não precisa de rotação tão cedo.
 
 ## Passos (SSH como Site User `lapis`)
 
@@ -486,7 +638,9 @@ Manter `APP_ENV=production` para o Vite servir os assets compilados, não o dev 
       `/storage/logs/laravel.log` e `/.git/config` devolvem 403/404.
 - [ ] `storage/logs/laravel.log` sem entradas novas de `ERROR`, `SQLSTATE`,
       `Permission denied` ou `Vite manifest` depois do deploy.
-- [ ] Backup da base de dados agendado (CloudPanel → Backups).
+- [ ] **Backup diário da BD a correr**: `tail -3 /home/lapis/backups/backup.log`
+      mostra um `OK` do próprio dia, e `crontab -l` mostra o bloco
+      `>>> LAPIS backup >>>` **uma só vez** — ver «Backups da base de dados».
 - [ ] **Cron do scheduler instalado e a correr**: `crontab -l` mostra a entrada
       **uma só vez**, `php artisan schedule:list` mostra as cinco tarefas, e o
       `mtime` de `storage/logs/scheduler.log` avança sozinho. Sem isto as
