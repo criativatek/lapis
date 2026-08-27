@@ -306,6 +306,101 @@ por checksum acima.
 - **Document root** do site = `.../htdocs/lapis.criativatek.com/public` (Laravel serve
   a partir de `public/`, não da raiz).
 
+## Laravel Scheduler (cron) — obrigatório
+
+**Sem esta entrada de cron, cinco tarefas de limpeza existem no código e nunca
+correm.** Estiveram assim até 2026-08-27, e o que ficava por apagar não era
+inócuo: pastas temporárias de importação de pautas com **fotografias de
+alunos**, grelhas de correção, grelhas INOVAR com **nomes, números de processo
+e notas**, e os ZIP de «Exportar os meus dados» — que o produto promete manter
+apenas 24h. Uma instalação sem cron acumula tudo isso indefinidamente.
+
+As tarefas estão em [`routes/console.php`](../routes/console.php), todas
+`hourly()`. **Nunca as duplicar no crontab**: o crontab invoca uma única
+entrada, e é o Laravel que decide o que está devido.
+
+### A entrada
+
+Instalada no **crontab do `lapis-deploy`** (`crontab -e` como esse utilizador —
+é quem é dono do código e pertence ao grupo `lapis`, pelo que consegue apagar
+o que o php-fpm escreveu em `storage/app/private/*`, a `770`):
+
+```cron
+# LAPIS scheduler — corre o Laravel Scheduler ao minuto. Ver docs/deployment.md.
+# Nao duplicar: as tarefas vivem em routes/console.php, nao aqui.
+* * * * * umask 002; cd /home/lapis/htdocs/lapis.criativatek.com && /usr/bin/php artisan schedule:run >> storage/logs/scheduler.log 2>&1
+```
+
+- **`/usr/bin/php`** (→ `php8.4`), caminho absoluto: o cron não tem o `PATH` de
+  uma shell de login.
+- **`umask 002`**: sem ele, um ficheiro criado pelo cron sai `644` e o php-fpm
+  (utilizador `lapis`) deixa de lhe conseguir escrever. Com ele sai `664` e
+  ambos os utilizadores partilham os ficheiros pelo grupo `lapis`.
+- **Persistente por natureza** — um crontab de utilizador é lido do
+  `/var/spool/cron/crontabs` pelo `cron`, que arranca no boot. Não precisa de
+  nada em `systemd` nem em `supervisor`.
+
+### Reinstalar sem duplicar
+
+Correr isto três vezes deixa **três linhas**, não nove — preserva qualquer outra
+entrada do utilizador e reescreve só a nossa:
+
+```bash
+APP=/home/lapis/htdocs/lapis.criativatek.com
+KEPT="$(crontab -l 2>/dev/null | grep -vE 'LAPIS scheduler|artisan schedule:run|routes/console\.php' || true)"
+{ printf '%s\n' "$KEPT" | sed '/^$/d'
+  echo "# LAPIS scheduler — corre o Laravel Scheduler ao minuto. Ver docs/deployment.md."
+  echo "# Nao duplicar: as tarefas vivem em routes/console.php, nao aqui."
+  echo "* * * * * umask 002; cd $APP && /usr/bin/php artisan schedule:run >> storage/logs/scheduler.log 2>&1"
+} | crontab -
+crontab -l | grep -c 'artisan schedule:run'   # tem de dizer 1
+crontab -l | wc -l                            # tem de dizer 3
+```
+
+**O filtro tem de apanhar as TRÊS linhas do bloco, não só a do comando.** A
+primeira versão filtrava por «LAPIS scheduler» e por «artisan schedule:run» — e
+a segunda linha de comentário não correspondia a nenhum dos dois, pelo que
+acumulava uma cópia por cada reinstalação. Inofensivo (é um comentário) e
+exatamente o tipo de coisa que ninguém repara durante um ano.
+
+### Como confirmar que está mesmo a correr
+
+```bash
+crontab -l                       # a entrada, uma só vez
+php artisan schedule:list        # as cinco tarefas e o «Next Due»
+stat -c '%y %s' storage/logs/scheduler.log   # mtime dentro do último minuto
+tail -20 storage/logs/scheduler.log
+```
+
+**A linha no crontab não é prova de nada.** A prova é o `mtime` do
+`scheduler.log` a avançar sozinho, e a tarefa horária a aparecer no ficheiro
+depois de passar o minuto `:00`, assim:
+
+```
+  2026-08-27 09:00:03 Running ['artisan' roster-imports:prune] ....... 1s DONE
+```
+
+**Onde é que um erro aparece.** O Laravel corre cada tarefa agendada com o seu
+próprio `> /dev/null 2>&1`, pelo que a *saída* de cada comando não vai para o
+`scheduler.log` — vai o **veredito**, `DONE` ou `FAIL`, nesta linha. Uma
+exceção continua a ser registada normalmente em `storage/logs/laravel.log`.
+Para ver o que um comando específico imprime, correr esse comando à mão.
+
+### Fuso horário
+
+O sistema está em **Europe/Berlin**; a aplicação em **Europe/Lisbon**
+(`config/app.php`), uma hora de diferença. **Não é um problema para estas cinco
+tarefas**: o cron dispara ao minuto independentemente do fuso, e o Laravel
+avalia `hourly()` no fuso *da aplicação* — que é o minuto `:00` em ambos. Passa
+a importar no dia em que existir uma tarefa com hora fixa (`dailyAt('03:00')`),
+que correria às 03:00 de Lisboa, ou seja 04:00 do relógio do servidor.
+
+### `scheduler.log`
+
+Cresce ~70 KB/dia (duas linhas por minuto quando nada está devido). **Não tem
+rotação configurada** — acrescentá-lo ao `logrotate` exige root e fica por
+fazer; entretanto, truncá-lo é seguro a qualquer momento.
+
 ## Passos (SSH como Site User `lapis`)
 
 ```bash
@@ -392,6 +487,11 @@ Manter `APP_ENV=production` para o Vite servir os assets compilados, não o dev 
 - [ ] `storage/logs/laravel.log` sem entradas novas de `ERROR`, `SQLSTATE`,
       `Permission denied` ou `Vite manifest` depois do deploy.
 - [ ] Backup da base de dados agendado (CloudPanel → Backups).
+- [ ] **Cron do scheduler instalado e a correr**: `crontab -l` mostra a entrada
+      **uma só vez**, `php artisan schedule:list` mostra as cinco tarefas, e o
+      `mtime` de `storage/logs/scheduler.log` avança sozinho. Sem isto as
+      limpezas de ficheiros temporários com dados pessoais nunca correm — ver
+      «Laravel Scheduler (cron)» acima.
 - [ ] **`db:seed --class=ReferenceDataSeeder --force` correu neste deploy**
       (armadilha 9). Uma capability nova só existe depois disto; sem ela, a
       funcionalidade fica invisível mesmo para quem tem plano para a usar.
