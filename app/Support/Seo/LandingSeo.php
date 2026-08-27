@@ -53,14 +53,30 @@ class LandingSeo
     public const SOCIAL_DESCRIPTION = 'Avaliação de alunos, gestão de turmas, acompanhamento pedagógico, aulas, sumários, relatórios e IA pedagógica numa única plataforma para professores.';
 
     /**
-     * The canonical is built from APP_URL and never from the incoming request,
-     * so `www.`, a trailing slash, an `http://` hit or any query string all
-     * resolve to the same one address. Nothing here can fix a wrong APP_URL —
-     * it must be `https://lapispro.com` in production.
+     * The one address this site declares as its own.
+     *
+     * `url('/')` WOULD NOT DO. In an HTTP request Laravel roots its urls at
+     * `$request->root()`, not at APP_URL — so an installation reachable on two
+     * domains answers with a different canonical on each, and both declare
+     * themselves the original. Proved live on this very deployment: the same
+     * server returned `https://lapispro.com` on one host and
+     * `https://lapis.criativatek.com` on the other, with APP_URL set to the
+     * second the whole time.
+     *
+     * So the canonical comes from `lapis.public_url`, which is a decision and
+     * not an accident of routing. Unset, it falls back to the request — right
+     * for a local install and for any site served on exactly one domain.
+     *
+     * The trailing slash is trimmed because every consumer here appends its
+     * own, and `https://lapispro.com//#planos` is a different url to a crawler.
      */
     public static function canonical(): string
     {
-        return url('/');
+        $configured = config('lapis.public_url');
+
+        return is_string($configured) && $configured !== ''
+            ? rtrim($configured, '/')
+            : url('/');
     }
 
     /**
@@ -122,7 +138,7 @@ class LandingSeo
                 'priceCurrency' => 'EUR',
                 'priceValidUntil' => '2027-08-31',
                 'description' => 'Gratuito no ano letivo 2026/27.',
-                'url' => url('/').'#planos',
+                'url' => self::canonical().'#planos',
             ],
             [
                 '@type' => 'Offer',
@@ -130,7 +146,7 @@ class LandingSeo
                 'price' => '44.90',
                 'priceCurrency' => 'EUR',
                 'description' => 'Subscrição anual. Não existe pagamento mensal.',
-                'url' => url('/').'#planos',
+                'url' => self::canonical().'#planos',
             ],
         ];
     }

@@ -87,6 +87,47 @@ class LandingSeoTest extends TestCase
     }
 
     /**
+     * THE CANONICAL DOES NOT FOLLOW THE REQUEST.
+     *
+     * `url('/')` roots itself at `$request->root()`, so an installation served
+     * on two domains answered with a different canonical on each — both of
+     * them claiming to be the original. This was live: the same server
+     * returned `https://lapispro.com` on one host and
+     * `https://lapis.criativatek.com` on the other. Once `lapis.public_url` is
+     * set, every one of these says the same thing no matter who asked.
+     */
+    #[Test]
+    public function the_canonical_ignores_the_host_the_request_arrived_on(): void
+    {
+        config(['lapis.public_url' => 'https://lapispro.com/']);
+
+        // Trailing slash trimmed — every consumer appends its own.
+        $this->assertSame('https://lapispro.com', LandingSeo::canonical());
+
+        $response = $this->get(route('home'), ['HOST' => 'lapis.criativatek.com'])->assertOk();
+
+        $this->assertStringContainsString('<link rel="canonical" href="https://lapispro.com">', $response->getContent());
+        $this->assertStringContainsString('<meta property="og:url" content="https://lapispro.com">', $response->getContent());
+
+        $this->get('/sitemap.xml', ['HOST' => 'lapis.criativatek.com'])
+            ->assertOk()
+            ->assertSee('<loc>https://lapispro.com</loc>', false);
+
+        $this->get('/robots.txt', ['HOST' => 'lapis.criativatek.com'])
+            ->assertOk()
+            ->assertSee('Sitemap: https://lapispro.com/sitemap.xml', false);
+    }
+
+    /** Unset, it falls back to the request — right for local and for one-domain sites. */
+    #[Test]
+    public function an_unconfigured_public_url_falls_back_to_the_request(): void
+    {
+        config(['lapis.public_url' => null]);
+
+        $this->assertSame(url('/'), LandingSeo::canonical());
+    }
+
+    /**
      * The single easiest structured-data property to invent, and the one that
      * earns a manual action when it is invented. Nobody has collected a rating,
      * so none may appear.

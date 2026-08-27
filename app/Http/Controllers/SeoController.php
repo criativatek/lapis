@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\Seo\LandingSeo;
 use Illuminate\Http\Response;
 
 /**
@@ -12,7 +13,13 @@ use Illuminate\Http\Response;
  * committed with `https://lapispro.com` in it would announce production's
  * sitemap from every local and staging install, and the first person to copy
  * the repo for a second deployment would point a new site's crawl budget at
- * the old one. `url()` reads APP_URL and is right everywhere by construction.
+ * the old one.
+ *
+ * BOTH ANSWER WITH `LandingSeo::canonical()`, not with `url('/')`. This
+ * installation is served on two domains, and `url()` follows the request —
+ * so a sitemap built from it advertised a different site depending on which
+ * host asked for it, and the `Sitemap:` line in robots.txt did the same. One
+ * site has one sitemap.
  *
  * THE OLD `public/robots.txt` HAD TO GO. The web server answers with a real
  * file before Laravel ever sees the request, so leaving it there would have
@@ -43,7 +50,7 @@ class SeoController extends Controller
             'Disallow: /register',
             'Disallow: /settings',
             '',
-            'Sitemap: '.url('/sitemap.xml'),
+            'Sitemap: '.LandingSeo::canonical().'/sitemap.xml',
             '',
         ];
 
@@ -58,7 +65,7 @@ class SeoController extends Controller
         <?xml version="1.0" encoding="UTF-8"?>
         <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
             <url>
-                <loc>{$this->escape(url('/'))}</loc>
+                <loc>{$this->escape(LandingSeo::canonical())}</loc>
                 <changefreq>weekly</changefreq>
                 <priority>1.0</priority>
             </url>
@@ -72,8 +79,8 @@ class SeoController extends Controller
     }
 
     /**
-     * A `<loc>` is XML, and an APP_URL carrying a `&` in a query string would
-     * otherwise produce a document no parser accepts.
+     * A `<loc>` is XML, and a configured public url carrying a `&` in a query
+     * string would otherwise produce a document no parser accepts.
      */
     protected function escape(string $value): string
     {

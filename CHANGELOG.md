@@ -2,6 +2,14 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão semântica pré-1.0 enquanto as fases são construídas.
 
+## [0.76.1] — 2026-08-27
+
+### Fixed
+
+- **O canonical seguia o domínio por onde o pedido entrava, e não uma decisão.** `url('/')` não lê o `APP_URL` num pedido HTTP — enraíza-se em `$request->root()`; o `APP_URL` só semeia o gerador quando não há pedido nenhum (consola, filas, email). Como esta instalação é servida em **dois domínios**, o mesmo servidor respondia `<link rel="canonical" href="https://lapispro.com">` num host e `…href="https://lapis.criativatek.com">` no outro — com o `APP_URL` apontado ao segundo o tempo todo. Dois domínios a declararem-se ambos originais é conteúdo duplicado com o sinal de posicionamento dividido entre os dois, e a `sitemap.xml` e a linha `Sitemap:` do `robots.txt` introduzidas na [0.76.0] iam amplificá-lo, anunciando um site diferente conforme quem perguntasse.
+
+  Passa a existir **`lapis.public_url`** (`LAPIS_PUBLIC_URL`): o endereço que o site declara como sendo o seu, para o canonical, o `og:url`, o `<loc>` do sitemap, a linha `Sitemap:` e os `url` dos `offers`. **Não é o `APP_URL`, deliberadamente** — o `APP_URL` é para onde o email transacional envia as pessoas (verificação, reposição de palavra-passe, convites), que é outra pergunta com outras consequências. Podem ter o mesmo valor; não podem ser a mesma definição. Por definir, recai no host do pedido, que é a resposta certa numa instalação local e em qualquer site servido num só domínio.
+
 ## [0.76.0] — 2026-08-27
 
 ### Added

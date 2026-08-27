@@ -32,6 +32,35 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Public site address
+    |--------------------------------------------------------------------------
+    |
+    | The ONE address the public site declares as its own — the canonical, the
+    | Open Graph url, the sitemap's <loc> and the Sitemap: line in robots.txt.
+    |
+    | IT EXISTS BECAUSE `url('/')` FOLLOWS THE REQUEST, NOT APP_URL. In an HTTP
+    | request Laravel roots its urls at `$request->root()`; APP_URL only seeds
+    | the generator when there is no request (console, queues, mail). This
+    | installation is served on more than one domain, and it was proved live:
+    | the same server answered `<link rel="canonical" href="https://lapispro.com">`
+    | on one host and `…href="https://lapis.criativatek.com">` on the other.
+    | Two domains each declaring themselves canonical is duplicate content with
+    | the ranking signal split between them.
+    |
+    | NOT APP_URL, deliberately. APP_URL is where transactional mail sends
+    | people — verification, password resets, invitations — and that is a
+    | different question with different consequences. They may hold the same
+    | value; they must not be the same setting.
+    |
+    | Unset falls back to the request, which is the right answer for a local
+    | install and for anything served on exactly one domain.
+    |
+    */
+
+    'public_url' => env('LAPIS_PUBLIC_URL'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Writing assistant
     |--------------------------------------------------------------------------
     |
