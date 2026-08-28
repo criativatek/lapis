@@ -15,6 +15,7 @@ use App\Http\Controllers\ClassificationController;
 use App\Http\Controllers\ClassPhotoImportController;
 use App\Http\Controllers\ClassProfileMigrationController;
 use App\Http\Controllers\ClassReassignmentController;
+use App\Http\Controllers\ClassStatisticsAnalysisController;
 use App\Http\Controllers\ClassStatisticsController;
 use App\Http\Controllers\ConfigurationSharingController;
 use App\Http\Controllers\CorrectionImportController;
@@ -23,6 +24,7 @@ use App\Http\Controllers\DataExportController;
 use App\Http\Controllers\DataImportController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\EvidenceController;
+use App\Http\Controllers\HelpAssistantController;
 use App\Http\Controllers\HelpController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\InovarExportController;
@@ -93,6 +95,24 @@ Route::middleware(['auth', 'verified'])->group(function () {
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('help', [HelpController::class, 'index'])->name('help.index');
     Route::get('help/search', [HelpController::class, 'search'])->name('help.search');
+    // «Assistente Lapispro» — above the {article} wildcard for the same reason
+    // «search» is. It is a POST and the wildcard is a GET, so nothing would
+    // actually be swallowed today; keeping every fixed help path above the
+    // catch-all is what stops the next person who adds one from debugging a
+    // 404.
+    //
+    // Gated inside the controller rather than by `module:`, because the Centro
+    // de Ajuda has no 'organization' middleware and because a locked
+    // capability must still render the page with an honest explanation, never
+    // a 403 where the help articles used to be.
+    //
+    // NO `throttle:` MIDDLEWARE, deliberately. AiGateway rate-limits the
+    // `help_assistant` capability itself — per user and per organization —
+    // because it must also work for a job or a command, where there is no
+    // middleware stack. Adding a route throttle for the same capability would
+    // count every request twice and halve the ceiling (ai-core contract §6).
+    Route::post('help/assistente', [HelpAssistantController::class, 'store'])
+        ->name('help.assistant');
     Route::get('help/{article}', [HelpController::class, 'show'])->name('help.show');
 });
 
@@ -448,6 +468,22 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // period is optional — without one the read model opens on the latest
         // period that actually has results.
         Route::get('classes/{class}/results/estatistica/{period?}', [ClassStatisticsController::class, 'show'])->name('results.statistics');
+
+        // «Analisar com IA» (§4 do brief AI Experiences). The optional period
+        // sits at the END of the path, behind a literal segment, because
+        // Laravel only allows an optional parameter last — and «analise-ia»
+        // can never be mistaken for a period.
+        //
+        // A READ, DESPITE BEING A POST. It is a POST because it spends money
+        // and must not be repeatable by a refresh or prefetchable by a
+        // browser, not because it changes anything: there is no write path
+        // from an AI answer anywhere in this application.
+        //
+        // No `throttle:` middleware here either — AiGateway rate-limits the
+        // `ai_pedagogical_analysis` capability itself, and a second ceiling on
+        // the same capability would halve it (ai-core contract §6).
+        Route::post('classes/{class}/results/estatistica/analise-ia/{period?}', [ClassStatisticsAnalysisController::class, 'store'])
+            ->name('results.statistics.analyse');
 
         // Avaliações intercalares — a kept photograph of a class on a date.
         // Inside Resultados, because that is what it is a photograph OF; not a

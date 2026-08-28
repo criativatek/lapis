@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AcademicPeriod;
 use App\Models\InterimAssessment;
 use App\Models\SchoolClass;
+use App\Services\Assessment\Ai\ClassAnalyst;
 use App\Services\Assessment\BuildClassStatistics;
 use App\Services\Assessment\CaptureInterimAssessment;
 use App\Support\Assessment\AssessmentCutoff;
@@ -33,6 +34,7 @@ class ClassStatisticsController extends Controller
     public function __construct(
         protected BuildClassStatistics $statistics,
         protected CaptureInterimAssessment $capture,
+        protected ClassAnalyst $analyst,
     ) {}
 
     public function show(Request $request, SchoolClass $class, ?AcademicPeriod $period = null): Response
@@ -97,6 +99,23 @@ class ClassStatisticsController extends Controller
                     'academic_period_id' => $interim->academic_period_id,
                 ])->all(),
             'statistics' => $statistics,
+            // «Analisar com IA» (§4 do brief AI Experiences). Only what the
+            // page needs in order to draw the panel honestly: whether the
+            // experience is available at all, and the transient reading
+            // produced by the last click.
+            //
+            // THE ANALYSIS ITSELF IS NOT PRODUCED HERE. Opening Estatística
+            // must never call an engine — a page that spent money on being
+            // looked at would be a bill nobody authorised. It is
+            // ClassStatisticsAnalysisController that makes the call, on an
+            // explicit click, and flashes the answer into the session for
+            // this one round trip.
+            'ai' => [
+                'available' => $this->analyst->isAvailable(),
+                'reason' => $this->analyst->unavailableReason(),
+            ],
+            'aiAnalysis' => $request->session()->get('aiAnalysis'),
+            'aiAnalysisError' => $request->session()->get('aiAnalysisError'),
         ]);
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\Help\Ai\HelpAssistant;
 use App\Support\Help\HelpArticle;
 use App\Support\Help\HelpCenter;
 use Illuminate\Http\Request;
@@ -18,12 +19,22 @@ use Inertia\Response;
  * route parameter) against HelpCenter's STATIC article content — see
  * HelpCenter's own docblock for why that makes §11 (never receive, store or
  * log student data) true by construction here, not merely by care.
+ *
+ * THE ASSISTANT DOES NOT LIVE HERE, and the paragraph above is why: asking an
+ * engine is not reading a file, so it is `HelpAssistantController` that makes
+ * that call. What this controller does carry is the two things the PAGE needs
+ * in order to draw the assistant honestly — whether it is available at all,
+ * and the transient answer to the last question. Neither reads anything but
+ * the availability resolver and the session.
  */
 class HelpController extends Controller
 {
-    public function __construct(protected HelpCenter $helpCenter) {}
+    public function __construct(
+        protected HelpCenter $helpCenter,
+        protected HelpAssistant $assistant,
+    ) {}
 
-    public function index(): Response
+    public function index(Request $request): Response
     {
         return Inertia::render('help/Index', [
             'categories' => $this->helpCenter->categories()
@@ -32,6 +43,7 @@ class HelpController extends Controller
                     'articles' => $articles->map(fn (HelpArticle $article): array => $article->toArray())->values()->all(),
                 ])
                 ->values(),
+            ...$this->assistantProps($request),
         ]);
     }
 
@@ -50,7 +62,31 @@ class HelpController extends Controller
             'results' => $query === ''
                 ? []
                 : $this->helpCenter->search($query)->map(fn (HelpArticle $article): array => $article->toArray())->values()->all(),
+            ...$this->assistantProps($request),
         ]);
+    }
+
+    /**
+     * What a page needs to draw the assistant: its state, and the answer to
+     * the last question if one was just asked.
+     *
+     * THE ANSWER COMES OUT OF THE SESSION, exactly as `student-progress`
+     * already reads `aiSuggestion` — it is flash data put there by
+     * `HelpAssistantController` on its way back, and it is gone on the next
+     * visit. Nothing here queries anything, and nothing here stores anything.
+     *
+     * @return array<string, mixed>
+     */
+    protected function assistantProps(Request $request): array
+    {
+        return [
+            'ai' => [
+                'available' => $this->assistant->isAvailable(),
+                'reason' => $this->assistant->unavailableReason(),
+            ],
+            'helpAnswer' => $request->session()->get('helpAnswer'),
+            'helpAnswerError' => $request->session()->get('helpAnswerError'),
+        ];
     }
 
     /**

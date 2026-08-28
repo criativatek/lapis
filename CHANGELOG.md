@@ -6,6 +6,181 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > anteriores a 0.79.0 mantêm o nome com que foram escritas: um changelog é um
 > registo do que aconteceu, e reescrevê-lo apagaria a própria mudança de marca.
 
+## [0.84.0] — 2026-08-28
+
+As duas primeiras experiências de IA que um professor vê: um assistente no
+Centro de Ajuda e uma leitura em palavras da Estatística de uma turma. Ambas
+construídas inteiramente sobre o gateway da 0.83.0 — nenhuma delas fala com um
+motor por sua conta. **Continuam invisíveis a um professor hoje** — ver as
+notas no fim da entrada.
+
+### Added
+
+- **Assistente Lapispro no Centro de Ajuda.** Uma pergunta escrita por palavras
+  do próprio professor — «como começo a usar o Lapispro?», «como crio uma
+  turma?», «onde configuro a avaliação?» — recebe uma resposta em prosa e a
+  lista dos artigos em que assenta. Vive dentro do Centro de Ajuda, na página de
+  índice e na de pesquisa, e em mais lado nenhum: não há bolha flutuante por
+  cima da aplicação, porque isso seria um produto diferente com uma promessa
+  diferente.
+
+- **O grounding é a documentação, e só a documentação.** A recuperação é a
+  pesquisa em linguagem natural que a 0.82.0 já tinha, chamada tal como está: o
+  assistente é mais um consumidor de `HelpCenter::search()` e não uma segunda
+  leitura do conjunto de artigos, pelo que uma pergunta que se encontra na caixa
+  de pesquisa encontra-se aqui, e uma palavra acrescentada a
+  `config/help-search.php` melhora as duas ao mesmo tempo. Sem embeddings, sem
+  base de dados vetorial, sem pesquisa na web e sem índice externo. Os três
+  artigos mais relevantes viajam identificados pelo seu id, e a resposta é
+  obrigada a citar apenas ids que recebeu — um artigo inventado é descartado no
+  parser e nunca chega ao ecrã como ligação para um 404.
+
+- **«Não há informação suficiente» é uma resposta, não um erro.** Quando a
+  pesquisa não encontra nada, não há em que fundamentar uma resposta e nenhum
+  pedido é feito: o professor é informado de que a documentação não cobre a
+  pergunta, sem se gastar capability nenhuma. Quando os artigos chegam mas não
+  bastam, o motor responde com uma sentinela e o ecrã diz o mesmo, com calma e
+  sem estado de erro.
+
+- **Análise pedagógica com IA na Estatística da turma.** Uma ação explícita
+  («Analisar com IA») no fim da página de Estatística devolve quatro blocos:
+  **síntese**, **padrões observados**, **pontos de atenção** e **sugestões
+  pedagógicas**. Escolheu-se esta página porque é a única onde a IA não tem nada
+  para calcular: `BuildClassStatistics` já decidiu médias, distribuição pela
+  escala, evolução entre períodos, taxa de sucesso e estatística por domínio, e
+  a IA limita-se a descrever por palavras números que já existem. Abrir a página
+  nunca chama um motor; a análise só acontece a pedido explícito.
+
+- **A aplicação é a fonte da verdade; a IA interpreta.** Notas, resultados,
+  médias, pesos, classificações e regras de avaliação continuam a ser decididos
+  pelo motor de cálculo. A instrução proíbe explicitamente calcular, corrigir,
+  arredondar ou reformular um número recebido, e o contexto só transporta
+  figuras já fechadas. As médias por aluno passam a viajar com a precisão com
+  que a aplicação as mostra — e não com a precisão interna do read model — para
+  que um valor citado seja um valor que o professor reconhece no ecrã.
+
+- **A IA sugere, o professor decide.** Nada nesta fatia escreve seja o que for.
+  Não existe rota que aceite uma análise de volta, e o objeto que a transporta
+  não tem id, chave nem verbo à volta do qual uma pudesse ser construída: são
+  quatro blocos de texto para uma pessoa ler. Nenhuma nota, resultado,
+  classificação, peso ou critério é alterado por uma resposta de IA, e o painel
+  não oferece «aplicar», «guardar» nem «aceitar» — apenas «analisar de novo» e
+  «tentar novamente». A linguagem da resposta é de possibilidade e não de
+  certeza («os resultados podem justificar verificar…», e não «o aluno precisa
+  de…»), e cada resposta traz o aviso de que a IA apoia a análise, pode cometer
+  erros, e que as decisões pedagógicas continuam a ser do professor.
+
+- **Dois artigos novos no Centro de Ajuda**, escritos na estrutura existente:
+  «O Assistente Lapispro» e «Analisar os resultados de uma turma com IA».
+  Descrevem o que cada um faz, o que não faz, que dados saem da aplicação, e por
+  que razão o termo usado é **pseudonimização** e nunca «anonimização».
+
+### Changed
+
+- **Tudo passa pelo `AiGateway`.** As duas experiências chamam `ask()` e mais
+  nada: não resolvem fornecedor, não leem credencial, não verificam plano, não
+  contam tokens e não aplicam rate limiting. Entitlement, quota, verificação de
+  privacidade do payload e registo em `ai_usage_events` acontecem por trás da
+  porta única, com um caso de uso próprio para cada experiência (`help_answer` e
+  `pedagogical_analysis`), para que o custo de um assistente de ajuda e o de uma
+  leitura pedagógica sejam separáveis. A abstração provisória de capabilities
+  que a fatia tinha antes da integração foi removida — não ficam duas fontes de
+  verdade.
+
+- **As rotas não acrescentam `throttle:` nenhum.** O rate limit por capability
+  vive dentro do gateway; um segundo teto na mesma capability contaria cada
+  pedido duas vezes e reduziria o limite a metade. Dois testes verificam que as
+  rotas não voltam a ganhar throttle próprio.
+
+- **O contexto pedagógico usa o `AiContext` do Core**, com a ordem obrigatória
+  **allowlist → pseudonimização → serialização → sanitização**. A allowlist é a
+  única parte que pertence a esta fatia: decidir *que* estatísticas um modelo
+  pode ver é um juízo pedagógico. A substituição de nomes é a do Core e não uma
+  segunda implementação — a linha de cada aluno leva o nome real ao `add()`, que
+  o substitui enquanto ainda é um escalar isolado com significado conhecido, e
+  um teste lê os campos antes da serialização para provar que a ordem foi essa.
+  Um efeito prático: um domínio a que alguém tenha chamado «Apoio ao João» sai
+  igualmente pseudonimizado, o que uma allowlist sozinha não teria apanhado.
+
+- **Os pseudónimos são atribuídos por resultado e não pela ordem da pauta.**
+  `Pseudonyms::of()` é posicional, e o read model entrega os alunos por ordem
+  alfabética ou de número — ambas dizem alguma coisa sobre quem é «Aluno A».
+  Ordenar pelo valor em discussão antes de construir o mapa corta essa
+  correspondência, e produz de caminho a ordem que quem procura um padrão
+  queria.
+
+- **A pergunta do professor é conteúdo, nunca instrução.** Viaja como
+  `SanitisedPayload` no campo `content` do `AiAsk`, que por tipo não pode ser
+  concatenado com a instrução. Uma pergunta que diga «ignora as instruções
+  anteriores» é uma frase que alguém escreveu numa caixa de pesquisa, e chega
+  num sítio onde não pode ser lida como ordem.
+
+- **Estados de indisponibilidade adaptados aos do gateway.** O ecrã distingue «o
+  plano não inclui» de «não está ativado nesta instalação» e de «não está
+  configurado nesta instalação». Os seis motivos técnicos que o gateway sabe
+  distinguir (`off`, `credential_missing`, `model_missing`, `endpoint_missing`,
+  `unknown_driver`, `fake_in_production`) colapsam nestas três frases: nomear a
+  definição em falta a um professor seria dar-lhe um pormenor sobre o qual não
+  pode agir. Quota, rate limit, timeout, indisponibilidade temporária e resposta
+  ilegível têm todos mensagem própria, sempre com o botão de tentar de novo — e
+  nunca com um código de estado, um endpoint, o nome do fornecedor ou uma página
+  de erro do framework.
+
+### Security
+
+- **Nenhum dado pedagógico chega ao assistente de ajuda.** O serviço não aceita
+  turma, aluno nem resultado: não há parâmetro por onde isso possa entrar, e um
+  pedido deliberadamente carregado com campos extra é ignorado até ao último. As
+  únicas entradas são a pergunta e o conjunto de artigos.
+
+- **Nomes, números e identificadores não saem na análise pedagógica.** As linhas
+  por aluno são construídas a partir de uma lista de campos permitidos — e não
+  por remoção dos perigosos —, pelo que um campo acrescentado ao read model no
+  futuro chega aqui como nada, em vez de chegar como uma fuga que ninguém notou.
+  Nome, número de aluno e id de inscrição nunca são transportados; o ulid da
+  turma também não. O que chega são pseudónimos, resultados, níveis, evolução,
+  distribuição e domínios — a substância sem a qual não haveria leitura nenhuma.
+
+- **Nem o prompt nem a resposta são guardados.** `ai_usage_events` não tem
+  coluna onde caibam, e a trilha de negócio desta fatia regista fornecedor,
+  modelo, ids de artigos, contagens e versão do prompt — nunca o texto da
+  pergunta, nunca o texto da análise. Uma resposta vive na sessão durante um
+  pedido e desaparece na visita seguinte; não há memória entre perguntas.
+
+- **É pseudonimização, e está escrito assim em todo o lado.** «Aluno A» é
+  reversível por quem tem a pauta à frente, e os artigos do Centro de Ajuda
+  dizem-no por palavras em vez de prometerem anonimato. Os pseudónimos também
+  não são estáveis entre pedidos, para que não se acumule um perfil.
+
+### Notas — o que ainda não está ligado
+
+- **As capabilities continuam sem atribuição comercial.** `help_assistant` e
+  `ai_pedagogical_analysis` continuam no catálogo e em nenhum plano, tal como a
+  0.83.0 as deixou: a que subscrição pertencem é uma decisão comercial que
+  continua por tomar, e esta fatia não a tomou. Na prática, hoje nenhuma
+  organização tem acesso, os dois ecrãs mostram o estado «plano», e nada chega a
+  um motor. Para um piloto, o caminho suportado continua a ser um override por
+  organização — que é também como os testes desta fatia concedem acesso.
+
+- **O Gemini real continua por ativar.** Esta instalação não tem credencial nem
+  fornecedor configurado, e nenhum teste faz uma chamada real: o fluxo é
+  exercitado de ponta a ponta contra o fornecedor Fake. A ausência de credencial
+  é um estado suportado, e as duas páginas continuam a funcionar sem IA — os
+  artigos do Centro de Ajuda e a Estatística da turma não dependem dela.
+
+- **Um nome escrito à mão numa pergunta de ajuda não é removido.** O sanitizador
+  retira emails, telefones, códigos postais, endereços de internet, números na
+  forma `n.º NN`, identificadores internos e corridas de seis ou mais
+  algarismos — reconhece **formatos**, não pessoas. Um nome por extenso não tem
+  formato que o distinga de qualquer outra palavra, e o Centro de Ajuda
+  deliberadamente não tem uma pauta com que o comparar: ir buscar uma
+  significaria este fluxo tocar em dados de alunos para evitar enviar dados de
+  alunos. As mitigações são as que existem — o texto do campo pede que não se
+  escrevam dados pessoais, o artigo explica-o, e a pergunta não fica guardada.
+  Um teste fixa esta limitação de propósito, para que o dia em que mudar seja
+  uma decisão e não uma descoberta. **Não é anonimização e não é descrita como
+  tal.**
+
 ## [0.83.0] — 2026-08-28
 
 Infraestrutura central de IA: uma porta única para fora, uma política de

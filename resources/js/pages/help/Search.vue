@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { Search as SearchIcon } from '@lucide/vue';
 import { ref } from 'vue';
+import HelpAssistantPanel from '@/components/ai/HelpAssistantPanel.vue';
 import Heading from '@/components/Heading.vue';
 import { search, show } from '@/routes/help';
 
@@ -11,7 +12,15 @@ type Article = {
     summary: string;
 };
 
-const props = defineProps<{ query: string; results: Article[] }>();
+type Reference = { id: string; title: string; url: string };
+
+const props = defineProps<{
+    query: string;
+    results: Article[];
+    ai: { available: boolean; reason: string | null };
+    helpAnswer?: { question: string; text: string; references: Reference[]; sufficient: boolean } | null;
+    helpAnswerError?: { message: string } | null;
+}>();
 
 const term = ref(props.query);
 
@@ -63,5 +72,18 @@ function doSearch(): void {
                 </Link>
             </li>
         </ul>
+
+        <!-- BELOW the results, and outside their v-if chain: a search that
+             found nothing is the exact moment this is worth offering, but a
+             search that found something should show the articles first. The
+             question just typed is carried in already, and the assistant
+             grounds itself in that same search — so when the documentation
+             does not cover it, it says so rather than inventing a feature. -->
+        <HelpAssistantPanel
+            :ai="ai"
+            :answer="helpAnswer"
+            :error="helpAnswerError"
+            :initial-question="helpAnswer ? '' : query"
+        />
     </div>
 </template>

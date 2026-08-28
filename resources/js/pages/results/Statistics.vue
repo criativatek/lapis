@@ -6,6 +6,7 @@ import {
 } from '@lucide/vue';
 import type { ChartConfiguration } from 'chart.js';
 import { computed, defineAsyncComponent, ref } from 'vue';
+import ClassAnalysisPanel from '@/components/ai/ClassAnalysisPanel.vue';
 import Heading from '@/components/Heading.vue';
 import DistributionBands from '@/components/infographic/DistributionBands.vue';
 import type { DistributionBand } from '@/components/infographic/DistributionBands.vue';
@@ -184,6 +185,16 @@ const props = defineProps<{
         period_label: string; academic_period_id: number;
     }[];
     statistics: Statistics;
+    // «Analisar com IA» (§4 do brief AI Experiences): the experience's state
+    // and the transient reading of the last click, both decided server-side —
+    // see ClassStatisticsController. Optional, so a test that mounts this page
+    // without the AI props still type-checks.
+    ai?: { available: boolean; reason: string | null };
+    aiAnalysis?: {
+        period_id: number | null; period_label: string | null;
+        summary: string; patterns: string[]; cautions: string[]; suggestions: string[];
+    } | null;
+    aiAnalysisError?: { message: string } | null;
 }>();
 
 // ------------------------------------------------------------- «Dados até»
@@ -2306,5 +2317,20 @@ const studentRows = computed(() => {
                 </div>
             </div>
         </Transition>
+
+        <!-- ================================ 09 · ANALISAR COM IA (§4)
+             Last, and deliberately so: the reading is of everything above it,
+             and a teacher should meet the figures before meeting an
+             interpretation of them. Renders nothing at all when the page was
+             opened without the AI props (a test, an older cached page). -->
+        <ClassAnalysisPanel
+            v-if="ai"
+            :ai="ai"
+            :class-ulid="schoolClass.ulid"
+            :period-ulid="stats.selected_period?.ulid ?? null"
+            :cutoff="cutoff.date"
+            :analysis="aiAnalysis"
+            :error="aiAnalysisError"
+        />
     </div>
 </template>

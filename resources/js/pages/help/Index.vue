@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { Search as SearchIcon } from '@lucide/vue';
 import { ref } from 'vue';
+import HelpAssistantPanel from '@/components/ai/HelpAssistantPanel.vue';
 import Heading from '@/components/Heading.vue';
 import { search, show } from '@/routes/help';
 
@@ -16,7 +17,16 @@ type Category = {
     articles: Article[];
 };
 
-defineProps<{ categories: Category[] }>();
+type Reference = { id: string; title: string; url: string };
+
+defineProps<{
+    categories: Category[];
+    // The assistant's state and its transient answer, both decided
+    // server-side — see HelpController::assistantProps().
+    ai: { available: boolean; reason: string | null };
+    helpAnswer?: { question: string; text: string; references: Reference[]; sufficient: boolean } | null;
+    helpAnswerError?: { message: string } | null;
+}>();
 
 const term = ref('');
 
@@ -55,6 +65,11 @@ function doSearch(): void {
                 Pesquisar
             </button>
         </form>
+
+        <!-- Under the search box, above the articles: a question is what a
+             teacher arrives with, and the article list is what they fall back
+             to. Never a floating bubble, and nowhere but here. -->
+        <HelpAssistantPanel :ai="ai" :answer="helpAnswer" :error="helpAnswerError" />
 
         <div v-if="categories.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
             <p class="text-sm text-muted-foreground">Ainda não há artigos de ajuda.</p>
