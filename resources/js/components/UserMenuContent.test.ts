@@ -139,3 +139,46 @@ describe('UserMenuContent — platform backoffice entry point', () => {
         expect(wrapper.find('[data-test="logout-button"]').exists()).toBe(true);
     });
 });
+
+describe('UserMenuContent — Central de Ajuda entry', () => {
+    function helpLink(wrapper: VueWrapper) {
+        return wrapper.find('[data-test="help-link"]');
+    }
+
+    it('offers «Central de Ajuda», pointing at /help, to an ordinary teacher on any plan', () => {
+        const wrapper = mountMenu({ is_platform_admin: false });
+
+        const link = helpLink(wrapper);
+
+        expect(link.exists()).toBe(true);
+        expect(link.text()).toContain('Central de Ajuda');
+        // The canonical route (help.index), resolved through Wayfinder rather
+        // than a literal typed into the template.
+        expect(link.attributes('href')).toBe('/help');
+    });
+
+    it('offers it just the same to a platform admin', () => {
+        const wrapper = mountMenu({ is_platform_admin: true });
+
+        expect(helpLink(wrapper).exists()).toBe(true);
+    });
+
+    it('offers it just the same to an institutional organization owner', () => {
+        const wrapper = mountMenu({ organization: institution, organizations: [personalOrganization, institution] });
+
+        expect(helpLink(wrapper).exists()).toBe(true);
+    });
+
+    it('sits its own group, between «Configurações» and the platform-admin block', () => {
+        const wrapper = mountMenu({ is_platform_admin: true });
+        const html = wrapper.html();
+
+        const settingsIndex = html.indexOf('Configurações');
+        const helpEntryIndex = html.indexOf('Central de Ajuda');
+        const adminIndex = html.indexOf('Administração da plataforma');
+
+        expect(settingsIndex).toBeGreaterThan(-1);
+        expect(helpEntryIndex).toBeGreaterThan(settingsIndex);
+        expect(adminIndex).toBeGreaterThan(helpEntryIndex);
+    });
+});

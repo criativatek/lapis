@@ -22,6 +22,8 @@ use App\Services\Import\Correction\WriteLapisGrid;
 use App\Support\Assessment\CorrectionWorkflowException;
 use App\Support\Assessment\InstrumentValidationException;
 use App\Support\Assessment\ScoreExceedsMaximumException;
+use App\Support\Help\HelpArticle;
+use App\Support\Help\HelpCenter;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -33,7 +35,7 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class InstrumentController extends Controller
 {
-    public function __construct(protected InstrumentBuilder $builder) {}
+    public function __construct(protected InstrumentBuilder $builder, protected HelpCenter $helpCenter) {}
 
     public function index(): Response
     {
@@ -84,6 +86,12 @@ class InstrumentController extends Controller
             'importableInstruments' => $this->importableInstrumentsFor($class),
             'defaultAcademicPeriodId' => $defaultAcademicPeriodId,
             'defaultCreationMode' => 'quick',
+            // "Precisa de ajuda?" (A2, Onboarding & Help) — one of the 3 pages
+            // the brief names explicitly.
+            'helpArticles' => $this->helpCenter->forContext('instruments.create')
+                ->map(fn (HelpArticle $article): array => $article->toArray())
+                ->values()
+                ->all(),
         ]);
     }
 

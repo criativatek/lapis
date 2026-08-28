@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Link, router, usePage } from '@inertiajs/vue3';
-import { Building2, Check, LogOut, Settings, ShieldCheck } from '@lucide/vue';
+import { Building2, Check, CircleHelp, LogOut, Settings, ShieldCheck } from '@lucide/vue';
 import { computed } from 'vue';
 import {
     DropdownMenuGroup,
@@ -11,6 +11,7 @@ import {
 import UserInfo from '@/components/UserInfo.vue';
 import { logout } from '@/routes';
 import { index as platformBackoffice } from '@/routes/admin/accounts';
+import { index as helpIndex } from '@/routes/help';
 import { edit } from '@/routes/profile';
 import type { Auth, User } from '@/types';
 
@@ -78,6 +79,19 @@ const handleLogout = () => {
             <Link class="block w-full cursor-pointer" :href="edit()" prefetch>
                 <Settings class="mr-2 h-4 w-4" />
                 Configurações
+            </Link>
+        </DropdownMenuItem>
+    </DropdownMenuGroup>
+
+    <!-- Its own group, unconditional and independent of plan/module — help
+         content is not a paid feature, so it never joins config/navigation.php's
+         entitlement-filtered sidebar (see App\Http\Controllers\HelpController). -->
+    <DropdownMenuSeparator />
+    <DropdownMenuGroup>
+        <DropdownMenuItem :as-child="true">
+            <Link class="block w-full cursor-pointer" :href="helpIndex()" data-test="help-link" prefetch>
+                <CircleHelp class="mr-2 h-4 w-4" />
+                Central de Ajuda
             </Link>
         </DropdownMenuItem>
     </DropdownMenuGroup>

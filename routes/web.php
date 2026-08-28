@@ -23,6 +23,7 @@ use App\Http\Controllers\DataExportController;
 use App\Http\Controllers\DataImportController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\EvidenceController;
+use App\Http\Controllers\HelpController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\InovarExportController;
 use App\Http\Controllers\InstitutionAdminController;
@@ -81,6 +82,18 @@ Route::get('tratamento-de-dados', [LegalController::class, 'processing'])->name(
 // outside the 'organization' group (no tenant resolution needed).
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('novidades', [ChangelogController::class, 'index'])->name('changelog.index');
+});
+
+// O Centro de Ajuda (A2, Onboarding & Help) — same reasoning as «novidades»
+// above: the article set is the same for every organization, so this stays
+// outside the 'organization' group too. «search» is declared before the
+// {article} wildcard below, or it would be swallowed as an (invalid)
+// article id — the same ordering «reports/novo» before «reports/{report}»
+// already uses.
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::get('help', [HelpController::class, 'index'])->name('help.index');
+    Route::get('help/search', [HelpController::class, 'search'])->name('help.search');
+    Route::get('help/{article}', [HelpController::class, 'show'])->name('help.show');
 });
 
 // The student's no-login entry into a self-assessment (§15): no 'auth', no

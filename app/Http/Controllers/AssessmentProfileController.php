@@ -15,6 +15,8 @@ use App\Services\Assessment\ActivateProfileVersion;
 use App\Services\Assessment\ProfileBuilder;
 use App\Services\Audit\AuditLog;
 use App\Support\Assessment\ProfileActivationException;
+use App\Support\Help\HelpArticle;
+use App\Support\Help\HelpCenter;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -25,7 +27,7 @@ use JsonException;
 
 class AssessmentProfileController extends Controller
 {
-    public function __construct(protected ProfileBuilder $builder) {}
+    public function __construct(protected ProfileBuilder $builder, protected HelpCenter $helpCenter) {}
 
     public function index(): Response
     {
@@ -55,7 +57,16 @@ class AssessmentProfileController extends Controller
     {
         Gate::authorize('create', AssessmentProfile::class);
 
-        return Inertia::render('assessment-profiles/Create', $this->formOptions());
+        return Inertia::render('assessment-profiles/Create', [
+            ...$this->formOptions(),
+            // "Precisa de ajuda?" (A2, Onboarding & Help) — critérios, domínios
+            // e pesos are the one place in this flow a first-time teacher is
+            // most likely to get stuck, per the brief's own explicit choice.
+            'helpArticles' => $this->helpCenter->forContext('assessment-profiles.create')
+                ->map(fn (HelpArticle $article): array => $article->toArray())
+                ->values()
+                ->all(),
+        ]);
     }
 
     public function store(AssessmentProfileRequest $request): RedirectResponse

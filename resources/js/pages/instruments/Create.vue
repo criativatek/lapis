@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ClipboardList } from '@lucide/vue';
 import { ref } from 'vue';
+import ContextualHelp from '@/components/ContextualHelp.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -31,6 +32,8 @@ type ImportableInstrument = {
 
 type ClassOption = { ulid: string; label: string };
 
+type HelpArticle = { id: string; title: string; summary: string };
+
 // schoolClass present (the usual case, reached from a specific class): the
 // form below renders exactly as it always has. schoolClass absent (reached
 // from Elementos de Avaliação's own "+ Novo" button, via instruments.create-
@@ -47,6 +50,7 @@ const props = defineProps<{
     importableInstruments?: ImportableInstrument[];
     defaultAcademicPeriodId?: number | null;
     defaultCreationMode?: 'quick';
+    helpArticles?: HelpArticle[];
 }>();
 
 const selectedClassUlid = ref<string | null>(props.classes?.[0]?.ulid ?? null);
@@ -68,6 +72,7 @@ function continueToClass(): void {
             :title="`Novo Elemento de Avaliação — ${schoolClass.label}`"
             description="Grelha de correção — Defina os domínios, questões e cotações deste Elemento de Avaliação."
         />
+        <ContextualHelp :articles="helpArticles" />
         <InstrumentForm
             :periods="periods ?? []"
             :types="types ?? []"

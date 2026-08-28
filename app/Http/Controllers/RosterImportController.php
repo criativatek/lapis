@@ -15,6 +15,8 @@ use App\Services\Import\RosterFileParser;
 use App\Services\Import\RosterImportPreviewBuilder;
 use App\Services\StudentEnrollmentService;
 use App\Services\StudentPhotoService;
+use App\Support\Help\HelpArticle;
+use App\Support\Help\HelpCenter;
 use App\Support\Import\RosterImportTempStorage;
 use App\Support\Privacy\BlindIndex;
 use App\Support\Tenancy\CurrentOrganization;
@@ -36,7 +38,23 @@ class RosterImportController extends Controller
         protected StudentEnrollmentService $enrollmentService,
         protected StudentPhotoService $photoService,
         protected CurrentOrganization $currentOrganization,
+        protected HelpCenter $helpCenter,
     ) {}
+
+    /**
+     * "Precisa de ajuda?" (A2, Onboarding & Help) — one of the 3 pages the
+     * brief names explicitly. Shared by store() and attachPhotos(), which
+     * both re-render the SAME roster-imports/Preview page; passing it from
+     * only one of them would make the block disappear after the photo step.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function helpArticles(): array
+    {
+        return array_values($this->helpCenter->forContext('classes.roster-imports.store')
+            ->map(fn (HelpArticle $article): array => $article->toArray())
+            ->all());
+    }
 
     public function store(Request $request, SchoolClass $class): \Inertia\Response|RedirectResponse
     {
@@ -109,6 +127,7 @@ class RosterImportController extends Controller
             'token' => $token,
             'rows' => $rows,
             'photos' => [],
+            'helpArticles' => $this->helpArticles(),
         ]);
     }
 
@@ -188,6 +207,7 @@ class RosterImportController extends Controller
             'token' => $token,
             'rows' => $rows,
             'photos' => $photos,
+            'helpArticles' => $this->helpArticles(),
         ]);
     }
 

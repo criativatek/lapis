@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
+import ContextualHelp from '@/components/ContextualHelp.vue';
 import FileInput from '@/components/FileInput.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
@@ -45,11 +46,14 @@ type PhotoOption = {
     extension: string;
 };
 
+type HelpArticle = { id: string; title: string; summary: string };
+
 const props = defineProps<{
     schoolClassUlid: string;
     token: string;
     rows: PreviewRow[];
     photos: PhotoOption[];
+    helpArticles?: HelpArticle[];
 }>();
 
 // class_number is '' when empty (the backend treats empty as null, via the
@@ -183,6 +187,7 @@ const limitError = computed(() => (form.errors as Record<string, string>).limit)
             title="Confirmar importação"
             description="Revê cada aluno antes de inscrever. Desmarca uma linha para a excluir."
         />
+        <ContextualHelp :articles="helpArticles" />
 
         <div class="space-y-6">
             <div class="overflow-x-auto rounded-lg border border-border">
