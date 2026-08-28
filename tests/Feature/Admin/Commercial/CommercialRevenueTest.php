@@ -126,6 +126,31 @@ class CommercialRevenueTest extends TestCase
     }
 
     #[Test]
+    public function a_founder_account_with_no_payment_generates_no_revenue(): void
+    {
+        // The most seductive wrong number in this whole area: an account marked
+        // Membro Fundador looks like 29,90 EUR waiting to be counted. The
+        // condition is a fact about HOW the account was sold; it is not evidence
+        // that anybody paid, and it carries no figure of its own.
+        $admin = User::factory()->create();
+        $admin->forceFill(['is_platform_admin' => true])->save();
+
+        $account = $this->account('pro');
+
+        $this->actingAs($admin)
+            ->post("/admin/commercial/{$account->ulid}/condition", ['condition' => 'founder'])
+            ->assertRedirect();
+
+        $accounts = $this->metrics()->accounts();
+
+        // Visible as a Fundador in the breakdown...
+        $this->assertSame(1, $accounts['pro_by_condition']['founder']);
+        // ...and worth exactly nothing until a payment is recorded.
+        $this->assertSame(0, $this->metrics()->revenue()['total_cents']);
+        $this->assertSame(0, $accounts['paying']);
+    }
+
+    #[Test]
     public function an_institutional_account_with_no_price_generates_no_revenue(): void
     {
         // Institucional is "sob consulta" and has no self-service adhesion. An

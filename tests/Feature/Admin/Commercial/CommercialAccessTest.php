@@ -51,6 +51,30 @@ class CommercialAccessTest extends TestCase
         ]);
     }
 
+    /**
+     * EVERY endpoint this area exposes, listed once and swept against every
+     * actor below. Written out one route at a time rather than derived from the
+     * router: a route that silently escapes the `platform-admin` group is
+     * precisely the defect this test exists to catch, and deriving the list from
+     * the router would inherit that same mistake instead of catching it.
+     *
+     * @return list<array{0: string, 1: string, 2: array<string, string>}>
+     */
+    protected function endpoints(Organization $account, SubscriptionPayment $payment): array
+    {
+        return [
+            ['get', '/admin/commercial', []],
+            ['get', '/admin/commercial/export', []],
+            ['get', "/admin/commercial/{$account->ulid}", []],
+            ['post', "/admin/commercial/{$account->ulid}/condition", ['condition' => 'founder']],
+            ['post', "/admin/commercial/{$account->ulid}/payments", [
+                'amount' => '44,90', 'currency' => 'EUR', 'status' => 'paid', 'paid_at' => '2026-08-01',
+            ]],
+            ['post', "/admin/commercial/payments/{$payment->ulid}/refund", ['reason' => 'teste']],
+            ['post', "/admin/commercial/payments/{$payment->ulid}/void", ['reason' => 'teste']],
+        ];
+    }
+
     #[Test]
     public function a_teacher_is_forbidden_from_every_commercial_endpoint(): void
     {
@@ -58,46 +82,58 @@ class CommercialAccessTest extends TestCase
         $account = $this->account();
         $payment = $this->payment($account);
 
-        $this->actingAs($teacher)->get('/admin/commercial')->assertForbidden();
-        $this->actingAs($teacher)->get('/admin/commercial/export')->assertForbidden();
-        $this->actingAs($teacher)->get("/admin/commercial/{$account->ulid}")->assertForbidden();
-        $this->actingAs($teacher)->post("/admin/commercial/{$account->ulid}/condition", ['condition' => 'founder'])->assertForbidden();
-        $this->actingAs($teacher)->post("/admin/commercial/{$account->ulid}/payments", [
-            'amount' => '44,90', 'currency' => 'EUR', 'status' => 'paid', 'paid_at' => '2026-08-01',
-        ])->assertForbidden();
-        $this->actingAs($teacher)->post("/admin/commercial/payments/{$payment->ulid}/refund", ['reason' => 'teste'])->assertForbidden();
-        $this->actingAs($teacher)->post("/admin/commercial/payments/{$payment->ulid}/void", ['reason' => 'teste'])->assertForbidden();
+        foreach ($this->endpoints($account, $payment) as [$method, $url, $payload]) {
+            $this->actingAs($teacher)->{$method}($url, $payload)
+                ->assertForbidden("{$method} {$url} devia recusar um professor");
+        }
     }
 
     #[Test]
-    public function a_teacher_who_owns_the_account_is_still_forbidden_from_its_commercial_record(): void
+    public function a_teacher_who_owns_the_account_is_forbidden_from_every_commercial_endpoint(): void
     {
         // Owning the organization is what grants a teacher everything else in
         // the product. It grants nothing here: the commercial record belongs to
-        // the operator, not to the customer it describes.
+        // the operator, not to the customer it describes — including on THEIR
+        // OWN account, which is the tempting exception to make and the wrong one.
         $owner = User::factory()->create();
         $account = $owner->personalOrganization();
+        $payment = $this->payment($account);
 
-        $this->actingAs($owner)->get("/admin/commercial/{$account->ulid}")->assertForbidden();
+        foreach ($this->endpoints($account, $payment) as [$method, $url, $payload]) {
+            $this->actingAs($owner)->{$method}($url, $payload)
+                ->assertForbidden("{$method} {$url} devia recusar o dono da própria conta");
+        }
     }
 
     #[Test]
-    public function an_institutional_admin_does_not_reach_the_global_financials(): void
+    public function an_institutional_admin_is_forbidden_from_every_commercial_endpoint(): void
     {
         // `institution_admin` administers a school's own tenant. It is not, and
-        // must never become, a route into what every other school pays.
+        // must never become, a route into what every other school pays — nor
+        // into its own school's financial record.
         $admin = User::factory()->create();
         $organization = $admin->personalOrganization();
         app(ChangeOrganizationPlan::class)
             ->to($organization, Plan::where('key', 'institutional')->firstOrFail());
 
-        $this->actingAs($admin)->get('/admin/commercial')->assertForbidden();
+        $payment = $this->payment($organization);
+
+        foreach ($this->endpoints($organization->fresh(), $payment) as [$method, $url, $payload]) {
+            $this->actingAs($admin)->{$method}($url, $payload)
+                ->assertForbidden("{$method} {$url} devia recusar um administrador institucional");
+        }
     }
 
     #[Test]
-    public function a_guest_is_redirected_rather_than_shown_anything(): void
+    public function a_guest_is_redirected_from_every_commercial_endpoint(): void
     {
-        $this->get('/admin/commercial')->assertRedirect('/login');
+        $account = $this->account();
+        $payment = $this->payment($account);
+
+        foreach ($this->endpoints($account, $payment) as [$method, $url, $payload]) {
+            $this->{$method}($url, $payload)
+                ->assertRedirect('/login');
+        }
     }
 
     #[Test]

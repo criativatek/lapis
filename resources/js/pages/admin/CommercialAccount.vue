@@ -402,7 +402,19 @@ const hasUnknownCondition = computed(() => props.current?.condition === 'unknown
                                 <td class="px-3 py-2 text-muted-foreground">{{ payment.method ?? '—' }}</td>
                                 <td class="px-3 py-2 text-muted-foreground">
                                     {{ payment.condition_label ?? '—' }}
-                                    <span v-if="payment.voucher_code" class="block text-xs">Código: {{ payment.voucher_code }}</span>
+                                    <!-- The code is a REFERENCE, and the label has to say
+                                         so where it is read. There is no voucher backend:
+                                         nothing validated this code, nothing redeemed it,
+                                         and no discount was computed from it. A bare
+                                         «Código: X» sitting next to a euro figure reads as
+                                         if the system had checked something — which is
+                                         exactly the impression this area must not give. -->
+                                    <span v-if="payment.voucher_code" class="mt-1 block text-xs">
+                                        <span class="rounded bg-muted px-1 py-0.5 font-mono">{{ payment.voucher_code }}</span>
+                                        <span class="mt-0.5 block italic">
+                                            Referência administrativa — não validada nem resgatada pelo sistema.
+                                        </span>
+                                    </span>
                                 </td>
                                 <td class="px-3 py-2 text-xs text-muted-foreground">
                                     {{ payment.recorded_by ?? '—' }}

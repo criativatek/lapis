@@ -99,6 +99,12 @@ resgate, e esta fatia não inventou nenhum: o código é guardado como texto lit
 porque escrevê-lo é registar um facto, ao passo que resolvê-lo seria inventar um
 sistema que não existe. A `LandingVoucher` continua exactamente como estava.
 
+E a UI di-lo onde o código é **lido**, não apenas onde é escrito. Um «Código: X»
+nu, ao lado de um valor em euros, lê-se como se o sistema tivesse verificado
+alguma coisa — por isso o código aparece agora marcado como **referência
+administrativa, não validada nem resgatada pelo sistema**, e o painel diz o
+mesmo do balde «Voucher» na repartição do Pro.
+
 ## [0.79.2] — 2026-08-27
 
 Auditoria de fecho do rebranding, fora da landing. A landing não foi tocada.

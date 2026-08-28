@@ -263,6 +263,10 @@ const conditionClasses: Record<string, string> = {
             <p class="text-xs text-muted-foreground">
                 «Membro Fundador» é uma condição comercial do plano Pro, não um plano. Uma conta cuja origem
                 nunca foi registada aparece como «Origem não registada» e nunca é inferida pelo valor pago.
+                <span class="mt-1 block">
+                    «Voucher» é uma marcação administrativa feita por um operador. Não existe motor de
+                    vouchers: nenhum código foi validado, resgatado ou convertido em desconto pelo sistema.
+                </span>
             </p>
         </section>
 
