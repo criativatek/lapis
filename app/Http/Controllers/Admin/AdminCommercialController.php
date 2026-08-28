@@ -122,7 +122,7 @@ class AdminCommercialController extends Controller
             fputcsv($handle, [
                 'Organização', 'Tipo', 'Titular', 'Email', 'Plano', 'Condição comercial',
                 'Estado', 'Início', 'Fim', 'Pago (EUR)', 'N.º pagamentos', 'Último pagamento',
-            ]);
+            ], escape: '\\');
 
             $this->listing->query($filters)->chunk(200, function (Collection $chunk) use ($handle): void {
                 $totals = $this->listing->paymentTotals($this->organizationIdsOf($chunk));
@@ -146,7 +146,7 @@ class AdminCommercialController extends Controller
                         number_format($row['paid_cents'] / 100, 2, ',', ''),
                         $row['payment_count'],
                         $row['last_paid_at'] ?? '',
-                    ]);
+                    ], escape: '\\');
                 }
             });
 
