@@ -3,6 +3,7 @@
 namespace Tests\Feature\Trial;
 
 use App\Actions\Organizations\ActivateProTrial;
+use App\Models\BillingProfile;
 use App\Models\Organization;
 use App\Models\OrganizationSubscription;
 use App\Models\Plan;
@@ -156,11 +157,27 @@ class ActivateProTrialTest extends TestCase
         $this->assertSame(0, SubscriptionPayment::withoutGlobalScope('organization')->count());
         $this->assertSame(0, app(CommercialMetrics::class)->revenue()['total_cents']);
 
-        // And still no gateway, invoice, card or checkout table — the half of
-        // the original guarantee that this slice did not change.
+        // Nem sequer os dados de faturação: preencher a morada para onde vai
+        // uma fatura é um acto do checkout, e a experiência não passa por lá.
+        $this->assertSame(0, BillingProfile::withoutGlobalScope('organization')->count());
+
+        // E continua a não haver gateway, fatura nem cartão — a metade da
+        // garantia original que esta fatia não mudou.
+        //
+        // O `billing` deixou de ser proibido em bloco porque passou a existir
+        // um `billing_profiles`: a morada a quem se passa a fatura, recolhida
+        // no checkout por transferência. A afirmação ficou MAIS apertada e não
+        // menos — é uma lista exacta, portanto um `billing_cards` que alguém
+        // acrescente falha aqui, em vez de passar por conter a mesma palavra.
         $tables = collect(Schema::getTables())->pluck('name')->map(fn (string $name): string => strtolower($name));
 
-        foreach (['billing', 'invoice', 'card', 'checkout'] as $needle) {
+        $this->assertSame(
+            ['billing_profiles'],
+            $tables->filter(fn (string $name) => str_contains($name, 'billing'))->values()->all(),
+            'Apareceu uma tabela de faturação que não é o perfil de faturação.',
+        );
+
+        foreach (['invoice', 'card', 'checkout', 'gateway'] as $needle) {
             $this->assertEmpty(
                 $tables->filter(fn (string $name) => str_contains($name, $needle))->all(),
                 "Unexpected billing-related table matching [{$needle}].",

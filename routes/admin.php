@@ -63,6 +63,7 @@ Route::middleware(['auth', 'verified', 'platform-admin'])
         // binds as an organization ulid and 404s.
         Route::get('commercial', [AdminCommercialController::class, 'index'])->name('commercial.index');
         Route::get('commercial/export', [AdminCommercialController::class, 'export'])->name('commercial.export');
+        Route::post('commercial/payments/{payment}/confirm', [AdminCommercialController::class, 'confirmTransfer'])->name('commercial.payments.confirm');
         Route::post('commercial/payments/{payment}/refund', [AdminCommercialController::class, 'refundPayment'])->name('commercial.payments.refund');
         Route::post('commercial/payments/{payment}/void', [AdminCommercialController::class, 'voidPayment'])->name('commercial.payments.void');
         Route::get('commercial/{organization}', [AdminCommercialController::class, 'show'])->name('commercial.show');

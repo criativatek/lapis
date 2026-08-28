@@ -4,14 +4,22 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, reactive } from 'vue';
 import Plan from './Plan.vue';
 
-type MockForm = Record<string, unknown> & { errors: Record<string, string>; processing: boolean };
+type MockForm = Record<string, unknown> & {
+    errors: Record<string, string>;
+    processing: boolean;
+};
 
 const mocks = vi.hoisted(() => ({
     forms: [] as MockForm[],
 }));
 
 vi.mock('@inertiajs/vue3', () => ({
-    Head: defineComponent({ setup: (_, { slots }) => () => h('div', slots.default?.()) }),
+    Head: defineComponent({
+        setup:
+            (_, { slots }) =>
+            () =>
+                h('div', slots.default?.()),
+    }),
     useForm: (data: Record<string, unknown>) => {
         const form = reactive({
             ...data,
@@ -29,11 +37,29 @@ vi.mock('@inertiajs/vue3', () => ({
 const wrappers: VueWrapper[] = [];
 
 type Props = {
-    state: 'eligible' | 'trial_active' | 'trial_expired' | 'pro_active' | 'institutional' | 'unavailable';
+    state:
+        | 'eligible'
+        | 'trial_active'
+        | 'trial_expired'
+        | 'pro_active'
+        | 'institutional'
+        | 'unavailable';
     proDays: number;
     currentPlanName: string | null;
-    trial: { starts_at: string; ends_at: string; days_remaining: number } | null;
+    trial: {
+        starts_at: string;
+        ends_at: string;
+        days_remaining: number;
+    } | null;
     usedTrialBefore: boolean | null;
+    subscribe: {
+        price: string;
+        standardPrice: string;
+        isFounder: boolean;
+        seatsRemaining: number;
+        pendingUlid: string | null;
+        pendingReference: string | null;
+    } | null;
 };
 
 function mountPage(props: Partial<Props> = {}) {
@@ -44,6 +70,7 @@ function mountPage(props: Partial<Props> = {}) {
             currentPlanName: null,
             trial: null,
             usedTrialBefore: null,
+            subscribe: null,
             ...props,
         },
     });
@@ -79,10 +106,13 @@ describe('settings/Plan — eligible', () => {
     it('renders the backend trial error once form.errors.trial is set', async () => {
         const wrapper = mountPage({ state: 'eligible' });
 
-        trialForm().errors.trial = 'Esta conta já utilizou o período experimental Pro.';
+        trialForm().errors.trial =
+            'Esta conta já utilizou o período experimental Pro.';
         await wrapper.vm.$nextTick();
 
-        expect(wrapper.text()).toContain('Esta conta já utilizou o período experimental Pro.');
+        expect(wrapper.text()).toContain(
+            'Esta conta já utilizou o período experimental Pro.',
+        );
     });
 
     it('shows nothing about a trial error when there is none', () => {
@@ -98,7 +128,11 @@ describe('settings/Plan — trial_active', () => {
         // depend on the host machine's local timezone.
         const wrapper = mountPage({
             state: 'trial_active',
-            trial: { starts_at: '2026-09-01T12:00:00Z', ends_at: '2026-10-01T12:00:00Z', days_remaining: 12 },
+            trial: {
+                starts_at: '2026-09-01T12:00:00Z',
+                ends_at: '2026-10-01T12:00:00Z',
+                days_remaining: 12,
+            },
         });
 
         expect(wrapper.find('button').exists()).toBe(false);
@@ -111,7 +145,10 @@ describe('settings/Plan — trial_active', () => {
 
 describe('settings/Plan — trial_expired', () => {
     it('renders no activation button and the already-used message', () => {
-        const wrapper = mountPage({ state: 'trial_expired', currentPlanName: 'Base' });
+        const wrapper = mountPage({
+            state: 'trial_expired',
+            currentPlanName: 'Base',
+        });
 
         expect(wrapper.find('button').exists()).toBe(false);
         expect(wrapper.text()).toContain('já foi utilizado');
@@ -121,7 +158,11 @@ describe('settings/Plan — trial_expired', () => {
 
 describe('settings/Plan — pro_active', () => {
     it('shows the used-before note when usedTrialBefore is true', () => {
-        const wrapper = mountPage({ state: 'pro_active', currentPlanName: 'Pro', usedTrialBefore: true });
+        const wrapper = mountPage({
+            state: 'pro_active',
+            currentPlanName: 'Pro',
+            usedTrialBefore: true,
+        });
 
         expect(wrapper.find('button').exists()).toBe(false);
         expect(wrapper.text()).toContain('Pro');
@@ -129,7 +170,11 @@ describe('settings/Plan — pro_active', () => {
     });
 
     it('shows no such note when usedTrialBefore is false', () => {
-        const wrapper = mountPage({ state: 'pro_active', currentPlanName: 'Pro', usedTrialBefore: false });
+        const wrapper = mountPage({
+            state: 'pro_active',
+            currentPlanName: 'Pro',
+            usedTrialBefore: false,
+        });
 
         expect(wrapper.text()).not.toContain('anteriormente');
     });
@@ -137,7 +182,10 @@ describe('settings/Plan — pro_active', () => {
 
 describe('settings/Plan — institutional', () => {
     it('renders no trial-related text or button anywhere on the page', () => {
-        const wrapper = mountPage({ state: 'institutional', currentPlanName: 'Institucional' });
+        const wrapper = mountPage({
+            state: 'institutional',
+            currentPlanName: 'Institucional',
+        });
 
         expect(wrapper.find('button').exists()).toBe(false);
         expect(wrapper.text()).toContain('Institucional');
@@ -152,7 +200,10 @@ describe('settings/Plan — institutional', () => {
     // — confirmed here rather than assumed: any string of 'institutional'
     // renders the same way regardless of which organization shape produced it.
     it('renders the same way for a Personal organization administratively put on the Institutional plan', () => {
-        const wrapper = mountPage({ state: 'institutional', currentPlanName: 'Institucional' });
+        const wrapper = mountPage({
+            state: 'institutional',
+            currentPlanName: 'Institucional',
+        });
 
         expect(wrapper.find('button').exists()).toBe(false);
         expect(wrapper.text()).toContain('Institucional');
@@ -161,7 +212,10 @@ describe('settings/Plan — institutional', () => {
 
 describe('settings/Plan — unavailable', () => {
     it('renders no trial copy and no button, but shows the current plan name when there is one', () => {
-        const wrapper = mountPage({ state: 'unavailable', currentPlanName: 'Base' });
+        const wrapper = mountPage({
+            state: 'unavailable',
+            currentPlanName: 'Base',
+        });
 
         expect(wrapper.find('button').exists()).toBe(false);
         expect(wrapper.text()).toContain('Base');
@@ -171,9 +225,72 @@ describe('settings/Plan — unavailable', () => {
     });
 
     it('renders with no plan name at all when there is none (e.g. no subscription in force)', () => {
-        const wrapper = mountPage({ state: 'unavailable', currentPlanName: null });
+        const wrapper = mountPage({
+            state: 'unavailable',
+            currentPlanName: null,
+        });
 
         expect(wrapper.find('button').exists()).toBe(false);
         expect(wrapper.text()).not.toContain('Plano atual');
+    });
+});
+
+/*
+ * A oferta de subscrição.
+ *
+ * Quem decide se ela aparece é o servidor — a página só mostra o que lhe
+ * mandam. Estes testes fixam isso: com `subscribe` a null não há botão
+ * nenhum, seja qual for o estado do plano.
+ */
+describe('subscrever o Pro', () => {
+    it('não mostra nada quando o servidor não oferece subscrição', () => {
+        const wrapper = mountPage({ state: 'trial_expired', subscribe: null });
+
+        expect(wrapper.text()).not.toContain('Subscrever o plano Pro');
+    });
+
+    it('mostra o preço e leva ao checkout', () => {
+        const wrapper = mountPage({
+            state: 'trial_expired',
+            subscribe: {
+                price: '29,90 €',
+                standardPrice: '44,90 €',
+                isFounder: true,
+                seatsRemaining: 214,
+                pendingUlid: null,
+                pendingReference: null,
+            },
+        });
+
+        expect(wrapper.text()).toContain('29,90 €');
+        expect(wrapper.text()).toContain('214 lugares');
+        expect(wrapper.find('a[href="/settings/plan/checkout"]').exists()).toBe(
+            true,
+        );
+    });
+
+    /* Um pedido em curso não pode oferecer «subscrever» outra vez: duas
+       referências para a mesma compra é a forma mais rápida de ninguém saber o
+       que foi pago. */
+    it('com um pedido em curso, leva aos dados desse pedido', () => {
+        const wrapper = mountPage({
+            state: 'trial_expired',
+            subscribe: {
+                price: '44,90 €',
+                standardPrice: '44,90 €',
+                isFounder: false,
+                seatsRemaining: 0,
+                pendingUlid: '01JABCDEF',
+                pendingReference: 'LPRO-K7M2QX',
+            },
+        });
+
+        expect(wrapper.text()).toContain('LPRO-K7M2QX');
+        expect(
+            wrapper
+                .find('a[href="/settings/plan/checkout/01JABCDEF"]')
+                .exists(),
+        ).toBe(true);
+        expect(wrapper.text()).not.toContain('Subscrever o Pro');
     });
 });

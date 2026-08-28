@@ -2,12 +2,17 @@
 
 namespace App\Http\Controllers\Settings;
 
+use App\Actions\Commercial\RequestBankTransferPayment;
 use App\Actions\Organizations\ActivateProTrial;
 use App\Http\Controllers\Concerns\RefusesDuringImpersonation;
 use App\Http\Controllers\Controller;
+use App\Models\Organization;
 use App\Models\OrganizationSubscription;
+use App\Models\Plan;
 use App\Models\SubscriptionStatus;
+use App\Models\User;
 use App\Services\Organizations\ChangeOrganizationPlan;
+use App\Support\Commercial\FounderAvailability;
 use App\Support\Tenancy\CurrentOrganization;
 use App\Support\Trial\TrialEligibility;
 use App\Support\Trial\TrialException;
@@ -43,6 +48,8 @@ class PlanController extends Controller
         protected TrialEligibility $trialEligibility,
         protected TrialPolicy $trialPolicy,
         protected ActivateProTrial $activateProTrial,
+        protected RequestBankTransferPayment $transferRequests,
+        protected FounderAvailability $founder,
     ) {}
 
     public function edit(Request $request): Response
@@ -62,6 +69,10 @@ class PlanController extends Controller
 
         return Inertia::render('settings/Plan', [
             'state' => $state,
+            // Decidido no servidor, não na página: se a página decidisse quando
+            // mostrar o botão, teria de saber o preço, a condição Fundador e
+            // quem é dono da conta — três coisas que ela não tem como verificar.
+            'subscribe' => $this->subscribeOffer($organization, $request->user(), $state),
             'proDays' => $this->trialPolicy->proDays(),
             'currentPlanName' => $inForce?->plan?->name,
             'trial' => $state === 'trial_active' ? $this->trialPayload($inForce) : null,
@@ -91,6 +102,55 @@ class PlanController extends Controller
         ]);
 
         return to_route('settings.plan.edit');
+    }
+
+    /**
+     * A oferta de subscrição por transferência, ou null quando não há nenhuma.
+     *
+     * NULL EM MAIS CASOS DO QUE PARECE, e cada um por uma razão diferente: quem
+     * já tem Pro não tem o que comprar; o Institucional é sob consulta; quem não
+     * é dono da conta não compra em nome dela; e sem IBAN configurado um botão
+     * levaria a um ecrã com o campo em branco.
+     *
+     * @return array{price: string, standardPrice: string, isFounder: bool, seatsRemaining: int, pendingUlid: ?string, pendingReference: ?string}|null
+     */
+    protected function subscribeOffer(Organization $organization, ?User $user, string $state): ?array
+    {
+        if (! in_array($state, ['eligible', 'trial_active', 'trial_expired', 'unavailable'], true)) {
+            return null;
+        }
+
+        if ($user === null || ! $user->owns($organization)) {
+            return null;
+        }
+
+        if (! config('billing.bank_transfer.enabled') || blank(config('billing.bank_transfer.iban'))) {
+            return null;
+        }
+
+        $plan = Plan::where('key', 'pro')->first();
+        $standard = config('billing.prices.pro');
+
+        if ($plan === null || $standard === null) {
+            return null;
+        }
+
+        $pendente = $this->transferRequests->pendingFor($organization);
+        $cents = $this->transferRequests->priceFor($plan);
+
+        return [
+            'price' => $this->money($cents),
+            'standardPrice' => $this->money((int) $standard),
+            'isFounder' => $this->founder->isOpen(),
+            'seatsRemaining' => $this->founder->remaining(),
+            'pendingUlid' => $pendente?->ulid,
+            'pendingReference' => $pendente?->provider_reference,
+        ];
+    }
+
+    protected function money(int $cents): string
+    {
+        return number_format($cents / 100, 2, ',', ' ').' €';
     }
 
     /**

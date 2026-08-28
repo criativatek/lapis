@@ -6,6 +6,61 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > anteriores a 0.79.0 mantêm o nome com que foram escritas: um changelog é um
 > registo do que aconteceu, e reescrevê-lo apagaria a própria mudança de marca.
 
+> **Nota de reconciliação técnica (0.85.0).** Existiram **duas versões 0.82.0
+> distintas**, em linhagens paralelas que nunca se viram: uma comercial, que
+> chegou a produção, e uma de pesquisa do Centro de Ajuda, sobre a qual seguiram
+> a 0.83.0 e a 0.84.0. Não eram o mesmo release e não são aqui apresentadas como
+> se fossem — os dois corpos estão preservados abaixo sob a entrada 0.82.0,
+> cada um sob o título da frente a que pertenceu. A 0.85.0 é o primeiro
+> release em que as duas linhagens voltam a ser uma só.
+
+## [0.85.0] — 2026-08-28
+
+Um release de reconciliação: não acrescenta funcionalidade nova, reúne numa só
+linhagem o que estava em duas. A frente comercial que corria em produção e a
+frente de Ajuda/IA que corria no repositório passam a existir no mesmo sítio, e
+esta versão existe precisamente para que nenhum número de versão volte a
+designar dois estados diferentes do produto.
+
+### Added
+
+- **A frente comercial volta à linhagem principal.** O checkout por
+  transferência bancária, o `BillingProfile`, a configuração de faturação, a
+  contagem de Membro Fundador (`FounderAvailability`), os emails de instruções e
+  de confirmação bancária, a confirmação no backoffice, o `LoginResponse` e o
+  `VerifyEmailResponse` que respeitam o destino guardado em sessão, o branding
+  recuperado e os testes comerciais — tudo o que a 0.82.0 comercial pôs em
+  produção está aqui, incluindo a migration `billing_profiles`.
+
+- **A migration histórica de contactos da plataforma foi recuperada.**
+  `2026_09_07_000100_add_support_and_privacy_emails_to_platform_settings`
+  voltou byte a byte. **Não muda a fonte de verdade:** o email de apoio e o de
+  privacidade continuam a ser lidos de `config/lapis.php`/`.env`, e as colunas
+  ficam como dívida histórica de schema, para que uma instalação nova chegue ao
+  mesmo esquema que produção tem.
+
+### Changed
+
+- **A versão canónica salta para 0.85.0 e não reutiliza 0.82.**  Uma das 0.82.0
+  esteve em produção e a outra não; reaproveitar o número obrigaria a escolher
+  qual das duas «conta», e nenhuma das respostas seria verdadeira. 0.85.0 é o
+  primeiro número que designa um só estado do produto.
+
+### Notas — o que continua por ligar
+
+- **Nenhuma capability de IA tem plano atribuído.** `help_assistant` e
+  `ai_pedagogical_analysis` continuam no catálogo e em plano nenhum, tal como a
+  0.83.0 e a 0.84.0 as deixaram. Esta reconciliação não tomou a decisão
+  comercial que faltava, e não é o sítio para a tomar.
+
+- **O Gemini real continua por ativar.** Sem credencial e sem fornecedor
+  configurado; o fluxo é exercitado contra o fornecedor Fake. A IA continua
+  desligada por omissão e a aplicação inteira funciona nesse estado.
+
+- **Nada de comercial foi sacrificado para resolver conflitos**, e nada de
+  Ajuda ou de IA foi sacrificado para acomodar o comercial. Os conflitos reais
+  foram quatro e estão descritos no commit de reconciliação.
+
 ## [0.84.0] — 2026-08-28
 
 As duas primeiras experiências de IA que um professor vê: um assistente no
@@ -346,10 +401,75 @@ disto está visível a um professor hoje** — ver as duas notas no fim da entra
 
 ## [0.82.0] — 2026-08-28
 
+> **Duas linhas de trabalho partilharam este número, e não foram o mesmo
+> release.** A frente comercial e a frente do Centro de Ajuda seguiram em
+> paralelo sem se verem, e ambas lançaram uma 0.82.0: a comercial chegou a
+> produção, a de Ajuda ficou no repositório e recebeu por cima a 0.83.0 e a
+> 0.84.0. As duas ficam aqui, cada uma identificada, porque foi isso que
+> aconteceu — o formato deste changelog admite uma entrada por versão, e é essa
+> a única razão de partilharem um cabeçalho. A 0.85.0 é o primeiro número a
+> designar de novo um só estado do produto.
+
+### Frente comercial — o release que esteve em produção
+
+#### Added
+
+- **Um professor passa a poder subscrever o Pro sozinho, por transferência bancária.** Até agora o domínio comercial só tinha a metade do operador: registar um pagamento recebido, marcar a condição, reembolsar, anular. Do lado de quem compra não havia nada — nem forma de dizer «quero o Pro», nem sítio para os dados de faturação, nem IBAN. O `/settings/plan` oferecia o período experimental e mais nada.
+
+  O caminho é: **escolher o Pro → preencher os dados de faturação → receber referência e IBAN, no ecrã e por email → transferir → um administrador confirma**. Cada passo faz uma coisa só.
+
+  **O checkout não aprovisiona nada, e é o ponto todo.** Cria um `SubscriptionPayment` em `pending` e deixa a conta exactamente no plano em que estava. Uma transferência não avisa ninguém quando chega; dar acesso no momento do clique seria dar acesso a quem clicou e não a quem pagou. O ecrã diz isso com todas as letras em vez de se parecer com um recibo.
+
+  **`recorded_by` fica a `null` e `provider` a `bank_transfer`.** A distinção é a que o `RecordSubscriptionPayment` já fazia ao deixar `provider` nulo: aquilo é dinheiro que um operador confirmou ter recebido, isto é uma intenção declarada por quem compra. Pôr o cliente em `recorded_by` faria uma passar pela outra.
+
+  **Um segundo clique devolve a mesma referência.** Os dados de faturação actualizam-se — é para isso que se volta ao formulário —, mas não nasce uma segunda referência: duas referências para a mesma compra é a forma mais rápida de ninguém saber o que foi pago.
+
+- **`billing_profiles`** — nome, NIF, morada e email de faturação, separados do nome da organização porque divergem quase sempre: «Escola de Alvalade» não é a entidade que paga. O NIF é opcional de propósito; um particular pode pedir fatura sem contribuinte, e obrigar afastaria quem compra a título individual.
+
+- **A condição Membro Fundador passa a ser contável.** A landing promete «os primeiros 250 ou até 31 de dezembro de 2026», e esse número vivia só em `commercial.ts` — do lado do browser, onde não se conta nada. O 251.º comprador teria visto 29,90 €. `FounderAvailability` conta-os a partir de um facto registado (as subscrições que um operador marcou como `founder`), nunca deduzido do valor pago — a regra que o `RecordSubscriptionPayment` já impunha.
+
+- **As transferências por confirmar aparecem no topo do `/admin/commercial`**, num painel próprio, fora dos filtros e da paginação. Um pedido por confirmar não é um plano — é trabalho por fazer, e estava invisível: só se encontrava abrindo a ficha de uma conta que já se soubesse ter pago. Quem abre o ecrã comercial passa a ver o que está à espera dele, com a referência, a conta, o valor e há quantos dias espera.
+
+- **E o passo de ativar o plano deixou de estar escondido.** Registar dinheiro continua a não mudar o plano — a separação é deliberada e mantém-se —, mas quem acabou de confirmar um pagamento tinha de sair do ecrã, encontrar a ficha da conta noutro sítio do backoffice e lembrar-se do que ia lá fazer. Agora aparece ali, e **só quando faz sentido**: há dinheiro registado e a conta ainda não está no Pro, que é exactamente o estado de quem se esqueceu de um passo.
+
+- **«Confirmar recebimento» no backoffice**, na ficha comercial da conta, com o valor e a data editáveis: quem confirma está a ler o extrato, e se lá estiver outro número é esse que é receita.
+
+  **Produz duas linhas, não uma alterada.** Um pagamento é imutável excepto no estado e `paid_at` não se escreve depois da criação — uma linha `paid` sem data cairia fora de todos os totais por período enquanto contava para o total de sempre. Por isso o pedido é anulado com razão e o pagamento verdadeiro é registado de novo, que é exactamente o mecanismo que o `CorrectSubscriptionPayment` documenta para qualquer correcção.
+
+  **E não activa o plano.** Aprovisionar e cobrar continuam a ser factos independentes; o aviso ao operador di-lo em vez de o esconder, porque é o passo que se esquece.
+
+- **O IBAN vive no `.env`, não na base de dados** — ao contrário do SMTP e do endereço de contacto público. Um IBAN é para onde vai dinheiro: numa tabela, quem entrasse no backoffice redirecionava os pagamentos sem tocar no servidor. `BILLING_BANK_BENEFICIARY`, `BILLING_BANK_IBAN` e `BILLING_BANK_BIC`; sem IBAN configurado não há botão nenhum, em vez de haver um que leva a um campo em branco.
+
+- **O cliente é avisado quando o pagamento entra.** Sem isto, o silêncio entre transferir e ver o plano mudado é indistinguível de o pagamento se ter perdido — e a primeira coisa que uma pessoa faz nesse silêncio é escrever a perguntar, ou transferir outra vez. O email diz o valor, a referência e até quando vale a subscrição, e **não promete o que não controla**: diz que o plano vai ser ativado, não que já está, porque ativar é o acto seguinte.
+
+- **Os logótipos passam a ser os da identidade.** O `AppLogoIcon` era um símbolo desenhado à mão em código — um lápis e um ponteiro de relógio inventados aqui dentro, que nunca foram a marca de ninguém — e o `favicon.svg` era **o do Laravel**, por substituir desde o arranque do projeto. Entram a marca e o logótipo por extenso dos ficheiros originais, mais o `favicon.ico` (16/32/48) e o `apple-touch-icon` a 180px.
+
+  **Um ficheiro por logótipo, não dois.** As duas versões da identidade — a azul e a branca — diferem só na cor do texto, por isso essa parte é `currentColor` e a troca de tema faz-se com uma classe. Duas imagens trocadas por CSS piscariam ao mudar de tema e obrigariam a carregar as duas. O favicon leva a mesma ideia dentro de si, com uma media query: numa barra de separadores escura, o azul da marca desapareceria.
+
+#### Fixed
+
+- **Quem carregava em «Escolher Pro» aterrava no painel.** O Fortify mandava toda a gente para `/dashboard` depois de entrar, sem olhar ao destino guardado em sessão. O visitante entrava, via um painel com dezoito entradas de menu, e tinha de descobrir sozinho onde é que se subscreve — o passo em que se desiste. O botão passa a apontar para o checkout (o `Authenticate` guarda-o), e o `LoginResponse` lê-o.
+
+  **E o `VerifyEmailResponse` também, que é onde isto quase falhava.** Quem se regista só volta à aplicação depois de clicar no link que lhe chega por correio, muitas vezes noutro dispositivo e meia hora depois; consumir o destino no registo deitá-lo-ia fora antes de servir para alguma coisa.
+
+- **Os emails do Laravel saíam em inglês.** «Hello!», «Verify Email Address», «Regards,» e «All rights reserved.» chegavam assim a professores portugueses — a verificação de conta é o primeiro email que alguém recebe do produto, e estava numa língua que não é a do produto. Todos passam por `Lang::get()`, por isso um `lang/pt_PT.json` resolve os dois emails inteiros e qualquer notificação predefinida que venha a existir, sem tocar numa classe.
+
+  A chave do rodapé do botão **tem uma quebra de linha a meio** e só corresponde byte a byte — traduzida por aproximação, voltaria silenciosamente ao inglês.
+
+- **O nome no cabeçalho e no rodapé dos emails vinha do `APP_NAME`**, que em produção ainda dizia `LAPIS`. Não é código: é uma linha no `.env` do servidor, e sem ela o rebranding da 0.79.0 não chegou ao correio.
+
+#### Changed
+
+- **O guarda do período experimental ficou mais apertado, não mais frouxo.** Proibia em bloco qualquer tabela cujo nome contivesse `billing`; com o `billing_profiles` a existir, passou a afirmar a lista exacta — um `billing_cards` que alguém acrescente falha aqui, em vez de passar por conter a mesma palavra. E verifica agora que activar a experiência não cria sequer um perfil de faturação.
+
+- **O prefixo das referências é `LPRO`**, não `LAPIS`: a marca mudou na 0.79.0 e a referência que um professor lê ao telefone segue-a.
+
+### Frente Centro de Ajuda — a linha que continuou no repositório
+
 A pesquisa do Centro de Ajuda passa a responder a perguntas escritas, e não só
 a palavras soltas.
 
-### Changed
+#### Changed
 
 - **A pesquisa do Centro de Ajuda deixa de tratar a pergunta como uma única
   string literal.** Procurava a query inteira com `str_contains` contra título,
@@ -375,7 +495,7 @@ a palavras soltas.
   os artigos: dois foldings a divergir é o tipo de erro que fica invisível até
   a pesquisa começar, em silêncio, a não acertar.
 
-### Added
+#### Added
 
 - **`config/help-search.php`** — as stopwords e os grupos de sinónimos, como
   **dados e não regras em código**. Quem notar uma pergunta que não encontra
@@ -391,7 +511,7 @@ a palavras soltas.
   «peso» — que têm forma de palavra de pergunta em português corrente e são
   assuntos deste produto — ficam de fora, e não devem ser acrescentadas.
 
-### O que impede isto de devolver lixo
+#### O que impede isto de devolver lixo
 
 Alargar termos, por si só, transforma uma pesquisa num gerador de artigos ao
 acaso. Duas regras impedem-no:
@@ -407,7 +527,7 @@ acaso. Duas regras impedem-no:
   por dizer duas vezes a mesma coisa. «existe parecido» continua a devolver
   zero, apesar de «existe» aparecer no corpo de três artigos.
 
-### Não incluído nesta fatia
+#### Não incluído nesta fatia
 
 Nada de IA, embeddings, base de dados vectorial, chat ou serviço externo — e
 nenhuma dependência nova. A pesquisa continua determinística: a mesma pergunta

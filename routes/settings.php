@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Settings\CheckoutController;
 use App\Http\Controllers\Settings\PlanController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SchoolIdentityController;
@@ -29,6 +30,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // never one resolved from the URL.
     Route::get('settings/plan', [PlanController::class, 'edit'])->name('settings.plan.edit');
     Route::post('settings/plan/trial', [PlanController::class, 'activateTrial'])->name('settings.plan.activate-trial');
+
+    /*
+     * Checkout por transferência bancária. Sem parâmetro de plano na rota: só o
+     * Pro tem preço, e deixar o plano vir do URL abriria a porta a subscrever o
+     * Institucional pelo preço do Pro.
+     */
+    Route::get('settings/plan/checkout', [CheckoutController::class, 'create'])->name('settings.checkout.create');
+    Route::post('settings/plan/checkout', [CheckoutController::class, 'store'])->name('settings.checkout.store');
+    Route::get('settings/plan/checkout/{payment}', [CheckoutController::class, 'show'])->name('settings.checkout.show');
 
     Route::get('settings/security', [SecurityController::class, 'edit'])
         ->middleware(RequirePassword::class)

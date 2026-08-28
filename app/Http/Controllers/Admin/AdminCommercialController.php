@@ -2,14 +2,19 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Actions\Commercial\ConfirmBankTransferRequest;
 use App\Actions\Commercial\CorrectSubscriptionPayment;
 use App\Actions\Commercial\RecordSubscriptionPayment;
+use App\Actions\Commercial\RequestBankTransferPayment;
 use App\Actions\Commercial\SetCommercialCondition;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\ConfirmTransferRequest;
 use App\Http\Requests\Admin\CorrectPaymentRequest;
 use App\Http\Requests\Admin\RecordPaymentRequest;
 use App\Http\Requests\Admin\SetCommercialConditionRequest;
+use App\Mail\BankTransferConfirmedMail;
 use App\Models\AuditEvent;
+use App\Models\BillingProfile;
 use App\Models\CommercialCondition;
 use App\Models\Organization;
 use App\Models\OrganizationModuleOverride;
@@ -20,6 +25,7 @@ use App\Models\Plan;
 use App\Models\SubscriptionPayment;
 use App\Models\SubscriptionStatus;
 use App\Models\User;
+use App\Support\Commercial\CheckoutUnavailable;
 use App\Support\Commercial\CommercialConditionException;
 use App\Support\Commercial\CommercialFilters;
 use App\Support\Commercial\CommercialListing;
@@ -28,10 +34,12 @@ use App\Support\Commercial\EffectiveSubscriptions;
 use App\Support\Commercial\PaymentCorrectionException;
 use App\Support\Commercial\SubscriptionCondition;
 use App\Support\Entitlements\Entitlements;
+use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Mail;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -72,6 +80,7 @@ class AdminCommercialController extends Controller
         protected Entitlements $entitlements,
         protected RecordSubscriptionPayment $recordPayment,
         protected CorrectSubscriptionPayment $correctPayment,
+        protected ConfirmBankTransferRequest $confirmTransferRequest,
         protected SetCommercialCondition $setCondition,
     ) {}
 
@@ -90,6 +99,11 @@ class AdminCommercialController extends Controller
             'subscriptions' => $subscriptions,
             'filters' => $filters->toQuery(),
             'options' => $this->filterOptions(),
+            // Fora dos filtros e da paginação de propósito: isto é trabalho por
+            // fazer, não um recorte da carteira. Um pedido por confirmar tem de
+            // aparecer a quem abre este ecrã mesmo que o filtro escolhido não o
+            // apanhasse — senão é preciso saber que ele existe para o encontrar.
+            'awaitingConfirmation' => $this->awaitingConfirmation(),
         ]);
     }
 
@@ -101,6 +115,48 @@ class AdminCommercialController extends Controller
      * student anything, and no attempt to become a reporting module — an
      * operator who needs analysis has the CSV and a spreadsheet.
      */
+    /**
+     * Os pedidos de transferência à espera de que alguém veja o extrato.
+     *
+     * PORQUE É QUE ISTO É UMA LISTA PRÓPRIA. A tabela de subscrições responde a
+     * «em que plano está cada conta»; um pedido por confirmar não é um plano, é
+     * uma tarefa — e estava invisível: só se encontrava abrindo a ficha de uma
+     * conta que já se soubesse ter pago. Quem chega a este ecrã tem de ver o
+     * que está à espera dele sem ter de o adivinhar.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function awaitingConfirmation(): array
+    {
+        $pedidos = SubscriptionPayment::query()
+            ->withoutGlobalScope('organization')
+            ->where('status', PaymentStatus::Pending)
+            ->where('provider', RequestBankTransferPayment::PROVIDER)
+            ->orderBy('created_at')
+            ->get()
+            ->map(function (SubscriptionPayment $payment): array {
+                // `findOrFail`: a chave estrangeira é `restrictOnDelete`, por
+                // isso a organização existe sempre. Um pagamento órfão seria um
+                // problema de integridade, e falhar alto é melhor do que
+                // mostrar um travessão onde devia estar uma conta.
+                $organization = Organization::withoutGlobalScopes()->findOrFail($payment->organization_id);
+
+                return [
+                    'ulid' => $payment->ulid,
+                    'reference' => $payment->provider_reference,
+                    'amount' => number_format($payment->amount_cents / 100, 2, ',', ' ').' '
+                        .($payment->currency === 'EUR' ? '€' : $payment->currency),
+                    'account' => $organization->name,
+                    'accountUlid' => $organization->ulid,
+                    'requestedAt' => $payment->created_at?->toDateString(),
+                    'waitingDays' => (int) ($payment->created_at?->diffInDays(now()) ?? 0),
+                ];
+            })
+            ->all();
+
+        return array_values($pedidos);
+    }
+
     public function export(Request $request): StreamedResponse
     {
         $filters = CommercialFilters::fromRequest($request);
@@ -239,6 +295,12 @@ class AdminCommercialController extends Controller
                 'status_changed_at' => $payment->status_changed_at?->toDateTimeString(),
                 'correctable' => ! $payment->status->isTerminal(),
                 'refundable' => $payment->status === PaymentStatus::Paid,
+                // Um pedido que o cliente abriu no checkout e está à espera de
+                // que alguém veja a transferência no extrato. Só estes se
+                // confirmam — um pagamento pendente escrito à mão por um
+                // operador não tem referência que ligue a nada.
+                'confirmable' => $payment->status === PaymentStatus::Pending
+                    && $payment->provider === RequestBankTransferPayment::PROVIDER,
             ])->values(),
             'totals' => [
                 'paid_cents' => $payments->filter->countsAsRevenue()->sum('amount_cents'),
@@ -324,6 +386,71 @@ class AdminCommercialController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Pagamento registado (:status).', [
             'status' => mb_strtolower($payment->status->label()),
         ])]);
+
+        return back();
+    }
+
+    /**
+     * O dinheiro de um pedido pendente entrou.
+     *
+     * Anula o pedido e regista o pagamento verdadeiro — duas linhas, porque um
+     * pagamento é imutável excepto no estado e `paid_at` não se escreve depois
+     * da criação.
+     *
+     * NÃO ACTIVA O PLANO, de propósito: aprovisionar e cobrar são factos
+     * independentes neste domínio. O aviso a seguir diz-o com todas as letras,
+     * porque é exactamente o passo que se esquece.
+     */
+    public function confirmTransfer(ConfirmTransferRequest $request, string $payment): RedirectResponse
+    {
+        $pedido = SubscriptionPayment::query()
+            ->withoutGlobalScope('organization')
+            ->where('ulid', $payment)
+            ->firstOrFail();
+
+        $organization = Organization::findOrFail($pedido->organization_id);
+
+        try {
+            $recebido = $this->confirmTransferRequest->confirm(
+                $pedido,
+                $organization,
+                $this->user(),
+                $request->amountCents(),
+                Carbon::parse((string) $request->validated('paid_at')),
+            );
+        } catch (CheckoutUnavailable $exception) {
+            return back()->withErrors(['amount' => $exception->getMessage()]);
+        }
+
+        // Quem transferiu fica sem saber de nada até isto chegar: a
+        // transferência não gera recibo do nosso lado e o plano não muda no
+        // momento em que o dinheiro entra. Falhar o envio não desfaz o registo
+        // — o dinheiro entrou na mesma —, por isso o erro só vai para o log.
+        try {
+            $destino = app(CurrentOrganization::class)->runFor(
+                $organization,
+                fn (): ?string => BillingProfile::query()->value('email'),
+            ) ?? $organization->owner?->email;
+
+            if ($destino !== null) {
+                // O plano vem do pedido e não da subscrição: a subscrição do
+                // Pro ainda não existe neste momento — activar é o acto
+                // seguinte, e de propósito.
+                // `firstOrFail`: os planos são dados de referência semeados em
+                // todos os ambientes. Se não existir, o problema é maior do que
+                // um email — e o catch abaixo já impede que estrague o registo
+                // do pagamento, que é a parte que não se pode perder.
+                $plano = Plan::where('key', $pedido->metadata['plan_key'] ?? 'pro')->firstOrFail();
+
+                Mail::to($destino)->send(new BankTransferConfirmedMail($recebido, $plano->name));
+            }
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __(
+            'Pagamento registado e cliente avisado por email. Falta ATIVAR O PLANO na ficha da conta — registar dinheiro não muda o plano.',
+        )]);
 
         return back();
     }
