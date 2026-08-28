@@ -129,6 +129,7 @@ class ShellNavigationTest extends TestCase
                 'Organização do Ano Letivo',
                 'Instituição',
                 'Configuração',
+                'Ajuda',
             ], $labels);
 
             // A heading with nothing under it is a heading about nothing (§23).
@@ -272,6 +273,51 @@ class ShellNavigationTest extends TestCase
         });
     }
 
+    // ------------------------------------------------- Centro de Ajuda (§Onboarding & Help)
+
+    /**
+     * The sidebar's own entry point into the Centro de Ajuda: its own
+     * section, last — after «Configuração» and before the sidebar's footer
+     * (the account/user area, which `nav.sections` does not carry at all) —
+     * pointing at the real named route, never a hardcoded URL, and available
+     * to every plan (`module => null`).
+     */
+    #[Test]
+    public function the_help_center_has_its_own_section_last_in_the_menu(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->get('/dashboard')->assertInertia(function (AssertableInertia $page) {
+            $sections = $page->toArray()['props']['nav']['sections'];
+            $last = end($sections);
+
+            $this->assertSame('Ajuda', $last['label']);
+            $this->assertSame(['help'], array_column($last['items'], 'key'));
+
+            $help = $last['items'][0];
+            $this->assertSame('Centro de Ajuda', $help['label']);
+            $this->assertStringEndsWith('/help', (string) $help['href']);
+            $this->assertSame(route('help.index'), $help['href']);
+        });
+    }
+
+    /**
+     * Searching or reading an article are still «being in the Centro de
+     * Ajuda» as far as the sidebar is concerned — the same one-entry-many-
+     * routes pattern §36 already established for «Turma»/«Aluno».
+     */
+    #[Test]
+    public function the_help_center_entry_answers_for_search_and_any_article(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->get('/dashboard')->assertInertia(function (AssertableInertia $page) {
+            $help = collect($this->navItems($page))->firstWhere('key', 'help');
+
+            $this->assertContains('/help/', $help['match']);
+        });
+    }
+
     // ------------------------------------------------------ §41 os planos
 
     #[Test]
@@ -292,6 +338,9 @@ class ShellNavigationTest extends TestCase
             'dashboard', 'classes', 'students', 'instruments', 'assessments',
             'self-assessments', 'class-analysis', 'student-progress',
             'interventions', 'records', 'reports', 'academic-structure', 'assessment-profiles', 'settings',
+            // Centro de Ajuda (§Onboarding & Help): module => null, so every
+            // plan reaches it — never gated by Base/Pro/Institucional.
+            'help',
         ], array_keys($menu));
     }
 

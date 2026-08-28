@@ -199,6 +199,18 @@ return [
             ],
         ],
 
+        // Its own section, last, so it sits between «Configuração» and the
+        // sidebar's own footer (the account/user area) — transversal to every
+        // other group, like «Configuração» itself, and always available:
+        // `module => null` on purpose, the Centro de Ajuda is not gated by
+        // plan (§Onboarding & Help).
+        [
+            'label' => 'Ajuda',
+            'items' => [
+                ['key' => 'help', 'label' => 'Centro de Ajuda', 'icon' => 'CircleHelp', 'module' => null, 'phase' => 8, 'route' => 'help.index', 'built' => true, 'description' => 'Consultar artigos de ajuda e pesquisar dúvidas.', 'match' => ['/help/']],
+            ],
+        ],
+
     ],
 
     // Empty on purpose: «Configurações» moved up into its own group, beside the

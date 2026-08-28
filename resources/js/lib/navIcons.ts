@@ -5,6 +5,7 @@ import {
     CalendarClock,
     CalendarDays,
     CalendarRange,
+    CircleHelp,
     ClipboardList,
     Download,
     FileText,
@@ -60,6 +61,7 @@ const icons: Record<string, LucideIcon> = {
     Building2,
     Settings,
     Share2,
+    CircleHelp,
 };
 
 export function navIcon(name: string): LucideIcon {
