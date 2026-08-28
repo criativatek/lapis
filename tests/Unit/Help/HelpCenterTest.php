@@ -4,6 +4,7 @@ namespace Tests\Unit\Help;
 
 use App\Support\Help\HelpArticle;
 use App\Support\Help\HelpCenter;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -115,6 +116,110 @@ class HelpCenterTest extends TestCase
         $this->assertCount(0, $this->center()->search(''));
         $this->assertCount(0, $this->center()->search('   '));
         $this->assertCount(0, $this->center()->search('xyzzy-nao-existe-nada-parecido'));
+    }
+
+    /**
+     * Every one of these returned ZERO results before search() learned to
+     * read a question, while «Começar a utilizar o Lapispro» sat there
+     * answering all of them. They are the reason this behaviour exists.
+     *
+     * @return array<string, array{string}>
+     */
+    public static function writtenQuestionsAboutStartingOut(): array
+    {
+        return [
+            'como começar' => ['como começar'],
+            'por onde começo' => ['por onde começo'],
+            'o que faço primeiro' => ['o que faço primeiro'],
+            'primeiras coisas a fazer' => ['primeiras coisas a fazer'],
+            'começar a usar a aplicação' => ['começar a usar a aplicação'],
+            'pergunta inteira, com pontuação' => ['quais são as primeiras coisas a fazer na aplicação?'],
+            'ajuda' => ['ajuda'],
+            'como usar' => ['como usar'],
+            'como funciona' => ['como funciona'],
+        ];
+    }
+
+    #[Test]
+    #[DataProvider('writtenQuestionsAboutStartingOut')]
+    public function search_answers_a_written_question_with_the_article_that_answers_it(string $question): void
+    {
+        $results = $this->center()->search($question);
+
+        $this->assertNotEmpty($results, "«{$question}» não devolveu nada.");
+        $this->assertSame('getting-started', $results->first()->id, "«{$question}» não pôs «Começar a utilizar o Lapispro» em primeiro.");
+    }
+
+    #[Test]
+    public function search_treats_ano_escolar_as_the_ano_letivo_it_means(): void
+    {
+        // «escolar» appears nowhere in getting-started, whose keyword is «ano
+        // letivo». The synonym group is the only thing that connects them.
+        $results = $this->center()->search('ano escolar');
+
+        $this->assertTrue($results->contains(fn (HelpArticle $article): bool => $article->id === 'getting-started'));
+    }
+
+    #[Test]
+    public function search_finds_the_enrolment_article_however_the_question_is_phrased(): void
+    {
+        foreach (['adicionar alunos', 'inscrever aluno', 'criar aluno'] as $question) {
+            $this->assertSame('students.enroll', $this->center()->search($question)->first()->id, $question);
+        }
+    }
+
+    #[Test]
+    public function search_finds_the_class_article_however_the_question_is_phrased(): void
+    {
+        foreach (['criar uma turma', 'adicionar turma', 'nova turma'] as $question) {
+            $this->assertSame('classes.create', $this->center()->search($question)->first()->id, $question);
+        }
+    }
+
+    #[Test]
+    public function search_finds_the_results_article_from_registar_notas(): void
+    {
+        // Not a literal string anywhere: the title says «Registar
+        // resultados» and «notas» is only a keyword. Before, this was zero.
+        $this->assertSame('results.record', $this->center()->search('registar notas')->first()->id);
+    }
+
+    #[Test]
+    public function search_tolerates_punctuation_in_the_query(): void
+    {
+        $ids = fn (string $query): array => $this->center()->search($query)
+            ->map(fn (HelpArticle $article): string => $article->id)
+            ->all();
+
+        $this->assertSame($ids('avaliacao'), $ids('Avaliação?'));
+    }
+
+    #[Test]
+    public function search_still_answers_the_literal_queries_it_always_did(): void
+    {
+        // The regression net for the phrase pass: these worked before
+        // search() learned to read questions, and must still rank the same
+        // article first afterwards.
+        $this->assertSame('classes.create', $this->center()->search('turma')->first()->id);
+        $this->assertSame('results.record', $this->center()->search('resultados')->first()->id);
+        $this->assertSame('assessment.profiles', $this->center()->search('perfil de avaliação')->first()->id);
+        $this->assertSame('instruments.create', $this->center()->search('instrumento')->first()->id);
+    }
+
+    #[Test]
+    public function search_says_nothing_about_a_question_it_has_no_answer_for(): void
+    {
+        $this->assertCount(0, $this->center()->search('como faço bolo de chocolate'));
+    }
+
+    #[Test]
+    public function search_does_not_treat_one_incidental_body_word_as_an_answer(): void
+    {
+        // «existe» shows up in body text in passing («a turma existe mas…»)
+        // and «parecido» appears nowhere. One weak, uncorroborated term is a
+        // coincidence and not an answer — this is the overlap gate in
+        // score() doing the only job it has.
+        $this->assertCount(0, $this->center()->search('existe parecido'));
     }
 
     #[Test]

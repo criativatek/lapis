@@ -3,7 +3,6 @@
 namespace App\Support\Help;
 
 use Illuminate\Support\Collection;
-use Illuminate\Support\Str;
 
 /**
  * The Centro de Ajuda's read side (A2, Onboarding & Help) — a typed reader
@@ -34,6 +33,20 @@ use Illuminate\Support\Str;
 final class HelpCenter
 {
     /**
+     * Where a match was found, and what it is worth. Ordered by weight
+     * descending — `score()` walks the fields in this order and keeps the
+     * first (best) one a term reaches, so the order is load-bearing.
+     */
+    private const WEIGHTS = [
+        'title' => 8,
+        'keywords' => 5,
+        'summary' => 3,
+        'content' => 1,
+    ];
+
+    public function __construct(private HelpSearchVocabulary $vocabulary = new HelpSearchVocabulary) {}
+
+    /**
      * Every article, sorted by category then by its own `order` — the order
      * `all()`, `categories()` and `forContext()` all present articles in.
      *
@@ -55,27 +68,47 @@ final class HelpCenter
      * infrastructure: the whole article set is a few dozen entries at most,
      * so a full scan on every request costs nothing worth optimizing away.
      *
-     * TOLERANT OF PORTUGUESE DIACRITICS: both the query and every haystack
-     * are folded through `normalize()` before comparing, so "avaliaçao" and
-     * "avaliação" match the same articles either way.
-     *
      * Ranked by WHERE the match was found — title first, then keywords, then
      * summary, then content — not merely whether it matched, so a query that
      * names an article directly floats above one that merely mentions the
      * word in passing.
      *
+     * TWO PASSES, AND THE FIRST ONE IS THE OLD BEHAVIOUR UNCHANGED. The whole
+     * folded query is still matched as a literal phrase against every field
+     * and scored exactly as it always was, so a search that worked before
+     * this method learned to read questions still finds the same articles
+     * and still ranks them the same way against each other.
+     *
+     * The second pass is what makes a written question findable. Until now
+     * the query was one literal string, which answered «avaliação» and stayed
+     * silent for «por onde começo» — not because the answer was missing, but
+     * because a question is not a substring of anything. So the query is also
+     * reduced to its meaningful terms (`HelpSearchVocabulary::terms()`), each
+     * term widened to the words it is interchangeable with (`expand()`), and
+     * each term scores the BEST field it reaches — best, not sum, so a word
+     * repeated through a body cannot outweigh a word in a title. «por onde
+     * começo» reduces to «começo», widens to «começar», and lands on the
+     * title of «Começar a utilizar o Lapispro».
+     *
+     * TOLERANT OF PORTUGUESE DIACRITICS, and now of punctuation and of the
+     * scaffolding of a question: query and haystack are both folded through
+     * `normalize()`, so "avaliaçao", "avaliação" and "Avaliação?" match the
+     * same articles either way.
+     *
      * @return Collection<int, HelpArticle>
      */
     public function search(string $query): Collection
     {
-        $needle = trim(self::normalize($query));
+        $phrase = self::normalize($query);
 
-        if ($needle === '') {
+        if ($phrase === '') {
             return collect();
         }
 
+        $terms = $this->vocabulary->terms($phrase);
+
         return $this->articles()
-            ->map(fn (HelpArticle $article): array => ['article' => $article, 'score' => $this->score($article, $needle)])
+            ->map(fn (HelpArticle $article): array => ['article' => $article, 'score' => $this->score($article, $phrase, $terms)])
             ->filter(fn (array $row): bool => $row['score'] > 0)
             ->sortByDesc(fn (array $row): int => $row['score'])
             ->map(fn (array $row): HelpArticle => $row['article'])
@@ -137,36 +170,109 @@ final class HelpCenter
             ]);
     }
 
-    private function score(HelpArticle $article, string $needle): int
+    /**
+     * @param  list<string>  $terms
+     */
+    private function score(HelpArticle $article, string $phrase, array $terms): int
     {
-        $score = 0;
+        /** @var array<string, list<string>> $fields */
+        $fields = [
+            'title' => [self::normalize($article->title)],
+            'keywords' => array_map(self::normalize(...), $article->keywords),
+            'summary' => [self::normalize($article->summary)],
+            'content' => array_map(self::normalize(...), $article->content),
+        ];
 
-        if (str_contains(self::normalize($article->title), $needle)) {
-            $score += 8;
+        $phraseScore = 0;
+
+        foreach ($fields as $field => $values) {
+            foreach ($values as $value) {
+                if (str_contains($value, $phrase)) {
+                    $phraseScore += self::WEIGHTS[$field];
+
+                    break;
+                }
+            }
         }
 
-        if (collect($article->keywords)->contains(fn (string $keyword): bool => str_contains(self::normalize($keyword), $needle))) {
-            $score += 5;
+        $termScore = 0;
+        $matchedTerms = 0;
+        $matchedStrongly = false;
+
+        foreach ($terms as $term) {
+            $variants = $this->vocabulary->expand($term);
+            $best = 0;
+
+            foreach ($fields as $field => $values) {
+                if (self::WEIGHTS[$field] <= $best) {
+                    continue;
+                }
+
+                if (self::matches($values, $variants)) {
+                    $best = self::WEIGHTS[$field];
+                }
+            }
+
+            if ($best > 0) {
+                $termScore += $best;
+                $matchedTerms++;
+                $matchedStrongly = $matchedStrongly || $best >= self::WEIGHTS['keywords'];
+            }
         }
 
-        if (str_contains(self::normalize($article->summary), $needle)) {
-            $score += 3;
+        // A literal match is evidence on its own — that is the pre-existing
+        // behaviour, and nothing below is allowed to gate it.
+        if ($phraseScore > 0) {
+            return $phraseScore + $termScore;
         }
 
-        if (collect($article->content)->contains(fn (string $paragraph): bool => str_contains(self::normalize($paragraph), $needle))) {
-            $score += 1;
+        // THE OVERLAP GATE, and the reason widening terms does not turn this
+        // into a random article generator. Reaching an article through ONE
+        // term that merely appears somewhere in its body text is not a
+        // result, it is a coincidence: «xyzzy nada parecido» finds the word
+        // "existe" inside a sentence about turmas and means nothing by it.
+        // So a lone term has to land where an article declares what it is
+        // ABOUT — its title or its keywords — and anything weaker needs a
+        // second term to corroborate it.
+        if (! $matchedStrongly && $matchedTerms < 2) {
+            return 0;
         }
 
-        return $score;
+        return $termScore;
     }
 
     /**
-     * Lowercased and accent-folded, so "avaliaçao" and "avaliação" compare
-     * equal. `Str::ascii()` and not iconv's TRANSLIT — same choice, and the
-     * same reason, as `App\Support\Interventions\PedagogicalText::fold()`.
+     * True when any variant starts a word in any of $values. Prefix-at-a-
+     * word-boundary rather than a bare `str_contains`, which is what keeps
+     * «ano» out of "plano" while still letting «turma» reach "turmas" and
+     * «escolar» reach "escolaridade". Both sides are folded to `[a-z0-9 ]*`
+     * first, so `\b` has no surprises left in it.
+     *
+     * @param  list<string>  $values
+     * @param  list<string>  $variants
+     */
+    private static function matches(array $values, array $variants): bool
+    {
+        foreach ($values as $value) {
+            foreach ($variants as $variant) {
+                if (preg_match('/\b'.preg_quote($variant, '/').'/', $value) === 1) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Lowercased, accent-folded and stripped of punctuation, so "avaliaçao",
+     * "avaliação" and "Avaliação?" all compare equal. Delegates to
+     * `HelpSearchVocabulary::fold()` so the query and the articles are
+     * reduced by exactly the same rule — two folds drifting apart is a class
+     * of bug that stays invisible until a search quietly stops matching.
      */
     private static function normalize(string $value): string
     {
-        return Str::lower(Str::ascii($value));
+        return HelpSearchVocabulary::fold($value);
     }
 }

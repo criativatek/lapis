@@ -6,6 +6,78 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > anteriores a 0.79.0 mantêm o nome com que foram escritas: um changelog é um
 > registo do que aconteceu, e reescrevê-lo apagaria a própria mudança de marca.
 
+## [0.82.0] — 2026-08-28
+
+A pesquisa do Centro de Ajuda passa a responder a perguntas escritas, e não só
+a palavras soltas.
+
+### Changed
+
+- **A pesquisa do Centro de Ajuda deixa de tratar a pergunta como uma única
+  string literal.** Procurava a query inteira com `str_contains` contra título,
+  keywords, resumo e conteúdo — o que responde a «avaliação», por ser
+  literalmente uma palavra dos artigos, e fica em silêncio perante «por onde
+  começo», «o que faço primeiro» ou «quais são as primeiras coisas a fazer na
+  aplicação?». O artigo «Começar a utilizar o Lapispro» responde às três e não
+  era alcançado por nenhuma: das 24 perguntas naturais medidas antes da
+  alteração, **15 devolviam zero resultados**. A falha nunca foi do conjunto de
+  artigos — é que uma pergunta escrita não é substring de nada.
+
+  Passam a existir duas passagens. A primeira é a antiga, intacta: a frase
+  completa continua a ser procurada com os mesmos pesos (título 8, keywords 5,
+  resumo 3, conteúdo 1), pelo que nenhuma pesquisa que funcionava deixou de
+  funcionar nem trocou de primeiro resultado. A segunda reduz a pergunta aos
+  termos que interessam, alarga cada termo ao seu grupo de sinónimos e dá a
+  cada termo o **melhor** campo que alcança — melhor e não soma, para uma
+  palavra repetida no corpo de um artigo não pesar mais do que uma no título.
+
+- **Normalização mais completa.** Além de minúsculas e acentos, a pontuação é
+  removida e os espaços colapsados, pelo que «Avaliação?» e «avaliacao»
+  devolvem exactamente o mesmo. Uma só regra de folding para a pergunta e para
+  os artigos: dois foldings a divergir é o tipo de erro que fica invisível até
+  a pesquisa começar, em silêncio, a não acertar.
+
+### Added
+
+- **`config/help-search.php`** — as stopwords e os grupos de sinónimos, como
+  **dados e não regras em código**. Quem notar uma pergunta que não encontra
+  nada acrescenta uma palavra ao ficheiro, revisível num diff e reversível, em
+  vez de um ramo no scorer. Os grupos são simétricos («estas palavras
+  significam o mesmo aqui») e são uma afirmação sobre o vocabulário deste
+  produto, não um dicionário de português: «começo/começar/primeiros passos»,
+  «ano escolar/ano letivo», «aluno/estudante», «adicionar/criar/novo»,
+  «avaliar/avaliação».
+
+  A lista de stopwords é deliberadamente aborrecida. Cada palavra lá é uma
+  palavra que a pesquisa deixa de encontrar, por isso «ano», «nota», «conta» e
+  «peso» — que têm forma de palavra de pergunta em português corrente e são
+  assuntos deste produto — ficam de fora, e não devem ser acrescentadas.
+
+### O que impede isto de devolver lixo
+
+Alargar termos, por si só, transforma uma pesquisa num gerador de artigos ao
+acaso. Duas regras impedem-no:
+
+- **Correspondência por prefixo no início de palavra**, e não `str_contains`,
+  na passagem de termos. É o que mantém «ano» fora de «plano», enquanto deixa
+  «turma» alcançar «turmas» e «escolar» alcançar «escolaridade».
+
+- **Gate de sobreposição.** Um termo isolado só conta se aterrar onde o artigo
+  declara o que é — o seu título ou as suas keywords; qualquer coisa mais fraca
+  precisa de um segundo termo a corroborar. E duas palavras do mesmo grupo de
+  sinónimos contam como uma, senão «primeiros passos» passaria o gate apenas
+  por dizer duas vezes a mesma coisa. «existe parecido» continua a devolver
+  zero, apesar de «existe» aparecer no corpo de três artigos.
+
+### Não incluído nesta fatia
+
+Nada de IA, embeddings, base de dados vectorial, chat ou serviço externo — e
+nenhuma dependência nova. A pesquisa continua determinística: a mesma pergunta
+devolve sempre os mesmos artigos pela mesma ordem, e o comportamento é função
+apenas do config e dos artigos. As rotas (`help.index`, `help.search`,
+`help.show`), os URLs e o conjunto de nove artigos ficam exactamente como
+estavam — **nenhum artigo foi alterado**, porque o vocabulário já lá chegava.
+
 ## [0.81.0] — 2026-08-28
 
 Onboarding e Centro de Ajuda: orientar quem chega pela primeira vez sem tour
