@@ -6,6 +6,50 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > anteriores a 0.79.0 mantêm o nome com que foram escritas: um changelog é um
 > registo do que aconteceu, e reescrevê-lo apagaria a própria mudança de marca.
 
+## [0.81.0] — 2026-08-28
+
+Onboarding e Centro de Ajuda: orientar quem chega pela primeira vez sem tour
+obrigatório, sem modal e sem bloquear ninguém.
+
+### Added
+
+- **"Primeiros passos"**, no Dashboard. Um cartão dispensável, nunca uma
+  janela obrigatória, com quatro passos calculados ao vivo a partir dos dados
+  reais — turma criada, aluno inscrito, instrumento criado, resultado
+  registado — nunca de uma caixa de verificação guardada. É um conceito
+  deliberadamente separado da checklist de "configuração mínima" já existente
+  (`readiness()`, "Prepare o ano letivo"): uma conta pode estar totalmente
+  configurada e ainda não ter começado a usar o Lapispro, ou o inverso, e as
+  duas nunca se misturam. A única coisa que fica guardada é ter dispensado o
+  cartão — o progresso em si nunca é, para não haver um checkbox a dizer que
+  algo aconteceu quando não aconteceu.
+
+- **Estados vazios mais orientadores.** Sete páginas que mostravam apenas
+  "Ainda não tem turmas." (ou equivalente) sem qualquer ação passam a
+  oferecer o botão para o primeiro passo real — sempre condicionado a ter
+  permissão para o executar.
+
+- **Centro de Ajuda** (`/help`), acessível a partir do menu do utilizador em
+  qualquer página autenticada. Nove artigos escritos a partir do que a
+  aplicação faz hoje — começar a utilizar o Lapispro, criar uma turma,
+  inscrever ou importar alunos, configurar perfis de avaliação, criar um
+  elemento de avaliação, registar resultados, consultar relatórios e pautas,
+  exportar dados — cada um verificado contra o código real antes de escrito,
+  não documentação especulativa. Pesquisa simples, tolerante a acentos, sem
+  motor externo.
+
+- **Ajuda contextual** ("Precisa de ajuda?") nos três pontos da aplicação com
+  maior carga cognitiva para quem começa: configurar perfis de avaliação,
+  criar um elemento de avaliação, e a pré-visualização da importação de
+  alunos.
+
+- **Preparação estrutural para um futuro Assistente Lapispro.** O Centro de
+  Ajuda já responde a "encontra um artigo", "pesquisa" e "o que é relevante
+  nesta página" através de uma única classe de leitura — o mesmo sítio que um
+  assistente viria a consultar. Nada de IA, chat, fornecedor externo ou chave
+  de API nesta versão: só a base de conhecimento que uma resposta desse tipo
+  precisaria de ler.
+
 ## [0.80.0] — 2026-08-28
 
 Backoffice comercial para o superadministrador, construído sobre uma separação
