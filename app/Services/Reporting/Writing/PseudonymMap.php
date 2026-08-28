@@ -4,6 +4,7 @@ namespace App\Services\Reporting\Writing;
 
 use App\Models\Enrollment;
 use App\Models\Report;
+use App\Support\Privacy\Pseudonyms;
 
 /**
  * Names out before the text leaves, names back after it returns (§10).
@@ -14,19 +15,15 @@ use App\Models\Report;
  * rephrased, and «Aluno A» becomes «Maria Silva» again in this process, on this
  * machine. What a remote system holds in its logs is a letter.
  *
- * BUILT FROM THE ROSTER, WHICH IS THE ONLY LIST THAT EXISTS. Every enrolled
- * student of the report's class, plus the subject of an individual report. Longer
- * names are substituted first, so «Maria Silva Costa» is never half-replaced by
- * an entry for «Maria Silva».
+ * WHAT THIS CLASS OWNS, AFTER THE AI CORE: the report-specific question of WHICH
+ * names are in play — every enrolled student of the report's class, plus the
+ * subject of an individual report. The substitution rules themselves moved to
+ * `App\Support\Privacy\Pseudonyms`, unchanged, because the AI core needs the
+ * same rules for material that is not a report and two implementations of «how a
+ * name becomes a pseudonym» would eventually disagree. This class's public
+ * behaviour is exactly what it was.
  *
- * FIRST NAMES ARE INCLUDED, AND THAT IS A JUDGEMENT CALL. A teacher writing
- * about their own class writes «a Maria», not «a Maria Silva Costa», so a map
- * that only knew full names would cover almost nothing of what teachers actually
- * type. The cost is that a first name shared with an ordinary word would be
- * replaced too — so single-token names shorter than four characters are left
- * out, and the whole substitution is whole-word only.
- *
- * WHAT THIS CANNOT DO, AND IT IS WRITTEN DOWN RATHER THAN HOPED AWAY (§40): it
+ * WHAT IT CANNOT DO, AND IT IS WRITTEN DOWN RATHER THAN HOPED AWAY (§40): it
  * only knows the names it was given. A teacher who types the name of a sibling,
  * a colleague or a student from another class into a free-text field has written
  * a name this map has never seen, and no amount of substitution will catch it.
@@ -39,7 +36,7 @@ readonly class PseudonymMap
     /**
      * @param  array<string, string>  $byName  the real name => «Aluno A»
      */
-    protected function __construct(public array $byName) {}
+    protected function __construct(public array $byName, protected Pseudonyms $pseudonyms) {}
 
     public static function for(Report $report): self
     {
@@ -74,72 +71,26 @@ readonly class PseudonymMap
      */
     public static function of(array $names): self
     {
-        $map = [];
-        $next = 'A';
+        $pseudonyms = Pseudonyms::of($names);
 
-        foreach (array_values(array_unique(array_map('trim', $names))) as $name) {
-            if ($name === '') {
-                continue;
-            }
-
-            $pseudonym = 'Aluno '.$next;
-            $next++;
-
-            $map[$name] = $pseudonym;
-
-            // The parts a teacher actually types. Two-letter and three-letter
-            // tokens are skipped: «Ana» is a name, but so is the risk of
-            // replacing a preposition, and this map errs towards leaving a rare
-            // short name in the hands of the notice on the screen rather than
-            // mangling every sentence that contains «dos».
-            foreach (preg_split('/\s+/u', $name) ?: [] as $part) {
-                if (mb_strlen($part) >= 4 && ! array_key_exists($part, $map)) {
-                    $map[$part] = $pseudonym;
-                }
-            }
-        }
-
-        // Longest first, so «Maria Silva Costa» is never half-replaced by the
-        // entry for «Maria».
-        uksort($map, fn (string $left, string $right): int => mb_strlen($right) <=> mb_strlen($left));
-
-        return new self($map);
+        return new self($pseudonyms->byName, $pseudonyms);
     }
 
     public function isEmpty(): bool
     {
-        return $this->byName === [];
+        return $this->pseudonyms->isEmpty();
     }
 
     /** Replace every name this map knows with its pseudonym. */
     public function apply(string $text): string
     {
-        foreach ($this->byName as $name => $pseudonym) {
-            $text = (string) preg_replace(
-                '/(?<![\p{L}\p{N}])'.preg_quote($name, '/').'(?![\p{L}\p{N}])/u',
-                $pseudonym,
-                $text,
-            );
-        }
-
-        return $text;
+        return $this->pseudonyms->apply($text);
     }
 
-    /**
-     * Put the names back.
-     *
-     * The FIRST entry that maps to a pseudonym wins, which is the full name —
-     * `of()` inserts it before the parts. So a rewrite that shortened «Aluno A»
-     * to nothing loses nothing, and one that kept it restores the person's whole
-     * name rather than a fragment of it.
-     */
+    /** Put the names back. */
     public function rehydrate(string $text): string
     {
-        foreach ($this->fullNames() as $pseudonym => $name) {
-            $text = str_replace($pseudonym, $name, $text);
-        }
-
-        return $text;
+        return $this->pseudonyms->rehydrate($text);
     }
 
     /**
@@ -151,30 +102,6 @@ readonly class PseudonymMap
      */
     public function coversEverythingIn(string $text): bool
     {
-        foreach (array_keys($this->byName) as $name) {
-            if (preg_match('/(?<![\p{L}\p{N}])'.preg_quote($name, '/').'(?![\p{L}\p{N}])/u', $text) === 1) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /**
-     * pseudonym => the fullest name that maps to it.
-     *
-     * @return array<string, string>
-     */
-    protected function fullNames(): array
-    {
-        $names = [];
-
-        foreach ($this->byName as $name => $pseudonym) {
-            if (! array_key_exists($pseudonym, $names) || mb_strlen($name) > mb_strlen($names[$pseudonym])) {
-                $names[$pseudonym] = $name;
-            }
-        }
-
-        return $names;
+        return $this->pseudonyms->coversEverythingIn($text);
     }
 }

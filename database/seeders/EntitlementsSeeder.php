@@ -61,6 +61,28 @@ class EntitlementsSeeder extends Seeder
         'institution_library' => 'Biblioteca Institucional',
         'institution_reports' => 'Relatórios Agregados',
         'audit_log' => 'Registo de Auditoria',
+
+        // CATALOGUED, AND DELIBERATELY IN NO PLAN. The two AI Core capabilities
+        // (`App\Services\Ai\Gateway\AiCapability`) are real, enforced keys —
+        // `AiGateway` refuses every request whose organization does not hold one
+        // — but WHICH subscription includes them is a commercial decision nobody
+        // has taken. Writing either into BASE_MODULES / PRO_MODULES /
+        // INSTITUTIONAL_MODULES below would be taking that decision quietly, and
+        // «change the commercial composition of the plans» is on the ask-first
+        // list in CLAUDE.md §31.
+        //
+        // The consequence, stated plainly: today every organization answers
+        // `false` to both, every screen shows the upgrade-shaped unavailable
+        // state, and nothing built on the gateway reaches an engine. That is the
+        // intended state until somebody decides — at which point this is a
+        // one-line change in the arrays below and nothing else.
+        //
+        // THEY ARE NOT `ai_assistance`, which stays exactly where it is (Pro and
+        // Institucional) gating «Aperfeiçoar redação» in Relatórios and the
+        // strategy suggester in Intervenções. Reusing it would have meant that
+        // turning on the help assistant also turned on rewriting inside reports.
+        'help_assistant' => 'Assistente do Centro de Ajuda',
+        'ai_pedagogical_analysis' => 'Análise Pedagógica (IA)',
     ];
 
     protected const BASE_MODULES = [

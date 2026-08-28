@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminAccountController;
+use App\Http\Controllers\Admin\AdminAiController;
 use App\Http\Controllers\Admin\AdminCommercialController;
 use App\Http\Controllers\Admin\AdminImpersonateController;
 use App\Http\Controllers\Admin\AdminSettingsController;
@@ -72,6 +73,23 @@ Route::middleware(['auth', 'verified', 'platform-admin'])
         Route::get('settings', [AdminSettingsController::class, 'edit'])->name('settings.edit');
         Route::put('settings', [AdminSettingsController::class, 'update'])->name('settings.update');
         Route::post('settings/test', [AdminSettingsController::class, 'test'])->name('settings.test');
+
+        // Inteligência Artificial — the engine, its ceilings, and its credential.
+        //
+        // THE CREDENTIAL HAS ITS OWN VERBS, and there is deliberately no GET
+        // that returns it. Storing one is a POST to its own endpoint, with its
+        // own audit event and its own no-flash rule; removing one is a DELETE.
+        // «Substituir credencial» is an action; «mostrar chave» is not a route
+        // that exists (§4 of the AI Core brief).
+        Route::get('ai', [AdminAiController::class, 'edit'])->name('ai.edit');
+        Route::put('ai', [AdminAiController::class, 'update'])->name('ai.update');
+        Route::post('ai/credential', [AdminAiController::class, 'storeCredential'])->name('ai.credential.store');
+        Route::delete('ai/credential', [AdminAiController::class, 'destroyCredential'])->name('ai.credential.destroy');
+        // Spends real tokens on the operator's own account, so it is throttled.
+        // An idle click is cheap; a stuck one, or a held-down button, is not.
+        Route::post('ai/test', [AdminAiController::class, 'test'])
+            ->middleware('throttle:6,1')
+            ->name('ai.test');
 
         // Start impersonating the org's owner (support).
         Route::post('accounts/{organization}/impersonate', [AdminImpersonateController::class, 'start'])->name('accounts.impersonate');

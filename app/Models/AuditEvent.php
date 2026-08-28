@@ -14,9 +14,16 @@ use Illuminate\Support\Carbon;
  * One line of the audit trail (§22.4). Immutable by contract — a guard blocks any
  * update, because an audit line that can be rewritten proves nothing.
  *
+ * A ROW MAY BELONG TO THE PLATFORM RATHER THAN TO A TENANT. `organization_id` is
+ * null on those, they are written only by `AuditLog::recordPlatform()`, and they
+ * are invisible to every tenant query for free — the global scope compares the
+ * column to a number, and NULL is never equal to one. They exist so that acts of
+ * the SaaS operator that affect every organization (turning the AI engine on,
+ * replacing its credential) have somewhere truthful to be recorded.
+ *
  * @property int $id
  * @property string $ulid
- * @property int $organization_id
+ * @property int|null $organization_id
  * @property int|null $causer_id
  * @property string $event
  * @property string|null $subject_type

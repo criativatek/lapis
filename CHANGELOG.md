@@ -6,6 +6,169 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > anteriores a 0.79.0 mantêm o nome com que foram escritas: um changelog é um
 > registo do que aconteceu, e reescrevê-lo apagaria a própria mudança de marca.
 
+## [0.83.0] — 2026-08-28
+
+Infraestrutura central de IA: uma porta única para fora, uma política de
+privacidade única, e um painel onde o operador liga, desliga e mede. **Nada
+disto está visível a um professor hoje** — ver as duas notas no fim da entrada.
+
+### Added
+
+- **Gateway central de IA (`AiGateway`).** Passa a existir um só ponto de saída
+  da aplicação para um motor de IA. Uma chamada atravessa, por esta ordem:
+  entitlement da capability → existe motor configurado → rate limit por minuto
+  (utilizador e organização) → quota (utilizador/dia, organização/mês) →
+  verificação de privacidade do payload → chamada → registo de utilização. Cada
+  recusa fica registada antes de a exceção subir. Funcionalidades novas chamam
+  `ask()` e mais nada: não resolvem fornecedor, não leem credencial, não decidem
+  planos e não contam nada por sua conta. O contrato que a camada de
+  experiências consome está em `docs/ai-core-contract.md`; as decisões e os
+  porquês em `docs/adr/0007-ai-core-one-gateway-one-policy.md`.
+
+- **Fornecedor Gemini.** `GeminiProvider` fala `POST /models/{model}:generateContent`
+  e regista-se como qualquer outro driver — uma classe, um binding, um `case` no
+  resolver. Não existe `if ($provider === 'gemini')` em lado nenhum, e trocar de
+  motor é uma alteração de definições. A chave viaja no cabeçalho
+  `x-goog-api-key` e **nunca** em `?key=`, porque proxies e access logs registam
+  URLs. Trata 401/403, 429, 5xx, timeout e host inalcançável — e os casos em que
+  um HTTP 200 não é resposta: `blockReason`, `finishReason: MAX_TOKENS`, sem
+  candidatos, sem partes, texto vazio.
+
+- **O fornecedor Fake passa a cobrir o fluxo completo.** Permite desenvolvimento
+  e testes de ponta a ponta sem credencial nenhuma, e continua a recusar-se a
+  correr em produção.
+
+- **Administração → Inteligência Artificial (`/admin/ai`).** Só `platform-admin`.
+  Liga e desliga a IA, escolhe fornecedor e modelo, define timeout, teto de
+  tokens de resposta, pedidos por minuto e quotas por capability, guarda ou
+  substitui a credencial, e testa a ligação contra o fornecedor real. O que fica
+  guardado sobrepõe-se ao `.env` ao arranque, e o que não fica cai para lá — o
+  mesmo arranjo que a configuração de SMTP já usava. O estado apresentado no ecrã
+  é a resposta do resolver e não o valor da caixa: ativar sem credencial mostra o
+  motivo, em vez de um sinal verde que nenhum outro ecrã confirma.
+
+- **Medição por chamada (`ai_usage_events`).** Uma linha por chamada, com
+  organização, utilizador, capability, caso de uso, fornecedor, modelo, tokens de
+  entrada/saída/total, duração, estado (`succeeded`/`failed`/`blocked`),
+  categoria de erro e um hash do assunto. **A tabela não tem coluna onde caiba um
+  prompt ou uma resposta** — não é uma regra que alguém siga, é o esquema. Fecha
+  a dívida nº 3 registada no ADR-0006 («os contadores são gravados desde o
+  primeiro dia, mas não há painel que os leia»).
+
+- **Quotas e rate limiting configuráveis.** Quotas por utilizador/dia e por
+  organização/mês, e rate limit por minuto com um balde independente por
+  capability — um professor a esgotar o assistente de ajuda não pode ser o motivo
+  de uma análise pedagógica ser recusada. Os valores vêm de configuração e do
+  painel, nunca de constantes no código. O rate limit vive **dentro** do gateway
+  e não em middleware de rota, para valer também para um job ou um comando; uma
+  rota construída sobre o gateway não deve acrescentar `throttle:` para a mesma
+  capability.
+
+- **Duas capabilities novas: `help_assistant` e `ai_pedagogical_analysis`.**
+  Separadas de propósito — uma escola pode razoavelmente querer o assistente do
+  Centro de Ajuda e não a análise pedagógica, e é a segunda que vê material sobre
+  crianças. Nenhuma delas é `ai_assistance`, que fica exatamente onde estava, a
+  controlar «Aperfeiçoar redação» nos Relatórios e o sugeridor de estratégias nas
+  Intervenções.
+
+- **`AiContext` — construção de contexto por allowlist.** A ordem obrigatória
+  para qualquer conteúdo com estrutura é **allowlist → pseudonimização →
+  serialização → sanitização**. Cada valor é pseudonimizado no momento em que é
+  acrescentado, enquanto ainda é um escalar isolado com significado conhecido, e
+  só depois é que alguma coisa é junta em texto. `add()` recusa em tempo de
+  execução tudo o que não seja `string|int|float|null`: um registo Eloquent
+  satisfaz um parâmetro tipado `string` por coerção (`Model::__toString()`
+  devolve `toJson()`), o que teria posto uma linha inteira da base de dados
+  dentro de um prompt, em silêncio.
+
+- **Auditoria de plataforma.** `audit_events.organization_id` passa a admitir
+  nulo, e o registo ganha `recordPlatform()` para atos do operador que afetam
+  todas as organizações e não pertencem a nenhuma. Eventos:
+  `ai.settings_updated` (com os campos alterados e os valores novos),
+  `ai.credential_created`, `ai.credential_replaced`, `ai.credential_removed` e
+  `ai.connection_tested`. As linhas de plataforma são invisíveis na trilha de
+  qualquer organização, porque o global scope compara a coluna a um número e NULL
+  nunca é igual a um número.
+
+### Changed
+
+- **A pseudonimização passa a ter uma só implementação.** O algoritmo que vivia
+  em `PseudonymMap` (mais longo primeiro, nomes próprios incluídos, tokens curtos
+  excluídos, palavra inteira) mudou-se para `App\Support\Privacy\Pseudonyms`, sem
+  alteração de comportamento. `PseudonymMap` continua a existir e a responder
+  exatamente o mesmo — passou a saber apenas **quais** os nomes de um relatório,
+  e delega o resto.
+
+- **`sanitiseFields()` deixa de juntar os campos antes de os limpar.** Passa a
+  delegar no `AiContext` e ganha a ordem correta. A versão anterior montava o
+  parágrafo e sanitizava-o, o que fazia das expressões regulares a única barreira.
+
+- **`AiRequestFailed` ganha uma categoria de erro** (`timeout`, `unauthorized`,
+  `rate_limited`, `refused`, `provider_error`, `unusable_answer`, `unreachable`),
+  a partir de um vocabulário fechado. É o que a medição grava e o que o painel de
+  administração mostra ao operador. A mensagem apresentada a um professor não
+  mudou, e continua sem distinguir um 401 de um 500.
+
+### Security
+
+- **Minimização e pseudonimização centralizadas.** `AiPayloadSanitizer` remove
+  por omissão nomes da pauta (que passam a «Aluno A», «Aluno B»), emails,
+  telefones, códigos postais, URLs, números de registo na forma `n.º NN`,
+  identificadores internos (ULID/UUID) e qualquer corrida de seis ou mais
+  algarismos. Mantém percentagens, classificações, contagens e períodos — sem a
+  substância pedagógica não há pergunta que valha a pena fazer. Depois de
+  substituir, **verifica o seu próprio trabalho**: volta a correr todos os
+  detetores e recusa o payload se algum disparar.
+
+  É **pseudonimização**, e o termo é escolhido com cuidado: «Aluno A» é
+  reversível, e o mapa que o reverte existe em memória nesta máquina durante um
+  pedido. Não é anonimização e não deve ser descrito como tal em documento
+  nenhum. O sanitizador é a **segunda** barreira e não a única — é feito de
+  expressões regulares à procura de formas que conhece, e é cego a um nome de rua
+  ou a um irmão. A minimização a sério acontece no `AiContext`, onde ainda se vê
+  o que cada valor é.
+
+- **A credencial do fornecedor não pode ser lida de volta.** Guardada cifrada em
+  `platform_settings.ai_api_key`, não é preenchível por atribuição em massa, e
+  tem um único caminho de escrita e um único caminho de leitura. **Não existe
+  rota que a devolva**: a ação chama-se «Substituir credencial» e não «Mostrar
+  chave». O painel mostra apenas «configurada», a data, e os últimos quatro
+  caracteres quando a chave tem vinte ou mais. Não aparece em payloads Inertia,
+  logs, mensagens de exceção nem linhas de auditoria — nem o valor, nem o
+  comprimento, nem um hash. Uma credencial recusada na validação também não fica
+  na sessão (`dontFlash`, registado no handler de exceções, que é o único sítio
+  onde essa lista tem efeito).
+
+- **A proveniência do payload é imposta pelo tipo.** `AiAsk` não aceita `string`:
+  aceita `SanitisedPayload`, cujo construtor é privado e cuja classe é final, e
+  cuja única fábrica está marcada `@internal`, exige um sanitizador e tem um teste
+  de arquitetura a garantir que não ganha um segundo chamador. O gateway volta a
+  verificar o payload imediatamente antes do fio, sem confiar no tipo.
+
+- **Em produção, um gestor de segredos externo é preferível** a uma coluna
+  cifrada, com a chave injetada em `LAPIS_AI_KEY` no deploy e o campo do painel
+  vazio: uma coluna cifrada só é tão forte quanto a `APP_KEY` que a decifra, e a
+  `APP_KEY` vive no mesmo ficheiro, na mesma máquina. A ordem de fallback já torna
+  esse o arranjo suportado.
+
+### Notas — o que ainda não está ligado
+
+- **Nenhum plano inclui as capabilities novas.** `help_assistant` e
+  `ai_pedagogical_analysis` estão no catálogo e **em nenhum plano**: a que
+  subscrição pertencem é uma decisão comercial que ainda não foi tomada, e
+  escrevê-la num array seria tomá-la em silêncio. Hoje, portanto, nenhuma
+  organização as tem, todos os ecrãs mostram o estado «plano», e nada construído
+  sobre o gateway chega a um motor. Um teste falha de propósito no dia em que
+  alguém as compuser num plano. Para um piloto, o caminho suportado é um override
+  por organização.
+
+- **Não há ativação real do Gemini, por ausência de credencial.** O driver está
+  escrito e testado de ponta a ponta contra um cliente HTTP simulado, mas esta
+  instalação não tem chave do fornecedor e nenhum teste faz uma chamada real. A
+  ausência de credencial é um estado suportado: o resolver responde
+  `credential_missing`, o painel diz o que falta, e a aplicação inteira continua a
+  funcionar.
+
 ## [0.82.0] — 2026-08-28
 
 A pesquisa do Centro de Ajuda passa a responder a perguntas escritas, e não só

@@ -59,6 +59,22 @@ return Application::configure(basePath: dirname(__DIR__))
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
 
+        /*
+         * Never flashed back to the session when validation fails.
+         *
+         * THIS IS THE ONLY PLACE THAT WORKS, and it is worth saying so: a
+         * `$dontFlash` property on a FormRequest looks exactly like it does
+         * this and does nothing at all. The list lives on the exception
+         * handler, which is what actually runs
+         * `Arr::except($request->input(), $this->dontFlash)` on the way to the
+         * redirect. Without this line a rejected AI credential would sit in the
+         * session store in the clear and be redrawn into the form.
+         *
+         * `dontFlash()` MERGES with Laravel's three password defaults rather
+         * than replacing them.
+         */
+        $exceptions->dontFlash('ai_credential');
+
         // A request whose body outgrew post_max_size never reaches Laravel's own
         // validation — ValidatePostSize throws this from the GLOBAL middleware
         // group, before the "web" group (and StartSession within it) ever runs.

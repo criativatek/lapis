@@ -48,6 +48,20 @@ class CatalogCoherenceTest extends TestCase
         // ReportType::module() returns this key for ReportType::School,
         // consumed by ReportCapabilities::allowsType().
         'institution_reports',
+        // The two AI Core capabilities. Both are held by
+        // `App\Services\Ai\Gateway\AiCapability` — where the enum CASE VALUE is
+        // the module key, by design — and consumed by AiGateway as
+        // `allows($capability->moduleKey())` and
+        // `allowsFor($organization, $capability->moduleKey())`. The enforcement
+        // is real and is tested in AiGatewayTest; it is simply not a literal
+        // string at the call site, which is exactly what this list is for.
+        //
+        // Both are catalogued and in NO plan, on purpose: which subscription
+        // includes them is an open commercial question (CLAUDE.md §31). That
+        // does not make them unenforced — it makes them denied to everybody,
+        // which is the safe end of the same mechanism.
+        'help_assistant',
+        'ai_pedagogical_analysis',
         // NOT indirection — a genuinely independent-gate-free key, found
         // while writing this test. Enrollment management ("Alunos") lives
         // entirely inside the `module:classes` route group (routes/web.php);

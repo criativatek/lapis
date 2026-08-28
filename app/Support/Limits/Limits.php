@@ -185,6 +185,21 @@ class Limits
     }
 
     /**
+     * The plan of record for this organization, or null when there is none.
+     *
+     * PUBLIC SO A THIRD COPY OF THAT QUERY WAS NOT WRITTEN. `AiQuota` needs the
+     * plan in force in order to read an OPTIONAL AI quota override out of its
+     * `limits` JSON — a key `LimitKey` deliberately does not catalogue, because
+     * `parse()` below treats a missing key as a configuration error and «this
+     * plan sets no AI override» is the normal, expected answer there. It needs
+     * exactly the plan this class already resolves, so it asks for it.
+     */
+    public function planFor(Organization $organization): ?Plan
+    {
+        return $this->planInForce($organization);
+    }
+
+    /**
      * Reads one key out of a plan's `limits` JSON (§Lote 3 format: a
      * non-negative integer, or the literal string "unlimited" — never
      * `null` meaning unlimited). A key the catalogue knows about but the

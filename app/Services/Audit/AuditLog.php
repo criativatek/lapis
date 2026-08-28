@@ -39,6 +39,55 @@ class AuditLog
         ]);
     }
 
+    /**
+     * An event that belongs to the PLATFORM rather than to any organization.
+     *
+     * FOR THE BACKOFFICE, AND ONLY FOR IT. Turning the AI engine on, changing
+     * the model, replacing the credential — these are acts of the SaaS operator
+     * that affect every tenant and belong to none (§9 of the AI Core brief).
+     * Filing them under whichever organization the acting admin happens to own
+     * would put a platform-wide decision inside one teacher's audit log, where
+     * its owner can read it and where it is simply not true.
+     *
+     * `forceFill`, NOT `create`, AND THAT IS THE POINT. `organization_id` is
+     * deliberately absent from `AuditEvent`'s `#[Fillable]` list: a model that
+     * accepted a tenant id by mass assignment is a model that can be made to
+     * write into another tenant. Setting it explicitly here means the ONE place
+     * that may write a tenant-less audit row is this method, and it is greppable.
+     *
+     * The row is invisible to every tenant query for free — `BelongsToOrganization`
+     * scopes to `organization_id = <id>`, and NULL is never equal to a number.
+     *
+     * NO SUBJECT. There is no model to point at: the platform settings row is a
+     * singleton nobody navigates to, and pointing at it would say less than the
+     * event name already does.
+     *
+     * @param  array<string, mixed>  $properties
+     */
+    public function recordPlatform(
+        string $event,
+        ?User $causer = null,
+        ?string $summary = null,
+        array $properties = [],
+    ): AuditEvent {
+        $causer ??= auth()->user();
+
+        $row = new AuditEvent;
+
+        $row->forceFill([
+            'organization_id' => null,
+            'causer_id' => $causer?->getKey(),
+            'event' => $event,
+            'summary' => $summary,
+            'properties' => $properties === [] ? null : $properties,
+            'created_at' => now(),
+        ]);
+
+        $row->save();
+
+        return $row;
+    }
+
     protected function ulidOf(?Model $subject): ?string
     {
         if ($subject === null || ! array_key_exists('ulid', $subject->getAttributes())) {

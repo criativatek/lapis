@@ -7,6 +7,7 @@ use App\Policies\OrganizationMembershipPolicy;
 use App\Services\Ai\AiTextProviders;
 use App\Services\Ai\Providers\ChatCompletionsProvider;
 use App\Services\Ai\Providers\FakeAiTextProvider;
+use App\Services\Ai\Providers\GeminiProvider;
 use App\Services\Import\Correction\CorrectionGridParserRegistry;
 use App\Services\Import\Correction\GenericSpreadsheetParser;
 use App\Services\Import\Correction\IntuitivoXlsxParser;
@@ -66,9 +67,13 @@ class AppServiceProvider extends ServiceProvider
      * AiTextProviders for one, and on a fresh installation nothing ever does,
      * because no driver is configured (§8).
      *
-     * The key is read at construction from config, which reads it from the
-     * environment. It is never stored, never shared with the frontend, and the
-     * provider that holds it never puts it in an exception (§47).
+     * The key is read at RESOLUTION time from config — which reads it from
+     * `platform_settings` if the operator stored one there, and otherwise from
+     * the environment. Resolution time, not registration time, is what makes
+     * that ordering work: `boot()` writes the stored settings over the config
+     * long before anything asks the container for a provider. The key is never
+     * shared with the frontend, and the provider that holds it never puts it in
+     * an exception (§47).
      */
     protected function registerWritingAssistant(): void
     {
@@ -79,6 +84,18 @@ class AppServiceProvider extends ServiceProvider
             key: (string) config('lapis.ai.key'),
             model: (string) config('lapis.ai.model'),
             timeout: (int) config('lapis.ai.timeout'),
+        ));
+
+        // Registered exactly like the driver above, and that is the point:
+        // adding an engine is a class, a binding, and a case in
+        // AiTextProviders::driver(). Nothing else in the application learns
+        // that Gemini exists (§2 of the AI Core brief).
+        $this->app->singleton(GeminiProvider::class, fn (): GeminiProvider => new GeminiProvider(
+            baseUrl: (string) config('lapis.ai.gemini.base_url'),
+            key: (string) config('lapis.ai.key'),
+            model: (string) config('lapis.ai.model'),
+            timeout: (int) config('lapis.ai.timeout'),
+            maxOutputTokens: (int) config('lapis.ai.max_output_tokens'),
         ));
 
         $this->app->singleton(FakeAiTextProvider::class);
@@ -92,6 +109,7 @@ class AppServiceProvider extends ServiceProvider
         $this->registerOrganizationMembershipAbilities();
         $this->configureDefaults();
         $this->applyPlatformMailSettings();
+        $this->applyPlatformAiSettings();
         $this->describeRelease();
         $this->limitWritingAssistant();
     }
@@ -133,6 +151,85 @@ class AppServiceProvider extends ServiceProvider
 
             return $limits;
         });
+    }
+
+    /**
+     * Let the platform's stored AI settings override the config, so the operator
+     * turns the engine on, changes the model and replaces the credential from
+     * the backoffice instead of from a server console.
+     *
+     * THE SAME ARRANGEMENT THE SMTP BLOCK BELOW HAS USED SINCE IT EXISTED, and
+     * deliberately so: one row, read once at boot, written over `config()`, with
+     * the `.env` left underneath as the fallback. An installation that
+     * configures the engine through the environment and never opens the screen
+     * behaves exactly as it did before this existed.
+     *
+     * WHAT IS STORED WINS; WHAT IS NOT STORED FALLS THROUGH. Every AI column is
+     * nullable and a null is «not decided here», so an operator who sets only
+     * the model keeps the environment's timeout. `ai_enabled` is the exception
+     * and it is a master switch: false forces the driver to null, which is the
+     * one setting that overrides a configured `.env` rather than falling back to
+     * it — «turn it off» has to mean off.
+     *
+     * THE CREDENTIAL IS DECRYPTED THROUGH `aiCredential()`, which reports and
+     * returns null when the ciphertext no longer matches APP_KEY. An unreadable
+     * credential turns the engine off — `AiTextProviders` then answers
+     * `credential_missing`, the backoffice says so, and the operator re-enters
+     * it. It does not 500 every request in the application.
+     *
+     * ponytail: one indexed-row read per boot, shared with applyPlatformMailSettings() —
+     * cache the row if either ever shows up in a profile.
+     */
+    protected function applyPlatformAiSettings(): void
+    {
+        try {
+            $settings = PlatformSetting::query()->first();
+        } catch (\Throwable) {
+            return; // table not there yet
+        }
+
+        if ($settings === null || ! $settings->aiConfigured()) {
+            return;
+        }
+
+        if (! $settings->ai_enabled) {
+            // The master switch, and the only override that beats a configured
+            // environment rather than deferring to it.
+            config(['lapis.ai.driver' => null]);
+
+            return;
+        }
+
+        config(array_filter([
+            'lapis.ai.driver' => $settings->ai_provider,
+            'lapis.ai.model' => $settings->ai_model,
+            'lapis.ai.key' => $settings->aiCredential(),
+            'lapis.ai.timeout' => $settings->ai_timeout_seconds,
+            'lapis.ai.max_output_tokens' => $settings->ai_max_output_tokens,
+            'lapis.ai.per_minute' => $settings->ai_per_minute,
+            'lapis.ai.organization_per_minute' => $settings->ai_organization_per_minute,
+        ], fn (mixed $value): bool => $value !== null && $value !== ''));
+
+        // A stored null is a REAL INSTRUCTION here — «no ceiling of this kind»
+        // — so unlike the block above, this one does not filter nulls out. A
+        // capability or window the operator never touched simply has no key,
+        // and config keeps whatever the environment gave it.
+        //
+        // Everything is re-checked rather than trusted: this is a JSON column,
+        // and its contents are whatever was last written into it.
+        foreach ($settings->ai_quotas ?? [] as $capability => $windows) {
+            if (! is_string($capability) || ! is_array($windows)) {
+                continue;
+            }
+
+            foreach ($windows as $window => $value) {
+                if (! is_string($window)) {
+                    continue;
+                }
+
+                config(['lapis.ai.quotas.'.$capability.'.'.$window => is_int($value) ? $value : null]);
+            }
+        }
     }
 
     /**

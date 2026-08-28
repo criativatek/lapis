@@ -6,6 +6,10 @@ recebe **403** — o acesso exige a flag `is_platform_admin`.
 
 > Toda a ação de operador que toca numa conta fica na **trilha de auditoria da org-alvo**
 > (`audit_events`, via `CurrentOrganization::runFor`). Nada aqui é silencioso.
+>
+> Uma ação que **não** toca numa conta — configurar a IA da plataforma — vai para a
+> mesma tabela com `organization_id` a NULL, via `AuditLog::recordPlatform()`. Não
+> pertence a nenhum tenant e não aparece na trilha de nenhum.
 
 ## Tornar-se admin de plataforma
 
@@ -51,8 +55,8 @@ transportar.
   navegação seguinte já mostra a entrada.
 
 Dentro do backoffice, o `AdminLayout` tem a sua própria navegação (Contas · Nova
-conta · Email (SMTP)) e **«Voltar ao Lapispro»**, que devolve o operador ao
-`/dashboard` da aplicação normal.
+conta · Comercial · Email (SMTP) · Inteligência Artificial) e **«Voltar ao
+Lapispro»**, que devolve o operador ao `/dashboard` da aplicação normal.
 
 ## O que se faz lá
 
@@ -63,6 +67,7 @@ conta · Email (SMTP)) e **«Voltar ao Lapispro»**, que devolve o operador ao
 | **Nova conta** (`/admin/accounts/create`) | Provisiona professor+organização+plano de uma vez. Email já verificado (contas provisionadas saltam a verificação). Password opcional — em branco gera uma temporária. |
 | **Comercial** (`/admin/commercial`) | Contas, subscrições, condição comercial e **receita real** — ver abaixo. |
 | **Email (SMTP)** (`/admin/settings`) | Configura o email do sistema **e o endereço de contacto público** — ver abaixo. |
+| **Inteligência Artificial** (`/admin/ai`) | Liga/desliga a IA, escolhe fornecedor e modelo, define timeout, teto de tokens de resposta, rate limits e quotas, guarda/substitui a credencial e testa a ligação — ver abaixo. |
 
 **Mudar plano** cria uma **nova subscrição** com `starts_at` mais recente (a antiga fica no
 histórico) e faz `flush()` aos entitlements. Duas subscrições no mesmo segundo desempatam
@@ -220,6 +225,66 @@ domínio) **só escuta 587**. 465/25/2525 estão fechados. Config correta:
 > O outbound 465 do VPS **não** está bloqueado (a 465 do Gmail abre) — é mesmo o host
 > `mail.criativatek.com` que não corre SSL implícito. Por isso 587/TLS, não 465/SSL.
 
+## Inteligência Artificial (`/admin/ai`)
+
+O motor que atende as funcionalidades assistidas por IA. Detalhe e porquês em
+[ADR-0007](adr/0007-ai-core-one-gateway-one-policy.md); o que uma funcionalidade
+nova consome está em [ai-core-contract.md](ai-core-contract.md).
+
+**Estado inicial de uma instalação nova:** IA inativa, credencial por configurar.
+Toda a aplicação funciona nesse estado — é o estado pretendido, não uma pendência.
+
+**O que se configura:** interruptor geral · fornecedor (Gemini · compatível com
+`/chat/completions` · simulado, fora de produção) · modelo · timeout · teto de
+tokens de resposta · pedidos por minuto (utilizador e organização) · quotas por
+capability (utilizador/dia, organização/mês).
+
+**O que está guardado sobrepõe-se ao `.env`; o que não está cai para lá.** Mesmo
+arranjo do SMTP acima. Todas as colunas são nullable e null significa «não decidido
+aqui» — a exceção é o interruptor geral, em que `false` bate um `.env` configurado,
+porque «desligar» tem de significar desligado.
+
+### A credencial
+
+- Cifrada na base de dados (cast `encrypted`), escrita por um único método, lida por
+  um único método (o `AppServiceProvider`, ao arranque).
+- **Nunca volta ao ecrã.** Não há rota que a devolva. O painel mostra
+  «configurada», a data, e os **últimos 4 caracteres** quando a chave tem 20 ou
+  mais. A ação chama-se **«Substituir credencial»**, não «Mostrar chave».
+- Não aparece em logs, exceções, payloads Inertia nem linhas de auditoria.
+- **Em produção prefira um gestor de segredos externo**, com `LAPIS_AI_KEY`
+  injetada no deploy e este campo vazio. Uma coluna cifrada só é tão forte quanto a
+  `APP_KEY` que a decifra, e a `APP_KEY` vive no mesmo ficheiro, na mesma máquina.
+
+### «Testar ligação»
+
+Faz um pedido **real** ao fornecedor com as definições em vigor. Custa tokens, fica
+medido em `ai_usage_events` — sem organização, portanto sem consumir a quota de
+escola nenhuma — e é o único ecrã do produto que diz **qual** foi a falha
+(«a credencial foi rejeitada», «o fornecedor não respondeu a tempo»). Um professor
+vê sempre a mensagem genérica; um operador a depurar uma chave precisa da
+específica.
+
+### Auditoria
+
+Ao contrário do resto desta página, uma alteração à configuração de IA **não
+pertence a nenhum tenant** — afeta todas as organizações. Vai para `audit_events`
+com `organization_id` a NULL, via `AuditLog::recordPlatform()`, e é invisível na
+trilha de qualquer organização.
+
+Eventos: `ai.settings_updated` (com os campos alterados e os valores novos),
+`ai.credential_created`, `ai.credential_replaced`, `ai.credential_removed`,
+`ai.connection_tested`. **Nenhum deles guarda a credencial** — nem o valor, nem o
+comprimento, nem um hash.
+
+### Ainda não há credencial Gemini
+
+E, mais importante, **nenhum plano concede as capabilities novas**
+(`help_assistant`, `ai_pedagogical_analysis`): a composição comercial é uma decisão
+por tomar. Configurar o motor aqui não faz aparecer nada a ninguém enquanto isso não
+mudar — ver [ai-core-contract.md §10](ai-core-contract.md#10-decisões-pendentes).
+Para um piloto, o caminho suportado é um override por organização.
+
 ## Verificar end-to-end
 
 1. `lapis:make-admin <email>` → login → dropdown da conta → «Administração da
@@ -227,3 +292,5 @@ domínio) **só escuta 587**. 465/25/2525 estão fechados. Config correta:
    normal, a entrada não existe e `/admin` escrito à mão dá 403.
 2. Configurar SMTP (587/TLS acima) → «Enviar email de teste» para um inbox real → toast verde + email chega.
 3. Registar um professor em `/register` com email real → recebe o email de verificação.
+4. `/admin/ai` → fornecedor «Simulado», modelo qualquer, IA ativa → «Testar ligação»
+   → toast verde. Recarregar: a credencial continua a dizer só «configurada».

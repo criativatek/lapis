@@ -137,15 +137,31 @@ return [
     | implement. Whoever sets LAPIS_AI_ENDPOINT decides where the text goes,
     | including to a model running inside the school.
     |
-    | The key is read from the environment and nowhere else — never the
-    | database, never the frontend, never a log line, never an exception
-    | message (§47 of the brief).
+    | `gemini` DOES name a company, and it is the first one that does. The
+    | operator asked for it explicitly, which is what CLAUDE.md §31 requires
+    | before a vendor may be picked at all. It is still not a DEFAULT: `driver`
+    | below is null until somebody chooses, and everything the driver needs —
+    | model, timeout, ceiling, key — is configuration, so switching to another
+    | engine is a settings change and not a rewrite.
+    |
+    | THE KEY HAS TWO POSSIBLE HOMES AND ONLY TWO. The environment (here), and
+    | `platform_settings.ai_api_key`, encrypted at the model layer and written
+    | over this config at boot by AppServiceProvider — the same arrangement the
+    | platform's SMTP password has used since it existed. It is never in the
+    | frontend, never in a log line, never in an exception message, and never in
+    | an audit row (§47 of the Relatórios brief; §4 and §9 of the AI Core brief).
+    |
+    | A SECRET MANAGER IS BETTER THAN EITHER, and where one is available in
+    | production it should hold the key with `LAPIS_AI_KEY` injected from it at
+    | deploy time — see docs/ai-core-contract.md. The encrypted column exists
+    | because this installation has no secret manager today, not because a
+    | database is the right place for a credential.
     |
     */
 
     'ai' => [
 
-        // null | 'chat-completions' | 'fake'. Null means the feature is off.
+        // null | 'gemini' | 'chat-completions' | 'fake'. Null means the feature is off.
         'driver' => env('LAPIS_AI_DRIVER'),
 
         'endpoint' => env('LAPIS_AI_ENDPOINT'),
@@ -168,6 +184,83 @@ return [
         'per_minute' => (int) env('LAPIS_AI_PER_MINUTE', 10),
 
         'organization_per_minute' => (int) env('LAPIS_AI_ORGANIZATION_PER_MINUTE', 40),
+
+        /*
+         | A HARD CEILING ON THE ANSWER, IN TOKENS.
+         |
+         | Distinct from `max_characters`, which limits what goes OUT. This
+         | limits what may come back, and it is the only setting on this list
+         | that is directly a bill: an engine with no output ceiling will
+         | cheerfully answer a two-line question with two thousand lines.
+         |
+         | Expressed in tokens rather than characters because that is the unit
+         | every engine's API actually accepts. `AiTextRequest::maxOutputCharacters`
+         | stays as the caller's own preference for drivers that can express one;
+         | this is the installation-wide floor under it that no caller can raise.
+         */
+        'max_output_tokens' => (int) env('LAPIS_AI_MAX_OUTPUT_TOKENS', 2048),
+
+        /*
+         | Where the Gemini driver posts.
+         |
+         | A BASE, NOT AN ENDPOINT: the model is part of the path
+         | (`/models/{model}:generateContent`), so the URL cannot be a fixed
+         | string the way `chat-completions` allows. Configurable so a regional
+         | or proxied deployment can be pointed elsewhere without a code change.
+         */
+        'gemini' => [
+            'base_url' => rtrim((string) env(
+                'LAPIS_AI_GEMINI_BASE_URL',
+                'https://generativelanguage.googleapis.com/v1beta',
+            ), '/'),
+        ],
+
+        /*
+        |----------------------------------------------------------------------
+        | Technical spend ceilings, per capability
+        |----------------------------------------------------------------------
+        |
+        | THESE ARE NOT THE COMMERCIAL QUOTA. They are the ceiling that stops a
+        | loop, a stuck client or a bad afternoon from turning into an invoice —
+        | the same job the rate limiter does per minute, done per day and per
+        | month. How many AI requests a Base/Pro/Institucional subscription
+        | INCLUDES is a commercial decision nobody has taken yet, and inventing a
+        | number here would be taking it (CLAUDE.md §31 — «change the commercial
+        | composition of the plans»).
+        |
+        | `AiQuota` therefore reads a per-plan override FIRST and falls back to
+        | these; the override is unset on every seeded plan today, which is the
+        | honest expression of «not yet decided». See docs/ai-core-contract.md.
+        |
+        | A NON-NUMERIC VALUE MEANS NO CEILING OF THAT KIND — an empty
+        | environment variable is how an installation says «do not cap this»,
+        | which is why these are not written as `(int) env(...)` like everything
+        | above: `(int) ''` is 0, and 0 is a real, opposite instruction. Zero
+        | means the capability is ceilinged shut, which is a valid way to turn
+        | one off without touching the plans.
+        |
+        */
+        'quotas' => [
+
+            'help_assistant' => [
+                'user_daily' => is_numeric($helpDaily = env('LAPIS_AI_HELP_USER_DAILY', 60))
+                    ? (int) $helpDaily
+                    : null,
+                'organization_monthly' => is_numeric($helpMonthly = env('LAPIS_AI_HELP_ORGANIZATION_MONTHLY', 3000))
+                    ? (int) $helpMonthly
+                    : null,
+            ],
+
+            'ai_pedagogical_analysis' => [
+                'user_daily' => is_numeric($analysisDaily = env('LAPIS_AI_PEDAGOGICAL_USER_DAILY', 40))
+                    ? (int) $analysisDaily
+                    : null,
+                'organization_monthly' => is_numeric($analysisMonthly = env('LAPIS_AI_PEDAGOGICAL_ORGANIZATION_MONTHLY', 1500))
+                    ? (int) $analysisMonthly
+                    : null,
+            ],
+
+        ],
 
     ],
 
