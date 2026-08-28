@@ -1,48 +1,44 @@
 <script setup lang="ts">
 import type { HTMLAttributes } from 'vue';
 
-defineOptions({
-    inheritAttrs: false,
-});
+defineOptions({ inheritAttrs: false });
 
-type Props = {
-    className?: HTMLAttributes['class'];
-};
-
-defineProps<Props>();
+defineProps<{ className?: HTMLAttributes['class'] }>();
 </script>
 
 <template>
-    <!-- Lapispro mark: an L formed by a pencil (amber body) and a clock hand,
-         "mais tempo para ensinar". Uses currentColor for the L stroke so it
-         inverts with the foreground; the pencil body stays amber. -->
+    <!--
+        A marca, do ficheiro original da identidade.
+
+        Substituiu um símbolo desenhado à mão em código que nunca foi a marca
+        de ninguém — um lápis e um ponteiro de relógio inventados aqui dentro.
+
+        O AZUL É `currentColor` DE PROPÓSITO: assim a marca inverte com o texto
+        à sua volta, azul sobre claro e branca sobre escuro, sem serem dois
+        ficheiros a manter nem o salto que se vê quando uma imagem troca depois
+        de a página já estar pintada. O âmbar nunca muda — é ele que identifica.
+    -->
     <svg
         xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 40 40"
-        fill="none"
+        viewBox="0 0 66.66 67.17"
+        role="img"
+        aria-label="Lapispro"
         :class="className"
         v-bind="$attrs"
     >
-        <path
-            d="M9 5v22"
-            stroke="#F5B855"
-            stroke-width="6"
-            stroke-linecap="round"
+        <polyline
+            fill="currentColor"
+            points="62.79 67.2 3.86 67.2 3.86 50.76 62.79 50.76"
         />
-        <path d="M6.2 5.4 9 1l2.8 4.4z" fill="currentColor" />
-        <path
-            d="M9 30h16"
-            stroke="currentColor"
-            stroke-width="6"
-            stroke-linecap="round"
-        />
-        <path
-            d="M18 15v7l5 4"
-            stroke="currentColor"
-            stroke-width="3"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-        />
-        <circle cx="18" cy="22" r="2.6" fill="#F5B855" />
+        <g>
+            <polygon
+                fill="#f9b04e"
+                points="23.3 18.44 3.86 50.76 62.79 50.76 45.48 21.98 23.3 18.44"
+            />
+            <polygon
+                fill="currentColor"
+                points="41.6 15.52 41.6 15.52 33.33 1.77 33.33 1.77 33.33 1.77 23.3 18.44 45.48 21.98 41.6 15.52"
+            />
+        </g>
     </svg>
 </template>

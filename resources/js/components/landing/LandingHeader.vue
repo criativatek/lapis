@@ -2,7 +2,7 @@
 import { Link } from '@inertiajs/vue3';
 import { Menu } from '@lucide/vue';
 import { onBeforeUnmount, onMounted, ref } from 'vue';
-import AppLogoIcon from '@/components/AppLogoIcon.vue';
+import AppLogoWordmark from '@/components/AppLogoWordmark.vue';
 import { Button } from '@/components/ui/button';
 import {
     Sheet,
@@ -123,23 +123,25 @@ const items: readonly LandingNavItem[] = LANDING_NAV;
                 class="flex items-center gap-2.5 rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                 aria-label="Lapispro — página inicial"
             >
+                <!--
+                    O logótipo da identidade, não uma marca dentro de um
+                    quadrado com o nome escrito ao lado. As cores exactas dos
+                    ficheiros: #11223d no tema claro, branco no escuro — que é
+                    a diferença entre as duas versões da identidade, feita aqui
+                    com uma classe em vez de duas imagens.
+
+                    O nome deixa de ser escrito à parte porque o logótipo já o
+                    diz; a linha descritiva por baixo mantém-se.
+                -->
+                <AppLogoWordmark
+                    class="h-7 w-auto shrink-0 text-[#11223d] sm:h-8 dark:text-white"
+                />
                 <span
-                    class="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground"
+                    class="hidden max-w-[19rem] text-[12px] leading-tight lg:block"
+                    :class="CHROME_MUTED"
+                    >Plataforma para professores. Avaliação, organização e
+                    acompanhamento num só lugar.</span
                 >
-                    <AppLogoIcon class="size-5" />
-                </span>
-                <span class="hidden sm:block">
-                    <span
-                        class="block text-[17px] leading-none font-semibold tracking-tight"
-                        >Lapispro</span
-                    >
-                    <span
-                        class="mt-1 block text-[12px] leading-tight"
-                        :class="CHROME_MUTED"
-                        >Plataforma para professores. Avaliação, organização e
-                        acompanhamento num só lugar.</span
-                    >
-                </span>
             </Link>
 
             <nav

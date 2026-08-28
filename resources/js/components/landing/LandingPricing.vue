@@ -3,7 +3,7 @@ import { Link } from '@inertiajs/vue3';
 import { ArrowRight, Check } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import { dashboard, register } from '@/routes';
-import { edit as planSettings } from '@/routes/settings/plan';
+import { create as checkout } from '@/routes/settings/checkout';
 import {
     FALLBACK_PLAN,
     FOUNDER,
@@ -33,14 +33,24 @@ import type { LandingPlan } from './types';
  * measured is the kind of thing a teacher who has been sold software before
  * notices immediately. The lead is a border, a ring and one line of copy.
  *
- * WHERE THE BUTTONS GO. Nothing on this page sells: there is no checkout, and
- * payments are on the ask-first list (CLAUDE.md §31). «Começar gratuitamente»
- * and «Escolher Pro» both open the registration form — which really does
- * create an organization on the Base plan, with a voluntary 30-day Pro trial
- * available inside — and a signed-in visitor is sent to their own plan screen
- * instead of registering twice. «Falar connosco» is a mailto to the address
- * the operator configured; with no address configured the button is not
- * rendered at all, rather than pointing somewhere nobody reads.
+ * WHERE THE BUTTONS GO, and none of them takes money on this page. There is a
+ * checkout since 0.82.0, but it lives behind the account: it collects billing
+ * details and hands out an IBAN and a reference, and a person confirms the
+ * transfer afterwards.
+ *
+ * A VISITOR WITHOUT AN ACCOUNT goes to the registration form — which really
+ * does create an organization on the Base plan, with a voluntary 30-day Pro
+ * trial inside. Not out of dogma: the subscription attaches to an organization
+ * and the invoice needs a name, a NIF and an address, none of which exists
+ * before there is an account.
+ *
+ * A SIGNED-IN VISITOR who presses «Escolher Pro» has already decided, and goes
+ * straight to the checkout. Sending them to the plan screen would make them
+ * find the same button a second time.
+ *
+ * «Falar connosco» is a mailto to the address the operator configured; with no
+ * address configured the button is not rendered at all, rather than pointing
+ * somewhere nobody reads.
  */
 
 const props = defineProps<{
@@ -71,13 +81,27 @@ function mailtoHref(plan: LandingPlan): string {
     return `mailto:${props.contactEmail}?subject=${encodeURIComponent(subject)}`;
 }
 
-/** Where the two self-service calls to action go. There is no checkout. */
+/** Where the two self-service calls to action go. */
 function visitHref(plan: LandingPlan) {
     if (!props.authenticated) {
-        return register();
+        // Conta primeiro, e não por dogma: a subscrição prende-se a uma
+        // organização e a fatura precisa de nome, NIF e morada — nada disso
+        // existe antes de haver conta. E o Base é gratuito, com 30 dias de Pro
+        // à experiência: o caminho natural é experimentar e depois subir.
+        //
+        // MAS O DESTINO É O CHECKOUT, não o registo. Apontar para o destino
+        // verdadeiro faz o `Authenticate` guardá-lo em sessão, e a pessoa é
+        // devolvida a ele depois de entrar ou de confirmar o email (ver
+        // App\Http\Responses\LoginResponse). Mandá-la para o registo perdia a
+        // razão que a trouxe: entrava, aterrava no painel, e ficava a
+        // procurar onde é que se subscreve.
+        return plan.key === 'pro' ? checkout() : register();
     }
 
-    return plan.key === 'pro' ? planSettings() : dashboard();
+    // Quem já tem sessão e carrega em «Escolher Pro» vem decidido. Levá-lo à
+    // página do plano obrigava-o a encontrar lá o botão outra vez; vai direito
+    // ao checkout, que é o que ele pediu ao clicar.
+    return plan.key === 'pro' ? checkout() : dashboard();
 }
 </script>
 

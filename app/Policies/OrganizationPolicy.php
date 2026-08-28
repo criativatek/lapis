@@ -34,6 +34,18 @@ class OrganizationPolicy
         return $user->owns($organization);
     }
 
+    /**
+     * Subscrever um plano é acto do dono, como alterar a identidade da escola.
+     *
+     * Um professor que se juntou a um agrupamento não compra nada em nome dele:
+     * a fatura sai com o NIF da instituição e o plano vale para os colegas
+     * todos. Quem assume isso é quem é dono da conta.
+     */
+    public function subscribe(User $user, Organization $organization): bool
+    {
+        return $user->owns($organization);
+    }
+
     protected function belongsTo(User $user, Organization $organization): bool
     {
         return $user->owns($organization)
