@@ -20,6 +20,7 @@ defineProps<{
         privacyEmail: string | null;
         supportEmail: string | null;
     };
+    seoTitle: string;
     contactEmail: string | null;
 }>();
 
@@ -40,7 +41,7 @@ const principles = [
 </script>
 
 <template>
-    <Head title="Sobre e contacto | Lapispro" />
+    <Head :title="seoTitle" />
 
     <MarketingShell v-slot="{ authenticated }" :contact-email="contactEmail">
         <PageHero

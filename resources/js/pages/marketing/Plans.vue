@@ -14,11 +14,15 @@ import PageHero from '@/components/marketing/PageHero.vue';
  * voucher and the questions people ask before paying. The pricing section
  * is the same component the landing used, so the two never quote two prices.
  */
-defineProps<{ plans: LandingPlan[]; contactEmail: string | null }>();
+defineProps<{
+    plans: LandingPlan[];
+    seoTitle: string;
+    contactEmail: string | null;
+}>();
 </script>
 
 <template>
-    <Head title="Planos e preços | Lapispro" />
+    <Head :title="seoTitle" />
 
     <MarketingShell v-slot="{ authenticated }" :contact-email="contactEmail">
         <PageHero

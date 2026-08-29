@@ -14,6 +14,7 @@ export const LANDING_NAV: readonly LandingNavItem[] = [
     { label: 'Avaliação', href: '/funcionalidades/avaliacao' },
     { label: 'Turmas', href: '/funcionalidades/turmas' },
     { label: 'Acompanhamento', href: '/funcionalidades/acompanhamento' },
+    { label: 'Aulas', href: '/funcionalidades/aulas-e-sumarios' },
     { label: 'Planos', href: '/planos' },
     { label: 'Segurança', href: '/seguranca' },
 ];

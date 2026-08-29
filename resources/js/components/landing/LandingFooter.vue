@@ -30,6 +30,7 @@ withDefaults(
 );
 
 const version = computed(() => usePage().props.appVersion);
+const entity = computed(() => usePage().props.legalEntity);
 </script>
 
 <template>
@@ -67,6 +68,20 @@ const version = computed(() => usePage().props.appVersion);
                     Uma plataforma criada para apoiar professores na avaliação,
                     organização e acompanhamento pedagógico.
                 </p>
+                <!-- Who is behind it, where a school looks for it. The same
+                     entity the Privacy Policy names; hidden until configured. -->
+                <address
+                    v-if="entity.name"
+                    class="mt-5 text-sm leading-relaxed not-italic"
+                    :class="CHROME_MUTED"
+                >
+                    <span class="font-medium text-foreground">{{
+                        entity.name
+                    }}</span>
+                    <template v-if="entity.address">
+                        <br />{{ entity.address }}
+                    </template>
+                </address>
             </div>
 
             <nav aria-labelledby="footer-product">

@@ -15,13 +15,18 @@ import ScreenFrame from '@/components/marketing/ScreenFrame.vue';
  * the <title> a crawler reads is rendered by the server from PublicPages, and
  * this <Head> only keeps the tab in agreement with it.
  */
-const props = defineProps<{ slug: string; contactEmail: string | null }>();
+const props = defineProps<{
+    slug: string;
+    /** Same string the server renders in <title>; with SSR on, this one wins. */
+    seoTitle: string;
+    contactEmail: string | null;
+}>();
 
 const feature = computed(() => featureFor(props.slug));
 </script>
 
 <template>
-    <Head :title="`${feature.eyebrow} | Lapispro`" />
+    <Head :title="seoTitle" />
 
     <MarketingShell v-slot="{ authenticated }" :contact-email="contactEmail">
         <PageHero

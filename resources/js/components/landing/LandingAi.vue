@@ -84,7 +84,7 @@ const rules = [
                     <div class="flex gap-3.5">
                         <span
                             aria-hidden="true"
-                            class="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary dark:bg-(--brand-amber)/15 dark:text-(--brand-amber)"
+                            class="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700"
                         >
                             <Check class="size-3" />
                         </span>
@@ -107,9 +107,7 @@ const rules = [
                      as the teacher sees them: pseudonym, not a name — the AI
                      never receives one. Shows how it works instead of
                      explaining it. Demo text, fictional student. -->
-                <div
-                    class="rounded-2xl bg-white p-5 shadow-[0_24px_60px_-28px_rgba(15,23,42,0.45)] ring-1 ring-black/5 sm:p-6"
-                >
+                <div class="rounded-3xl bg-white p-5 card-soft sm:p-6">
                     <div
                         aria-hidden="true"
                         class="flex items-center justify-between gap-3"

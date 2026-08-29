@@ -26,6 +26,7 @@ class MarketingController extends Controller
 
         return Inertia::render('marketing/Feature', [
             'slug' => $slug,
+            'seoTitle' => $this->seoTitle('marketing/Feature', '/funcionalidades/'.$slug),
             'contactEmail' => fn (): ?string => PlatformSetting::current()->publicContactEmail(),
         ]);
     }
@@ -33,6 +34,7 @@ class MarketingController extends Controller
     public function plans(): Response
     {
         return Inertia::render('marketing/Plans', [
+            'seoTitle' => $this->seoTitle('marketing/Plans', '/planos'),
             'plans' => fn (): array => PlanCards::all(),
             'contactEmail' => fn (): ?string => PlatformSetting::current()->publicContactEmail(),
         ]);
@@ -41,6 +43,7 @@ class MarketingController extends Controller
     public function security(): Response
     {
         return Inertia::render('marketing/Security', [
+            'seoTitle' => $this->seoTitle('marketing/Security', '/seguranca'),
             'contactEmail' => fn (): ?string => PlatformSetting::current()->publicContactEmail(),
         ]);
     }
@@ -52,6 +55,7 @@ class MarketingController extends Controller
         $controller = LegalDocuments::controller();
 
         return Inertia::render('marketing/About', [
+            'seoTitle' => $this->seoTitle('marketing/About', '/sobre'),
             'entity' => [
                 'name' => $controller['name'],
                 'vat' => $controller['vat'],
@@ -61,5 +65,15 @@ class MarketingController extends Controller
             ],
             'contactEmail' => fn (): ?string => PlatformSetting::current()->publicContactEmail(),
         ]);
+    }
+
+    /**
+     * The <title> the page's Vue <Head> sets. WITH SSR ON, THE VUE <Head>
+     * WINS over the blade <title> in the served HTML — so the two must be the
+     * same string, and this is where the page gets it from.
+     */
+    private function seoTitle(string $component, string $path): string
+    {
+        return PublicPages::current($component, $path)['title'] ?? config('app.name');
     }
 }

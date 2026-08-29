@@ -76,6 +76,24 @@ class MarketingPagesTest extends TestCase
         }
     }
 
+    /**
+     * With SSR on, the Vue <Head> title replaces the blade <title> in the
+     * served HTML, so the prop the page reads must be the declared title.
+     */
+    #[Test]
+    public function the_marketing_pages_pass_the_declared_title_to_their_head(): void
+    {
+        foreach (PublicPages::all() as $page) {
+            if (! str_starts_with($page['component'], 'marketing/')) {
+                continue;
+            }
+
+            $this->get($page['path'])->assertInertia(fn ($inertia) => $inertia
+                ->component($page['component'])
+                ->where('seoTitle', $page['title']));
+        }
+    }
+
     #[Test]
     public function the_sitemap_and_robots_list_every_public_page(): void
     {

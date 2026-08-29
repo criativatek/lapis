@@ -20,7 +20,7 @@ import PhotoBand from '@/components/marketing/PhotoBand.vue';
  * platform. Says only what the product does (LegalPagesTest keeps the legal
  * text honest; this page repeats its claims, not more).
  */
-defineProps<{ contactEmail: string | null }>();
+defineProps<{ seoTitle: string; contactEmail: string | null }>();
 
 const measures = [
     {
@@ -57,7 +57,7 @@ const measures = [
 </script>
 
 <template>
-    <Head title="Segurança e proteção de dados | Lapispro" />
+    <Head :title="seoTitle" />
 
     <MarketingShell v-slot="{ authenticated }" :contact-email="contactEmail">
         <PageHero

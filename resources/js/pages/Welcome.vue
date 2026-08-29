@@ -94,14 +94,14 @@ const facts = [
     },
     {
         icon: EyeOff,
-        value: 'Pseudónimos',
-        label: 'no dia a dia e na IA — o nome fica cifrado e separado',
+        value: '0 nomes',
+        label: 'chegam à IA — só pseudónimos; o nome fica cifrado e separado',
         tone: 'bg-emerald-100 text-emerald-700',
     },
     {
         icon: KeyRound,
-        value: '2FA + passkeys',
-        label: 'na conta de cada professor, com códigos de recuperação',
+        value: '2 fatores',
+        label: 'e passkeys na conta de cada professor, com códigos de recuperação',
         tone: 'bg-amber-100 text-amber-700',
     },
     {

@@ -47,33 +47,27 @@ withDefaults(
         :aria-labelledby="id && title ? `${id}-title` : undefined"
     >
         <div class="mx-auto w-full max-w-6xl px-6 sm:px-8">
-            <RevealOnScroll v-if="eyebrow || title || lead" v-slot="{ shown }">
+            <RevealOnScroll v-if="eyebrow || title || lead">
                 <div
                     class="max-w-2xl"
                     :class="centered ? 'mx-auto text-center' : undefined"
                 >
                     <p
                         v-if="eyebrow"
-                        class="flex items-center gap-2.5 text-[11px] font-semibold tracking-[0.14em] text-blue-700 uppercase dark:text-(--brand-amber)"
-                        :class="centered ? 'justify-center' : undefined"
+                        class="text-[12px] font-semibold tracking-[0.12em] text-blue-700 uppercase"
                     >
-                        <span
-                            aria-hidden="true"
-                            class="h-px w-7 origin-left bg-blue-600 transition-transform delay-150 duration-700 ease-out dark:bg-(--brand-amber)"
-                            :class="shown ? 'scale-x-100' : 'scale-x-0'"
-                        />
                         {{ eyebrow }}
                     </p>
                     <h2
                         v-if="title"
                         :id="id ? `${id}-title` : undefined"
-                        class="mt-3 text-3xl font-semibold tracking-tight text-balance sm:text-4xl"
+                        class="mt-3 text-3xl font-semibold tracking-[-0.02em] text-balance sm:text-4xl lg:text-[3rem] lg:leading-[1.08]"
                     >
                         {{ title }}
                     </h2>
                     <p
                         v-if="lead"
-                        class="mt-4 text-base leading-relaxed text-pretty text-muted-foreground sm:text-lg"
+                        class="mt-4 text-lg leading-relaxed text-pretty text-muted-foreground"
                     >
                         {{ lead }}
                     </p>

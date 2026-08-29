@@ -6,6 +6,7 @@ use App\Models\AcademicYear;
 use App\Models\SchoolClass;
 use App\Models\Subject;
 use App\Support\Entitlements\Entitlements;
+use App\Support\Legal\LegalDocuments;
 use App\Support\Navigation\NavigationBuilder;
 use App\Support\Retention\ClosureStatusPresenter;
 use App\Support\Retention\ResolveSelectedAcademicYear;
@@ -74,6 +75,12 @@ class HandleInertiaRequests extends Middleware
             ...parent::share($request),
             'name' => config('app.name'),
             'appVersion' => config('app.version'),
+            // The public footer names the entity behind the product — the same
+            // one the Privacy Policy names (LegalDocuments::controller()).
+            'legalEntity' => fn (): array => [
+                'name' => LegalDocuments::controller()['name'],
+                'address' => LegalDocuments::controller()['address'],
+            ],
             'auth' => [
                 'user' => $user,
                 // The ONE thing the client is told about the backoffice: whether

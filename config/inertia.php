@@ -16,7 +16,9 @@ return [
     */
 
     'ssr' => [
-        'enabled' => true,
+        // Off under phpunit (phpunit.xml): a running SSR server would answer the
+        // tests with the Vue <Head>, not the blade head the assertions read.
+        'enabled' => (bool) env('INERTIA_SSR_ENABLED', true),
         'url' => 'http://127.0.0.1:13714',
         'bundle' => base_path('bootstrap/ssr/ssr.js'),
 

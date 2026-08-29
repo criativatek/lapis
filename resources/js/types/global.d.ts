@@ -1,6 +1,10 @@
 import type { Auth } from '@/types/auth';
 import type { ClosureStatus, OrganizationClosureStatus } from '@/types/closure';
-import type { SelectableAcademicYear, SharedNav, WorkScope } from '@/types/navigation';
+import type {
+    SelectableAcademicYear,
+    SharedNav,
+    WorkScope,
+} from '@/types/navigation';
 
 // Extend ImportMeta interface for Vite...
 declare module 'vite/client' {
@@ -20,6 +24,8 @@ declare module '@inertiajs/core' {
         sharedPageProps: {
             name: string;
             appVersion: string;
+            /** The entity behind the product, for the public footer. Null parts when unconfigured. */
+            legalEntity: { name: string | null; address: string | null };
             auth: Auth;
             nav: SharedNav;
             /** Module keys in full use — writes included. */

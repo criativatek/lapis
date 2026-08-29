@@ -14,6 +14,26 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > cada um sob o título da frente a que pertenceu. A 0.85.0 é o primeiro
 > release em que as duas linhagens voltam a ser uma só.
 
+## [0.99.0] — 2026-08-30
+
+Passagem de `/polish` e uma armadilha de SSR apanhada pelo caminho.
+
+- **Com o SSR ligado, o `<title>` servido é o do `<Head>` do Vue, não o do
+  blade.** As páginas de funcionalidades diziam «Avaliação de alunos |
+  Lapispro» ao crawler em vez do título de SEO declarado em `PublicPages`.
+  Agora o servidor passa `seoTitle` (o mesmo string) a cada página de
+  marketing, e `MarketingPagesTest` afirma que coincidem. Os testes correm com
+  o SSR desligado (`INERTIA_SSR_ENABLED=false` no `phpunit.xml`): um servidor
+  SSR a correr na máquina fazia falhar três asserções sobre o `<title>`.
+- Navegação com seis páginas na barra (entra «Aulas»); Relatórios e Sobre no
+  menu móvel e no rodapé.
+- `LandingSection`, FAQ e IA alinhados ao tratamento novo: eyebrow sem régua,
+  título maior e mais apertado, cartão `card-soft`.
+- Faixa de factos toda numérica e verdadeira: 3 regras · 0 nomes chegam à IA ·
+  2 fatores + passkeys · 0 €.
+- Rodapé com a entidade e a morada (prop partilhado `legalEntity`, da mesma
+  fonte que a Política de Privacidade); escondido até estar configurado.
+
 ## [0.98.0] — 2026-08-30
 
 Correcções do `/critique` (crítica de design contra o `.impeccable.md`):

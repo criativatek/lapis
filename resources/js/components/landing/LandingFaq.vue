@@ -77,21 +77,16 @@ const questions = [
         <div
             class="mx-auto grid w-full max-w-6xl gap-10 px-6 sm:px-8 lg:grid-cols-[minmax(0,0.72fr)_minmax(0,1.28fr)] lg:gap-16"
         >
-            <RevealOnScroll v-slot="{ shown }" class="min-w-0">
+            <RevealOnScroll class="min-w-0">
                 <div class="lg:sticky lg:top-24">
                     <p
-                        class="flex items-center gap-2.5 text-[11px] font-semibold tracking-[0.14em] text-blue-700 uppercase dark:text-(--brand-amber)"
+                        class="text-[12px] font-semibold tracking-[0.12em] text-blue-700 uppercase"
                     >
-                        <span
-                            aria-hidden="true"
-                            class="h-px w-7 origin-left bg-blue-600 transition-transform delay-150 duration-700 ease-out dark:bg-(--brand-amber)"
-                            :class="shown ? 'scale-x-100' : 'scale-x-0'"
-                        />
                         Perguntas
                     </p>
                     <h2
                         id="perguntas-title"
-                        class="mt-3 text-3xl font-semibold tracking-tight text-balance sm:text-4xl"
+                        class="mt-3 text-3xl font-semibold tracking-[-0.02em] text-balance sm:text-4xl lg:text-[3rem] lg:leading-[1.08]"
                     >
                         O que perguntam primeiro.
                     </h2>
