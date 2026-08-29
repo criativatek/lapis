@@ -63,14 +63,14 @@ const measures = [
     <MarketingShell v-slot="{ authenticated }" :contact-email="contactEmail">
         <PageHero
             eyebrow="Segurança e dados"
-            title="Dados de alunos exigem proteção desde a origem."
+            title="Dados de alunos exigem"
+            title-accent="proteção desde a origem."
             lead="A informação académica e pessoal de menores está entre os dados mais sensíveis que existem numa escola. No Lapispro a proteção faz parte da arquitetura, não é um acrescento no fim."
             :image="{
                 src: '/images/marketing/classroom.webp',
                 alt: 'Sala de aula vazia ao fim da tarde, com luz a entrar pela janela.',
             }"
             :authenticated="authenticated"
-            tone="emerald"
             cta="Criar conta gratuita"
         />
 

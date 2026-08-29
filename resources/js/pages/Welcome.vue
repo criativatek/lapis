@@ -4,7 +4,10 @@ import {
     ArrowRight,
     BarChart3,
     CalendarDays,
+    Database,
+    EyeOff,
     FileText,
+    KeyRound,
     Scale,
     Users,
 } from '@lucide/vue';
@@ -13,6 +16,7 @@ import LandingFinalCta from '@/components/landing/LandingFinalCta.vue';
 import LandingHowItWorks from '@/components/landing/LandingHowItWorks.vue';
 import type { LandingPlan } from '@/components/landing/types';
 import ColorBand from '@/components/marketing/ColorBand.vue';
+import HeroCard from '@/components/marketing/HeroCard.vue';
 import MarketingShell from '@/components/marketing/MarketingShell.vue';
 import PageHero from '@/components/marketing/PageHero.vue';
 import PhotoBand from '@/components/marketing/PhotoBand.vue';
@@ -74,6 +78,51 @@ const areas = [
         tone: 'bg-amber-100 text-amber-700',
     },
 ] as const;
+
+const facts = [
+    {
+        icon: Scale,
+        value: '3 regras',
+        label: 'de cálculo que uma folha não trata: vazio, não aplicável, entrada tardia',
+        tone: 'bg-blue-100 text-blue-700',
+    },
+    {
+        icon: EyeOff,
+        value: 'Pseudónimos',
+        label: 'no dia a dia e na IA — o nome fica cifrado e separado',
+        tone: 'bg-emerald-100 text-emerald-700',
+    },
+    {
+        icon: KeyRound,
+        value: '2FA + passkeys',
+        label: 'na conta de cada professor, com códigos de recuperação',
+        tone: 'bg-amber-100 text-amber-700',
+    },
+    {
+        icon: Database,
+        value: '0 €',
+        label: 'no plano Base, sem cartão e sem prazo',
+        tone: 'bg-blue-100 text-blue-700',
+    },
+] as const;
+
+const measures = [
+    {
+        icon: EyeOff,
+        title: 'Identidade separada',
+        body: 'Nome cifrado à parte; o pseudónimo é o que circula.',
+    },
+    {
+        icon: Database,
+        title: 'Isolamento no servidor',
+        body: 'Cada organização só vê o seu contexto, em todas as consultas.',
+    },
+    {
+        icon: KeyRound,
+        title: 'Registo de operações',
+        body: 'As ações relevantes ficam ligadas a quem as realizou.',
+    },
+] as const;
 </script>
 
 <template>
@@ -88,7 +137,8 @@ const areas = [
     <MarketingShell v-slot="{ authenticated }" :contact-email="contactEmail">
         <PageHero
             eyebrow="Básico · Secundário · Profissional · Universitário"
-            title="Menos peso administrativo. Mais espaço para ser professor."
+            title="Menos peso administrativo."
+            title-accent="Mais espaço para ser professor."
             lead="O Lapispro é uma plataforma para professores que reúne avaliação de alunos, gestão de turmas, acompanhamento pedagógico, aulas, sumários e relatórios num único lugar — com IA que interpreta e um professor que decide sempre."
             :image="{
                 src: '/images/marketing/hero.webp',
@@ -104,7 +154,45 @@ const areas = [
                     Ver como funciona
                 </Link>
             </template>
+            <template #figure>
+                <HeroCard />
+            </template>
         </PageHero>
+
+        <!-- Facts, not figures. The reference mockup had «+120 escolas» and
+             «99,9% disponibilidade» here; the product has no such numbers and
+             the site invents none. These four are true and checkable. -->
+        <section class="px-4 pt-4 sm:px-6 sm:pt-6">
+            <dl
+                class="mx-auto grid w-full max-w-6xl gap-3 sm:grid-cols-2 lg:grid-cols-4"
+            >
+                <div
+                    v-for="fact in facts"
+                    :key="fact.label"
+                    class="flex items-center gap-4 rounded-2xl bg-white px-5 py-4 ring-1 ring-black/5"
+                >
+                    <span
+                        aria-hidden="true"
+                        class="flex size-11 shrink-0 items-center justify-center rounded-xl"
+                        :class="fact.tone"
+                    >
+                        <component :is="fact.icon" class="size-5" />
+                    </span>
+                    <div class="min-w-0">
+                        <dt
+                            class="text-xl font-semibold tracking-tight tabular-nums"
+                        >
+                            {{ fact.value }}
+                        </dt>
+                        <dd
+                            class="text-[13px] leading-snug text-muted-foreground"
+                        >
+                            {{ fact.label }}
+                        </dd>
+                    </div>
+                </div>
+            </dl>
+        </section>
 
         <ColorBand
             tone="blue"
@@ -209,9 +297,30 @@ const areas = [
             title="Dados de alunos exigem proteção desde a origem."
             lead="Nomes cifrados e separados, isolamento por organização no servidor, dois fatores e passkeys, registo de operações, IA sem dados identificáveis."
         >
+            <div class="grid gap-4 sm:grid-cols-3">
+                <div
+                    v-for="measure in measures"
+                    :key="measure.title"
+                    class="rounded-2xl bg-white p-5 ring-1 ring-emerald-900/5"
+                >
+                    <component
+                        :is="measure.icon"
+                        aria-hidden="true"
+                        class="size-5 text-emerald-700"
+                    />
+                    <h3 class="mt-3 font-semibold tracking-tight">
+                        {{ measure.title }}
+                    </h3>
+                    <p
+                        class="mt-1.5 text-sm leading-relaxed text-muted-foreground"
+                    >
+                        {{ measure.body }}
+                    </p>
+                </div>
+            </div>
             <Link
                 href="/seguranca"
-                class="group inline-flex items-center gap-2 rounded-full bg-emerald-700 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-800 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                class="group mt-6 inline-flex items-center gap-2 rounded-full bg-emerald-700 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-800 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             >
                 Como protegemos os dados
                 <ArrowRight
@@ -221,6 +330,12 @@ const areas = [
             </Link>
         </ColorBand>
 
-        <LandingFinalCta :authenticated="authenticated" />
+        <LandingFinalCta
+            :authenticated="authenticated"
+            :photo="{
+                src: '/images/marketing/hero.webp',
+                alt: 'Mãos de uma professora a escrever num caderno ao lado de um portátil aberto.',
+            }"
+        />
     </MarketingShell>
 </template>

@@ -14,6 +14,31 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > cada um sob o título da frente a que pertenceu. A 0.85.0 é o primeiro
 > release em que as duas linhagens voltam a ser uma só.
 
+## [0.95.0] — 2026-08-29
+
+Afinação visual sobre uma referência que o Pedro trouxe (um mockup do
+ChatGPT — «esquece o conteúdo, apenas referência visual»). Do mockup entrou o
+layout; do mockup NÃO entrou nada do que inventava: «+120 escolas»,
+«99,9% disponibilidade», brasões de escolas, caras de crianças, «Assiduidade»,
+«Comunicação com encarregados», blog, webinars, telefone. O site não inventa
+prova social nem funcionalidades.
+
+- Hero dentro de um cartão arredondado cinza-claro, fotografia a sangrar até
+  à borda, cartão «Olá, Professora Ana» com o resumo do dia (dados do cenário
+  demo) sobreposto — `PageHero` + `HeroCard`.
+- Título em duas cores: a posição em tinta, a promessa em azul
+  (`titleAccent`, também nas cinco páginas de funcionalidades, Segurança e
+  Sobre).
+- Chips de confiança sob os botões: «Sem cartão · RGPD desde a arquitetura ·
+  O professor decide».
+- Faixa de quatro factos verificáveis por baixo do hero, no lugar onde o
+  mockup punha estatísticas: 3 regras de cálculo, pseudónimos, 2FA + passkeys,
+  0 € no Base.
+- Passos com marcadores redondos azuis e linha tracejada.
+- Segurança na home com três cartões ao lado do título.
+- CTA final num cartão navy arredondado dentro da medida, com fotografia em
+  círculo (só na home) e chips.
+
 ## [0.94.0] — 2026-08-29
 
 **O site público deixa de ser uma página só.** O Pedro achou o layout «muito

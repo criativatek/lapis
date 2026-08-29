@@ -27,6 +27,7 @@ const feature = computed(() => featureFor(props.slug));
         <PageHero
             :eyebrow="feature.eyebrow"
             :title="feature.title"
+            :title-accent="feature.titleAccent"
             :lead="feature.lead"
             :image="feature.photo"
             :authenticated="authenticated"

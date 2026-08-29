@@ -42,7 +42,7 @@ withDefaults(
 <template>
     <section
         :id="id"
-        class="scroll-mt-[4.5rem] border-t border-border/60 pt-12 pb-16 sm:py-24 lg:py-28"
+        class="scroll-mt-[4.5rem] border-t border-border/60 pt-12 pb-14 sm:py-20 lg:py-24"
         :class="warm ? 'bg-blue-50/60 dark:bg-muted/10' : undefined"
         :aria-labelledby="id && title ? `${id}-title` : undefined"
     >
@@ -81,7 +81,7 @@ withDefaults(
             </RevealOnScroll>
 
             <div
-                :class="eyebrow || title || lead ? 'mt-12 sm:mt-16' : undefined"
+                :class="eyebrow || title || lead ? 'mt-10 sm:mt-12' : undefined"
             >
                 <slot />
             </div>

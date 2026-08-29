@@ -53,13 +53,13 @@ const steps: readonly Step[] = [
                     <span
                         v-if="index < steps.length - 1"
                         aria-hidden="true"
-                        class="absolute top-5 left-[calc(2.5rem+0.75rem)] hidden h-px w-[calc(100%-2.5rem)] origin-left bg-border transition-transform delay-300 duration-700 ease-out lg:block"
+                        class="absolute top-5 left-[calc(2.5rem+0.75rem)] hidden h-px w-[calc(100%-2.5rem)] origin-left border-t border-dashed border-blue-300 transition-transform delay-300 duration-700 ease-out lg:block"
                         :class="shown ? 'scale-x-100' : 'scale-x-0'"
                     />
 
                     <span
                         aria-hidden="true"
-                        class="relative flex size-10 items-center justify-center rounded-xl border border-border/70 bg-card text-primary shadow-sm transition-all duration-500 group-hover:border-primary/40 group-hover:shadow-md motion-safe:group-hover:-translate-y-0.5 dark:text-(--brand-amber) dark:group-hover:border-(--brand-amber)/40"
+                        class="relative flex size-10 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm transition-all duration-500 group-hover:shadow-md motion-safe:group-hover:-translate-y-0.5"
                     >
                         <component :is="step.icon" class="size-[18px]" />
                     </span>

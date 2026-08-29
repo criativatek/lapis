@@ -1,60 +1,74 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
-import { ArrowRight } from '@lucide/vue';
+import { ArrowRight, Check } from '@lucide/vue';
 import { LANDING_PRIMARY } from '@/components/landing/chrome';
 import { Button } from '@/components/ui/button';
 import { dashboard, register } from '@/routes';
 
 /**
- * The first screen of a public page: a big claim, a photograph, one action.
+ * The first screen of a public page: a big claim, a photograph, one action —
+ * inside one rounded card, with the photograph bleeding to the card's edge.
  *
  * THE PHOTOGRAPH IS THE POINT. The old landing had no image at all and read
  * as a document; a person's hands over a notebook says «this is for you»
  * before a single line is read. The photographs are generated, editorial,
  * and never show a recognisable face — the audience teaches minors, and a
  * stock face on a page about student data reads as exactly the wrong thing.
+ *
+ * `titleAccent` is the second sentence of the headline, set in blue: the
+ * position («menos peso administrativo») in ink, the promise («mais espaço
+ * para ser professor») in the action colour.
  */
 
 withDefaults(
     defineProps<{
         eyebrow?: string;
         title: string;
+        titleAccent?: string;
         lead: string;
         image: { src: string; alt: string };
         authenticated: boolean;
         cta?: string;
-        /** Which way the photo's rounded corner leans, for variety across pages. */
-        tone?: 'amber' | 'blue' | 'emerald';
+        /** Short, true facts under the buttons. Three at most. */
+        chips?: readonly string[];
     }>(),
-    { eyebrow: undefined, cta: 'Experimentar Lapispro', tone: 'amber' },
+    {
+        eyebrow: undefined,
+        titleAccent: undefined,
+        cta: 'Experimentar Lapispro',
+        chips: () => [
+            'Sem cartão',
+            'RGPD desde a arquitetura',
+            'O professor decide',
+        ],
+    },
 );
-
-const BLOB: Record<'amber' | 'blue' | 'emerald', string> = {
-    amber: 'bg-amber-200/70',
-    blue: 'bg-blue-200/70',
-    emerald: 'bg-emerald-200/70',
-};
 </script>
 
 <template>
-    <section class="relative overflow-hidden">
+    <section class="px-4 pt-4 sm:px-6 sm:pt-6">
         <div
-            class="mx-auto grid w-full max-w-6xl items-center gap-12 px-6 pt-12 pb-16 sm:px-8 sm:pt-16 sm:pb-24 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:gap-16"
+            class="relative mx-auto grid w-full max-w-6xl overflow-hidden rounded-[2rem] bg-slate-50 ring-1 ring-black/5 sm:rounded-[2.5rem] lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]"
         >
-            <div class="min-w-0">
+            <div class="min-w-0 px-6 py-12 sm:px-10 sm:py-16 lg:py-20">
                 <p
                     v-if="eyebrow"
-                    class="inline-flex rounded-full bg-blue-50 px-3.5 py-1.5 text-[12px] font-semibold tracking-[0.08em] text-blue-700 uppercase"
+                    class="inline-flex rounded-full bg-blue-100 px-3.5 py-1.5 text-[11px] font-semibold tracking-[0.08em] text-blue-800 uppercase"
                 >
                     {{ eyebrow }}
                 </p>
                 <h1
-                    class="mt-6 text-4xl font-semibold tracking-tight text-balance sm:text-5xl lg:text-[3.6rem] lg:leading-[1.04]"
+                    class="mt-6 text-4xl font-semibold tracking-tight text-balance text-slate-900 sm:text-5xl lg:text-[3.4rem] lg:leading-[1.05]"
                 >
                     {{ title }}
+                    <template v-if="titleAccent">
+                        <span class="block text-blue-600">{{
+                            titleAccent
+                        }}</span>
+                    </template>
                 </h1>
                 <p
-                    class="mt-6 max-w-xl text-lg leading-relaxed text-pretty text-muted-foreground sm:text-xl"
+                    class="mt-6 max-w-xl text-lg leading-relaxed text-pretty text-slate-600"
                 >
                     {{ lead }}
                 </p>
@@ -75,19 +89,25 @@ const BLOB: Record<'amber' | 'blue' | 'emerald', string> = {
                     </Button>
                     <slot name="secondary" />
                 </div>
-                <p class="mt-5 text-sm text-muted-foreground">
-                    Sem cartão. O plano
-                    <span class="font-medium text-foreground">Base</span> fica
-                    ativo de imediato.
-                </p>
+                <ul
+                    v-if="chips.length"
+                    class="mt-7 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-600"
+                >
+                    <li
+                        v-for="chip in chips"
+                        :key="chip"
+                        class="inline-flex items-center gap-1.5"
+                    >
+                        <Check
+                            aria-hidden="true"
+                            class="size-4 text-emerald-600"
+                        />
+                        {{ chip }}
+                    </li>
+                </ul>
             </div>
 
-            <div class="relative min-w-0">
-                <span
-                    aria-hidden="true"
-                    class="absolute -top-10 -right-10 -z-10 size-64 rounded-full blur-3xl sm:size-80"
-                    :class="BLOB[tone]"
-                />
+            <div class="relative min-h-[22rem] min-w-0 sm:min-h-[26rem] lg:min-h-0">
                 <img
                     :src="image.src"
                     :alt="image.alt"
@@ -95,8 +115,11 @@ const BLOB: Record<'amber' | 'blue' | 'emerald', string> = {
                     height="1067"
                     fetchpriority="high"
                     decoding="async"
-                    class="aspect-[3/2] w-full rounded-[2rem] object-cover shadow-[0_30px_80px_-40px_rgba(15,23,42,0.45)]"
+                    class="absolute inset-0 h-full w-full object-cover"
                 />
+                <!-- Whatever floats over the photo: a card with the product,
+                     or nothing. Kept out of this component so each page can
+                     say something different, or say nothing. -->
                 <slot name="figure" />
             </div>
         </div>

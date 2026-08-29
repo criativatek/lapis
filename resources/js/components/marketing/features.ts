@@ -39,6 +39,8 @@ export type Feature = {
     slug: string;
     eyebrow: string;
     title: string;
+    /** The second line of the headline, in blue. */
+    titleAccent?: string;
     lead: string;
     photo: { src: string; alt: string };
     screenshot: { src: string; alt: string; width: number; height: number };
@@ -73,7 +75,8 @@ export const FEATURES: readonly Feature[] = [
     {
         slug: 'avaliacao',
         eyebrow: 'Avaliação de alunos',
-        title: 'Os seus critérios. O seu peso. A sua escala.',
+        title: 'Os seus critérios. O seu peso.',
+        titleAccent: 'A sua escala.',
         lead: 'Domínios com os nomes que a escola usa, ponderações por elemento, e uma escala de 1 a 5, de 0 a 20 ou a que a escola definiu. O Lapispro calcula a média ponderada e propõe a classificação — o professor confirma, corrige ou descarta.',
         photo: PHOTOS.hands,
         screenshot: {
@@ -133,7 +136,8 @@ export const FEATURES: readonly Feature[] = [
     {
         slug: 'turmas',
         eyebrow: 'Turmas e alunos',
-        title: 'As suas turmas, sem as escrever outra vez.',
+        title: 'As suas turmas,',
+        titleAccent: 'sem as escrever outra vez.',
         lead: 'Importe a pauta que a escola já lhe deu — números, nomes e fotografias no mesmo passo. Cada turma fica ligada ao ano letivo, à disciplina e ao perfil de avaliação com que é avaliada.',
         photo: PHOTOS.classroom,
         screenshot: {
@@ -190,7 +194,8 @@ export const FEATURES: readonly Feature[] = [
     {
         slug: 'acompanhamento',
         eyebrow: 'Acompanhamento pedagógico',
-        title: 'A turma inteira num ecrã. Cada aluno, ao longo do ano.',
+        title: 'A turma inteira num ecrã.',
+        titleAccent: 'Cada aluno, ao longo do ano.',
         lead: 'Quadro síntese por domínio e por período, estatística da turma, evolução de cada aluno. E o que o professor faz com isso — estratégias, medidas e registos — fica no processo do aluno, fora do cálculo.',
         photo: PHOTOS.board,
         screenshot: {
@@ -250,7 +255,8 @@ export const FEATURES: readonly Feature[] = [
     {
         slug: 'aulas-e-sumarios',
         eyebrow: 'Aulas, sumários e horário',
-        title: 'Planeie a semana, escreva o sumário, siga o ano.',
+        title: 'Planeie a semana, escreva o sumário.',
+        titleAccent: 'Siga o ano.',
         lead: 'O horário do professor, as aulas com sumário, as sequências reutilizáveis e a agenda do ano letivo — ao lado das turmas e das classificações, não noutra aplicação.',
         photo: PHOTOS.planning,
         screenshot: {
@@ -304,7 +310,8 @@ export const FEATURES: readonly Feature[] = [
     {
         slug: 'relatorios',
         eyebrow: 'Relatórios e pautas',
-        title: 'O relatório já vem meio escrito.',
+        title: 'O relatório',
+        titleAccent: 'já vem meio escrito.',
         lead: 'Relatórios de avaliação cujas secções partem do que já registou — resultados, classificações, estratégias. Pautas por período e quadro síntese exportáveis. Finalizar fixa o documento; corrigir depois deriva outro.',
         photo: PHOTOS.hands,
         screenshot: {

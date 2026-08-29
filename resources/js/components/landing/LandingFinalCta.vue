@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
-import { ArrowRight } from '@lucide/vue';
+import { ArrowRight, Check } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import { dashboard, login, register } from '@/routes';
-import RevealOnScroll from './RevealOnScroll.vue';
 
 /**
  * The last thing on the page, and the one place the whole argument is stated
@@ -13,19 +12,48 @@ import RevealOnScroll from './RevealOnScroll.vue';
  * of the product, and it is deliberately said HERE and nowhere else on the
  * page: repeated in three sections it would read as a slogan, said once at
  * the end it reads as a commitment.
+ *
+ * A rounded navy card inside the measure with a photograph beside the words
+ * when the page passes one. The photograph should show people — the CTA sells
+ * the human result, not the paperwork. No face: see PageHero.
  */
 
-defineProps<{ authenticated: boolean }>();
+withDefaults(
+    defineProps<{
+        authenticated: boolean;
+        photo?: { src: string; alt: string } | null;
+    }>(),
+    { photo: null },
+);
+
+const chips = [
+    'Sem compromisso',
+    'Sem cartão',
+    'Plano Base para sempre',
+] as const;
 </script>
 
 <template>
-    <!-- The one full-colour band on the page. Everything above it is white
-         with blue for actions; this is where the blue becomes the ground. -->
-    <section class="bg-blue-600 text-white">
+    <section class="px-4 py-10 sm:px-6 sm:py-14">
         <div
-            class="mx-auto w-full max-w-3xl px-6 py-20 text-center sm:px-8 sm:py-28"
+            class="mx-auto grid w-full max-w-6xl items-center gap-10 overflow-hidden rounded-[2rem] bg-gradient-to-br from-[#1E4AB0] via-[#183B8F] to-[#102A56] px-6 py-12 text-white sm:rounded-[2.5rem] sm:px-10 sm:py-16 lg:gap-16"
+            :class="
+                photo
+                    ? 'lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]'
+                    : undefined
+            "
         >
-            <RevealOnScroll>
+            <img
+                v-if="photo"
+                :src="photo.src"
+                :alt="photo.alt"
+                width="1600"
+                height="1067"
+                loading="lazy"
+                decoding="async"
+                class="aspect-[4/3] w-full rounded-[1.5rem] object-cover ring-1 ring-white/15"
+            />
+            <div :class="photo ? undefined : 'mx-auto max-w-3xl text-center'">
                 <h2
                     class="text-3xl font-semibold tracking-tight text-balance sm:text-4xl"
                 >
@@ -33,24 +61,26 @@ defineProps<{ authenticated: boolean }>();
                     os alunos.
                 </h2>
                 <p
-                    class="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-pretty text-blue-100"
+                    class="mt-5 max-w-xl text-lg leading-relaxed text-pretty text-blue-100"
+                    :class="photo ? undefined : 'mx-auto'"
                 >
                     O Lapispro não pretende substituir o professor. Pretende
                     dar-lhe melhor informação, melhor organização e mais tempo
                     para tomar decisões pedagógicas com confiança.
                 </p>
-
                 <p
-                    class="mx-auto mt-8 max-w-xl text-xl font-semibold tracking-tight text-balance sm:text-2xl"
+                    class="mt-6 text-xl font-semibold tracking-tight text-balance sm:text-2xl"
                 >
                     O professor decide. O Lapispro simplifica o caminho.
                 </p>
-
-                <div class="mt-9 flex flex-wrap justify-center gap-3">
+                <div
+                    class="mt-8 flex flex-wrap items-center gap-3"
+                    :class="photo ? undefined : 'justify-center'"
+                >
                     <Button
                         as-child
                         size="lg"
-                        class="group/cta bg-white text-blue-700 hover:bg-blue-50"
+                        class="group/cta bg-white text-[#183B8F] hover:bg-blue-50"
                     >
                         <Link :href="authenticated ? dashboard() : register()">
                             {{
@@ -73,24 +103,30 @@ defineProps<{ authenticated: boolean }>();
                         <Link href="/planos">Conhecer o Pro</Link>
                     </Button>
                 </div>
-
-                <p class="mt-5 text-sm text-blue-100">
-                    Não é necessário cartão de crédito. O plano Base fica ativo
-                    de imediato.
-                    <!-- «Já tenho conta» was a button here before the two CTAs
-                         above were fixed by the commercial brief. It stays, as
-                         a link: the header and the footer both carry it, but
-                         the foot of the page is where somebody who scrolled
-                         the whole thing looks for it. -->
-                    <template v-if="!authenticated">
+                <ul
+                    class="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-sm text-blue-100"
+                    :class="photo ? undefined : 'justify-center'"
+                >
+                    <li
+                        v-for="chip in chips"
+                        :key="chip"
+                        class="inline-flex items-center gap-1.5"
+                    >
+                        <Check
+                            aria-hidden="true"
+                            class="size-4 text-emerald-300"
+                        />
+                        {{ chip }}
+                    </li>
+                    <li v-if="!authenticated">
                         <Link
                             :href="login()"
                             class="rounded font-medium text-white underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none"
                             >Já tenho conta</Link
-                        >.
-                    </template>
-                </p>
-            </RevealOnScroll>
+                        >
+                    </li>
+                </ul>
+            </div>
         </div>
     </section>
 </template>

@@ -45,14 +45,14 @@ const principles = [
     <MarketingShell v-slot="{ authenticated }" :contact-email="contactEmail">
         <PageHero
             eyebrow="Sobre o Lapispro"
-            title="Mais tempo para ensinar. Foi por isso que começámos."
+            title="Mais tempo para ensinar."
+            title-accent="Foi por isso que começámos."
             lead="O Lapispro nasceu de uma pergunta simples: porque é que a avaliação de alunos vive espalhada por folhas de cálculo que só quem as fez sabe ler? A resposta é uma plataforma feita para professores portugueses, com regras pedagógicas claras e o professor sempre no comando."
             :image="{
                 src: '/images/marketing/planning.webp',
                 alt: 'Mesa vista de cima com um planificador semanal, caneta e café.',
             }"
             :authenticated="authenticated"
-            tone="blue"
         />
 
         <ColorBand

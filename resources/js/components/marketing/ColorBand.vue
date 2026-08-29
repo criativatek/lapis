@@ -29,21 +29,23 @@ withDefaults(
 );
 
 const GROUND: Record<Tone, string> = {
-    blue: 'bg-blue-600 text-white',
+    // Institutional navy, not royal blue: #1E4AB0 → #102A56 reads as school,
+    // not as an ad. Buttons keep blue-600 — action colour stays bright.
+    blue: 'bg-gradient-to-br from-[#1E4AB0] via-[#183B8F] to-[#102A56] text-white',
     amber: 'bg-amber-50',
     emerald: 'bg-emerald-50',
     white: '',
 };
 
 const EYEBROW: Record<Tone, string> = {
-    blue: 'text-blue-100',
+    blue: 'text-blue-200',
     amber: 'text-amber-700',
     emerald: 'text-emerald-700',
     white: 'text-blue-700',
 };
 
 const LEAD: Record<Tone, string> = {
-    blue: 'text-blue-100',
+    blue: 'text-blue-100/90',
     amber: 'text-muted-foreground',
     emerald: 'text-muted-foreground',
     white: 'text-muted-foreground',
@@ -53,7 +55,7 @@ const LEAD: Record<Tone, string> = {
 <template>
     <section
         :id="id"
-        class="scroll-mt-[4.5rem] py-16 sm:py-24"
+        class="scroll-mt-[4.5rem] py-14 sm:py-20"
         :class="GROUND[tone]"
         :aria-labelledby="id && title ? `${id}-title` : undefined"
     >
@@ -86,7 +88,7 @@ const LEAD: Record<Tone, string> = {
                 </p>
             </div>
             <div
-                :class="eyebrow || title || lead ? 'mt-12 sm:mt-14' : undefined"
+                :class="eyebrow || title || lead ? 'mt-10 sm:mt-12' : undefined"
             >
                 <slot />
             </div>
