@@ -78,11 +78,17 @@ const BASE_MODULES = [
     'interventions',
     'student_progress',
     'reports',
+    // Moved into Base by the Base/Pro realignment: Matriz Mestre §2 ticks
+    // «Calendário mensal/anual» and «Datas relevantes / eventos manuais» for
+    // all three plans. The advanced import stayed Pro, under its own key.
+    'calendar',
+    'help_assistant',
 ];
 
 const PRO_MODULES = [
     ...BASE_MODULES,
-    'calendar',
+    'calendar_import',
+    'data_backup_restore',
     'lessons',
     'ai_assistance',
     'advanced_analytics',

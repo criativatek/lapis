@@ -7,6 +7,8 @@ use App\Models\OrganizationModuleOverride;
 use App\Models\OrganizationSubscription;
 use App\Models\SubscriptionStatus;
 use App\Support\Tenancy\CurrentOrganization;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 /**
  * Answers "may this organization use this module, and how much?".
@@ -161,6 +163,51 @@ class Entitlements
     }
 
     /**
+     * Rule 4 of `resolve()`: what a plan change leaves consultable.
+     *
+     * The organization's own history is the only source — no column, no flag
+     * and no migration. Every subscription that ever TOOK EFFECT (`starts_at`
+     * at or before now, whatever its status became afterwards) is read for the
+     * capabilities its plan granted; a capability that appears there, is not
+     * granted by whatever is in force today, and is named by
+     * `RetainedOnDowngrade`, becomes `ReadOnly`.
+     *
+     * Rows SCHEDULED to start later are skipped, and that exclusion is
+     * load-bearing rather than tidy: `ChangeOrganizationPlan::startProTrial()`
+     * pre-creates a dormant Base row dated at the trial's end, and reading it
+     * as history would describe a plan the organization has not been on yet.
+     * Once the trial does end, the Trial row itself is history like any other,
+     * so a teacher who wrote sumários during a trial can still open them —
+     * which is exactly the promise «downgrade não destrutivo» makes.
+     *
+     * Never overwrites an entry already decided: a key the current plan
+     * grants stays `Allowed`. Overrides are applied after this returns and
+     * therefore still win, in both directions — an `enabled = false` override
+     * locks a key this would have made `ReadOnly`.
+     *
+     * @param  array<string, AccessState>  $states
+     * @param  Collection<int, OrganizationSubscription>  $subscriptions
+     */
+    protected function retainReadOnlyAfterDowngrade(array &$states, $subscriptions, OrganizationSubscription $inForce): void
+    {
+        $now = Carbon::now();
+
+        foreach ($subscriptions as $subscription) {
+            if ($subscription->is($inForce) || $subscription->starts_at->greaterThan($now)) {
+                continue;
+            }
+
+            foreach ($subscription->plan->modules as $module) {
+                if (isset($states[$module->key]) || ! RetainedOnDowngrade::includes($module->key)) {
+                    continue;
+                }
+
+                $states[$module->key] = AccessState::ReadOnly;
+            }
+        }
+    }
+
+    /**
      * The state-resolution algorithm (§Lote 2):
      *
      * 1. The subscription currently `isInForce()`, if any, sets every one of
@@ -177,6 +224,18 @@ class Entitlements
      *    pre-Lote-2 behaviour: only an EXPLICIT `suspend()` produces
      *    `ReadOnly`; a naturally time-lapsed subscription is exactly as
      *    locked as it always was (see the Lote 2 report's open questions).
+     * 4. WHEN — AND ONLY WHEN — SOMETHING IS IN FORCE (case 1), a capability
+     *    the organization USED TO HOLD, no longer holds, and that
+     *    `RetainedOnDowngrade` names, resolves to `ReadOnly` rather than
+     *    falling through to `Locked`. This is §19 of the Matriz Mestre —
+     *    «alguns workflows Pro com dados históricos podem ficar read_only» —
+     *    and §15's literal Pro → Base example, which expects
+     *    `lessons_workspace` and `teacher_timetable` to be consultable
+     *    after the change rather than gone. It is scoped to case 1 on
+     *    purpose: a subscription that simply lapsed leaving NOTHING in force
+     *    is not a downgrade, it is an account with no plan, and it keeps the
+     *    behaviour it always had. `RetainedOnDowngrade` is where the list of
+     *    keys and the reason for each lives.
      *
      * Overrides are then applied on top, independently per module key: an
      * `enabled=false` override forces `Locked` regardless of the base state
@@ -210,6 +269,8 @@ class Entitlements
             foreach ($inForce->plan->modules as $module) {
                 $states[$module->key] = AccessState::Allowed;
             }
+
+            $this->retainReadOnlyAfterDowngrade($states, $subscriptions, $inForce);
         } else {
             // Newest overall, thanks to the same ordering the query above
             // already applied.

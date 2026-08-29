@@ -345,8 +345,15 @@ class StudentProgressPanelTest extends TestCase
     // ----------------------------------------------------- §6: alertas factuais
 
     #[Test]
-    public function base_factual_alerts_fire_on_real_underlying_facts(): void
+    public function factual_alerts_fire_on_real_underlying_facts(): void
     {
+        // «Atenção automática» and «Pontos fortes identificados
+        // automaticamente» are Pro and Institucional (Matriz §4, §5); this
+        // test is about WHAT they say, so it runs on the plan that produces
+        // them. That Base receives neither is asserted in
+        // tests/Feature/Entitlements/BaseProBoundaryTest.php.
+        $this->givePlan('pro');
+
         $enrollment = $this->enrollment(2);
         $period = $this->period(2);
 
@@ -363,8 +370,15 @@ class StudentProgressPanelTest extends TestCase
     }
 
     #[Test]
-    public function base_factual_alerts_do_not_fire_when_the_facts_are_absent(): void
+    public function factual_alerts_do_not_fire_when_the_facts_are_absent(): void
     {
+        // «Atenção automática» and «Pontos fortes identificados
+        // automaticamente» are Pro and Institucional (Matriz §4, §5); this
+        // test is about WHAT they say, so it runs on the plan that produces
+        // them. That Base receives neither is asserted in
+        // tests/Feature/Entitlements/BaseProBoundaryTest.php.
+        $this->givePlan('pro');
+
         // Nº 3, Carolina — DemoDataSeeder gives her no records, no interventions.
         $enrollment = $this->enrollment(3);
 
@@ -380,6 +394,13 @@ class StudentProgressPanelTest extends TestCase
     #[Test]
     public function a_submitted_self_assessment_is_flagged_as_awaiting_the_teachers_analysis(): void
     {
+        // «Atenção automática» and «Pontos fortes identificados
+        // automaticamente» are Pro and Institucional (Matriz §4, §5); this
+        // test is about WHAT they say, so it runs on the plan that produces
+        // them. That Base receives neither is asserted in
+        // tests/Feature/Entitlements/BaseProBoundaryTest.php.
+        $this->givePlan('pro');
+
         $enrollment = $this->enrollment(3);
         $class = $this->schoolClass();
         $period = $this->period(2);
@@ -623,6 +644,13 @@ class StudentProgressPanelTest extends TestCase
     #[Test]
     public function pontos_fortes_is_populated_from_real_domain_data(): void
     {
+        // «Atenção automática» and «Pontos fortes identificados
+        // automaticamente» are Pro and Institucional (Matriz §4, §5); this
+        // test is about WHAT they say, so it runs on the plan that produces
+        // them. That Base receives neither is asserted in
+        // tests/Feature/Entitlements/BaseProBoundaryTest.php.
+        $this->givePlan('pro');
+
         $this->visit($this->enrollment(1))->assertInertia(function ($page) {
             $page->where('strengths', function ($rows) {
                 $sentences = collect($rows)->pluck('sentence')->implode(' ');
@@ -1106,6 +1134,13 @@ class StudentProgressPanelTest extends TestCase
     #[Test]
     public function domains_without_evidence_names_the_acompanhamento_log_explicitly(): void
     {
+        // «Atenção automática» and «Pontos fortes identificados
+        // automaticamente» are Pro and Institucional (Matriz §4, §5); this
+        // test is about WHAT they say, so it runs on the plan that produces
+        // them. That Base receives neither is asserted in
+        // tests/Feature/Entitlements/BaseProBoundaryTest.php.
+        $this->givePlan('pro');
+
         $enrollment = $this->enrollment(1);
         $period = $this->period(2);
         $domains = $this->progress($enrollment)['domains']['rows'];

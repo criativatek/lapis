@@ -56,8 +56,19 @@ class BuildStudentPrintDocument
             $this->section('self_assessments', 'Autoavaliação', 'student_progress', ($progress['selfAssessments'] ?? []) !== []),
             $this->section('academic_records', 'Classificações atribuídas', 'student_progress', ($progress['classifications'] ?? []) !== []),
             $this->section('records', 'Registos', 'student_progress', (int) ($progress['records']['total'] ?? 0) > 0),
-            $this->section('attention_factual', 'Atenção', 'student_progress', $factualAlerts !== []),
-            $this->section('strengths_factual', 'Pontos fortes', 'student_progress', $strengths !== []),
+            // «Atenção» and «Pontos fortes» ARE ANALYTICAL SECTIONS, and their
+            // capability says so. §5 of the Matriz Mestre lists what the Base
+            // ficha may contain — identificação, resultados, domínios,
+            // classificações, avaliações recentes, autoavaliações, registos,
+            // estratégias/medidas — and neither of these is on it; both appear
+            // instead in the list of what the PRO síntese adds. They stay
+            // physically here, above the rest of the analytical block, because
+            // that is where they read on the page; what changed is the
+            // capability they are labelled with and, upstream, the fact that
+            // StudentProgressController does not compute them at all without
+            // it — so both lists arrive empty on Base and drop out here.
+            $this->section('attention_factual', 'Atenção', 'advanced_analytics', $factualAlerts !== []),
+            $this->section('strengths_factual', 'Pontos fortes', 'advanced_analytics', $strengths !== []),
             $this->section('strategies', 'Estratégias e Medidas', 'student_progress', (int) ($progress['interventions']['total'] ?? 0) > 0),
 
             // Analytical — every entry below is null whenever the capability

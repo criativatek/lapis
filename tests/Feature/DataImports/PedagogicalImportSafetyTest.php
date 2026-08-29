@@ -44,6 +44,7 @@ use App\Models\Subject;
 use App\Models\SubscriptionStatus;
 use App\Models\User;
 use App\Services\Assessment\ActivateProfileVersion;
+use App\Support\Entitlements\Entitlements;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -54,11 +55,13 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\SubscribesOrganizations;
 use Tests\TestCase;
 
 class PedagogicalImportSafetyTest extends TestCase
 {
     use RefreshDatabase;
+    use SubscribesOrganizations;
 
     protected function setUp(): void
     {
@@ -379,6 +382,15 @@ class PedagogicalImportSafetyTest extends TestCase
 
     private function uploadInto(Organization $organization, User $user, UploadedFile $file): DataImport
     {
+        // The restore wizard is Pro and Institucional since the Base/Pro
+        // realignment (Matriz §7, `data_backup_restore`). This test is about
+        // what the wizard DOES, so the destination is put on a plan that
+        // reaches it — the gate itself is asserted in
+        // tests/Feature/DataImports/DataImportEntitlementTest.php.
+        if (! app(Entitlements::class)->allowsFor($organization, 'data_backup_restore')) {
+            $this->subscribeOrganizationTo($organization, 'pro');
+        }
+
         $this->actingAs($user)->withSession(['organization_id' => $organization->id])
             ->post('/data-imports', ['file' => $file])->assertSessionHasNoErrors();
 

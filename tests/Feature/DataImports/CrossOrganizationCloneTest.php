@@ -28,6 +28,7 @@ use App\Models\Student;
 use App\Models\Subject;
 use App\Models\User;
 use App\Services\Assessment\BuildResultsProgression;
+use App\Support\Entitlements\Entitlements;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Http\UploadedFile;
 use PHPUnit\Framework\Attributes\Test;
@@ -329,6 +330,14 @@ class CrossOrganizationCloneTest extends PedagogicalRoundTripTest
 
     private function upload(UploadedFile $backup, Organization $destination, User $user): DataImport
     {
+        // The restore wizard is Pro and Institucional since the Base/Pro
+        // realignment (Matriz §7). This test is about what a clone DOES, so
+        // the destination is put on a plan that reaches the wizard; the gate
+        // itself is asserted in DataImportEntitlementTest.
+        if (! app(Entitlements::class)->allowsFor($destination, 'data_backup_restore')) {
+            $this->subscribeOrganizationTo($destination, 'pro');
+        }
+
         $this->actingAs($user)->withSession(['organization_id' => $destination->id])->post('/data-imports', ['file' => $backup])->assertSessionHasNoErrors();
 
         return DataImport::withoutGlobalScope('organization')->where('organization_id', $destination->id)->latest('id')->firstOrFail();

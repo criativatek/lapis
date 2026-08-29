@@ -15,6 +15,7 @@ use App\Models\Student;
 use App\Models\Subject;
 use App\Models\SubscriptionStatus;
 use App\Models\User;
+use App\Support\Entitlements\Entitlements;
 use App\Support\Import\Backup\BackupSchemaCompatibility;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -23,11 +24,13 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\SubscribesOrganizations;
 use Tests\TestCase;
 
 class DataImportTest extends TestCase
 {
     use RefreshDatabase;
+    use SubscribesOrganizations;
 
     /** @return array{Organization, User} */
     private function institutionalOrganization(): array
@@ -112,6 +115,15 @@ class DataImportTest extends TestCase
 
     private function uploadInto(Organization $destination, User $actor, UploadedFile $file): DataImport
     {
+        // The restore wizard is Pro and Institucional since the Base/Pro
+        // realignment (Matriz §7, `data_backup_restore`). This test is about
+        // what the wizard DOES, so the destination is put on a plan that
+        // reaches it — the gate itself is asserted in
+        // tests/Feature/DataImports/DataImportEntitlementTest.php.
+        if (! app(Entitlements::class)->allowsFor($destination, 'data_backup_restore')) {
+            $this->subscribeOrganizationTo($destination, 'pro');
+        }
+
         $this->actingAs($actor)->withSession(['organization_id' => $destination->id])
             ->post('/data-imports', ['file' => $file])
             ->assertSessionHasNoErrors();

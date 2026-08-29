@@ -119,12 +119,12 @@ class InvitationRegressionTest extends TestCase
 
         // accept() already switched them into it.
         $this->actingAs($member)->get('/dashboard')->assertInertia(fn ($page) => $page
-            ->where('modules', fn ($modules) => $modules->contains('calendar')));
+            ->where('modules', fn ($modules) => $modules->contains('lessons')));
 
         $this->actingAs($member)->post('/organizations/switch', ['organization' => $member->personalOrganization()->ulid]);
 
         $this->actingAs($member)->get('/dashboard')->assertInertia(fn ($page) => $page
-            ->where('modules', fn ($modules) => ! $modules->contains('calendar')));
+            ->where('modules', fn ($modules) => ! $modules->contains('lessons')));
     }
 
     #[Test]

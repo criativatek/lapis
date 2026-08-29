@@ -334,10 +334,15 @@ class ShellNavigationTest extends TestCase
         // «Documentos» and before «Configuração», so a Base teacher reaches
         // the very same entries in the very same order — under a different
         // heading (§23, §41).
+        // «calendar» JOINED THIS LIST IN THE BASE/PRO REALIGNMENT, in the
+        // position config/navigation.php already gave it — first inside
+        // «Organização do Ano Letivo», before «Estrutura do Ano Letivo».
+        // Matriz Mestre §2 ticks «Calendário mensal/anual» for all three
+        // plans; the entry is not new, only reachable.
         $this->assertSame([
             'dashboard', 'classes', 'students', 'instruments', 'assessments',
             'self-assessments', 'class-analysis', 'student-progress',
-            'interventions', 'records', 'reports', 'academic-structure', 'assessment-profiles', 'settings',
+            'interventions', 'records', 'reports', 'calendar', 'academic-structure', 'assessment-profiles', 'settings',
             // Centro de Ajuda (§Onboarding & Help): module => null, so every
             // plan reaches it — never gated by Base/Pro/Institucional.
             'help',
@@ -358,8 +363,13 @@ class ShellNavigationTest extends TestCase
         // and timetable-imports.*: a Pro organization gains a new destination
         // onto a capability it already had, and no new entitlement was
         // invented for it — which is why Base's own list above is unchanged.
+        // «calendar» IS NO LONGER IN THIS LIST, and that is the assertion:
+        // after the Base/Pro realignment the calendar is something Base
+        // already has, so Pro cannot gain it. What Pro still gains is the
+        // lessons workspace, the timetable built on the same key, and
+        // configuration sharing.
         $this->assertSame(
-            ['calendar', 'teacher-timetable', 'lessons', 'configuration-sharing', 'configuration-import'],
+            ['teacher-timetable', 'lessons', 'configuration-sharing', 'configuration-import'],
             array_values($gained),
         );
     }
@@ -401,7 +411,14 @@ class ShellNavigationTest extends TestCase
             $section = collect($page->toArray()['props']['nav']['sections'])
                 ->firstWhere('label', 'Organização do Ano Letivo');
 
-            $this->assertSame(['Estrutura do Ano Letivo'], array_column($section['items'], 'label'));
+            // Two entries on Base since the realignment, and «Horário do
+            // Professor» still not among them: the calendar is Base, the
+            // timetable is Pro, and this is the group where the difference
+            // between the two is visible.
+            $this->assertSame(
+                ['Calendário do Ano Letivo', 'Estrutura do Ano Letivo'],
+                array_column($section['items'], 'label'),
+            );
         });
     }
 

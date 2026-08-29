@@ -93,20 +93,42 @@ class AcademicYearCalendarTest extends TestCase
     }
 
     /**
-     * The `calendar` entitlement has existed since long before there was a page
-     * behind it, and this phase gates the real page with it rather than
-     * inventing a second capability for the same thing.
+     * A BASE TEACHER REACHES BOTH VIEWS. Matriz Mestre §2 ticks «Calendário
+     * mensal/anual» for Base, Pro and Institucional alike, and the Base/Pro
+     * realignment moved the `calendar` capability to match. This test used to
+     * assert the opposite; it is inverted deliberately, and it is the
+     * assertion that would catch the key drifting back into PRO_MODULES.
      */
     #[Test]
-    public function a_teacher_without_the_calendar_module_reaches_neither_view(): void
+    public function a_base_teacher_reaches_both_views(): void
     {
         $base = User::factory()->create();
         $baseOrganization = $base->personalOrganization();
 
         $this->actingAs($base)->withSession(['organization_id' => $baseOrganization->id])
-            ->get('/calendar')->assertForbidden();
+            ->get('/calendar')->assertOk();
         $this->actingAs($base)->withSession(['organization_id' => $baseOrganization->id])
-            ->get('/calendar/ano')->assertForbidden();
+            ->get('/calendar/ano')->assertOk();
+    }
+
+    /**
+     * The one row of §2 that stays Pro: «Importação avançada de calendário».
+     * The views above are open; the wizard that reads the agrupamento's .xlsx
+     * is not, and it is gated on its own `calendar_import` key rather than on
+     * the one the views use.
+     */
+    #[Test]
+    public function a_base_teacher_does_not_reach_the_calendar_import(): void
+    {
+        $base = User::factory()->create();
+        $baseOrganization = $base->personalOrganization();
+
+        $this->actingAs($base)->withSession(['organization_id' => $baseOrganization->id])
+            ->get('/academic-calendar-imports/create')->assertForbidden();
+        $this->actingAs($base)->withSession(['organization_id' => $baseOrganization->id])
+            ->post('/academic-calendar-imports')->assertForbidden();
+        $this->actingAs($base)->withSession(['organization_id' => $baseOrganization->id])
+            ->post('/academic-calendar-imports/confirm')->assertForbidden();
     }
 
     #[Test]

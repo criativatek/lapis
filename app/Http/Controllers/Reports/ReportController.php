@@ -393,7 +393,16 @@ class ReportController extends Controller
                 : $this->identity->forCurrentOrganization(),
             // §35: what moved since the report this one started from. Facts, and
             // no causation.
-            'comparison' => $comparison->for($report),
+            //
+            // PRO AND INSTITUCIONAL. «Comparação entre períodos» is one of the
+            // rows Matriz Mestre §6 reserves for them, and «Desde o relatório
+            // anterior» is exactly that reading: two documents, two moments,
+            // and the movement between them. Computed only when the plan
+            // includes it, so a Base report's props carry no comparison at all
+            // rather than one the page would have to hide.
+            'comparison' => $this->capabilities->allowsAnalytics()
+                ? $comparison->for($report)
+                : null,
             'characterisation' => $this->characterisationOptions($report),
             // §14: what a difficulty can be, and which strategies answer each
             // one. Only sent when the plan includes the sections that use it.

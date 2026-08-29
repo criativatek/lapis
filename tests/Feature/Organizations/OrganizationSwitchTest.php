@@ -142,12 +142,12 @@ class OrganizationSwitchTest extends TestCase
         $school->members()->attach($teacher, ['joined_at' => now()]);
 
         $this->actingAs($teacher)->get('/dashboard')->assertInertia(fn ($page) => $page
-            ->where('modules', fn ($modules) => ! $modules->contains('calendar')));
+            ->where('modules', fn ($modules) => ! $modules->contains('lessons')));
 
         $this->actingAs($teacher)->post('/organizations/switch', ['organization' => $school->ulid]);
 
         $this->actingAs($teacher)->get('/dashboard')->assertInertia(fn ($page) => $page
-            ->where('modules', fn ($modules) => $modules->contains('calendar')));
+            ->where('modules', fn ($modules) => $modules->contains('lessons')));
     }
 
     #[Test]
@@ -163,11 +163,11 @@ class OrganizationSwitchTest extends TestCase
 
         $this->actingAs($teacher)->post('/organizations/switch', ['organization' => $school->ulid]);
         app(Entitlements::class)->flush();
-        $this->assertTrue(app(Entitlements::class)->allowsFor($school, 'calendar'));
+        $this->assertTrue(app(Entitlements::class)->allowsFor($school, 'lessons'));
 
         $this->actingAs($teacher)->post('/organizations/switch', ['organization' => $teacher->personalOrganization()->ulid]);
         app(Entitlements::class)->flush();
-        $this->assertFalse(app(Entitlements::class)->allowsFor($teacher->personalOrganization()->fresh(), 'calendar'));
+        $this->assertFalse(app(Entitlements::class)->allowsFor($teacher->personalOrganization()->fresh(), 'lessons'));
     }
 
     // ------------------------------------------------------------------ cross-tenant

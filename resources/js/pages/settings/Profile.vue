@@ -26,6 +26,11 @@ defineOptions({
 
 const page = usePage();
 const user = computed(() => page.props.auth.user);
+
+// Exporting is every plan's (Matriz §7/§20: portability, not a paid feature).
+// Restoring a complete backup is Pro and Institucional, and the route now says
+// so — this only stops offering a card that could only answer 403.
+const canRestoreBackup = computed(() => page.props.modules.includes('data_backup_restore'));
 </script>
 
 <template>
@@ -106,7 +111,7 @@ const user = computed(() => page.props.auth.user);
                 <Link href="/data-exports" class="font-medium text-primary hover:underline">Exportar os meus dados</Link>
                 <p class="mt-1 text-muted-foreground">Uma cópia dos dados a que a sua conta tem acesso.</p>
             </div>
-            <div class="rounded-lg border border-border p-4 text-sm">
+            <div v-if="canRestoreBackup" class="rounded-lg border border-border p-4 text-sm">
                 <Link href="/data-imports/create" class="font-medium text-primary hover:underline">Importar dados</Link>
                 <p class="mt-1 text-muted-foreground">Restaure dados a partir de uma exportação criada pelo Lapispro.</p>
             </div>

@@ -25,17 +25,17 @@ class RequireModuleTest extends TestCase
     {
         parent::setUp();
 
-        // Stands in for the Agenda routes until the Pro phase builds them. One
+        // Stands in for a Pro workspace route. One
         // URI, every HTTP verb `RequireModule`'s ReadOnly branch cares about
         // (§Lote 2, items 4-9): GET/HEAD must pass a ReadOnly module through,
         // POST/PUT/PATCH/DELETE must not. HEAD needs no route of its own —
         // Laravel answers it for any registered GET automatically.
-        Route::middleware(['web', 'auth', 'organization', 'module:calendar'])->group(function (): void {
-            Route::get('/_test/agenda', fn () => response()->noContent());
-            Route::post('/_test/agenda', fn () => response()->noContent());
-            Route::put('/_test/agenda', fn () => response()->noContent());
-            Route::patch('/_test/agenda', fn () => response()->noContent());
-            Route::delete('/_test/agenda', fn () => response()->noContent());
+        Route::middleware(['web', 'auth', 'organization', 'module:lessons'])->group(function (): void {
+            Route::get('/_test/pro-workspace', fn () => response()->noContent());
+            Route::post('/_test/pro-workspace', fn () => response()->noContent());
+            Route::put('/_test/pro-workspace', fn () => response()->noContent());
+            Route::patch('/_test/pro-workspace', fn () => response()->noContent());
+            Route::delete('/_test/pro-workspace', fn () => response()->noContent());
         });
     }
 
@@ -85,7 +85,7 @@ class RequireModuleTest extends TestCase
         // Scenario A8: the block comes from the entitlement system on the server.
         $user = User::factory()->create();
 
-        $this->actingAs($user)->get('/_test/agenda')->assertForbidden();
+        $this->actingAs($user)->get('/_test/pro-workspace')->assertForbidden();
     }
 
     #[Test]
@@ -94,7 +94,7 @@ class RequireModuleTest extends TestCase
         $user = User::factory()->create();
         $this->subscribe($user, 'pro');
 
-        $this->actingAs($user)->get('/_test/agenda')->assertNoContent();
+        $this->actingAs($user)->get('/_test/pro-workspace')->assertNoContent();
     }
 
     #[Test]
@@ -104,13 +104,13 @@ class RequireModuleTest extends TestCase
 
         OrganizationModuleOverride::withoutGlobalScope('organization')->create([
             'organization_id' => $user->personalOrganization()->getKey(),
-            'module_id' => Module::where('key', 'calendar')->firstOrFail()->getKey(),
+            'module_id' => Module::where('key', 'lessons')->firstOrFail()->getKey(),
             'enabled' => true,
             'reason' => 'Módulo opcional adquirido em separado.',
         ]);
         app(Entitlements::class)->flush();
 
-        $this->actingAs($user)->get('/_test/agenda')->assertNoContent();
+        $this->actingAs($user)->get('/_test/pro-workspace')->assertNoContent();
     }
 
     #[Test]
@@ -121,13 +121,13 @@ class RequireModuleTest extends TestCase
 
         OrganizationModuleOverride::withoutGlobalScope('organization')->create([
             'organization_id' => $user->personalOrganization()->getKey(),
-            'module_id' => Module::where('key', 'calendar')->firstOrFail()->getKey(),
+            'module_id' => Module::where('key', 'lessons')->firstOrFail()->getKey(),
             'enabled' => false,
             'reason' => 'Desativado a pedido da instituição.',
         ]);
         app(Entitlements::class)->flush();
 
-        $this->actingAs($user)->get('/_test/agenda')->assertForbidden();
+        $this->actingAs($user)->get('/_test/pro-workspace')->assertForbidden();
     }
 
     #[Test]
@@ -137,14 +137,14 @@ class RequireModuleTest extends TestCase
 
         OrganizationModuleOverride::withoutGlobalScope('organization')->create([
             'organization_id' => $user->personalOrganization()->getKey(),
-            'module_id' => Module::where('key', 'calendar')->firstOrFail()->getKey(),
+            'module_id' => Module::where('key', 'lessons')->firstOrFail()->getKey(),
             'enabled' => true,
             'starts_at' => Carbon::now()->subMonth(),
             'ends_at' => Carbon::now()->subDay(),
         ]);
         app(Entitlements::class)->flush();
 
-        $this->actingAs($user)->get('/_test/agenda')->assertForbidden();
+        $this->actingAs($user)->get('/_test/pro-workspace')->assertForbidden();
     }
 
     #[Test]
@@ -184,7 +184,7 @@ class RequireModuleTest extends TestCase
 
         $this->assertContains('assessment_profiles', $modules);
         $this->assertContains('reports', $modules);
-        $this->assertNotContains('calendar', $modules);
+        $this->assertNotContains('lessons', $modules);
         $this->assertNotContains('ai_assistance', $modules);
     }
 
@@ -196,7 +196,7 @@ class RequireModuleTest extends TestCase
         $user = User::factory()->create();
         $this->suspendOn($user, 'pro');
 
-        $this->actingAs($user)->get('/_test/agenda')->assertNoContent();
+        $this->actingAs($user)->get('/_test/pro-workspace')->assertNoContent();
     }
 
     #[Test]
@@ -205,7 +205,7 @@ class RequireModuleTest extends TestCase
         $user = User::factory()->create();
         $this->suspendOn($user, 'pro');
 
-        $this->actingAs($user)->head('/_test/agenda')->assertStatus(204);
+        $this->actingAs($user)->head('/_test/pro-workspace')->assertStatus(204);
     }
 
     #[Test]
@@ -214,7 +214,7 @@ class RequireModuleTest extends TestCase
         $user = User::factory()->create();
         $this->suspendOn($user, 'pro');
 
-        $this->actingAs($user)->post('/_test/agenda')->assertForbidden();
+        $this->actingAs($user)->post('/_test/pro-workspace')->assertForbidden();
     }
 
     #[Test]
@@ -223,8 +223,8 @@ class RequireModuleTest extends TestCase
         $user = User::factory()->create();
         $this->suspendOn($user, 'pro');
 
-        $this->actingAs($user)->put('/_test/agenda')->assertForbidden();
-        $this->actingAs($user)->patch('/_test/agenda')->assertForbidden();
+        $this->actingAs($user)->put('/_test/pro-workspace')->assertForbidden();
+        $this->actingAs($user)->patch('/_test/pro-workspace')->assertForbidden();
     }
 
     #[Test]
@@ -233,7 +233,7 @@ class RequireModuleTest extends TestCase
         $user = User::factory()->create();
         $this->suspendOn($user, 'pro');
 
-        $this->actingAs($user)->delete('/_test/agenda')->assertForbidden();
+        $this->actingAs($user)->delete('/_test/pro-workspace')->assertForbidden();
     }
 
     #[Test]
@@ -244,7 +244,7 @@ class RequireModuleTest extends TestCase
         // above covers the same thing at the boolean level; this one names the state).
         $user = User::factory()->create();
 
-        $this->actingAs($user)->get('/_test/agenda')->assertForbidden();
+        $this->actingAs($user)->get('/_test/pro-workspace')->assertForbidden();
     }
 
     #[Test]

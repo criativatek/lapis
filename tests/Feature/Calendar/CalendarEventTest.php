@@ -701,17 +701,26 @@ class CalendarEventTest extends TestCase
         $this->assertSame('Original', $this->soleEvent()->title);
     }
 
+    /**
+     * A BASE TEACHER WRITES ACONTECIMENTOS. «Datas relevantes / eventos
+     * manuais» is ticked for all three plans in Matriz Mestre §2: the reunião,
+     * the visita de estudo and the «outro» are the only dated things with no
+     * home anywhere else in the application, and a plan that let a teacher
+     * define períodos but not write down a reunião would be selling them half
+     * a year. Inverted deliberately from the assertion that stood here before
+     * the Base/Pro realignment.
+     */
     #[Test]
-    public function a_teacher_without_the_calendar_module_cannot_write_on_it(): void
+    public function a_base_teacher_writes_acontecimentos(): void
     {
         $base = User::factory()->create();
         $baseOrganization = $base->personalOrganization();
 
         $this->actingAs($base)->withSession(['organization_id' => $baseOrganization->id])
             ->post('/calendar/acontecimentos', $this->payload())
-            ->assertForbidden();
+            ->assertSessionHasNoErrors();
 
-        $this->assertDatabaseCount('calendar_events', 0);
+        $this->assertDatabaseCount('calendar_events', 1);
     }
 
     #[Test]

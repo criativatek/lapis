@@ -45,12 +45,38 @@ class ReportCapabilities
      */
     public const WRITING_ASSISTANT_MODULE = 'ai_reports';
 
+    /**
+     * The capability behind the ANALYTICAL readings a report may carry on top
+     * of its descriptive sections: the comparison with the class average and
+     * the comparison with the report this one was derived from.
+     *
+     * Distinct from `PEDAGOGICAL_MODULE`, and deliberately not folded into it.
+     * That one is about a section EXISTING at all — «Dificuldades
+     * identificadas» is a Pro section or it is nothing. This one is about a
+     * sentence or a panel inside a section every plan has: the Síntese global
+     * is Base (Matriz Mestre §6, «Síntese factual»), and what §3 and §4 mark
+     * Pro is the «Comparação contextual com turma» inside it. Same key the
+     * Acompanhamento panel uses for the same reading, so a school cannot end
+     * up seeing the comparison in one place and not the other.
+     */
+    public const ANALYTICS_MODULE = 'advanced_analytics';
+
     public function __construct(protected Entitlements $entitlements) {}
 
     /** Whether the pedagogical (interpretive) layer is available at all. */
     public function allowsPedagogicalAnalysis(): bool
     {
         return $this->entitlements->allows(SectionCatalogue::PEDAGOGICAL_MODULE);
+    }
+
+    /**
+     * Whether this school's plan includes the analytical readings inside
+     * otherwise-Base sections — the class comparison (§3, §4) and
+     * «Comparação entre períodos» (§6).
+     */
+    public function allowsAnalytics(): bool
+    {
+        return $this->entitlements->allows(self::ANALYTICS_MODULE);
     }
 
     /**

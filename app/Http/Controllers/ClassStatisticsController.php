@@ -10,6 +10,7 @@ use App\Services\Assessment\BuildClassStatistics;
 use App\Services\Assessment\CaptureInterimAssessment;
 use App\Support\Assessment\AssessmentCutoff;
 use App\Support\Assessment\DecisionScale;
+use App\Support\Entitlements\Entitlements;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
@@ -28,13 +29,39 @@ use Inertia\Response;
  * No capability of its own. Reading a class you already have results for is not
  * a separate product from having them, and inventing an entitlement to charge
  * for it would be taking something away rather than adding it (§43).
+ *
+ * ONE READING INSIDE IT IS PRO, AND ONLY ONE. The page stays open to every
+ * plan and keeps every FIGURE it ever showed: averages, success rate,
+ * classification distribution, per-domain statistics, the per-period series
+ * and each student's own change. What Matriz Mestre §3 reserves for Pro and
+ * Institucional is the automatic reading OF that movement — «Tendências
+ * automáticas» and «Padrões / irregularidades» — and that is exactly what
+ * `evolution` and `continuous_evolution` are: every student sorted into
+ * progrediu / manteve-se / regrediu, plus the crossing matrix of who moved
+ * across the scale's own line. Base keeps «Evolução factual simples», which
+ * §3 ticks for it and which is what `period_series` and the per-student
+ * change figures already are.
+ *
+ * STRIPPED HERE, NOT IN THE READ MODEL. `BuildClassStatistics` answers the
+ * same thing for everybody — the Acompanhamento panel and the report sources
+ * read it too, and a read model that returned different shapes depending on
+ * who was asking would be a second opinion about the same class. This
+ * controller decides what leaves the server for THIS page.
  */
 class ClassStatisticsController extends Controller
 {
+    /**
+     * The capability behind the automatic movement reading. The same key the
+     * Acompanhamento panel uses for its own analytical layer: one school must
+     * not see the trend for a class and not for a student inside it.
+     */
+    public const ANALYTICS_MODULE = 'advanced_analytics';
+
     public function __construct(
         protected BuildClassStatistics $statistics,
         protected CaptureInterimAssessment $capture,
         protected ClassAnalyst $analyst,
+        protected Entitlements $entitlements,
     ) {}
 
     public function show(Request $request, SchoolClass $class, ?AcademicPeriod $period = null): Response
@@ -52,6 +79,13 @@ class ClassStatisticsController extends Controller
 
         $cutoff = AssessmentCutoff::on($validated['ate'] ?? null);
         $statistics = $this->statistics->for($class, $period, $cutoff);
+
+        // The two automatic movement readings, removed from the payload when
+        // the plan does not include them — never sent and hidden, because a
+        // key in the props is a key in the browser's memory.
+        if (! $this->entitlements->allows(self::ANALYTICS_MODULE)) {
+            unset($statistics['evolution'], $statistics['continuous_evolution']);
+        }
 
         // The read model decides which period is being read — including when
         // the URL named none — so the name suggested for a photograph of it is

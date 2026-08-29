@@ -22,6 +22,14 @@ use App\Services\Reporting\ReportContext;
  * anybody else — both numbers came out of one read, so they describe the same
  * moment (§25, §71).
  *
+ * IT IS ALSO PRO, AND ONLY THE COMPARISON IS. The Matriz Mestre marks
+ * «Comparação contextual com turma» for Pro and Institucional in two separate
+ * tables (§3 and §4), and this sentence is the report's copy of the very
+ * example §4 uses to explain the boundary. The section around it is Base and
+ * stays Base — §6 gives every plan «Síntese factual» — so a Base report still
+ * opens with the student's own result, its band, the supplementary reading and
+ * the coverage warning. What it no longer carries is the class beside it.
+ *
  * A STUDENT WITH NO RESULT HAS NO RESULT. Not a zero, not a low figure, not an
  * empty percentage sign: the section says there is none and why that is not the
  * same as a bad one (§41).
@@ -122,6 +130,13 @@ class StudentSynthesisComposer implements SectionComposer
      */
     protected function comparisonSentence(ReportContext $context, array $student): ?string
     {
+        // Asked before the figures are even read: on Base this sentence is not
+        // built, so the class average never reaches the composed section, the
+        // finalized document or the PDF.
+        if (! $context->capabilities->allowsAnalytics()) {
+            return null;
+        }
+
         $classAverage = $context->fact('summary.primary_average');
         $mine = $student['primary_average'] ?? null;
 

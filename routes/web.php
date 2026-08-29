@@ -252,19 +252,30 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         //
         // Os mesmos três passos, com os mesmos nomes, que timetable-imports.*:
         // escolher (GET create), rever (POST store, que não escreve nada) e
-        // confirmar (POST confirm, a única que escreve). Gated pelo mesmo
-        // `module:calendar` das duas vistas e dos acontecimentos, porque importar
-        // o calendário é parte de ter o calendário e não uma capacidade nova.
+        // confirmar (POST confirm, a única que escreve).
+        //
+        // `module:calendar_import`, E JÁ NÃO `module:calendar`. Enquanto o
+        // calendário inteiro era Pro, importá-lo era «parte de ter o
+        // calendário» e não precisava de chave própria. Agora que a Matriz
+        // Mestre §2 devolve ao Base o calendário mensal/anual e os
+        // acontecimentos, a importação é a única linha dessa tabela que
+        // continua marcada só para Pro e Institucional — «Importação avançada
+        // de calendário» — e tem a chave que a §17 já lhe dava. O grupo fica
+        // aninhado no de `module:calendar`: importar exige as duas, porque
+        // importar um calendário para uma organização que não pode ter
+        // calendário nenhum não significaria nada.
         //
         // Alcançado a partir da própria página do Calendário e NÃO de uma entrada
         // de menu própria (§24): quem importa um calendário está a olhar para o
         // calendário quando decide fazê-lo.
-        Route::get('academic-calendar-imports/create', [AcademicCalendarImportController::class, 'create'])
-            ->name('academic-calendar-imports.create');
-        Route::post('academic-calendar-imports', [AcademicCalendarImportController::class, 'store'])
-            ->name('academic-calendar-imports.store');
-        Route::post('academic-calendar-imports/confirm', [AcademicCalendarImportController::class, 'confirm'])
-            ->name('academic-calendar-imports.confirm');
+        Route::middleware('module:calendar_import')->group(function () {
+            Route::get('academic-calendar-imports/create', [AcademicCalendarImportController::class, 'create'])
+                ->name('academic-calendar-imports.create');
+            Route::post('academic-calendar-imports', [AcademicCalendarImportController::class, 'store'])
+                ->name('academic-calendar-imports.store');
+            Route::post('academic-calendar-imports/confirm', [AcademicCalendarImportController::class, 'confirm'])
+                ->name('academic-calendar-imports.confirm');
+        });
     });
 
     // Subjects — the teacher's disciplines. Managed from the header subject
@@ -706,11 +717,23 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     // produces. Deliberately absent from EnsureAccountIsOperational's
     // allow-list: unlike export, a restore is never permitted while the
     // account or the current organization is winding down (§37-38).
-    Route::get('data-imports/create', [DataImportController::class, 'create'])->name('data-imports.create');
-    Route::post('data-imports', [DataImportController::class, 'store'])->name('data-imports.store');
-    Route::get('data-imports/{data_import}', [DataImportController::class, 'edit'])->name('data-imports.edit');
-    Route::post('data-imports/{data_import}/confirm', [DataImportController::class, 'confirm'])->name('data-imports.confirm');
-    Route::delete('data-imports/{data_import}', [DataImportController::class, 'destroy'])->name('data-imports.destroy');
+    //
+    // GATED BY `module:data_backup_restore`, AND THE EXPORT ABOVE IS NOT.
+    // The two halves of this page pair are different rows of Matriz Mestre §7
+    // and always were: «Exportação dos próprios dados» and «Exportação RGPD»
+    // are ticked for every plan — §20 makes portability a property of the
+    // platform, not a paid feature — while «Backup completo self-service» and
+    // «Restauro self-service» are marked Pro and Institucional. Until this
+    // realignment neither half was gated at all, so a Base organization could
+    // restore a complete backup over its own data. Exporting stays exactly
+    // where it was; only putting a backup back is Pro.
+    Route::middleware('module:data_backup_restore')->group(function () {
+        Route::get('data-imports/create', [DataImportController::class, 'create'])->name('data-imports.create');
+        Route::post('data-imports', [DataImportController::class, 'store'])->name('data-imports.store');
+        Route::get('data-imports/{data_import}', [DataImportController::class, 'edit'])->name('data-imports.edit');
+        Route::post('data-imports/{data_import}/confirm', [DataImportController::class, 'confirm'])->name('data-imports.confirm');
+        Route::delete('data-imports/{data_import}', [DataImportController::class, 'destroy'])->name('data-imports.destroy');
+    });
 
     Route::middleware('module:template_sharing')->group(function () {
         Route::get('configuracao/partilhar', [ConfigurationSharingController::class, 'export'])->name('configuration-sharing.export');

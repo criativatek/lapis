@@ -264,7 +264,11 @@ class StudentProgressPrintTest extends TestCase
             $page->where('document.sections', function ($sections) {
                 $keys = collect($sections)->pluck('key')->all();
 
-                foreach (['current_situation', 'domains', 'attention_factual', 'strengths_factual', 'records', 'strategies'] as $expected) {
+                // What §5 of the Matriz Mestre says a Base «Ficha do aluno»
+                // may contain: identificação (in the header), resultados,
+                // domínios, classificações, avaliações recentes,
+                // autoavaliações, registos, estratégias/medidas.
+                foreach (['current_situation', 'domains', 'records', 'strategies'] as $expected) {
                     $this->assertContains($expected, $keys, "Esperava-se a secção factual «{$expected}».");
                 }
 
@@ -273,7 +277,13 @@ class StudentProgressPrintTest extends TestCase
                 // repetia-o inteiro (§2 da revisão de impressão).
                 $this->assertNotContains('identification', $keys);
 
-                foreach (['attention_analytical', 'positive_signals', 'estado360', 'what_changed', 'potentialities'] as $forbidden) {
+                // «attention_factual» AND «strengths_factual» MOVED TO THIS
+                // LIST IN THE BASE/PRO REALIGNMENT. §5 lists «atenção» and
+                // «sinais positivos» among what the PRO síntese adds to the
+                // Base ficha, and §4 marks both automatic readings Pro. The
+                // Base document therefore carries neither — and, upstream,
+                // StudentProgressController does not compute either.
+                foreach (['attention_factual', 'strengths_factual', 'attention_analytical', 'positive_signals', 'estado360', 'what_changed', 'potentialities'] as $forbidden) {
                     $this->assertNotContains($forbidden, $keys, "A secção analítica «{$forbidden}» não devia constar de uma ficha Base.");
                 }
 

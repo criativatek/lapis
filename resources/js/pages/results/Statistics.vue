@@ -141,14 +141,21 @@ type Statistics = {
         most_common_band: (NonNullable<Band> & { count: number }) | null;
         success: SuccessFigures;
     };
-    evolution: {
+    /**
+     * «Tendências automáticas» (Matriz §3) — Pro and Institucional. Absent
+     * from the payload entirely on Base: ClassStatisticsController strips both
+     * keys rather than sending them for a v-if to hide. Every FIGURE on this
+     * page stays where it was; what this holds is the automatic sorting of the
+     * class into progrediu / manteve-se / regrediu and the crossing matrix.
+     */
+    evolution?: {
         progressed: number; stable: number; regressed: number; no_comparison: number;
         comparable: number; average_change: string | null;
         percentages: { progressed: string | null; stable: string | null; regressed: string | null; no_comparison: string | null };
         transitions: Transitions;
     };
     /** The same shape, read on the result of each moment rather than on the period's own. */
-    continuous_evolution: {
+    continuous_evolution?: {
         progressed: number; stable: number; regressed: number; no_comparison: number;
         comparable: number; average_change: string | null;
         percentages: { progressed: string | null; stable: string | null; regressed: string | null; no_comparison: string | null };
@@ -440,9 +447,18 @@ const readingGapCaption = computed<string | null>(() => {
         : `${formatPoints(readingGap.value)} p.p. face ao acumulado`;
 });
 
+/**
+ * Whether this plan gets the automatic movement reading at all.
+ *
+ * Read off the PAYLOAD, not off `props.modules`. The server already decided
+ * and already stripped; asking the entitlement a second time here would be a
+ * second gate that can disagree with the first one.
+ */
+const hasMovementReading = computed(() => stats.value.evolution !== undefined);
+
 /** The movement that belongs to the reading on screen. Two datasets, one shape. */
 const readingEvolution = computed(() => (
-    usingAccumulated.value ? stats.value.continuous_evolution : stats.value.evolution
+    (usingAccumulated.value ? stats.value.continuous_evolution : stats.value.evolution) ?? null
 ));
 
 const readingEvolutionLabel = computed<string>(() => (
@@ -450,7 +466,7 @@ const readingEvolutionLabel = computed<string>(() => (
 ));
 
 const evolutionTrend = computed(() => {
-    const change = readingEvolution.value.average_change;
+    const change = readingEvolution.value?.average_change ?? null;
 
     if (!hasComparison.value || change === null) {
         return null;
@@ -661,6 +677,10 @@ const domainDumbbells = computed<Dumbbell[]>(() => {
 const movements = computed<MovementCard[]>(() => {
     const evolution = readingEvolution.value;
 
+    if (evolution === null) {
+        return [];
+    }
+
     return [
         { key: 'progressed', label: 'Progrediram', count: evolution.progressed, share: formatShare(evolution.percentages.progressed) },
         { key: 'stable', label: 'Mantiveram-se', count: evolution.stable, share: formatShare(evolution.percentages.stable) },
@@ -691,7 +711,11 @@ function crossed(count: number): string {
 }
 
 const crossings = computed<CrossingCard[]>(() => {
-    const transitions = stats.value.evolution.transitions;
+    const transitions = stats.value.evolution?.transitions;
+
+    if (transitions === undefined) {
+        return [];
+    }
 
     return [
         {
@@ -710,7 +734,11 @@ const crossings = computed<CrossingCard[]>(() => {
 });
 
 const held = computed<HeldCard[]>(() => {
-    const transitions = stats.value.evolution.transitions;
+    const transitions = stats.value.evolution?.transitions;
+
+    if (transitions === undefined) {
+        return [];
+    }
 
     return [
         {
@@ -1602,8 +1630,13 @@ const studentRows = computed(() => {
 
                 <!-- The evolution of the READING ON SCREEN. In «avaliação
                      contínua» that is the continuous one, which is a different
-                     number from the period-against-period figure (§12, §13). -->
+                     number from the period-against-period figure (§12, §13).
+
+                     «Tendências automáticas» — Pro and Institucional (Matriz
+                     §3). Absent from the payload on Base, so this card is not
+                     drawn at all rather than drawn empty or locked. -->
                 <KpiCard
+                    v-if="readingEvolution"
                     tone="amber"
                     :icon="TrendingUp"
                     :label="readingEvolutionLabel"
@@ -1620,8 +1653,15 @@ const studentRows = computed(() => {
                 />
             </div>
 
-            <!-- ============================ 02 · COMO EVOLUIU A TURMA -->
-            <section :class="[card('plain'), 'rounded-[22px] p-5 sm:p-6']">
+            <!-- ============================ 02 · COMO EVOLUIU A TURMA
+
+                 «Tendências automáticas» and «Padrões / irregularidades» —
+                 Pro and Institucional (Matriz §3). The whole section, board
+                 and crossing matrix included, comes from two payload keys a
+                 Base organization never receives. Nothing else on this page
+                 depends on them: the averages, the distribution, the domains
+                 and the per-period series are all still here. -->
+            <section v-if="hasMovementReading" :class="[card('plain'), 'rounded-[22px] p-5 sm:p-6']">
                 <SectionHeading
                     index="02"
                     title="Como evoluiu a turma"
@@ -1632,7 +1672,7 @@ const studentRows = computed(() => {
 
                 <MovementBoard
                     v-if="hasComparison"
-                    :comparable="readingEvolution.comparable"
+                    :comparable="readingEvolution!.comparable"
                     :movement-caption="usingAccumulated
                         ? 'com dois momentos comparáveis, resultado acumulado contra o resultado anterior'
                         : 'com dois períodos comparáveis, resultado isolado contra resultado isolado'"
@@ -1641,9 +1681,9 @@ const studentRows = computed(() => {
                     :held="held"
                     :crossing-title="crossingTitle"
                     :crossing-caption="crossingCaption"
-                    :crossing-comparable="stats.evolution.transitions.comparable"
-                    :unclassified="stats.evolution.transitions.unclassified"
-                    :no-comparison="stats.evolution.transitions.no_assigned_classification"
+                    :crossing-comparable="stats.evolution!.transitions.comparable"
+                    :unclassified="stats.evolution!.transitions.unclassified"
+                    :no-comparison="stats.evolution!.transitions.no_assigned_classification"
                     :selected="selectedGroup"
                     @select="toggleGroup"
                 />
@@ -1900,8 +1940,8 @@ const studentRows = computed(() => {
 
                         <p
                             class="my-2 flex items-center gap-2 text-2xl font-semibold tabular-nums"
-                            :class="Number(stats.evolution.average_change) > 0 ? 'text-emerald-700 dark:text-emerald-400'
-                                : Number(stats.evolution.average_change) < 0 ? 'text-rose-700 dark:text-rose-400' : ''"
+                            :class="(classPeriodChange ?? 0) > 0 ? 'text-emerald-700 dark:text-emerald-400'
+                                : (classPeriodChange ?? 0) < 0 ? 'text-rose-700 dark:text-rose-400' : ''"
                         >
                             <span aria-hidden="true" class="text-muted-foreground/50">↓</span>
                             {{ formatPoints(classPeriodChange) }}

@@ -24,6 +24,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\SubscribesOrganizations;
 use Tests\TestCase;
 
 /**
@@ -43,6 +44,7 @@ use Tests\TestCase;
 class ClassStatisticsTest extends TestCase
 {
     use RefreshDatabase;
+    use SubscribesOrganizations;
 
     protected User $teacher;
 
@@ -680,6 +682,13 @@ class ClassStatisticsTest extends TestCase
     public function the_page_renders_with_the_datasets_it_needs(): void
     {
         $class = $this->asTenant(fn (): SchoolClass => $this->schoolClass());
+        // «Tendências automáticas» is Pro and Institucional since the Base/Pro
+        // realignment (Matriz §3), and `evolution`/`continuous_evolution` are
+        // what carries it. This test is about the page having the datasets it
+        // draws with, so it runs on the plan that gets all of them; what Base
+        // does and does not receive is asserted in
+        // tests/Feature/Entitlements/BaseProBoundaryTest.php.
+        $this->subscribeOrganizationTo($this->teacher->personalOrganization(), 'pro');
 
         $this->actingAs($this->teacher)
             ->get("/classes/{$class->ulid}/results/estatistica")
@@ -1658,6 +1667,13 @@ class ClassStatisticsTest extends TestCase
     public function the_page_carries_the_transitions(): void
     {
         $class = $this->asTenant(fn (): SchoolClass => $this->schoolClass());
+        // «Tendências automáticas» is Pro and Institucional since the Base/Pro
+        // realignment (Matriz §3), and `evolution`/`continuous_evolution` are
+        // what carries it. This test is about the page having the datasets it
+        // draws with, so it runs on the plan that gets all of them; what Base
+        // does and does not receive is asserted in
+        // tests/Feature/Entitlements/BaseProBoundaryTest.php.
+        $this->subscribeOrganizationTo($this->teacher->personalOrganization(), 'pro');
 
         $this->actingAs($this->teacher)
             ->get("/classes/{$class->ulid}/results/estatistica")
@@ -2177,6 +2193,13 @@ class ClassStatisticsTest extends TestCase
     public function the_page_carries_the_reading_of_the_moment(): void
     {
         $class = $this->asTenant(fn (): SchoolClass => $this->schoolClass());
+        // «Tendências automáticas» is Pro and Institucional since the Base/Pro
+        // realignment (Matriz §3), and `evolution`/`continuous_evolution` are
+        // what carries it. This test is about the page having the datasets it
+        // draws with, so it runs on the plan that gets all of them; what Base
+        // does and does not receive is asserted in
+        // tests/Feature/Entitlements/BaseProBoundaryTest.php.
+        $this->subscribeOrganizationTo($this->teacher->personalOrganization(), 'pro');
 
         $this->actingAs($this->teacher)
             ->get("/classes/{$class->ulid}/results/estatistica")

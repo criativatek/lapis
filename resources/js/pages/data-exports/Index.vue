@@ -12,7 +12,7 @@ type Export = {
     ready: boolean;
 };
 
-const props = defineProps<{ exports: Export[]; organizationName: string }>();
+const props = defineProps<{ exports: Export[]; organizationName: string; keepsHistory: boolean }>();
 
 const page = usePage();
 const exportError = computed(() => (page.props.errors as Record<string, string>)?.export ?? null);
@@ -43,7 +43,7 @@ function requestExport(): void {
         </section>
 
         <section v-if="props.exports.length > 0" class="space-y-3 rounded-lg border border-border p-4">
-            <h2 class="text-sm font-medium">Exportações recentes</h2>
+            <h2 class="text-sm font-medium">{{ props.keepsHistory ? 'Exportações recentes' : 'Pronta a transferir' }}</h2>
             <ul class="divide-y divide-border text-sm">
                 <li v-for="item in props.exports" :key="item.ulid" class="flex items-center justify-between py-2">
                     <span class="text-muted-foreground">{{ item.created_at }}</span>

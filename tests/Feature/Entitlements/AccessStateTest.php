@@ -83,7 +83,7 @@ class AccessStateTest extends TestCase
         $organization = $this->organization();
         $this->subscribeActive($organization, 'pro');
 
-        $state = app(Entitlements::class)->accessStateFor($organization->fresh(), 'calendar');
+        $state = app(Entitlements::class)->accessStateFor($organization->fresh(), 'lessons');
 
         $this->assertSame(AccessState::Allowed, $state);
     }
@@ -94,8 +94,8 @@ class AccessStateTest extends TestCase
         $organization = $this->organization();
         $this->subscribeActive($organization, 'base');
 
-        // `calendar` is Pro/Institucional only — a Base organization never had it.
-        $state = app(Entitlements::class)->accessStateFor($organization->fresh(), 'calendar');
+        // `lessons` is Pro/Institucional only — a Base organization never had it.
+        $state = app(Entitlements::class)->accessStateFor($organization->fresh(), 'lessons');
 
         $this->assertSame(AccessState::Locked, $state);
     }
@@ -106,7 +106,7 @@ class AccessStateTest extends TestCase
         $organization = $this->organization();
         $this->subscribeSuspended($organization, 'pro');
 
-        $state = app(Entitlements::class)->accessStateFor($organization->fresh(), 'calendar');
+        $state = app(Entitlements::class)->accessStateFor($organization->fresh(), 'lessons');
 
         $this->assertSame(AccessState::ReadOnly, $state);
     }
@@ -125,7 +125,7 @@ class AccessStateTest extends TestCase
             ->update(['ends_at' => Carbon::now()->subHour()]);
         app(Entitlements::class)->flush();
 
-        $this->assertSame(AccessState::Locked, app(Entitlements::class)->accessStateFor($organization->fresh(), 'calendar'));
+        $this->assertSame(AccessState::Locked, app(Entitlements::class)->accessStateFor($organization->fresh(), 'lessons'));
     }
 
     #[Test]
@@ -139,7 +139,7 @@ class AccessStateTest extends TestCase
             ->update(['status' => SubscriptionStatus::Expired, 'ends_at' => Carbon::now()->subHour()]);
         app(Entitlements::class)->flush();
 
-        $this->assertSame(AccessState::Locked, app(Entitlements::class)->accessStateFor($organization->fresh(), 'calendar'));
+        $this->assertSame(AccessState::Locked, app(Entitlements::class)->accessStateFor($organization->fresh(), 'lessons'));
     }
 
     // ------------------------------------------------------------- overrides
@@ -149,9 +149,9 @@ class AccessStateTest extends TestCase
     {
         $organization = $this->organization();
         $this->subscribeActive($organization, 'pro');
-        $this->overrideCalendar($organization, enabled: false);
+        $this->overrideProModule($organization, enabled: false);
 
-        $this->assertSame(AccessState::Locked, app(Entitlements::class)->accessStateFor($organization->fresh(), 'calendar'));
+        $this->assertSame(AccessState::Locked, app(Entitlements::class)->accessStateFor($organization->fresh(), 'lessons'));
     }
 
     #[Test]
@@ -161,9 +161,9 @@ class AccessStateTest extends TestCase
         // — or leak into — what state the module would otherwise have been in.
         $organization = $this->organization();
         $this->subscribeSuspended($organization, 'pro');
-        $this->overrideCalendar($organization, enabled: false);
+        $this->overrideProModule($organization, enabled: false);
 
-        $this->assertSame(AccessState::Locked, app(Entitlements::class)->accessStateFor($organization->fresh(), 'calendar'));
+        $this->assertSame(AccessState::Locked, app(Entitlements::class)->accessStateFor($organization->fresh(), 'lessons'));
     }
 
     #[Test]
@@ -173,9 +173,9 @@ class AccessStateTest extends TestCase
         // unconditionally, even from a completely bare Base organization.
         $organization = $this->organization();
         $this->subscribeActive($organization, 'base');
-        $this->overrideCalendar($organization, enabled: true);
+        $this->overrideProModule($organization, enabled: true);
 
-        $this->assertSame(AccessState::Allowed, app(Entitlements::class)->accessStateFor($organization->fresh(), 'calendar'));
+        $this->assertSame(AccessState::Allowed, app(Entitlements::class)->accessStateFor($organization->fresh(), 'lessons'));
     }
 
     #[Test]
@@ -183,9 +183,9 @@ class AccessStateTest extends TestCase
     {
         $organization = $this->organization();
         $this->subscribeSuspended($organization, 'pro');
-        $this->overrideCalendar($organization, enabled: true);
+        $this->overrideProModule($organization, enabled: true);
 
-        $this->assertSame(AccessState::Allowed, app(Entitlements::class)->accessStateFor($organization->fresh(), 'calendar'));
+        $this->assertSame(AccessState::Allowed, app(Entitlements::class)->accessStateFor($organization->fresh(), 'lessons'));
     }
 
     #[Test]
@@ -196,7 +196,7 @@ class AccessStateTest extends TestCase
 
         OrganizationModuleOverride::withoutGlobalScope('organization')->create([
             'organization_id' => $organization->getKey(),
-            'module_id' => Module::where('key', 'calendar')->firstOrFail()->getKey(),
+            'module_id' => Module::where('key', 'lessons')->firstOrFail()->getKey(),
             'enabled' => false,
             'starts_at' => Carbon::now()->subMonth(),
             'ends_at' => Carbon::now()->subDay(),
@@ -206,14 +206,14 @@ class AccessStateTest extends TestCase
 
         // Falls back to the SUSPENDED base state (ReadOnly), not to Locked and
         // not to Allowed — the expired override simply is not consulted.
-        $this->assertSame(AccessState::ReadOnly, app(Entitlements::class)->accessStateFor($organization->fresh(), 'calendar'));
+        $this->assertSame(AccessState::ReadOnly, app(Entitlements::class)->accessStateFor($organization->fresh(), 'lessons'));
     }
 
-    protected function overrideCalendar(Organization $organization, bool $enabled): void
+    protected function overrideProModule(Organization $organization, bool $enabled): void
     {
         OrganizationModuleOverride::withoutGlobalScope('organization')->create([
             'organization_id' => $organization->getKey(),
-            'module_id' => Module::where('key', 'calendar')->firstOrFail()->getKey(),
+            'module_id' => Module::where('key', 'lessons')->firstOrFail()->getKey(),
             'enabled' => $enabled,
             'reason' => 'Teste do §Lote 2.',
         ]);
@@ -229,8 +229,8 @@ class AccessStateTest extends TestCase
         $this->subscribeSuspended($organization, 'pro');
         $entitlements = app(Entitlements::class);
 
-        // `calendar` is part of the suspended Pro plan → ReadOnly → readable.
-        $this->assertTrue($entitlements->canReadFor($organization->fresh(), 'calendar'));
+        // `lessons` is part of the suspended Pro plan → ReadOnly → readable.
+        $this->assertTrue($entitlements->canReadFor($organization->fresh(), 'lessons'));
         // `institution_admin` was never part of Pro at all → Locked → not readable.
         $this->assertFalse($entitlements->canReadFor($organization->fresh(), 'institution_admin'));
     }
@@ -244,10 +244,10 @@ class AccessStateTest extends TestCase
 
         $readOnly = $entitlements->readOnlyModulesFor($organization->fresh());
 
-        $this->assertContains('calendar', $readOnly);
+        $this->assertContains('lessons', $readOnly);
         $this->assertContains('assessment_profiles', $readOnly, 'Base modules bundled into the suspended Pro plan go ReadOnly too, not just the Pro-exclusive ones.');
         $this->assertNotContains('institution_admin', $readOnly, 'Never sold to Pro at all — stays Locked, never ReadOnly.');
-        $this->assertNotContains('calendar', $entitlements->modulesFor($organization->fresh()), 'A ReadOnly module is never also Allowed.');
+        $this->assertNotContains('lessons', $entitlements->modulesFor($organization->fresh()), 'A ReadOnly module is never also Allowed.');
     }
 
     // --------------------------------------------- item 15: byte-identical contract
@@ -260,8 +260,8 @@ class AccessStateTest extends TestCase
         $entitlements = app(Entitlements::class);
 
         // Active: allowsFor()/modules() say yes, exactly as before this Lote.
-        $this->assertTrue($entitlements->allowsFor($organization->fresh(), 'calendar'));
-        $this->assertContains('calendar', $entitlements->modulesFor($organization->fresh()));
+        $this->assertTrue($entitlements->allowsFor($organization->fresh(), 'lessons'));
+        $this->assertContains('lessons', $entitlements->modulesFor($organization->fresh()));
 
         // Locked (never sold to this plan): allowsFor()/modules() say no, exactly as before.
         $this->assertFalse($entitlements->allowsFor($organization->fresh(), 'institution_admin'));
@@ -272,7 +272,7 @@ class AccessStateTest extends TestCase
         // module is deliberately excluded from the Allowed-only list.
         $this->subscribeSuspended($organization, 'pro');
         $this->assertSame([], $entitlements->modulesFor($organization->fresh()));
-        $this->assertFalse($entitlements->allowsFor($organization->fresh(), 'calendar'));
+        $this->assertFalse($entitlements->allowsFor($organization->fresh(), 'lessons'));
     }
 
     // ------------------------------------------------------------- item 10: reactivation
@@ -285,10 +285,10 @@ class AccessStateTest extends TestCase
         $plans->to($organization, Plan::where('key', 'pro')->firstOrFail());
 
         $entitlements = app(Entitlements::class);
-        $this->assertSame(AccessState::Allowed, $entitlements->accessStateFor($organization->fresh(), 'calendar'));
+        $this->assertSame(AccessState::Allowed, $entitlements->accessStateFor($organization->fresh(), 'lessons'));
 
         $plans->suspend($organization->fresh());
-        $this->assertSame(AccessState::ReadOnly, $entitlements->accessStateFor($organization->fresh(), 'calendar'));
+        $this->assertSame(AccessState::ReadOnly, $entitlements->accessStateFor($organization->fresh(), 'lessons'));
 
         $rowCountBefore = OrganizationSubscription::withoutGlobalScope('organization')
             ->where('organization_id', $organization->getKey())->count();
@@ -309,7 +309,7 @@ class AccessStateTest extends TestCase
         // Allowed again, on the very next call — no manual flush needed here:
         // ChangeOrganizationPlan::reactivate() already flushes Entitlements
         // itself, the same as every other writer of a subscription transition.
-        $this->assertSame(AccessState::Allowed, $entitlements->accessStateFor($organization->fresh(), 'calendar'));
+        $this->assertSame(AccessState::Allowed, $entitlements->accessStateFor($organization->fresh(), 'lessons'));
     }
 
     // ----------------------------------------------------------- item 20: flush()
@@ -321,32 +321,32 @@ class AccessStateTest extends TestCase
         $entitlements = app(Entitlements::class);
         $plans = app(ChangeOrganizationPlan::class);
 
-        // Fresh organizations start on Base; `calendar` starts Locked.
-        $this->assertSame(AccessState::Locked, $entitlements->accessStateFor($organization->fresh(), 'calendar'));
+        // Fresh organizations start on Base; `lessons` starts Locked.
+        $this->assertSame(AccessState::Locked, $entitlements->accessStateFor($organization->fresh(), 'lessons'));
 
         // Plan change → Allowed.
         $plans->to($organization->fresh(), Plan::where('key', 'pro')->firstOrFail());
-        $this->assertSame(AccessState::Allowed, $entitlements->accessStateFor($organization->fresh(), 'calendar'));
+        $this->assertSame(AccessState::Allowed, $entitlements->accessStateFor($organization->fresh(), 'lessons'));
 
         // Suspend → ReadOnly.
         $plans->suspend($organization->fresh());
-        $this->assertSame(AccessState::ReadOnly, $entitlements->accessStateFor($organization->fresh(), 'calendar'));
+        $this->assertSame(AccessState::ReadOnly, $entitlements->accessStateFor($organization->fresh(), 'lessons'));
 
         // Reactivate → Allowed again.
         $plans->reactivate($organization->fresh());
-        $this->assertSame(AccessState::Allowed, $entitlements->accessStateFor($organization->fresh(), 'calendar'));
+        $this->assertSame(AccessState::Allowed, $entitlements->accessStateFor($organization->fresh(), 'lessons'));
 
         // An override, added directly (no service writes these yet) — needs
         // its own explicit flush(), same convention RequireModuleTest already
         // uses for every override it creates.
-        $this->overrideCalendar($organization->fresh(), enabled: false);
-        $this->assertSame(AccessState::Locked, $entitlements->accessStateFor($organization->fresh(), 'calendar'));
+        $this->overrideProModule($organization->fresh(), enabled: false);
+        $this->assertSame(AccessState::Locked, $entitlements->accessStateFor($organization->fresh(), 'lessons'));
 
         // Expiring that override (an update, not a delete) → falls back to Allowed again.
         OrganizationModuleOverride::withoutGlobalScope('organization')
             ->where('organization_id', $organization->getKey())
             ->update(['ends_at' => Carbon::now()->subMinute()]);
         $entitlements->flush();
-        $this->assertSame(AccessState::Allowed, $entitlements->accessStateFor($organization->fresh(), 'calendar'));
+        $this->assertSame(AccessState::Allowed, $entitlements->accessStateFor($organization->fresh(), 'lessons'));
     }
 }

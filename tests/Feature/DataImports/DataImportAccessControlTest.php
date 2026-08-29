@@ -5,7 +5,11 @@ namespace Tests\Feature\DataImports;
 use App\Models\DataImport;
 use App\Models\DataImportStatus;
 use App\Models\Organization;
+use App\Models\OrganizationSubscription;
+use App\Models\Plan;
+use App\Models\SubscriptionStatus;
 use App\Models\User;
+use App\Support\Entitlements\Entitlements;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\Test;
@@ -115,6 +119,7 @@ class DataImportAccessControlTest extends TestCase
     public function impersonation_blocks_uploading_confirming_and_cancelling(): void
     {
         [$owner, $organization] = $this->ownerAndOrganization();
+        $this->subscribeToPro($organization);
         $import = $this->createImport($organization, $owner);
 
         $this->actingAs($owner)->withSession(['organization_id' => $organization->id, 'impersonator_id' => 999])
@@ -139,6 +144,7 @@ class DataImportAccessControlTest extends TestCase
     {
         $owner = User::factory()->create();
         $organization = $owner->personalOrganization();
+        $this->subscribeToPro($organization);
         $owner->forceFill(['closure_requested_at' => now(), 'scheduled_deletion_at' => now()->addDays(60)])->save();
         $import = $this->createImport($organization, $owner);
 
@@ -161,6 +167,7 @@ class DataImportAccessControlTest extends TestCase
     public function an_organization_in_closure_cannot_upload_confirm_or_cancel_but_can_still_see_the_wizard(): void
     {
         [$owner, $organization] = $this->ownerAndOrganization();
+        $this->subscribeToPro($organization);
         $organization->forceFill(['closure_requested_at' => now(), 'scheduled_deletion_at' => now()->addDays(90)])->save();
         $import = $this->createImport($organization, $owner);
 
@@ -187,5 +194,28 @@ class DataImportAccessControlTest extends TestCase
         $organization->members()->attach($owner, ['joined_at' => now()]);
 
         return [$owner, $organization];
+    }
+
+    /**
+     * The restore wizard is Pro and Institucional since the Base/Pro
+     * realignment (Matriz §7, `data_backup_restore`). Tests that assert what
+     * happens INSIDE the wizard — impersonation, a closure window — need an
+     * organization entitled to reach it at all, or they assert a 403 that came
+     * from the plan rather than from the rule they are about.
+     */
+    private function subscribeToPro(Organization $organization): void
+    {
+        OrganizationSubscription::withoutGlobalScope('organization')
+            ->where('organization_id', $organization->getKey())
+            ->delete();
+
+        OrganizationSubscription::withoutGlobalScope('organization')->create([
+            'organization_id' => $organization->getKey(),
+            'plan_id' => Plan::where('key', 'pro')->firstOrFail()->getKey(),
+            'status' => SubscriptionStatus::Active,
+            'starts_at' => now()->subDay(),
+        ]);
+
+        app(Entitlements::class)->flush();
     }
 }

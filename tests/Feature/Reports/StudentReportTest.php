@@ -30,6 +30,7 @@ use Database\Seeders\EntitlementsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\SubscribesOrganizations;
 use Tests\TestCase;
 
 /**
@@ -48,6 +49,7 @@ use Tests\TestCase;
 class StudentReportTest extends TestCase
 {
     use RefreshDatabase;
+    use SubscribesOrganizations;
 
     protected User $teacher;
 
@@ -137,6 +139,13 @@ class StudentReportTest extends TestCase
     #[Test]
     public function the_student_and_the_class_figures_come_from_one_read(): void
     {
+        // «Comparação contextual com turma» is Pro and Institucional (Matriz
+        // §3 and §4), so the sentence this asserts only exists on a plan that
+        // holds `advanced_analytics`. The subject of the test is unchanged:
+        // when the comparison IS produced, its class figure is the very one
+        // BuildClassStatistics computed, never a second average taken here.
+        $this->subscribeOrganizationTo($this->organization, 'pro');
+
         $report = $this->report();
 
         $statistics = $this->asTenant(fn (): array => app(BuildClassStatistics::class)

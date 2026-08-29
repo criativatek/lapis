@@ -85,14 +85,39 @@ class ReadOnlyNavigationTest extends TestCase
     #[Test]
     public function a_locked_capability_is_absent_from_the_navigation(): void
     {
-        // Base never had `calendar` at all — Locked, and it stays hidden. This
+        // Base never had `lessons` at all — Locked, and it stays hidden. This
         // is the half of the rule that must NOT have loosened.
+        //
+        // The example used to be `calendar`; the Base/Pro realignment moved
+        // that key to Base (Matriz §2), so it can no longer stand for
+        // "something Base does not have". `lessons` is the Pro workspace that
+        // still does, and the assertion is unchanged in what it checks.
         $user = User::factory()->create();
         $this->subscribe($user, 'base', SubscriptionStatus::Active);
 
         $this->actingAs($user)->get('/dashboard')->assertInertia(function (AssertableInertia $page): void {
-            $this->assertNotContains('calendar', $this->navKeys($page));
+            $this->assertNotContains('lessons', $this->navKeys($page));
+            $this->assertNotContains('teacher-timetable', $this->navKeys($page));
         });
+    }
+
+    /**
+     * The other half, new with the realignment: a capability Base DOES have is
+     * present, and its page answers. A menu that hid the calendar from the
+     * plan the Matriz gives it to would be the same kind of lie in reverse.
+     */
+    #[Test]
+    public function a_base_capability_is_present_in_the_navigation_and_its_page_answers(): void
+    {
+        $user = User::factory()->create();
+        $this->subscribe($user, 'base', SubscriptionStatus::Active);
+
+        $this->actingAs($user)->get('/dashboard')->assertInertia(function (AssertableInertia $page): void {
+            $this->assertContains('calendar', $this->navKeys($page));
+        });
+
+        $this->actingAs($user)->get('/calendar')->assertOk();
+        $this->actingAs($user)->get('/calendar/ano')->assertOk();
     }
 
     // ------------------------------------- 4: a suspended Pro is still usable
@@ -195,8 +220,10 @@ class ReadOnlyNavigationTest extends TestCase
             });
         }
 
+        // «calendar» left this diff in the Base/Pro realignment: Base already
+        // reaches it, so Pro cannot gain it.
         $this->assertSame(
-            ['calendar', 'teacher-timetable', 'lessons', 'configuration-sharing', 'configuration-import'],
+            ['teacher-timetable', 'lessons', 'configuration-sharing', 'configuration-import'],
             array_values(array_diff($menus['pro'], $menus['base'])),
         );
         $this->assertSame(

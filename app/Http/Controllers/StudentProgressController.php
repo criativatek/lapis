@@ -47,17 +47,34 @@ use Inertia\Response;
  * `student_progress` STAYS A BASE MODULE, and the panel itself is still
  * reachable on Base — reading a class you already have results for is not a
  * separate product from having them, and that precedent from Estatística is
- * unchanged. WHAT CHANGED (Acompanhamento do Aluno, §Pro layer): this
- * controller now DOES carry a deliberate paywall, but only around the
- * INTERPRETIVE layer added on top of the same payload — Estado 360º, trend
- * and regularity readings, analytical alerts, the self-assessment/evidence
- * discrepancy signal, potentialities, "o que mudou" (Pro), evolução após
- * estratégia and "Preparar conversa" all require `advanced_analytics`, gated
- * here on the SERVER before any of it enters the Inertia payload — a Base
- * organization's props simply do not contain the `pro` key. The Base factual
- * alerts and "Pontos fortes" sections stay Base, because they add no
- * interpretation: they are the same kind of arithmetic §43/§44 already
- * protected for `sinceLast` and the class comparison.
+ * unchanged. What Base does NOT get is the reading on top of it: Estado 360º,
+ * trend and regularity, analytical alerts, the self-assessment/evidence
+ * discrepancy, potentialities, "o que mudou", evolução após estratégia and
+ * "Preparar conversa" all require `advanced_analytics`, gated here on the
+ * SERVER before any of it enters the Inertia payload — a Base organization's
+ * props simply do not contain the `pro` key.
+ *
+ * «ATENÇÃO», «PONTOS FORTES» AND THE CLASS COMPARISON ARE ON THE PRO SIDE OF
+ * THAT LINE, AND THIS IS THE SLICE THAT MOVED THEM. They used to be computed
+ * for everybody, on the argument that a count is arithmetic rather than an
+ * opinion. The Matriz Mestre draws the line somewhere else, and says so four
+ * times: §4 marks «Atenção automática», «Sinais positivos automáticos» and
+ * «Pontos fortes identificados automaticamente» for Pro and Institucional
+ * only; §3 marks «Leitura automática de forças/dificuldades» and «Comparação
+ * contextual com turma» the same way; §5 lists «atenção» and «sinais
+ * positivos» among what the PRO síntese adds to the Base ficha; and §24
+ * settles the principle — «Base regista e mostra. Pro cruza, interpreta e
+ * ajuda a agir.» Gathering results, records, TPC, self-assessments and
+ * interventions into one sentence about what deserves attention is crossing
+ * sources, whoever does the arithmetic.
+ *
+ * NOTHING FACTUAL WAS TAKEN AWAY WITH THEM. Every figure those two sections
+ * summarise stays exactly where it was on Base: the domain table still shows
+ * that Gramática is at 37,5%, the timeline still lists every record and every
+ * TPC, the self-assessments and the interventions are untouched. §4's own
+ * example is precisely this — Base shows «Gramática — 37,5%», Pro says «a
+ * prioridade de consolidação é Gramática». The number is the Base half and it
+ * never moved.
  *
  * THE STUDENT IS REACHED THROUGH THEIR ENROLMENT, never through a student id.
  * A result belongs to the (student, class) pair, and a student who has left
@@ -175,18 +192,25 @@ class StudentProgressController extends Controller
             ? null
             : AcademicPeriod::find((int) $progress['selectedPeriod']['id']);
 
-        // Base: facts and strengths, always computed — the ATTENTION and the
-        // PROGRESS halves of the panel's own philosophy, never only the
-        // first (§1, §2).
-        $factualAlerts = $this->factualAlerts->for($class, $enrollment, $progress, $period);
-        $strengths = $this->strengths->for($class, $enrollment, $progress, $period);
         $allowsAdvancedAnalytics = $this->entitlements->allows('advanced_analytics');
+
+        // NOT COMPUTED AT ALL WITHOUT THE CAPABILITY, rather than computed and
+        // hidden. «Atenção» and «Pontos fortes» are §4's automatic readings and
+        // both are Pro; on Base the queries behind them never run and the props
+        // carry an empty list, so nothing about what deserves attention reaches
+        // the browser for a v-if to hide (§8.2 of CLAUDE.md).
+        $factualAlerts = $allowsAdvancedAnalytics
+            ? $this->factualAlerts->for($class, $enrollment, $progress, $period)
+            : [];
+        $strengths = $allowsAdvancedAnalytics
+            ? $this->strengths->for($class, $enrollment, $progress, $period)
+            : [];
         $previousAlerts = $allowsAdvancedAnalytics
             ? $this->previousPeriodAlerts($class, $enrollment, $progress, $period)
             : null;
 
         return Inertia::render('student-progress/Show', [
-            ...$progress,
+            ...$this->factualPayload($progress, $allowsAdvancedAnalytics),
             // Deterministic, from the figures already in the payload. No AI is
             // involved in this view at all (§38, §82).
             'narrative' => $this->narrative->for($progress),
@@ -297,9 +321,18 @@ class StudentProgressController extends Controller
             ? null
             : AcademicPeriod::find((int) $progress['selectedPeriod']['id']);
 
-        $factualAlerts = $this->factualAlerts->for($class, $enrollment, $progress, $period);
-        $strengths = $this->strengths->for($class, $enrollment, $progress, $period);
         $allowsAdvancedAnalytics = $this->entitlements->allows('advanced_analytics');
+
+        // The same boundary the panel draws, for the same reason: §5 lists
+        // «atenção» and «sinais positivos» among what the PRO síntese adds to
+        // the Base ficha, so the Base document does not carry them and does not
+        // compute them.
+        $factualAlerts = $allowsAdvancedAnalytics
+            ? $this->factualAlerts->for($class, $enrollment, $progress, $period)
+            : [];
+        $strengths = $allowsAdvancedAnalytics
+            ? $this->strengths->for($class, $enrollment, $progress, $period)
+            : [];
 
         $pro = null;
 
@@ -311,7 +344,7 @@ class StudentProgressController extends Controller
         $document = $this->printDocument->for($progress, $factualAlerts, $strengths, $pro, $allowsAdvancedAnalytics);
 
         return Inertia::render('student-progress/Print', [
-            ...$progress,
+            ...$this->factualPayload($progress, $allowsAdvancedAnalytics),
             'narrative' => $this->narrative->for($progress),
             'factualAlerts' => $factualAlerts,
             'strengths' => $strengths,
@@ -321,6 +354,37 @@ class StudentProgressController extends Controller
             'document' => $document,
             'generatedAt' => now()->toDateString(),
         ]);
+    }
+
+    /**
+     * The read model's payload with the one Pro figure inside it removed when
+     * the organization is not entitled to it.
+     *
+     * `classComparison` — «Comparação contextual com turma» — is marked Pro in
+     * §3 AND in §4 of the Matriz Mestre, in two independent tables, and it is
+     * the most legible leak of the commercial boundary there was: «72,1%,
+     * acima da média da turma (66,4%)» is almost word for word the sentence
+     * the Matriz uses to describe what Pro adds. It is built inside
+     * `BuildStudentProgress` because `BuildStudentInsights` reads it and the
+     * read model must stay one call and one opinion per figure; what changes
+     * here is only whether it leaves the server.
+     *
+     * ONE PLACE, SO THE PANEL AND THE DOCUMENT CANNOT DISAGREE. Both surfaces
+     * spread this payload straight into their props, and a condition written
+     * twice is a condition that will eventually be written differently. The
+     * report's own copy of the same sentence is gated in
+     * `StudentSynthesisComposer`, which never sees this payload.
+     *
+     * @param  array<string, mixed>  $progress
+     * @return array<string, mixed>
+     */
+    protected function factualPayload(array $progress, bool $allowsAdvancedAnalytics): array
+    {
+        if (! $allowsAdvancedAnalytics) {
+            $progress['classComparison'] = null;
+        }
+
+        return $progress;
     }
 
     /**

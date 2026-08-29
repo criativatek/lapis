@@ -35,9 +35,33 @@ class EntitlementsSeeder extends Seeder
         'student_progress' => 'Evolução do Aluno',
         'reports' => 'Relatórios',
 
+        // «Calendário do Ano Letivo» — Base since the Base/Pro realignment.
+        // Matriz Mestre §2 marks «Calendário mensal/anual» and «Datas
+        // relevantes / eventos manuais» with a tick in all three plans: seeing
+        // the year one already defined, and writing down the reunião that
+        // belongs nowhere else, are part of organizing a year rather than a
+        // separate product. Only «Importação avançada de calendário» is Pro
+        // there, and it now has its own key below instead of riding on this
+        // one.
+        'calendar' => 'Calendário do Ano Letivo',
+
         // Pro.
-        'calendar' => 'Agenda do Ano Letivo',
+        // The .xlsx the agrupamento publishes, read into this year's
+        // structure. Split out of 'calendar' so the views and the
+        // acontecimentos could go to Base without taking the import with
+        // them — Matriz §2 «Importação avançada de calendário» and §17
+        // 'calendar_import', which the Matriz already lists as a key of its
+        // own rather than a mode of 'calendar'.
+        'calendar_import' => 'Importação do Calendário da Escola',
         'lessons' => 'Aulas e Sumários',
+        // «Cópia de segurança completa e restauro» (Matriz §7, §17
+        // 'data_backup_restore'). NOT the export: exporting your own data
+        // and the RGPD export are ticked for every plan and stay ungated —
+        // that is portability, and §20 makes it a property of the platform
+        // rather than a paid feature. What this key gates is the other half,
+        // which §7 marks Pro: restoring a complete backup back into an
+        // organization, and the history of the backups themselves.
+        'data_backup_restore' => 'Cópia de Segurança e Restauro',
         // Relatórios stays in Base — a descriptive report is part of the core
         // offer. What separates the plans is whether the report may INTERPRET:
         // characterise behaviour and attitude, name difficulties, propose
@@ -110,6 +134,13 @@ class EntitlementsSeeder extends Seeder
         'assessment_profiles', 'classes', 'students', 'instruments', 'assessments',
         'results', 'self_assessments', 'records', 'interventions', 'student_progress',
         'reports',
+        // Matriz Mestre §2: «Calendário mensal/anual» and «Datas relevantes /
+        // eventos manuais» are ticked for Base, Pro and Institucional alike.
+        // A Base organization that already defines períodos, interrupções and
+        // feriados in «Estrutura do Ano Letivo» could not open either view of
+        // what it had just defined; that is the misalignment this key's move
+        // corrects. The advanced import stayed Pro, under 'calendar_import'.
+        'calendar',
         // The Centro de Ajuda's articles need no entitlement at all — the page
         // is outside the `organization` middleware. This key is the ASSISTANT
         // on top of them, which does reach an engine and therefore does.
@@ -118,9 +149,9 @@ class EntitlementsSeeder extends Seeder
 
     protected const PRO_MODULES = [
         ...self::BASE_MODULES,
-        'calendar', 'lessons', 'ai_assistance', 'advanced_analytics', 'template_sharing',
+        'calendar_import', 'lessons', 'ai_assistance', 'advanced_analytics', 'template_sharing',
         'self_assessment_links', 'correction_grid_import', 'inovar_export',
-        'report_pedagogical_analysis',
+        'report_pedagogical_analysis', 'data_backup_restore',
         'ai_pedagogical_analysis', 'ai_assessment', 'ai_followup', 'ai_strategies', 'ai_reports',
     ];
 
