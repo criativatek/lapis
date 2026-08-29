@@ -51,6 +51,47 @@ class LandingPageTest extends TestCase
     }
 
     /**
+     * The Base/Pro realignment, as the visitor's browser receives it.
+     *
+     * `commercial.test.ts` checks the copy against the seeder's source; this
+     * checks that the seeder's source is what actually leaves the server for
+     * the page that copy renders. Between the two there is the database and
+     * the `plan_module` rows, which is exactly where a composition can drift
+     * from the file that seeded it — a plan edited by hand in production, a
+     * seeder never re-run after a deploy.
+     *
+     * Three cells of the Matriz Mestre, and the ones the realignment moved:
+     * §2 gives the calendar to every plan and keeps only «Importação avançada
+     * de calendário» in the paid ones, and §7 keeps «Restauro self-service»
+     * paid while «Exportação dos próprios dados» — which has no key at all —
+     * belongs to every plan.
+     */
+    public function test_the_payload_places_the_calendar_in_base_and_its_import_in_pro(): void
+    {
+        $plans = $this->get(route('home'))->viewData('page')['props']['plans'];
+
+        $keys = array_column($plans, 'moduleKeys', 'key');
+
+        // A Base organization can open the year it defined…
+        $this->assertContains('calendar', $keys['base']);
+
+        // …and cannot read the school's .xlsx into it, nor put a complete
+        // backup back over its own data.
+        $this->assertNotContains('calendar_import', $keys['base']);
+        $this->assertNotContains('data_backup_restore', $keys['base']);
+        $this->assertContains('calendar_import', $keys['pro']);
+        $this->assertContains('data_backup_restore', $keys['pro']);
+
+        // Exporting is nobody's entitlement, in any plan: §20 makes
+        // portability a property of the platform. A key appearing here would
+        // mean the comparison table could start gating it.
+        foreach ($keys as $planKeys) {
+            $this->assertNotContains('data_export', $planKeys);
+            $this->assertNotContains('gdpr_export', $planKeys);
+        }
+    }
+
+    /**
      * «Falar connosco» must have somewhere to go. With no address configured
      * the page is told so and drops the button, rather than inventing one or
      * falling back to the system no-reply sender.

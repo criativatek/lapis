@@ -81,6 +81,7 @@ export const PLAN_COPY: Record<string, PlanCommercial> = {
             'Autoavaliação',
             'Estratégias e medidas manuais',
             'Relatórios essenciais',
+            'Calendário do ano letivo, com acontecimentos manuais',
             'Exportação dos próprios dados',
         ],
         boundary: 'Base regista e mostra.',
@@ -97,7 +98,6 @@ export const PLAN_COPY: Record<string, PlanCommercial> = {
             'Horário do professor',
             'Aulas e sumários',
             'Planeamento e sequências de aulas',
-            'Agenda integrada',
             'Análises avançadas, tendências e regularidade',
             'Alertas inteligentes',
             'Estado 360º do aluno',
@@ -106,7 +106,8 @@ export const PLAN_COPY: Record<string, PlanCommercial> = {
             'Acompanhamento da eficácia das estratégias',
             'Sínteses avançadas',
             'IA pedagógica: sugere estratégias e ajuda a aperfeiçoar relatórios',
-            'Backups e importações avançadas',
+            'Importações avançadas: o calendário publicado pela escola e as grelhas de correção',
+            'Cópia de segurança completa, restauro e histórico de backups',
         ],
         boundary: 'Pro cruza, interpreta e ajuda a agir.',
     },
@@ -188,10 +189,12 @@ export const COMPARE_ROWS: readonly CompareRow[] = [
         modules: ['instruments', 'assessments'],
     },
     { label: 'Acompanhamento factual do aluno', modules: ['student_progress'] },
-    // The positive half of the factual panel really is Base — see
-    // BuildStudentStrengths, which gathers the highest domain, a rise already
-    // computed and a met objective out of what is already stored. What Pro
-    // adds is the READING of it, two rows below.
+    // The FACTS are Base and stay Base: the registos the teacher wrote, the
+    // domain figures, the results behind them. What Pro adds is naming them
+    // without being asked — «Pontos fortes identificados automaticamente»
+    // (BuildStudentStrengths), which the Base/Pro realignment moved behind
+    // `advanced_analytics`, and which this table states two rows below rather
+    // than here.
     {
         label: 'Registos positivos e evidência factual',
         modules: ['records', 'student_progress'],
@@ -199,10 +202,20 @@ export const COMPARE_ROWS: readonly CompareRow[] = [
     { label: 'Autoavaliação manual', modules: ['self_assessments'] },
     { label: 'Estratégias e medidas manuais', modules: ['interventions'] },
     { label: 'Relatórios essenciais', modules: ['reports'] },
+    // TWO ROWS, BECAUSE THE MATRIZ HAS TWO LINES AND THE SEEDER NOW HAS TWO
+    // KEYS. «Agenda integrada» was one row on `calendar` while the whole
+    // calendar was Pro; with `calendar` in Base and only the import left in
+    // Pro, that single row would have read ✓ Base and told a visitor the
+    // school's .xlsx comes with the free plan. They are kept adjacent so the
+    // boundary is read in one glance instead of inferred.
+    {
+        label: 'Calendário do ano letivo e acontecimentos',
+        modules: ['calendar'],
+    },
+    { label: 'Importação avançada de calendário', modules: ['calendar_import'] },
     { label: 'Horário do professor', modules: ['lessons'] },
     { label: 'Aulas e sumários', modules: ['lessons'] },
     { label: 'Planeamento e sequências de aulas', modules: ['lessons'] },
-    { label: 'Agenda integrada', modules: ['calendar'] },
     {
         label: 'Tendências e análises automáticas',
         modules: ['advanced_analytics'],
@@ -228,6 +241,14 @@ export const COMPARE_ROWS: readonly CompareRow[] = [
     {
         label: 'IA aplicada a relatórios',
         modules: ['ai_assistance', 'report_pedagogical_analysis'],
+    },
+    // The half of §7 that IS paid. Exporting your own data has no row at all
+    // and no key behind it — §20 makes portability a property of the platform
+    // — so the label names restoring and the history, never «exportação», and
+    // LandingCompare's footnote says the other half is in every plan.
+    {
+        label: 'Restauro de cópia de segurança e histórico de backups',
+        modules: ['data_backup_restore'],
     },
     { label: 'Gestão de vários professores', modules: ['institution_admin'] },
     { label: 'Gestão de licenças', modules: [], planned: ['institutional'] },

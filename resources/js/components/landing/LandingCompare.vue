@@ -219,6 +219,13 @@ const hasPlanned = () =>
                     antes de o estar.
                 </p>
                 <p>
+                    A exportação dos seus próprios dados existe em todos os
+                    planos e não tem linha nesta tabela porque não depende do
+                    plano. O que a tabela assinala é a outra metade: repor uma
+                    cópia de segurança completa e guardar o histórico dos
+                    backups.
+                </p>
+                <p>
                     O plano Base inclui até {{ BASE_ACTIVE_CLASSES }} turmas e
                     {{ BASE_ACTIVE_STUDENTS }} alunos ativos. Turmas e alunos
                     arquivados não contam para estes limites.

@@ -13,10 +13,19 @@ import RevealOnScroll from './RevealOnScroll.vue';
  * opens on a Tuesday. A visitor searching for «horário do professor» or
  * «sumários» found nothing here, and neither did a crawler.
  *
- * ALL FOUR ARE REAL AND ALL FOUR ARE PRO. `lessons` carries the timetable,
- * the weekly view, the summaries and the reusable sequences; `calendar`
- * carries the agenda. Nothing on this band is aspirational, and the plan is
- * named on it rather than left for the visitor to discover at the price.
+ * ALL FOUR ARE REAL, AND THEY ARE NO LONGER ALL PRO. `lessons` carries the
+ * timetable, the weekly view, the summaries and the reusable sequences, and is
+ * Pro. `calendar` carries the agenda, and the Base/Pro realignment moved it
+ * into Base — Matriz Mestre §2 ticks «Calendário mensal/anual» and «Datas
+ * relevantes / eventos manuais» for the three plans, leaving only
+ * «Importação avançada de calendário» (`calendar_import`) in Pro. So the
+ * band still names the plan on every claim, but it can no longer name one
+ * plan for the four: the closing line splits them, and saying «as quatro são
+ * Pro» here while the comparison table below marks the agenda ✓ Base is
+ * exactly the contradiction the realignment exists to remove.
+ *
+ * Nothing on this band is aspirational, and the plan is named on it rather
+ * than left for the visitor to discover at the price.
  *
  * No product mock: the page already carries six, and a seventh on a band that
  * exists to add four short claims would cost more scroll than it returns.
@@ -47,7 +56,7 @@ const capabilities: readonly Capability[] = [
     {
         icon: CalendarDays,
         title: 'Agenda do ano letivo',
-        body: 'Períodos, interrupções e feriados no mesmo calendário onde marca o que é seu.',
+        body: 'Períodos, interrupções e feriados no mesmo calendário onde marca o que é seu. Em todos os planos.',
     },
 ];
 </script>
@@ -57,7 +66,7 @@ const capabilities: readonly Capability[] = [
         id="dia-a-dia"
         eyebrow="O dia a dia"
         title="Planeie aulas, organize sumários e consulte o horário na mesma plataforma."
-        lead="A organização do trabalho do professor não vive só na avaliação. O plano Pro traz o horário, a gestão de aulas, o planeamento de aulas e a agenda para junto das turmas e das classificações."
+        lead="A organização do trabalho do professor não vive só na avaliação. A agenda do ano letivo está em todos os planos; o plano Pro traz o horário, a gestão de aulas e o planeamento para junto das turmas e das classificações."
     >
         <dl
             class="grid gap-8 sm:grid-cols-2 sm:gap-x-10 lg:grid-cols-4 lg:gap-6"
@@ -88,12 +97,13 @@ const capabilities: readonly Capability[] = [
 
         <RevealOnScroll>
             <p class="mt-10 text-sm text-muted-foreground">
-                Estas quatro capacidades fazem parte do
+                O horário, as aulas e o planeamento fazem parte do
                 <a
                     href="#planos"
                     class="rounded font-medium text-foreground underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                     >plano Pro</a
-                >.
+                >. A agenda do ano letivo está incluída em todos os planos — no
+                Pro acresce a importação do calendário publicado pela escola.
             </p>
         </RevealOnScroll>
     </LandingSection>

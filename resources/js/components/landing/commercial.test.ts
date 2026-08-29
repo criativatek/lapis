@@ -1,5 +1,8 @@
 import { mount } from '@vue/test-utils';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
+// The seeder's own source, read at transform time by Vite's `?raw`. See the
+// note above the plan lists below for why this file reads PHP.
+import seeder from '../../../../database/seeders/EntitlementsSeeder.php?raw';
 import {
     availability,
     COMPARE_ROWS,
@@ -9,6 +12,8 @@ import {
     PRO_PRICE,
 } from './commercial';
 import LandingCompare from './LandingCompare.vue';
+import LandingDailyWork from './LandingDailyWork.vue';
+import LandingFaq from './LandingFaq.vue';
 import LandingPricing from './LandingPricing.vue';
 import LandingVoucher from './LandingVoucher.vue';
 
@@ -65,46 +70,62 @@ beforeAll(() => {
  * typed in beside them.
  */
 
-/** The plan shapes exactly as HomeController sends them, keys from the seeder. */
-const BASE_MODULES = [
-    'assessment_profiles',
-    'classes',
-    'students',
-    'instruments',
-    'assessments',
-    'results',
-    'self_assessments',
-    'records',
-    'interventions',
-    'student_progress',
-    'reports',
-    // Moved into Base by the Base/Pro realignment: Matriz Mestre §2 ticks
-    // «Calendário mensal/anual» and «Datas relevantes / eventos manuais» for
-    // all three plans. The advanced import stayed Pro, under its own key.
-    'calendar',
-    'help_assistant',
-];
+/**
+ * THE PLAN SHAPES ARE READ FROM THE SEEDER, NOT TYPED BESIDE IT.
+ *
+ * These three lists used to be written out here by hand, and a hand-written
+ * copy of the composition is the one fixture that cannot fail: it moves when
+ * somebody remembers to move it, which is precisely when the copy it is
+ * checking was already updated too. A row that lost its ✓ in production would
+ * have kept it here. So the composition comes out of
+ * `database/seeders/EntitlementsSeeder.php` — the same file the deploy runs,
+ * and the same one HomeController's payload ultimately derives from — and the
+ * assertions below compare the PROMISE (the copy in commercial.ts) against it.
+ *
+ * Reading PHP from a Vitest file is unusual and deliberate. The alternative
+ * that keeps everything in TypeScript is a fixture, and a fixture here is the
+ * bug. It arrives through Vite's `?raw`, so the path is resolved by the same
+ * resolver as every other import in the project and a moved seeder fails
+ * loudly at transform time rather than quietly at runtime.
+ */
 
-const PRO_MODULES = [
-    ...BASE_MODULES,
-    'calendar_import',
-    'data_backup_restore',
-    'lessons',
-    'ai_assistance',
-    'advanced_analytics',
-    'template_sharing',
-    'self_assessment_links',
-    'correction_grid_import',
-    'inovar_export',
-    'report_pedagogical_analysis',
-];
+/**
+ * The keys listed by one `const NAME = [ … ];` in the seeder.
+ *
+ * Comments are stripped first, because they quote key names too («…the
+ * advanced import stayed Pro, under 'calendar_import'») and a naive scan would
+ * read a sentence about a key as the key itself. A `...self::OTHER` spread
+ * carries no quotes and is skipped here; the caller composes the lists, the
+ * same way the seeder does.
+ *
+ * In the catalogue const the entries are `'key' => 'Nome'`, and only the key
+ * side survives the pattern: every display name has a capital or a space in
+ * it, so none of them looks like a key.
+ */
+function seededList(source: string, name: string): string[] {
+    const opening = source.indexOf(`const ${name} = [`);
 
+    if (opening < 0) {
+        throw new Error(`${name} not found in EntitlementsSeeder.php`);
+    }
+
+    const body = source
+        .slice(opening, source.indexOf('\n    ];', opening))
+        .split('\n')
+        .map((line) => line.split('//')[0])
+        .join('\n');
+
+    return [...body.matchAll(/'([a-z0-9_]+)'/g)].map((match) => match[1]);
+}
+
+/** Every key the catalogue defines — what a COMPARE_ROW may legitimately name. */
+const CATALOGUE = seededList(seeder, 'MODULES');
+
+const BASE_MODULES = seededList(seeder, 'BASE_MODULES');
+const PRO_MODULES = [...BASE_MODULES, ...seededList(seeder, 'PRO_MODULES')];
 const INSTITUTIONAL_MODULES = [
     ...PRO_MODULES,
-    'institution_admin',
-    'institution_library',
-    'institution_reports',
-    'audit_log',
+    ...seededList(seeder, 'INSTITUTIONAL_MODULES'),
 ];
 
 function plans() {
@@ -313,6 +334,159 @@ describe('the comparison table', () => {
         expect(wrapper.text()).toContain(
             'Institucional coordena, partilha e agrega.',
         );
+    });
+});
+
+/**
+ * THE OFFER, AGAINST THE COMPOSITION IT IS SOLD ON.
+ *
+ * The block above checks that the table DERIVES its marks. This one checks
+ * that the sentences around the table agree with what it derives them from —
+ * the seeded plan lists read at the top of this file. A page may describe a
+ * capability in any words it likes; what it may not do is place it in a plan
+ * the server does not place it in, because the visitor pays for the sentence
+ * and gets the entitlement.
+ *
+ * Every assertion here comes from the Base/Pro realignment, which moved
+ * `calendar` into Base, split `calendar_import` out of it, and put restoring a
+ * backup behind `data_backup_restore` while leaving the export ungated.
+ */
+/**
+ * Rendered text carries the template's own line breaks and indentation, so a
+ * sentence written across two lines in a .vue file is not the sentence a
+ * reader sees. Every prose assertion below reads the squished form.
+ */
+const squish = (text: string): string => text.replace(/\s+/g, ' ');
+
+describe('the offer against the composition', () => {
+    it('names only keys the catalogue actually defines', () => {
+        // A row naming a key that does not exist renders «não incluído» in
+        // every column, silently, and looks exactly like a capability the
+        // product decided not to sell.
+        const named = [...new Set(COMPARE_ROWS.flatMap((row) => row.modules))];
+
+        expect(named.length).toBeGreaterThan(0);
+
+        for (const key of named) {
+            expect(CATALOGUE).toContain(key);
+        }
+    });
+
+    it('sells the calendar as Base and only its import as Pro', () => {
+        const [base, pro] = plans();
+
+        const calendar = COMPARE_ROWS.find((row) =>
+            row.modules.includes('calendar'),
+        )!;
+        const importRow = COMPARE_ROWS.find((row) =>
+            row.modules.includes('calendar_import'),
+        )!;
+
+        // Not «the fixture says so»: BASE_MODULES came out of the seeder.
+        expect(BASE_MODULES).toContain('calendar');
+        expect(BASE_MODULES).not.toContain('calendar_import');
+        expect(PRO_MODULES).toContain('calendar_import');
+
+        expect(availability(calendar, base.key, base.moduleKeys)).toBe(
+            'included',
+        );
+        expect(availability(importRow, base.key, base.moduleKeys)).toBe(
+            'absent',
+        );
+        expect(availability(importRow, pro.key, pro.moduleKeys)).toBe(
+            'included',
+        );
+
+        // Two rows, so the table can say both things at once. A single row on
+        // `calendar` labelled for the import would tick Base and promise the
+        // school's .xlsx with the free plan.
+        expect(calendar.label).not.toBe(importRow.label);
+        expect(importRow.label).toMatch(/importa/i);
+    });
+
+    it('never presents the calendar as something the Pro plan adds', () => {
+        // Stated as the rule rather than as today's text: while Base carries
+        // `calendar`, a Pro bullet about the calendar is only honest if it is
+        // about the import.
+        expect(BASE_MODULES).toContain('calendar');
+
+        for (const feature of PLAN_COPY.pro.features) {
+            if (/agenda|calendári/i.test(feature)) {
+                expect(feature).toMatch(/importa/i);
+            }
+        }
+
+        // And the Base card says it, because the Base plan has it. A
+        // capability nobody is told about is sold to nobody.
+        expect(
+            PLAN_COPY.base.features.some((feature) =>
+                /calendári/i.test(feature),
+            ),
+        ).toBe(true);
+    });
+
+    it('does not deny in prose what the table marks in Base', () => {
+        const prose = squish(
+            [mount(LandingDailyWork).text(), mount(LandingFaq).text()].join(
+                ' ',
+            ),
+        );
+
+        // The band and the FAQ both name the agenda; neither may hand it to
+        // the Pro plan while the comparison table ticks it for Base.
+        expect(prose).toMatch(/agenda do ano letivo/i);
+        expect(prose).not.toMatch(
+            /quatro capacidades fazem parte do\s+plano Pro/i,
+        );
+        expect(prose).toMatch(/agenda do ano letivo[^.]*em todos os planos/i);
+    });
+
+    it('keeps restoring a backup in Pro and exporting in every plan', () => {
+        const [base, pro] = plans();
+
+        const restore = COMPARE_ROWS.find((row) =>
+            row.modules.includes('data_backup_restore'),
+        )!;
+
+        expect(BASE_MODULES).not.toContain('data_backup_restore');
+        expect(PRO_MODULES).toContain('data_backup_restore');
+
+        expect(availability(restore, base.key, base.moduleKeys)).toBe('absent');
+        expect(availability(restore, pro.key, pro.moduleKeys)).toBe('included');
+
+        // The label may not read as «exporting is paid»: the export has no key
+        // behind it and is ticked for every plan.
+        expect(restore.label).not.toMatch(/exporta/i);
+        expect(
+            PLAN_COPY.base.features.some((feature) => /exporta/i.test(feature)),
+        ).toBe(true);
+
+        // And the section says so out loud, beside a row that names only the
+        // half that is paid.
+        expect(
+            squish(mount(LandingCompare, { props: { plans: plans() } }).text()),
+        ).toMatch(
+            /exportação dos seus próprios dados existe em todos os planos/i,
+        );
+    });
+
+    it('keeps every interpretive reading in Pro', () => {
+        const [base, pro] = plans();
+
+        // The realignment's other direction: what Base showed and should not
+        // have. Each of these rows is one Matriz line, and all of them hang on
+        // the same key the server checks.
+        const interpretive = COMPARE_ROWS.filter((row) =>
+            row.modules.includes('advanced_analytics'),
+        );
+
+        expect(interpretive.length).toBeGreaterThanOrEqual(5);
+        expect(BASE_MODULES).not.toContain('advanced_analytics');
+
+        for (const row of interpretive) {
+            expect(availability(row, base.key, base.moduleKeys)).toBe('absent');
+            expect(availability(row, pro.key, pro.moduleKeys)).toBe('included');
+        }
     });
 });
 

@@ -52,7 +52,7 @@ const questions = [
     },
     {
         question: 'O Lapispro inclui horário, aulas e sumários?',
-        answer: 'Inclui, no plano Pro: o horário do professor, a semana de aulas, o sumário como centro de cada aula, o planeamento em sequências reutilizáveis e a agenda do ano letivo, com períodos, interrupções e feriados.',
+        answer: 'Inclui. A agenda do ano letivo — períodos, interrupções, feriados e os seus próprios acontecimentos — está em todos os planos. O horário do professor, a semana de aulas, o sumário como centro de cada aula e o planeamento em sequências reutilizáveis são do plano Pro, tal como a importação do calendário publicado pela escola.',
     },
     {
         question: 'O Lapispro utiliza inteligência artificial?',
