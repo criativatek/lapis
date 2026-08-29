@@ -14,6 +14,64 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > cada um sob o título da frente a que pertenceu. A 0.85.0 é o primeiro
 > release em que as duas linhagens voltam a ser uma só.
 
+## [0.90.0] — 2026-08-29
+
+«Alunos» deixa de ser uma promessa no menu e passa a ser uma página. A entrada
+existia desde a primeira fase da navegação, com o seu módulo e o seu lugar, e
+respondia com o *placeholder* de «em breve»: um professor com trezentos alunos
+distribuídos por oito turmas não tinha nenhum sítio onde perguntar «onde está o
+João?» sem abrir turma a turma até dar com ele. A partir desta versão há um
+diretório — encontra a pessoa, mostra em que turmas ela está, e entrega a
+pergunta a quem já a sabia responder. Não é uma segunda ficha do aluno: o
+**Acompanhamento** continua a ser a leitura pedagógica de uma pessoa e as
+**Turmas** continuam a ser a casa administrativa da inscrição. Esta página é o
+índice sobre as duas, e por isso não escreve nada.
+
+### Added
+
+- **Diretório central de alunos** (`/students`). A lista dos alunos das turmas
+  do professor, cem por página, cada linha com o pseudónimo, o nome, a
+  fotografia e todas as inscrições dessa pessoa nas turmas que este professor
+  leciona.
+- **Pesquisa e filtros.** Pesquisa pelo **nome completo** — através do índice
+  cego, que responde a igualdade e mais nada — ou pelo **início do pseudónimo**.
+  Filtros por turma, por ano letivo e por estado da inscrição, todos resolvidos
+  contra as turmas que o professor vê e não contra a base de dados.
+- **Acesso rápido ao acompanhamento individual.** Cada inscrição da linha abre
+  o acompanhamento no par (turma, inscrição) correto — a rota que já existia,
+  sem rota nova e sem leitura nova.
+- **Navegação para o acompanhamento a partir da turma.** A pauta de
+  «Turmas → turma» ganha, por aluno, o atalho para o mesmo acompanhamento, que
+  até aqui obrigava a sair e a escolher outra vez a mesma turma.
+
+### Changed
+
+- **«Alunos» deixa de ser um *placeholder*.** A entrada do menu passa a apontar
+  para um destino real, no mesmo endereço `/students` a que o *placeholder*
+  respondia — um marcador criado antes da página existir continua a chegar lá.
+  A chave, o módulo, o rótulo e a posição no menu não mudaram.
+- **A listagem respeita apenas as turmas do professor.** O diretório parte de
+  `SchoolClass::taughtBy()`, o mesmo âmbito que «Turmas» e o «Horário do
+  Professor» já usam: os alunos de um colega da mesma escola não aparecem aqui.
+- **Suporte explícito a alunos em várias turmas.** Quem está inscrito em mais do
+  que uma turma deste professor é **uma linha**, com as suas inscrições listadas
+  dentro dela — e não uma linha por inscrição.
+
+### Security/Privacy
+
+- **Isolamento entre organizações testado.** A listagem parte de `Student`, que
+  carrega o âmbito global da organização; `StudentIdentity` não o carrega, e por
+  isso todas as consultas deste ecrã que lhe tocam declaram `organization_id`
+  explicitamente.
+- **Isolamento entre professores da mesma organização testado.** Um `ulid` de
+  uma turma de um colega não resolve como filtro: a página responde como se
+  nenhuma turma tivesse sido pedida, sem confirmar que essa turma existe.
+- ***Payload* minimizado.** Sai o pseudónimo, o nome, uma URL para a rota
+  guardada da fotografia — nunca o caminho nem os *bytes* — e o mínimo de cada
+  inscrição. Nada mais da identidade atravessa a fronteira.
+- **Pesquisa sobre `StudentIdentity` protegida explicitamente por
+  `organization_id`**, além do âmbito que já a cobria.
+
 ## [0.89.0] — 2026-08-29
 
 As condições comerciais deixam de viver na landing e passam a viver na base de
