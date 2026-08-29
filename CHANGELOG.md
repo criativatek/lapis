@@ -14,6 +14,57 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > cada um sob o título da frente a que pertenceu. A 0.85.0 é o primeiro
 > release em que as duas linhagens voltam a ser uma só.
 
+## [0.91.0] — 2026-08-30
+
+A aplicação passa a saber distinguir uma conta real de uma conta de ensaio. Até
+aqui não sabia, e isso parou um deploy: o pré-voo comercial recusou-se a avançar
+sobre subscrições em vigor sem condição registada — e fez bem, porque uma conta
+de um cliente sem termos gravados é uma dívida por esclarecer. Só que nenhuma
+daquelas contas era de um cliente: eram todas de ensaio, incluindo as de
+professores parceiros convidados para experimentar o produto. O portão estava a
+fazer, sobre uma população inteira, uma pergunta que não se lhe aplicava, e as
+únicas saídas eram fabricar contratos que ninguém acordou ou desligar o portão.
+Nenhuma das duas é verdade, e a lacuna era estrutural. Passa a haver uma marca
+explícita — e continua a não haver contrato nenhum, porque não existe.
+
+### Added
+
+- **Classificação explícita de conta de teste.** `organizations.is_test_account`
+  diz que uma organização existe para experimentar o produto. É um booleano e
+  não um enum, de propósito: não há hoje um terceiro estado que se consiga
+  nomear sem o inventar.
+- **Gestão auditada no backoffice.** A ficha da conta mostra se é conta de teste
+  ou conta real, e um operador marca ou desmarca com confirmação. Cada alteração
+  regista quem decidiu, o valor anterior e o novo. O pedido leva o estado que
+  quer, nunca «inverte o que lá estiver».
+- **Comando seguro para classificação histórica**
+  (`lapis:mark-test-accounts`). Aplica em bloco uma decisão já tomada, pela
+  mesma acção que o botão usa e com uma auditoria por organização. Exige um
+  administrador identificado, confirmação explícita e um instante-limite
+  obrigatório, lido à letra e recusado se for futuro — uma classificação
+  histórica que alcança contas ainda por existir seria uma armadilha à espera do
+  próximo cliente.
+
+### Changed
+
+- **O pré-voo comercial exclui apenas as contas explicitamente marcadas como
+  teste**, e diz quantas excluiu. Uma conta real sem condição registada continua
+  a parar o deploy, exactamente como antes.
+
+### Security/Safety
+
+- **Um registo público novo continua a ser conta real**, por omissão da base de
+  dados. A coluna está fora do `Fillable` do modelo, por isso nenhum formulário
+  — nem um `$request->all()` distraído — a consegue escrever.
+- **Nenhuma inferência.** Nada deduz «conta de teste» a partir do email, do
+  domínio, do nome, do plano, do id ou da ausência de pagamentos. A marca vem de
+  um operador, e só de um operador.
+- **Classificar não altera planos, direitos nem snapshots comerciais.** Plano,
+  versão do plano, estado, módulos, limites, condição comercial, preço
+  contratado e prazo ficam como estavam. Nenhuma conta existente recebeu
+  condição comercial: `commercial_condition` e `contracted_price_cents`
+  continuam por preencher, porque continua a não existir contrato.
+
 ## [0.90.0] — 2026-08-29
 
 «Alunos» deixa de ser uma promessa no menu e passa a ser uma página. A entrada
