@@ -107,7 +107,9 @@ withDefaults(
                 </ul>
             </div>
 
-            <div class="relative min-h-[22rem] min-w-0 sm:min-h-[26rem] lg:min-h-0">
+            <div
+                class="relative min-h-[22rem] min-w-0 sm:min-h-[26rem] lg:min-h-0"
+            >
                 <img
                     :src="image.src"
                     :alt="image.alt"

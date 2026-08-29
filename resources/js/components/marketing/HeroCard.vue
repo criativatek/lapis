@@ -11,7 +11,12 @@
 const rows = [
     { student: 'A03', domains: ['4,2', '3,8', '—'], proposal: 4, level: 4 },
     { student: 'A07', domains: ['3,1', '3,4', '2,9'], proposal: 3, level: 3 },
-    { student: 'A12', domains: ['4,8', '4,5', '4,6'], proposal: 5, level: null },
+    {
+        student: 'A12',
+        domains: ['4,8', '4,5', '4,6'],
+        proposal: 5,
+        level: null,
+    },
 ] as const;
 </script>
 
@@ -21,7 +26,9 @@ const rows = [
         class="absolute right-4 bottom-4 left-4 rounded-2xl bg-white/95 p-4 shadow-[0_24px_60px_-20px_rgba(15,23,42,0.5)] ring-1 ring-black/5 backdrop-blur sm:right-8 sm:bottom-8 sm:left-auto sm:w-[22rem] sm:p-5"
     >
         <div class="flex items-baseline justify-between">
-            <p class="text-sm font-semibold text-slate-900">7.º A · Português</p>
+            <p class="text-sm font-semibold text-slate-900">
+                7.º A · Português
+            </p>
             <p class="text-[11px] text-slate-500">2.º período</p>
         </div>
         <table class="mt-3 w-full text-[12px] text-slate-700">

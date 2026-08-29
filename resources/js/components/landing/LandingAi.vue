@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
-import { Check } from '@lucide/vue';
+import { Check, Sparkles } from '@lucide/vue';
 import LandingSection from './LandingSection.vue';
 import RevealOnScroll from './RevealOnScroll.vue';
 
@@ -69,7 +69,7 @@ const rules = [
     <LandingSection
         id="ia"
         eyebrow="Inteligência artificial"
-        title="IA para professores, com o professor sempre no controlo."
+        title="IA para professores. O professor mantém sempre a decisão final."
         lead="A IA pedagógica do Lapispro não escreve a avaliação por si. Lê a informação que já registou, ajuda a compreender o que ela pode significar e propõe um caminho — que o professor confirma, corrige ou descarta."
     >
         <div
@@ -103,30 +103,80 @@ const rules = [
             </dl>
 
             <RevealOnScroll :delay="120" variant="right">
+                <!-- A mock of `BuildStudentInsights` + the strategy suggester
+                     as the teacher sees them: pseudonym, not a name — the AI
+                     never receives one. Shows how it works instead of
+                     explaining it. Demo text, fictional student. -->
                 <div
-                    class="rounded-2xl border border-border/70 bg-card p-7 shadow-sm"
+                    class="rounded-2xl bg-white p-5 shadow-[0_24px_60px_-28px_rgba(15,23,42,0.45)] ring-1 ring-black/5 sm:p-6"
                 >
-                    <p
-                        class="text-2xl font-semibold tracking-tight text-balance sm:text-3xl"
+                    <div
+                        aria-hidden="true"
+                        class="flex items-center justify-between gap-3"
                     >
-                        IA sugere. Professor decide.
-                    </p>
-                    <p
-                        class="mt-4 text-sm leading-relaxed text-pretty text-muted-foreground"
+                        <div class="flex items-center gap-2.5">
+                            <span
+                                class="flex size-8 items-center justify-center rounded-lg bg-blue-100 text-blue-700"
+                            >
+                                <Sparkles class="size-4" />
+                            </span>
+                            <div>
+                                <p class="text-sm font-semibold text-slate-900">
+                                    Sugestão de próximo passo
+                                </p>
+                                <p class="text-[11px] text-slate-500">
+                                    Aluno A07 · Português · 2.º período
+                                </p>
+                            </div>
+                        </div>
+                        <span
+                            class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-amber-800 uppercase"
+                        >
+                            Por confirmar
+                        </span>
+                    </div>
+                    <div
+                        aria-hidden="true"
+                        class="mt-4 rounded-xl bg-slate-50 p-4 text-[13px] leading-relaxed text-slate-700"
                     >
-                        Nenhuma classificação é atribuída, alterada ou decidida
-                        por um modelo. O cálculo é determinístico e explicável,
-                        a proposta é do Lapispro, e a confirmação é sempre do
-                        professor — com o que entrou no resultado disponível
-                        para consulta.
-                    </p>
+                        <p>
+                            Regularidade na oralidade (3,1 → 3,6) e leitura
+                            estável. A escrita desceu no último instrumento
+                            (2,9): dois elementos em quatro, leitura limitada.
+                        </p>
+                        <p class="mt-2 font-medium text-slate-900">
+                            Proposta: reforço de planificação de texto antes do
+                            próximo trabalho escrito.
+                        </p>
+                    </div>
+                    <div aria-hidden="true" class="mt-4 flex flex-wrap gap-2">
+                        <span
+                            class="inline-flex h-8 items-center rounded-md bg-blue-600 px-3 text-[12px] font-medium text-white"
+                        >
+                            Aplicar sugestão
+                        </span>
+                        <span
+                            class="inline-flex h-8 items-center rounded-md bg-white px-3 text-[12px] font-medium text-slate-700 ring-1 ring-slate-200"
+                        >
+                            Editar
+                        </span>
+                        <span
+                            class="inline-flex h-8 items-center rounded-md px-3 text-[12px] font-medium text-slate-500"
+                        >
+                            Descartar
+                        </span>
+                    </div>
                     <p
-                        class="mt-5 border-t border-border/70 pt-4 text-sm leading-relaxed text-pretty text-muted-foreground"
+                        class="mt-4 border-t border-slate-100 pt-3 text-[12px] leading-relaxed text-slate-500"
                     >
-                        A IA pedagógica faz parte do
+                        <span class="font-semibold text-slate-900"
+                            >IA sugere. Professor decide.</span
+                        >
+                        Nenhuma classificação é atribuída ou alterada por um
+                        modelo. A IA pedagógica faz parte do
                         <Link
                             href="/planos"
-                            class="rounded font-medium text-foreground underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                            class="rounded font-medium text-slate-900 underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                             >plano Pro</Link
                         >
                         e do Institucional.

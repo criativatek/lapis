@@ -14,6 +14,44 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > cada um sob o título da frente a que pertenceu. A 0.85.0 é o primeiro
 > release em que as duas linhagens voltam a ser uma só.
 
+## [0.96.0] — 2026-08-30
+
+Segunda ronda de feedback do ChatGPT sobre a home («7,5/10 — agora é
+polimento, confiança e humanização»). Entrou o que se pode fazer com verdade;
+ficou de fora o que exigia dados que não existem: **números de prova social**
+(«+120 escolas») e **testemunhos** com nome e escola. Quando houver professores
+reais a dizê-lo, entram — não antes.
+
+> Nota: o commit 0.95.0 foi feito por outra sessão a meio deste trabalho e
+> arrastou parte destas alterações (paleta navy, `HeroCard` em grelha,
+> `PhotoBand prominent`). O changelog dessa versão descreve o cartão «Olá,
+> Professora Ana» e a foto em círculo, que já não existem. Esta entrada é a
+> descrição fiel do estado da página.
+
+- **Paleta azul institucional.** A faixa do produto e o CTA final deixam o
+  royal blue (`blue-600`) por um degradê navy `#1E4AB0 → #183B8F → #102A56`
+  (`ColorBand`, `LandingFinalCta`). Os botões de ação continuam `blue-600`.
+- **Hero com mais produto.** Coluna da fotografia ligeiramente mais larga e,
+  sobre ela, uma fatia real da grelha (três alunos por pseudónimo, três
+  domínios, «—» para não aplicável, proposta e nível — um «por confirmar»)
+  em vez do cartão «resumo de hoje» (`HeroCard`, `PageHero`).
+- **Mais pessoas.** Duas fotografias novas, geradas, sem caras
+  reconhecíveis: professora inclinada sobre o trabalho de três alunos
+  (`teacher-students.webp`, no CTA final — o CTA vende o resultado humano,
+  não o caderno) e professora a consultar o portátil numa sala de professores
+  (`teacher-laptop.webp`, em «O sistema propõe»).
+- **«O sistema propõe. O professor decide.» com protagonismo.** `PhotoBand`
+  ganha `prominent`: fundo `slate-50`, título maior, fotografia 4:3 com
+  sombra e mais largura.
+- **IA a funcionar, não explicada.** O cartão da direita passa a ser um mock
+  de «Sugestão de próximo passo · Aluno A07» — leitura dos resultados, proposta
+  e os botões «Aplicar sugestão · Editar · Descartar» — com «IA sugere.
+  Professor decide.» como legenda. Pseudónimo, não nome: a IA nunca recebe
+  um (`LandingAi`). Título: «IA para professores. O professor mantém sempre a
+  decisão final.»
+- **Menos ar entre secções.** Espaçamento vertical reduzido ~20–25 % em
+  `ColorBand`, `LandingSection`, `PhotoBand` e no CTA final.
+
 ## [0.95.0] — 2026-08-29
 
 Afinação visual sobre uma referência que o Pedro trouxe (um mockup do

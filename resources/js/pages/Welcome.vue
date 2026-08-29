@@ -283,10 +283,11 @@ const measures = [
             title="O sistema propõe. O professor decide."
             body="Nenhuma classificação é atribuída, alterada ou decidida por um modelo. O cálculo é determinístico e explicável, a proposta é do Lapispro, e a confirmação é sempre do professor — com o que entrou no resultado disponível para consulta."
             :image="{
-                src: '/images/marketing/teacher-back.webp',
-                alt: 'Professora de costas a olhar para um quadro com anotações.',
+                src: '/images/marketing/teacher-laptop.webp',
+                alt: 'Professora numa sala de professores a consultar o portátil, com um caderno ao lado.',
             }"
             flip
+            prominent
         />
 
         <LandingAi />
@@ -333,8 +334,8 @@ const measures = [
         <LandingFinalCta
             :authenticated="authenticated"
             :photo="{
-                src: '/images/marketing/hero.webp',
-                alt: 'Mãos de uma professora a escrever num caderno ao lado de um portátil aberto.',
+                src: '/images/marketing/teacher-students.webp',
+                alt: 'Professora de pé junto a uma mesa, inclinada sobre o trabalho de três alunos.',
             }"
         />
     </MarketingShell>

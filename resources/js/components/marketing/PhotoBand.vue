@@ -41,7 +41,11 @@ withDefaults(
                 </p>
                 <h2
                     class="mt-3 text-3xl font-semibold tracking-tight text-balance sm:text-4xl"
-                    :class="prominent ? 'lg:text-[3rem] lg:leading-[1.08]' : undefined"
+                    :class="
+                        prominent
+                            ? 'lg:text-[3rem] lg:leading-[1.08]'
+                            : undefined
+                    "
                 >
                     {{ title }}
                 </h2>
