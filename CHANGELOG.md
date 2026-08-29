@@ -14,6 +14,108 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > cada um sob o título da frente a que pertenceu. A 0.85.0 é o primeiro
 > release em que as duas linhagens voltam a ser uma só.
 
+## [0.87.0] — 2026-08-29
+
+A fronteira entre Base e Pro passa a ser a que a Matriz Mestre descreve, nos
+dois sentidos. Quatro capacidades vendidas como Pro estavam visíveis no Base e
+duas prometidas ao Base estavam fechadas atrás do Pro; nenhuma das duas coisas
+impedia o produto de funcionar, e as duas impediam-no de ser vendido de forma
+coerente. O critério é o da §24 — **«Base regista e mostra. Pro cruza,
+interpreta e ajuda a agir.»** Nenhum facto saiu do Base: saiu o cruzamento.
+
+### Added
+
+- **Calendário do ano letivo no plano Base** (`calendar`). As vistas de mês e
+  de ano e os acontecimentos manuais passam a estar incluídos nos três planos.
+  Uma organização Base definia períodos, interrupções e feriados na Estrutura
+  do Ano Letivo e não conseguia abrir nenhuma das vistas do que acabara de
+  definir.
+
+- **`calendar_import`, uma chave nova.** A importação avançada de calendário —
+  o ficheiro que o agrupamento publica, lido para dentro da estrutura do ano —
+  é a única linha da tabela do calendário que continua marcada só para Pro e
+  Institucional, e passa a ter chave própria em vez de andar à boleia de
+  `calendar`. As rotas de importação exigem as duas.
+
+- **`data_backup_restore`, uma chave nova.** Repor uma cópia de segurança
+  completa por cima dos dados de uma organização, e o histórico dos backups
+  tomados, passam a ser Pro e Institucional. **A exportação não é afetada:**
+  exportar os próprios dados e a exportação RGPD continuam sem gate nenhum, em
+  qualquer plano, porque portabilidade é uma propriedade da plataforma e não
+  uma funcionalidade paga. Até agora nenhuma das duas metades era verificada, e
+  uma organização Base podia restaurar um backup completo.
+
+- **Descida de plano não destrutiva.** Uma capacidade que a organização teve,
+  já não tem, e que `RetainedOnDowngrade` nomeia, passa a resolver para
+  **read-only** em vez de ficar bloqueada. Quem descia de Pro para Base deixava
+  de conseguir abrir um único sumário que tinha escrito: nada era apagado, mas
+  nada era alcançável, o que do lado do professor é a mesma coisa. A regra lê o
+  histórico de subscrições que já existia e aplica-se apenas quando há uma
+  subscrição em vigor — uma subscrição caducada sem sucessor não é uma descida
+  de plano, é uma conta sem plano.
+
+### Changed
+
+- **A leitura automática do movimento da turma passa a Pro.** Em Análise da
+  Turma, `evolution` e `continuous_evolution` — cada aluno arrumado em
+  progrediu / manteve-se / regrediu, e a matriz de quem atravessou a linha da
+  escala — deixam de entrar no payload sem `advanced_analytics`. **A evolução
+  factual simples fica no Base:** a série por período e a variação de cada
+  aluno continuam onde estavam, tal como todas as médias, taxas, distribuições
+  e estatísticas por domínio.
+
+- **A comparação contextual com a turma passa a Pro,** nas três superfícies que
+  a mostravam: o painel de Evolução do Aluno, o documento de impressão e a
+  síntese global do relatório individual. «72,1%, acima da média da turma
+  (66,4%)» é a frase que a Matriz usa para descrever o que o Pro acrescenta.
+
+- **«Atenção» e «Pontos fortes identificados automaticamente» passam a Pro,** e
+  passam a não ser sequer calculados sem a capacidade, em vez de calculados e
+  escondidos. Juntar resultados, registos, TPC, autoavaliações e intervenções
+  numa frase sobre o que merece atenção é cruzar fontes, seja quem for a fazer
+  a aritmética. **Os números continuam todos no Base:** a tabela de domínios
+  continua a dizer que Gramática está a 37,5%; o que o Pro acrescenta é dizer
+  que a prioridade de consolidação é Gramática.
+
+- **«Desde o relatório anterior» passa a exigir a mesma capacidade** que o
+  resto da camada interpretativa dos relatórios.
+
+- **A oferta pública deixou de contradizer a composição real.** «Agenda
+  integrada» era uma linha só, mapeada a `calendar`, e com o calendário no Base
+  passaria a marcar ✓ Base a dizer ao visitante que o ficheiro da escola vem
+  com o plano gratuito. A comparação de planos passa a ter duas linhas
+  adjacentes — o calendário e a sua importação —, uma linha para o restauro e o
+  histórico de backups, e uma nota a dizer que a exportação existe em todos os
+  planos. A banda «O dia a dia» e a resposta das perguntas frequentes deixam de
+  atribuir a agenda ao plano Pro, e o cartão do Base passa a nomear o
+  calendário que agora inclui.
+
+- **A composição continua a ser dados, nunca código.** As duas chaves novas
+  entram pelo `EntitlementsSeeder` como todas as outras, e `advanced_analytics`
+  foi reutilizada em vez de partida em duas — dividir a chave quebraria em
+  silêncio as concessões individuais já atribuídas. O plano Institucional muda
+  só por herança.
+
+### Notas
+
+- **Sem migrations.** O deploy desta versão tem de correr
+  `php artisan db:seed --class=EntitlementsSeeder`, que é idempotente: sem isso
+  as duas chaves novas não existem na base de dados e as capacidades que elas
+  guardam ficam inalcançáveis para todos os planos.
+
+- **Nada do módulo de Inteligência Artificial foi tocado.** Nenhum ficheiro de
+  `app/Services/Ai`, nenhum artigo de ajuda de IA e nenhuma linha de
+  `config/lapis.php` mudaram nesta versão. A IA continua desligada por omissão
+  e sem fornecedor configurado.
+
+- **Testes.** `BaseProBoundaryTest` afirma uma célula da Matriz por asserção em
+  quatro superfícies — menu, endpoint, URL escrito à mão e props;
+  `PlanDowngradeTest` separa as promessas da descida de plano do fim do período
+  experimental de Pro. Do lado do texto comercial, as listas de módulos de cada
+  plano deixaram de estar escritas à mão nos testes e passam a ser lidas do
+  próprio `EntitlementsSeeder`: uma cópia da composição escrita ao lado dela é a
+  única fixture que nunca falha.
+
 ## [0.86.0] — 2026-08-29
 
 O módulo de Inteligência Artificial passa de duas funcionalidades a seis, todas
