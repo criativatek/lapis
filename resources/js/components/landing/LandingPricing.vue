@@ -4,6 +4,7 @@ import { ArrowRight, Check } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import { dashboard, register } from '@/routes';
 import { create as checkout } from '@/routes/settings/checkout';
+import { LANDING_PRIMARY } from './chrome';
 import {
     FALLBACK_PLAN,
     FOUNDER,
@@ -180,6 +181,7 @@ function visitHref(plan: LandingPlan) {
                         v-if="hasAction(plan)"
                         as-child
                         class="group/cta mt-5 w-full"
+                        :class="isPro(plan) ? LANDING_PRIMARY : undefined"
                         :variant="isPro(plan) ? 'default' : 'outline'"
                     >
                         <a v-if="isExternal(plan)" :href="mailtoHref(plan)">
@@ -204,7 +206,7 @@ function visitHref(plan: LandingPlan) {
                     <a
                         v-if="isPro(plan)"
                         href="#fundadores"
-                        class="mt-3 block rounded-lg border border-primary/30 bg-accent/70 px-3.5 py-2.5 text-xs leading-relaxed transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none dark:border-(--brand-amber)/30 dark:bg-(--brand-amber)/10 dark:hover:bg-(--brand-amber)/15"
+                        class="mt-3 block rounded-lg border border-blue-200 bg-blue-50 px-3.5 py-2.5 text-xs leading-relaxed transition-colors hover:bg-blue-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none dark:border-(--brand-amber)/30 dark:bg-(--brand-amber)/10 dark:hover:bg-(--brand-amber)/15"
                     >
                         <span
                             class="font-semibold tracking-tight text-accent-foreground dark:text-(--brand-amber)"

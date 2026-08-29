@@ -14,6 +14,19 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > cada um sob o título da frente a que pertenceu. A 0.85.0 é o primeiro
 > release em que as duas linhagens voltam a ser uma só.
 
+## [0.90.0] — 2026-08-29
+
+Landing: uma cor de acção. A 0.89.0 pintou de azul o hero e o cabeçalho e
+deixou os botões dos Planos, do FAQ e do fecho em navy, e o cartão Fundador em
+creme — duas paletas na mesma página. Agora há `LANDING_PRIMARY` em `chrome.ts`
+e todos os CTAs passam por ele; o cartão Fundador, a nota Fundador no cartão
+Pro e o separador activo de «Funcionalidades» também são azuis. O `primary`
+navy da aplicação não muda.
+
+Corrigido o scroll horizontal no telemóvel: a 375px o cabeçalho media 424px
+(logo + «Experimentar Lapispro» + botão do menu). Abaixo de `sm` o botão diz
+só «Experimentar».
+
 ## [0.89.1] — 2026-08-29
 
 A landing e as páginas legais são só claras. Com o sistema em modo escuro, a

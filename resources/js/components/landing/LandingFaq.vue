@@ -3,6 +3,7 @@ import { Link } from '@inertiajs/vue3';
 import { ArrowRight, Plus } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import { register } from '@/routes';
+import { LANDING_PRIMARY } from './chrome';
 import {
     BASE_ACTIVE_CLASSES,
     BASE_ACTIVE_STUDENTS,
@@ -121,11 +122,11 @@ const questions = [
             <RevealOnScroll v-slot="{ shown }" class="min-w-0">
                 <div class="lg:sticky lg:top-24">
                     <p
-                        class="flex items-center gap-2.5 text-[11px] font-semibold tracking-[0.14em] text-muted-foreground uppercase"
+                        class="flex items-center gap-2.5 text-[11px] font-semibold tracking-[0.14em] text-blue-700 uppercase dark:text-(--brand-amber)"
                     >
                         <span
                             aria-hidden="true"
-                            class="h-px w-7 origin-left bg-primary transition-transform delay-150 duration-700 ease-out dark:bg-(--brand-amber)"
+                            class="h-px w-7 origin-left bg-blue-600 transition-transform delay-150 duration-700 ease-out dark:bg-(--brand-amber)"
                             :class="shown ? 'scale-x-100' : 'scale-x-0'"
                         />
                         Perguntas
@@ -142,7 +143,11 @@ const questions = [
                         Respostas sobre o produto como ele está hoje — não sobre
                         o que está planeado.
                     </p>
-                    <Button as-child class="group/cta mt-7">
+                    <Button
+                        as-child
+                        class="group/cta mt-7"
+                        :class="LANDING_PRIMARY"
+                    >
                         <Link :href="register()">
                             Experimentar Lapispro
                             <ArrowRight

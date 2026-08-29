@@ -154,7 +154,7 @@ function onKeydown(event: KeyboardEvent): void {
                     class="flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-[background-color,color,border-color,transform,box-shadow] duration-300 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                     :class="
                         active === index
-                            ? 'border-primary bg-primary text-primary-foreground shadow-md motion-safe:-translate-y-0.5'
+                            ? 'border-blue-600 bg-blue-600 text-white shadow-md motion-safe:-translate-y-0.5'
                             : 'border-border text-muted-foreground hover:border-primary/40 hover:bg-muted hover:text-foreground motion-safe:hover:-translate-y-0.5 dark:hover:border-(--brand-amber)/40'
                     "
                     @click="active = index"

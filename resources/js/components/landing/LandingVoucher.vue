@@ -76,8 +76,9 @@ function submit(): void {
                             class="mt-2 text-sm leading-relaxed text-pretty text-muted-foreground"
                         >
                             Alguns professores poderão beneficiar de condições
-                            especiais de acesso atribuídas pelo Lapispro. Introduza
-                            o seu código para ativar o benefício associado.
+                            especiais de acesso atribuídas pelo Lapispro.
+                            Introduza o seu código para ativar o benefício
+                            associado.
                         </p>
                     </div>
 

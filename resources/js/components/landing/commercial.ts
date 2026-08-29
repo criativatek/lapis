@@ -212,7 +212,10 @@ export const COMPARE_ROWS: readonly CompareRow[] = [
         label: 'Calendário do ano letivo e acontecimentos',
         modules: ['calendar'],
     },
-    { label: 'Importação avançada de calendário', modules: ['calendar_import'] },
+    {
+        label: 'Importação avançada de calendário',
+        modules: ['calendar_import'],
+    },
     { label: 'Horário do professor', modules: ['lessons'] },
     { label: 'Aulas e sumários', modules: ['lessons'] },
     { label: 'Planeamento e sequências de aulas', modules: ['lessons'] },

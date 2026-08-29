@@ -163,8 +163,8 @@ const guarantees: readonly Guarantee[] = [
             >
                 A conformidade com o RGPD não depende apenas da tecnologia. O
                 Lapispro incorpora medidas técnicas de proteção, incluindo
-                separação de dados, cifragem, isolamento entre contas e
-                registo de operações.
+                separação de dados, cifragem, isolamento entre contas e registo
+                de operações.
             </p>
         </RevealOnScroll>
     </LandingSection>

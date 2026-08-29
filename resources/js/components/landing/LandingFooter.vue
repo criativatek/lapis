@@ -61,8 +61,8 @@ const version = computed(() => usePage().props.appVersion);
                     class="mt-5 max-w-sm text-sm leading-relaxed"
                     :class="CHROME_MUTED"
                 >
-                    Uma plataforma criada para apoiar professores na
-                    avaliação, organização e acompanhamento pedagógico.
+                    Uma plataforma criada para apoiar professores na avaliação,
+                    organização e acompanhamento pedagógico.
                 </p>
             </div>
 

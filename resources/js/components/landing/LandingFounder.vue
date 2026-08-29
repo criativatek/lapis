@@ -42,7 +42,7 @@ const href = () => (props.authenticated ? planSettings() : register());
     <RevealOnScroll :delay="120">
         <aside
             id="fundadores"
-            class="mt-6 scroll-mt-[4.5rem] overflow-hidden rounded-2xl border border-primary/40 bg-accent/60 dark:border-(--brand-amber)/35 dark:bg-(--brand-amber)/8"
+            class="mt-6 scroll-mt-[4.5rem] overflow-hidden rounded-2xl border border-blue-200 bg-blue-50/70 dark:border-(--brand-amber)/35 dark:bg-(--brand-amber)/8"
             aria-labelledby="fundadores-title"
         >
             <div
@@ -50,7 +50,7 @@ const href = () => (props.authenticated ? planSettings() : register());
             >
                 <div class="min-w-0">
                     <p
-                        class="inline-flex rounded-full bg-primary px-3 py-1 text-[11px] font-semibold tracking-[0.08em] text-primary-foreground uppercase dark:bg-(--brand-amber) dark:text-[#33200f]"
+                        class="inline-flex rounded-full bg-blue-600 px-3 py-1 text-[11px] font-semibold tracking-[0.08em] text-white uppercase dark:bg-(--brand-amber) dark:text-[#33200f]"
                     >
                         {{ FOUNDER.badge }}
                     </p>

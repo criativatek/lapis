@@ -3,6 +3,7 @@ import { Link } from '@inertiajs/vue3';
 import { ArrowRight } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import { dashboard, login, register } from '@/routes';
+import { LANDING_PRIMARY } from './chrome';
 import RevealOnScroll from './RevealOnScroll.vue';
 
 /**
@@ -50,7 +51,12 @@ defineProps<{ authenticated: boolean }>();
                 </p>
 
                 <div class="mt-9 flex flex-wrap justify-center gap-3">
-                    <Button as-child size="lg" class="group/cta">
+                    <Button
+                        as-child
+                        size="lg"
+                        class="group/cta"
+                        :class="LANDING_PRIMARY"
+                    >
                         <Link :href="authenticated ? dashboard() : register()">
                             {{
                                 authenticated
@@ -74,8 +80,8 @@ defineProps<{ authenticated: boolean }>();
                 </div>
 
                 <p class="mt-5 text-sm text-muted-foreground">
-                    Não é necessário cartão de crédito. O plano Base fica
-                    ativo de imediato.
+                    Não é necessário cartão de crédito. O plano Base fica ativo
+                    de imediato.
                     <!-- «Já tenho conta» was a button here before the two CTAs
                          above were fixed by the commercial brief. It stays, as
                          a link: the header and the footer both carry it, but

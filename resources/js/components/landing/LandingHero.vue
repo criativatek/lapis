@@ -3,6 +3,7 @@ import { Link } from '@inertiajs/vue3';
 import { ArrowRight } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import { dashboard, register } from '@/routes';
+import { LANDING_PRIMARY } from './chrome';
 import ClassificationPreview from './ClassificationPreview.vue';
 import ProductWindow from './ProductWindow.vue';
 import RevealOnScroll from './RevealOnScroll.vue';
@@ -63,7 +64,8 @@ defineProps<{ authenticated: boolean }>();
                     <Button
                         as-child
                         size="lg"
-                        class="group/cta bg-blue-600 text-white hover:bg-blue-700"
+                        class="group/cta"
+                        :class="LANDING_PRIMARY"
                     >
                         <Link :href="authenticated ? dashboard() : register()">
                             {{

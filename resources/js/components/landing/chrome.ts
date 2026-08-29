@@ -26,6 +26,14 @@
 // The warm paper described above survives only in the dark variants, which
 // app.blade.php never activates on these pages — kept so the tokens stay
 // coherent if the lock is ever lifted.
+/**
+ * The landing's action colour. The application's `primary` token is navy and
+ * stays navy; the public pages use blue for anything that asks for a click,
+ * so it reads as colour rather than as more ink. One constant, so the hero,
+ * header, pricing and closing CTA cannot drift apart.
+ */
+export const LANDING_PRIMARY = 'bg-blue-600 text-white hover:bg-blue-700';
+
 export const CHROME_SURFACE = 'bg-white dark:bg-[#33200f]';
 
 /**

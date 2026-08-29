@@ -18,6 +18,7 @@ import {
     CHROME_LINK,
     CHROME_MUTED,
     CHROME_SURFACE_STICKY,
+    LANDING_PRIMARY,
 } from './chrome';
 import type { LandingNavItem } from './navigation';
 import { LANDING_NAV } from './navigation';
@@ -179,12 +180,15 @@ const items: readonly LandingNavItem[] = LANDING_NAV;
                     >
                         <Link :href="login()">Entrar</Link>
                     </Button>
-                    <Button
-                        as-child
-                        size="sm"
-                        class="bg-blue-600 text-white hover:bg-blue-700"
-                    >
-                        <Link :href="register()">Experimentar Lapispro</Link>
+                    <Button as-child size="sm" :class="LANDING_PRIMARY">
+                        <!-- At 375px the full label plus the logo and the menu
+                             button ran 49px past the viewport. -->
+                        <Link :href="register()">
+                            <span class="sm:hidden">Experimentar</span>
+                            <span class="hidden sm:inline"
+                                >Experimentar Lapispro</span
+                            >
+                        </Link>
                     </Button>
                 </template>
 

@@ -231,10 +231,10 @@ const hasPlanned = () =>
                     arquivados não contam para estes limites.
                 </p>
                 <p>
-                    A IA do Lapispro sugere e reescreve texto — propõe estratégias
-                    e ajuda a aperfeiçoar a redação de um relatório. Não atribui
-                    nem decide classificações. O Lapispro organiza, calcula e
-                    acompanha. O professor observa, decide e ensina.
+                    A IA do Lapispro sugere e reescreve texto — propõe
+                    estratégias e ajuda a aperfeiçoar a redação de um relatório.
+                    Não atribui nem decide classificações. O Lapispro organiza,
+                    calcula e acompanha. O professor observa, decide e ensina.
                 </p>
             </div>
         </RevealOnScroll>

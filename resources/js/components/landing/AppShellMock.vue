@@ -119,7 +119,9 @@ function tone(region: TourRegion, active: TourRegion | null): string {
                 >
                     <AppLogoIcon class="size-4" />
                 </span>
-                <span class="text-[13px] font-semibold text-white">Lapispro</span>
+                <span class="text-[13px] font-semibold text-white"
+                    >Lapispro</span
+                >
             </div>
 
             <nav
