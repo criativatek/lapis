@@ -33,8 +33,33 @@ type Subscription = {
     in_force: boolean;
     starts_at: string;
     ends_at: string | null;
+    /**
+     * O que foi CONTRATADO — prova imutável, e por isso só de leitura em todo
+     * este ecrã. `contracted_price_cents` a `null` é «nunca houve preço
+     * acordado»; `0` é «acordado como gratuito». Não são a mesma coisa, e a
+     * página não pode deixar que pareçam.
+     */
+    contracted_price_cents: number | null;
+    contracted_currency: string | null;
+    billing_period: string | null;
+    billing_period_label: string | null;
+    commercial_term_ends_at: string | null;
+    plan_version: number | null;
     module_count?: number;
     read_only_count?: number;
+};
+
+/** Um dos «primeiros 250». Ver `App\Support\Commercial\FounderSeats`. */
+type FounderSeat = {
+    number: number;
+    capacity: number;
+    price_cents: number;
+    currency: string;
+    claimed_at: string;
+    confirmed_at: string | null;
+    reserved_until: string | null;
+    is_confirmed: boolean;
+    is_holding: boolean;
 };
 
 type Payment = {
@@ -89,6 +114,7 @@ const props = defineProps<{
     }[];
     options: { conditions: Option[]; methods: Option[]; statuses: Option[] };
     condition_locked: boolean;
+    founderSeat: FounderSeat | null;
 }>();
 
 /*
@@ -229,9 +255,13 @@ const statusClasses: Record<string, string> = {
 
 const eventLabels: Record<string, string> = {
     'commercial.condition_set': 'Condição comercial',
+    'commercial.payment_requested': 'Pagamento pedido',
     'commercial.payment_recorded': 'Pagamento registado',
     'commercial.payment_refunded': 'Pagamento reembolsado',
     'commercial.payment_voided': 'Pagamento anulado',
+    'commercial.founder_seat_claimed': 'Lugar de Fundador reservado',
+    'commercial.founder_seat_confirmed': 'Lugar de Fundador confirmado',
+    'commercial.founder_seat_released': 'Lugar de Fundador libertado',
     'admin.plan_changed': 'Plano alterado',
     'admin.subscription_suspended': 'Subscrição suspensa',
     'admin.subscription_reactivated': 'Subscrição reativada',
@@ -352,6 +382,131 @@ const hasUnknownCondition = computed(
                         {{ totals.payment_count }} pagamento(s)
                     </div>
                 </div>
+            </div>
+
+            <!--
+                O QUE FOI CONTRATADO.
+
+                A pergunta que um administrador tinha de ir à base de dados para
+                responder: «que condição é que esta organização contratou?». As
+                quatro colunas existem desde a 0.88.0 e este ecrã nunca as
+                mostrou. Só de leitura, e é deliberado — são prova imutável, e o
+                modelo recusa qualquer alteração; corrigir um erro
+                administrativo é criar um contrato novo, não reescrever o antigo.
+
+                «Não registado» e «0 €» são coisas diferentes e aparecem
+                diferentes: a primeira é uma conta cuja origem ninguém escreveu,
+                a segunda é uma adesão que alguém acordou ser gratuita.
+            -->
+            <div v-if="current" class="rounded-lg border border-border p-4">
+                <div class="flex items-baseline justify-between gap-3">
+                    <div class="text-xs text-muted-foreground">
+                        Contratado
+                    </div>
+                    <div class="text-xs text-muted-foreground">
+                        só de leitura
+                    </div>
+                </div>
+
+                <dl class="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                    <div>
+                        <dt class="text-xs text-muted-foreground">Preço</dt>
+                        <dd class="mt-1 text-sm tabular-nums">
+                            <template
+                                v-if="current.contracted_price_cents !== null"
+                                >{{
+                                    money(
+                                        current.contracted_price_cents,
+                                        current.contracted_currency ??
+                                            totals.currency,
+                                    )
+                                }}</template
+                            >
+                            <span v-else class="text-muted-foreground"
+                                >Não registado</span
+                            >
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs text-muted-foreground">Moeda</dt>
+                        <dd class="mt-1 text-sm">
+                            {{ current.contracted_currency ?? '—' }}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs text-muted-foreground">
+                            Periodicidade
+                        </dt>
+                        <dd class="mt-1 text-sm">
+                            {{ current.billing_period_label ?? 'Não registada' }}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs text-muted-foreground">
+                            Termo comercial
+                        </dt>
+                        <dd class="mt-1 text-sm">
+                            {{ current.commercial_term_ends_at ?? '—' }}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs text-muted-foreground">
+                            Versão do plano
+                        </dt>
+                        <dd class="mt-1 text-sm">
+                            <template v-if="current.plan_version !== null"
+                                >v{{ current.plan_version }}</template
+                            >
+                            <template v-else>—</template>
+                        </dd>
+                    </div>
+                </dl>
+
+                <p
+                    v-if="current.commercial_term_ends_at"
+                    class="mt-3 text-xs text-muted-foreground"
+                >
+                    O termo comercial diz até quando vale a
+                    <em>condição</em>, não até quando vale o
+                    <em>acesso</em>. Passada esta data a conta não perde nada —
+                    perde o preço que tinha.
+                </p>
+            </div>
+
+            <!-- O lugar dos «primeiros 250», quando esta conta tem um. -->
+            <div
+                v-if="founderSeat"
+                class="rounded-lg border border-border p-4"
+            >
+                <div class="text-xs text-muted-foreground">
+                    Membro Fundador
+                </div>
+                <div class="mt-1 text-lg font-semibold">
+                    Lugar n.º {{ founderSeat.number }}
+                    <span class="text-sm font-normal text-muted-foreground"
+                        >de {{ founderSeat.capacity }}</span
+                    >
+                </div>
+                <p class="mt-1 text-xs text-muted-foreground">
+                    {{ money(founderSeat.price_cents, founderSeat.currency) }},
+                    congelado a
+                    {{ founderSeat.claimed_at }}.
+                    <template v-if="founderSeat.is_confirmed"
+                        >Confirmado a
+                        {{ founderSeat.confirmed_at }}.</template
+                    >
+                    <template v-else-if="founderSeat.is_holding"
+                        >Reservado até
+                        {{ founderSeat.reserved_until }}, à espera da
+                        confirmação do pagamento.</template
+                    >
+                    <template v-else
+                        >A reserva expirou sem pagamento confirmado.</template
+                    >
+                </p>
+                <p class="mt-2 text-xs text-muted-foreground">
+                    Não é um plano diferente: são exatamente os módulos do Pro.
+                </p>
             </div>
 
             <p

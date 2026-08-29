@@ -23,6 +23,8 @@ use App\Models\Student;
 use App\Models\User;
 use App\Services\Audit\AuditLog;
 use App\Services\Organizations\ChangeOrganizationPlan;
+use App\Support\Commercial\CommercialTerms;
+use App\Support\Commercial\FounderSeats;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Retention\ClosureStatusPresenter;
 use App\Support\Tenancy\CurrentOrganization;
@@ -56,6 +58,9 @@ class AdminAccountController extends Controller
         protected CreateInstitutionalOrganization $createInstitutional,
         protected AddOrganizationMember $addOrganizationMember,
         protected ClosureStatusPresenter $closureStatus,
+        // What was agreed, read off the evidence rather than typed into a form.
+        protected CommercialTerms $terms,
+        protected FounderSeats $founderSeats,
     ) {}
 
     public function index(Request $request): Response
@@ -346,6 +351,28 @@ class AdminAccountController extends Controller
         return back();
     }
 
+    /**
+     * Moves the account to a plan — and records what was agreed, when the
+     * database already knows.
+     *
+     * THE PROOF COMES FROM THE MONEY, NEVER FROM A FORM. Activating Pro after
+     * confirming a bank transfer is the single most common way a paid
+     * subscription is created in this product, and until now it wrote a
+     * subscription with all four commercial columns NULL: an account that had
+     * just transferred 29,90 € as a Membro Fundador recorded, as its contract,
+     * nothing at all. `CommercialTerms::fromPaidEvidence()` reads the payment
+     * that is already there — its amount, its currency, the condition an
+     * operator put on it and the period it bought — so the price is the one
+     * that was PAID rather than the one `config/billing.php` happens to say
+     * today (§11 of the brief).
+     *
+     * No evidence, nothing written. An operator who simply moves somebody to
+     * Pro with no payment behind it produces exactly what it did before — a
+     * subscription with no commercial claim on it — and the backoffice keeps
+     * saying «Origem não registada», which is the truth. Marking such an
+     * account is `SetCommercialCondition`'s job, deliberately separate and
+     * deliberately explicit.
+     */
     public function changePlan(Request $request, Organization $organization): RedirectResponse
     {
         $validated = $request->validate([
@@ -354,9 +381,24 @@ class AdminAccountController extends Controller
 
         $plan = Plan::where('key', $validated['plan_key'])->firstOrFail();
 
-        $this->planChange->to($organization, $plan);
+        $subscription = $this->planChange->to(
+            $organization,
+            $plan,
+            $this->terms->fromPaidEvidence($organization, $plan->currentVersionOrFail()),
+        );
 
-        $this->log($organization, 'admin.plan_changed', "Plano alterado para {$plan->name}.", ['plan_key' => $plan->key]);
+        // Liga o lugar de fundador ao contrato que dele resultou, quando existe.
+        // Puramente informativo: um operador que abra a ficha vê o número que
+        // foi prometido ao lado da subscrição que o materializou.
+        $this->founderSeats->attachSubscription($organization, $subscription);
+
+        $this->log($organization, 'admin.plan_changed', "Plano alterado para {$plan->name}.", [
+            'plan_key' => $plan->key,
+            'contracted_price_cents' => $subscription->contracted_price_cents,
+            'contracted_currency' => $subscription->contracted_currency,
+            'billing_period' => $subscription->billing_period?->value,
+            'commercial_term_ends_at' => $subscription->commercial_term_ends_at?->toDateTimeString(),
+        ]);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Plano atualizado para :plan.', ['plan' => $plan->name])]);
 

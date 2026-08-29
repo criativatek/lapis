@@ -31,6 +31,8 @@ use App\Support\Commercial\CommercialFilters;
 use App\Support\Commercial\CommercialListing;
 use App\Support\Commercial\CommercialMetrics;
 use App\Support\Commercial\EffectiveSubscriptions;
+use App\Support\Commercial\FounderAvailability;
+use App\Support\Commercial\FounderSeats;
 use App\Support\Commercial\PaymentCorrectionException;
 use App\Support\Commercial\SubscriptionCondition;
 use App\Support\Entitlements\Entitlements;
@@ -82,6 +84,8 @@ class AdminCommercialController extends Controller
         protected CorrectSubscriptionPayment $correctPayment,
         protected ConfirmBankTransferRequest $confirmTransferRequest,
         protected SetCommercialCondition $setCondition,
+        protected FounderSeats $founderSeats,
+        protected FounderAvailability $founderAvailability,
     ) {}
 
     public function index(Request $request): Response
@@ -338,6 +342,12 @@ class AdminCommercialController extends Controller
             // Stated on the page rather than left for an operator to discover:
             // a trial's condition comes from its status and cannot be typed.
             'condition_locked' => $current?->status === SubscriptionStatus::Trial,
+
+            // O lugar de Membro Fundador desta conta, se tiver um. Read-only:
+            // o número prometido, o preço que ficou congelado e se já está
+            // confirmado ou ainda em reserva. É o que responde, sem SQL, à
+            // pergunta «esta conta é mesmo fundadora, e é a número quantos?».
+            'founderSeat' => $this->founderSeatPayload($organization),
         ]);
     }
 
@@ -514,9 +524,17 @@ class AdminCommercialController extends Controller
      */
     protected const COMMERCIAL_EVENTS = [
         'commercial.condition_set',
+        'commercial.payment_requested',
         'commercial.payment_recorded',
         'commercial.payment_refunded',
         'commercial.payment_voided',
+        // Os três da condição Fundador. A atribuição de uma condição especial
+        // tem de ser auditável (§19 do enunciado), e um lugar dos 250 é a mais
+        // especial que este produto tem: o trilho diz o número, o preço
+        // congelado, por onde entrou e — quando é libertado — porquê.
+        'commercial.founder_seat_claimed',
+        'commercial.founder_seat_confirmed',
+        'commercial.founder_seat_released',
         'admin.plan_changed',
         'admin.subscription_suspended',
         'admin.subscription_reactivated',
@@ -593,6 +611,26 @@ class AdminCommercialController extends Controller
             'in_force' => $subscription->isInForce(),
             'starts_at' => $subscription->starts_at->toDateTimeString(),
             'ends_at' => $subscription->ends_at?->toDateTimeString(),
+
+            // O QUE FOI CONTRATADO. Quatro colunas que existem desde a 0.88.0 e
+            // que este ecrã nunca mostrou: um administrador que quisesse
+            // responder «que condição é que esta organização contratou?» tinha
+            // de abrir a base de dados. Read-only aqui de propósito — são prova
+            // imutável, e o modelo recusa qualquer alteração — e enviadas em
+            // bruto, com a formatação a viver na página como toda a outra.
+            'contracted_price_cents' => $subscription->contracted_price_cents,
+            'contracted_currency' => $subscription->contracted_currency,
+            'billing_period' => $subscription->billing_period?->value,
+            'billing_period_label' => $subscription->billing_period?->label(),
+            'commercial_term_ends_at' => $subscription->commercial_term_ends_at?->toDateString(),
+
+            // A versão do plano contratada (ADR-0008): já existia na coluna e
+            // aparecia noutro ecrã, mas não aqui, ao lado da condição — que é
+            // onde a pergunta «o que é que esta conta comprou» se faz.
+            // `plan_version_id` nunca é nulo — a chave estrangeira composta e o
+            // guarda `creating` do modelo garantem-no —, por isso o `?->` aqui
+            // cobre apenas a relação, e não a coluna.
+            'plan_version' => $subscription->planVersion?->version,
         ];
     }
 
@@ -609,6 +647,37 @@ class AdminCommercialController extends Controller
                 fn (SubscriptionStatus $status): array => ['value' => $status->value, 'label' => $status->label()],
                 SubscriptionStatus::cases(),
             ),
+        ];
+    }
+
+    /**
+     * O lugar de Membro Fundador desta organização, ou NULL.
+     *
+     * NÃO É EDITÁVEL AQUI. Um lugar toma-se no checkout e liberta-se com uma
+     * razão registada (`FounderSeats::release()`); um campo neste ecrã faria a
+     * promessa dos 250 depender de quem escrevesse por cima. O que este ecrã
+     * faz é mostrá-lo.
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function founderSeatPayload(Organization $organization): ?array
+    {
+        $seat = $this->founderSeats->seatOf($organization);
+
+        if ($seat === null) {
+            return null;
+        }
+
+        return [
+            'number' => $seat->seat_number,
+            'capacity' => $this->founderAvailability->capacity(),
+            'price_cents' => $seat->price_cents,
+            'currency' => $seat->currency,
+            'claimed_at' => $seat->claimed_at->toDateTimeString(),
+            'confirmed_at' => $seat->confirmed_at?->toDateTimeString(),
+            'reserved_until' => $seat->reserved_until?->toDateTimeString(),
+            'is_confirmed' => $seat->isConfirmed(),
+            'is_holding' => $seat->isHolding(),
         ];
     }
 

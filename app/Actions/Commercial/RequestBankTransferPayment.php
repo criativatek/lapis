@@ -4,6 +4,7 @@ namespace App\Actions\Commercial;
 
 use App\Models\BillingProfile;
 use App\Models\CommercialCondition;
+use App\Models\FounderSeat;
 use App\Models\Organization;
 use App\Models\PaymentMethod;
 use App\Models\PaymentStatus;
@@ -14,6 +15,7 @@ use App\Services\Audit\AuditLog;
 use App\Support\Commercial\BankTransferReference;
 use App\Support\Commercial\CheckoutUnavailable;
 use App\Support\Commercial\FounderAvailability;
+use App\Support\Commercial\FounderSeats;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -40,9 +42,25 @@ use Illuminate\Support\Facades\DB;
  *    linhas, em vez de uma linha que mudou de sentido a meio.
  *
  * A CONDIÇÃO FUNDADOR AQUI É UMA OFERTA, NÃO UM FACTO. Grava-se o que foi
- * mostrado ao cliente quando a condição estava aberta; quem confirma o dinheiro
- * é que decide o que fica registado — como o `RecordSubscriptionPayment` insiste,
- * pagar 29,90 € não faz de ninguém fundador.
+ * mostrado ao cliente quando a condição estava aberta; pagar 29,90 € continua a
+ * não fazer de ninguém fundador, como o `RecordSubscriptionPayment` insiste.
+ *
+ * MAS A OFERTA CUSTA UM LUGAR. Até aqui, «é fundador?» era
+ * `FounderAvailability::isOpen()` a ler uma tabela que ninguém enchia: cada
+ * comprador via «restam 250 lugares» e recebia o preço de fundador, para
+ * sempre, quantos fossem. Agora o pedido **toma um lugar** (`FounderSeats`) e é
+ * o lugar — com o seu número e o seu preço congelado — que decide a condição e
+ * a quantia deste pedido. Se não houver lugar, o checkout continua ao preço de
+ * tabela em vez de prometer o que já não existe.
+ *
+ * E O CONTRATO FICA DETERMINADO ANTES DE O DINHEIRO SAIR. Um pedido pendente
+ * não é eterno: caduca com a janela de transferência, e um pedido de fundador
+ * caduca também com o lugar que o sustenta. Quem voltasse ao checkout no 20.º
+ * dia recebia de volta a mesma referência a 29,90 € sem lugar nenhum por trás,
+ * transferia, e só na confirmação é que alguém descobriria — com o dinheiro já
+ * na conta. `revalidate()` decide antes: reafirma o lugar se ainda o houver,
+ * anula o pedido e emite outro se não houver. «Quem confirma decide» não é
+ * resposta quando o comprador já transferiu.
  */
 class RequestBankTransferPayment
 {
@@ -50,7 +68,13 @@ class RequestBankTransferPayment
         protected AuditLog $audit,
         protected CurrentOrganization $currentOrganization,
         protected FounderAvailability $founder,
+        protected FounderSeats $seats,
         protected BankTransferReference $references,
+        // Para ANULAR um pedido que deixou de poder ser honrado. O mesmo
+        // mecanismo que o `ConfirmBankTransferRequest` usa, e pela mesma razão:
+        // um `SubscriptionPayment` não muda de sentido a meio — anula-se com um
+        // motivo registado e emite-se outro.
+        protected CorrectSubscriptionPayment $corrections,
     ) {}
 
     public const PROVIDER = 'bank_transfer';
@@ -64,9 +88,13 @@ class RequestBankTransferPayment
     {
         $this->assertAvailable();
 
-        $cents = $this->priceFor($plan);
+        // Chamado antes da transação apenas para RECUSAR o plano: o Base e o
+        // Institucional não têm preço em `config/billing.php` e é isso que os
+        // mantém fora do checkout. A quantia efectiva deste pedido é decidida
+        // lá dentro, a partir do lugar — se houver.
+        $listPrice = $this->listPriceFor($plan);
 
-        return DB::transaction(function () use ($organization, $buyer, $plan, $billing, $cents): SubscriptionPayment {
+        return DB::transaction(function () use ($organization, $buyer, $plan, $billing, $listPrice): SubscriptionPayment {
             $profile = $this->storeBillingProfile($organization, $billing);
 
             // Um segundo clique não gera uma segunda referência: quem voltar ao
@@ -76,8 +104,36 @@ class RequestBankTransferPayment
             $existing = $this->pendingFor($organization);
 
             if ($existing !== null) {
-                return $existing;
+                // A CONDIÇÃO TEM DE CONTINUAR A VALER, e não basta a referência
+                // continuar a existir. Um pedido de fundador cuja reserva
+                // expirou é uma referência a 29,90 € sem lugar por trás: quem a
+                // apanhasse transferia o preço de fundador para um contrato que
+                // já ninguém podia honrar. `revalidate()` decide antes de o
+                // dinheiro sair — reafirma o lugar se ainda o houver, e anula o
+                // pedido se não houver.
+                $valido = $this->revalidate($existing, $organization, $buyer);
+
+                if ($valido !== null) {
+                    return $valido;
+                }
+
+                // Caiu: o pedido antigo foi anulado ali dentro e segue-se para
+                // baixo, para emitir um novo com a condição que vale HOJE.
             }
+
+            // O LUGAR DECIDE, E NÃO A CONFIG. Se houver lugar, este pedido leva
+            // o número e o preço que o lugar congelou; se não houver, leva o
+            // preço de tabela e a condição normal. Era exactamente aqui que a
+            // promessa se desfazia: `isOpen()` dizia «sim» a toda a gente.
+            $seat = $this->seats->claim($organization, null, $buyer);
+
+            // Escrito como uma verificação explícita e não como `?->x ?? y`: à
+            // esquerda de `??` o operador nullsafe é redundante — `??` já tem
+            // semântica de isset — e um `?->` redundante lê-se como se
+            // estivesse a fazer alguma coisa. A mesma disciplina que o
+            // `SubscriptionCondition` já documenta.
+            $cents = $seat === null ? $listPrice : $seat->price_cents;
+            $currency = $seat === null ? (string) config('billing.currency') : $seat->currency;
 
             $payment = SubscriptionPayment::withoutGlobalScope('organization')->create([
                 'organization_id' => $organization->getKey(),
@@ -86,20 +142,27 @@ class RequestBankTransferPayment
                 // pagamento é do plano antigo.
                 'organization_subscription_id' => null,
                 'amount_cents' => $cents,
-                'currency' => (string) config('billing.currency'),
+                'currency' => $currency,
                 'status' => PaymentStatus::Pending,
                 'method' => PaymentMethod::BankTransfer,
                 'provider' => self::PROVIDER,
                 'provider_reference' => $this->references->generate(),
-                'commercial_condition' => $this->founder->isOpen() ? CommercialCondition::Founder : CommercialCondition::Standard,
+                'commercial_condition' => $seat === null ? CommercialCondition::Standard : CommercialCondition::Founder,
                 'recorded_by' => null,
                 'metadata' => [
                     'plan_key' => $plan->key,
                     'requested_by_user_id' => $buyer->getKey(),
                     'billing_profile_id' => $profile->getKey(),
                     'expires_at' => Carbon::now()->addDays((int) config('billing.bank_transfer.window_days'))->toDateTimeString(),
+                    // O ordinal prometido, guardado com o pedido que o tomou.
+                    'founder_seat_number' => $seat?->seat_number,
                 ],
             ]);
+
+            // Fecha o círculo entre o lugar e o pedido que o reservou. Feito
+            // depois porque o lugar tem de existir ANTES de se saber o preço, e
+            // o pagamento tem de existir antes de se poder apontar para ele.
+            $seat?->forceFill(['subscription_payment_id' => $payment->getKey()])->save();
 
             $this->currentOrganization->runFor($organization, fn () => $this->audit->record(
                 'commercial.payment_requested',
@@ -108,7 +171,7 @@ class RequestBankTransferPayment
                 summary: sprintf(
                     'Pedido de pagamento por transferência: %s %s, referência %s.',
                     number_format($cents / 100, 2, ',', ' '),
-                    (string) config('billing.currency'),
+                    $currency,
                     $payment->provider_reference,
                 ),
                 properties: [
@@ -116,6 +179,8 @@ class RequestBankTransferPayment
                     'plan_key' => $plan->key,
                     'amount_cents' => $cents,
                     'reference' => $payment->provider_reference,
+                    'commercial_condition' => $payment->commercial_condition?->value,
+                    'founder_seat_number' => $seat?->seat_number,
                 ],
             ));
 
@@ -136,22 +201,177 @@ class RequestBankTransferPayment
     }
 
     /**
-     * O que este plano custa hoje, em cêntimos.
+     * O pedido pendente que AINDA REPRESENTA UM CONTRATO VÁLIDO, para mostrar.
+     *
+     * Um pedido pendente não é eterno em duas dimensões, e o ecrã tem de as
+     * respeitar às duas antes de voltar a pôr uma referência à frente de quem
+     * compra:
+     *
+     *  - **A janela de transferência.** `metadata.expires_at` sempre existiu e
+     *    nunca foi lido por ninguém: um pedido de há dois meses reaparecia como
+     *    se fosse de ontem.
+     *  - **O lugar de fundador.** Uma referência a 29,90 € só vale enquanto
+     *    houver um `FounderSeat` a segurá-la, ao mesmo preço e na mesma moeda.
+     *    Sem isso é o preço de uma condição que já não existe.
+     *
+     * SÓ LÊ. É chamado pelo ecrã de checkout (GET), que não pode ter efeitos —
+     * quem anula e reemite é `request()`, no POST, e só quando o comprador
+     * volta mesmo a submeter.
+     */
+    public function validPendingFor(Organization $organization): ?SubscriptionPayment
+    {
+        $pending = $this->pendingFor($organization);
+
+        return $pending !== null && $this->stillHolds($pending, $organization) ? $pending : null;
+    }
+
+    /**
+     * O pedido continua a valer? — a mesma pergunta para o ecrã e para o POST.
+     *
+     * Duas dimensões, e falha qualquer uma chega: a janela de transferência que
+     * o comprador viu anunciada, e — só para um pedido de fundador — o lugar
+     * que segura o preço.
+     */
+    protected function stillHolds(SubscriptionPayment $payment, Organization $organization): bool
+    {
+        if (! $this->withinTransferWindow($payment)) {
+            return false;
+        }
+
+        if ($payment->commercial_condition !== CommercialCondition::Founder) {
+            return true;
+        }
+
+        $seat = $this->seats->seatOf($organization);
+
+        return $seat !== null && $this->seatBacks($seat, $payment);
+    }
+
+    /**
+     * Dentro da janela que o pedido anunciou a quem comprou.
+     *
+     * `metadata.expires_at` sempre existiu e nunca ninguém o leu: um pedido de
+     * há dois meses reaparecia no ecrã como se fosse de ontem. Um pedido sem
+     * data continua válido — é anterior a este campo, e inventar-lhe um prazo
+     * retroactivo seria pior do que o não ter.
+     */
+    protected function withinTransferWindow(SubscriptionPayment $payment): bool
+    {
+        $expiresAt = $payment->metadata['expires_at'] ?? null;
+
+        return ! is_string($expiresAt) || Carbon::parse($expiresAt)->isFuture();
+    }
+
+    /**
+     * O lugar sustenta MESMO este pedido.
+     *
+     * Não basta existir um lugar: o preço e a moeda têm de bater certo. Se a
+     * condição de fundador mudou de valor entre o pedido e agora, a referência
+     * antiga pede uma quantia que o contrato que dela sairia já não teria — e
+     * duas quantias diferentes para a mesma compra é exactamente o que este
+     * domínio inteiro está escrito para impedir.
+     */
+    protected function seatBacks(FounderSeat $seat, SubscriptionPayment $payment): bool
+    {
+        return $seat->isHolding()
+            && $seat->price_cents === $payment->amount_cents
+            && $seat->currency === $payment->currency;
+    }
+
+    /**
+     * Confirma que um pedido pendente ainda pode ser honrado, ou anula-o.
+     *
+     * O CONTRATO FICA DETERMINADO ANTES DE O DINHEIRO SAIR. É esta a regra que
+     * faltava. Antes, um comprador que voltasse ao checkout depois de a reserva
+     * expirar recebia de volta a mesma referência a 29,90 €, transferia, e só
+     * ao confirmar é que alguém descobria que já não havia lugar — com o
+     * dinheiro na conta e uma conversa desagradável pela frente.
+     *
+     * Três desfechos, e nenhum deles é «logo se vê»:
+     *
+     *  1. **O lugar aguenta-se** (ou nunca houve condição de fundador em jogo):
+     *     devolve-se o mesmo pedido, com a mesma referência. É o caso normal, e
+     *     continua a não gerar uma segunda referência para a mesma compra.
+     *  2. **A reserva expirou e ainda há lugar**: toma-se um lugar novo. Se o
+     *     preço bater certo com o do pedido, a referência antiga continua boa e
+     *     nada muda para quem compra.
+     *  3. **Não há lugar, ou o preço já não é o mesmo**: o pedido antigo é
+     *     ANULADO, com o motivo registado, e devolve-se NULL para que o
+     *     `request()` emita um novo com a condição que vale hoje. Uma
+     *     referência a um preço que já ninguém pode honrar não pode
+     *     sobreviver a este ponto.
+     */
+    protected function revalidate(SubscriptionPayment $payment, Organization $organization, User $buyer): ?SubscriptionPayment
+    {
+        if ($this->stillHolds($payment, $organization)) {
+            return $payment;
+        }
+
+        // RECUPERAR SÓ DENTRO DA JANELA. Se o que caducou foi o prazo do
+        // próprio pedido, tomar um lugar novo não o ressuscita — a referência
+        // que o comprador tem na mão já não vale, e emite-se outra. Só se
+        // recupera o caso inverso: a janela ainda de pé e o lugar perdido, que
+        // é o que acontece quando um operador liberta um lugar ou a reserva
+        // vence primeiro.
+        if ($payment->commercial_condition === CommercialCondition::Founder && $this->withinTransferWindow($payment)) {
+            // `claim()` é idempotente: devolve o que a organização já tenha, ou
+            // toma o menor livre.
+            $seat = $this->seats->claim($organization, $payment, $buyer);
+
+            if ($seat !== null && $this->seatBacks($seat, $payment)) {
+                return $payment;
+            }
+        }
+
+        // O motivo fica no trilho, e quem o «causou» é quem voltou ao checkout:
+        // a anulação é automática, mas não é anónima — foi este clique que a
+        // desencadeou, e é o que um operador precisa de ver ao reconstruir o
+        // que aconteceu à referência antiga.
+        $this->corrections->void($payment, $organization, $buyer, __(
+            'Pedido anulado automaticamente: a condição comercial que lhe deu origem deixou de estar disponível '
+            .'antes de o pagamento ser confirmado. Foi emitida uma nova referência com a condição em vigor.',
+        ));
+
+        return null;
+    }
+
+    /**
+     * O que se PEDIRIA a quem chegasse ao checkout agora, em cêntimos.
+     *
+     * PARA MOSTRAR, NÃO PARA CONTRATAR. Continua a responder o preço de
+     * fundador enquanto a condição estiver aberta, porque é isso que o ecrã
+     * tem de escrever — mas quem contrata leva o preço do LUGAR que tomou, que
+     * é o que `request()` grava e o que fica congelado. Entre esta leitura e o
+     * clique seguinte, o último lugar pode ter sido tomado por outra pessoa; é
+     * o lugar que decide, e não este número.
      *
      * @throws CheckoutUnavailable
      */
     public function priceFor(Plan $plan): int
     {
+        $tabelado = $this->listPriceFor($plan);
+
+        return $this->founder->isOpen() ? $this->founder->priceCents() : $tabelado;
+    }
+
+    /**
+     * O preço de tabela do plano, e a recusa dos que não se vendem online.
+     *
+     * O Base é gratuito e o Institucional é sob consulta. Nenhum tem preço em
+     * `config/billing.php`, e é isso — e não uma lista de exclusões noutro
+     * sítio a ficar desactualizada — que os mantém fora do checkout.
+     *
+     * @throws CheckoutUnavailable
+     */
+    protected function listPriceFor(Plan $plan): int
+    {
         $tabelado = config('billing.prices.'.$plan->key);
 
         if ($tabelado === null) {
-            // O Base é gratuito e o Institucional é sob consulta. Nenhum tem
-            // preço em `config/billing.php`, e é isso — e não uma lista de
-            // exclusões — que os mantém fora do checkout.
             throw new CheckoutUnavailable(__('O plano :plan não pode ser subscrito online.', ['plan' => $plan->name]));
         }
 
-        return $this->founder->isOpen() ? $this->founder->priceCents() : (int) $tabelado;
+        return (int) $tabelado;
     }
 
     /** @throws CheckoutUnavailable */

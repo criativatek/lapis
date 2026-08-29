@@ -57,6 +57,13 @@ const props = defineProps<{
     plans: LandingPlan[];
     authenticated: boolean;
     contactEmail: string | null;
+    /**
+     * Enquanto a condição de lançamento estiver aberta. Fechada — por lugares
+     * ou por prazo — o distintivo e a banda desaparecem: continuar a oferecer
+     * 29,90 € a quem já não os pode ter era a única frase materialmente falsa
+     * que esta página estava programada para dizer.
+     */
+    founderOpen: boolean;
 }>();
 
 const copyFor = (plan: LandingPlan): PlanCommercial =>
@@ -202,7 +209,7 @@ function visitHref(plan: LandingPlan) {
                          nobody has to scroll to learn that 44,90 € is not the
                          only figure. The band below carries the detail. -->
                     <a
-                        v-if="isPro(plan)"
+                        v-if="isPro(plan) && founderOpen"
                         href="#fundadores"
                         class="mt-3 block rounded-lg border border-primary/30 bg-accent/70 px-3.5 py-2.5 text-xs leading-relaxed transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none dark:border-(--brand-amber)/30 dark:bg-(--brand-amber)/10 dark:hover:bg-(--brand-amber)/15"
                     >
@@ -252,6 +259,6 @@ function visitHref(plan: LandingPlan) {
             </RevealOnScroll>
         </div>
 
-        <LandingFounder :authenticated="authenticated" />
+        <LandingFounder v-if="founderOpen" :authenticated="authenticated" />
     </LandingSection>
 </template>

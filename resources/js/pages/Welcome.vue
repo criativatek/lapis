@@ -42,6 +42,13 @@ defineProps<{
      * without the button rather than pointing at a mailbox nobody reads.
      */
     contactEmail: string | null;
+    /**
+     * Se a condição Membro Fundador ainda está aberta — lugares E prazo,
+     * decidido no servidor. É a única promessa desta página que deixa de ser
+     * verdade sozinha, e por isso a única que a página não pode afirmar por
+     * conta própria.
+     */
+    founder: { open: boolean };
 }>();
 
 const page = usePage();
@@ -94,10 +101,11 @@ const authenticated = computed(() => page.props.auth.user !== null);
                 :plans="plans"
                 :authenticated="authenticated"
                 :contact-email="contactEmail"
+                :founder-open="founder.open"
             />
             <LandingCompare :plans="plans" />
             <LandingVoucher />
-            <LandingFaq />
+            <LandingFaq :founder-open="founder.open" />
             <LandingFinalCta :authenticated="authenticated" />
         </main>
 

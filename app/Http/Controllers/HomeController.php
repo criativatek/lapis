@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Module;
 use App\Models\Plan;
 use App\Models\PlatformSetting;
+use App\Support\Commercial\FounderAvailability;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -42,11 +43,31 @@ use Inertia\Response;
  */
 class HomeController extends Controller
 {
+    public function __construct(protected FounderAvailability $founder) {}
+
     public function __invoke(Request $request): Response
     {
         return Inertia::render('Welcome', [
             'plans' => fn (): array => $this->plans(),
             'contactEmail' => fn (): ?string => PlatformSetting::current()->publicContactEmail(),
+            // WHETHER THE LAUNCH CONDITION IS STILL OPEN — the one commercial
+            // figure on this page the server has to answer, because it is the
+            // only one that stops being true on its own. «Faça parte dos
+            // primeiros 250» and «disponível até 31 de dezembro de 2026» are a
+            // promise with two expiry conditions, and until now the page went
+            // on making it regardless: the day the seats ran out or the
+            // deadline passed, the landing would still have offered 29,90 € to
+            // whoever read it. The seats are really counted now
+            // (`App\Support\Commercial\FounderSeats`), so this is a fact rather
+            // than a guess.
+            //
+            // A BOOLEAN, NOT A COUNT. `LandingFounder` documents why there is
+            // no «restam 37» on this page, and that reasoning has not changed:
+            // manufactured scarcity is a marketing device, and putting a real
+            // number there is a commercial decision rather than a correctness
+            // fix. This says only «still available» or «no longer», which is
+            // the minimum that stops the page stating something false.
+            'founder' => fn (): array => ['open' => $this->founder->isOpen()],
         ]);
     }
 

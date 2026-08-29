@@ -73,25 +73,57 @@ class CommercialSnapshotTest extends TestCase
     }
 
     #[Test]
-    public function the_backfill_invented_no_commercial_history(): void
+    public function the_promotion_is_never_applied_retroactively(): void
     {
-        // Every row that existed before the columns did keeps all four NULL.
-        // Backfilling would have asserted that accounts created earlier adhered
-        // under the 2026/27 promotional condition — which the database has
-        // never held the evidence to say, and which is the operator's decision
-        // to take later, as an audited UPDATE.
+        // A row that predates the columns keeps all four NULL — for ever, and
+        // through everything. Backfilling one would assert that an account
+        // created earlier adhered under the 2026/27 promotional condition,
+        // which the database has never held the evidence to say (§5 of the
+        // commercial-conditions brief, and the reason the 2026_09_11_000300
+        // migration deliberately backfilled nothing).
+        //
+        // WRITTEN STRAIGHT TO THE TABLE, not through the actions: the point is
+        // to reproduce a row from before any of this existed, and going
+        // through `SubscribeOrganization` would now — correctly — record the
+        // promotion on it.
+        $legacy = $this->subscription();
+        $this->assertNull($legacy->contracted_price_cents);
+
+        // Meanwhile the world moves: new accounts are created, and they DO
+        // record the promotion. That is exactly the pressure this test exists
+        // to resist — a well-meaning backfill sweeping the old rows in with
+        // the new ones.
         User::factory()->count(3)->create();
 
-        $this->assertSame(
-            0,
-            OrganizationSubscription::withoutGlobalScope('organization')
-                ->where(fn ($query) => $query
-                    ->whereNotNull('contracted_price_cents')
-                    ->orWhereNotNull('contracted_currency')
-                    ->orWhereNotNull('billing_period')
-                    ->orWhereNotNull('commercial_term_ends_at'))
-                ->count(),
-        );
+        $fresh = DB::table('organization_subscriptions')->where('id', $legacy->id)->first();
+
+        $this->assertNull($fresh->contracted_price_cents, 'an account that predates the promotion was given a price');
+        $this->assertNull($fresh->contracted_currency);
+        $this->assertNull($fresh->billing_period);
+        $this->assertNull($fresh->commercial_term_ends_at);
+        $this->assertNull($fresh->commercial_condition, 'an account that predates the promotion was labelled promotional');
+    }
+
+    #[Test]
+    public function a_new_base_account_records_the_2026_27_promotion(): void
+    {
+        // The other half of the same rule: what is refused for old rows is
+        // REQUIRED for new ones. «Gratuito no ano letivo 2026/27» was a promise
+        // the landing made on every visit and the database could not evidence.
+        $organization = $this->organization();
+
+        $subscription = OrganizationSubscription::withoutGlobalScope('organization')
+            ->where('organization_id', $organization->getKey())->firstOrFail();
+
+        $this->assertSame(CommercialCondition::Promotional, $subscription->commercial_condition);
+        $this->assertSame(0, $subscription->contracted_price_cents, '0 is a recorded price; NULL would mean nobody knew');
+        $this->assertSame('EUR', $subscription->contracted_currency);
+        $this->assertSame(BillingPeriod::None, $subscription->billing_period);
+        $this->assertSame('2027-08-31', $subscription->commercial_term_ends_at?->toDateString());
+
+        // And the condition ending is not the access ending.
+        $this->assertNull($subscription->ends_at);
+        $this->assertTrue($subscription->isInForce());
     }
 
     // ------------------------------------------------------ 2. immutability

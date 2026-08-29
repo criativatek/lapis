@@ -102,7 +102,10 @@ final class EffectiveSubscriptions
         return OrganizationSubscription::query()
             ->withoutGlobalScope('organization')
             ->when($organizationIds !== null, fn (Builder $query) => $query->whereIn('organization_id', $organizationIds))
-            ->with('plan')
+            // `planVersion` junto de `plan` porque o backoffice mostra agora as
+            // duas lado a lado — «Pro, versão 2» — e uma história de dez linhas
+            // faria dez consultas para o dizer.
+            ->with(['plan', 'planVersion'])
             ->latest('starts_at')
             ->latest('id');
     }

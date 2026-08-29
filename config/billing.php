@@ -40,6 +40,39 @@ return [
         'deadline' => env('BILLING_FOUNDER_DEADLINE', '2026-12-31'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Promoções por tempo limitado
+    |--------------------------------------------------------------------------
+    |
+    | A landing diz «Gratuito no ano letivo 2026/27» sobre o plano Base
+    | (`commercial.ts:69`, `LandingFaq.vue:67`, `LandingSeo.php:143`) e até aqui
+    | isso não estava escrito em lado nenhum da base de dados: uma conta Base
+    | criada hoje ficava com as quatro colunas de snapshot a NULL, e «quem
+    | aderiu ao abrigo da promoção» era arqueologia sobre `created_at`.
+    |
+    | UMA DATA, NÃO DUAS. É ao mesmo tempo o fim do termo comercial e o fim da
+    | janela de adesão, porque é isso que a frase promete: quem criar conta em
+    | junho de 2027 ainda adere «no ano letivo 2026/27», e é gratuito até ao fim
+    | desse mesmo ano letivo. Duas datas seriam duas promessas, e a página só
+    | faz uma.
+    |
+    | O QUE ACONTECE DEPOIS DESTA DATA NÃO ESTÁ AQUI, e é deliberado
+    | (ADR-0008 §8): `commercial_term_ends_at` é prova do que foi acordado e
+    | nada no resolvedor de direitos a lê. Terminada a condição, a conta deve
+    | uma conversa, não um corte de acesso.
+    |
+    */
+
+    'promotions' => [
+        'free_base' => [
+            'enabled' => (bool) env('BILLING_FREE_BASE_ENABLED', true),
+            // Fim do ano letivo 2026/27. Inclusivo: uma adesão feita nesse dia
+            // ainda é feita ao abrigo da promoção.
+            'ends_at' => env('BILLING_FREE_BASE_ENDS_AT', '2027-08-31'),
+        ],
+    ],
+
     'currency' => env('BILLING_CURRENCY', 'EUR'),
 
     /*

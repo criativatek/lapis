@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\DB;
 use LogicException;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Concerns\PublishesPlanVersions;
+use Tests\Concerns\RollsBackPlanVersions;
 use Tests\TestCase;
 
 /**
@@ -35,6 +36,7 @@ class PlanVersionPublishingTest extends TestCase
 {
     use PublishesPlanVersions;
     use RefreshDatabase;
+    use RollsBackPlanVersions;
 
     // ------------------------------------------------------ v1 of the 0.87
 
@@ -124,7 +126,7 @@ class PlanVersionPublishingTest extends TestCase
         $organization = User::factory()->create()->personalOrganization()->fresh();
         app(ChangeOrganizationPlan::class)->to($organization, Plan::where('key', 'pro')->firstOrFail());
 
-        $this->artisan('migrate:rollback', ['--step' => 3])->run();
+        $this->rollBackPlanVersionLot();
         $this->artisan('migrate')->run();
 
         $backfilled = PlanVersion::orderBy('id')->get()->map->only(['id', 'plan_id', 'version', 'composition_hash', 'limits'])->all();

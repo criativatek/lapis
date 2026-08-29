@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { Link } from '@inertiajs/vue3';
+import { Link } from "@inertiajs/vue3";
 import { ArrowRight, Plus } from '@lucide/vue';
+import { computed } from "vue";
 import { Button } from '@/components/ui/button';
 import { register } from '@/routes';
 import {
@@ -32,7 +33,23 @@ import RevealOnScroll from './RevealOnScroll.vue';
  * they are interested. Every answer is about the product as it is today — one
  * that would need a feature that does not exist says so instead.
  */
-const questions = [
+const props = defineProps<{
+    /**
+     * Enquanto a condição de lançamento estiver aberta — lugares E prazo,
+     * decidido no servidor. A resposta sobre o preço do Pro nomeia os «primeiros
+     * 250» e a data-limite; esgotada a condição, essa metade da frase passa a
+     * oferecer o que já não existe, e sai.
+     */
+    founderOpen: boolean;
+}>();
+
+const founderSentence = computed(() =>
+    props.founderOpen
+        ? ` Os primeiros ${FOUNDER_SEATS} professores a aderirem podem beneficiar da condição Membro Fundador, ${FOUNDER_PRICE_PER_YEAR}, disponível até ${FOUNDER_DEADLINE} ou até esses lugares estarem preenchidos, consoante o que ocorrer primeiro. É o mesmo plano Pro, numa condição de adesão distinta.`
+        : '',
+);
+
+const questions = computed(() => [
     {
         question: 'O que é o Lapispro?',
         answer: 'É uma plataforma para professores que reúne a avaliação de alunos, a gestão de turmas, o acompanhamento pedagógico, as aulas, os sumários e os relatórios num único lugar — em vez de os espalhar por folhas de cálculo, documentos e cadernos.',
@@ -68,7 +85,7 @@ const questions = [
     },
     {
         question: 'Quanto custa o plano Pro?',
-        answer: `${PRO_PRICE_PER_YEAR}, em subscrição anual — não existe pagamento mensal. Os primeiros ${FOUNDER_SEATS} professores a aderirem podem beneficiar da condição Membro Fundador, ${FOUNDER_PRICE_PER_YEAR}, disponível até ${FOUNDER_DEADLINE} ou até esses lugares estarem preenchidos, consoante o que ocorrer primeiro. É o mesmo plano Pro, numa condição de adesão distinta.`,
+        answer: `${PRO_PRICE_PER_YEAR}, em subscrição anual — não existe pagamento mensal.${founderSentence.value}`,
     },
     {
         question: 'Existe uma solução para escolas e agrupamentos?',
@@ -106,7 +123,7 @@ const questions = [
         question: 'E se eu precisar de mudar o perfil a meio do ano?',
         answer: 'Alterar um perfil ativo cria uma nova versão. Uma turma com resultados só muda depois de lhe ser mostrado o impacto e de o confirmar — e o que já foi avaliado continua a apontar para a versão com que foi avaliado.',
     },
-];
+]);
 </script>
 
 <template>

@@ -7,12 +7,9 @@ use App\Mail\BankTransferInstructionsMail;
 use App\Models\BillingProfile;
 use App\Models\CommercialCondition;
 use App\Models\Organization;
-use App\Models\OrganizationSubscription;
 use App\Models\PaymentMethod;
 use App\Models\PaymentStatus;
-use App\Models\Plan;
 use App\Models\SubscriptionPayment;
-use App\Models\SubscriptionStatus;
 use App\Models\User;
 use App\Services\Organizations\ChangeOrganizationPlan;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -264,6 +261,14 @@ class BankTransferCheckoutTest extends TestCase
     /**
      * Esgotados os lugares, o preço volta ao normal — e a condição registada
      * deixa de ser Fundador, porque não é.
+     *
+     * O LUGAR OCUPADO É AGORA UM LUGAR, E NÃO UMA SUBSCRIÇÃO MARCADA À MÃO.
+     * Este teste enchia a lotação criando uma subscrição com
+     * `commercial_condition = founder`, porque era isso que o contador antigo
+     * lia — uma população que nenhum fluxo escrevia, e que por isso o deixava
+     * em «restam 250» para sempre em produção. Agora o lugar toma-se pelo
+     * checkout, e é pelo checkout que este teste o enche: o primeiro comprador
+     * leva o único lugar que há, o segundo paga tabela.
      */
     #[Test]
     public function once_the_seats_are_gone_the_standard_price_applies(): void
@@ -271,16 +276,8 @@ class BankTransferCheckoutTest extends TestCase
         Mail::fake();
         config(['billing.founder.seats' => 1]);
 
-        // Um lugar já ocupado, marcado por um operador — o único facto de que
-        // «ser fundador» se lê.
-        $outro = User::factory()->create()->personalOrganization();
-        OrganizationSubscription::withoutGlobalScope('organization')->create([
-            'organization_id' => $outro->getKey(),
-            'plan_id' => Plan::where('key', 'pro')->firstOrFail()->id,
-            'status' => SubscriptionStatus::Active,
-            'starts_at' => Carbon::now(),
-            'commercial_condition' => CommercialCondition::Founder,
-        ]);
+        [$primeiro] = $this->owner();
+        $this->actingAs($primeiro)->post('/settings/plan/checkout', $this->billingData());
 
         [$user, $organization] = $this->owner();
         $this->actingAs($user)->post('/settings/plan/checkout', $this->billingData());
