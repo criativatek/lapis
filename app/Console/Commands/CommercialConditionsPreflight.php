@@ -32,11 +32,20 @@ use Illuminate\Support\Facades\Schema;
  * uma a uma no backoffice, por `SetCommercialCondition`, que regista quem o
  * disse e quando.
  *
- * NÃO CLASSIFICA CONTAS. Não há marca de conta interna neste esquema, e este
- * comando não a inventa a partir do domínio do email nem do nome — mostra os
- * factos (quando foi criada, em que plano está, que condição tem registada) e
- * deixa a leitura a quem sabe. Ver o ADR-0009 sobre a mesma recusa nos lugares
- * de fundador.
+ * NÃO CLASSIFICA CONTAS. Mostra os factos (quando foi criada, em que plano
+ * está, que condição tem registada) e deixa a leitura a quem sabe. Ver o
+ * ADR-0009 sobre a mesma recusa nos lugares de fundador.
+ *
+ * HÁ UMA MARCA DE CONTA DE TESTE, E ESTE COMANDO LÊ-A SEM A DEDUZIR.
+ * `organizations.is_test_account` existe desde que este portão disparou sobre
+ * uma população inteira de contas de ensaio — não havia contrato nenhum para
+ * registar, e as únicas saídas eram fabricar um ou desligar o portão. Uma
+ * organização marcada é contada à parte e não bloqueia; uma conta real sem
+ * condição registada continua a parar o deploy. A marca vem de um operador que
+ * a escreveu com o seu nome no rasto (`SetTestAccount`) e NUNCA de uma
+ * inferência sobre o email, o domínio, o nome, o plano, o id ou a ausência de
+ * pagamentos — deduzir «isto é de teste» é a mesma família de erro que deduzir
+ * «isto é fundador» a partir de um valor pago.
  */
 class CommercialConditionsPreflight extends Command
 {
@@ -79,11 +88,16 @@ class CommercialConditionsPreflight extends Command
      * a coluna não existia quando ela foi escrita. O que interessa antes de um
      * deploy é quem está no ar agora sem que se saiba em que condições.
      *
-     * @return int quantas foram encontradas
+     * E REAIS, não todas as que estão em vigor: uma organização marcada como
+     * conta de teste é contada e mostrada à parte, sem bloquear. Ver o
+     * comentário no corpo — a distinção é o que evita ter de fabricar contratos
+     * para o portão passar.
+     *
+     * @return int quantas foram encontradas — só as reais, que são as que bloqueiam
      */
     protected function subscriptionsWithoutTerms(): int
     {
-        $candidatas = OrganizationSubscription::query()
+        $emVigorSemTermos = OrganizationSubscription::query()
             ->withoutGlobalScope('organization')
             ->whereNull('contracted_price_cents')
             ->whereNull('commercial_condition')
@@ -92,9 +106,33 @@ class CommercialConditionsPreflight extends Command
             ->get()
             ->filter(fn (OrganizationSubscription $subscription): bool => $subscription->isInForce());
 
+        // CONTAS DE TESTE NÃO SÃO PERGUNTA COMERCIAL NENHUMA.
+        //
+        // O portão existe para «alguém pode dever-nos alguma coisa e não está
+        // escrito». Uma organização que um operador marcou explicitamente como
+        // conta de teste já respondeu a isso: não lhe foi prometido nada, e não
+        // há contrato para registar. Bloquear nela obrigaria a inventar um — a
+        // fabricar uma condição `promotional` que ninguém acordou só para o
+        // comando passar —, que é exatamente a mentira que este comando existe
+        // para impedir.
+        //
+        // A MARCA É EXPLÍCITA E SÓ EXPLÍCITA. Nada aqui deduz «conta de teste»
+        // a partir do email, do domínio, do nome, do plano, do id nem da
+        // ausência de pagamentos: lê-se a coluna que um operador escreveu com o
+        // seu nome no rasto (`SetTestAccount`), e mais nada. Uma conta real sem
+        // condição registada continua a parar o deploy, como sempre parou.
+        [$deTeste, $candidatas] = $emVigorSemTermos->partition(
+            fn (OrganizationSubscription $subscription): bool => (bool) $subscription->organization->is_test_account,
+        );
+
         $this->components->twoColumnDetail(
             '<fg=gray>Subscrições em vigor sem condição nem preço registados</>',
             (string) $candidatas->count(),
+        );
+
+        $this->components->twoColumnDetail(
+            '<fg=gray>Contas de teste excluídas do gate comercial</>',
+            $deTeste->isEmpty() ? '0' : '<fg=cyan>'.$deTeste->count().'</>',
         );
 
         if ($candidatas->isEmpty()) {

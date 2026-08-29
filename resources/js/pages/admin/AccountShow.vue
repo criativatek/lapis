@@ -36,6 +36,8 @@ type Account = {
     name: string;
     type: string;
     created_at: string | null;
+    /** Exists to try the product out — nothing was ever promised to it. Grants nothing. */
+    is_test_account: boolean;
     owner: {
         name: string | null;
         email: string | null;
@@ -132,6 +134,25 @@ function addMember(): void {
 
 const memberRefusal = computed(() => (usePage().props.errors as Record<string, string>)?.member ?? null);
 
+/**
+ * «Conta de teste», marcada ou desmarcada — e sempre com o estado que se quer,
+ * nunca «inverte o que lá estiver». O pedido leva `is_test_account` explícito,
+ * de modo que dois separadores abertos na mesma conta não deixam a marca onde
+ * calhar. Confirmar é obrigatório: isto é o que o pré-voo comercial lê para
+ * decidir de quem não tem de perguntar.
+ */
+function setTestAccount(next: boolean): void {
+    const question = next
+        ? `Marcar «${props.account.name}» como conta de teste? Fica excluída do pré-voo comercial — não muda plano, módulos nem acesso.`
+        : `Deixar de tratar «${props.account.name}» como conta de teste? Passa a ser exigida condição comercial no pré-voo.`;
+
+    if (!confirm(question)) {
+        return;
+    }
+
+    router.post(`${base.value}/test-account`, { is_test_account: next }, { preserveScroll: true });
+}
+
 function destroy(): void {
     if (!confirm(`Apagar definitivamente a conta de ${props.account.owner.email}? Esta ação não pode ser anulada.`)) {
         return;
@@ -164,6 +185,9 @@ function destroy(): void {
                     organização em encerramento —
                     {{ account.closure.eligible_for_deletion ? 'elegível para eliminação' : `${account.closure.days_remaining} dia(s) restantes` }}
                 </span>
+            </p>
+            <p v-if="account.is_test_account" class="mt-1 text-sm">
+                <span class="rounded-full bg-sky-100 px-2 py-0.5 text-xs text-sky-800 dark:bg-sky-950 dark:text-sky-300"> conta de teste </span>
             </p>
         </div>
 
@@ -478,6 +502,31 @@ function destroy(): void {
                 <span v-for="mod in account.modules" :key="mod" class="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{{ mod }}</span>
                 <span v-if="account.modules.length === 0" class="text-xs text-muted-foreground">Sem módulos.</span>
             </div>
+        </section>
+
+        <!-- Conta de teste -->
+        <section class="space-y-3 rounded-lg border border-border p-4">
+            <div class="flex flex-wrap items-center gap-2">
+                <h2 class="text-sm font-medium">Natureza da conta</h2>
+                <span
+                    class="rounded-full px-2 py-0.5 text-xs"
+                    :class="
+                        account.is_test_account
+                            ? 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300'
+                            : 'bg-muted text-muted-foreground'
+                    "
+                >
+                    {{ account.is_test_account ? 'conta de teste' : 'conta real' }}
+                </span>
+            </div>
+            <p class="text-sm text-muted-foreground">
+                Uma conta de teste existe para experimentar o produto e não teve nada prometido. A marca <strong>não</strong> altera plano,
+                módulos, limites, versão do plano, acesso, retenção nem IA, e <strong>não</strong> é uma condição comercial — serve apenas
+                para o pré-voo comercial saber de quem não tem de perguntar.
+            </p>
+            <Button type="button" variant="outline" size="sm" @click="setTestAccount(!account.is_test_account)">
+                {{ account.is_test_account ? 'Deixar de ser conta de teste' : 'Marcar como conta de teste' }}
+            </Button>
         </section>
 
         <!-- Remoção definitiva -->

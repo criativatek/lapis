@@ -165,11 +165,93 @@ class CommercialPreflightTest extends TestCase
             ->assertExitCode(1);
     }
 
+    /**
+     * CONTAS DE TESTE NÃO SÃO PERGUNTA COMERCIAL.
+     *
+     * Foi este caso que parou a 0.90.0: todas as contas em produção eram de
+     * ensaio, e o portão exigia para elas uma condição comercial que não existe.
+     * Uma organização que um operador marcou explicitamente deixa de bloquear —
+     * e continua a ser dita em voz alta, para ninguém a confundir com ausência.
+     */
+    #[Test]
+    public function an_explicitly_marked_test_account_does_not_stop_the_deploy(): void
+    {
+        $organization = $this->withoutRecordedTerms($this->organization());
+        $organization->forceFill(['is_test_account' => true])->save();
+
+        $this->artisan('lapis:commercial-preflight')
+            ->expectsOutputToContain('Contas de teste excluídas do gate comercial')
+            ->assertExitCode(0);
+    }
+
+    #[Test]
+    public function it_reports_how_many_test_accounts_it_ignored(): void
+    {
+        foreach ([1, 2] as $ignored) {
+            $this->withoutRecordedTerms($this->organization())->forceFill(['is_test_account' => true])->save();
+        }
+
+        $this->artisan('lapis:commercial-preflight')
+            ->expectsOutputToContain('Contas de teste excluídas do gate comercial')
+            ->expectsOutputToContain('2')
+            ->assertExitCode(0);
+    }
+
+    /**
+     * E o portão continua a ser um portão: marcar umas não desliga as outras.
+     */
+    #[Test]
+    public function a_real_account_without_terms_still_stops_the_deploy_alongside_test_accounts(): void
+    {
+        $this->withoutRecordedTerms($this->organization())->forceFill(['is_test_account' => true])->save();
+        $real = $this->withoutRecordedTerms($this->organization());
+
+        $this->artisan('lapis:commercial-preflight')
+            ->expectsOutputToContain($real->name)
+            ->expectsOutputToContain('decisão comercial')
+            ->assertExitCode(1);
+    }
+
+    /**
+     * NENHUMA INFERÊNCIA. Nada no comando olha para o email, o domínio, o nome
+     * ou o plano para decidir que uma conta é de ensaio — só para a coluna que
+     * um operador escreveu. Uma conta que PARECE de teste por todos esses
+     * sinais, mas que ninguém marcou, tem de bloquear na mesma.
+     */
+    #[Test]
+    public function it_never_infers_a_test_account_from_the_email_name_or_plan(): void
+    {
+        $owner = User::factory()->create(['email' => 'teste@example.test', 'name' => 'Conta de Teste']);
+        $organization = $owner->personalOrganization()->fresh();
+        $organization->forceFill(['name' => 'DEMO — ambiente de testes'])->save();
+        $this->withoutRecordedTerms($organization);
+
+        $this->artisan('lapis:commercial-preflight')
+            ->expectsOutputToContain('decisão comercial')
+            ->assertExitCode(1);
+    }
+
     // ------------------------------------------------------------ fixtures
 
     private function organization(): Organization
     {
         return User::factory()->create()->personalOrganization()->fresh();
+    }
+
+    /** Uma linha como as que existiam antes das colunas: sem condição e sem preço. */
+    private function withoutRecordedTerms(Organization $organization): Organization
+    {
+        DB::table('organization_subscriptions')
+            ->where('organization_id', $organization->getKey())
+            ->update([
+                'commercial_condition' => null,
+                'contracted_price_cents' => null,
+                'contracted_currency' => null,
+                'billing_period' => null,
+                'commercial_term_ends_at' => null,
+            ]);
+
+        return $organization;
     }
 
     /** Tudo o que o comando lê, como uma impressão digital comparável. */

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Actions\Admin\SetTestAccount;
 use App\Actions\Organizations\AddOrganizationMember;
 use App\Actions\Organizations\CreateInstitutionalOrganization;
 use App\Actions\Organizations\CreatePersonalOrganization;
@@ -61,6 +62,9 @@ class AdminAccountController extends Controller
         // What was agreed, read off the evidence rather than typed into a form.
         protected CommercialTerms $terms,
         protected FounderSeats $founderSeats,
+        // Says whether an account is real or exists to try the product out.
+        // Not a commercial condition — see the action.
+        protected SetTestAccount $setTestAccount,
     ) {}
 
     public function index(Request $request): Response
@@ -231,6 +235,10 @@ class AdminAccountController extends Controller
                 'name' => $organization->name,
                 'type' => $organization->type->value,
                 'created_at' => $organization->created_at?->toDateString(),
+                // Whether anybody ever promised this account anything. Grants
+                // and withholds nothing — the commercial preflight is the only
+                // reader, and it uses it to know whom NOT to ask about.
+                'is_test_account' => (bool) $organization->is_test_account,
                 'owner' => [
                     'name' => $owner?->name,
                     'email' => $owner?->email,
@@ -439,6 +447,34 @@ class AdminAccountController extends Controller
             $this->log($organization, $grant ? 'admin.admin_granted' : 'admin.admin_revoked',
                 ($grant ? 'Concedido' : 'Revogado')." acesso de administrador a {$owner->email}.");
         }
+
+        return back();
+    }
+
+    /**
+     * «Conta de teste» — marked, or unmarked, and never toggled blind.
+     *
+     * The request carries the STATE IT WANTS, not «flip whatever is there». Two
+     * operators on the same account, or one double-click, would otherwise leave
+     * the mark wherever the race landed — and this is a fact somebody will later
+     * read as «nobody promised this account anything».
+     */
+    public function setTestAccount(Request $request, Organization $organization): RedirectResponse
+    {
+        $validated = $request->validate([
+            'is_test_account' => ['required', 'boolean'],
+            'note' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        /** @var User $operator */
+        $operator = $request->user();
+
+        $this->setTestAccount->set(
+            $organization,
+            $operator,
+            (bool) $validated['is_test_account'],
+            $validated['note'] ?? null,
+        );
 
         return back();
     }
