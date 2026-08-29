@@ -56,13 +56,58 @@ class AiQuotaExceeded extends RuntimeException
         );
     }
 
+    /**
+     * The organization's shared pool is spent.
+     *
+     * IT DOES NOT NAME A CAPABILITY, because the pool does not have one: it is
+     * a total across every AI capability the organization uses, so «atingiu o
+     * limite de IA nos relatórios» would be false even when the request that
+     * hit the ceiling happened to be a report rewrite.
+     */
+    public static function forPool(int $limit): self
+    {
+        return new self(
+            "Monthly organization AI pool of {$limit} reached.",
+            __(
+                'A sua organização atingiu o limite mensal de :limit pedidos de IA definido para o conjunto das funcionalidades. O limite renova-se no início do próximo mês.',
+                ['limit' => $limit],
+            ),
+            'organization_pool_monthly',
+        );
+    }
+
+    /**
+     * The member's own share of the organization's pool is spent, while the
+     * pool itself still has room.
+     *
+     * A DIFFERENT SENTENCE FROM `forPool()`, because it is a different
+     * situation and they lead to different conversations. «A escola ficou sem
+     * IA» is a contract question; «o seu teto individual acabou» is a question
+     * for whoever administers the organization. Telling one as the other sends
+     * the teacher to the wrong person.
+     */
+    public static function forPoolShare(int $limit): self
+    {
+        return new self(
+            "Monthly per-user share of the organization AI pool of {$limit} reached.",
+            __(
+                'Atingiu o seu limite mensal de :limit pedidos de IA dentro do plafond da organização. Fale com quem administra a organização se precisar de mais.',
+                ['limit' => $limit],
+            ),
+            'user_pool_monthly',
+        );
+    }
+
     /** Safe to show a teacher. */
     public function publicMessage(): string
     {
         return $this->publicMessage;
     }
 
-    /** `user_daily` or `organization_monthly` — what `ai_usage_events.error_category` stores. */
+    /**
+     * `user_daily`, `organization_monthly`, `organization_pool_monthly` or
+     * `user_pool_monthly` — what `ai_usage_events.error_category` stores.
+     */
     public function scope(): string
     {
         return $this->scope;

@@ -2,6 +2,8 @@
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { Check, CircleAlert, Lock, X } from '@lucide/vue';
 import { computed, ref } from 'vue';
+import AiReadingPanel from '@/components/ai/AiReadingPanel.vue';
+import type { AiReadingSection } from '@/components/ai/AiReadingPanel.vue';
 import CoverageWarning from '@/components/CoverageWarning.vue';
 import Heading from '@/components/Heading.vue';
 import StudentAvatar from '@/components/StudentAvatar.vue';
@@ -11,6 +13,24 @@ import type { Evolution } from '@/lib/results';
 import type { Coverage } from '@/types';
 
 type DomainCol = { id: number; name: string };
+
+/**
+ * What `ResultsAnalysisParser` produces, mirrored in TypeScript.
+ *
+ * SIX NAMED LISTS, NEVER A BLOB. The server refuses an answer it could not
+ * split into these, so this type is the contract rather than an optimistic
+ * description — a shape the panel can render without ever meeting raw model
+ * output.
+ */
+type ResultsAnalysis = {
+    period_ulid: string | null;
+    summary: string;
+    patterns: string[];
+    strengths: string[];
+    attention_points: string[];
+    suggestions: string[];
+    cautions: string[];
+};
 
 /**
  * A band of the profile's own scale, for the canonical colour resolver.
@@ -84,7 +104,82 @@ const props = defineProps<{
     isFirstPeriod: boolean;
     scaleBands: { label: string; sequence: number; is_negative: boolean }[];
     decision: DecisionScale;
+    /**
+     * «Analisar a avaliação com IA» — whether the button may be drawn, and,
+     * separately, whether pressing it could produce anything. Two questions
+     * with two answers, because they fail for different reasons and lead to
+     * different people (§41).
+     */
+    ai: {
+        available: boolean;
+        reason: string | null;
+        has_enough_evidence: boolean;
+        minimum_students: number;
+        action: string;
+    };
+    aiAnalysis: ResultsAnalysis | null;
+    aiAnalysisError: { message: string } | null;
 }>();
+
+/**
+ * Six blocks, mapped from the server's typed lists to the panel's sections.
+ *
+ * THE MAPPING LIVES HERE AND NOT IN THE PANEL, because what a reading of an
+ * assessment is MADE OF is a pedagogical decision that belongs to this screen.
+ * The panel knows how to render titled blocks and nothing about what a
+ * «cautela» is.
+ *
+ * A BLOCK WITH NOTHING IN IT IS DROPPED rather than rendered empty: a heading
+ * over an empty list reads as a failure, and the parser already allows several
+ * of these to be legitimately absent.
+ */
+const aiSections = computed<AiReadingSection[]>(() => {
+    const analysis = props.aiAnalysis;
+
+    if (analysis === null) {
+        return [];
+    }
+
+    const sections: AiReadingSection[] = [{ title: 'Síntese', text: analysis.summary }];
+
+    const lists: { title: string; items: string[] }[] = [
+        { title: 'Padrões observados', items: analysis.patterns },
+        { title: 'Onde a evidência é sólida', items: analysis.strengths },
+        { title: 'Pontos de atenção', items: analysis.attention_points },
+        { title: 'Sugestões pedagógicas', items: analysis.suggestions },
+        { title: 'Limitações desta leitura', items: analysis.cautions },
+    ];
+
+    for (const list of lists) {
+        if (list.items.length > 0) {
+            sections.push(list);
+        }
+    }
+
+    return sections;
+});
+
+/**
+ * Three outcomes from the gateway's seven slugs, matching
+ * `ResultsController::unavailableMessage()` exactly. A teacher is not told
+ * which setting is blank, because they cannot act on any of the six.
+ */
+const aiUnavailableMessage = computed(() => {
+    if (props.ai.reason === 'plan') {
+        return 'A análise da avaliação com IA não está incluída no plano desta organização.';
+    }
+
+    if (props.ai.reason === 'off') {
+        return 'A análise da avaliação com IA não está ativada nesta instalação.';
+    }
+
+    return 'A análise da avaliação com IA não está configurada nesta instalação.';
+});
+
+const aiInsufficientEvidenceMessage = computed(
+    () =>
+        `Ainda não há resultados suficientes neste período para uma análise — são necessários pelo menos ${props.ai.minimum_students} alunos com resultado.`,
+);
 
 /**
  * DESEMPENHO, from the canonical resolver — never a colour invented here.
@@ -474,6 +569,25 @@ function post(row: Row, data: { final_scale_level_id: number | null; final_value
                 </tbody>
             </table>
         </div>
+
+        <!-- BELOW THE GRID, NEVER ABOVE IT. The grid is what the teacher came
+             for and what the application is the source of truth for; the
+             reading is a second opinion in words about figures that are
+             already on screen, and putting it first would invert that. -->
+        <AiReadingPanel
+            heading-id="analise-avaliacao-ia"
+            title="Analisar a avaliação com IA"
+            description="Uma leitura em palavras dos resultados já calculados nesta página. A IA interpreta — não calcula, não altera resultados e não regista nada."
+            loading-label="A interpretar os resultados deste período…"
+            :action="ai.action"
+            :available="ai.available"
+            :unavailable-message="aiUnavailableMessage"
+            :has-enough-evidence="ai.has_enough_evidence"
+            :insufficient-evidence-message="aiInsufficientEvidenceMessage"
+            :sections="aiSections"
+            :error="aiAnalysisError"
+            pseudonymised
+        />
 
         <p class="flex items-start gap-2 text-xs text-muted-foreground">
             <CircleAlert class="mt-0.5 size-3.5 shrink-0" />

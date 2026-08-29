@@ -29,6 +29,7 @@ use App\Http\Controllers\HelpController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\InovarExportController;
 use App\Http\Controllers\InstitutionAdminController;
+use App\Http\Controllers\InstitutionAiController;
 use App\Http\Controllers\InstrumentController;
 use App\Http\Controllers\InterimAssessmentController;
 use App\Http\Controllers\InterventionController;
@@ -506,6 +507,23 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
             // binary response cannot come back through an Inertia visit.
             Route::get('classes/{class}/exports/inovar/{period}/{token}', [InovarExportController::class, 'generate'])->name('exports.inovar.generate');
         });
+        // «Analisar a avaliação com IA» (§7 do brief AI-complete). The optional
+        // period sits at the END of the path, behind a literal segment,
+        // because Laravel only allows an optional parameter last — and
+        // «analise-ia» can never be mistaken for a period ulid. Declared
+        // BEFORE `results/{period?}` below for the same reason «search» is
+        // declared before «help/{article}»: a fixed segment above a catch-all.
+        //
+        // A READ, DESPITE BEING A POST. It is a POST because it spends money
+        // and must not be repeatable by a refresh or prefetchable by a
+        // browser, not because it changes anything: there is no write path
+        // from an AI answer anywhere in this application.
+        //
+        // No `throttle:` middleware — AiGateway rate-limits the
+        // `ai_assessment` capability itself, and a second ceiling on the same
+        // capability would halve it (ai-core contract §6).
+        Route::post('classes/{class}/results/analise-ia/{period?}', [ResultsController::class, 'analyse'])
+            ->name('results.analyse');
         Route::get('classes/{class}/results/{period?}', [ResultsController::class, 'show'])->name('results.show');
 
         // The decision layer (§7): propose from the engine, then the teacher confirms.
@@ -583,8 +601,14 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // per organization: one teacher holding down a button cannot spend the
         // school's budget, and thirty teachers each within their own limit still
         // cannot (§28).
+        //
+        // THE CEILING MOVED INTO `AiGateway` with the AI-complete slice, and
+        // the route throttle came off with it. The gateway limits the
+        // `ai_reports` capability per user and per organization, on the same
+        // numbers, and also for a job or a command where there is no middleware
+        // stack. Keeping both would have counted every request twice and halved
+        // the ceiling (ai-core contract §6).
         Route::post('reports/{report}/seccoes/{section}/aperfeicoar', [ReportRewriteController::class, 'store'])
-            ->middleware('throttle:report-writing-assistant')
             ->name('reports.sections.rewrite');
     });
 
@@ -601,12 +625,26 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // whose composition adapts to `Entitlements`, never a second engine.
         // Same guards, same binding, same tenancy as the panel above.
         Route::get('classes/{class}/evolucao/{enrollment}/imprimir', [StudentProgressController::class, 'print'])->name('student-progress.print');
-        // «Sugestão de estratégia (IA)» (§13). Gated by `ai_assistance` inside
-        // the controller, on the server — same throttle as «Aperfeiçoar
-        // redação», the same AI budget this installation already meters.
+        // «Sugestão de estratégia (IA)» (§13). Gated by `ai_strategies` inside
+        // the suggester, on the server.
+        //
+        // NO `throttle:` MIDDLEWARE ANY MORE, and its removal is part of the
+        // migration onto the gateway rather than a relaxation. `AiGateway`
+        // rate-limits the `ai_strategies` capability itself, per user and per
+        // organization, because it also has to work for a job or a command
+        // where there is no middleware stack. Leaving the route throttle on
+        // would count every request twice and halve the ceiling (ai-core
+        // contract §6).
         Route::post('classes/{class}/evolucao/{enrollment}/sugestao-estrategia', [StudentProgressController::class, 'suggestStrategy'])
-            ->middleware('throttle:report-writing-assistant')
             ->name('student-progress.suggest-strategy');
+
+        // «Síntese de acompanhamento (IA)» — a reading of the Evolução this
+        // page already computed. A POST for the same reason «Analisar com IA»
+        // is one: it spends money, and must not be repeatable by a refresh or
+        // prefetchable by a browser. It is still a READ — no endpoint anywhere
+        // accepts a synthesis back.
+        Route::post('classes/{class}/evolucao/{enrollment}/sintese-ia', [StudentProgressController::class, 'synthesise'])
+            ->name('student-progress.synthesise');
     });
 
     // Records — the teacher's logbook (§14). Qualitative evidence, never a grade.
@@ -689,6 +727,14 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     // organization out; it cannot check WHO is asking or the organization's
     // actual TYPE, which is why the policy still runs on every action
     // underneath it.
+    // Governação de IA — Institucional only, and gated on its OWN key rather
+    // than on `institution_admin`. A school could reasonably have institutional
+    // administration without ever turning AI on, and `ai_governance` is what
+    // says which. Declared outside the group below for exactly that reason.
+    Route::middleware('module:ai_governance')->group(function () {
+        Route::get('institution/ia', [InstitutionAiController::class, 'index'])->name('institution.ai');
+    });
+
     Route::middleware('module:institution_admin')->group(function () {
         Route::get('institution', [InstitutionAdminController::class, 'index'])->name('institution.index');
         Route::get('team', [TeamController::class, 'index'])->name('team.index');

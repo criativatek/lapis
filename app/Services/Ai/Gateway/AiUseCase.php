@@ -30,11 +30,30 @@ enum AiUseCase: string
     /** The same corpus, asked to point at articles rather than to compose an answer. */
     case HelpArticleSuggestion = 'help_article_suggestion';
 
-    /** Reading a pedagogical situation and describing it. Never deciding anything. */
+    /** Reading a class's Estatística and describing it. Never deciding anything. */
     case PedagogicalAnalysis = 'pedagogical_analysis';
+
+    /**
+     * Reading a period's RESULTS — domain by domain, with the coverage the
+     * engine reported — and describing how the assessment went.
+     *
+     * NOT THE SAME CALL AS `PedagogicalAnalysis`, and the difference is the read
+     * model rather than the wording. That one is handed `BuildClassStatistics`
+     * (distribution, bands, success rate); this one is handed
+     * `ClassResultsCalculator::forPeriod` (per-domain outcomes and coverage
+     * warnings). Two different sets of already-decided numbers, two different
+     * questions, two different pages.
+     */
+    case AssessmentAnalysis = 'assessment_analysis';
+
+    /** Synthesising one student's Evolução — what the record shows, and what changed. */
+    case FollowupSynthesis = 'followup_synthesis';
 
     /** Proposing strategies for a teacher to consider, accept or ignore. */
     case PedagogicalStrategySuggestion = 'pedagogical_strategy_suggestion';
+
+    /** Saying one already-written report section better. Never writing a new fact into it. */
+    case ReportSectionRewrite = 'report_section_rewrite';
 
     /**
      * The backoffice proving a credential works.
@@ -59,10 +78,32 @@ enum AiUseCase: string
             self::HelpAnswer,
             self::HelpArticleSuggestion => AiCapability::HelpAssistant,
 
-            self::PedagogicalAnalysis,
-            self::PedagogicalStrategySuggestion => AiCapability::PedagogicalAnalysis,
+            self::PedagogicalAnalysis => AiCapability::PedagogicalAnalysis,
+
+            self::AssessmentAnalysis => AiCapability::Assessment,
+
+            self::FollowupSynthesis => AiCapability::Followup,
+
+            self::PedagogicalStrategySuggestion => AiCapability::Strategies,
+
+            self::ReportSectionRewrite => AiCapability::Reports,
 
             self::AdminConnectionTest => null,
+        };
+    }
+
+    /** pt-PT, for an operator reading the meter. Never for a prompt. */
+    public function label(): string
+    {
+        return match ($this) {
+            self::HelpAnswer => 'Resposta do Assistente',
+            self::HelpArticleSuggestion => 'Sugestão de artigos de ajuda',
+            self::PedagogicalAnalysis => 'Análise da estatística da turma',
+            self::AssessmentAnalysis => 'Análise dos resultados do período',
+            self::FollowupSynthesis => 'Síntese de acompanhamento do aluno',
+            self::PedagogicalStrategySuggestion => 'Sugestão de estratégias',
+            self::ReportSectionRewrite => 'Aperfeiçoamento de redação',
+            self::AdminConnectionTest => 'Teste de ligação (plataforma)',
         };
     }
 

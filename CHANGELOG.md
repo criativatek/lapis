@@ -14,6 +14,135 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > cada um sob o título da frente a que pertenceu. A 0.85.0 é o primeiro
 > release em que as duas linhagens voltam a ser uma só.
 
+## [0.86.0] — 2026-08-29
+
+O módulo de Inteligência Artificial passa de duas funcionalidades a seis, todas
+pela mesma porta. A decisão comercial que estava em aberto desde a 0.83.0 — a
+que planos pertencem as capabilities de IA — foi tomada, e vem da Matriz Mestre.
+
+### Added
+
+- **IA na avaliação** (`ai_assessment`). Em Resultados, por baixo da grelha,
+  «Analisar a avaliação com IA» dá uma leitura em palavras dos resultados do
+  período: padrões, onde a evidência é sólida, pontos de atenção, sugestões e —
+  a parte que interessa — as limitações da própria leitura. Um domínio com
+  cobertura parcial nunca é descrito como forte nem como frágil. Abaixo de três
+  alunos com resultado, o pedido não chega a ser feito.
+
+- **IA no acompanhamento** (`ai_followup`). Em Evolução do Aluno, «Síntese de
+  acompanhamento com IA» junta num texto o que a página já mostra: sinais
+  positivos antes dos pontos de atenção, o que mudou, e um próximo passo a
+  considerar. Os factos continuam a ser calculados pelo Lapispro e a aparecer
+  acima; a síntese é a camada de interpretação, rotulada como tal. **Não recebe
+  o texto livre que o professor escreveu** — descrições de registos, objetivos
+  de intervenções — só categorias, estados e contagens.
+
+- **Governação institucional de IA** (`ai_governance`). Administração
+  institucional › Inteligência Artificial mostra a um administrador que
+  funcionalidades o plano inclui, que limites estão em vigor, quanto foi
+  consumido no mês e por que motivo foram recusados pedidos. Contagens e
+  configuração — nunca o que alguém perguntou, nunca o que a IA respondeu, e
+  **nunca o consumo de cada professor em particular**.
+
+- **Plafond organizacional** (`ai_institutional_pool`). Um teto mensal para o
+  conjunto de todas as funcionalidades de IA, com teto individual opcional
+  dentro dele, aplicável só a organizações institucionais. Está **inerte por
+  omissão**: um plafond é uma figura contratual, e um valor por omissão
+  inventaria um para todos os clientes de uma vez.
+
+- **Painel de utilização no backoffice.** Administração › Inteligência
+  Artificial passa a ler o contador que escreve desde o primeiro dia: pedidos,
+  concluídos, erros, recusas e tokens, por funcionalidade e por tipo de pedido.
+  Fecha a dívida registada no ADR-0006 §«Dívidas registadas» 3.
+
+- **Sete artigos novos no Centro de Ajuda**, um por funcionalidade mais dois
+  transversais: privacidade nas funcionalidades de IA, e «Limites de IA e porque
+  a IA pode não aparecer» — o artigo que responde à pergunta mais provável do
+  módulo, com as quatro razões possíveis e a pessoa a quem cada uma se dirige.
+
+- **Aviso e deteção preventiva em todo o texto livre que chega à IA.** Onde o
+  professor escreve à mão — a pergunta ao assistente, o objetivo de uma sugestão
+  de estratégia, o corpo de uma secção antes de ser aperfeiçoada — passa a haver
+  um lembrete permanente e, antes do envio, uma verificação local à procura dos
+  mesmos padrões que o sanitizador do servidor remove: e-mails, contactos,
+  códigos postais, «n.º 12», ULID/UUID e séries longas de algarismos. Se
+  encontrar algum, o pedido para, o texto **não é alterado**, e continuar passa
+  a ser uma escolha explícita. A verificação corre no navegador e **não chama
+  nada**. Nas páginas que já têm o nome do aluno à frente por outra razão, esse
+  nome concreto também é procurado; o Centro de Ajuda não procura nome nenhum e
+  não carrega roster para o fazer. Palavras capitalizadas **não** são tratadas
+  como nomes, e o produto não promete detetar nomes próprios arbitrários — a
+  Política e o Centro de Ajuda dizem-no por palavras.
+
+### Changed
+
+- **A composição comercial das capabilities de IA foi decidida**, a partir da
+  Matriz Mestre: o assistente do Centro de Ajuda passa a estar incluído também
+  em **Base**; a análise pedagógica, a avaliação, o acompanhamento, as
+  estratégias e os relatórios em **Pro** e **Institucional**; a governação e o
+  plafond só em **Institucional**. `AiEntitlementMatrixTest` afirma as vinte e
+  quatro células à mão.
+
+- **«Aperfeiçoar redação» e «Sugestões de estratégia» passaram a atravessar o
+  `AiGateway`.** Eram as duas últimas funcionalidades a resolver um fornecedor
+  por si próprias, o que significava que a funcionalidade de IA mais usada do
+  produto era invisível para o contador que existe para responder «quanto custa
+  a IA». Passam a ter entitlement, rate limit, quotas, plafond, verificação de
+  privacidade e linha em `ai_usage_events` como todas as outras.
+
+- **`ai_reports` e `ai_strategies` substituem `ai_assistance`** como chaves
+  dessas duas funcionalidades — uma escola passa a poder ter uma sem a outra.
+  **Nada muda para quem já tinha acesso:** `ai_assistance` continua no catálogo,
+  continua em Pro e Institucional, e continua a conceder as duas através de
+  `AiCapability::legacyModuleKeys()`.
+
+- **Os throttles de rota saíram de «Aperfeiçoar redação» e de «Sugestão de
+  estratégia».** O gateway já aplicava o mesmo teto por capability; manter os
+  dois contava cada pedido duas vezes e reduzia o limite a metade. O quarto
+  clique deixa de ser um 429 e passa a ser uma frase ao lado do texto, com a
+  secção intacta.
+
+- **A Administração de IA fala português de produto.** «Estas definições
+  sobrepõem-se ao `.env`» passa a «têm prioridade sobre a configuração técnica
+  do servidor», e o aviso «nenhum plano inclui esta funcionalidade» dá lugar aos
+  planos reais de cada capability, lidos da base de dados.
+
+### Notas — o que continua por ligar
+
+- **O Gemini real continua por ativar.** Sem credencial e sem fornecedor
+  configurado; todo o fluxo é exercitado contra o fornecedor Fake. A IA continua
+  desligada por omissão e a aplicação inteira funciona nesse estado.
+
+- **Nenhuma quota comercial foi inventada.** Os números em `config/lapis.php`
+  são tetos técnicos de custo com uma variável de ambiente à frente; quanto é
+  que um plano INCLUI vive em `plans.limits`, onde muda sem deploy, e continua
+  por decidir.
+
+- **A descrição pública da IA foi corrigida.** A secção «Inteligência
+  artificial» da Política de Privacidade afirmava que não eram enviados
+  resultados, classificações nem autoavaliações, e que todos os números saíam
+  substituídos por marcadores. Isso descrevia «Aperfeiçoar redação» — onde
+  continua verdadeiro — enunciado como regra do módulo inteiro, e era falso para
+  as três leituras que existem precisamente para interpretar esses dados. A
+  secção passa a separar **duas situações com garantias diferentes**: o contexto
+  que o Lapispro monta sozinho, onde nenhum identificador direto entra; e o
+  texto que o professor escreve à mão, onde há aviso e deteção preventiva mas
+  **não** uma garantia absoluta. Duas passagens do Acordo de Tratamento de Dados
+  foram alinhadas pelo mesmo critério. **A redação continua por validar por
+  jurista**, como todo o texto legal; o que mudou é que já não descreve um
+  comportamento diferente do real.
+
+- **A afirmação sobre retenção passou a ter sujeito.** «Não é guardado o texto
+  das perguntas nem o das respostas» lia-se como universal. A Política passa a
+  dizer o que o **Lapispro** guarda — nada de conteúdo, sem memória entre
+  pedidos, sem gravação automática de decisões — e ressalva explicitamente que o
+  que um fornecedor faça do seu lado depende do fornecedor e do contrato, e será
+  descrito quando um for escolhido. Não se promete por conta de terceiros que
+  ainda não existem.
+
+- **Sem migrations.** O plafond é guardado na coluna JSON que o backoffice já
+  escrevia, sob uma chave reservada.
+
 ## [0.85.0] — 2026-08-28
 
 Um release de reconciliação: não acrescenta funcionalidade nova, reúne numa só

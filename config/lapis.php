@@ -224,13 +224,16 @@ return [
         | loop, a stuck client or a bad afternoon from turning into an invoice —
         | the same job the rate limiter does per minute, done per day and per
         | month. How many AI requests a Base/Pro/Institucional subscription
-        | INCLUDES is a commercial decision nobody has taken yet, and inventing a
-        | number here would be taking it (CLAUDE.md §31 — «change the commercial
-        | composition of the plans»).
+        | INCLUDES is a commercial decision that belongs in `plans.limits`,
+        | where it can change without a deploy; a number written here would be
+        | a product rule frozen in a config file (CLAUDE.md §31 — «change the
+        | commercial composition of the plans»).
         |
-        | `AiQuota` therefore reads a per-plan override FIRST and falls back to
-        | these; the override is unset on every seeded plan today, which is the
-        | honest expression of «not yet decided». See docs/ai-core-contract.md.
+        | `AiQuota` therefore reads a per-plan override FIRST
+        | (`plans.limits['ai_quota'][capability][window]`) and falls back to
+        | these. The override is unset on every seeded plan today, which is the
+        | honest expression of «the technical ceiling is all that applies so
+        | far». See docs/ai-core-contract.md.
         |
         | A NON-NUMERIC VALUE MEANS NO CEILING OF THAT KIND — an empty
         | environment variable is how an installation says «do not cap this»,
@@ -238,6 +241,13 @@ return [
         | above: `(int) ''` is 0, and 0 is a real, opposite instruction. Zero
         | means the capability is ceilinged shut, which is a valid way to turn
         | one off without touching the plans.
+        |
+        | THE NUMBERS BELOW ARE ORDERS OF MAGNITUDE, NOT PRODUCT FIGURES. They
+        | are set relative to how expensive and how repeatable each capability
+        | is: the help assistant is cheap and asked often, an analysis is dearer
+        | and asked once per class per period, a rewrite is per paragraph. Any
+        | of them can be changed in the backoffice, in `.env`, or overridden by
+        | a plan, and none of them should ever be quoted as what a plan includes.
         |
         */
         'quotas' => [
@@ -260,6 +270,79 @@ return [
                     : null,
             ],
 
+            'ai_assessment' => [
+                'user_daily' => is_numeric($assessmentDaily = env('LAPIS_AI_ASSESSMENT_USER_DAILY', 40))
+                    ? (int) $assessmentDaily
+                    : null,
+                'organization_monthly' => is_numeric($assessmentMonthly = env('LAPIS_AI_ASSESSMENT_ORGANIZATION_MONTHLY', 1500))
+                    ? (int) $assessmentMonthly
+                    : null,
+            ],
+
+            'ai_followup' => [
+                'user_daily' => is_numeric($followupDaily = env('LAPIS_AI_FOLLOWUP_USER_DAILY', 40))
+                    ? (int) $followupDaily
+                    : null,
+                'organization_monthly' => is_numeric($followupMonthly = env('LAPIS_AI_FOLLOWUP_ORGANIZATION_MONTHLY', 1500))
+                    ? (int) $followupMonthly
+                    : null,
+            ],
+
+            'ai_strategies' => [
+                'user_daily' => is_numeric($strategiesDaily = env('LAPIS_AI_STRATEGIES_USER_DAILY', 40))
+                    ? (int) $strategiesDaily
+                    : null,
+                'organization_monthly' => is_numeric($strategiesMonthly = env('LAPIS_AI_STRATEGIES_ORGANIZATION_MONTHLY', 1500))
+                    ? (int) $strategiesMonthly
+                    : null,
+            ],
+
+            'ai_reports' => [
+                'user_daily' => is_numeric($reportsDaily = env('LAPIS_AI_REPORTS_USER_DAILY', 60))
+                    ? (int) $reportsDaily
+                    : null,
+                'organization_monthly' => is_numeric($reportsMonthly = env('LAPIS_AI_REPORTS_ORGANIZATION_MONTHLY', 2000))
+                    ? (int) $reportsMonthly
+                    : null,
+            ],
+
+        ],
+
+        /*
+        |----------------------------------------------------------------------
+        | The institutional pool
+        |----------------------------------------------------------------------
+        |
+        | A SECOND, WIDER CEILING FOR ONE KIND OF CUSTOMER. Where `quotas` above
+        | are per capability, this is the organization's TOTAL across all of
+        | them, plus an optional per-member share of that total. It applies only
+        | to an organization holding `ai_institutional_pool` — see
+        | `AiQuota::poolApplies()`.
+        |
+        | BOTH DEFAULTS ARE NULL, AND THAT IS THE DECISION. An institutional
+        | contract's plafond is a commercial figure that belongs in that plan's
+        | `limits['ai_pool']`, negotiated per contract; a default here would
+        | invent one and would silently apply it to every Institucional
+        | organization. Null means the mechanism is built, tested and inert
+        | until a contract sets a number — «preparado para», which is what §18
+        | and §20 of the brief ask for, rather than «imposto».
+        |
+        | The shape a contract writes into `plans.limits` is:
+        |
+        |     {"ai_pool": {"organization_monthly": 10000, "user_monthly": 400}}
+        |
+        | `user_monthly` may be omitted, and usually should be: a pool with no
+        | individual ceiling is the simpler instrument, and the individual one
+        | exists for the school that has been asked for it.
+        |
+        */
+        'pool' => [
+            'organization_monthly' => is_numeric($poolMonthly = env('LAPIS_AI_POOL_ORGANIZATION_MONTHLY', ''))
+                ? (int) $poolMonthly
+                : null,
+            'user_monthly' => is_numeric($poolUserMonthly = env('LAPIS_AI_POOL_USER_MONTHLY', ''))
+                ? (int) $poolUserMonthly
+                : null,
         ],
 
     ],

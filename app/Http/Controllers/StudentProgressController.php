@@ -10,6 +10,7 @@ use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Ai\AiRequestFailed;
 use App\Services\Ai\AiUnavailable;
+use App\Services\Ai\Gateway\AiQuotaExceeded;
 use App\Services\Assessment\Progress\BuildStudentFactualAlerts;
 use App\Services\Assessment\Progress\BuildStudentInsights;
 use App\Services\Assessment\Progress\BuildStudentPrintDocument;
@@ -17,6 +18,7 @@ use App\Services\Assessment\Progress\BuildStudentProgress;
 use App\Services\Assessment\Progress\BuildStudentStrengths;
 use App\Services\Assessment\Progress\StudentProgressNarrative;
 use App\Services\Interventions\Ai\InterventionStrategySuggester;
+use App\Services\Progress\Ai\StudentFollowupSynthesist;
 use App\Services\Reporting\Narrative\Phrase;
 use App\Support\Entitlements\Entitlements;
 use Illuminate\Http\RedirectResponse;
@@ -72,6 +74,7 @@ class StudentProgressController extends Controller
         protected BuildStudentInsights $insights,
         protected BuildStudentPrintDocument $printDocument,
         protected InterventionStrategySuggester $suggester,
+        protected StudentFollowupSynthesist $synthesist,
         protected Entitlements $entitlements,
     ) {}
 
@@ -199,6 +202,21 @@ class StudentProgressController extends Controller
                 'available' => $this->suggester->isAvailable(),
                 'reason' => $this->suggester->unavailableReason(),
             ],
+            // THE SYNTHESIS IS A SEPARATE CAPABILITY FROM THE SUGGESTER, and
+            // therefore a separate availability block. They sit on the same
+            // page and a school may hold either without the other:
+            // `ai_followup` reads this student's record, `ai_strategies`
+            // proposes measures for it. One key for both would have made
+            // «queremos a leitura mas não as propostas» impossible to express.
+            'aiSynthesis' => [
+                'available' => $this->synthesist->isAvailable(),
+                'reason' => $this->synthesist->unavailableReason(),
+                'has_enough_evidence' => $this->synthesist->hasEnoughEvidence($progress),
+                'action' => route('student-progress.synthesise', [
+                    'class' => $class->ulid,
+                    'enrollment' => $enrollment->ulid,
+                ]),
+            ],
             'aiPurposeOptions' => InterventionPurpose::options(),
             'aiPurposeSuggestions' => $this->aiPurposeSuggestions($progress),
             // A suggestion is a transient answer to one click, exactly like
@@ -206,6 +224,11 @@ class StudentProgressController extends Controller
             // on the next visit, never stored (§19 of the AI brief).
             'aiSuggestion' => $request->session()->get('aiSuggestion'),
             'aiSuggestionError' => $request->session()->get('aiSuggestionError'),
+            // The same shape, for the same reason: a synthesis is an answer to
+            // one click and is gone on the next visit. Nothing about it is
+            // stored, attached to the student, or brought back by a refresh.
+            'aiSynthesisResult' => $request->session()->get('aiSynthesis'),
+            'aiSynthesisError' => $request->session()->get('aiSynthesisError'),
             // Where a teacher goes next, using the flows that already exist —
             // never a second form for the same thing (§64, §65, §66).
             'links' => [
@@ -491,6 +514,12 @@ class StudentProgressController extends Controller
             // so this only fires in a race no normal request hits — and even
             // then the sentence stays accurate for THIS feature.
             return $this->suggestionFailed('O apoio de IA não está configurado nesta instalação.');
+        } catch (AiQuotaExceeded $exception) {
+            // A ceiling, not a failure. It reaches this controller because the
+            // ceiling now lives in `AiGateway` rather than in the route
+            // throttle that used to answer 429 here — and `publicMessage()`
+            // already says which window ran out and when it renews.
+            return $this->suggestionFailed($exception->publicMessage());
         } catch (AiRequestFailed $exception) {
             report($exception);
 
@@ -566,6 +595,107 @@ class StudentProgressController extends Controller
     protected function suggestionFailed(string $message): RedirectResponse
     {
         return back()->with('aiSuggestionError', ['message' => $message]);
+    }
+
+    /**
+     * «Síntese de acompanhamento (IA)» — one POST, one reading, nothing written.
+     *
+     * IT REBUILDS THE SAME PAYLOAD THE PANEL IS SHOWING, through the same three
+     * collaborators `student()` uses and in the same order. That is what makes
+     * the synthesis a reading OF the screen rather than a second opinion about
+     * it: the facts handed to the engine are the facts printed above the place
+     * the answer appears.
+     *
+     * THE FACTS GO WITH IT, DELIBERATELY. `factualAlerts` and `strengths` are
+     * composed by this application from counts and states — no teacher's free
+     * text is in either — and sending them is what lets the model work from
+     * what the system actually established instead of inferring it from
+     * numbers. It is also what makes the panel's own «facto vs interpretação»
+     * split legible: the same sentences appear above, unlabelled as AI, because
+     * they are not.
+     *
+     * IT WRITES NOTHING (§15). The answer is flashed to the session, exactly as
+     * «Sugestões de estratégia» and «Aperfeiçoar redação» already do. There is
+     * no path through this method that changes a result, a classification, an
+     * intervention, a record or the student.
+     */
+    public function synthesise(Request $request, SchoolClass $class, Enrollment $enrollment): RedirectResponse
+    {
+        Gate::authorize('view', $class);
+        abort_if((int) $enrollment->class_id !== (int) $class->getKey(), 404);
+
+        if (! $this->synthesist->isAvailable()) {
+            return $this->synthesisFailed(self::synthesisUnavailableMessage($this->synthesist->unavailableReason()));
+        }
+
+        $progress = $this->progress->for($class, $enrollment);
+
+        $period = ($progress['selectedPeriod']['id'] ?? null) === null
+            ? null
+            : AcademicPeriod::find((int) $progress['selectedPeriod']['id']);
+
+        $factualAlerts = $this->factualAlerts->for($class, $enrollment, $progress, $period);
+        $strengths = $this->strengths->for($class, $enrollment, $progress, $period);
+
+        try {
+            $synthesis = $this->synthesist->synthesise(
+                $class,
+                $enrollment,
+                $progress,
+                $factualAlerts,
+                $strengths,
+                $this->user(),
+            );
+        } catch (AiUnavailable $exception) {
+            // `isAvailable()` was checked above; this only fires in a race no
+            // ordinary request hits.
+            return $this->synthesisFailed(self::synthesisUnavailableMessage($exception->reason()));
+        } catch (AiQuotaExceeded $exception) {
+            // A ceiling, not a failure. `publicMessage()` already says whether
+            // the exhausted window is the teacher's day, the school's month or
+            // the organization's pool.
+            return $this->synthesisFailed($exception->publicMessage());
+        } catch (AiRequestFailed $exception) {
+            report($exception);
+
+            // The «too little evidence» refusal arrives here too, as an
+            // unusable answer that never reached an engine. Its own sentence,
+            // because it is the one failure here the teacher can fix.
+            return $this->synthesisFailed(
+                $this->synthesist->hasEnoughEvidence($progress)
+                    ? $exception->publicMessage()
+                    : 'Ainda não há resultados, registos ou intervenções suficientes para uma síntese deste aluno.',
+            );
+        }
+
+        return back()->with('aiSynthesis', [
+            'enrollment_ulid' => $enrollment->ulid,
+            // Which period the panel was showing, so a synthesis left on screen
+            // while the reading toggle moves cannot be read as the new one's.
+            'period_id' => $progress['selectedPeriod']['id'] ?? null,
+            ...$synthesis->toArray(),
+        ]);
+    }
+
+    protected function synthesisFailed(string $message): RedirectResponse
+    {
+        return back()->with('aiSynthesisError', ['message' => $message]);
+    }
+
+    /**
+     * A reason slug from the gateway, as a sentence a teacher can act on.
+     *
+     * Three outcomes rather than the gateway's seven — see
+     * `HelpAssistantController::unavailableMessage()` for why a teacher is not
+     * told which setting is missing.
+     */
+    public static function synthesisUnavailableMessage(?string $reason): string
+    {
+        return match ($reason) {
+            'plan' => 'A síntese de acompanhamento com IA não está incluída no plano desta organização.',
+            'off' => 'A síntese de acompanhamento com IA não está ativada nesta instalação.',
+            default => 'A síntese de acompanhamento com IA não está configurada nesta instalação.',
+        };
     }
 
     protected function user(): User

@@ -18,7 +18,44 @@ import { computed, ref } from 'vue';
  * agrees with.
  */
 
-type Quotas = Record<string, { user_daily: number | null; organization_monthly: number | null }>;
+/**
+ * Every configurable ceiling, keyed by capability — plus the reserved
+ * `ai_pool` entry, which is not a capability but a ceiling across all of them.
+ * `user_monthly` is only meaningful under that key.
+ */
+type Quotas = Record<
+    string,
+    { user_daily: number | null; organization_monthly: number | null; user_monthly: number | null }
+>;
+
+/** The reserved key `AiQuota::POOL_LIMIT_KEY` uses inside the same map. */
+const POOL_KEY = 'ai_pool';
+
+type Capability = {
+    value: string;
+    label: string;
+    where: string;
+    metered: boolean;
+    /** The plans that include it, in commercial order. Read from the database, never transcribed. */
+    plans: string[];
+};
+
+type Totals = {
+    calls: number;
+    succeeded: number;
+    failed: number;
+    blocked: number;
+    billable: number;
+    total_tokens: number;
+};
+
+type Usage = {
+    since: string;
+    totals: Totals;
+    by_capability: (Totals & { capability: string; label: string })[];
+    by_use_case: (Totals & { use_case: string; label: string })[];
+    blocked_reasons: { reason: string; label: string; count: number }[];
+};
 
 type Settings = {
     ai_enabled: boolean;
@@ -51,8 +88,28 @@ const props = defineProps<{
     settings: Settings;
     status: Status;
     providers: { value: string; label: string }[];
-    capabilities: { value: string; label: string; granted_by_no_plan: boolean }[];
+    capabilities: Capability[];
+    usage: Usage;
 }>();
+
+/** Only the capabilities that can actually reach an engine get quota fields. */
+const meteredCapabilities = computed(() => props.capabilities.filter((capability) => capability.metered));
+
+const monthLabel = computed(() =>
+    new Date(props.usage.since).toLocaleDateString('pt-PT', { month: 'long', year: 'numeric' }),
+);
+
+/**
+ * «Base · Pro · Institucional», or an honest sentence when nothing grants it.
+ *
+ * A CAPABILITY IN NO PLAN IS A REAL SITUATION AND IS SAID PLAINLY. It happens
+ * when a key has been catalogued but not yet composed into the offer, and the
+ * consequence — no organization can reach it, so no request ever leaves — is
+ * worth one sentence on the screen rather than a debugging session.
+ */
+function planLabel(capability: Capability): string {
+    return capability.plans.length === 0 ? 'Nenhum plano inclui esta funcionalidade' : capability.plans.join(' · ');
+}
 
 const form = useForm({
     ai_enabled: props.settings.ai_enabled,
@@ -131,8 +188,12 @@ function testConnection(): void {
     <div class="mx-auto w-full max-w-2xl space-y-5 p-6">
         <div>
             <h1 class="text-xl font-semibold tracking-tight">Inteligência Artificial</h1>
+            <!-- Plain language, not implementation language. The old sentence
+                 read «Estas definições sobrepõem-se ao .env», which is true and
+                 means nothing to somebody who has never opened one. -->
             <p class="text-sm text-muted-foreground">
-                O motor que atende as funcionalidades assistidas por IA. Estas definições sobrepõem-se ao <code>.env</code>.
+                O motor que atende as funcionalidades assistidas por IA. Estas definições têm prioridade sobre a
+                configuração técnica do servidor.
             </p>
         </div>
 
@@ -203,13 +264,22 @@ function testConnection(): void {
             <div class="border-t border-border pt-4">
                 <h2 class="text-sm font-medium">Limites por funcionalidade</h2>
                 <p class="mt-1 text-xs text-muted-foreground">
-                    Tetos técnicos de custo, não o que um plano inclui. Deixar em branco significa sem teto.
+                    Tetos técnicos de custo, não o que um plano inclui. Deixar em branco significa sem teto. Um plano
+                    que defina o seu próprio limite tem prioridade sobre estes valores.
                 </p>
 
-                <div v-for="capability in capabilities" :key="capability.value" class="mt-3">
+                <div v-for="capability in meteredCapabilities" :key="capability.value" class="mt-4">
                     <div class="text-sm font-medium">{{ capability.label }}</div>
-                    <p v-if="capability.granted_by_no_plan" class="mt-0.5 text-xs text-amber-600">
-                        Nenhum plano inclui esta funcionalidade — a composição comercial ainda não foi decidida, por isso nenhum pedido chega ao motor.
+                    <!-- WHERE IT LIVES AND WHO HAS IT, on the same two lines as
+                         the fields that cap it. An operator setting a ceiling
+                         should not have to look up which screen they just
+                         capped, or which customers it reaches. -->
+                    <p class="mt-0.5 text-xs text-muted-foreground">{{ capability.where }}</p>
+                    <p
+                        class="mt-0.5 text-xs"
+                        :class="capability.plans.length === 0 ? 'text-amber-600' : 'text-muted-foreground'"
+                    >
+                        Planos: {{ planLabel(capability) }}
                     </p>
                     <div class="mt-1.5 grid gap-3 sm:grid-cols-2">
                         <label class="text-sm">
@@ -221,6 +291,32 @@ function testConnection(): void {
                             <input v-model.number="form.ai_quotas[capability.value].organization_monthly" type="number" min="0" class="w-full rounded-md border border-border bg-background px-3 py-2" />
                         </label>
                     </div>
+                </div>
+            </div>
+
+            <!-- THE POOL IS NOT A CAPABILITY AND SITS IN ITS OWN BLOCK. It is a
+                 ceiling ACROSS every capability, it only applies to an
+                 organization holding «Pool de IA da organização», and both its
+                 fields are empty by default on purpose — a plafond is a
+                 contract figure, and a default here would invent one for every
+                 institutional customer at once. -->
+            <div class="border-t border-border pt-4">
+                <h2 class="text-sm font-medium">Plafond da organização (Institucional)</h2>
+                <p class="mt-1 text-xs text-muted-foreground">
+                    Um teto mensal para o conjunto de todas as funcionalidades de IA, aplicado apenas a organizações
+                    cujo plano inclui «Pool de IA da organização». Em branco significa sem plafond — os limites por
+                    funcionalidade, acima, continuam a aplicar-se. Um contrato que defina o seu próprio plafond tem
+                    prioridade sobre estes valores.
+                </p>
+                <div class="mt-2 grid gap-3 sm:grid-cols-2">
+                    <label class="text-sm">
+                        <span class="mb-1 block text-xs text-muted-foreground">Pedidos da organização / mês</span>
+                        <input v-model.number="form.ai_quotas[POOL_KEY].organization_monthly" type="number" min="0" class="w-full rounded-md border border-border bg-background px-3 py-2" />
+                    </label>
+                    <label class="text-sm">
+                        <span class="mb-1 block text-xs text-muted-foreground">Teto individual dentro do plafond / mês</span>
+                        <input v-model.number="form.ai_quotas[POOL_KEY].user_monthly" type="number" min="0" class="w-full rounded-md border border-border bg-background px-3 py-2" />
+                    </label>
                 </div>
             </div>
 
@@ -285,6 +381,105 @@ function testConnection(): void {
                 </p>
             </div>
         </div>
+
+        <!-- ------------------------------------------- funcionalidades e planos -->
+        <section aria-labelledby="funcionalidades-ia" class="rounded-lg border border-border p-4">
+            <h2 id="funcionalidades-ia" class="text-sm font-medium">Funcionalidades de IA e planos</h2>
+            <p class="mt-1 text-xs text-muted-foreground">
+                O que cada funcionalidade é, onde vive na aplicação, e que planos a incluem. Lido da base de dados —
+                alterar a composição comercial é uma alteração ao seeder de módulos, não a este ecrã.
+            </p>
+
+            <div class="mt-3 overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-border text-left text-xs text-muted-foreground">
+                            <th scope="col" class="py-1.5 pr-3 font-medium">Funcionalidade</th>
+                            <th scope="col" class="py-1.5 pr-3 font-medium">Onde</th>
+                            <th scope="col" class="py-1.5 font-medium">Planos</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="capability in capabilities" :key="capability.value" class="border-b border-border/50">
+                            <th scope="row" class="py-1.5 pr-3 text-left font-normal">{{ capability.label }}</th>
+                            <td class="py-1.5 pr-3 text-muted-foreground">{{ capability.where }}</td>
+                            <td class="py-1.5" :class="capability.plans.length === 0 ? 'text-amber-600' : ''">
+                                {{ planLabel(capability) }}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ------------------------------------------------------------ uso -->
+        <section aria-labelledby="uso-ia" class="rounded-lg border border-border p-4">
+            <h2 id="uso-ia" class="text-sm font-medium">Utilização em {{ monthLabel }}</h2>
+            <p class="mt-1 text-xs text-muted-foreground">
+                Todas as organizações desta instalação, mais os testes de ligação feitos daqui. Contagens e tokens —
+                nunca perguntas, respostas, nomes ou conteúdo pedagógico: não existe coluna que os pudesse guardar.
+            </p>
+
+            <dl class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
+                <div class="rounded-lg bg-muted/40 p-3">
+                    <dt class="text-xs text-muted-foreground">Pedidos</dt>
+                    <dd class="text-lg font-semibold" data-test="usage-calls">{{ usage.totals.calls }}</dd>
+                </div>
+                <div class="rounded-lg bg-muted/40 p-3">
+                    <dt class="text-xs text-muted-foreground">Concluídos</dt>
+                    <dd class="text-lg font-semibold">{{ usage.totals.succeeded }}</dd>
+                </div>
+                <div class="rounded-lg bg-muted/40 p-3">
+                    <dt class="text-xs text-muted-foreground">Com erro</dt>
+                    <dd class="text-lg font-semibold">{{ usage.totals.failed }}</dd>
+                </div>
+                <div class="rounded-lg bg-muted/40 p-3">
+                    <dt class="text-xs text-muted-foreground">Recusados</dt>
+                    <dd class="text-lg font-semibold">{{ usage.totals.blocked }}</dd>
+                </div>
+                <div class="rounded-lg bg-muted/40 p-3">
+                    <dt class="text-xs text-muted-foreground">Tokens</dt>
+                    <dd class="text-lg font-semibold">{{ usage.totals.total_tokens }}</dd>
+                </div>
+            </dl>
+
+            <div v-if="usage.by_use_case.length > 0" class="mt-4 overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-border text-left text-xs text-muted-foreground">
+                            <th scope="col" class="py-1.5 pr-3 font-medium">Tipo de pedido</th>
+                            <th scope="col" class="py-1.5 pr-3 text-right font-medium">Pedidos</th>
+                            <th scope="col" class="py-1.5 pr-3 text-right font-medium">Erros</th>
+                            <th scope="col" class="py-1.5 pr-3 text-right font-medium">Recusados</th>
+                            <th scope="col" class="py-1.5 text-right font-medium">Tokens</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="row in usage.by_use_case" :key="row.use_case" class="border-b border-border/50">
+                            <th scope="row" class="py-1.5 pr-3 text-left font-normal">{{ row.label }}</th>
+                            <td class="py-1.5 pr-3 text-right tabular-nums">{{ row.calls }}</td>
+                            <td class="py-1.5 pr-3 text-right tabular-nums">{{ row.failed }}</td>
+                            <td class="py-1.5 pr-3 text-right tabular-nums">{{ row.blocked }}</td>
+                            <td class="py-1.5 text-right tabular-nums">{{ row.total_tokens }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p v-else class="mt-3 text-sm text-muted-foreground">Ainda não houve nenhum pedido de IA neste mês.</p>
+
+            <!-- «Recusámos quatrocentos pedidos este mês» is the number that
+                 says a ceiling is set wrong, and it is invisible unless the
+                 refusals are written down and read back. -->
+            <div v-if="usage.blocked_reasons.length > 0" class="mt-4 border-t border-border/60 pt-3">
+                <h3 class="text-xs font-medium tracking-wide text-muted-foreground uppercase">Motivos das recusas</h3>
+                <ul class="mt-2 space-y-1">
+                    <li v-for="row in usage.blocked_reasons" :key="row.reason" class="text-sm">
+                        — {{ row.label }}: {{ row.count }}
+                    </li>
+                </ul>
+            </div>
+        </section>
 
         <p class="text-xs text-muted-foreground">
             Em produção, prefira um gestor de segredos externo com a chave injetada em <code>LAPIS_AI_KEY</code> e este campo vazio —

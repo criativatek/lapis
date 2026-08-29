@@ -13,6 +13,8 @@ use App\Services\Ai\AiUnavailable;
 use App\Services\Ai\Gateway\AiAsk;
 use App\Services\Ai\Gateway\AiCapability;
 use App\Services\Ai\Gateway\AiGateway;
+use App\Services\Ai\Gateway\AiQuota;
+use App\Services\Ai\Gateway\AiUsageSummary;
 use App\Services\Ai\Gateway\AiUseCase;
 use App\Services\Audit\AuditLog;
 use App\Support\Privacy\AiPayloadSanitizer;
@@ -54,6 +56,7 @@ class AdminAiController extends Controller
     public function __construct(
         protected AiTextProviders $providers,
         protected AuditLog $audit,
+        protected AiUsageSummary $usage,
     ) {}
 
     public function edit(): Response
@@ -63,6 +66,13 @@ class AdminAiController extends Controller
             'status' => $this->statusPayload(),
             'providers' => $this->providerOptions(),
             'capabilities' => $this->capabilityOptions(),
+            // The meter, for the whole installation, since the start of the
+            // month — the same window the organization quotas are counted in,
+            // so a figure here and a ceiling on the same screen are
+            // comparable. Closes ADR-0006 §«Dívidas registadas» 3: the token
+            // counters have been written since the first day and until now
+            // nothing read them.
+            'usage' => $this->usage->platform(now()->startOfMonth()),
         ]);
     }
 
@@ -308,63 +318,118 @@ class AdminAiController extends Controller
     }
 
     /**
-     * Stored quotas, filled out for every capability so the form has a field
-     * for each — an absent capability would silently be unconfigurable.
+     * Stored quotas, filled out for every METERED capability so the form has a
+     * field for each — an absent capability would silently be unconfigurable.
+     *
+     * NOT `AiCapability::cases()`. `ai_governance` and `ai_institutional_pool`
+     * never reach an engine, so a ceiling on either would be a control that
+     * does nothing (`AiCapability::isMetered()`).
      *
      * A FIELD LEFT BLANK BY THE OPERATOR SHOWS WHAT CONFIG IS REALLY APPLYING,
      * not an empty box. A blank that silently means «60» reads as «no ceiling»,
      * which is the opposite of the truth and the kind of thing somebody finds
      * out from an invoice.
      *
-     * @return array<string, array{user_daily: int|null, organization_monthly: int|null}>
+     * THE POOL RIDES IN THE SAME MAP, under `AiQuota::POOL_LIMIT_KEY`. It is
+     * not a capability — it is a ceiling ACROSS capabilities — but it is stored
+     * in the same JSON column and read back from the same place, so the form
+     * that edits one edits the other without a second endpoint. See
+     * `AppServiceProvider::applyPlatformAiSettings()` for the reserved key.
+     *
+     * @return array<string, array{user_daily: int|null, organization_monthly: int|null, user_monthly: int|null}>
      */
     protected function quotasPayload(PlatformSetting $settings): array
     {
         $stored = $settings->ai_quotas ?? [];
         $payload = [];
 
-        foreach (AiCapability::cases() as $capability) {
-            $windows = [];
-
-            foreach (['user_daily', 'organization_monthly'] as $window) {
-                $value = data_get($stored, $capability->value.'.'.$window);
-
-                if (! is_int($value)) {
-                    $value = config('lapis.ai.quotas.'.$capability->value.'.'.$window);
-                }
-
-                $windows[$window] = is_int($value) ? $value : null;
-            }
-
+        foreach (AiCapability::metered() as $capability) {
             $payload[$capability->value] = [
-                'user_daily' => $windows['user_daily'],
-                'organization_monthly' => $windows['organization_monthly'],
+                'user_daily' => $this->effectiveQuota($stored, $capability->value, 'user_daily', 'lapis.ai.quotas.'.$capability->value.'.user_daily'),
+                'organization_monthly' => $this->effectiveQuota($stored, $capability->value, 'organization_monthly', 'lapis.ai.quotas.'.$capability->value.'.organization_monthly'),
+                // Not meaningful for a capability; present so the form's shape
+                // is uniform and the pool's own row is not a special case in
+                // the template.
+                'user_monthly' => null,
             ];
         }
+
+        $payload[AiQuota::POOL_LIMIT_KEY] = [
+            'user_daily' => null,
+            'organization_monthly' => $this->effectiveQuota($stored, AiQuota::POOL_LIMIT_KEY, 'organization_monthly', 'lapis.ai.pool.organization_monthly'),
+            'user_monthly' => $this->effectiveQuota($stored, AiQuota::POOL_LIMIT_KEY, 'user_monthly', 'lapis.ai.pool.user_monthly'),
+        ];
 
         return $payload;
     }
 
     /**
-     * The capability catalogue, for labelling the quota fields.
+     * What is stored, or what config is actually applying when nothing is.
      *
-     * `granted_by_no_plan` IS SHOWN ON PURPOSE. An operator who configures a
-     * quota for a capability nothing grants has configured a ceiling on zero
-     * traffic, and the screen has to say so — otherwise the first report is «I
-     * turned the AI on and nothing happened», with the real cause three tables
-     * away. See docs/ai-core-contract.md §«Decisões pendentes».
+     * @param  array<string, mixed>  $stored
+     */
+    protected function effectiveQuota(array $stored, string $key, string $window, string $configKey): ?int
+    {
+        $value = data_get($stored, $key.'.'.$window);
+
+        if (! is_int($value)) {
+            $value = config($configKey);
+        }
+
+        return is_int($value) ? $value : null;
+    }
+
+    /**
+     * The capability catalogue: what each one is, where a teacher meets it, and
+     * which plans include it.
      *
-     * @return list<array{value: string, label: string, granted_by_no_plan: bool}>
+     * `plans` REPLACED `granted_by_no_plan`, AND THE REPLACEMENT IS THE POINT.
+     * The old flag existed because the commercial composition was undecided and
+     * every AI capability belonged to no plan — so the only useful thing to say
+     * was «nobody has this». The Matriz Mestre has since decided, every
+     * capability is in a plan, and the flag would now be permanently false: a
+     * warning that can never fire, occupying the space where the actual answer
+     * belongs. What an operator needs on this screen is «Base · Pro ·
+     * Institucional», read from the database rather than transcribed, so a
+     * seeder change shows up here without anybody editing a template.
+     *
+     * `where` IS FOR THE SAME READER. «IA no acompanhamento do aluno» is not a
+     * page name, and an operator should not have to grep the source to find out
+     * which screen they just capped.
+     *
+     * EVERY CAPABILITY IS LISTED, metered or not. Governance and the pool have
+     * no quota fields, but an operator still needs to see which plans include
+     * them — they are commercial facts like any other.
+     *
+     * @return list<array{value: string, label: string, where: string, metered: bool, plans: list<string>}>
      */
     protected function capabilityOptions(): array
     {
+        // One query for the whole catalogue rather than one per capability.
+        $modules = Module::query()
+            ->whereIn('key', array_map(fn (AiCapability $capability): string => $capability->value, AiCapability::cases()))
+            ->with('plans:id,name,sort_order')
+            ->get();
+
+        /** @var array<string, list<string>> $plansByModule */
+        $plansByModule = [];
+
+        foreach ($modules as $module) {
+            $names = [];
+
+            foreach ($module->plans->sortBy('sort_order') as $plan) {
+                $names[] = (string) $plan->name;
+            }
+
+            $plansByModule[$module->key] = $names;
+        }
+
         return array_map(fn (AiCapability $capability): array => [
             'value' => $capability->value,
             'label' => $capability->label(),
-            'granted_by_no_plan' => Module::query()
-                ->where('key', $capability->value)
-                ->whereDoesntHave('plans')
-                ->exists(),
+            'where' => $capability->whereItLives(),
+            'metered' => $capability->isMetered(),
+            'plans' => $plansByModule[$capability->value] ?? [],
         ], AiCapability::cases());
     }
 

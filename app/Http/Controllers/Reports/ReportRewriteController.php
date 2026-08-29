@@ -7,6 +7,7 @@ use App\Models\Report;
 use App\Models\ReportSection;
 use App\Services\Ai\AiRequestFailed;
 use App\Services\Ai\AiUnavailable;
+use App\Services\Ai\Gateway\AiQuotaExceeded;
 use App\Services\Reporting\Writing\ReportWritingAssistant;
 use App\Services\Reporting\Writing\WritingMode;
 use Illuminate\Http\RedirectResponse;
@@ -64,6 +65,13 @@ class ReportRewriteController extends Controller
                 $request->user(),
             );
         } catch (AiUnavailable $exception) {
+            return $this->failed($section, $exception->publicMessage());
+        } catch (AiQuotaExceeded $exception) {
+            // A ceiling, not a failure: trying again in a second will not help,
+            // and the message already says when it will. It reaches this
+            // controller because the ceiling now lives in `AiGateway` rather
+            // than in a route throttle, which would have answered 429 — a status
+            // the editor cannot turn into a sentence beside the section.
             return $this->failed($section, $exception->publicMessage());
         } catch (AiRequestFailed $exception) {
             // The technical reason goes to the log, where it is useful; the

@@ -90,6 +90,18 @@ function baseProps() {
         factualAlerts: [],
         strengths: [],
         ai: { available: false, reason: 'plan' },
+        // The synthesis is its own capability and therefore its own
+        // availability block — locked by default here, exactly like the
+        // suggester above it, so a test that does not care about AI renders
+        // the honest unavailable state rather than a button.
+        aiSynthesis: {
+            available: false,
+            reason: 'plan',
+            has_enough_evidence: true,
+            action: '/classes/class-1/evolucao/enrollment-1/sintese-ia',
+        },
+        aiSynthesisResult: null,
+        aiSynthesisError: null,
         aiPurposeOptions: [
             { value: 'recovery', label: 'Recuperação', description: 'Recuperar.' },
             { value: 'consolidation', label: 'Consolidação', description: 'Consolidar.' },

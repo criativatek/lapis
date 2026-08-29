@@ -3,6 +3,8 @@ import { router } from '@inertiajs/vue3';
 import { BookOpen, RotateCcw, Sparkles } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import AiDisclosure from '@/components/ai/AiDisclosure.vue';
+import AiTextPrivacyNotice from '@/components/ai/AiTextPrivacyNotice.vue';
+import { useAiTextPrivacyGuard } from '@/composables/useAiTextPrivacyGuard';
 import { assistant } from '@/routes/help';
 
 /**
@@ -92,11 +94,25 @@ const paragraphs = computed(() =>
     (answer.value?.text ?? '').split(/\n+/).map((line) => line.trim()).filter((line) => line !== ''),
 );
 
+/**
+ * THE GUARD IS GIVEN NO NAMES, AND THAT IS THE RULE RATHER THAN AN OVERSIGHT.
+ * The Centro de Ajuda holds no roster and must not fetch one — loading student
+ * data in order to check whether a question mentions a student would be a worse
+ * trade than the one it solves. So an arbitrary name goes undetected here; the
+ * standing notice asks for it not to be written, and the Centro de Ajuda's own
+ * article says the same in a teacher's words.
+ */
+const privacy = useAiTextPrivacyGuard();
+
 function ask(): void {
     if (!canAsk.value) {
         return;
     }
 
+    privacy.run(question.value, send);
+}
+
+function send(): void {
     // `question` is the ONLY thing posted. Nothing on this page could add a
     // student to it, and nothing here tries.
     router.post(
@@ -155,7 +171,17 @@ function ask(): void {
                     placeholder="Ex.: Como crio uma turma? Não inclua nomes de alunos nem dados pessoais."
                 ></textarea>
             </label>
+
+            <AiTextPrivacyNotice
+                :findings="privacy.findings.value"
+                notice="Não introduza nomes, contactos ou outros dados pessoais dos alunos. Não são precisos para responder."
+                action-label="Perguntar mesmo assim"
+                @edit="privacy.edit()"
+                @proceed="privacy.proceed()"
+            />
+
             <button
+                v-if="!privacy.awaitingConfirmation.value"
                 type="submit"
                 :disabled="!canAsk"
                 class="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"

@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests\Admin;
 
+use App\Services\Ai\Gateway\AiCapability;
+use App\Services\Ai\Gateway\AiQuota;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -70,9 +72,39 @@ class UpdateAiSettingsRequest extends FormRequest
             // Per capability, per window. Null is a real value here and means
             // «no ceiling of this kind» — see config/lapis.php — so `nullable`
             // is load-bearing rather than lenient.
-            'ai_quotas' => ['nullable', 'array'],
+            //
+            // THE KEYS ARE CLOSED, and were not before. This column is written
+            // straight over `config('lapis.ai.quotas')` at boot, so an
+            // unrecognised key used to become a config entry nothing reads —
+            // silent, permanent, and invisible on the screen. The list is
+            // derived from the enum rather than typed out, so a capability
+            // added to `AiCapability` becomes configurable the same day.
+            'ai_quotas' => ['nullable', 'array:'.implode(',', $this->configurableQuotaKeys())],
             'ai_quotas.*.user_daily' => ['nullable', 'integer', 'min:0', 'max:100000'],
             'ai_quotas.*.organization_monthly' => ['nullable', 'integer', 'min:0', 'max:10000000'],
+            // The pool's own second window — the ceiling one member may take out
+            // of the organization's plafond. Only meaningful under `ai_pool`;
+            // harmless elsewhere, because `AppServiceProvider` reads the pool
+            // windows only out of the pool key.
+            'ai_quotas.*.user_monthly' => ['nullable', 'integer', 'min:0', 'max:10000000'],
+        ];
+    }
+
+    /**
+     * The top-level keys `ai_quotas` may contain: every METERED capability,
+     * plus the reserved pool key.
+     *
+     * NOT `AiCapability::cases()`. `ai_governance` and `ai_institutional_pool`
+     * never reach an engine, so a ceiling on either would be a number nothing
+     * could ever be compared against — see `AiCapability::isMetered()`.
+     *
+     * @return list<string>
+     */
+    protected function configurableQuotaKeys(): array
+    {
+        return [
+            ...array_map(fn (AiCapability $capability): string => $capability->value, AiCapability::metered()),
+            AiQuota::POOL_LIMIT_KEY,
         ];
     }
 

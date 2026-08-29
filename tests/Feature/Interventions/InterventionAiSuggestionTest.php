@@ -211,7 +211,11 @@ class InterventionAiSuggestionTest extends TestCase
         $this->assertStringContainsString('Padrão factual atual: Resultado atual no domínio:', $request->content);
         $this->assertStringContainsString('<<<INÍCIO DO OBJETIVO DO PROFESSOR>>>', $request->content);
         $this->assertStringContainsString('Aprofundar a leitura expressiva.', $request->content);
-        $this->assertStringContainsString('- Nome: Leitura modelada | Objetivo: Consolidar a fluência leitora.', $request->content);
+        // The prior-strategy line lost its leading «- » when this feature moved
+        // onto `AiContext`: a list is now one labelled entry rather than a
+        // hand-built bullet, so the label carries the structure the dash used
+        // to imply.
+        $this->assertStringContainsString('Estratégias já aplicadas neste domínio: Nome: Leitura modelada | Objetivo: Consolidar a fluência leitora.', $request->content);
         $this->assertStringNotContainsString('Texto livre que nunca deve sair para o fornecedor.', $request->content);
         $this->assertStringNotContainsString('2026-11-10', $request->content);
         $this->assertStringNotContainsString($enrollment->student->identity->display_name, $request->content);

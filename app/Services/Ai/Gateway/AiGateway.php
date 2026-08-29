@@ -29,7 +29,9 @@ use Illuminate\Support\Facades\RateLimiter;
  *   1. entitlement   does this organization's plan include the capability
  *   2. engine        is there one configured at all
  *   3. rate limit    per user and per organization, per minute
- *   4. quota         per user per day, per organization per month
+ *   4. quota         per user per day, per organization per month, and — for an
+ *                    organization that holds `ai_institutional_pool` — the
+ *                    shared pool and the member's share of it
  *   5. privacy       the payload is re-checked, not trusted
  *   6. the call      instruction and content as separate roles
  *   7. the meter     one row, whatever happened, with no content in it
@@ -92,11 +94,40 @@ class AiGateway
      */
     public function unavailableReason(AiCapability $capability): ?string
     {
-        if (! $this->entitlements->allows($capability->moduleKey())) {
+        $organization = $this->currentOrganization->isResolved()
+            ? $this->currentOrganization->get()
+            : null;
+
+        if ($organization === null || ! $this->isEntitled($organization, $capability)) {
             return 'plan';
         }
 
         return $this->providers->unavailableReason();
+    }
+
+    /**
+     * Whether this organization holds the capability, under any of the keys
+     * that grant it.
+     *
+     * ONE PLACE, USED BY BOTH THE PREVIEW AND THE ENFORCEMENT, so «why does the
+     * button show when the request is refused» cannot happen: `isAvailable()`
+     * and `ask()` ask this exact method the exact same question.
+     *
+     * ANY OF THE KEYS, because a capability can have a historical name that
+     * some organizations still hold through an override —
+     * `AiCapability::legacyModuleKeys()` explains which and why. It only ever
+     * widens: an organization holding the current key is granted regardless of
+     * what the legacy key says.
+     */
+    protected function isEntitled(Organization $organization, AiCapability $capability): bool
+    {
+        foreach ($capability->moduleKeys() as $moduleKey) {
+            if ($this->entitlements->allowsFor($organization, $moduleKey)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -122,7 +153,7 @@ class AiGateway
             ? $this->currentOrganization->get()
             : null;
 
-        if ($organization === null || ! $this->entitlements->allowsFor($organization, $capability->moduleKey())) {
+        if ($organization === null || ! $this->isEntitled($organization, $capability)) {
             $this->usage->blocked($ask, $organization, $user, 'not_entitled');
 
             throw AiUnavailable::notEntitled($capability->value);

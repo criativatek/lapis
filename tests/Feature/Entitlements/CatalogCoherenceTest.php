@@ -3,6 +3,7 @@
 namespace Tests\Feature\Entitlements;
 
 use App\Models\Module;
+use App\Services\Ai\Gateway\AiCapability;
 use Database\Seeders\EntitlementsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -48,20 +49,16 @@ class CatalogCoherenceTest extends TestCase
         // ReportType::module() returns this key for ReportType::School,
         // consumed by ReportCapabilities::allowsType().
         'institution_reports',
-        // The two AI Core capabilities. Both are held by
-        // `App\Services\Ai\Gateway\AiCapability` — where the enum CASE VALUE is
-        // the module key, by design — and consumed by AiGateway as
-        // `allows($capability->moduleKey())` and
-        // `allowsFor($organization, $capability->moduleKey())`. The enforcement
-        // is real and is tested in AiGatewayTest; it is simply not a literal
-        // string at the call site, which is exactly what this list is for.
+        // THE AI CAPABILITIES ARE NOT LISTED HERE ANY MORE. There were two of
+        // them when this list was written and the AI-complete slice brought it
+        // to eight, so a hand-maintained entry per case was going to become
+        // exactly the drift this test exists to catch. `isEnforced()` below
+        // asks the enum instead: every `AiCapability` case value IS a module
+        // key by design, and `AiGateway::isEntitled()` runs
+        // `allowsFor($organization, $moduleKey)` over
+        // `AiCapability::moduleKeys()` on every request. That is real
+        // enforcement, verified mechanically rather than promised in a comment.
         //
-        // Both are catalogued and in NO plan, on purpose: which subscription
-        // includes them is an open commercial question (CLAUDE.md §31). That
-        // does not make them unenforced — it makes them denied to everybody,
-        // which is the safe end of the same mechanism.
-        'help_assistant',
-        'ai_pedagogical_analysis',
         // NOT indirection — a genuinely independent-gate-free key, found
         // while writing this test. Enrollment management ("Alunos") lives
         // entirely inside the `module:classes` route group (routes/web.php);
@@ -157,6 +154,16 @@ class CatalogCoherenceTest extends TestCase
     private function isEnforced(string $key, string $routesContent, string $appContent): bool
     {
         if (str_contains($routesContent, "module:{$key}")) {
+            return true;
+        }
+
+        // An AI capability is enforced by construction: the enum case value IS
+        // the module key, and `AiGateway` asks `Entitlements` about every one
+        // of `AiCapability::moduleKeys()` before any request leaves the
+        // building. `AiGatewayTest` and `AiEntitlementMatrixTest` are what
+        // prove the enforcement actually bites; this only records that the
+        // string search cannot see it.
+        if (AiCapability::tryFrom($key) !== null) {
             return true;
         }
 

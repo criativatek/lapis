@@ -16,8 +16,12 @@ import {
 } from '@lucide/vue';
 import type { ChartConfiguration } from 'chart.js';
 import { computed, defineAsyncComponent, ref, watch } from 'vue';
+import AiReadingPanel from '@/components/ai/AiReadingPanel.vue';
+import type { AiReadingSection } from '@/components/ai/AiReadingPanel.vue';
+import AiTextPrivacyNotice from '@/components/ai/AiTextPrivacyNotice.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
+import { useAiTextPrivacyGuard } from '@/composables/useAiTextPrivacyGuard';
 import {
     categoryAxis,
     chromeColours,
@@ -213,6 +217,25 @@ type AiPurposeSuggestion = {
     justification: string;
 };
 
+/**
+ * What `FollowupSynthesisParser` produces, mirrored in TypeScript.
+ *
+ * `positive_signals` IS NEVER EMPTY, and that is a server guarantee rather
+ * than an optimistic type. The parser refuses an answer that has nothing in
+ * it — a synthesis of a child that lists only what is wrong is the failure
+ * this panel exists not to produce.
+ */
+type FollowupSynthesis = {
+    enrollment_ulid: string;
+    period_id: number | null;
+    summary: string;
+    positive_signals: string[];
+    attention_signals: string[];
+    what_changed: string[];
+    next_steps: string[];
+    cautions: string[];
+};
+
 const props = defineProps<{
     student: {
         ulid: string;
@@ -293,6 +316,20 @@ const props = defineProps<{
     // left it.
     pro?: ProPayload;
     ai: { available: boolean; reason: string | null };
+    /**
+     * «Síntese de acompanhamento (IA)» — a SEPARATE capability from the
+     * strategy suggester below, and therefore a separate availability block.
+     * `ai_followup` reads this student's record; `ai_strategies` proposes
+     * measures for it, and a school may hold either without the other.
+     */
+    aiSynthesis: {
+        available: boolean;
+        reason: string | null;
+        has_enough_evidence: boolean;
+        action: string;
+    };
+    aiSynthesisResult: FollowupSynthesis | null;
+    aiSynthesisError: { message: string } | null;
     aiPurposeOptions: { value: string; label: string; description: string }[];
     aiPurposeSuggestions: Record<string, AiPurposeSuggestion | null>;
     aiSuggestion: {
@@ -597,6 +634,59 @@ function estado360Intro(dimensions: Dimension[]): string {
 
 const showConversationPrep = ref(false);
 
+// ---------------------------------------------------- síntese de acompanhamento (IA)
+
+/**
+ * Six blocks, mapped from the server's typed lists to the panel's sections.
+ *
+ * THE ORDER IS THE PANEL'S ARGUMENT. Síntese, then what is going well, then
+ * what may deserve attention — positives BEFORE concerns, deliberately, the
+ * same order the deterministic «Pontos fortes» and «Factos a assinalar» blocks
+ * use above. A reading of a child that opens with problems teaches the reader
+ * to see a problem, and the ordering is the cheapest place to refuse that.
+ */
+const synthesisSections = computed<AiReadingSection[]>(() => {
+    const synthesis = props.aiSynthesisResult;
+
+    if (synthesis === null) {
+        return [];
+    }
+
+    const sections: AiReadingSection[] = [{ title: 'Síntese', text: synthesis.summary }];
+
+    const lists: { title: string; items: string[] }[] = [
+        { title: 'Sinais positivos', items: synthesis.positive_signals },
+        { title: 'Pontos de atenção', items: synthesis.attention_signals },
+        { title: 'O que mudou', items: synthesis.what_changed },
+        { title: 'Próximo passo a considerar', items: synthesis.next_steps },
+        { title: 'Limitações desta leitura', items: synthesis.cautions },
+    ];
+
+    for (const list of lists) {
+        if (list.items.length > 0) {
+            sections.push(list);
+        }
+    }
+
+    return sections;
+});
+
+/**
+ * Three outcomes from the gateway's seven slugs, matching
+ * `StudentProgressController::synthesisUnavailableMessage()` exactly.
+ */
+const synthesisUnavailableMessage = computed(() => {
+    if (props.aiSynthesis.reason === 'plan') {
+        return 'A síntese de acompanhamento com IA não está incluída no plano desta organização.';
+    }
+
+    if (props.aiSynthesis.reason === 'off') {
+        return 'A síntese de acompanhamento com IA não está ativada nesta instalação.';
+    }
+
+    return 'A síntese de acompanhamento com IA não está configurada nesta instalação.';
+});
+
 // ------------------------------------------------------- sugestão de estratégia (IA)
 
 const suggestion = ref(props.aiSuggestion);
@@ -630,6 +720,21 @@ function choosePurposeSuggestion(startingPoint: AiPurposeSuggestion | null | und
     selectedDomainId.value = startingPoint.domain_id;
 }
 
+/**
+ * THE ONE SCREEN THAT CAN CHECK FOR A NAME, AND IT COSTS NOTHING TO DO IT.
+ *
+ * §4 of the privacy addendum allows checking for a student's name only where
+ * the feature ALREADY holds it — no extra query, no roster, no new exposure.
+ * This page is exactly that case: it is this student's own Evolução, their name
+ * is in `props.student` because the page is about them, and it is printed at the
+ * top. Passing it to the guard reads a value already on screen.
+ *
+ * IT IS STILL ONE NAME, NOT NAME DETECTION. A teacher who writes a sibling's
+ * name, or a colleague's, gets no warning — the guard does not guess at names
+ * and the product does not claim it does.
+ */
+const strategyPrivacy = useAiTextPrivacyGuard();
+
 function requestSuggestion() {
     if (selectedDomainId.value === null || selectedPurpose.value === '') {
         suggestionError.value = { message: 'Escolha uma finalidade e um domínio.' };
@@ -637,6 +742,10 @@ function requestSuggestion() {
         return;
     }
 
+    strategyPrivacy.run(teacherObjective.value, sendSuggestionRequest, { knownNames: [props.student.name] });
+}
+
+function sendSuggestionRequest() {
     requestingSuggestion.value = true;
     suggestionError.value = null;
 
@@ -1531,6 +1640,29 @@ const PURPOSE_LABEL: Record<string, string> = {
                 </p>
             </section>
 
+            <!-- Síntese de acompanhamento (IA) — a reading of everything
+                 above it, and therefore placed after all of it. The facts it
+                 was given are the ones the teacher has already scrolled past:
+                 «Factos a assinalar», «Pontos fortes», the domains, the
+                 records and the interventions. An interpretation shown before
+                 its own evidence is an interpretation nobody can check. -->
+            <div :class="CARD">
+                <AiReadingPanel
+                    heading-id="sintese-acompanhamento-ia"
+                    title="Síntese de acompanhamento com IA"
+                    description="Uma leitura de conjunto do percurso deste aluno, a partir dos factos já apurados nesta página. A IA interpreta — não altera resultados, não cria intervenções e não regista nada."
+                    loading-label="A organizar o que já está registado sobre este aluno…"
+                    insufficient-evidence-message="Ainda não há resultados, registos ou intervenções suficientes para uma síntese deste aluno."
+                    :action="aiSynthesis.action"
+                    :available="aiSynthesis.available"
+                    :unavailable-message="synthesisUnavailableMessage"
+                    :has-enough-evidence="aiSynthesis.has_enough_evidence"
+                    :sections="synthesisSections"
+                    :error="aiSynthesisError"
+                    pseudonymised
+                />
+            </div>
+
             <!-- Sugestões pedagógicas (IA) — §13. Gated on the server: a
                  Base organization, or a Pro one with no engine configured,
                  sees the honest unavailable state, never a button that can
@@ -1608,7 +1740,22 @@ const PURPOSE_LABEL: Record<string, string> = {
                             placeholder="Ex.: consolidar a organização e a coesão textual. Não inclua dados identificáveis."
                         ></textarea>
                     </label>
-                    <Button variant="outline" size="sm" :disabled="requestingSuggestion" @click="requestSuggestion">
+
+                    <AiTextPrivacyNotice
+                        :findings="strategyPrivacy.findings.value"
+                        notice="Não introduza nomes, contactos ou outros dados pessoais. A sugestão sai igualmente boa escrita como «este aluno»."
+                        action-label="Gerar mesmo assim"
+                        @edit="strategyPrivacy.edit()"
+                        @proceed="strategyPrivacy.proceed()"
+                    />
+
+                    <Button
+                        v-if="!strategyPrivacy.awaitingConfirmation.value"
+                        variant="outline"
+                        size="sm"
+                        :disabled="requestingSuggestion"
+                        @click="requestSuggestion"
+                    >
                         <Sparkles class="size-3.5" />
                         {{ requestingSuggestion ? 'A gerar…' : 'Gerar sugestões' }}
                     </Button>

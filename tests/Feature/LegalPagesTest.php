@@ -249,6 +249,241 @@ class LegalPagesTest extends TestCase
     }
 
     /**
+     * A REGRESSÃO QUE ESTE TESTE EXISTE PARA IMPEDIR JÁ ACONTECEU UMA VEZ.
+     *
+     * Até à 0.86.0 a Política afirmava que não eram enviados «os resultados, as
+     * classificações, as autoavaliações» e que TODOS os números e datas saíam
+     * substituídos por marcadores. Era uma descrição rigorosa de «Aperfeiçoar
+     * redação» — onde continua verdadeira — enunciada como regra do módulo
+     * inteiro, e era falsa para as três leituras que existem precisamente para
+     * interpretar resultados: sem eles não teriam objeto nenhum.
+     *
+     * O teste é por FRASE NEGATIVA, não por bloco de prosa: falha se a Política
+     * voltar a negar em absoluto o envio de resultados, classificações ou
+     * autoavaliações, e não se importa com a redação à volta. Um teste que
+     * fixasse parágrafos inteiros quebraria em cada revisão de estilo e seria
+     * apagado à terceira.
+     */
+    #[Test]
+    public function the_ai_section_does_not_deny_sending_data_the_features_actually_send(): void
+    {
+        $text = mb_strtolower($this->aiSectionText());
+
+        // Cada padrão é uma negação categórica de algo que o produto envia.
+        $forbidden = [
+            '/n[ãa]o\s+s[ãa]o\s+enviad[oa]s[^.]*\bresultados\b/u' => 'a Política nega enviar resultados, e a análise da avaliação envia-os',
+            '/n[ãa]o\s+s[ãa]o\s+enviad[oa]s[^.]*\bclassifica[çc][õo]es\b/u' => 'a Política nega enviar classificações, e a análise da avaliação envia-as',
+            '/n[ãa]o\s+s[ãa]o\s+enviad[oa]s[^.]*\bautoavalia[çc][õo]es\b/u' => 'a Política nega enviar autoavaliações, e as leituras enviam-nas',
+            // A formulação absoluta. A substituição total de números por
+            // marcadores é uma propriedade SÓ de «Aperfeiçoar redação», e a
+            // Política diz isso com o âmbito na própria frase — «os números e
+            // as datas dessa secção». Sem o âmbito, é falsa para as restantes.
+            '/todos\s+os\s+n[úu]meros/u' => 'a substituição total de números por marcadores é uma propriedade só de «Aperfeiçoar redação»; a frase tem de trazer o âmbito consigo',
+        ];
+
+        foreach ($forbidden as $pattern => $why) {
+            $this->assertDoesNotMatchRegularExpression($pattern, $text, $why.'.');
+        }
+    }
+
+    /**
+     * A outra metade da mesma honestidade: a secção tem de DIZER que informação
+     * pedagógica pode ser enviada, e tem de dizer o que nunca é. Uma secção que
+     * apenas deixasse de mentir, calando-se, passaria o teste acima e continuaria
+     * a ser uma descrição inútil.
+     */
+    #[Test]
+    public function the_ai_section_states_what_may_be_sent_and_what_never_is(): void
+    {
+        $text = mb_strtolower($this->aiSectionText());
+
+        // O que a IA pode receber, por ser o objeto das funcionalidades.
+        foreach (['resultados', 'classifica', 'autoavalia', 'dom[íi]nios', 'evolu'] as $expected) {
+            $this->assertMatchesRegularExpression(
+                '/'.$expected.'/u',
+                $text,
+                "A secção de IA não diz que «{$expected}» pode ser enviado, e pode.",
+            );
+        }
+
+        // O que nunca é enviado. Identificadores diretos, um a um.
+        foreach (['nomes reais', 'correio eletr', 'n[úu]meros de processo', 'ulid'] as $expected) {
+            $this->assertMatchesRegularExpression(
+                '/'.$expected.'/u',
+                $text,
+                "A secção de IA não diz que «{$expected}» nunca é enviado.",
+            );
+        }
+
+        // O texto livre potencialmente sensível, excluído nesta versão.
+        $this->assertMatchesRegularExpression('/texto livre/u', $text);
+        $this->assertMatchesRegularExpression('/(sa[úu]de|sens[íi]vel)/u', $text);
+
+        // O pipeline, pelo nome.
+        $this->assertMatchesRegularExpression('/pseudonimiza/u', $text);
+        $this->assertMatchesRegularExpression('/minimiza/u', $text);
+
+        // E quem decide.
+        $this->assertMatchesRegularExpression('/revist[oa]/u', $text, 'A secção não diz que o professor revê o que a IA devolve.');
+    }
+
+    /**
+     * AS DUAS SITUAÇÕES TÊM DE ESTAR SEPARADAS, porque o produto pode prometer
+     * coisas diferentes sobre cada uma.
+     *
+     * No contexto que o Lapispro monta sozinho, a garantia é forte e é
+     * estrutural: allowlist, pseudonimização, sanitização. No texto que o
+     * professor escreve à mão, não é — não se controla o que lá é escrito, e
+     * uma Política que juntasse as duas estaria a estender ao segundo caso uma
+     * garantia que só existe no primeiro.
+     */
+    #[Test]
+    public function the_ai_section_separates_the_automatic_context_from_typed_text(): void
+    {
+        $text = mb_strtolower($this->aiSectionText());
+
+        $this->assertMatchesRegularExpression(
+            '/contexto que (a aplica[çc][ãa]o|o lapispro) monta/u',
+            $text,
+            'A Política não distingue o contexto automático do texto escrito à mão.',
+        );
+        $this->assertMatchesRegularExpression(
+            '/(escreve [àa] m[ãa]o|escrito [àa] m[ãa]o)/u',
+            $text,
+            'A Política não fala do texto que o professor escreve à mão.',
+        );
+
+        // O aviso, a confirmação, e o facto de o texto não ser alterado.
+        $this->assertMatchesRegularExpression('/aviso/u', $text);
+        $this->assertMatchesRegularExpression('/confirma[çc][ãa]o/u', $text);
+        $this->assertMatchesRegularExpression('/o texto n[ãa]o [ée] alterado/u', $text);
+
+        // A deteção, e o limite dela dito às claras.
+        $this->assertMatchesRegularExpression('/reduz o risco e n[ãa]o o elimina/u', $text);
+        $this->assertMatchesRegularExpression('/reconhece formatos, n[ãa]o pessoas/u', $text);
+        $this->assertMatchesRegularExpression('/n[ãa]o [ée] detetado/u', $text);
+
+        // E que a verificação não sai da máquina de quem escreve.
+        $this->assertMatchesRegularExpression('/nenhum servi[çc]o externo/u', $text);
+    }
+
+    /**
+     * §8 DO ADENDO: a Política pode afirmar o que o LAPISPRO faz com um pedido
+     * de IA. Não pode afirmar o que um fornecedor faz, porque não existe
+     * nenhum escolhido — e uma promessa sobre a retenção de um subcontratante
+     * desconhecido é uma promessa que ninguém pode cumprir.
+     */
+    #[Test]
+    public function the_ai_section_makes_no_promise_about_an_unknown_provider(): void
+    {
+        $text = mb_strtolower($this->aiSectionText());
+
+        // O que o Lapispro faz, dito com o sujeito à frente.
+        $this->assertMatchesRegularExpression('/o que o lapispro guarda/u', $text);
+        $this->assertMatchesRegularExpression('/n[ãa]o h[áa] mem[óo]ria entre pedidos/u', $text);
+        $this->assertMatchesRegularExpression('/n[ãa]o s[ãa]o usados pelo lapispro para treinar/u', $text);
+
+        // E a ressalva explícita sobre o fornecedor.
+        $this->assertMatchesRegularExpression(
+            '/depende do fornecedor e do contrato/u',
+            $text,
+            'A Política não ressalva que a retenção pelo fornecedor depende do fornecedor escolhido.',
+        );
+
+        // A formulação universal que seria uma promessa por conta de terceiros.
+        $this->assertDoesNotMatchRegularExpression(
+            '/^(?!.*lapispro).*n[ãa]o [ée] guardado o texto das perguntas nem o das respostas\./mu',
+            $text,
+            'A Política afirma a não-retenção sem dizer de quem é a afirmação.',
+        );
+    }
+
+    /**
+     * «Pseudonimizado», nunca «anónimo». A distinção é jurídica e é real: o
+     * professor, com a pauta à frente, reconhece cada linha. Prometer anonimato
+     * seria prometer o que o produto não faz — e é uma promessa fácil de
+     * escrever por descuido.
+     */
+    #[Test]
+    public function no_legal_document_promises_anonymisation_of_ai_payloads(): void
+    {
+        foreach (['privacy', 'processing', 'terms'] as $document) {
+            foreach (LegalDocuments::{$document}()['sections'] as $section) {
+                foreach ($section['body'] as $paragraph) {
+                    $this->assertDoesNotMatchRegularExpression(
+                        '/(?<!não\s)\b(?:são|é|fica|ficam|serão)\s+anonimizad/iu',
+                        $paragraph,
+                        "«{$section['heading']}» promete anonimização.",
+                    );
+                    $this->assertDoesNotMatchRegularExpression(
+                        '/dados\s+an[óo]nimos/iu',
+                        $paragraph,
+                        "«{$section['heading']}» promete dados anónimos.",
+                    );
+                }
+            }
+        }
+    }
+
+    /**
+     * O Acordo descreve a natureza do tratamento. Enquanto essa enumeração não
+     * previa transmitir nada a um subcontratante de IA, era mais estreita do que
+     * a aplicação — e a natureza do tratamento é exatamente o que um acordo
+     * destes existe para fixar.
+     */
+    #[Test]
+    public function the_processing_agreement_accounts_for_an_ai_subprocessor(): void
+    {
+        $nature = collect(LegalDocuments::processing()['sections'])
+            ->firstWhere('heading', 'Objeto, duração e natureza do tratamento');
+
+        $text = mb_strtolower(implode(' ', $nature['body']));
+
+        $this->assertMatchesRegularExpression('/intelig[êe]ncia artificial/u', $text);
+        $this->assertMatchesRegularExpression('/pseudonimizad/u', $text);
+        // E continua a dizer a verdade sobre esta data.
+        $this->assertMatchesRegularExpression('/n[ãa]o est[áa] configurado/u', $text);
+
+        $subprocessors = collect(LegalDocuments::processing()['sections'])
+            ->firstWhere('heading', 'Outros subcontratantes');
+
+        $this->assertMatchesRegularExpression(
+            '/intelig[êe]ncia artificial/u',
+            mb_strtolower(implode(' ', $subprocessors['body'])),
+            'O Acordo não diz como se enquadraria um fornecedor de IA.',
+        );
+    }
+
+    /**
+     * Nenhum documento legal nomeia um fornecedor de IA enquanto nenhum estiver
+     * configurado — a identificação do subcontratante precede o tratamento
+     * real, e não o contrário.
+     */
+    #[Test]
+    public function no_legal_document_names_an_ai_vendor(): void
+    {
+        foreach (['privacy', 'processing', 'terms'] as $document) {
+            $text = collect(LegalDocuments::{$document}()['sections'])
+                ->flatMap(fn (array $section): array => $section['body'])
+                ->implode(' ');
+
+            foreach (['OpenAI', 'Anthropic', 'Gemini', 'ChatGPT', 'Claude', 'Mistral', 'Vertex'] as $vendor) {
+                $this->assertStringNotContainsString($vendor, $text, "«{$document}» nomeia {$vendor}.");
+            }
+        }
+    }
+
+    private function aiSectionText(): string
+    {
+        $ai = collect(LegalDocuments::privacy()['sections'])
+            ->firstWhere('heading', 'Inteligência artificial');
+
+        $this->assertNotNull($ai, 'A Política perdeu a secção «Inteligência artificial».');
+
+        return implode(' ', $ai['body']);
+    }
+
+    /**
      * A retenção diz os prazos que uma rotina cumpre, e cala-se sobre os
      * outros.
      *
@@ -747,7 +982,10 @@ class LegalPagesTest extends TestCase
         // As garantias que já existiam continuam lá.
         $this->assertStringContainsString('sugere', $text);
         $this->assertStringContainsString('substituídos por designações genéricas', $text);
-        $this->assertStringContainsString('não são usados para treinar modelos', mb_strtolower($text));
+        // Scoped to the Lapispro since 0.86.0: a promise about what a provider
+        // that does not yet exist does with content is a promise nobody can
+        // keep — see `the_ai_section_makes_no_promise_about_an_unknown_provider`.
+        $this->assertStringContainsString('não são usados pelo lapispro para treinar modelos', mb_strtolower($text));
         $this->assertStringContainsString('Não existem decisões automatizadas', $text);
 
         // E nenhuma classificação regulamentar.

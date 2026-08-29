@@ -209,9 +209,15 @@ O que é factual e relevante para essa análise futura:
 - A IA **não** atribui, altera nem decide qualquer classificação. Todos os
   motores de cálculo são determinísticos (`ScaleProposalResolver` e
   companhia); o modelo nunca lhes toca.
-- As duas funcionalidades são **sugerir estratégias** e **aperfeiçoar redação**
-  de texto que o Lapispro já compôs. `RewriteGuard` recusa o retorno se um valor
-  tiver sido alterado.
+- São **seis** funcionalidades desde a 0.86.0, e a distinção entre elas é
+  relevante para esta análise. Uma não vê dados pedagógicos de todo (o
+  assistente do Centro de Ajuda). Três **interpretam** resultados que o motor
+  determinístico já produziu e devolvem texto (estatística da turma, resultados
+  do período, síntese de acompanhamento). Uma **propõe** estratégias que só o
+  professor pode criar. Uma **reescreve** texto que o Lapispro já compôs, e aí
+  o `RewriteGuard` recusa o retorno se um valor tiver sido alterado.
+- Nenhuma delas escreve. `AiNonWriteTest` tira um checksum de todas as tabelas
+  pedagógicas antes e depois de cada uma e falha se um byte mudar.
 - Não há decisões automatizadas com efeitos jurídicos ou significativos: nada do
   que um modelo devolve produz por si só um efeito na avaliação de um aluno.
 - O anexo III do Regulamento cobre sistemas usados para **avaliar resultados de
@@ -219,6 +225,94 @@ O que é factual e relevante para essa análise futura:
   não nessa alínea depende de uma leitura que não é nossa — mas os três factos
   acima são o que a análise vai precisar, e estão verificados no código.
 - Antes de ativar um fornecedor real, esta análise tem de estar feita.
+
+### Corrigido na fatia AI-complete — descrição factual, **redação por validar**
+
+A fatia `feat/ai-complete-suite` (0.86.0) alargou o módulo de IA de duas
+funcionalidades para seis, e duas passagens do texto público ficaram incompletas
+ou falsas por causa disso. **Foram corrigidas, por instrução expressa do
+responsável do produto na revisão pré-commit**, e a correção limitou-se à
+descrição factual do que a aplicação faz. Nenhuma cláusula, base legal,
+repartição de responsabilidades, prazo de conservação ou direito foi tocado.
+
+**A redação continua por validar por jurista** — ver a lista «Pontos que
+continuam a exigir validação jurídica» — mas já não descreve um comportamento
+diferente do real, que era o problema.
+
+**1. Política de Privacidade → «Inteligência artificial» → 2.º parágrafo**
+
+*Era:* «Quando disponível, é usada para ajudar a interpretar resultados que o
+Lapispro já calculou, propor estratégias pedagógicas e aperfeiçoar a redação de
+um relatório já composto.»
+
+*Porque estava errado:* incompleto. Continuava verdadeiro, mas eram três
+funcionalidades de seis.
+
+*Agora:* enumera as seis, e diz explicitamente que o assistente do Centro de
+Ajuda não recebe dados pedagógicos de espécie alguma.
+
+**2. Política de Privacidade → «Inteligência artificial» → 3.º parágrafo**
+
+*Era:* «Antes de qualquer texto sair da aplicação, os nomes que o Lapispro
+conhece são substituídos por designações genéricas e **todos os números e datas
+por marcadores**. Não são enviados o resto do relatório, a turma, a pauta, **os
+resultados, as classificações, as autoavaliações**, os registos, a identidade da
+escola nem o nome do professor.»
+
+*Porque estava errado:* **era falso**, e não apenas incompleto. Descrevia com
+rigor «Aperfeiçoar redação» — onde continua verdadeiro, e onde o `RewriteGuard`
+o garante — mas enunciava-o como regra do módulo inteiro. A análise da
+avaliação, a análise da estatística e a síntese de acompanhamento enviam
+precisamente resultados, classificações e autoavaliações: é esse o seu objeto, e
+sem eles não teriam nenhum. A formulação absoluta «todos os números… por
+marcadores» era, para essas três, o contrário do que acontece.
+
+*Agora:* está separado em camadas. Um parágrafo diz que informação pedagógica
+**pode** ser enviada e enumera o quê; outro enumera o que nunca é enviado
+(identificadores diretos, contactos, identidade da escola e do professor); outro
+diz que o texto livre sobre um aluno não é enviado nesta versão, e porquê; outro
+descreve o pipeline real — allowlist campo a campo, pseudonimização no momento
+da entrada, sanitização sobre o texto montado; e a garantia mais restritiva dos
+relatórios fica como o que sempre foi, uma propriedade **daquela** funcionalidade.
+
+*Vocabulário:* «pseudonimização» e «minimização», nunca «anonimização». O texto
+diz explicitamente que o professor, com a pauta à frente, reconhece cada linha.
+
+**3. Acordo de Tratamento de Dados → «Objeto, duração e natureza do tratamento»**
+
+*Porque estava errado:* a enumeração da natureza do tratamento — «recolher,
+guardar, organizar, calcular, consultar e devolver» — não previa transmitir
+nada a um subcontratante de IA. Não era falso enquanto não existe fornecedor
+configurado, mas descrevia uma natureza de tratamento mais estreita do que a que
+a aplicação passa a ter quando as funcionalidades forem ativadas.
+
+*Agora:* acrescenta a transmissão de um subconjunto pseudonimizado e minimizado,
+apenas no momento em que o professor faz o pedido, com remissão para a secção de
+IA da Política — e diz que nesta data nenhum fornecedor está configurado.
+
+**4. Acordo de Tratamento de Dados → «Outros subcontratantes»**
+
+*Agora:* diz que um fornecedor de IA seria um subcontratante da mesma natureza e
+sujeito às mesmas regras, que nenhum existe nesta data, e que a identificação na
+lista precede qualquer tratamento real. Coerente com a Política, e não nomeia
+fornecedor nenhum.
+
+**O que foi verificado e continua verdadeiro** (nada a alterar):
+
+- «A IA do Lapispro sugere. O professor decide.» — agora com um teste que faz um
+  retrato completo da base de dados antes e depois de cada funcionalidade de IA
+  e falha se um único byte pedagógico mudar (`AiNonWriteTest`).
+- «Não existem decisões automatizadas com efeitos jurídicos ou significativos.»
+- «Os dados não são usados para treinar modelos.»
+- «As funcionalidades de IA podem estar desativadas.» — reforçado: cada ecrã
+  funciona na íntegra sem IA, e há testes por funcionalidade que o afirmam.
+- Termos → «Quando as funcionalidades de inteligência artificial estão
+  disponíveis, sugerem — nunca decidem…»
+- Subcontratantes → «Não está configurado qualquer fornecedor de inteligência
+  artificial, pelo que nenhum dado é enviado para um.» — verdadeiro nesta data
+  em produção. **Deixa de o ser no instante em que um fornecedor for
+  configurado**, e essa é a mesma revisão que a análise do Regulamento da IA
+  acima: nenhuma das duas pode ficar para depois da ativação.
 
 ## Portão institucional
 
@@ -324,6 +418,14 @@ Escritos de forma prudente, e por confirmar:
    declarar adesão. Se existir obrigação de disponibilizar livro de reclamações
    eletrónico, é aqui que entra.
 10. **Contrato e acordo institucionais** — ver «Portão institucional».
+11. **Descrição pública da IA depois da fatia AI-complete** — a secção
+    «Inteligência artificial» da Política e duas passagens do Acordo foram
+    **reescritas na 0.86.0** para descreverem o que a aplicação faz: que
+    informação pedagógica pode chegar ao fornecedor, que dados nunca chegam, e
+    qual é o pipeline real. A correção é factual e está detalhada em «Corrigido
+    na fatia AI-complete» acima; `LegalPagesTest` impede que volte a afirmar o
+    contrário. **O que fica por validar é a redação**, como em todo o resto
+    desta lista — já não é uma afirmação que se saiba falsa.
 
 ## Quando o texto mudar
 

@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Models\PlatformSetting;
 use App\Policies\OrganizationMembershipPolicy;
 use App\Services\Ai\AiTextProviders;
+use App\Services\Ai\Gateway\AiQuota;
 use App\Services\Ai\Providers\ChatCompletionsProvider;
 use App\Services\Ai\Providers\FakeAiTextProvider;
 use App\Services\Ai\Providers\GeminiProvider;
@@ -219,6 +220,31 @@ class AppServiceProvider extends ServiceProvider
         // and its contents are whatever was last written into it.
         foreach ($settings->ai_quotas ?? [] as $capability => $windows) {
             if (! is_string($capability) || ! is_array($windows)) {
+                continue;
+            }
+
+            // THE ONE RESERVED KEY. `ai_quotas` is a map of capability => window
+            // => ceiling, and the organizational pool is not a capability — it
+            // is a ceiling ACROSS capabilities. It is stored in the same column
+            // under this reserved name rather than in a column of its own,
+            // because a JSON blob the backoffice already writes needs no
+            // migration, and a migration on `platform_settings` for two
+            // nullable integers would be schema churn for no gain (§30 of the
+            // AI-complete brief).
+            //
+            // IT CANNOT COLLIDE WITH A REAL CAPABILITY. No module is called
+            // `ai_pool` — the pool ENTITLEMENT is `ai_institutional_pool`, a
+            // different string — and `AiCapabilityCatalogTest` asserts that no
+            // `AiCapability` ever takes this value.
+            if ($capability === AiQuota::POOL_LIMIT_KEY) {
+                foreach ($windows as $window => $value) {
+                    if (! is_string($window) || ! in_array($window, AiQuota::POOL_WINDOWS, true)) {
+                        continue;
+                    }
+
+                    config(['lapis.ai.pool.'.$window => is_int($value) ? $value : null]);
+                }
+
                 continue;
             }
 

@@ -6,12 +6,18 @@ use App\Models\AcademicPeriod;
 use App\Models\Domain;
 use App\Models\SchoolClass;
 use App\Models\User;
+use App\Services\Ai\AiRequestFailed;
+use App\Services\Ai\AiUnavailable;
+use App\Services\Ai\Gateway\AiQuotaExceeded;
+use App\Services\Assessment\Ai\ResultsAnalyst;
 use App\Services\Assessment\BuildResultsProgression;
 use App\Services\Assessment\ClassResultsCalculator;
 use App\Services\Assessment\CoverageExplanation;
 use App\Services\Assessment\ScaleProposalResolver;
 use App\Support\Assessment\DecisionScale;
 use App\Support\Entitlements\Entitlements;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -23,6 +29,7 @@ class ResultsController extends Controller
         protected ScaleProposalResolver $proposals,
         protected CoverageExplanation $coverage,
         protected BuildResultsProgression $progression,
+        protected ResultsAnalyst $analyst,
     ) {}
 
     public function index(): Response
@@ -43,10 +50,156 @@ class ResultsController extends Controller
         return Inertia::render('results/Index', ['classes' => $classes]);
     }
 
-    public function show(SchoolClass $class, ?string $period = null): Response
+    public function show(Request $request, SchoolClass $class, ?string $period = null): Response
     {
         Gate::authorize('view', $class);
 
+        $view = $this->periodView($class, $period);
+
+        return Inertia::render('results/Show', [
+            ...$view,
+            // WHETHER THE BUTTON MAY BE DRAWN, and — separately — whether
+            // pressing it could produce anything. A school without the
+            // capability is being offered an upgrade; a period with two
+            // corrected instruments is a teacher who should come back later.
+            // Telling one that it is the other wastes an afternoon (§41).
+            'ai' => [
+                'available' => $this->analyst->isAvailable(),
+                'reason' => $this->analyst->unavailableReason(),
+                'has_enough_evidence' => $this->analyst->hasEnoughEvidence($view),
+                'minimum_students' => ResultsAnalyst::MINIMUM_STUDENTS_WITH_RESULT,
+                // Built here rather than in the browser: the panel posts to a
+                // URL it was given, so the period it analyses is the period the
+                // server rendered, not one a client assembled.
+                'action' => route('results.analyse', array_filter([
+                    'class' => $class->ulid,
+                    'period' => $this->selectedPeriodUlid($view),
+                ])),
+            ],
+            // A reading is a transient answer to one click, exactly like
+            // «Aperfeiçoar redação» and «Analisar com IA» — it travels in the
+            // session and is gone on the next visit, never stored.
+            'aiAnalysis' => $request->session()->get('resultsAiAnalysis'),
+            'aiAnalysisError' => $request->session()->get('resultsAiAnalysisError'),
+        ]);
+    }
+
+    /**
+     * «Analisar a avaliação com IA» — one POST, one reading, nothing written.
+     *
+     * ON THIS CONTROLLER, NOT A SIBLING, and the reason is the opposite of the
+     * one that put `ClassStatisticsAnalysisController` in its own file. That
+     * one exists because `ClassStatisticsController`'s docblock promises ONE
+     * call to the read model and nothing else, and it should go on being able
+     * to promise it. This one reads a payload that is genuinely expensive to
+     * assemble — the calculator, the coverage explanations and the whole
+     * longitudinal progression — and the reading has to be OF THE SAME payload
+     * the teacher was looking at. A sibling controller would have to rebuild
+     * it, which means either a second copy of `periodView()` or a public method
+     * on this class that exists only for it. Sharing the private method is the
+     * smaller of the two, and it makes «the reading is about the screen» true
+     * by construction rather than by review.
+     *
+     * NO WRITE PATH EXISTS FROM HERE. The response is six blocks of text
+     * flashed into the session and gone on the next visit. Nothing in this
+     * method, and nothing in `ResultsAnalyst`, touches a result, a
+     * classification, a weight or a criterion.
+     */
+    public function analyse(Request $request, SchoolClass $class, ?string $period = null): RedirectResponse
+    {
+        Gate::authorize('view', $class);
+
+        if (! $this->analyst->isAvailable()) {
+            return $this->analysisFailed(self::unavailableMessage($this->analyst->unavailableReason()));
+        }
+
+        $view = $this->periodView($class, $period);
+
+        try {
+            $analysis = $this->analyst->analyse($class, $view, $this->user());
+        } catch (AiUnavailable $exception) {
+            // `isAvailable()` was checked above; this only fires in a race no
+            // ordinary request hits.
+            return $this->analysisFailed(self::unavailableMessage($exception->reason()));
+        } catch (AiQuotaExceeded $exception) {
+            // A ceiling, not a failure. `publicMessage()` already says whether
+            // the exhausted window is the teacher's day, the school's month or
+            // the organization's pool.
+            return $this->analysisFailed($exception->publicMessage());
+        } catch (AiRequestFailed $exception) {
+            report($exception);
+
+            // The «too little evidence» refusal arrives here too, as an
+            // unusable answer that never reached an engine. Its own sentence,
+            // because it is the one failure on this screen the teacher can fix.
+            return $this->analysisFailed(
+                $this->analyst->hasEnoughEvidence($view)
+                    ? $exception->publicMessage()
+                    : 'Ainda não há resultados suficientes neste período para uma análise. Registe mais elementos e volte a tentar.',
+            );
+        }
+
+        return back()->with('resultsAiAnalysis', [
+            // Which period this reading is OF, so a panel left open while the
+            // period selector moves cannot present an old analysis as the new
+            // period's.
+            'period_ulid' => $this->selectedPeriodUlid($view),
+            ...$analysis->toArray(),
+        ]);
+    }
+
+    /**
+     * A controlled failure: a sentence a teacher may read, on a page that still
+     * works, with the button still there to press again. Never a 500, never a
+     * raw exception, never a status code.
+     */
+    protected function analysisFailed(string $message): RedirectResponse
+    {
+        return back()->with('resultsAiAnalysisError', ['message' => $message]);
+    }
+
+    /**
+     * A reason slug from the gateway, as a sentence a teacher can act on.
+     *
+     * Three outcomes rather than the gateway's seven — see
+     * `HelpAssistantController::unavailableMessage()` for why a teacher is not
+     * told which setting is missing.
+     */
+    public static function unavailableMessage(?string $reason): string
+    {
+        return match ($reason) {
+            'plan' => 'A análise da avaliação com IA não está incluída no plano desta organização.',
+            'off' => 'A análise da avaliação com IA não está ativada nesta instalação.',
+            default => 'A análise da avaliação com IA não está configurada nesta instalação.',
+        };
+    }
+
+    /**
+     * @param  array<string, mixed>  $view
+     */
+    protected function selectedPeriodUlid(array $view): ?string
+    {
+        foreach ($view['periods'] ?? [] as $period) {
+            if (is_array($period) && ($period['selected'] ?? false) === true) {
+                return is_string($period['ulid'] ?? null) ? $period['ulid'] : null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Everything the period screen shows, as one array.
+     *
+     * EXTRACTED SO THE READING AND THE SCREEN CANNOT DISAGREE. `show()` renders
+     * this; `analyse()` reads it. A figure that reaches the engine is therefore
+     * a figure the teacher was looking at, and that property is structural
+     * rather than something a reviewer has to check.
+     *
+     * @return array<string, mixed>
+     */
+    protected function periodView(SchoolClass $class, ?string $period): array
+    {
         $periods = AcademicPeriod::where('academic_year_id', $class->academic_year_id)
             ->orderBy('sequence')->get();
 
@@ -92,7 +245,7 @@ class ResultsController extends Controller
         // «Acumulada» for convenience (§4).
         $isFirstPeriod = $selected !== null && $periods->first()?->id === $selected->id;
 
-        return Inertia::render('results/Show', [
+        return [
             'weightedAverageLabel' => 'Média Ponderada',
             'isFirstPeriod' => $isFirstPeriod,
             // The profile's own bands, for the canonical colour resolver. The
@@ -163,7 +316,7 @@ class ResultsController extends Controller
                 // What the teacher decided, beside what Lapispro proposed (§6).
                 'classification' => $progression[$row['enrollment']->getKey()]['classification'] ?? null,
             ], $results),
-        ]);
+        ];
     }
 
     /**

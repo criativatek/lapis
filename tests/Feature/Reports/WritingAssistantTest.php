@@ -576,6 +576,15 @@ class WritingAssistantTest extends TestCase
 
     // -------------------------------------------------------------- §43.20
 
+    /**
+     * THE CEILING IS STILL THREE; WHAT CHANGED IS WHAT THE FOURTH CLICK LOOKS
+     * LIKE. It used to be a route throttle answering a bare 429, which the
+     * editor could only render as a broken page. The ceiling now lives in
+     * `AiGateway` — the same numbers, the same two buckets, but reachable from
+     * a job or a command too — and a refusal comes back the way every other AI
+     * failure on this screen does: a redirect, an unchanged section, and a
+     * sentence that says when to try again.
+     */
     #[Test]
     public function the_button_cannot_be_held_down(): void
     {
@@ -588,7 +597,10 @@ class WritingAssistantTest extends TestCase
             $this->rewrite($report, $section)->assertRedirect();
         }
 
-        $this->rewrite($report, $section)->assertStatus(429);
+        $this->rewrite($report, $section)->assertRedirect();
+
+        $this->assertStringContainsString('limite', (string) $this->rewriteError()['message']);
+        $this->assertSame($section->body, $section->refresh()->body);
     }
 
     // -------------------------------------------------------------- §43.21

@@ -8,11 +8,15 @@ use App\Models\Report;
 use App\Models\ReportSection;
 use App\Models\User;
 use App\Services\Ai\AiRequestFailed;
-use App\Services\Ai\AiTextProviders;
-use App\Services\Ai\AiTextRequest;
 use App\Services\Ai\AiUnavailable;
+use App\Services\Ai\Gateway\AiAsk;
+use App\Services\Ai\Gateway\AiCapability;
+use App\Services\Ai\Gateway\AiGateway;
+use App\Services\Ai\Gateway\AiQuotaExceeded;
+use App\Services\Ai\Gateway\AiUseCase;
 use App\Services\Audit\AuditLog;
 use App\Services\Reporting\ReportCapabilities;
+use App\Support\Privacy\AiPayloadSanitizer;
 
 /**
  * «Aperfeiçoar redação» (§1, §4).
@@ -50,11 +54,28 @@ use App\Services\Reporting\ReportCapabilities;
  * act by the teacher, through the section editor that already exists, and it
  * touches `body` alone — `generated_body` stays the deterministic text, so
  * «restaurar texto automático» keeps meaning what it has always meant.
+ *
+ * MIGRATED ONTO `AiGateway` IN THE AI-COMPLETE SLICE. This class predates the
+ * gateway: it used to resolve a provider itself, ask its own entitlement
+ * question and leave nothing in `ai_usage_events`, so the single most-used AI
+ * feature in the product was invisible to the meter that was supposed to answer
+ * «what is the AI costing». Now the entitlement (`ai_reports`, with
+ * `ai_assistance` still accepted), the provider, the rate limit, the quotas,
+ * the institutional pool and the usage row all belong to the gateway.
+ *
+ * WHAT DID NOT MOVE, AND MUST NOT. `PseudonymMap`, `ProtectedFacts` and
+ * `RewriteGuard` are this module's own and stay exactly where they are. The
+ * gateway is explicit that it does not validate an answer (contract §3), and
+ * what a good rewrite looks like — every protected fact still present, no digit
+ * invented, no name resurrected — is a question only Relatórios can answer. The
+ * central sanitiser is now a THIRD barrier over the already-redacted text
+ * rather than a replacement for either of the first two.
  */
 class ReportWritingAssistant
 {
     public function __construct(
-        protected AiTextProviders $providers,
+        protected AiGateway $gateway,
+        protected AiPayloadSanitizer $sanitizer,
         protected ReportCapabilities $capabilities,
         protected RewriteGuard $guard,
         protected AuditLog $audit,
@@ -67,24 +88,36 @@ class ReportWritingAssistant
      * and a teacher deserves to be told which (§41). A Base school is being
      * offered an upgrade; a Pro school with no engine configured is waiting on
      * whoever administers the installation, and clicking will never help either.
+     *
+     * ASKED OF THE GATEWAY NOW, not of a provider registry directly, so this
+     * screen and the enforcement in `ask()` cannot disagree.
      */
     public function isAvailable(): bool
     {
-        return $this->capabilities->allowsWritingAssistance() && $this->providers->isConfigured();
+        return $this->gateway->isAvailable(AiCapability::Reports);
     }
 
-    /** Why it is not available, as a slug the screen can turn into a sentence. */
+    /**
+     * Why it is not available, as a slug the screen can turn into a sentence.
+     *
+     * `provider` IS KEPT AS THE CATCH-ALL, and that is a compatibility
+     * decision rather than a lazy one. The gateway distinguishes `off` from
+     * `credential_missing`, `model_missing`, `endpoint_missing`,
+     * `unknown_driver` and `fake_in_production`; the Relatórios screen has
+     * always been given the single word `provider` for all of them and turns it
+     * into one sentence for a teacher who cannot act on any of the six anyway.
+     * Widening the vocabulary here would change a payload the frontend already
+     * reads, for no gain to the person reading the screen.
+     */
     public function unavailableReason(): ?string
     {
-        if (! $this->capabilities->allowsWritingAssistance()) {
-            return 'plan';
-        }
+        $reason = $this->gateway->unavailableReason(AiCapability::Reports);
 
-        if (! $this->providers->isConfigured()) {
-            return 'provider';
-        }
-
-        return null;
+        return match (true) {
+            $reason === null => null,
+            $reason === 'plan' => 'plan',
+            default => 'provider',
+        };
     }
 
     /**
@@ -111,15 +144,12 @@ class ReportWritingAssistant
     /**
      * Ask for one section to be said better.
      *
-     * @throws AiUnavailable when the installation has no engine (§8)
+     * @throws AiUnavailable when the plan does not include it, or nothing is configured (§8)
+     * @throws AiQuotaExceeded when a ceiling has been reached
      * @throws AiRequestFailed when the engine refuses, errors or times out (§26)
      */
     public function suggest(Report $report, ReportSection $section, WritingMode $mode, User $author): RewriteSuggestion
     {
-        if (! $this->isAvailable()) {
-            throw AiUnavailable::notConfigured();
-        }
-
         $current = trim((string) $section->body);
 
         if ($current === '') {
@@ -146,18 +176,37 @@ class ReportWritingAssistant
 
         $facts = ProtectedFacts::extract($pseudonymised);
 
-        $provider = $this->providers->make();
+        // THE THIRD BARRIER, AND IT IS NEW IN THE AI-COMPLETE SLICE. The first
+        // two are this module's own — `PseudonymMap` for the names it knows,
+        // `ProtectedFacts` for every digit in the paragraph. The central
+        // sanitiser is what catches the shapes neither of those is looking for:
+        // an email address a teacher pasted into a section, a URL, an address.
+        // Digits are already gone by the time it runs, so its number rules
+        // cannot fire and cannot damage a marker; what it adds is exactly the
+        // non-numeric identifiers this module never had a rule for.
+        //
+        // THE GUARD COMPARES AGAINST WHAT WAS ACTUALLY SENT — `$payload->text`,
+        // not `$facts->redacted` — because those are no longer necessarily the
+        // same string, and comparing an answer against text the engine never
+        // saw is how a guard starts reporting failures that did not happen.
+        $payload = $this->sanitizer->sanitise($facts->redacted);
 
-        $response = $provider->complete(new AiTextRequest(
+        $answer = $this->gateway->ask(new AiAsk(
+            useCase: AiUseCase::ReportSectionRewrite,
             instruction: WritingPrompt::for($mode),
-            content: $facts->redacted,
-        ));
+            content: $payload,
+            promptVersion: WritingPrompt::VERSION,
+            // Which section of which report this was, as a hash — so repeated
+            // attempts at the same paragraph are recognisable in
+            // `ai_usage_events` without the events carrying the paragraph.
+            subjectHash: hash('sha256', $report->ulid.'|'.$section->ulid.'|'.$mode->value),
+        ), $author);
 
-        $answer = $this->guard->normalise($response->text, $facts->redacted);
-        $verdict = $this->guard->inspect($facts, $answer);
+        $normalised = $this->guard->normalise($answer->text, $payload->text);
+        $verdict = $this->guard->inspect($facts, $normalised);
 
         $text = $verdict->acceptable
-            ? $names->rehydrate($facts->restore($answer))
+            ? $names->rehydrate($facts->restore($normalised))
             : null;
 
         $suggestion = new RewriteSuggestion(
@@ -169,12 +218,23 @@ class ReportWritingAssistant
             text: $text,
             verdict: $verdict,
             promptVersion: WritingPrompt::VERSION,
-            provider: $response->provider,
-            model: $response->model,
+            provider: $answer->provider,
+            model: $answer->model,
             pseudonymised: ! $names->isEmpty() && $pseudonymised !== $current,
         );
 
-        $this->record($report, $section, $suggestion, $author, $facts->redacted, $answer, $response->metrics());
+        // The same metric keys `AiTextResponse::metrics()` produced before this
+        // moved onto the gateway, so an existing audit reader keeps working.
+        // `latency_ms` now measures the gateway's whole call rather than the
+        // provider's alone; the difference is the sanitiser's second pass, and
+        // it is a truer number than the one it replaces.
+        $this->record($report, $section, $suggestion, $author, $payload->text, $normalised, [
+            'provider' => $answer->provider,
+            'model' => $answer->model,
+            'input_tokens' => $answer->inputTokens,
+            'output_tokens' => $answer->outputTokens,
+            'latency_ms' => $answer->durationMilliseconds,
+        ]);
 
         return $suggestion;
     }

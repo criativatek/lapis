@@ -6,6 +6,7 @@ use App\Domain\Reporting\SectionCatalogue;
 use App\Domain\Reporting\SectionDefinition;
 use App\Models\ReportTone;
 use App\Models\ReportType;
+use App\Services\Ai\Gateway\AiCapability;
 use App\Support\Entitlements\Entitlements;
 
 /**
@@ -30,8 +31,19 @@ use App\Support\Entitlements\Entitlements;
  */
 class ReportCapabilities
 {
-    /** The plan capability behind «Aperfeiçoar redação». Pro and Institucional; never Base. */
-    public const WRITING_ASSISTANT_MODULE = 'ai_assistance';
+    /**
+     * The plan capability behind «Aperfeiçoar redação». Pro and Institucional;
+     * never Base.
+     *
+     * IT MOVED FROM `ai_assistance` TO `ai_reports` IN THE AI-COMPLETE SLICE.
+     * The old key was one entitlement covering both this and the strategy
+     * suggester, which meant a school could not hold one without the other;
+     * they are now separate capabilities, with separate ceilings and separately
+     * readable rows in the meter. Every organization that held `ai_assistance`
+     * keeps working, because `AiCapability::legacyModuleKeys()` still accepts
+     * it.
+     */
+    public const WRITING_ASSISTANT_MODULE = 'ai_reports';
 
     public function __construct(protected Entitlements $entitlements) {}
 
@@ -44,13 +56,10 @@ class ReportCapabilities
     /**
      * Whether this school's plan includes the writing assistant.
      *
-     * NO NEW CAPABILITY WAS INVENTED FOR THIS. `ai_assistance` has existed in
-     * the module catalogue since the entitlements seeder was written, sits in
-     * Pro and Institucional and not in Base, and had no feature behind it —
-     * which is exactly the plan split the brief asks for. Adding a second key
-     * would have meant either changing the commercial composition of the plans
-     * (on the ask-first list in CLAUDE.md §31) or shipping two capabilities that
-     * always answer the same thing.
+     * THE LEGACY KEY STILL OPENS THE DOOR. An organization that holds
+     * `ai_assistance` — through a plan, or through a per-organization override
+     * granted before the capability was split — is allowed here exactly as it
+     * was before, which is what makes the rename invisible to a school.
      *
      * This answers the PLAN question only. Whether an engine is configured at
      * all is a separate question with a separate answer, because the two fail
@@ -58,7 +67,13 @@ class ReportCapabilities
      */
     public function allowsWritingAssistance(): bool
     {
-        return $this->entitlements->allows(self::WRITING_ASSISTANT_MODULE);
+        foreach (AiCapability::Reports->moduleKeys() as $moduleKey) {
+            if ($this->entitlements->allows($moduleKey)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function allowsType(ReportType $type): bool

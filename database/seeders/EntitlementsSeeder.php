@@ -62,33 +62,58 @@ class EntitlementsSeeder extends Seeder
         'institution_reports' => 'Relatórios Agregados',
         'audit_log' => 'Registo de Auditoria',
 
-        // CATALOGUED, AND DELIBERATELY IN NO PLAN. The two AI Core capabilities
-        // (`App\Services\Ai\Gateway\AiCapability`) are real, enforced keys —
-        // `AiGateway` refuses every request whose organization does not hold one
-        // — but WHICH subscription includes them is a commercial decision nobody
-        // has taken. Writing either into BASE_MODULES / PRO_MODULES /
-        // INSTITUTIONAL_MODULES below would be taking that decision quietly, and
-        // «change the commercial composition of the plans» is on the ask-first
-        // list in CLAUDE.md §31.
+        // THE AI CAPABILITY CATALOGUE (`App\Services\Ai\Gateway\AiCapability`).
+        // Every one of these is a real, enforced key: `AiGateway` refuses any
+        // request whose organization does not hold the capability behind it.
         //
-        // The consequence, stated plainly: today every organization answers
-        // `false` to both, every screen shows the upgrade-shaped unavailable
-        // state, and nothing built on the gateway reaches an engine. That is the
-        // intended state until somebody decides — at which point this is a
-        // one-line change in the arrays below and nothing else.
+        // WHICH PLAN GETS WHICH IS NOW DECIDED, and the decision is the Matriz
+        // Mestre's, not this file's. It was open until the AI-complete slice —
+        // the previous version of this comment said so, and said the day
+        // somebody decided it would be a one-line change in the arrays below.
+        // This is that change. The composition below is transcribed from the
+        // Matriz, capability by capability:
         //
-        // THEY ARE NOT `ai_assistance`, which stays exactly where it is (Pro and
-        // Institucional) gating «Aperfeiçoar redação» in Relatórios and the
-        // strategy suggester in Intervenções. Reusing it would have meant that
-        // turning on the help assistant also turned on rewriting inside reports.
+        //   help_assistant           Base · Pro · Institucional
+        //   ai_pedagogical_analysis         Pro · Institucional
+        //   ai_assessment                   Pro · Institucional
+        //   ai_followup                     Pro · Institucional
+        //   ai_strategies                   Pro · Institucional
+        //   ai_reports                      Pro · Institucional
+        //   ai_governance                          Institucional
+        //   ai_institutional_pool                  Institucional
+        //
+        // BASE HAS THE HELP ASSISTANT, AND THE LIMIT IS A QUOTA RATHER THAN A
+        // SECOND KEY. «Base = sim, limitado/configurável» is expressed by the
+        // ceilings in `config('lapis.ai.quotas')` and by a plan's own
+        // `limits['ai_quota']`, both of which an operator can change without a
+        // deploy. A separate `help_assistant_limited` key would have made
+        // «how much» a commercial decision frozen in code, which is exactly
+        // what §3 of the brief says not to do.
+        //
+        // `ai_assistance` STAYS EXACTLY WHERE IT IS (Pro and Institucional).
+        // It is the historical key that gated «Aperfeiçoar redação» and the
+        // strategy suggester before either went through the gateway. Both now
+        // check `ai_reports` and `ai_strategies`, and both still accept the old
+        // key through `AiCapability::legacyModuleKeys()` — so an organization
+        // holding `ai_assistance` through an override keeps working.
         'help_assistant' => 'Assistente do Centro de Ajuda',
-        'ai_pedagogical_analysis' => 'Análise Pedagógica (IA)',
+        'ai_pedagogical_analysis' => 'Análise Pedagógica da Turma (IA)',
+        'ai_assessment' => 'IA na Avaliação',
+        'ai_followup' => 'IA no Acompanhamento',
+        'ai_strategies' => 'IA em Estratégias e Medidas',
+        'ai_reports' => 'IA nos Relatórios',
+        'ai_governance' => 'Governação de IA',
+        'ai_institutional_pool' => 'Pool de IA da Organização',
     ];
 
     protected const BASE_MODULES = [
         'assessment_profiles', 'classes', 'students', 'instruments', 'assessments',
         'results', 'self_assessments', 'records', 'interventions', 'student_progress',
         'reports',
+        // The Centro de Ajuda's articles need no entitlement at all — the page
+        // is outside the `organization` middleware. This key is the ASSISTANT
+        // on top of them, which does reach an engine and therefore does.
+        'help_assistant',
     ];
 
     protected const PRO_MODULES = [
@@ -96,11 +121,15 @@ class EntitlementsSeeder extends Seeder
         'calendar', 'lessons', 'ai_assistance', 'advanced_analytics', 'template_sharing',
         'self_assessment_links', 'correction_grid_import', 'inovar_export',
         'report_pedagogical_analysis',
+        'ai_pedagogical_analysis', 'ai_assessment', 'ai_followup', 'ai_strategies', 'ai_reports',
     ];
 
     protected const INSTITUTIONAL_MODULES = [
         ...self::PRO_MODULES,
         'institution_admin', 'institution_library', 'institution_reports', 'audit_log',
+        // Governação = consumo e configuração, nunca vigilância de conteúdo.
+        // Neither key reaches an engine; see `AiCapability::isMetered()`.
+        'ai_governance', 'ai_institutional_pool',
     ];
 
     /**

@@ -172,18 +172,52 @@ servidor — esconder um controlo é apresentação, não controlo de acesso
 
 ## 5. Capabilities
 
-```php
-AiCapability::HelpAssistant        // 'help_assistant'
-AiCapability::PedagogicalAnalysis  // 'ai_pedagogical_analysis'
-```
+**Uma capability por ÁREA DE PRODUTO, não uma por botão.** Uma escola compra
+«IA na avaliação» ou não compra; não compra o botão de análise em Resultados
+separadamente do que vier a existir ao lado dele no ano seguinte. A
+granularidade fina — qual das funcionalidades de uma área foi uma chamada — é o
+`AiUseCase`, que não custa nada comercialmente e é o que torna o contador
+legível.
 
-São **duas chaves separadas** e não devem ser fundidas: uma escola pode
-razoavelmente querer o assistente de ajuda e não a análise pedagógica, e a
-segunda é a que vê material sobre crianças.
+| `AiCapability` | chave | onde vive | Base | Pro | Inst. |
+|---|---|---|---|---|---|
+| `HelpAssistant` | `help_assistant` | Centro de Ajuda | ✅ | ✅ | ✅ |
+| `PedagogicalAnalysis` | `ai_pedagogical_analysis` | Resultados › Estatística da turma | — | ✅ | ✅ |
+| `Assessment` | `ai_assessment` | Resultados › Resultados do período | — | ✅ | ✅ |
+| `Followup` | `ai_followup` | Evolução do Aluno | — | ✅ | ✅ |
+| `Strategies` | `ai_strategies` | Evolução do Aluno › Estratégias | — | ✅ | ✅ |
+| `Reports` | `ai_reports` | Relatórios › Secções | — | ✅ | ✅ |
+| `Governance` | `ai_governance` | Administração institucional › IA | — | — | ✅ |
+| `InstitutionalPool` | `ai_institutional_pool` | plafond da organização | — | — | ✅ |
 
-Nenhuma delas é `ai_assistance`, que continua exatamente onde estava (Pro e
-Institucional) a controlar «Aperfeiçoar redação» nos Relatórios e o sugeridor de
-estratégias nas Intervenções.
+A composição vem da **Matriz Mestre** e vive em `EntitlementsSeeder`, não aqui.
+`AiEntitlementMatrixTest` afirma-a célula a célula, escrita à mão de propósito:
+um teste que lesse o seeder passaria a dizer o que quer que o seeder dissesse.
+
+**As duas últimas não chegam a um motor** (`AiCapability::isMetered()` devolve
+`false`). São entitlements sobre ADMINISTRAR IA: a primeira abre um ecrã de
+consumo, a segunda decide se um plafond organizacional se aplica por cima dos
+tetos por capability. Nenhuma tem quota, balde de rate limit nem linha em
+`ai_usage_events`, e nenhum `AiUseCase` aponta para elas.
+
+### `ai_assistance` — a chave histórica
+
+Continua no catálogo e continua em Pro e Institucional. Controlava «Aperfeiçoar
+redação» e o sugeridor de estratégias antes de qualquer um deles passar pelo
+gateway; agora esses verificam `ai_reports` e `ai_strategies`, e
+`AiCapability::legacyModuleKeys()` faz com que a chave antiga continue a
+conceder as duas.
+
+**Só alarga, nunca retira.** O gateway pergunta se ALGUMA das chaves de
+`moduleKeys()` é permitida, por isso uma organização que tenha a chave nova não
+é afetada pelo que a antiga diga. Uma organização que tenha só a antiga —
+através de um override, um piloto, uma exceção negociada — continua a funcionar
+exatamente como funcionava, que é a propriedade de segurança de toda a migração.
+`AiGatewayTest::the_legacy_ai_assistance_key_grants_exactly_what_it_used_to_gate`
+prova isso, e prova também que a chave antiga **não** alargou para as
+capabilities que nunca controlou.
+
+### Use case → capability
 
 `AiUseCase` determina a capability — não se passam as duas:
 
@@ -192,11 +226,89 @@ estratégias nas Intervenções.
 | `HelpAnswer` | `help_assistant` |
 | `HelpArticleSuggestion` | `help_assistant` |
 | `PedagogicalAnalysis` | `ai_pedagogical_analysis` |
-| `PedagogicalStrategySuggestion` | `ai_pedagogical_analysis` |
+| `AssessmentAnalysis` | `ai_assessment` |
+| `FollowupSynthesis` | `ai_followup` |
+| `PedagogicalStrategySuggestion` | `ai_strategies` |
+| `ReportSectionRewrite` | `ai_reports` |
 | `AdminConnectionTest` | nenhuma (só `platform-admin`) |
 
 Falta um caso de uso? Acrescentar uma `case` ao enum e mapeá-la. **Não** passar
 uma string.
+
+## 5b. Quotas e plafond
+
+Quatro tetos, e um pedido tem de passar por todos os que se apliquem:
+
+| teto | janela | âmbito | onde se configura |
+|---|---|---|---|
+| rate limit | minuto | utilizador **e** organização | `lapis.ai.per_minute`, `…organization_per_minute` |
+| quota do utilizador | dia | por capability | `plans.limits['ai_quota'][cap]['user_daily']` → `lapis.ai.quotas` |
+| quota da organização | mês | por capability | `…['organization_monthly']` → `lapis.ai.quotas` |
+| **plafond** | mês | **todas as capabilities juntas** | `plans.limits['ai_pool']` → `lapis.ai.pool` |
+
+**Nenhum número em `config/` é uma regra comercial.** São tetos técnicos de
+custo, com uma variável de ambiente à frente de cada um, e qualquer plano que
+nomeie a chave ganha precedência automaticamente. Quanto é que um plano INCLUI é
+uma decisão que vive em `plans.limits`, onde muda sem deploy.
+
+**`null` é «sem teto», e `0` é «fechado».** Os dois são instruções reais e
+diferentes — `0` é como se desliga uma funcionalidade sem mexer nos planos.
+
+**O plafond só se aplica a quem tem `ai_institutional_pool`**, e está **inerte
+por omissão**: ambos os valores em `config('lapis.ai.pool')` são `null`, porque
+um plafond é uma figura contratual e um valor por omissão inventaria um para
+todos os clientes institucionais de uma vez. «Preparado para» é o requisito;
+«imposto» não é.
+
+O backoffice guarda o plafond em `platform_settings.ai_quotas` sob a chave
+reservada `ai_pool`, que o `AppServiceProvider` encaminha para `lapis.ai.pool`
+em vez de `lapis.ai.quotas`. Nenhum módulo se chama `ai_pool` — a capability do
+plafond é `ai_institutional_pool`, uma string diferente — e
+`AiCapabilityCatalogTest` afirma que nunca se chamará.
+
+Um pedido recusado **não consome quota** (`AiUsageEvent::scopeBillable`): nunca
+chegou a um motor e não custou nada, e contá-lo faria com que atingir um teto o
+tornasse mais difícil de contornar. Um pedido FALHADO conta: os tokens foram
+gastos.
+
+### Os números em vigor, e o que são
+
+Estes são os **defaults técnicos** desta instalação. Nenhum é uma regra
+comercial, nenhum está escrito num controlador ou num serviço, e todos podem
+ser alterados sem deploy.
+
+| capability | utilizador/dia | organização/mês | variáveis de ambiente |
+|---|---:|---:|---|
+| `help_assistant` | 60 | 3000 | `LAPIS_AI_HELP_USER_DAILY`, `LAPIS_AI_HELP_ORGANIZATION_MONTHLY` |
+| `ai_pedagogical_analysis` | 40 | 1500 | `LAPIS_AI_PEDAGOGICAL_USER_DAILY`, `…_ORGANIZATION_MONTHLY` |
+| `ai_assessment` | 40 | 1500 | `LAPIS_AI_ASSESSMENT_USER_DAILY`, `…_ORGANIZATION_MONTHLY` |
+| `ai_followup` | 40 | 1500 | `LAPIS_AI_FOLLOWUP_USER_DAILY`, `…_ORGANIZATION_MONTHLY` |
+| `ai_strategies` | 40 | 1500 | `LAPIS_AI_STRATEGIES_USER_DAILY`, `…_ORGANIZATION_MONTHLY` |
+| `ai_reports` | 60 | 2000 | `LAPIS_AI_REPORTS_USER_DAILY`, `…_ORGANIZATION_MONTHLY` |
+| **plafond** (todas juntas) | — | *sem teto* | `LAPIS_AI_POOL_ORGANIZATION_MONTHLY`, `LAPIS_AI_POOL_USER_MONTHLY` |
+
+**Porque estes valores e não outros:** relação entre custo e repetição. O
+assistente é barato e perguntado muitas vezes ao dia; uma análise é mais cara e
+pedida uma vez por turma e por período; uma reescrita é por parágrafo, e um
+professor reescreve vários seguidos. Não há aqui nenhuma leitura comercial —
+são ordens de grandeza para travar um clique repetido e um cliente em ciclo.
+
+**Três formas de os mudar, por ordem de precedência:**
+
+1. **O plano** — `plans.limits['ai_quota'][capability][window]` e
+   `plans.limits['ai_pool'][window]`. É aqui que uma decisão comercial vive.
+   Ganha sempre. Nenhum plano semeado define qualquer uma destas chaves hoje, e
+   `AiPoolQuotaTest` afirma-o.
+2. **A Administração → Inteligência Artificial** — escreve em
+   `platform_settings.ai_quotas`, que o `AppServiceProvider` lê sobre a config
+   no arranque. **Sem deploy.** É o caminho normal para um operador.
+3. **O `.env`** — o valor por omissão desta instalação, usado quando as duas
+   camadas acima se calam.
+
+**O que NÃO é possível:** um número comercial espalhado por controladores ou
+serviços. `AiArchitectureTest::nothing_in_the_ai_surface_branches_on_a_plan_name`
+falha se alguma decisão de IA passar a comparar uma chave de plano a um literal,
+e `AiQuota` é o único sítio que lê um teto.
 
 ## 6. Rate limiting — o que NÃO fazer
 
@@ -267,25 +379,49 @@ pessoa vê.
 
 ## 10. Decisões pendentes
 
-Três, e nenhuma deve ser tomada em código sem falar com o responsável do produto
+### Decidido na fatia AI-complete (0.86.0)
+
+**A que planos pertencem as capabilities de IA.** Estava em aberto e a Matriz
+Mestre decidiu: a tabela em §5 é a composição, e vive em `EntitlementsSeeder`.
+O teste que falhava quando alguém compunha uma chave num plano
+(`neither_ai_capability_is_granted_by_any_plan_yet`) foi substituído pelo seu
+inverso — `every_ai_capability_belongs_to_at_least_one_plan` — porque a falha
+que interessa vigiar passou a ser a oposta: uma capability catalogada e
+esquecida, que nenhuma organização alcança e que não produz erro em lado nenhum.
+
+Um override por organização (`organization_module_overrides`) continua a ser a
+forma suportada de dar acesso a um piloto, um voucher ou um benefício
+temporário, com validade opcional.
+
+### Continuam pendentes
+
+Nenhuma deve ser tomada em código sem falar com o responsável do produto
 (CLAUDE.md §31).
 
-1. **A que planos pertencem `help_assistant` e `ai_pedagogical_analysis`.**
-   Estão catalogadas em `EntitlementsSeeder::MODULES` e **em nenhum plano**.
-   Consequência hoje: nenhuma organização as tem, todos os ecrãs mostram o estado
-   `plan`, e nada chega ao motor. Para decidir: uma linha em `BASE_MODULES` /
-   `PRO_MODULES` / `INSTITUTIONAL_MODULES`.
-   `AiGatewayTest::neither_ai_capability_is_granted_by_any_plan_yet` falha quando
-   isso acontecer, de propósito — para que quem o fizer leia primeiro esta secção.
-   Entretanto, um override por organização (`organization_module_overrides`) é a
-   forma suportada de dar acesso a um piloto.
-2. **A quota comercial por plano.** Os números em `config('lapis.ai.quotas')` são
-   **tetos técnicos de custo**, não o que um plano inclui. `AiQuota::planLimit()`
-   já lê `plans.limits['ai_quota'][capability][window]` — a chave não existe em
-   nenhum plano. Quando existir, o plano ganha precedência automaticamente.
-3. **Consentimento por organização.** Dívida herdada do ADR-0006 §2: configurar o
-   motor é decisão do operador da instalação; uma escola dentro dela não tem forma
-   de recusar. Continua por resolver.
+1. **A quota comercial por plano.** Os números em `config('lapis.ai.quotas')` e
+   `config('lapis.ai.pool')` são **tetos técnicos de custo**, não o que um plano
+   inclui. `AiQuota` já lê `plans.limits['ai_quota'][capability][window]` e
+   `plans.limits['ai_pool'][window]`, e o plano ganha precedência
+   automaticamente — as chaves não existem em nenhum plano semeado. Quanto é que
+   Base inclui de assistente, e qual o plafond de um contrato institucional, são
+   decisões comerciais por tomar. `AiPoolQuotaTest` prova que o mecanismo morde
+   assim que alguém escrever um número.
+2. **Consentimento por organização.** Dívida herdada do ADR-0006 §2: configurar
+   o motor é decisão do operador da instalação; uma escola dentro dela não tem
+   forma de recusar. Continua por resolver, e a fatia AI-complete alargou o
+   número de funcionalidades a que se aplica.
+3. **Validação jurídica da descrição da IA.** A secção «Inteligência
+   artificial» da Política e duas passagens do Acordo de Tratamento de Dados
+   foram reescritas na 0.86.0 para descreverem o comportamento real — ver
+   [`docs/legal.md`](legal.md) §«Corrigido na fatia AI-complete». A descrição é
+   factual e está fixada por testes; a **redação** continua por validar por
+   jurista, como todo o resto do texto legal.
+4. **Texto livre em contextos sensíveis.** A síntese de acompanhamento não
+   envia a descrição de um registo nem o objetivo de uma intervenção, porque é
+   aí que vivem saúde, diagnóstico e contexto familiar. Isso limita a
+   funcionalidade de forma real e conhecida — ver `FollowupContext`, que o
+   documenta ao lado do código que o faz. Se alguma vez se quiser mudar, é uma
+   decisão de produto e de proteção de dados, não uma otimização.
 
 ## 11. Credencial e segredos
 

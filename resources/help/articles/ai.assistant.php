@@ -30,6 +30,7 @@ return [
         'Isto tem uma consequência prática útil: uma pergunta que a pesquisa não consegue responder também não será respondida pelo assistente. Nesse caso vale a pena reformular a pergunta com outras palavras, ou percorrer as categorias de artigos.',
         'O QUE O ASSISTENTE NÃO FAZ. Não vê os seus alunos, as suas turmas, os seus resultados nem quaisquer dados pedagógicos. Não recebe nenhuma dessas informações: quando faz uma pergunta, o que sai da aplicação é a sua pergunta e os artigos de documentação, e mais nenhum dado. Também não inventa funcionalidades — se um botão ou um menu não estiver descrito nos artigos, o assistente não o descreve.',
         'Não escreva dados pessoais na pergunta. O assistente não precisa deles para responder, e uma pergunta como «o João do 8.ºB não aparece na pauta» responde-se igualmente bem escrita como «um aluno não aparece na pauta».',
+        'Por baixo da caixa está um lembrete a pedir exatamente isso, e antes de a pergunta sair a aplicação procura nela padrões reconhecíveis. Se encontrar algum, mostra um aviso, deixa a pergunta como a escreveu, e pode corrigi-la ou perguntar mesmo assim. O aviso reduz o risco e não o elimina: reconhece formatos, e um nome escrito por extenso não tem formato que o distinga.',
         'Antes de a pergunta sair da aplicação, o Lapispro retira automaticamente endereços de correio eletrónico, números de telefone, códigos postais, endereços de internet, números de processo escritos na forma «n.º 12» e identificadores internos. No lugar de cada um fica uma marca a dizer que foi retirado.',
         'Essa limpeza tem um limite que vale a pena conhecer: reconhece formatos, não pessoas. Um nome escrito por extenso — «a Mariana Ferreira» — não tem um formato que a distinga de qualquer outra palavra, e por isso não é retirado. É por essa razão que a recomendação continua a ser não escrever nomes na pergunta, e não porque a limpeza não exista.',
         'A pergunta que escreve não fica guardada na aplicação. O registo interno de utilização guarda que houve um pedido, que artigos foram consultados e quanto custou — nunca o texto da pergunta nem o texto da resposta.',
@@ -38,6 +39,6 @@ return [
         'A IA apoia, não decide. Uma resposta do assistente é uma explicação sobre como a aplicação funciona, nunca uma instrução pedagógica e nunca uma decisão sobre um aluno.',
     ],
     'keywords' => ['assistente', 'ia', 'inteligência artificial', 'perguntar', 'pergunta', 'chat'],
-    'related' => ['getting-started', 'ai.pedagogical-analysis'],
+    'related' => ['getting-started', 'ai.privacy', 'ai.limits', 'ai.pedagogical-analysis'],
     'contexts' => [],
 ];

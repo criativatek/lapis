@@ -15,6 +15,7 @@ import {
     X,
 } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
+import AiTextPrivacyNotice from '@/components/ai/AiTextPrivacyNotice.vue';
 import Heading from '@/components/Heading.vue';
 import type { ChosenDifficulty } from '@/components/reports/DifficultyPicker.vue';
 import DifficultyPicker from '@/components/reports/DifficultyPicker.vue';
@@ -29,6 +30,7 @@ import SectionRewrite from '@/components/reports/SectionRewrite.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useAiTextPrivacyGuard } from '@/composables/useAiTextPrivacyGuard';
 
 type Option = { value: string; label: string };
 
@@ -344,7 +346,46 @@ watch(
     },
 );
 
+/**
+ * THE PRIVACY GUARD HERE HAS A DIFFERENT JOB FROM THE OTHER TWO.
+ *
+ * On the Centro de Ajuda and on Evolução, the rule is «não escreva nomes». In a
+ * report it is the opposite: a report about a student is ABOUT a named student,
+ * the name belongs in the prose, and `PseudonymMap` already replaces every name
+ * this application knows before the section leaves. So no name is passed to the
+ * guard and none is flagged — flagging one would be telling a teacher off for
+ * writing the report correctly.
+ *
+ * WHAT IS WORTH FLAGGING is a contact, an address, a postal code or an internal
+ * identifier that found its way into a paragraph. None of those belongs in a
+ * report section for its own sake.
+ *
+ * ONE GUARD, ONE SECTION AT A TIME. `privacySection` records which section is
+ * being asked about, so the confirmation appears beside the paragraph it is
+ * about rather than on all of them at once.
+ */
+const rewritePrivacy = useAiTextPrivacyGuard();
+const privacySection = ref<string | null>(null);
+
 function requestRewrite(section: SectionPayload, mode: string) {
+    const submit = () => {
+        privacySection.value = null;
+        sendRewrite(section, mode);
+    };
+
+    if (rewritePrivacy.run(section.body ?? '', submit)) {
+        return;
+    }
+
+    privacySection.value = section.ulid;
+}
+
+function dismissRewritePrivacy(): void {
+    privacySection.value = null;
+    rewritePrivacy.edit();
+}
+
+function sendRewrite(section: SectionPayload, mode: string) {
     lastMode.value = mode;
     rewritingSection.value = section.ulid;
     suggestion.value = null;
@@ -363,7 +404,9 @@ function requestRewrite(section: SectionPayload, mode: string) {
 }
 
 function retryRewrite(section: SectionPayload) {
-    requestRewrite(section, lastMode.value ?? props.ai.modes[0]?.value ?? 'same_tone');
+    // Straight to the request: this is «tentar novamente» after a failure the
+    // teacher already saw, on text they have already been asked about.
+    sendRewrite(section, lastMode.value ?? props.ai.modes[0]?.value ?? 'same_tone');
 }
 
 // The one place that writes a body is the section editor, which is where this
@@ -916,6 +959,18 @@ function derive() {
                             </Button>
                         </div>
                     </header>
+
+                    <!-- Beside the paragraph it is about, and only there: the
+                         request was held back and this is where the teacher
+                         decides what to do with it. -->
+                    <AiTextPrivacyNotice
+                        v-if="privacySection === section.ulid"
+                        :findings="rewritePrivacy.findings.value"
+                        notice=""
+                        action-label="Aperfeiçoar mesmo assim"
+                        @edit="dismissRewritePrivacy()"
+                        @proceed="rewritePrivacy.proceed()"
+                    />
 
                     <div v-if="editing === section.ulid" class="mt-3 space-y-2">
                         <textarea

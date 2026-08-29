@@ -94,36 +94,51 @@ class AiGatewayTest extends TestCase
     // ---------------------------------------------------------------- capabilities
 
     /**
-     * The commercial decision that has not been taken, asserted rather than
-     * assumed. If somebody later composes either key into a plan, this test
-     * fails and they are made to read docs/ai-core-contract.md first.
+     * THE INVERSE OF THE GUARD THIS TEST USED TO BE.
+     *
+     * It used to assert that NEITHER AI capability belonged to any plan, which
+     * was the honest expression of an open commercial question: nobody had
+     * decided, and writing a composition into the seeder would have been
+     * deciding quietly. The Matriz Mestre has now decided, so the test that
+     * failed when somebody composed a key checks the opposite failure instead —
+     * a capability catalogued and then forgotten, which no organization can
+     * reach and which produces no error anywhere.
+     *
+     * WHICH plan gets which is asserted in `AiEntitlementMatrixTest`, one row
+     * at a time. This only says «none of them was left out».
      */
     #[Test]
-    public function neither_ai_capability_is_granted_by_any_plan_yet(): void
+    public function every_ai_capability_belongs_to_at_least_one_plan(): void
     {
         foreach (AiCapability::cases() as $capability) {
             $module = Module::where('key', $capability->value)->first();
 
             $this->assertNotNull($module, "{$capability->value} must be in the catalogue.");
-            $this->assertSame(
+            $this->assertGreaterThan(
                 0,
                 $module->plans()->count(),
-                "{$capability->value} is composed into a plan — the commercial decision was taken without updating docs/ai-core-contract.md.",
+                "{$capability->value} is in no plan — no organization can ever reach it, and nothing will say so.",
             );
         }
     }
 
+    /**
+     * A CAPABILITY THE ORGANIZATION'S PLAN DOES NOT INCLUDE, which since the
+     * Matriz Mestre means one above Base rather than any of them: a personal
+     * organization is on Base, and Base now includes the help assistant. The
+     * pedagogical analysis is the nearest capability it does not.
+     */
     #[Test]
     public function an_organization_without_the_capability_is_refused_and_told_it_is_the_plan(): void
     {
         $this->fake();
         $user = $this->teacherWith(null);
 
-        $this->assertFalse($this->gateway()->isAvailable(AiCapability::HelpAssistant));
-        $this->assertSame('plan', $this->gateway()->unavailableReason(AiCapability::HelpAssistant));
+        $this->assertFalse($this->gateway()->isAvailable(AiCapability::PedagogicalAnalysis));
+        $this->assertSame('plan', $this->gateway()->unavailableReason(AiCapability::PedagogicalAnalysis));
 
         try {
-            $this->gateway()->ask($this->ask(), $user);
+            $this->gateway()->ask($this->ask(AiUseCase::PedagogicalAnalysis), $user);
             $this->fail('The gateway let an unentitled organization through.');
         } catch (AiUnavailable $exception) {
             $this->assertSame('plan', $exception->reason());
@@ -151,13 +166,25 @@ class AiGatewayTest extends TestCase
     }
 
     /**
-     * `ai_assistance` — the key that already gated «Aperfeiçoar redação» — is
-     * untouched and grants neither of the new capabilities. Reusing it would
-     * have meant that turning on the help assistant turned on rewriting inside
-     * reports.
+     * `ai_assistance` — the historical key — GRANTS EXACTLY THE TWO THINGS IT
+     * HISTORICALLY GATED, AND NOTHING ELSE.
+     *
+     * THIS TEST INVERTED WITH THE AI-COMPLETE SLICE, and the inversion is the
+     * migration's whole safety property. Before it, `ai_assistance` gated
+     * «Aperfeiçoar redação» and the strategy suggester, and this test asserted
+     * that it granted neither of the then-new Core capabilities. Those two
+     * features now check `ai_reports` and `ai_strategies`, and an organization
+     * holding only the old key through an override — a pilot, a negotiated
+     * exception — must keep working: `AiCapability::legacyModuleKeys()` is what
+     * makes that true and this is what proves it.
+     *
+     * THE BOUNDARY IS STILL A BOUNDARY. The old key still grants nothing about
+     * the help assistant, the pedagogical analysis, the assessment reading or
+     * the followup synthesis. A legacy alias that quietly widened into
+     * everything would be worse than no alias at all.
      */
     #[Test]
-    public function the_pre_existing_ai_assistance_key_grants_neither_new_capability(): void
+    public function the_legacy_ai_assistance_key_grants_exactly_what_it_used_to_gate(): void
     {
         $this->fake();
         $user = User::factory()->create();
@@ -171,8 +198,15 @@ class AiGatewayTest extends TestCase
         ]);
         app(Entitlements::class)->flush();
 
-        $this->assertFalse($this->gateway()->isAvailable(AiCapability::HelpAssistant));
+        // The two it gated before the split.
+        $this->assertTrue($this->gateway()->isAvailable(AiCapability::Reports));
+        $this->assertTrue($this->gateway()->isAvailable(AiCapability::Strategies));
+
+        // Everything it never gated.
         $this->assertFalse($this->gateway()->isAvailable(AiCapability::PedagogicalAnalysis));
+        $this->assertFalse($this->gateway()->isAvailable(AiCapability::Assessment));
+        $this->assertFalse($this->gateway()->isAvailable(AiCapability::Followup));
+        $this->assertFalse($this->gateway()->isAvailable(AiCapability::Governance));
     }
 
     // ---------------------------------------------------------------- the engine
