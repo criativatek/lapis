@@ -14,6 +14,165 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > cada um sob o título da frente a que pertenceu. A 0.85.0 é o primeiro
 > release em que as duas linhagens voltam a ser uma só.
 
+## [0.88.0] — 2026-08-29
+
+Um plano deixa de **ser** a sua composição. Até aqui, mover uma capacidade
+entre o Base e o Pro reescrevia — retroativamente, em silêncio, e para toda a
+gente — aquilo a que cada subscritor desse plano alguma vez tivera direito: o
+`EntitlementsSeeder` fazia `sync()` a `module_plan` em cada execução, e
+`plans.limits` era uma coluna viva. A própria 0.87.0 é a prova: a fronteira
+Base/Pro mudou e não ficou registo nenhum de que os direitos de ontem eram
+outros. A partir desta versão, `Plan` é só a identidade comercial («Pro») e a
+oferta que ele vendeu num dado momento é uma `PlanVersion` imutável. Publicar
+o Pro v2 passa a ser a forma de mudar a oferta, e deixa intacta cada subscrição
+que ficou no Pro v1 — o *grandfathering* deixa de ser uma funcionalidade de que
+alguém tem de se lembrar e passa a ser a ausência de um ato. A decisão está
+registada na **ADR-0008**.
+
+### Added
+
+- **Versões imutáveis de plano** (`plan_versions`, `module_plan_version`). Cada
+  versão fixa uma composição de módulos e os seus `limits` comerciais, com um
+  número por plano (Base v1, Pro v1, …), uma data de publicação e um *hash* da
+  composição. Uma versão publicada é imutável por construção, e não por
+  promessa num comentário: só `retired_at` e `notes` se movem — retirar uma
+  versão do catálogo não muda nada para quem já está nela. Uma versão com
+  subscritores não pode ser apagada.
+
+- **A subscrição refere a versão contratada**
+  (`organization_subscriptions.plan_version_id`, obrigatória). `plan_id`
+  mantém-se por compatibilidade — o backoffice filtra por ele, o CSV comercial
+  exporta-o, os emails leem `plan->name` — e as duas colunas nunca podem
+  discordar: a garantia é uma **chave estrangeira composta**
+  `(plan_version_id, plan_id)` sobre `plan_versions (id, plan_id)`, e não uma
+  convenção que o PHP tenha de manter.
+
+- **Instantâneo comercial mínimo na adesão**: `contracted_price_cents`,
+  `contracted_currency`, `billing_period` e `commercial_term_ends_at`, escritos
+  uma vez e imutáveis a partir daí, como já acontecia com
+  `SubscriptionPayment`. O sistema preservava bem o dinheiro e mal a
+  **promessa**: não havia onde registar o que foi acordado enquanto nenhum
+  pagamento existe — o Base gratuito, o período experimental, a concessão do
+  operador, a quinzena entre pedir uma transferência e confirmá-la. **NULL não
+  é zero:** NULL é «nunca foi acordado nem registado», `0` é «alguém acordou
+  explicitamente que isto não custa nada». Pela mesma razão, um
+  `billing_period` NULL não é `none`. E `commercial_term_ends_at` **não é**
+  `ends_at`: um é até quando a *condição* se mantém, o outro é até quando o
+  *acesso* corre.
+
+- **`CommercialCondition::Promotional`**, uma condição por tempo limitado que
+  não é `Standard` — usar `standard` faria `normallyPaid()` responder `true`
+  para contas que nada devem. O enum passa a poder nomeá-la; ninguém a aplica
+  automaticamente a conta nenhuma.
+
+- **A versão contratada é visível no backoffice.** A ficha da conta mostra
+  «Plano atual» e, ao lado, `v1`/`v2` — **apenas leitura**. Duas contas em «Pro»
+  podem estar em ofertas diferentes, e responder «v1 ou v2?» deixa de exigir um
+  cliente SQL. Não existe editor de versões nesta versão: mover uma subscrição
+  entre versões é um ato deliberado e não se faz a partir de uma etiqueta.
+
+### Changed
+
+- **A composição e os limits passam a ser versionados.** `Entitlements` e
+  `Limits` deixam de ler o plano e passam a ler a versão contratada pela
+  subscrição em vigor. Os *caps* seguiram os módulos de propósito: versionar a
+  composição e deixar os limites vivos recriaria o mesmo defeito uma dimensão
+  ao lado — quem comprou o Pro com 8 turmas mantém 8 quando o Pro passar a
+  vender 20. A quota opcional de IA lida por `AiQuota` é um limite como os
+  outros e ficou congelada na versão pela mesma razão; a quota **por omissão da
+  plataforma** não é versionada, porque não promete nada a ninguém.
+
+- **`Plan::modules()` e `plans.limits` foram removidos, não descontinuados.**
+  Deixados a coexistir com a versão, cada leitor por migrar continuaria a
+  responder — de forma plausível, errada e silenciosa. Removidos, cada um parte
+  e é migrado. `module_plan` deixou de ser fonte funcional e a tabela é largada
+  na própria migration. A landing e o backoffice de IA passam a ler a **versão
+  atualmente publicada** de cada plano: quem visita a página de preços não é
+  ainda cliente grandfathered de ninguém.
+
+- **O seeder publica em vez de alterar.** O `EntitlementsSeeder` continua a ser
+  o único sítio onde a composição de cada plano está escrita — isso não mudou.
+  Mudou o que faz com ela: compara-a com a última versão publicada e só publica
+  a versão N+1 se forem genuinamente diferentes. Idempotente no sentido forte —
+  correr duas vezes cria **uma** versão; correr depois de uma alteração real
+  cria **exatamente mais uma**; a versão anterior fica intacta. A primeira
+  execução depois da migration reconhece a v1 equivalente e não publica nada.
+
+- **A descida de plano lê a versão original.** `retainReadOnlyAfterDowngrade()`
+  percorre as subscrições históricas e lê, de cada uma, a **versão que ela
+  contratou** — nunca a composição que esse plano tem hoje. Era este o método
+  em torno do qual a ADR-0008 foi escrita: perguntar «o que é que este
+  professor podia fazer quando escreveu isto?» ao plano atual fazia com que
+  correr o seeder reescrevesse o passado.
+
+- **Todos os caminhos que criam uma subscrição ligam-na a uma versão real.**
+  `SubscribeOrganization`, `CreatePersonalOrganization`,
+  `CreateInstitutionalOrganization` e `ChangeOrganizationPlan` resolvem pela
+  versão que o plano vende hoje; `ChangeOrganizationPlan` aceita também uma
+  versão explícita, e mover um subscritor para a frente passa a ser um ato
+  explícito. Um plano sem nada publicado **recusa a venda** em vez de produzir
+  uma subscrição com direito a nada.
+
+### Segurança da migração
+
+- **O backfill preserva integralmente as capacidades e os limits.** A v1 de
+  cada plano é uma cópia byte a byte do que os *resolvers* já liam — Base v1,
+  Pro v1 e Institucional v1 são a composição da 0.87 — e **todas** as
+  subscrições, incluindo as fechadas, recebem a v1 do seu próprio plano.
+  «Ninguém ganha nem perde uma capacidade» é uma consequência da construção e
+  não uma esperança: o mapa de acesso efetivo antes e depois é comparado num
+  teste. Zero órfãos — uma subscrição sem versão para apontar aborta a migration
+  em vez de se inventar uma.
+
+- **Nenhuma história comercial é inventada.** As quatro colunas do instantâneo
+  ficam **NULL** em todas as linhas existentes. Fazer o contrário seria afirmar
+  que contas anteriores à coluna aderiram sob a condição promocional de 2026/27,
+  que a base de dados nunca teve prova para dizer. Não se inventa condição
+  2026/27, não se inventa Fundador, não se inventa periodicidade.
+
+- **O rollback recusa perder história.** Reverter é suportado exatamente no
+  estado que as migrations deixam ao correr pela primeira vez: uma versão por
+  plano e nada registado no instantâneo. A partir do momento em que existe uma
+  v2, ou em que subscritores do mesmo plano estão espalhados por versões
+  diferentes, ou em que há prova comercial escrita, o `down()` **recusa em voz
+  alta** — o esquema anterior só sabe guardar uma composição por plano, e um
+  «caminho de downgrade» que escolhesse uma versão por subscrição estaria a
+  inventar o facto que acabara de apagar. Cada recusa acontece **antes** de
+  qualquer destruição, e a base de dados fica a funcionar.
+
+- **Três migrations novas**, deliberadamente separadas porque fazem promessas
+  diferentes e cada uma tem de ser verificável sozinha: `plan_versions` +
+  `module_plan_version` com a v1 de cada plano; `plan_version_id` nas
+  subscrições, com backfill e chave composta; e o instantâneo comercial, sem
+  backfill nenhum.
+
+### Notas
+
+- **Sem alterações funcionais visíveis para o utilizador final.** Nenhuma
+  capacidade mudou de plano nesta versão. O que mudou é de onde a resposta é
+  lida.
+
+- **O deploy tem de correr as migrations e, depois,
+  `php artisan db:seed --class=EntitlementsSeeder`.** O seeder é idempotente e,
+  imediatamente a seguir ao backfill, reconhece a v1 como equivalente e não
+  publica uma v2.
+
+- **Nada aqui implementa renovação, faturação recorrente, vouchers, a condição
+  de Fundador, a aplicação da promoção de 2026/27 ou o cancelamento
+  self-service.** O esquema passa a saber **registar** as condições que a ADR
+  nomeia; aplicá-las é uma decisão do operador, tomada mais tarde, como um
+  UPDATE auditado.
+
+- **Testes.** Nove ficheiros novos sustentam cada promessa acima:
+  `PlanVersionBackfillTest` (o mapa de acesso é idêntico antes e depois),
+  `PlanVersionHistoryTest` (uma composição futura não reescreve o passado),
+  `PlanVersionPublishingTest` (idempotência e imutabilidade),
+  `PlanVersionRollbackSafetyTest` (as recusas, e que nada é destruído a caminho
+  delas), `CommercialSnapshotTest` (NULL ≠ 0, e um termo comercial expirado não
+  termina o acesso), `PlanVersionLimitsTest`, `PlanVersionArchitectureTest`
+  (nada na aplicação lê a composição de um plano diretamente),
+  `ContractedVersionVisibilityTest` e `ChangeOrganizationPlanVersionTest`.
+
 ## [0.87.0] — 2026-08-29
 
 A fronteira entre Base e Pro passa a ser a que a Matriz Mestre descreve, nos
