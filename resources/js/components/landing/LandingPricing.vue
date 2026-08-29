@@ -58,6 +58,8 @@ const props = defineProps<{
     plans: LandingPlan[];
     authenticated: boolean;
     contactEmail: string | null;
+    /** On /planos the page hero already says it; no second heading. */
+    headless?: boolean;
 }>();
 
 const copyFor = (plan: LandingPlan): PlanCommercial =>
@@ -109,9 +111,15 @@ function visitHref(plan: LandingPlan) {
 <template>
     <LandingSection
         id="planos"
-        eyebrow="Planos"
-        title="Um Lapispro para cada forma de trabalhar."
-        lead="Menos peso administrativo. Mais espaço para ser professor. O que muda entre os planos não é a qualidade do que faz — é até onde o Lapispro o acompanha."
+        :eyebrow="headless ? undefined : 'Planos'"
+        :title="
+            headless ? undefined : 'Um Lapispro para cada forma de trabalhar.'
+        "
+        :lead="
+            headless
+                ? undefined
+                : 'Menos peso administrativo. Mais espaço para ser professor. O que muda entre os planos não é a qualidade do que faz — é até onde o Lapispro o acompanha.'
+        "
     >
         <div v-if="plans.length" class="grid gap-5 lg:grid-cols-3">
             <RevealOnScroll

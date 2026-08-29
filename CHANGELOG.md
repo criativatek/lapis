@@ -14,6 +14,26 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > cada um sob o título da frente a que pertenceu. A 0.85.0 é o primeiro
 > release em que as duas linhagens voltam a ser uma só.
 
+## [0.98.0] — 2026-08-30
+
+Correcções do `/critique` (crítica de design contra o `.impeccable.md`):
+
+- **/planos tem um hero a sério** (`PageHero` com a fotografia do
+  planificador, título bicolor, chips); `LandingPricing` ganha `headless` para
+  não repetir o cabeçalho por baixo.
+- **O único movimento da página**: no cartão do hero, o «confirmar» da última
+  linha vira o «5» do professor quando o cartão entra no ecrã — a proposta a
+  tornar-se decisão, uma vez, 900ms, e nunca com `prefers-reduced-motion`
+  (`HeroCard`, keyframe `pop`).
+- **/seguranca deixa de dizer o mesmo duas vezes**: sai `LandingSecurity`
+  (as seis medidas já o diziam).
+- **Tiles bento com desenho próprio** (`TileArt`): lista de alunos, linha de
+  evolução, horário, relatório — em CSS/SVG, sem dados nem afirmações.
+- **A linha azul do H1 é sempre uma frase completa**, ou não existe: revistos
+  os títulos de Avaliação, Turmas, Aulas, Relatórios e Segurança.
+- **Telemóvel**: a fotografia do hero fica acima do cartão em vez de debaixo
+  dele — tapava as mãos.
+
 ## [0.97.0] — 2026-08-30
 
 Passagem de design com o ui-ux-pro-max («falta um pouco mais design»). A

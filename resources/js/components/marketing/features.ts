@@ -75,8 +75,8 @@ export const FEATURES: readonly Feature[] = [
     {
         slug: 'avaliacao',
         eyebrow: 'Avaliação de alunos',
-        title: 'Os seus critérios. O seu peso.',
-        titleAccent: 'A sua escala.',
+        title: 'Os seus critérios, o seu peso, a sua escala.',
+        titleAccent: 'O professor decide.',
         lead: 'Domínios com os nomes que a escola usa, ponderações por elemento, e uma escala de 1 a 5, de 0 a 20 ou a que a escola definiu. O Lapispro calcula a média ponderada e propõe a classificação — o professor confirma, corrige ou descarta.',
         photo: PHOTOS.hands,
         screenshot: {
@@ -136,8 +136,8 @@ export const FEATURES: readonly Feature[] = [
     {
         slug: 'turmas',
         eyebrow: 'Turmas e alunos',
-        title: 'As suas turmas,',
-        titleAccent: 'sem as escrever outra vez.',
+        title: 'As suas turmas, prontas em minutos.',
+        titleAccent: 'Sem as escrever outra vez.',
         lead: 'Importe a pauta que a escola já lhe deu — números, nomes e fotografias no mesmo passo. Cada turma fica ligada ao ano letivo, à disciplina e ao perfil de avaliação com que é avaliada.',
         photo: PHOTOS.classroom,
         screenshot: {
@@ -256,7 +256,7 @@ export const FEATURES: readonly Feature[] = [
         slug: 'aulas-e-sumarios',
         eyebrow: 'Aulas, sumários e horário',
         title: 'Planeie a semana, escreva o sumário.',
-        titleAccent: 'Siga o ano.',
+        titleAccent: 'O ano inteiro no mesmo sítio.',
         lead: 'O horário do professor, as aulas com sumário, as sequências reutilizáveis e a agenda do ano letivo — ao lado das turmas e das classificações, não noutra aplicação.',
         photo: PHOTOS.planning,
         screenshot: {
@@ -310,8 +310,8 @@ export const FEATURES: readonly Feature[] = [
     {
         slug: 'relatorios',
         eyebrow: 'Relatórios e pautas',
-        title: 'O relatório',
-        titleAccent: 'já vem meio escrito.',
+        title: 'O relatório parte do que já registou.',
+        titleAccent: 'Já vem meio escrito.',
         lead: 'Relatórios de avaliação cujas secções partem do que já registou — resultados, classificações, estratégias. Pautas por período e quadro síntese exportáveis. Finalizar fixa o documento; corrigir depois deriva outro.',
         photo: PHOTOS.hands,
         screenshot: {

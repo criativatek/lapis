@@ -21,6 +21,7 @@ import MarketingShell from '@/components/marketing/MarketingShell.vue';
 import PageHero from '@/components/marketing/PageHero.vue';
 import PhotoBand from '@/components/marketing/PhotoBand.vue';
 import ScreenFrame from '@/components/marketing/ScreenFrame.vue';
+import TileArt from '@/components/marketing/TileArt.vue';
 
 /**
  * The home page of the marketing site.
@@ -48,6 +49,7 @@ const areas = [
         body: 'Os seus critérios, pesos e escala. Média ponderada, proposta na escala, e o professor a decidir.',
         href: '/funcionalidades/avaliacao',
         tone: 'bg-blue-100 text-blue-700',
+        art: null,
     },
     {
         icon: Users,
@@ -55,6 +57,7 @@ const areas = [
         body: 'Importe a pauta da escola com nomes, números e fotografias. Um ano letivo de cada vez.',
         href: '/funcionalidades/turmas',
         tone: 'bg-amber-100 text-amber-700',
+        art: 'roster',
     },
     {
         icon: BarChart3,
@@ -62,6 +65,7 @@ const areas = [
         body: 'Quadro síntese, evolução por aluno, estratégias e registos — fora do cálculo.',
         href: '/funcionalidades/acompanhamento',
         tone: 'bg-emerald-100 text-emerald-700',
+        art: 'trend',
     },
     {
         icon: CalendarDays,
@@ -69,6 +73,7 @@ const areas = [
         body: 'Horário, aulas com sumário, sequências reutilizáveis e a agenda do ano letivo.',
         href: '/funcionalidades/aulas-e-sumarios',
         tone: 'bg-blue-100 text-blue-700',
+        art: 'timetable',
     },
     {
         icon: FileText,
@@ -76,6 +81,7 @@ const areas = [
         body: 'Relatórios que partem do que já registou. Pautas e quadro síntese exportáveis.',
         href: '/funcionalidades/relatorios',
         tone: 'bg-amber-100 text-amber-700',
+        art: 'report',
     },
 ] as const;
 
@@ -259,6 +265,7 @@ const measures = [
                     >
                         {{ area.body }}
                     </p>
+                    <TileArt v-if="area.art" :kind="area.art" />
                     <span
                         class="mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-blue-700"
                     >

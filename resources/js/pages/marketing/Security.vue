@@ -9,7 +9,6 @@ import {
     ScrollText,
 } from '@lucide/vue';
 import LandingFinalCta from '@/components/landing/LandingFinalCta.vue';
-import LandingSecurity from '@/components/landing/LandingSecurity.vue';
 import BenefitCard from '@/components/marketing/BenefitCard.vue';
 import ColorBand from '@/components/marketing/ColorBand.vue';
 import MarketingShell from '@/components/marketing/MarketingShell.vue';
@@ -63,8 +62,8 @@ const measures = [
     <MarketingShell v-slot="{ authenticated }" :contact-email="contactEmail">
         <PageHero
             eyebrow="Segurança e dados"
-            title="Dados de alunos exigem"
-            title-accent="proteção desde a origem."
+            title="Dados de alunos exigem proteção."
+            title-accent="Desde a origem, não no fim."
             lead="A informação académica e pessoal de menores está entre os dados mais sensíveis que existem numa escola. No Lapispro a proteção faz parte da arquitetura, não é um acrescento no fim."
             :image="{
                 src: '/images/marketing/classroom.webp',
@@ -91,8 +90,6 @@ const measures = [
                 />
             </div>
         </ColorBand>
-
-        <LandingSecurity />
 
         <PhotoBand
             eyebrow="RGPD"

@@ -107,9 +107,7 @@ withDefaults(
                 </ul>
             </div>
 
-            <div
-                class="relative min-h-[22rem] min-w-0 sm:min-h-[26rem] lg:min-h-0"
-            >
+            <div class="relative min-w-0 lg:min-h-0">
                 <img
                     :src="image.src"
                     :alt="image.alt"
@@ -117,7 +115,7 @@ withDefaults(
                     height="1067"
                     fetchpriority="high"
                     decoding="async"
-                    class="absolute inset-0 h-full w-full object-cover"
+                    class="h-64 w-full object-cover sm:h-80 lg:absolute lg:inset-0 lg:h-full"
                 />
                 <!-- Whatever floats over the photo: a card with the product,
                      or nothing. Kept out of this component so each page can

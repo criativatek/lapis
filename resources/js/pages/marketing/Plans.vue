@@ -7,6 +7,7 @@ import LandingPricing from '@/components/landing/LandingPricing.vue';
 import LandingVoucher from '@/components/landing/LandingVoucher.vue';
 import type { LandingPlan } from '@/components/landing/types';
 import MarketingShell from '@/components/marketing/MarketingShell.vue';
+import PageHero from '@/components/marketing/PageHero.vue';
 
 /**
  * /planos — the three plans, the Fundador condition, the comparison, the
@@ -20,31 +21,29 @@ defineProps<{ plans: LandingPlan[]; contactEmail: string | null }>();
     <Head title="Planos e preços | Lapispro" />
 
     <MarketingShell v-slot="{ authenticated }" :contact-email="contactEmail">
-        <div class="mx-auto w-full max-w-6xl px-6 pt-12 sm:px-8 sm:pt-16">
-            <p
-                class="inline-flex rounded-full bg-blue-50 px-3.5 py-1.5 text-[12px] font-semibold tracking-[0.08em] text-blue-700 uppercase"
-            >
-                Planos
-            </p>
-            <h1
-                class="mt-6 max-w-3xl text-4xl font-semibold tracking-tight text-balance sm:text-5xl lg:text-[3.6rem] lg:leading-[1.04]"
-            >
-                Comece de graça. Suba quando o ano pedir mais.
-            </h1>
-            <p
-                class="mt-6 max-w-2xl text-lg leading-relaxed text-pretty text-muted-foreground sm:text-xl"
-            >
-                O plano Base é gratuito e fica ativo sem cartão. O Pro custa
-                44,90 € por ano — menos de 3,75 € por mês — e os primeiros 250
-                professores têm a condição Membro Fundador. Escolas e
-                agrupamentos falam connosco.
-            </p>
-        </div>
+        <PageHero
+            eyebrow="Planos"
+            title="Comece de graça."
+            title-accent="Suba quando o ano pedir mais."
+            lead="O plano Base é gratuito e fica ativo sem cartão. O Pro custa 44,90 € por ano — menos de 3,75 € por mês — e os primeiros 250 professores têm a condição Membro Fundador. Escolas e agrupamentos falam connosco."
+            :image="{
+                src: '/images/marketing/planning.webp',
+                alt: 'Mesa vista de cima com um planificador semanal, caneta e café.',
+            }"
+            :authenticated="authenticated"
+            cta="Começar gratuitamente"
+            :chips="[
+                'Sem cartão',
+                'Sem pagamento mensal',
+                'Membro Fundador até 250',
+            ]"
+        />
 
         <LandingPricing
             :plans="plans"
             :authenticated="authenticated"
             :contact-email="contactEmail"
+            headless
         />
         <LandingCompare :plans="plans" />
         <LandingVoucher />

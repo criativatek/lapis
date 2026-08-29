@@ -1,29 +1,71 @@
 <script setup lang="ts">
+import { onBeforeUnmount, onMounted, ref } from 'vue';
+
 /**
- * The product card that floats over the hero photograph: a slice of the
- * results grid, because the grid IS the product.
+ * The product card over the hero photograph: a slice of the results grid,
+ * because the grid IS the product.
  *
  * Demo scenario numbers (DemoDataSeeder — one class, fictional students,
  * pseudonyms as the application shows them). It is not a claim about anybody
  * real, and it never says how many teachers or schools use the product: the
  * site invents no social proof.
+ *
+ * THE ONE MOVING PART ON THE PAGE. When the card scrolls into view, the last
+ * row's «confirmar» becomes the teacher's «5» — the proposal turning into a
+ * decision, which is the whole product in 600ms. Once, and never under
+ * prefers-reduced-motion (the decided state is shown straight away).
+ *
+ * Below `lg` the card sits under the photograph instead of over it: on a
+ * phone it covered the hands, which are the point of the picture.
  */
 const rows = [
     { student: 'A03', domains: ['4,2', '3,8', '—'], proposal: 4, level: 4 },
     { student: 'A07', domains: ['3,1', '3,4', '2,9'], proposal: 3, level: 3 },
-    {
-        student: 'A12',
-        domains: ['4,8', '4,5', '4,6'],
-        proposal: 5,
-        level: null,
-    },
+    { student: 'A12', domains: ['4,8', '4,5', '4,6'], proposal: 5, level: 5 },
 ] as const;
+
+const decided = ref(false);
+const root = ref<HTMLElement | null>(null);
+let observer: IntersectionObserver | null = null;
+let timer: ReturnType<typeof setTimeout> | null = null;
+
+onMounted(() => {
+    const reduced = window.matchMedia(
+        '(prefers-reduced-motion: reduce)',
+    ).matches;
+
+    if (reduced || !('IntersectionObserver' in window) || !root.value) {
+        decided.value = true;
+
+        return;
+    }
+
+    observer = new IntersectionObserver(
+        (entries) => {
+            if (entries.some((entry) => entry.isIntersecting)) {
+                timer = setTimeout(() => (decided.value = true), 900);
+                observer?.disconnect();
+            }
+        },
+        { threshold: 0.6 },
+    );
+    observer.observe(root.value);
+});
+
+onBeforeUnmount(() => {
+    observer?.disconnect();
+
+    if (timer) {
+        clearTimeout(timer);
+    }
+});
 </script>
 
 <template>
     <div
+        ref="root"
         aria-hidden="true"
-        class="absolute right-4 bottom-4 left-4 rounded-2xl bg-white/95 p-4 shadow-[0_24px_60px_-20px_rgba(15,23,42,0.5)] ring-1 ring-black/5 backdrop-blur sm:right-8 sm:bottom-8 sm:left-auto sm:w-[22rem] sm:p-5"
+        class="relative mx-4 -mt-10 mb-4 rounded-2xl bg-white/95 p-4 shadow-[0_24px_60px_-20px_rgba(15,23,42,0.5)] ring-1 ring-black/5 backdrop-blur sm:mx-6 sm:p-5 lg:absolute lg:right-8 lg:bottom-8 lg:mx-0 lg:mt-0 lg:mb-0 lg:w-[22rem]"
     >
         <div class="flex items-baseline justify-between">
             <p class="text-sm font-semibold text-slate-900">
@@ -46,7 +88,7 @@ const rows = [
             </thead>
             <tbody class="tabular-nums">
                 <tr
-                    v-for="row in rows"
+                    v-for="(row, rowIndex) in rows"
                     :key="row.student"
                     class="border-t border-slate-100"
                 >
@@ -64,8 +106,13 @@ const rows = [
                     </td>
                     <td class="py-1.5 text-right">
                         <span
-                            v-if="row.level !== null"
+                            v-if="rowIndex < rows.length - 1 || decided"
                             class="inline-block min-w-6 rounded-md bg-blue-600 px-1.5 py-0.5 text-center text-[11px] font-semibold text-white"
+                            :class="
+                                rowIndex === rows.length - 1
+                                    ? 'motion-safe:animate-[pop_500ms_cubic-bezier(0.34,1.56,0.64,1)]'
+                                    : undefined
+                            "
                             >{{ row.level }}</span
                         >
                         <span
