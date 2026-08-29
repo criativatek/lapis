@@ -1,28 +1,31 @@
 <script setup lang="ts">
-import { Head, usePage } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { Head, Link } from '@inertiajs/vue3';
+import {
+    ArrowRight,
+    BarChart3,
+    CalendarDays,
+    FileText,
+    Scale,
+    Users,
+} from '@lucide/vue';
 import LandingAi from '@/components/landing/LandingAi.vue';
-import LandingCompare from '@/components/landing/LandingCompare.vue';
-import LandingFaq from '@/components/landing/LandingFaq.vue';
-import LandingFeatures from '@/components/landing/LandingFeatures.vue';
 import LandingFinalCta from '@/components/landing/LandingFinalCta.vue';
-import LandingFooter from '@/components/landing/LandingFooter.vue';
-import LandingHeader from '@/components/landing/LandingHeader.vue';
-import LandingHero from '@/components/landing/LandingHero.vue';
 import LandingHowItWorks from '@/components/landing/LandingHowItWorks.vue';
-import LandingPricing from '@/components/landing/LandingPricing.vue';
-import LandingSecurity from '@/components/landing/LandingSecurity.vue';
-import LandingVoucher from '@/components/landing/LandingVoucher.vue';
 import type { LandingPlan } from '@/components/landing/types';
-import { useLightThemeLock } from '@/composables/useLightThemeLock';
+import ColorBand from '@/components/marketing/ColorBand.vue';
+import MarketingShell from '@/components/marketing/MarketingShell.vue';
+import PageHero from '@/components/marketing/PageHero.vue';
+import PhotoBand from '@/components/marketing/PhotoBand.vue';
+import ScreenFrame from '@/components/marketing/ScreenFrame.vue';
 
 /**
- * The public landing page.
+ * The home page of the marketing site.
  *
- * A visitor who is already signed in still lands here — the header and both
- * calls to action swap to «Ir para o painel» instead of redirecting, which is
- * what somebody arriving from a shared link expects and the only shape that
- * cannot loop against the dashboard.
+ * Since 0.94.0 it is a front door, not the whole house: each area of the
+ * product has its own page (see App\Support\Seo\PublicPages), and this one
+ * says what the product is, shows it once, and points at the rest. That is
+ * also why it no longer carries the plans: /planos does, with the same
+ * component, and a visitor who wants prices is one click away.
  *
  * The SEO tags are NOT here: they live in resources/views/app.blade.php, which
  * is rendered even when the SSR process (resources/js/ssr.ts) is down. This
@@ -31,70 +34,193 @@ import { useLightThemeLock } from '@/composables/useLightThemeLock';
 
 defineProps<{
     plans: LandingPlan[];
-    /**
-     * Where «Falar connosco» writes to, from the platform settings. Null when
-     * the operator has not set one — the Institucional card then renders
-     * without the button rather than pointing at a mailbox nobody reads.
-     */
     contactEmail: string | null;
 }>();
 
-const page = usePage();
-const authenticated = computed(() => page.props.auth.user !== null);
-
-useLightThemeLock();
-
-/*
- * THERE IS NO SMOOTH SCROLLING HERE, and that is deliberate.
- *
- * It was tried and removed: the page is roughly 13000px tall on a phone, so a
- * jump from the hero to «Perguntas» animated for over three seconds. Measured
- * on a touch-emulated viewport, the page was still travelling at 2.5s — which
- * a visitor reads as «the menu is broken», not as «this is elegant». A native,
- * instant jump is what an anchor is supposed to do, and it is the same on
- * every browser including Safari on iOS.
- */
+const areas = [
+    {
+        icon: Scale,
+        title: 'Avaliação de alunos',
+        body: 'Os seus critérios, pesos e escala. Média ponderada, proposta na escala, e o professor a decidir.',
+        href: '/funcionalidades/avaliacao',
+        tone: 'bg-blue-100 text-blue-700',
+    },
+    {
+        icon: Users,
+        title: 'Turmas e alunos',
+        body: 'Importe a pauta da escola com nomes, números e fotografias. Um ano letivo de cada vez.',
+        href: '/funcionalidades/turmas',
+        tone: 'bg-amber-100 text-amber-700',
+    },
+    {
+        icon: BarChart3,
+        title: 'Acompanhamento',
+        body: 'Quadro síntese, evolução por aluno, estratégias e registos — fora do cálculo.',
+        href: '/funcionalidades/acompanhamento',
+        tone: 'bg-emerald-100 text-emerald-700',
+    },
+    {
+        icon: CalendarDays,
+        title: 'Aulas e sumários',
+        body: 'Horário, aulas com sumário, sequências reutilizáveis e a agenda do ano letivo.',
+        href: '/funcionalidades/aulas-e-sumarios',
+        tone: 'bg-blue-100 text-blue-700',
+    },
+    {
+        icon: FileText,
+        title: 'Relatórios e pautas',
+        body: 'Relatórios que partem do que já registou. Pautas e quadro síntese exportáveis.',
+        href: '/funcionalidades/relatorios',
+        tone: 'bg-amber-100 text-amber-700',
+    },
+] as const;
 </script>
 
 <template>
     <!--
         MUST MATCH App\Support\Seo\LandingSeo::TITLE, which is what the server
-        renders and what a crawler reads. The formatter in app.ts leaves a
+        renders and what a crawler reads. The formatter in inertia.ts leaves a
         title that already names the brand alone, so this one survives intact
         instead of coming out as «… - Lapispro».
     -->
     <Head title="Lapispro | Plataforma para Professores — Avaliação e Turmas" />
 
-    <div class="min-h-screen bg-background text-foreground">
-        <a
-            href="#conteudo"
-            class="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[60] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground"
-        >
-            Saltar para o conteúdo
-        </a>
-
-        <LandingHeader :authenticated="authenticated" />
-
-        <main id="conteudo">
-            <LandingHero :authenticated="authenticated" />
-            <LandingFeatures />
-            <LandingHowItWorks />
-            <LandingAi />
-            <LandingSecurity />
-            <LandingPricing
-                :plans="plans"
-                :authenticated="authenticated"
-                :contact-email="contactEmail"
-            />
-            <LandingCompare :plans="plans" />
-            <LandingVoucher />
-            <LandingFaq />
-            <LandingFinalCta :authenticated="authenticated" />
-        </main>
-
-        <LandingFooter
+    <MarketingShell v-slot="{ authenticated }" :contact-email="contactEmail">
+        <PageHero
+            eyebrow="Básico · Secundário · Profissional · Universitário"
+            title="Menos peso administrativo. Mais espaço para ser professor."
+            lead="O Lapispro é uma plataforma para professores que reúne avaliação de alunos, gestão de turmas, acompanhamento pedagógico, aulas, sumários e relatórios num único lugar — com IA que interpreta e um professor que decide sempre."
+            :image="{
+                src: '/images/marketing/hero.webp',
+                alt: 'Mãos de uma professora a escrever num caderno ao lado de um portátil aberto.',
+            }"
             :authenticated="authenticated"
-            :contact-email="contactEmail"
+        >
+            <template #secondary>
+                <Link
+                    href="/funcionalidades/avaliacao"
+                    class="inline-flex h-10 items-center rounded-md px-4 text-sm font-medium underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                >
+                    Ver como funciona
+                </Link>
+            </template>
+        </PageHero>
+
+        <ColorBand
+            tone="blue"
+            eyebrow="O produto"
+            title="Uma grelha que sabe o que aconteceu — e nunca inventa um zero."
+            lead="Média ponderada por domínio, proposta na escala da escola e o nível que o professor atribui. Vazio não é zero, «não aplicável» sai do denominador, quem chega tarde não é penalizado."
+        >
+            <ScreenFrame
+                src="/images/landing/grid.webp"
+                alt="Grelha de resultados de uma turma no Lapispro: média ponderada por domínio, proposta na escala e nível atribuído pelo professor."
+                :width="1600"
+                :height="854"
+                eager
+            />
+        </ColorBand>
+
+        <ColorBand
+            id="funcionalidades"
+            eyebrow="Funcionalidades"
+            title="Um ano letivo de ponta a ponta."
+            lead="Organizar, avaliar, acompanhar, planear e documentar — pela ordem por que o trabalho do professor acontece. Cada área tem a sua página."
+        >
+            <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                <Link
+                    v-for="area in areas"
+                    :key="area.href"
+                    :href="area.href"
+                    class="group rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/5 transition-[box-shadow,transform] duration-300 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-safe:hover:-translate-y-0.5 sm:p-7"
+                >
+                    <span
+                        aria-hidden="true"
+                        class="flex size-11 items-center justify-center rounded-2xl"
+                        :class="area.tone"
+                    >
+                        <component :is="area.icon" class="size-5" />
+                    </span>
+                    <h3 class="mt-5 text-lg font-semibold tracking-tight">
+                        {{ area.title }}
+                    </h3>
+                    <p
+                        class="mt-2 text-sm leading-relaxed text-muted-foreground"
+                    >
+                        {{ area.body }}
+                    </p>
+                    <span
+                        class="mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-blue-700"
+                    >
+                        Saber mais
+                        <ArrowRight
+                            aria-hidden="true"
+                            class="size-4 transition-transform duration-300 group-hover:translate-x-0.5"
+                        />
+                    </span>
+                </Link>
+                <Link
+                    href="/planos"
+                    class="group flex flex-col justify-between rounded-3xl bg-amber-100 p-6 transition-[box-shadow,transform] duration-300 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-safe:hover:-translate-y-0.5 sm:p-7"
+                >
+                    <div>
+                        <p
+                            class="text-[12px] font-semibold tracking-[0.12em] text-amber-800 uppercase"
+                        >
+                            Planos
+                        </p>
+                        <h3
+                            class="mt-3 text-2xl font-semibold tracking-tight text-balance"
+                        >
+                            Base gratuito. Pro por 44,90 € por ano.
+                        </h3>
+                    </div>
+                    <span
+                        class="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-amber-900"
+                    >
+                        Ver os planos
+                        <ArrowRight
+                            aria-hidden="true"
+                            class="size-4 transition-transform duration-300 group-hover:translate-x-0.5"
+                        />
+                    </span>
+                </Link>
+            </div>
+        </ColorBand>
+
+        <LandingHowItWorks />
+
+        <PhotoBand
+            eyebrow="A regra da casa"
+            title="O sistema propõe. O professor decide."
+            body="Nenhuma classificação é atribuída, alterada ou decidida por um modelo. O cálculo é determinístico e explicável, a proposta é do Lapispro, e a confirmação é sempre do professor — com o que entrou no resultado disponível para consulta."
+            :image="{
+                src: '/images/marketing/teacher-back.webp',
+                alt: 'Professora de costas a olhar para um quadro com anotações.',
+            }"
+            flip
         />
-    </div>
+
+        <LandingAi />
+
+        <ColorBand
+            tone="emerald"
+            eyebrow="Segurança e dados"
+            title="Dados de alunos exigem proteção desde a origem."
+            lead="Nomes cifrados e separados, isolamento por organização no servidor, dois fatores e passkeys, registo de operações, IA sem dados identificáveis."
+        >
+            <Link
+                href="/seguranca"
+                class="group inline-flex items-center gap-2 rounded-full bg-emerald-700 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-800 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            >
+                Como protegemos os dados
+                <ArrowRight
+                    aria-hidden="true"
+                    class="size-4 transition-transform duration-300 group-hover:translate-x-0.5"
+                />
+            </Link>
+        </ColorBand>
+
+        <LandingFinalCta :authenticated="authenticated" />
+    </MarketingShell>
 </template>

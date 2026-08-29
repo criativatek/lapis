@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { Link } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
 import { Menu } from '@lucide/vue';
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import AppLogoWordmark from '@/components/AppLogoWordmark.vue';
 import { Button } from '@/components/ui/button';
 import {
@@ -20,7 +20,7 @@ import {
     LANDING_PRIMARY,
 } from './chrome';
 import type { LandingNavItem } from './navigation';
-import { LANDING_NAV } from './navigation';
+import { COMPANY_NAV, FEATURE_NAV, LANDING_NAV } from './navigation';
 
 /**
  * The public header. Transparent over the hero and only grows its border and
@@ -58,52 +58,13 @@ onMounted(() => {
 
 onBeforeUnmount(() => window.removeEventListener('scroll', onScroll));
 
-/**
- * Navigating from the mobile sheet: close first, scroll second.
- *
- * The sheet is a dialog, and while it is open reka-ui sets `overflow: hidden`
- * on the body — a scroll requested at that moment is simply dropped, which is
- * how every link in this menu became a dead end. Waiting a fixed number of
- * milliseconds was guesswork; the close animation is not the same length on
- * every device. This waits for the panel to actually leave the DOM and gives
- * up after about a second and a half, so a link never stays dead.
- *
- * `scrollIntoView` rather than a computed offset, because it honours the
- * section's own `scroll-margin-top` — the header height stays in one place.
- * No `behavior`, so the jump is instant: see the note in Welcome.vue.
- */
-function goToSection(event: MouseEvent, href: string): void {
-    const target = document.querySelector(href);
-
-    if (!target) {
-        return;
-    }
-
-    event.preventDefault();
-    mobileOpen.value = false;
-    scrollWhenSheetIsGone(target);
-}
-
-function scrollWhenSheetIsGone(target: Element, framesLeft = 90): void {
-    const stillMounted =
-        document.querySelector('[data-slot="sheet-content"]') !== null;
-
-    if (stillMounted && framesLeft > 0) {
-        window.requestAnimationFrame(() =>
-            scrollWhenSheetIsGone(target, framesLeft - 1),
-        );
-
-        return;
-    }
-
-    // One frame after the panel unmounts: the body style is restored during
-    // that unmount, and asking a still-locked document to scroll does nothing.
-    window.requestAnimationFrame(() =>
-        target.scrollIntoView({ block: 'start' }),
-    );
-}
-
 const items: readonly LandingNavItem[] = LANDING_NAV;
+
+/** The sheet has room for every page; the bar shows the short list. */
+const sheetItems: readonly LandingNavItem[] = [...FEATURE_NAV, ...COMPANY_NAV];
+
+const page = usePage();
+const current = computed(() => new URL(page.url, 'http://x').pathname);
 </script>
 
 <template>
@@ -144,19 +105,26 @@ const items: readonly LandingNavItem[] = LANDING_NAV;
                 class="mx-auto hidden items-center gap-1 lg:flex"
                 aria-label="Secções da página"
             >
-                <a
+                <Link
                     v-for="item in items"
                     :key="item.href"
                     :href="item.href"
                     class="group relative rounded-md px-3 py-2 text-sm font-medium transition-colors duration-300 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                    :class="CHROME_LINK"
+                    :class="[
+                        CHROME_LINK,
+                        current === item.href ? 'text-foreground' : '',
+                    ]"
+                    :aria-current="current === item.href ? 'page' : undefined"
                 >
                     {{ item.label }}
                     <span
                         aria-hidden="true"
-                        class="absolute inset-x-3 -bottom-0.5 h-px origin-left scale-x-0 bg-primary transition-transform duration-300 ease-out group-hover:scale-x-100 dark:bg-(--brand-amber)"
+                        class="absolute inset-x-3 -bottom-0.5 h-px origin-left bg-blue-600 transition-transform duration-300 ease-out group-hover:scale-x-100"
+                        :class="
+                            current === item.href ? 'scale-x-100' : 'scale-x-0'
+                        "
                     />
-                </a>
+                </Link>
             </nav>
 
             <div class="ml-auto flex items-center gap-2 lg:ml-0">
@@ -204,15 +172,20 @@ const items: readonly LandingNavItem[] = LANDING_NAV;
                             <SheetTitle class="text-base">Navegação</SheetTitle>
                         </SheetHeader>
                         <nav class="mt-6 flex flex-col gap-1">
-                            <a
-                                v-for="item in items"
+                            <Link
+                                v-for="item in sheetItems"
                                 :key="item.href"
                                 :href="item.href"
                                 class="rounded-md px-3 py-2.5 text-sm font-medium transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                                @click="goToSection($event, item.href)"
+                                :class="
+                                    current === item.href
+                                        ? 'bg-blue-50 text-blue-700'
+                                        : ''
+                                "
+                                @click="mobileOpen = false"
                             >
                                 {{ item.label }}
-                            </a>
+                            </Link>
                             <Link
                                 v-if="!authenticated"
                                 :href="login()"

@@ -177,7 +177,7 @@ class LandingSeoTest extends TestCase
     }
 
     #[Test]
-    public function the_sitemap_lists_the_one_public_page(): void
+    public function the_sitemap_lists_the_landing_and_never_the_app(): void
     {
         $response = $this->get('/sitemap.xml')->assertOk();
 

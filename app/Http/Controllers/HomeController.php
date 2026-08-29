@@ -2,9 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Module;
-use App\Models\Plan;
 use App\Models\PlatformSetting;
+use App\Support\Landing\PlanCards;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -45,46 +44,8 @@ class HomeController extends Controller
     public function __invoke(Request $request): Response
     {
         return Inertia::render('Welcome', [
-            'plans' => fn (): array => $this->plans(),
+            'plans' => fn (): array => PlanCards::all(),
             'contactEmail' => fn (): ?string => PlatformSetting::current()->publicContactEmail(),
         ]);
-    }
-
-    /**
-     * Each plan, in its own order, with the entitlement keys it carries.
-     *
-     * KEYS, NOT DISPLAY NAMES. The comparison table asks «does this plan
-     * carry `advanced_analytics`», not «is a module called Análises
-     * Avançadas» — a table keyed on display names breaks silently the day
-     * somebody renames one in the seeder, and renders a plan as missing a
-     * capability it has.
-     *
-     * The human-readable names are not sent: the cards say what a plan does
-     * in a teacher's words (`commercial.ts`), and a module name from the
-     * catalogue is neither that nor useful next to it.
-     *
-     * @return list<array{key: string, name: string, moduleKeys: list<string>}>
-     */
-    protected function plans(): array
-    {
-        $cards = [];
-
-        foreach (Plan::with('currentVersion.modules')->orderBy('sort_order')->get() as $plan) {
-            // A plan with nothing published yet shows no capabilities rather
-            // than blowing up a public page. It cannot happen in a seeded
-            // installation, and a landing that 500s is the worse of the two
-            // failures.
-            $version = $plan->currentVersionOrNull();
-
-            $cards[] = [
-                'key' => $plan->key,
-                'name' => $plan->name,
-                'moduleKeys' => $version === null ? [] : array_values(
-                    $version->modules->map(fn (Module $module): string => $module->key)->all(),
-                ),
-            ];
-        }
-
-        return $cards;
     }
 }

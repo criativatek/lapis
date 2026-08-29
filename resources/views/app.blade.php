@@ -6,7 +6,7 @@
      * landing. The lock is an attribute the client honours (useAppearance.ts)
      * and removes when the visitor moves into the app without a reload.
      */
-    $publicPage = in_array($page['component'], ['Welcome', 'legal/Document'], true);
+    $publicPage = \App\Support\Seo\PublicPages::isPublicComponent($page['component']);
 @endphp
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}"  @class(['dark' => ! $publicPage && ($appearance ?? 'system') == 'dark']) @if ($publicPage) data-theme-lock="light" @endif>
     <head>
@@ -56,49 +56,38 @@
              document. The tab title stays in the component; everything a robot
              reads has to be in the response. --}}
         @php($component = $page['component'] ?? null)
+        @php($public = $component === null ? null : \App\Support\Seo\PublicPages::current($component, request()->path()))
         @php($isLanding = $component === 'Welcome')
-        {{-- As páginas legais são públicas e devem ser encontráveis: alguém que
-             procure «política de privacidade Lapispro» tem de lá chegar sem passar
-             pela landing. Cada uma canonicaliza-se a si própria, não à raiz. --}}
-        @php($isLegal = $component === 'legal/Document')
-        @php($publicPath = $isLegal ? request()->path() : '/')
-        @php($publicUrl = \App\Support\Seo\LandingSeo::canonical().($publicPath === '/' ? '' : '/'.$publicPath))
 
-        @if ($isLegal)
-            <link rel="canonical" href="{{ $publicUrl }}">
-            <meta name="robots" content="index, follow, max-snippet:-1">
-            <meta property="og:type" content="article">
-            <meta property="og:site_name" content="Lapispro">
-            <meta property="og:locale" content="pt_PT">
-            <meta property="og:url" content="{{ $publicUrl }}">
-            <meta property="og:image" content="{{ \App\Support\Seo\LandingSeo::ogImage() }}">
-            <meta name="twitter:card" content="summary_large_image">
-            <meta name="twitter:image" content="{{ \App\Support\Seo\LandingSeo::ogImage() }}">
-        @elseif ($isLanding)
-            <meta name="description" content="{{ \App\Support\Seo\LandingSeo::DESCRIPTION }}">
-            <link rel="canonical" href="{{ \App\Support\Seo\LandingSeo::canonical() }}">
-            {{-- max-image-preview:large is what lets a result carry a picture at
-                 all once an og:image exists; max-snippet:-1 stops Google
-                 trimming the snippet shorter than the description written for
-                 it. Both are inert until they matter, and free to state now. --}}
+        @if ($public !== null)
+            {{-- Every public page: its own canonical, title and description
+                 from PublicPages, the shared social image, and a JSON-LD block
+                 on the landing only. --}}
+            <meta name="description" content="{{ $public['description'] }}">
+            <link rel="canonical" href="{{ \App\Support\Seo\PublicPages::url($public['path']) }}">
+            {{-- max-image-preview:large is what lets a result carry a picture;
+                 max-snippet:-1 stops Google trimming the snippet shorter than
+                 the description written for it. --}}
             <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
-            <meta property="og:type" content="website">
+            <meta property="og:type" content="{{ $isLanding ? 'website' : 'article' }}">
             <meta property="og:site_name" content="Lapispro">
             <meta property="og:locale" content="pt_PT">
-            <meta property="og:url" content="{{ \App\Support\Seo\LandingSeo::canonical() }}">
-            <meta property="og:title" content="{{ \App\Support\Seo\LandingSeo::SOCIAL_TITLE }}">
-            <meta property="og:description" content="{{ \App\Support\Seo\LandingSeo::SOCIAL_DESCRIPTION }}">
+            <meta property="og:url" content="{{ \App\Support\Seo\PublicPages::url($public['path']) }}">
+            <meta property="og:title" content="{{ $isLanding ? \App\Support\Seo\LandingSeo::SOCIAL_TITLE : $public['title'] }}">
+            <meta property="og:description" content="{{ $isLanding ? \App\Support\Seo\LandingSeo::SOCIAL_DESCRIPTION : $public['description'] }}">
             <meta property="og:image" content="{{ \App\Support\Seo\LandingSeo::ogImage() }}">
             <meta property="og:image:width" content="1200">
             <meta property="og:image:height" content="630">
             <meta property="og:image:alt" content="{{ \App\Support\Seo\LandingSeo::SOCIAL_TITLE }}">
             <meta name="twitter:card" content="summary_large_image">
+            <meta name="twitter:title" content="{{ $isLanding ? \App\Support\Seo\LandingSeo::SOCIAL_TITLE : $public['title'] }}">
+            <meta name="twitter:description" content="{{ $isLanding ? \App\Support\Seo\LandingSeo::SOCIAL_DESCRIPTION : $public['description'] }}">
             <meta name="twitter:image" content="{{ \App\Support\Seo\LandingSeo::ogImage() }}">
-            <meta name="twitter:title" content="{{ \App\Support\Seo\LandingSeo::SOCIAL_TITLE }}">
-            <meta name="twitter:description" content="{{ \App\Support\Seo\LandingSeo::SOCIAL_DESCRIPTION }}">
-            <script type="application/ld+json">
-                {!! json_encode(\App\Support\Seo\LandingSeo::structuredData(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) !!}
-            </script>
+            @if ($isLanding)
+                <script type="application/ld+json">
+                    {!! json_encode(\App\Support\Seo\LandingSeo::structuredData(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) !!}
+                </script>
+            @endif
         @else
             {{-- EVERY OTHER PAGE IS OUT OF THE INDEX. The teacher-facing app is
                  behind auth and has nothing to rank for, but two public routes
@@ -114,7 +103,7 @@
 
         @vite(['resources/css/app.css', 'resources/js/app.ts', "resources/js/pages/{$page['component']}.vue"])
         <x-inertia::head>
-            <title>{{ $isLanding ? \App\Support\Seo\LandingSeo::TITLE : config('app.name', 'Laravel') }}</title>
+            <title>{{ $public !== null ? $public['title'] : config('app.name', 'Laravel') }}</title>
         </x-inertia::head>
     </head>
     <body class="font-sans antialiased">

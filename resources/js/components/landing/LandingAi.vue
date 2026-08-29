@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Link } from '@inertiajs/vue3';
 import { Check } from '@lucide/vue';
 import LandingSection from './LandingSection.vue';
 import RevealOnScroll from './RevealOnScroll.vue';
@@ -123,10 +124,10 @@ const rules = [
                         class="mt-5 border-t border-border/70 pt-4 text-sm leading-relaxed text-pretty text-muted-foreground"
                     >
                         A IA pedagógica faz parte do
-                        <a
-                            href="#planos"
+                        <Link
+                            href="/planos"
                             class="rounded font-medium text-foreground underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                            >plano Pro</a
+                            >plano Pro</Link
                         >
                         e do Institucional.
                     </p>

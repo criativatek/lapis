@@ -67,7 +67,7 @@ const hasPlanned = () =>
     >
         <!-- Closed by default: thirty rows are for the visitor who is already
              choosing, not for everybody scrolling past to the FAQ. -->
-        <details class="group">
+        <details class="group" data-compare-toggle>
             <summary
                 class="inline-flex cursor-pointer list-none items-center gap-2 rounded-md border border-border bg-card px-4 py-2.5 text-sm font-medium transition-colors hover:bg-blue-50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none [&::-webkit-details-marker]:hidden"
             >

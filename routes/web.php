@@ -39,6 +39,7 @@ use App\Http\Controllers\LessonController;
 use App\Http\Controllers\LessonScheduleController;
 use App\Http\Controllers\LessonSequenceController;
 use App\Http\Controllers\LessonWeekController;
+use App\Http\Controllers\MarketingController;
 use App\Http\Controllers\NationalHolidaySuggestionController;
 use App\Http\Controllers\OnboardingController;
 use App\Http\Controllers\OrganizationController;
@@ -66,6 +67,13 @@ use Illuminate\Support\Facades\Route;
 // The public landing page. A GET (not Route::inertia) because the plan cards
 // are read from the entitlement tables — see HomeController.
 Route::get('/', HomeController::class)->name('home');
+
+// The rest of the marketing site — one page per search intent. Public, no
+// tenant. The list of what exists is App\Support\Seo\PublicPages.
+Route::get('funcionalidades/{slug}', [MarketingController::class, 'feature'])->name('marketing.feature');
+Route::get('planos', [MarketingController::class, 'plans'])->name('marketing.plans');
+Route::get('seguranca', [MarketingController::class, 'security'])->name('marketing.security');
+Route::get('sobre', [MarketingController::class, 'about'])->name('marketing.about');
 
 // robots.txt and sitemap.xml, served by the application so both can name the
 // site's own address instead of a domain frozen into a file in public/.

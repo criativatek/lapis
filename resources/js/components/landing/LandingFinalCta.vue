@@ -70,7 +70,7 @@ defineProps<{ authenticated: boolean }>();
                         size="lg"
                         class="border-white/40 bg-transparent text-white transition-transform duration-300 hover:bg-white/10 hover:text-white motion-safe:hover:-translate-y-0.5"
                     >
-                        <a href="#planos">Conhecer o Pro</a>
+                        <Link href="/planos">Conhecer o Pro</Link>
                     </Button>
                 </div>
 

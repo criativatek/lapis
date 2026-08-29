@@ -49,6 +49,10 @@ class BrandingTest extends TestCase
     {
         return [
             'landing' => ['/'],
+            'avaliação' => ['/funcionalidades/avaliacao'],
+            'planos' => ['/planos'],
+            'segurança' => ['/seguranca'],
+            'sobre' => ['/sobre'],
             'login' => ['/login'],
             'registo' => ['/register'],
             'termos' => ['/termos'],

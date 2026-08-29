@@ -43,6 +43,9 @@ export function resolveLayout(name: string): Component | Component[] | null {
         // ecrãs largos, porque é aí que o menu de utilizador é desenhado.
         case name.startsWith('legal/'):
             return null;
+        // The marketing pages bring their own header and footer too.
+        case name.startsWith('marketing/'):
+            return null;
         // A print/PDF view is a document, not a screen: no sidebar, no
         // nav, no app chrome of any kind. General on purpose, so the next
         // print view gets this for free without a second special case.

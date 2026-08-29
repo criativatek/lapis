@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 // The seeder's own source, read at transform time by Vite's `?raw`. See the
 // note above the plan lists below for why this file reads PHP.
 import seeder from '../../../../database/seeders/EntitlementsSeeder.php?raw';
+import { featureFor } from '../marketing/features';
 import {
     availability,
     COMPARE_ROWS,
@@ -12,7 +13,6 @@ import {
     PRO_PRICE,
 } from './commercial';
 import LandingCompare from './LandingCompare.vue';
-import LandingDailyWork from './LandingDailyWork.vue';
 import LandingFaq from './LandingFaq.vue';
 import LandingPricing from './LandingPricing.vue';
 import LandingVoucher from './LandingVoucher.vue';
@@ -324,7 +324,11 @@ describe('the comparison table', () => {
         const wrapper = mount(LandingCompare, { props: { plans: plans() } });
 
         expect(wrapper.findAll('tbody tr')).toHaveLength(COMPARE_ROWS.length);
-        expect(wrapper.findAll('details')).toHaveLength(plans().length);
+        // One <details> per plan; the outer one is the «Ver a tabela
+        // completa» toggle that hides the whole block by default (0.92.0).
+        expect(
+            wrapper.findAll('details:not([data-compare-toggle])'),
+        ).toHaveLength(plans().length);
 
         // The three sentences carry the section, so they must be in the DOM.
         expect(wrapper.text()).toContain('Base regista e mostra.');
@@ -427,12 +431,19 @@ describe('the offer against the composition', () => {
 
     it('does not deny in prose what the table marks in Base', () => {
         const prose = squish(
-            [mount(LandingDailyWork).text(), mount(LandingFaq).text()].join(
-                ' ',
-            ),
+            [
+                // The «Aulas e sumários» page is where the agenda is described
+                // since the one-page landing was split (0.94.0).
+                featureFor('aulas-e-sumarios')
+                    .benefits.map(
+                        (benefit) => `${benefit.title} ${benefit.body}`,
+                    )
+                    .join(' '),
+                mount(LandingFaq).text(),
+            ].join(' '),
         );
 
-        // The band and the FAQ both name the agenda; neither may hand it to
+        // The page and the FAQ both name the agenda; neither may hand it to
         // the Pro plan while the comparison table ticks it for Base.
         expect(prose).toMatch(/agenda do ano letivo/i);
         expect(prose).not.toMatch(

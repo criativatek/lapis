@@ -14,6 +14,35 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > cada um sob o título da frente a que pertenceu. A 0.85.0 é o primeiro
 > release em que as duas linhagens voltam a ser uma só.
 
+## [0.94.0] — 2026-08-29
+
+**O site público deixa de ser uma página só.** O Pedro achou o layout «muito
+fraco» e pediu várias páginas e uma direcção «humana, com cor» (fotografia,
+blocos de cor cheia, formas arredondadas — Canva for Education, não Linear).
+Nove páginas indexáveis, cada uma com o seu H1, título e descrição
+(`App\Support\Seo\PublicPages`, a única lista; o blade, o sitemap, o
+robots.txt, o bloqueio de tema claro e `MarketingPagesTest` lêem-na):
+
+- `/` — porta de entrada: hero com fotografia, faixa azul com a grelha real,
+  seis cartões para as áreas, como funciona, «o professor decide» com
+  fotografia, IA e regras, segurança, CTA.
+- `/funcionalidades/{avaliacao,turmas,acompanhamento,aulas-e-sumarios,relatorios}`
+  — um componente (`marketing/Feature.vue`), cinco textos
+  (`components/marketing/features.ts`), cada um com captura real e fotografia.
+- `/planos` — os mesmos componentes de preços, comparação, voucher e FAQ.
+- `/seguranca` — as seis medidas, a secção existente e os documentos legais.
+- `/sobre` — princípios e contacto, com a entidade de `LegalDocuments::controller()`
+  (a mesma da Política de Privacidade).
+
+Fotografias geradas por IA sem rostos identificáveis (mãos, sala vazia,
+professora de costas, mesa) em `public/images/marketing/`, WebP 1600px.
+Peças novas em `components/marketing/`: `MarketingShell`, `PageHero`,
+`ColorBand` (azul cheio / âmbar / esmeralda), `ScreenFrame`, `BenefitCard`,
+`PhotoBand`. A navegação passa a páginas reais (`navigation.ts`), com a
+página actual assinalada no cabeçalho. `PlanCards` sai do `HomeController`
+para ser partilhado com `/planos`. Saem `LandingHero`, `LandingFeatures` e os
+mocks em CSS que só eles usavam. Home no telemóvel: 14 700px → 9 300px.
+
 ## [0.93.0] — 2026-08-29
 
 **Render no servidor** para a landing e as páginas legais. A resposta de `/`

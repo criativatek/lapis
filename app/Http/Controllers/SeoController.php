@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Support\Seo\LandingSeo;
+use App\Support\Seo\PublicPages;
 use Illuminate\Http\Response;
 
 /**
@@ -50,12 +51,9 @@ class SeoController extends Controller
             'Disallow: /register',
             'Disallow: /settings',
             '',
-            // Explícito, apesar de o `Allow: /$` acima só cobrir a raiz: estas
-            // duas são públicas e devem ser encontráveis por quem procure a
-            // política de privacidade do Lapispro sem passar pela landing.
-            'Allow: /termos',
-            'Allow: /privacidade',
-            'Allow: /tratamento-de-dados',
+            // Explícito, apesar de o `Allow: /$` acima só cobrir a raiz: cada
+            // página pública é encontrável sem passar pela landing.
+            ...array_map(fn (array $page): string => 'Allow: '.$page['path'], array_values(array_filter(PublicPages::all(), fn (array $page): bool => $page['path'] !== '/'))),
             '',
             'Sitemap: '.LandingSeo::canonical().'/sitemap.xml',
             '',
@@ -68,17 +66,13 @@ class SeoController extends Controller
 
     public function sitemap(): Response
     {
-        $root = LandingSeo::canonical();
-
-        // A landing e os três documentos legais — as únicas páginas públicas
-        // que existem. As legais mudam raramente e não competem com a landing,
-        // daí `yearly` e uma prioridade menor.
-        $pages = [
-            ['loc' => $root, 'changefreq' => 'weekly', 'priority' => '1.0'],
-            ['loc' => $root.'/termos', 'changefreq' => 'yearly', 'priority' => '0.3'],
-            ['loc' => $root.'/privacidade', 'changefreq' => 'yearly', 'priority' => '0.3'],
-            ['loc' => $root.'/tratamento-de-dados', 'changefreq' => 'yearly', 'priority' => '0.3'],
-        ];
+        // Every public page, from the one list (PublicPages). Frequency and
+        // priority are declared there, next to the page they describe.
+        $pages = array_map(fn (array $page): array => [
+            'loc' => PublicPages::url($page['path']),
+            'changefreq' => $page['changefreq'],
+            'priority' => $page['priority'],
+        ], PublicPages::all());
 
         $entries = '';
 

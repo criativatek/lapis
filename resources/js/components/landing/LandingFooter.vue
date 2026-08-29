@@ -10,7 +10,7 @@ import {
     CHROME_MUTED,
     CHROME_SURFACE,
 } from './chrome';
-import { LANDING_NAV } from './navigation';
+import { COMPANY_NAV, FEATURE_NAV } from './navigation';
 
 /**
  * Produto, conta e os documentos legais.
@@ -35,7 +35,7 @@ const version = computed(() => usePage().props.appVersion);
 <template>
     <footer class="border-t" :class="[CHROME_SURFACE, CHROME_BORDER]">
         <div
-            class="mx-auto grid w-full max-w-6xl gap-10 px-6 py-14 sm:px-8 md:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))]"
+            class="mx-auto grid w-full max-w-6xl gap-10 px-6 py-14 sm:px-8 md:grid-cols-[minmax(0,1.4fr)_repeat(4,minmax(0,1fr))]"
         >
             <div>
                 <span class="flex items-center gap-2.5">
@@ -78,12 +78,31 @@ const version = computed(() => usePage().props.appVersion);
                     Produto
                 </h2>
                 <ul class="mt-4 space-y-2.5 text-sm">
-                    <li v-for="item in LANDING_NAV" :key="item.href">
-                        <a
+                    <li v-for="item in FEATURE_NAV" :key="item.href">
+                        <Link
                             :href="item.href"
                             class="inline-block rounded transition-all duration-300 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-safe:hover:translate-x-0.5"
                             :class="CHROME_LINK"
-                            >{{ item.label }}</a
+                            >{{ item.label }}</Link
+                        >
+                    </li>
+                </ul>
+            </nav>
+            <nav aria-labelledby="footer-company">
+                <h2
+                    id="footer-company"
+                    class="text-[11px] font-semibold tracking-[0.14em] uppercase"
+                    :class="CHROME_MUTED"
+                >
+                    Lapispro
+                </h2>
+                <ul class="mt-4 space-y-2.5 text-sm">
+                    <li v-for="item in COMPANY_NAV" :key="item.href">
+                        <Link
+                            :href="item.href"
+                            class="inline-block rounded transition-all duration-300 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-safe:hover:translate-x-0.5"
+                            :class="CHROME_LINK"
+                            >{{ item.label }}</Link
                         >
                     </li>
                 </ul>
