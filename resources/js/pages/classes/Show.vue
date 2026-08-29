@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { FileUp, Pencil, Trash2, UserPlus } from '@lucide/vue';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
+import { FileUp, Footprints, Pencil, Trash2, UserPlus } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import FileInput from '@/components/FileInput.vue';
 import Heading from '@/components/Heading.vue';
@@ -62,6 +62,23 @@ const props = defineProps<{
     availableProfiles: ProfileOption[];
     recurringLessonSlots: RecurringLessonSlot[] | null;
 }>();
+
+/**
+ * «Acompanhamento» straight from the roll — the same (turma, inscrição) pair
+ * `student-progress.student` has always answered at, and nothing else: no new
+ * route, no new payload, no reading computed here. The class page is where a
+ * teacher already has the roll in front of them, and having to go back out to
+ * «Acompanhamento → Aluno» to pick the same turma again was the detour.
+ *
+ * Presentation only, and `canRead` rather than `modules` so a suspended
+ * organization — whose data stays consultable — keeps the link. The route's own
+ * `module:student_progress` gate is the actual authority.
+ */
+const canFollowUp = computed(
+    () =>
+        usePage().props.modules.includes('student_progress') ||
+        usePage().props.readOnlyModules.includes('student_progress'),
+);
 
 /**
  * N.os de processo, by enrolment. Seeded from what is stored, edited in place,
@@ -591,6 +608,20 @@ function submitPhotos(): void {
                         </td>
                         <td class="px-4 py-3 text-right">
                             <div class="flex justify-end gap-1">
+                                <Button
+                                    v-if="canFollowUp"
+                                    as-child
+                                    variant="ghost"
+                                    size="icon"
+                                >
+                                    <Link
+                                        :href="`/classes/${schoolClass.ulid}/evolucao/${student.ulid}`"
+                                        :aria-label="`Acompanhamento de ${student.name}`"
+                                        title="Acompanhamento"
+                                    >
+                                        <Footprints class="size-4" />
+                                    </Link>
+                                </Button>
                                 <Button
                                     variant="ghost"
                                     size="icon"

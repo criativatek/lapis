@@ -56,15 +56,23 @@ formato. Tabelas de suporte (`import_jobs`) desenhadas em `domain-model.md`.
   passou de 121 para 72 queries na turma de demonstração (Estatística: 67). O que
   falta é o passo maior — persistir resultados, para que nem a primeira passagem
   seja precisa.
-- **Páginas ainda placeholder:** Alunos (gestão), Avaliações (workspace).
+- **Páginas ainda placeholder:** nenhuma. «Alunos» foi a última, e passou a ser um
+  diretório real (`StudentDirectoryController`, `resources/js/pages/students/Index.vue`):
+  encontrar, filtrar e navegar para o Acompanhamento ou para a Turma. A ficha
+  pedagógica continua em «Acompanhamento → Aluno» e a gestão administrativa da
+  inscrição continua em «Turmas» — o diretório não duplica nenhuma das duas. A
+  maquinaria do placeholder (`PlaceholderController`, `resources/js/pages/Placeholder.vue`,
+  o ciclo em `routes/app.php`) fica no sítio para a próxima entrada que precise dela.
 - **Fluxos avulsos:** encerramento de período (§13.6 — o trigger `period_closed` existe
   no enum, falta o fluxo), anulação de instrumento.
 - **Deploy:** ver [deployment.md](deployment.md) (CloudPanel · lapis.criativatek.com).
 
 ## Próximo candidato sem bloqueio, por valor
 
-1. **Alunos** (página de gestão) — fecha um placeholder da Fase 1.
-2. **Q5 Intuitivo** — assim que houver o ficheiro real.
+1. **Q5 Intuitivo** — assim que houver o ficheiro real.
+
+*(«Alunos», antes o primeiro desta lista, está feito: o diretório fechou o último
+placeholder da Fase 1.)*
 
 *(A Análise da Turma, antes listada aqui como placeholder, está feita desde a
 [0.35.0] — "Estatística": [`ClassStatisticsController`](../app/Http/Controllers/ClassStatisticsController.php),
