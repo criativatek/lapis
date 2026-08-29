@@ -5,7 +5,7 @@ namespace App\Support\Limits;
 use App\Models\Enrollment;
 use App\Models\Organization;
 use App\Models\OrganizationSubscription;
-use App\Models\Plan;
+use App\Models\PlanVersion;
 use App\Models\SchoolClass;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Validation\ValidationException;
@@ -18,8 +18,8 @@ use RuntimeException;
  * mixed: a capability's entitlement state says nothing about its limit (a
  * Base organization fully `Allowed` on `classes` can still be at its 8-turma
  * cap), and this class never decides whether a module is available — it only
- * reads `plans.limits` once a caller already knows the capability itself is
- * allowed.
+ * reads the `limits` frozen on the plan VERSION the organization contracted
+ * (ADR-0008), once a caller already knows the capability itself is allowed.
  *
  * The plan-of-record lookup deliberately DUPLICATES the query inside
  * `Entitlements::resolve()` (subscription `isInForce()`, newest `starts_at`
@@ -42,18 +42,18 @@ class Limits
 
     public function limitFor(Organization $organization, LimitKey $key): LimitValue
     {
-        $plan = $this->planInForce($organization);
+        $version = $this->versionInForce($organization);
 
         // No subscription in force at all grants nothing — the same
         // conservative reading Entitlements gives an unsubscribed
         // organization (Locked, i.e. nothing). In practice every
         // organization is created with a subscription (CreatePersonalOrganization),
         // so this is a defensive floor, not a state real traffic lives in.
-        if ($plan === null) {
+        if ($version === null) {
             return LimitValue::finite(0);
         }
 
-        return $this->parse($plan, $key);
+        return $this->parse($version, $key);
     }
 
     public function limit(LimitKey $key): LimitValue
@@ -165,54 +165,61 @@ class Limits
     }
 
     /**
-     * The plan of the subscription currently in force, or null when none is
-     * — the same subscription `Entitlements::resolve()` would pick (newest
-     * `starts_at`, then newest `id`), read again here rather than shared
-     * (see the class doc above for why).
+     * The plan VERSION of the subscription currently in force, or null when
+     * none is — the same subscription `Entitlements::resolve()` would pick
+     * (newest `starts_at`, then newest `id`), read again here rather than
+     * shared (see the class doc above for why).
+     *
+     * THE VERSION, NOT THE PLAN (ADR-0008 §7). A cap is part of what was sold:
+     * an organization that bought Pro when it carried 8 turmas keeps 8 when Pro
+     * starts selling 20, and versioning the modules while leaving the caps live
+     * would have recreated the same retroactive defect one dimension over.
      */
-    protected function planInForce(Organization $organization): ?Plan
+    protected function versionInForce(Organization $organization): ?PlanVersion
     {
         $inForce = OrganizationSubscription::query()
             ->withoutGlobalScope('organization')
             ->where('organization_id', $organization->getKey())
-            ->with('plan')
+            ->with('planVersion.plan')
             ->latest('starts_at')
             ->latest('id')
             ->get()
             ->first(fn (OrganizationSubscription $subscription): bool => $subscription->isInForce());
 
-        return $inForce?->plan;
+        return $inForce?->planVersion;
     }
 
     /**
-     * The plan of record for this organization, or null when there is none.
+     * The contracted version of record for this organization, or null when
+     * there is none.
      *
      * PUBLIC SO A THIRD COPY OF THAT QUERY WAS NOT WRITTEN. `AiQuota` needs the
-     * plan in force in order to read an OPTIONAL AI quota override out of its
-     * `limits` JSON — a key `LimitKey` deliberately does not catalogue, because
-     * `parse()` below treats a missing key as a configuration error and «this
-     * plan sets no AI override» is the normal, expected answer there. It needs
-     * exactly the plan this class already resolves, so it asks for it.
+     * version in force in order to read an OPTIONAL AI quota override out of
+     * its `limits` JSON — a key `LimitKey` deliberately does not catalogue,
+     * because `parse()` below treats a missing key as a configuration error and
+     * «this plan sets no AI override» is the normal, expected answer there. It
+     * needs exactly the version this class already resolves, so it asks for it.
      */
-    public function planFor(Organization $organization): ?Plan
+    public function planVersionFor(Organization $organization): ?PlanVersion
     {
-        return $this->planInForce($organization);
+        return $this->versionInForce($organization);
     }
 
     /**
-     * Reads one key out of a plan's `limits` JSON (§Lote 3 format: a
+     * Reads one key out of a version's frozen `limits` JSON (§Lote 3 format: a
      * non-negative integer, or the literal string "unlimited" — never
      * `null` meaning unlimited). A key the catalogue knows about but the
-     * plan's stored JSON does not is a configuration error and fails loudly
+     * stored JSON does not is a configuration error and fails loudly
      * rather than silently defaulting to 0 or unlimited.
      */
-    protected function parse(Plan $plan, LimitKey $key): LimitValue
+    protected function parse(PlanVersion $version, LimitKey $key): LimitValue
     {
-        $limits = $plan->limits ?? [];
+        $limits = $version->limits ?? [];
+        $name = "{$version->plan->key} v{$version->version}";
 
         if (! array_key_exists($key->value, $limits)) {
             throw new RuntimeException(
-                "Plan [{$plan->key}] has no configured limit for [{$key->value}] in plans.limits.",
+                "Plan [{$name}] has no configured limit for [{$key->value}] in plan_versions.limits.",
             );
         }
 
@@ -227,7 +234,7 @@ class Limits
         }
 
         throw new RuntimeException(
-            "Plan [{$plan->key}] has an invalid limit for [{$key->value}]: expected a non-negative integer or the string \"unlimited\", got ".json_encode($raw).'.',
+            "Plan [{$name}] has an invalid limit for [{$key->value}]: expected a non-negative integer or the string \"unlimited\", got ".json_encode($raw).'.',
         );
     }
 }

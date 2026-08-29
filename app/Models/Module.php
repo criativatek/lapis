@@ -17,10 +17,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 class Module extends Model
 {
     /**
-     * @return BelongsToMany<Plan, $this>
+     * The plan VERSIONS this capability is composed into — never «the plans»,
+     * since ADR-0008. A module belongs to an offer published at a moment, and
+     * «which plans carry it» is a question about one version of each (usually
+     * the current one, which is what `Plan::currentVersion()` answers).
+     *
+     * @return BelongsToMany<PlanVersion, $this>
      */
-    public function plans(): BelongsToMany
+    public function planVersions(): BelongsToMany
     {
-        return $this->belongsToMany(Plan::class);
+        return $this->belongsToMany(PlanVersion::class, 'module_plan_version');
     }
 }

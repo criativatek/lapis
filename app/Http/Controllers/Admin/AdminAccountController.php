@@ -254,6 +254,13 @@ class AdminAccountController extends Controller
                 'members_count' => $organization->members->count(),
                 'plan' => $subscription?->plan?->name,
                 'plan_key' => $subscription?->plan?->key,
+                // WHICH VERSION OF THE PLAN, since ADR-0008. «Pro» stopped
+                // being a complete answer the moment a second Pro could exist:
+                // an operator looking at a grandfathered account has to be able
+                // to tell v1 from v2 without opening a SQL client. Read-only —
+                // moving a subscription between versions is a deliberate act
+                // and does not belong behind a label.
+                'plan_version' => $subscription?->planVersion?->version,
                 'status' => $subscription?->status?->value,
                 'modules' => $this->entitlements->modulesFor($organization),
                 'deactivation_refusal' => $owner === null ? __('Esta organização não tem dono.') : $this->deactivationRefusal($request, $owner),
@@ -670,7 +677,7 @@ class AdminAccountController extends Controller
         return OrganizationSubscription::query()
             ->withoutGlobalScope('organization')
             ->whereIn('organization_id', $organizationIds)
-            ->with('plan')
+            ->with(['plan', 'planVersion'])
             ->latest('starts_at')
             ->latest('id')
             ->get()

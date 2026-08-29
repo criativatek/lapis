@@ -14,6 +14,7 @@ use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\PublishesPlanVersions;
 use Tests\TestCase;
 
 /**
@@ -25,6 +26,7 @@ use Tests\TestCase;
  */
 class ActiveClassesLimitTest extends TestCase
 {
+    use PublishesPlanVersions;
     use RefreshDatabase;
 
     protected User $user;
@@ -225,11 +227,15 @@ class ActiveClassesLimitTest extends TestCase
     public function a_finite_zero_limit_blocks_the_very_first_class(): void
     {
         // Proves LimitValue::finite(0) is a real, distinct state — never
-        // confused with null/false/unlimited — reached the same way any
-        // other Base limit is: through the persisted plan configuration.
-        Plan::where('key', 'base')->firstOrFail()->update([
-            'limits' => ['active_classes' => 0, 'active_students' => 300],
-        ]);
+        // confused with null/false/unlimited — reached the same way any other
+        // Base limit is: through the persisted plan configuration. Since
+        // ADR-0008 that configuration is PUBLISHED as a version rather than
+        // written over the plan, and the organization is moved onto it
+        // explicitly, because grandfathering means a new version reaches
+        // nobody until somebody puts them on it.
+        $zeroed = $this->publishNextVersionOf('base', limits: ['active_classes' => 0, 'active_students' => 300]);
+
+        app(ChangeOrganizationPlan::class)->to($this->user->personalOrganization()->fresh(), $zeroed);
 
         $context = $this->context();
         $this->postClass($context, '7.º A')->assertSessionHasErrors('limit');

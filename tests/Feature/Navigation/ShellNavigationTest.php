@@ -28,9 +28,14 @@ class ShellNavigationTest extends TestCase
 
     protected function upgrade(User $user, string $planKey): void
     {
+        // Both columns: a bulk `update()` on the query builder skips the
+        // model's reconciliation, and the composite foreign key then
+        // (correctly) refuses a plan and a version naming different plans.
+        $version = Plan::where('key', $planKey)->firstOrFail()->currentVersionOrFail();
+
         OrganizationSubscription::withoutGlobalScope('organization')
             ->where('organization_id', $user->personalOrganization()->getKey())
-            ->update(['plan_id' => Plan::where('key', $planKey)->firstOrFail()->getKey(), 'status' => SubscriptionStatus::Active, 'starts_at' => Carbon::now()->subDay()]);
+            ->update(['plan_id' => $version->plan_id, 'plan_version_id' => $version->getKey(), 'status' => SubscriptionStatus::Active, 'starts_at' => Carbon::now()->subDay()]);
         app(Entitlements::class)->flush();
     }
 

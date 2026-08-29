@@ -5,6 +5,7 @@ namespace App\Actions\Organizations;
 use App\Models\Organization;
 use App\Models\OrganizationSubscription;
 use App\Models\Plan;
+use App\Models\PlanVersion;
 use App\Models\SubscriptionStatus;
 use Illuminate\Support\Carbon;
 
@@ -24,15 +25,24 @@ use Illuminate\Support\Carbon;
  */
 class SubscribeOrganization
 {
-    public function subscribe(Organization $organization, ?Plan $plan): void
+    /**
+     * A `Plan` means the version that plan sells today — the same rule
+     * `ChangeOrganizationPlan::to()` applies, and the right one for an
+     * organization being created right now. A `PlanVersion` is used as given,
+     * for the caller that already knows which offer it is provisioning.
+     */
+    public function subscribe(Organization $organization, Plan|PlanVersion|null $plan): void
     {
         if ($plan === null) {
             return;
         }
 
+        $version = $plan instanceof PlanVersion ? $plan : $plan->currentVersionOrFail();
+
         OrganizationSubscription::withoutGlobalScope('organization')->create([
             'organization_id' => $organization->getKey(),
-            'plan_id' => $plan->getKey(),
+            'plan_id' => $version->plan_id,
+            'plan_version_id' => $version->getKey(),
             'status' => SubscriptionStatus::Active,
             'starts_at' => Carbon::now(),
         ]);

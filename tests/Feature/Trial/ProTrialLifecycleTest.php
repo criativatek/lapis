@@ -115,8 +115,8 @@ class ProTrialLifecycleTest extends TestCase
         $entitlements = app(Entitlements::class);
         $limits = app(Limits::class);
 
-        $proModules = $this->plan('pro')->modules->pluck('key')->sort()->values()->all();
-        $baseModules = $this->plan('base')->modules->pluck('key')->sort()->values()->all();
+        $proModules = $this->plan('pro')->currentVersionOrFail()->modules->pluck('key')->sort()->values()->all();
+        $baseModules = $this->plan('base')->currentVersionOrFail()->modules->pluck('key')->sort()->values()->all();
 
         $this->travelTo($trial->ends_at->subSecond());
         $entitlements->flush();

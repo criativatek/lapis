@@ -46,6 +46,18 @@ enum CommercialCondition: string
     /** Predates the commercial model, and is recorded as such rather than guessed at. */
     case Legacy = 'legacy';
 
+    /**
+     * A limited-time promotional condition — the free Base of the 2026/27 school
+     * year is the case this exists for.
+     *
+     * NOT `Standard`, which is documented above as «Pro at list price»: using it
+     * would make `normallyPaid()` answer `true` for accounts that owe nothing.
+     * How long the condition lasts is not in this enum — it is
+     * `organization_subscriptions.commercial_term_ends_at`, a date rather than a
+     * label, and one nothing in the entitlement resolver reads (ADR-0008 §8).
+     */
+    case Promotional = 'promotional';
+
     /** Genuinely none of the above, decided by a person who looked. */
     case Other = 'other';
 
@@ -58,6 +70,7 @@ enum CommercialCondition: string
             self::AdminGrant => __('Concessão administrativa'),
             self::Institutional => __('Institucional'),
             self::Legacy => __('Anterior ao modelo comercial'),
+            self::Promotional => __('Condição promocional'),
             self::Other => __('Outra'),
         };
     }
@@ -71,7 +84,9 @@ enum CommercialCondition: string
     {
         return match ($this) {
             self::Standard, self::Founder, self::Institutional => true,
-            self::Voucher, self::AdminGrant, self::Legacy, self::Other => false,
+            // Promotional joins the «no payment expected» side: the whole point
+            // of the condition is that nothing is owed while it lasts.
+            self::Voucher, self::AdminGrant, self::Legacy, self::Promotional, self::Other => false,
         };
     }
 

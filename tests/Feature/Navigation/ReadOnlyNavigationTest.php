@@ -30,10 +30,18 @@ class ReadOnlyNavigationTest extends TestCase
 
     protected function subscribe(User $user, string $planKey, SubscriptionStatus $status): void
     {
+        // The VERSION goes with the plan. This is a bulk `update()` on the
+        // query builder, which bypasses the model's own reconciliation — and
+        // the composite foreign key then refuses a row whose two columns name
+        // different plans, exactly as it should. Naming both is what a fixture
+        // owes that guarantee.
+        $version = Plan::where('key', $planKey)->firstOrFail()->currentVersionOrFail();
+
         OrganizationSubscription::withoutGlobalScope('organization')
             ->where('organization_id', $user->personalOrganization()->getKey())
             ->update([
-                'plan_id' => Plan::where('key', $planKey)->firstOrFail()->getKey(),
+                'plan_id' => $version->plan_id,
+                'plan_version_id' => $version->getKey(),
                 'status' => $status,
                 'starts_at' => Carbon::now()->subDay(),
             ]);

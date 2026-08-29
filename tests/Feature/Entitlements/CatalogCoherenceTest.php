@@ -96,8 +96,14 @@ class CatalogCoherenceTest extends TestCase
     {
         $catalogueKeys = EntitlementsSeeder::moduleKeys();
 
+        // `module_plan_version` since ADR-0008: a composition belongs to the
+        // published version, not to the plan. EVERY version is read, retired
+        // ones included — a key that disappeared from the catalogue while a
+        // historical version still carries it is exactly the drift this
+        // catches, and the organizations grandfathered on that version are
+        // precisely who it would break.
         $keysInPlans = Module::query()
-            ->whereIn('id', DB::table('module_plan')->pluck('module_id'))
+            ->whereIn('id', DB::table('module_plan_version')->pluck('module_id'))
             ->pluck('key')
             ->all();
 
@@ -106,7 +112,7 @@ class CatalogCoherenceTest extends TestCase
         $this->assertSame(
             [],
             $orphanedInPlans,
-            'module_plan references key(s) no longer in the catalogue: '.implode(', ', $orphanedInPlans),
+            'module_plan_version references key(s) no longer in the catalogue: '.implode(', ', $orphanedInPlans),
         );
     }
 
@@ -116,7 +122,7 @@ class CatalogCoherenceTest extends TestCase
         // The non-destructive path this Lote took: MODULES no longer lists
         // these, so a fresh seed never creates them (asserted not-in-catalogue
         // below) — but the real dev database, which had them from before,
-        // keeps the `modules` rows physically present with zero `module_plan`
+        // keeps the `modules` rows physically present with zero composition
         // associations after re-seeding. Either end state passes here.
         $removedKeys = ['class_analysis', 'imports', 'data_protection', 'institution_policies'];
 
@@ -131,8 +137,8 @@ class CatalogCoherenceTest extends TestCase
 
             $this->assertSame(
                 0,
-                DB::table('module_plan')->where('module_id', $module->id)->count(),
-                "{$key} must not be composed into any plan any more.",
+                DB::table('module_plan_version')->where('module_id', $module->id)->count(),
+                "{$key} must not be composed into any plan version any more.",
             );
         }
     }

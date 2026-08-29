@@ -15,6 +15,7 @@ use Database\Seeders\EntitlementsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\PublishesPlanVersions;
 use Tests\TestCase;
 
 /**
@@ -34,6 +35,7 @@ use Tests\TestCase;
  */
 class AiGovernanceTest extends TestCase
 {
+    use PublishesPlanVersions;
     use RefreshDatabase;
 
     protected User $owner;
@@ -139,11 +141,9 @@ class AiGovernanceTest extends TestCase
     {
         $this->givePlan('institutional');
 
-        $plan = Plan::where('key', 'institutional')->firstOrFail();
-        $plan->update(['limits' => [
-            ...($plan->limits ?? []),
+        $this->contractNewLimitsFor($this->organization, 'institutional', [
             AiQuota::POOL_LIMIT_KEY => ['organization_monthly' => 1000, 'user_monthly' => 50],
-        ]]);
+        ]);
 
         $this->recordUsage(3);
 

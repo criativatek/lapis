@@ -49,6 +49,8 @@ type Account = {
     members: Member[];
     plan: string | null;
     plan_key: string | null;
+    /** Which version of that plan was contracted (ADR-0008). Null when there is no subscription. */
+    plan_version: number | null;
     status: string | null;
     modules: string[];
     deactivation_refusal: string | null;
@@ -420,6 +422,16 @@ function destroy(): void {
             </div>
             <div class="text-sm">
                 Plano atual: <span class="font-medium">{{ account.plan ?? 'sem subscrição' }}</span>
+                <!--
+                    A versão contratada, quando existe. Não é decoração: desde
+                    a ADR-0008 duas contas no «Pro» podem estar em ofertas
+                    diferentes, e é isto que permite responder «v1 ou v2?» sem
+                    abrir a base de dados. Leitura apenas — mudar de versão é um
+                    ato deliberado e não se faz a partir de uma etiqueta.
+                -->
+                <span v-if="account.plan_version !== null" class="ml-1 rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+                    v{{ account.plan_version }}
+                </span>
             </div>
 
             <div class="flex flex-wrap items-center gap-2">

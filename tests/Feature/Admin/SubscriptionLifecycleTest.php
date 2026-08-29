@@ -82,8 +82,8 @@ class SubscriptionLifecycleTest extends TestCase
             return null;
         }
 
-        foreach (Plan::with('modules')->orderByDesc('id')->get() as $plan) {
-            if ($plan->modules->count() === count($modules)) {
+        foreach (Plan::with('currentVersion.modules')->orderByDesc('id')->get() as $plan) {
+            if (($plan->currentVersion?->modules->count() ?? -1) === count($modules)) {
                 return $plan->key;
             }
         }

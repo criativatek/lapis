@@ -31,15 +31,24 @@ use Illuminate\Support\Carbon;
  */
 trait SubscribesOrganizations
 {
+    /**
+     * The plan key means the version that plan sells TODAY, resolved here so
+     * no test that is about something else has to know plans have versions at
+     * all (ADR-0008). A test whose subject IS the versioning builds its own
+     * subscription against a specific `PlanVersion` instead.
+     */
     protected function subscribeOrganizationTo(Organization $organization, string $planKey): void
     {
         OrganizationSubscription::withoutGlobalScope('organization')
             ->where('organization_id', $organization->getKey())
             ->delete();
 
+        $version = Plan::where('key', $planKey)->firstOrFail()->currentVersionOrFail();
+
         OrganizationSubscription::withoutGlobalScope('organization')->create([
             'organization_id' => $organization->getKey(),
-            'plan_id' => Plan::where('key', $planKey)->firstOrFail()->getKey(),
+            'plan_id' => $version->plan_id,
+            'plan_version_id' => $version->getKey(),
             'status' => SubscriptionStatus::Active,
             'starts_at' => Carbon::now()->subDay(),
         ]);

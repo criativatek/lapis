@@ -8,6 +8,7 @@ use App\Models\Organization;
 use App\Models\OrganizationModuleOverride;
 use App\Models\OrganizationSubscription;
 use App\Models\Plan;
+use App\Models\PlanVersion;
 use App\Models\PlatformSetting;
 use App\Models\SubscriptionStatus;
 use App\Models\User;
@@ -25,6 +26,7 @@ use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\EntitlementsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\PublishesPlanVersions;
 use Tests\TestCase;
 
 /**
@@ -48,6 +50,7 @@ use Tests\TestCase;
  */
 class AiPoolQuotaTest extends TestCase
 {
+    use PublishesPlanVersions;
     use RefreshDatabase;
 
     protected User $teacher;
@@ -165,11 +168,9 @@ class AiPoolQuotaTest extends TestCase
     {
         config(['lapis.ai.quotas.help_assistant.user_daily' => 1]);
 
-        $plan = Plan::where('key', 'institutional')->firstOrFail();
-        $plan->update(['limits' => [
-            ...($plan->limits ?? []),
+        $this->contractNewLimitsFor($this->organization, 'institutional', [
             'ai_quota' => ['help_assistant' => ['user_daily' => 3]],
-        ]]);
+        ]);
 
         $this->assertSame(3, app(AiQuota::class)->limit($this->organization, AiCapability::HelpAssistant, 'user_daily'));
 
@@ -270,11 +271,9 @@ class AiPoolQuotaTest extends TestCase
     {
         config(['lapis.ai.pool.organization_monthly' => 1]);
 
-        $plan = Plan::where('key', 'institutional')->firstOrFail();
-        $plan->update(['limits' => [
-            ...($plan->limits ?? []),
+        $this->contractNewLimitsFor($this->organization, 'institutional', [
             AiQuota::POOL_LIMIT_KEY => ['organization_monthly' => 2],
-        ]]);
+        ]);
 
         $this->assertSame(2, app(AiQuota::class)->poolLimit($this->organization, 'organization_monthly'));
 
@@ -409,18 +408,22 @@ class AiPoolQuotaTest extends TestCase
     #[Test]
     public function no_seeded_plan_carries_an_invented_pool_or_quota(): void
     {
-        foreach (Plan::all() as $plan) {
-            $limits = $plan->limits ?? [];
+        // TODAS as versões, não só a corrente: uma figura contratual inventada
+        // numa versão histórica é exatamente tão inventada, e as organizações
+        // fixadas nessa versão são precisamente quem a receberia.
+        foreach (PlanVersion::with('plan')->get() as $version) {
+            $limits = $version->limits ?? [];
+            $name = "{$version->plan->key} v{$version->version}";
 
             $this->assertArrayNotHasKey(
                 AiQuota::POOL_LIMIT_KEY,
                 $limits,
-                "O plano «{$plan->key}» traz um plafond semeado. O plafond é uma figura contratual.",
+                "O plano «{$name}» traz um plafond semeado. O plafond é uma figura contratual.",
             );
             $this->assertArrayNotHasKey(
                 'ai_quota',
                 $limits,
-                "O plano «{$plan->key}» traz uma quota de IA semeada. Quanto um plano inclui é uma decisão comercial por tomar.",
+                "O plano «{$name}» traz uma quota de IA semeada. Quanto um plano inclui é uma decisão comercial por tomar.",
             );
         }
 
@@ -454,11 +457,9 @@ class AiPoolQuotaTest extends TestCase
         // E um valor não inteiro num plano é tratado como «não configurado»,
         // nunca como erro: um override que ninguém definiu não pode partir um
         // caminho de pedido.
-        $plan = Plan::where('key', 'institutional')->firstOrFail();
-        $plan->update(['limits' => [
-            ...($plan->limits ?? []),
+        $this->contractNewLimitsFor($this->organization, 'institutional', [
             'ai_quota' => ['help_assistant' => ['user_daily' => 'unlimited']],
-        ]]);
+        ]);
 
         $this->assertSame(
             0,

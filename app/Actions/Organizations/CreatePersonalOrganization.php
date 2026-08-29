@@ -5,6 +5,7 @@ namespace App\Actions\Organizations;
 use App\Models\Organization;
 use App\Models\OrganizationType;
 use App\Models\Plan;
+use App\Models\PlanVersion;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 
@@ -27,7 +28,7 @@ class CreatePersonalOrganization
 {
     public function __construct(protected SubscribeOrganization $subscribe) {}
 
-    public function create(User $user, ?Plan $initialPlan = null): Organization
+    public function create(User $user, Plan|PlanVersion|null $initialPlan = null): Organization
     {
         $organization = Organization::create([
             'name' => $user->name,

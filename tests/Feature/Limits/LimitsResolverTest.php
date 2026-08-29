@@ -6,6 +6,7 @@ use App\Models\Enrollment;
 use App\Models\Organization;
 use App\Models\OrganizationSubscription;
 use App\Models\Plan;
+use App\Models\PlanVersion;
 use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\SubscriptionStatus;
@@ -21,6 +22,7 @@ use Illuminate\Validation\ValidationException;
 use LogicException;
 use PHPUnit\Framework\Attributes\Test;
 use RuntimeException;
+use Tests\Concerns\PublishesPlanVersions;
 use Tests\TestCase;
 
 /**
@@ -31,6 +33,7 @@ use Tests\TestCase;
  */
 class LimitsResolverTest extends TestCase
 {
+    use PublishesPlanVersions;
     use RefreshDatabase;
 
     protected function organization(): Organization
@@ -350,12 +353,14 @@ class LimitsResolverTest extends TestCase
     #[Test]
     public function changing_the_persisted_base_limit_changes_behavior_without_touching_any_code(): void
     {
-        // The explicit proof the brief asks for (§25): mutate ONLY the seeded
-        // plans.limits row and watch Limits' behaviour follow, with zero
-        // production-code changes.
-        Plan::where('key', 'base')->firstOrFail()->update([
-            'limits' => ['active_classes' => 2, 'active_students' => 300],
-        ]);
+        // The explicit proof the brief asks for (§25): change ONLY the
+        // persisted configuration and watch `Limits`' behaviour follow, with
+        // zero production-code changes. Since ADR-0008 that configuration is
+        // a PUBLISHED VERSION rather than a mutable column — so the version
+        // is published FIRST and the organization created after it, which is
+        // what makes it a customer of the new offer rather than a
+        // grandfathered one.
+        $this->publishNextVersionOf('base', limits: ['active_classes' => 2, 'active_students' => 300]);
 
         $organization = $this->organization();
         $limits = app(Limits::class);
@@ -379,17 +384,9 @@ class LimitsResolverTest extends TestCase
     public function a_plan_missing_a_catalogued_limit_key_fails_loudly_instead_of_assuming_a_value(): void
     {
         $organization = $this->organization();
-        $incomplete = Plan::create(['key' => 'incompleto', 'name' => 'Incompleto', 'limits' => ['active_classes' => 5]]);
-        $organization = $organization->fresh();
+        $incomplete = $this->publishVersionOfNewPlan('incompleto', ['active_classes' => 5]);
 
-        OrganizationSubscription::withoutGlobalScope('organization')
-            ->where('organization_id', $organization->getKey())->delete();
-        OrganizationSubscription::withoutGlobalScope('organization')->create([
-            'organization_id' => $organization->getKey(),
-            'plan_id' => $incomplete->getKey(),
-            'status' => SubscriptionStatus::Active,
-            'starts_at' => Carbon::now()->subDay(),
-        ]);
+        $this->subscribeToVersion($organization->fresh(), $incomplete);
 
         $this->expectException(RuntimeException::class);
 
@@ -400,20 +397,49 @@ class LimitsResolverTest extends TestCase
     public function a_plan_with_an_invalid_limit_value_fails_loudly(): void
     {
         $organization = $this->organization();
-        $invalid = Plan::create(['key' => 'invalido', 'name' => 'Inválido', 'limits' => ['active_classes' => 'muito', 'active_students' => 300]]);
+        $invalid = $this->publishVersionOfNewPlan('invalido', ['active_classes' => 'muito', 'active_students' => 300]);
 
-        OrganizationSubscription::withoutGlobalScope('organization')
-            ->where('organization_id', $organization->getKey())->delete();
-        OrganizationSubscription::withoutGlobalScope('organization')->create([
-            'organization_id' => $organization->getKey(),
-            'plan_id' => $invalid->getKey(),
-            'status' => SubscriptionStatus::Active,
-            'starts_at' => Carbon::now()->subDay(),
-        ]);
+        $this->subscribeToVersion($organization->fresh(), $invalid);
 
         $this->expectException(RuntimeException::class);
 
         app(Limits::class)->limitFor($organization->fresh(), LimitKey::ActiveClasses);
+    }
+
+    /**
+     * A misconfigured plan, published as its own v1.
+     *
+     * Written straight through the model rather than through
+     * `PublishesPlanVersions` because the point here is a version whose
+     * `limits` are WRONG, which the shared helper has no reason to make
+     * convenient.
+     *
+     * @param  array<string, mixed>  $limits
+     */
+    private function publishVersionOfNewPlan(string $key, array $limits): PlanVersion
+    {
+        $plan = Plan::create(['key' => $key, 'name' => ucfirst($key)]);
+
+        return $plan->versions()->create([
+            'version' => 1,
+            'limits' => $limits,
+            'composition_hash' => PlanVersion::compositionHash([], $limits),
+            'published_at' => Carbon::now(),
+        ]);
+    }
+
+    private function subscribeToVersion(Organization $organization, PlanVersion $version): void
+    {
+        OrganizationSubscription::withoutGlobalScope('organization')
+            ->where('organization_id', $organization->getKey())->delete();
+
+        OrganizationSubscription::withoutGlobalScope('organization')->create([
+            'organization_id' => $organization->getKey(),
+            'plan_id' => $version->plan_id,
+            'plan_version_id' => $version->getKey(),
+            'status' => SubscriptionStatus::Active,
+            'starts_at' => Carbon::now()->subDay(),
+        ]);
     }
 
     #[Test]

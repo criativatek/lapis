@@ -13,10 +13,14 @@ use Inertia\Response;
  * The public landing page.
  *
  * The plans are read from the database rather than written into the Vue
- * component, because `plan_module` is deliberately data: a module can move
+ * component, because the composition is deliberately data: a module can move
  * between Base, Pro and Institucional without a deploy (§4.3, EntitlementsSeeder).
  * A hardcoded comparison table would be wrong the first time somebody moves one,
  * and nobody would notice until a customer did.
+ *
+ * ALWAYS THE CURRENT PUBLISHED VERSION, never a subscriber's fixed one
+ * (ADR-0008 §5). The landing sells what is on sale today; a visitor reading it
+ * is not yet anybody's grandfathered customer.
  *
  * THE PRICES LIVE ON THE PAGE, THE COMPOSITION LIVES HERE. Since the
  * commercial decision was taken (Base gratuito em 2026/27, Pro 44,90 €/ano,
@@ -65,12 +69,18 @@ class HomeController extends Controller
     {
         $cards = [];
 
-        foreach (Plan::with('modules')->orderBy('sort_order')->get() as $plan) {
+        foreach (Plan::with('currentVersion.modules')->orderBy('sort_order')->get() as $plan) {
+            // A plan with nothing published yet shows no capabilities rather
+            // than blowing up a public page. It cannot happen in a seeded
+            // installation, and a landing that 500s is the worse of the two
+            // failures.
+            $version = $plan->currentVersionOrNull();
+
             $cards[] = [
                 'key' => $plan->key,
                 'name' => $plan->name,
-                'moduleKeys' => array_values(
-                    $plan->modules->map(fn (Module $module): string => $module->key)->all(),
+                'moduleKeys' => $version === null ? [] : array_values(
+                    $version->modules->map(fn (Module $module): string => $module->key)->all(),
                 ),
             ];
         }

@@ -241,8 +241,12 @@ class AiQuota
     }
 
     /**
-     * What the plan says at a dotted path inside its `limits` JSON, or null
-     * when it says nothing.
+     * What the CONTRACTED PLAN VERSION says at a dotted path inside its frozen
+     * `limits` JSON, or null when it says nothing.
+     *
+     * The version rather than the plan, since ADR-0008: an AI pool is a
+     * quantitative promise like any other, and an organization that bought a
+     * 5000-call pool keeps it when the plan starts selling 2000.
      *
      * `Limits::parse()` is deliberately NOT used: it throws on a key a plan
      * does not define, and «the plan does not define this» is the normal,
@@ -250,13 +254,13 @@ class AiQuota
      */
     protected function planLimit(Organization $organization, string $path): ?int
     {
-        $plan = $this->limits->planFor($organization);
+        $version = $this->limits->planVersionFor($organization);
 
-        if ($plan === null) {
+        if ($version === null) {
             return null;
         }
 
-        $value = data_get($plan->limits ?? [], $path);
+        $value = data_get($version->limits ?? [], $path);
 
         // A non-integer is treated as «not configured» rather than as an error:
         // this is an optional override, and an override nobody has set must not

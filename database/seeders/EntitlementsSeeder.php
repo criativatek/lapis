@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\Module;
 use App\Models\Plan;
+use App\Models\PlanVersion;
 use Illuminate\Database\Seeder;
 
 /**
@@ -13,7 +14,20 @@ use Illuminate\Database\Seeder;
  * structure doc. This is a starting composition, not a contract: it is seeded
  * data precisely so modules can move between plans without a code change.
  *
- * Idempotent — safe to re-run as the catalogue grows.
+ * IT PUBLISHES; IT NO LONGER MUTATES (ADR-0008 §4). This file stays the one
+ * place where each plan's composition is written down — that does not change
+ * and should not. What changed is what it DOES with it. It used to `sync()`
+ * `module_plan` and `update()` `plans.limits` on every run, so moving one
+ * capability between plans rewrote — retroactively, and without a record —
+ * what every subscriber of that plan had ever been entitled to. It now
+ * compares the composition it holds against the last version published, and
+ * only if they genuinely differ publishes version N+1. A published version is
+ * never written to again.
+ *
+ * Idempotent in the strong sense: running it twice creates ONE version;
+ * running it after a real change creates EXACTLY one more. That is what keeps
+ * `db:seed` safe on a live database and turns «has the offer changed?» into a
+ * hash comparison instead of a careful read.
  */
 class EntitlementsSeeder extends Seeder
 {
@@ -202,12 +216,55 @@ class EntitlementsSeeder extends Seeder
         foreach ($plans as $definition) {
             $plan = Plan::updateOrCreate(
                 ['key' => $definition['key']],
-                ['name' => $definition['name'], 'sort_order' => $definition['sort_order'], 'limits' => $definition['limits']],
+                ['name' => $definition['name'], 'sort_order' => $definition['sort_order']],
             );
 
-            $plan->modules()->sync(
-                Module::whereIn('key', $definition['modules'])->pluck('id'),
-            );
+            $this->publish($plan, $definition['modules'], $definition['limits']);
         }
+    }
+
+    /**
+     * Publishes this composition as the plan's next version — or does nothing
+     * at all, if it is the composition already on sale.
+     *
+     * The comparison is against the LAST version by number, not against the
+     * current sellable one: a composition identical to a retired version is
+     * still a change relative to what is on sale now, and re-publishing it as
+     * version N+1 is the honest record of that. The hash is computed by
+     * `PlanVersion` — the same function the backfill migration used — so the
+     * two sides of this comparison can never drift apart and make a fresh
+     * install publish a spurious v2 on its first `db:seed`.
+     *
+     * `attach()`, never `sync()`. The modules of a version are written once,
+     * here, at the moment it is published, and there is no code path anywhere
+     * that writes them a second time.
+     *
+     * @param  list<string>  $moduleKeys
+     * @param  array<string, mixed>  $limits
+     */
+    protected function publish(Plan $plan, array $moduleKeys, array $limits): void
+    {
+        $hash = PlanVersion::compositionHash($moduleKeys, $limits);
+
+        // The number and the hash of the last version, read as values rather
+        // than as a model: «no version yet» is an ordinary answer here, not an
+        // absent object every line below has to guard against.
+        $latestNumber = (int) $plan->versions()->max('version');
+        $latestHash = $plan->versions()->orderByDesc('version')->value('composition_hash');
+
+        if ($latestHash === $hash) {
+            return;
+        }
+
+        $version = $plan->versions()->create([
+            'version' => $latestNumber + 1,
+            'limits' => $limits,
+            'composition_hash' => $hash,
+            'published_at' => now(),
+        ]);
+
+        $version->modules()->attach(
+            Module::whereIn('key', $moduleKeys)->pluck('id'),
+        );
     }
 }

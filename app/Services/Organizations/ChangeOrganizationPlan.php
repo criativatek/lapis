@@ -5,6 +5,7 @@ namespace App\Services\Organizations;
 use App\Models\Organization;
 use App\Models\OrganizationSubscription;
 use App\Models\Plan;
+use App\Models\PlanVersion;
 use App\Models\SubscriptionStatus;
 use App\Models\User;
 use App\Support\Entitlements\Entitlements;
@@ -55,22 +56,40 @@ class ChangeOrganizationPlan
      * the history is continuous: every day has exactly one answer to «what was
      * this organization on?», with no gap and no overlap.
      *
-     * Asking for the plan that is already in force is a no-op (§5). There is no
-     * billing period to renew in this model, so a second identical subscription
-     * would record nothing that the first one does not already say, and would
-     * only add a row for a future reader to wonder about.
+     * WHICH VERSION, AND WHY THE ARGUMENT ACCEPTS BOTH (ADR-0008 §6). Handed a
+     * `Plan`, this sells what that plan sells TODAY — the right answer for a
+     * sale being made now, and what keeps `ActivateProTrial`,
+     * `CreatePersonalOrganization`, `CreateInstitutionalOrganization` and the
+     * `AdminAccountController` compiling without a line changed. Handed a
+     * `PlanVersion`, it uses exactly that one, which is how an operator moves a
+     * single subscription deliberately.
+     *
+     * THE NO-OP RULE COMPARES VERSIONS, NOT PLANS, and that difference is the
+     * ambiguity this method must not have. An organization on Pro **v1** that
+     * an operator moves to «Pro» while **v2** is published is being MIGRATED:
+     * it ends on v2, with a new row and a continuous history. Comparing
+     * `plan_id` would have made that a silent no-op and left the operator
+     * believing they had migrated somebody they had not. Asking for the exact
+     * version already in force is still a no-op (§5): there is no billing
+     * period to renew in this model, so a second identical subscription would
+     * record nothing the first one does not already say, and would only add a
+     * row for a future reader to wonder about.
      */
-    public function to(Organization $organization, Plan $plan): OrganizationSubscription
+    public function to(Organization $organization, Plan|PlanVersion $target): OrganizationSubscription
     {
-        return DB::transaction(function () use ($organization, $plan): OrganizationSubscription {
+        return DB::transaction(function () use ($organization, $target): OrganizationSubscription {
             $locked = $this->lock($organization);
+            // Resolved INSIDE the lock: «the current version» is live state
+            // like any other, and a version published between the caller's own
+            // read and this transaction must not be the one that lands.
+            $version = $this->resolveVersion($target);
             $changedAt = Carbon::now();
 
             $subscriptions = $this->subscriptionsOf($locked);
             $inForce = $subscriptions->filter(fn (OrganizationSubscription $subscription): bool => $subscription->isInForce());
 
             $unchanged = $inForce->count() === 1
-                && $inForce->first()->plan_id === $plan->getKey()
+                && $inForce->first()->plan_version_id === $version->getKey()
                 && $inForce->first()->status === SubscriptionStatus::Active;
 
             if ($unchanged) {
@@ -81,7 +100,8 @@ class ChangeOrganizationPlan
 
             $created = OrganizationSubscription::withoutGlobalScope('organization')->create([
                 'organization_id' => $locked->getKey(),
-                'plan_id' => $plan->getKey(),
+                'plan_id' => $version->plan_id,
+                'plan_version_id' => $version->getKey(),
                 'status' => SubscriptionStatus::Active,
                 'starts_at' => $changedAt,
             ]);
@@ -145,7 +165,7 @@ class ChangeOrganizationPlan
      *                        eligible (wrong type, not owned by `$user`, or
      *                        not currently on an eligible Base plan).
      */
-    public function startProTrial(Organization $organization, User $user, Plan $trialPlan, Plan $fallbackPlan, int $days): OrganizationSubscription
+    public function startProTrial(Organization $organization, User $user, Plan|PlanVersion $trialPlan, Plan|PlanVersion $fallbackPlan, int $days): OrganizationSubscription
     {
         return DB::transaction(function () use ($organization, $user, $trialPlan, $fallbackPlan, $days): OrganizationSubscription {
             $locked = $this->lock($organization);
@@ -158,6 +178,17 @@ class ChangeOrganizationPlan
                 throw TrialException::notEligible();
             }
 
+            // BOTH VERSIONS ARE FIXED HERE, AT THE START (ADR-0008 §7). The
+            // trial gets the Pro on sale today, and the dormant fallback gets
+            // the BASE ON SALE TODAY — not one resolved when the trial ends.
+            // Two reasons: nothing has to «wake up» to resolve it, which is
+            // precisely the property the dormant row exists to have; and if
+            // Base changes during the trial the organization lands on the Base
+            // it was promised. Moving it forward afterwards is an operator's
+            // explicit `to()`, recorded like any other change.
+            $trialVersion = $this->resolveVersion($trialPlan);
+            $fallbackVersion = $this->resolveVersion($fallbackPlan);
+
             $startsAt = Carbon::now();
             $endsAt = $startsAt->copy()->addDays($days);
 
@@ -165,7 +196,8 @@ class ChangeOrganizationPlan
 
             $trial = OrganizationSubscription::withoutGlobalScope('organization')->create([
                 'organization_id' => $locked->getKey(),
-                'plan_id' => $trialPlan->getKey(),
+                'plan_id' => $trialVersion->plan_id,
+                'plan_version_id' => $trialVersion->getKey(),
                 'status' => SubscriptionStatus::Trial,
                 'starts_at' => $startsAt,
                 'ends_at' => $endsAt,
@@ -173,7 +205,8 @@ class ChangeOrganizationPlan
 
             OrganizationSubscription::withoutGlobalScope('organization')->create([
                 'organization_id' => $locked->getKey(),
-                'plan_id' => $fallbackPlan->getKey(),
+                'plan_id' => $fallbackVersion->plan_id,
+                'plan_version_id' => $fallbackVersion->getKey(),
                 'status' => SubscriptionStatus::Active,
                 'starts_at' => $endsAt,
             ]);
@@ -387,6 +420,19 @@ class ChangeOrganizationPlan
                 },
             ])->save();
         }
+    }
+
+    /**
+     * A plan means «what it sells today»; a version means itself.
+     *
+     * The single place that rule is expressed for the write side, mirroring
+     * `OrganizationSubscription`'s own `creating` guard on the model side. A
+     * plan with nothing published fails loudly here rather than producing a
+     * subscription entitled to nothing.
+     */
+    protected function resolveVersion(Plan|PlanVersion $target): PlanVersion
+    {
+        return $target instanceof PlanVersion ? $target : $target->currentVersionOrFail();
     }
 
     /**

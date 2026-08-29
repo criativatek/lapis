@@ -116,8 +116,8 @@ class AiGatewayTest extends TestCase
             $this->assertNotNull($module, "{$capability->value} must be in the catalogue.");
             $this->assertGreaterThan(
                 0,
-                $module->plans()->count(),
-                "{$capability->value} is in no plan — no organization can ever reach it, and nothing will say so.",
+                $module->planVersions()->count(),
+                "{$capability->value} is in no plan version — no organization can ever reach it, and nothing will say so.",
             );
         }
     }

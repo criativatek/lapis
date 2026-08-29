@@ -13,10 +13,12 @@ use Illuminate\Support\Collection;
 /**
  * Answers "may this organization use this module, and how much?".
  *
- * The answer is the plan's modules, plus per-organization overrides on top —
- * resolved into one of three states (`AccessState`) rather than a bare
- * boolean, so a temporarily-suspended organization can be told apart from one
- * that never had the module at all (§Lote 2). `allows()`/`modules()` are the
+ * The answer is the modules of the plan VERSION the organization contracted
+ * (ADR-0008 — never the composition that plan carries today), plus
+ * per-organization overrides on top — resolved into one of three states
+ * (`AccessState`) rather than a bare boolean, so a temporarily-suspended
+ * organization can be told apart from one that never had the module at all
+ * (§Lote 2). `allows()`/`modules()` are the
  * original boolean primitive, kept byte-for-byte compatible and now
  * implemented on top of the state resolution below, not duplicating it.
  *
@@ -168,9 +170,16 @@ class Entitlements
      * The organization's own history is the only source — no column, no flag
      * and no migration. Every subscription that ever TOOK EFFECT (`starts_at`
      * at or before now, whatever its status became afterwards) is read for the
-     * capabilities its plan granted; a capability that appears there, is not
-     * granted by whatever is in force today, and is named by
-     * `RetainedOnDowngrade`, becomes `ReadOnly`.
+     * capabilities ITS OWN CONTRACTED VERSION granted; a capability that
+     * appears there, is not granted by whatever is in force today, and is
+     * named by `RetainedOnDowngrade`, becomes `ReadOnly`.
+     *
+     * THE VERSION, NEVER THE PLAN — this is the method ADR-0008 was written
+     * around. Reading `$subscription->plan->modules` answered «what could this
+     * teacher do when they wrote this?» with the composition that plan has
+     * TODAY, so re-running the seeder silently rewrote the past. A historical
+     * subscription now names the historical offer, and publishing Pro v2
+     * cannot reach an organization that only ever had v1.
      *
      * Rows SCHEDULED to start later are skipped, and that exclusion is
      * load-bearing rather than tidy: `ChangeOrganizationPlan::startProTrial()`
@@ -197,7 +206,7 @@ class Entitlements
                 continue;
             }
 
-            foreach ($subscription->plan->modules as $module) {
+            foreach ($subscription->planVersion->modules as $module) {
                 if (isset($states[$module->key]) || ! RetainedOnDowngrade::includes($module->key)) {
                     continue;
                 }
@@ -211,12 +220,12 @@ class Entitlements
      * The state-resolution algorithm (§Lote 2):
      *
      * 1. The subscription currently `isInForce()`, if any, sets every one of
-     *    ITS plan's modules to `Allowed`.
+     *    the modules of ITS OWN CONTRACTED VERSION to `Allowed`.
      * 2. Otherwise, if the MOST RECENT subscription overall (same ordering as
      *    below — newest `starts_at`, then newest `id`) is specifically
-     *    `Suspended`, every one of ITS plan's modules is `ReadOnly` instead —
-     *    a suspension is a pause, not a removal, so what was there stays
-     *    visible.
+     *    `Suspended`, every one of the modules of ITS OWN CONTRACTED VERSION
+     *    is `ReadOnly` instead — a suspension is a pause, not a removal, so
+     *    what was there stays visible.
      * 3. Otherwise — no subscription at all, the most recent one is
      *    `Expired`, or a grants-access status (`Active`/`Trial`) whose date
      *    window simply lapsed without anyone explicitly suspending it —
@@ -253,7 +262,7 @@ class Entitlements
         $subscriptions = OrganizationSubscription::query()
             ->withoutGlobalScope('organization')
             ->where('organization_id', $organization->getKey())
-            ->with('plan.modules')
+            ->with('planVersion.modules')
             // id as tiebreaker: two subscriptions with the same starts_at (a plan
             // changed the same second it was created) must resolve deterministically
             // to the newest one, not an arbitrary row.
@@ -266,7 +275,7 @@ class Entitlements
         $states = [];
 
         if ($inForce !== null) {
-            foreach ($inForce->plan->modules as $module) {
+            foreach ($inForce->planVersion->modules as $module) {
                 $states[$module->key] = AccessState::Allowed;
             }
 
@@ -277,7 +286,7 @@ class Entitlements
             $mostRecent = $subscriptions->first();
 
             if ($mostRecent !== null && $mostRecent->status === SubscriptionStatus::Suspended) {
-                foreach ($mostRecent->plan->modules as $module) {
+                foreach ($mostRecent->planVersion->modules as $module) {
                     $states[$module->key] = AccessState::ReadOnly;
                 }
             }

@@ -132,7 +132,7 @@ class InovarCodeResolverTest extends TestCase
         $this->seed(EntitlementsSeeder::class);
 
         $modulesOf = fn (string $planKey): array => Plan::where('key', $planKey)
-            ->firstOrFail()->modules()->pluck('key')->all();
+            ->firstOrFail()->currentVersionOrFail()->modules()->pluck('key')->all();
 
         $this->assertNotContains('inovar_export', $modulesOf('base'));
         $this->assertContains('inovar_export', $modulesOf('pro'));

@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StoreAiCredentialRequest;
 use App\Http\Requests\Admin\UpdateAiSettingsRequest;
-use App\Models\Module;
+use App\Models\Plan;
 use App\Models\PlatformSetting;
 use App\Services\Ai\AiRequestFailed;
 use App\Services\Ai\AiTextProviders;
@@ -405,23 +405,23 @@ class AdminAiController extends Controller
      */
     protected function capabilityOptions(): array
     {
-        // One query for the whole catalogue rather than one per capability.
-        $modules = Module::query()
-            ->whereIn('key', array_map(fn (AiCapability $capability): string => $capability->value, AiCapability::cases()))
-            ->with('plans:id,name,sort_order')
-            ->get();
-
+        // WHICH PLANS SELL IT TODAY — the CURRENT published version of each,
+        // never a historical one (ADR-0008). An operator setting a quota is
+        // looking at the catalogue as it stands, not at what Pro v1 carried.
+        // One query for the three plans rather than one per capability.
         /** @var array<string, list<string>> $plansByModule */
         $plansByModule = [];
 
-        foreach ($modules as $module) {
-            $names = [];
+        foreach (Plan::with('currentVersion.modules')->orderBy('sort_order')->get() as $plan) {
+            $version = $plan->currentVersionOrNull();
 
-            foreach ($module->plans->sortBy('sort_order') as $plan) {
-                $names[] = (string) $plan->name;
+            if ($version === null) {
+                continue;
             }
 
-            $plansByModule[$module->key] = $names;
+            foreach ($version->modules as $module) {
+                $plansByModule[$module->key][] = (string) $plan->name;
+            }
         }
 
         return array_map(fn (AiCapability $capability): array => [

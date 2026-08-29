@@ -5,6 +5,7 @@ namespace App\Actions\Organizations;
 use App\Models\Organization;
 use App\Models\OrganizationType;
 use App\Models\Plan;
+use App\Models\PlanVersion;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -42,7 +43,7 @@ class CreateInstitutionalOrganization
 {
     public function __construct(protected SubscribeOrganization $subscribe) {}
 
-    public function create(string $name, User $owner, ?Plan $initialPlan = null): Organization
+    public function create(string $name, User $owner, Plan|PlanVersion|null $initialPlan = null): Organization
     {
         return DB::transaction(function () use ($name, $owner, $initialPlan): Organization {
             $organization = Organization::create([
