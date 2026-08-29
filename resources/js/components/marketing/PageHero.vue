@@ -48,7 +48,7 @@ withDefaults(
 <template>
     <section class="px-4 pt-4 sm:px-6 sm:pt-6">
         <div
-            class="relative mx-auto grid w-full max-w-6xl overflow-hidden rounded-[2rem] bg-slate-50 ring-1 ring-black/5 sm:rounded-[2.5rem] lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]"
+            class="relative mx-auto grid w-full max-w-6xl overflow-hidden rounded-[2rem] bg-slate-50 card-soft sm:rounded-[2.5rem] lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]"
         >
             <div class="min-w-0 px-6 py-12 sm:px-10 sm:py-16 lg:py-20">
                 <p

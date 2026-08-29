@@ -64,7 +64,7 @@ const principles = [
                 <div
                     v-for="principle in principles"
                     :key="principle.title"
-                    class="rounded-3xl bg-white p-7 shadow-sm ring-1 ring-amber-900/5"
+                    class="rounded-3xl bg-white p-7 card-soft"
                 >
                     <h3
                         class="text-xl font-semibold tracking-tight text-balance"
@@ -96,9 +96,7 @@ const principles = [
                         >{{ contactEmail ?? entity.supportEmail }}</a
                     >
                 </div>
-                <div
-                    class="rounded-3xl bg-white p-7 shadow-sm ring-1 ring-black/5"
-                >
+                <div class="rounded-3xl bg-white p-7 card-soft">
                     <ShieldCheck
                         aria-hidden="true"
                         class="size-6 text-emerald-700"
@@ -119,9 +117,7 @@ const principles = [
                         >{{ entity.privacyEmail }}</a
                     >
                 </div>
-                <div
-                    class="rounded-3xl bg-white p-7 shadow-sm ring-1 ring-black/5"
-                >
+                <div class="rounded-3xl bg-white p-7 card-soft">
                     <Building2
                         aria-hidden="true"
                         class="size-6 text-blue-700"

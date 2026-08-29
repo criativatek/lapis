@@ -149,7 +149,7 @@ const measures = [
             <template #secondary>
                 <Link
                     href="/funcionalidades/avaliacao"
-                    class="inline-flex h-10 items-center rounded-md px-4 text-sm font-medium underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                    class="inline-flex h-10 items-center rounded-full border border-slate-300 bg-white px-5 text-sm font-medium text-slate-800 transition-colors hover:border-slate-400 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                 >
                     Ver como funciona
                 </Link>
@@ -162,18 +162,18 @@ const measures = [
         <!-- Facts, not figures. The reference mockup had «+120 escolas» and
              «99,9% disponibilidade» here; the product has no such numbers and
              the site invents none. These four are true and checkable. -->
-        <section class="px-4 pt-4 sm:px-6 sm:pt-6">
+        <section class="relative z-10 -mt-6 px-4 sm:-mt-8 sm:px-6">
             <dl
                 class="mx-auto grid w-full max-w-6xl gap-3 sm:grid-cols-2 lg:grid-cols-4"
             >
                 <div
                     v-for="fact in facts"
                     :key="fact.label"
-                    class="flex items-center gap-4 rounded-2xl bg-white px-5 py-4 ring-1 ring-black/5"
+                    class="flex items-center gap-4 rounded-2xl bg-white px-5 py-4 card-soft"
                 >
                     <span
                         aria-hidden="true"
-                        class="flex size-11 shrink-0 items-center justify-center rounded-xl"
+                        class="flex size-11 shrink-0 items-center justify-center rounded-xl clay-disc"
                         :class="fact.tone"
                     >
                         <component :is="fact.icon" class="size-5" />
@@ -217,23 +217,45 @@ const measures = [
         >
             <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
                 <Link
-                    v-for="area in areas"
+                    v-for="(area, index) in areas"
                     :key="area.href"
                     :href="area.href"
-                    class="group rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/5 transition-[box-shadow,transform] duration-300 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-safe:hover:-translate-y-0.5 sm:p-7"
+                    class="group relative overflow-hidden rounded-3xl bg-white p-6 card-soft transition-[box-shadow,transform] duration-300 hover:card-soft-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-safe:hover:-translate-y-1 sm:p-7"
+                    :class="
+                        index === 0 ? 'sm:col-span-2 lg:row-span-2' : undefined
+                    "
                 >
+                    <!-- The bento's big tile: the first area shows the product. -->
+                    <img
+                        v-if="index === 0"
+                        src="/images/landing/grid.webp"
+                        alt=""
+                        width="1600"
+                        height="854"
+                        loading="lazy"
+                        decoding="async"
+                        class="pointer-events-none absolute -right-16 bottom-0 hidden w-[62%] rounded-tl-2xl shadow-[0_20px_50px_-20px_rgba(15,23,42,0.4)] ring-1 ring-black/10 transition-transform duration-500 group-hover:-translate-y-1 lg:block"
+                    />
                     <span
                         aria-hidden="true"
-                        class="flex size-11 items-center justify-center rounded-2xl"
+                        class="flex size-12 items-center justify-center rounded-2xl clay-disc"
                         :class="area.tone"
                     >
                         <component :is="area.icon" class="size-5" />
                     </span>
-                    <h3 class="mt-5 text-lg font-semibold tracking-tight">
+                    <h3
+                        class="mt-5 text-lg font-semibold tracking-tight"
+                        :class="index === 0 ? 'lg:text-2xl' : undefined"
+                    >
                         {{ area.title }}
                     </h3>
                     <p
                         class="mt-2 text-sm leading-relaxed text-muted-foreground"
+                        :class="
+                            index === 0
+                                ? 'lg:max-w-[38%] lg:text-base'
+                                : undefined
+                        "
                     >
                         {{ area.body }}
                     </p>
@@ -249,7 +271,7 @@ const measures = [
                 </Link>
                 <Link
                     href="/planos"
-                    class="group flex flex-col justify-between rounded-3xl bg-amber-100 p-6 transition-[box-shadow,transform] duration-300 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-safe:hover:-translate-y-0.5 sm:p-7"
+                    class="group flex flex-col justify-between rounded-3xl bg-amber-100 dots-pattern p-6 transition-[box-shadow,transform] duration-300 hover:card-soft-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-safe:hover:-translate-y-1 sm:p-7"
                 >
                     <div>
                         <p
@@ -302,7 +324,7 @@ const measures = [
                 <div
                     v-for="measure in measures"
                     :key="measure.title"
-                    class="rounded-2xl bg-white p-5 ring-1 ring-emerald-900/5"
+                    class="rounded-2xl bg-white p-5 card-soft"
                 >
                     <component
                         :is="measure.icon"

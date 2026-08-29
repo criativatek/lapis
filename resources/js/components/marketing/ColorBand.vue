@@ -32,8 +32,8 @@ const GROUND: Record<Tone, string> = {
     // Institutional navy, not royal blue: #1E4AB0 → #102A56 reads as school,
     // not as an ad. Buttons keep blue-600 — action colour stays bright.
     blue: 'bg-gradient-to-br from-[#1E4AB0] via-[#183B8F] to-[#102A56] text-white',
-    amber: 'bg-amber-50',
-    emerald: 'bg-emerald-50',
+    amber: 'bg-amber-50 dots-pattern',
+    emerald: 'bg-emerald-50 dots-pattern',
     white: '',
 };
 
@@ -75,7 +75,7 @@ const LEAD: Record<Tone, string> = {
                 <h2
                     v-if="title"
                     :id="id ? `${id}-title` : undefined"
-                    class="mt-3 text-3xl font-semibold tracking-tight text-balance sm:text-4xl lg:text-[2.75rem] lg:leading-[1.1]"
+                    class="mt-3 text-3xl font-semibold tracking-[-0.02em] text-balance sm:text-4xl lg:text-[3rem] lg:leading-[1.08]"
                 >
                     {{ title }}
                 </h2>

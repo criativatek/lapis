@@ -59,7 +59,7 @@ const steps: readonly Step[] = [
 
                     <span
                         aria-hidden="true"
-                        class="relative flex size-10 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm transition-all duration-500 group-hover:shadow-md motion-safe:group-hover:-translate-y-0.5"
+                        class="relative flex size-11 items-center justify-center rounded-full bg-blue-600 clay-disc text-white transition-all duration-500 motion-safe:group-hover:-translate-y-0.5"
                     >
                         <component :is="step.icon" class="size-[18px]" />
                     </span>

@@ -14,6 +14,25 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > cada um sob o título da frente a que pertenceu. A 0.85.0 é o primeiro
 > release em que as duas linhagens voltam a ser uma só.
 
+## [0.97.0] — 2026-08-30
+
+Passagem de design com o ui-ux-pro-max («falta um pouco mais design»). A
+recomendação para um produto de educação foi «bento grid + soft UI»: cantos de
+20–24px, profundidade por duas camadas de sombra em vez de bordas, elevação
+por `transform` no hover, fundos off-white, cartões de tamanhos diferentes.
+
+- Utilitários novos em `app.css` (só para as páginas públicas): `card-soft`,
+  `card-soft-hover`, `clay-disc` (disco de ícone com gradiente e sombra
+  interior), `dots-pattern`, `glow-blue`.
+- Home: grelha **bento** — «Avaliação de alunos» ocupa 2×2 com uma fatia da
+  grelha real; a faixa de factos sobrepõe a base do cartão do hero.
+- `ScreenFrame` ganha a barra de browser (três pontos + barra de endereço).
+- Ícones em discos «clay» nos cartões, factos e passos.
+- CTA primário em pill com brilho azul (`LANDING_PRIMARY`); botões do CTA
+  final e «Ver como funciona» em pill.
+- Faixas âmbar e esmeralda com padrão de pontos; títulos de secção maiores e
+  mais apertados.
+
 ## [0.96.0] — 2026-08-30
 
 Segunda ronda de feedback do ChatGPT sobre a home («7,5/10 — agora é

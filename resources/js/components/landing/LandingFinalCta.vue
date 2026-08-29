@@ -80,7 +80,7 @@ const chips = [
                     <Button
                         as-child
                         size="lg"
-                        class="group/cta bg-white text-[#183B8F] hover:bg-blue-50"
+                        class="group/cta rounded-full bg-white px-6 text-[#183B8F] hover:bg-blue-50"
                     >
                         <Link :href="authenticated ? dashboard() : register()">
                             {{
@@ -98,7 +98,7 @@ const chips = [
                         as-child
                         variant="outline"
                         size="lg"
-                        class="border-white/40 bg-transparent text-white transition-transform duration-300 hover:bg-white/10 hover:text-white motion-safe:hover:-translate-y-0.5"
+                        class="rounded-full border-white/40 bg-transparent px-6 text-white transition-transform duration-300 hover:bg-white/10 hover:text-white motion-safe:hover:-translate-y-0.5"
                     >
                         <Link href="/planos">Conhecer o Pro</Link>
                     </Button>

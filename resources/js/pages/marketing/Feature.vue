@@ -72,11 +72,11 @@ const feature = computed(() => featureFor(props.slug));
                 <li
                     v-for="(step, index) in feature.steps"
                     :key="step.title"
-                    class="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-amber-900/5"
+                    class="rounded-3xl bg-white p-6 card-soft"
                 >
                     <span
                         aria-hidden="true"
-                        class="flex size-9 items-center justify-center rounded-full bg-amber-500 text-sm font-semibold text-white tabular-nums"
+                        class="flex size-10 items-center justify-center rounded-full bg-amber-500 clay-disc text-sm font-semibold text-white tabular-nums"
                     >
                         {{ index + 1 }}
                     </span>

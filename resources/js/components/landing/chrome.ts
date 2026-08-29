@@ -32,7 +32,8 @@
  * so it reads as colour rather than as more ink. One constant, so the hero,
  * header, pricing and closing CTA cannot drift apart.
  */
-export const LANDING_PRIMARY = 'bg-blue-600 text-white hover:bg-blue-700';
+export const LANDING_PRIMARY =
+    'rounded-full bg-blue-600 px-5 text-white glow-blue hover:bg-blue-700 motion-safe:transition-[background-color,transform,box-shadow] motion-safe:hover:-translate-y-0.5';
 
 export const CHROME_SURFACE = 'bg-white dark:bg-[#33200f]';
 

@@ -30,16 +30,16 @@ const DISC: Record<Tone, string> = {
 
 <template>
     <div
-        class="rounded-3xl p-6 sm:p-7"
+        class="rounded-3xl p-6 transition-[transform,box-shadow] duration-300 motion-safe:hover:-translate-y-1 sm:p-7"
         :class="
             onBlue
                 ? 'bg-white/10 text-white'
-                : 'bg-white shadow-sm ring-1 ring-black/5'
+                : 'bg-white card-soft hover:card-soft-hover'
         "
     >
         <span
             aria-hidden="true"
-            class="flex size-11 items-center justify-center rounded-2xl"
+            class="flex size-12 items-center justify-center rounded-2xl clay-disc"
             :class="onBlue ? 'bg-white/15 text-white' : DISC[tone]"
         >
             <component :is="icon" class="size-5" />
