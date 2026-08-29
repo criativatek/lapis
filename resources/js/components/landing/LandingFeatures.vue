@@ -30,6 +30,12 @@ type Stage = {
     path: string;
     /** Alt text for the mock beside it — see ProductWindow. */
     label: string;
+    /**
+     * A real screenshot of the application, from the demo scenario
+     * (DemoDataSeeder — fictional students). When set it replaces the CSS mock;
+     * the stages whose demo screens are still empty forms keep their mock.
+     */
+    image?: { src: string; width: number; height: number };
     modules: readonly string[];
 };
 
@@ -41,6 +47,11 @@ const stages: readonly Stage[] = [
         line: 'Gestão de turmas e de alunos a partir da pauta que a escola já lhe deu — nomes, números e fotografias no mesmo passo.',
         path: 'lapispro.com/classes/9b',
         label: 'Ecrã de uma turma no Lapispro: a lista de alunos importada da pauta, com número, nome e fotografia.',
+        image: {
+            src: '/images/landing/roster.webp',
+            width: 1600,
+            height: 1058,
+        },
         modules: ['Turmas', 'Alunos', 'Importações'],
     },
     {
@@ -48,8 +59,9 @@ const stages: readonly Stage[] = [
         tab: 'Avaliar',
         title: 'Uma grelha que sabe o que aconteceu',
         line: 'Faltou, foi dispensado, não se aplica, ainda está por corrigir. Oito estados, e o cálculo trata cada um como deve.',
-        path: 'lapispro.com/instruments/teste-1/grelha',
-        label: 'Grelha de correção de um instrumento de avaliação no Lapispro, com a cotação por questão e os estados de cada aluno.',
+        path: 'lapispro.com/classes/9b/results',
+        label: 'Grelha de resultados de uma turma no Lapispro: média ponderada por domínio, proposta na escala e nível atribuído pelo professor.',
+        image: { src: '/images/landing/grid.webp', width: 1600, height: 854 },
         modules: [
             'Elementos de Avaliação',
             'Grelhas de correção',
@@ -61,8 +73,13 @@ const stages: readonly Stage[] = [
         tab: 'Acompanhar',
         title: 'A turma inteira num ecrã',
         line: 'Acompanhamento do progresso dos alunos: distribuição pela escala, desempenho por domínio e o movimento de um período para o seguinte.',
-        path: 'lapispro.com/classes/9b/results/estatistica',
-        label: 'Análise de resultados de uma turma no Lapispro: distribuição pela escala e desempenho por domínio.',
+        path: 'lapispro.com/classes/9b/results/quadro-sintese',
+        label: 'Quadro síntese de uma turma no Lapispro: por domínio, a média de cada período, a evolução, o acumulado e a menção na escala.',
+        image: {
+            src: '/images/landing/analysis.webp',
+            width: 1600,
+            height: 800,
+        },
         modules: [
             'Análise da Turma',
             'Evolução do Aluno',
@@ -206,7 +223,17 @@ function onKeydown(event: KeyboardEvent): void {
                     :path="stage.path"
                     :label="stage.label"
                 >
-                    <RosterPreview v-if="stage.key === 'organizar'" />
+                    <img
+                        v-if="stage.image"
+                        :src="stage.image.src"
+                        :alt="stage.label"
+                        :width="stage.image.width"
+                        :height="stage.image.height"
+                        loading="lazy"
+                        decoding="async"
+                        class="block h-auto w-full"
+                    />
+                    <RosterPreview v-else-if="stage.key === 'organizar'" />
                     <GridPreview v-else-if="stage.key === 'avaliar'" />
                     <AnalysisPreview v-else-if="stage.key === 'acompanhar'" />
                     <InterventionsPreview

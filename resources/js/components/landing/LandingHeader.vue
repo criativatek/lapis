@@ -16,7 +16,6 @@ import {
     CHROME_BORDER,
     CHROME_GHOST_HOVER,
     CHROME_LINK,
-    CHROME_MUTED,
     CHROME_SURFACE_STICKY,
     LANDING_PRIMARY,
 } from './chrome';
@@ -132,17 +131,13 @@ const items: readonly LandingNavItem[] = LANDING_NAV;
                     com uma classe em vez de duas imagens.
 
                     O nome deixa de ser escrito à parte porque o logótipo já o
-                    diz; a linha descritiva por baixo mantém-se.
+                    diz. A linha descritiva que vivia ao lado saiu na 0.91.0:
+                    quatro linhas de 12px coladas ao logótipo eram ruído, e o
+                    hero diz o mesmo duas linhas abaixo.
                 -->
                 <AppLogoWordmark
                     class="h-7 w-auto shrink-0 text-[#11223d] sm:h-8 dark:text-white"
                 />
-                <span
-                    class="hidden max-w-[19rem] text-[12px] leading-tight lg:block"
-                    :class="CHROME_MUTED"
-                    >Plataforma para professores. Avaliação, organização e
-                    acompanhamento num só lugar.</span
-                >
             </Link>
 
             <nav

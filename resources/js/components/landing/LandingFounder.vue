@@ -4,6 +4,7 @@ import { ArrowRight, Check } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import { register } from '@/routes';
 import { edit as planSettings } from '@/routes/settings/plan';
+import { LANDING_PRIMARY } from './chrome';
 import {
     FOUNDER,
     FOUNDER_MONTHLY_EQUIVALENT,
@@ -129,7 +130,11 @@ const href = () => (props.authenticated ? planSettings() : register());
                         {{ FOUNDER.eligibility }}
                     </p>
 
-                    <Button as-child class="group/cta mt-5 w-full">
+                    <Button
+                        as-child
+                        class="group/cta mt-5 w-full"
+                        :class="LANDING_PRIMARY"
+                    >
                         <Link :href="href()">
                             {{ FOUNDER.cta }}
                             <ArrowRight

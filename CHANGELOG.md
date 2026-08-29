@@ -14,6 +14,20 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > cada um sob o título da frente a que pertenceu. A 0.85.0 é o primeiro
 > release em que as duas linhagens voltam a ser uma só.
 
+## [0.91.0] — 2026-08-29
+
+Landing com o produto a sério. As secções «Organizar», «Avaliar» e
+«Acompanhar» de Funcionalidades mostram agora capturas reais da aplicação —
+turma, grelha de resultados e quadro síntese — em vez de mocks em CSS. As
+capturas vêm do cenário do `DemoDataSeeder` (alunos fictícios, §26.6), a
+2×, recortadas à área de conteúdo, WebP de 48–87 KB em
+`public/images/landing/`. «Intervir» e «Documentar» mantêm o mock: nos dados
+demo esses ecrãs ainda são formulários vazios, e um formulário vazio vende
+menos do que um desenho. O hero também mantém o mock, porque é o único que
+mostra proposta e decisão lado a lado.
+
+Saiu a linha descritiva de quatro linhas ao lado do logótipo no cabeçalho.
+
 ## [0.90.0] — 2026-08-29
 
 Landing: uma cor de acção. A 0.89.0 pintou de azul o hero e o cabeçalho e
