@@ -20,6 +20,7 @@ import LandingRules from '@/components/landing/LandingRules.vue';
 import LandingSecurity from '@/components/landing/LandingSecurity.vue';
 import LandingVoucher from '@/components/landing/LandingVoucher.vue';
 import type { LandingPlan } from '@/components/landing/types';
+import { useLightThemeLock } from '@/composables/useLightThemeLock';
 
 /**
  * The public landing page.
@@ -46,6 +47,8 @@ defineProps<{
 
 const page = usePage();
 const authenticated = computed(() => page.props.auth.user !== null);
+
+useLightThemeLock();
 
 /*
  * THERE IS NO SMOOTH SCROLLING HERE, and that is deliberate.

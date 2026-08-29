@@ -14,6 +14,16 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > cada um sob o título da frente a que pertenceu. A 0.85.0 é o primeiro
 > release em que as duas linhagens voltam a ser uma só.
 
+## [0.89.1] — 2026-08-29
+
+A landing e as páginas legais são só claras. Com o sistema em modo escuro, a
+0.89.0 aparecia a preto — o Pedro viu-a assim e perguntou «assim?». Marketing
+tem um tema; o escuro é uma preferência para trabalhar dentro da aplicação.
+O servidor põe `data-theme-lock="light"` no `<html>` para `Welcome` e
+`legal/Document` e nunca aplica `dark`; `updateTheme()` respeita o bloqueio;
+`useLightThemeLock()` levanta-o ao sair por Inertia para que o painel volte à
+preferência real sem reload.
+
 ## [0.89.0] — 2026-08-29
 
 Landing pública com base branca. O creme «papel» do cabeçalho, rodapé e das

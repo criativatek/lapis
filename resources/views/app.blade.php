@@ -1,5 +1,14 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}"  @class(['dark' => ($appearance ?? 'system') == 'dark'])>
+@php
+    /*
+     * The public pages are light only. Marketing has one theme; dark mode is a
+     * preference for working inside the application, not for reading the
+     * landing. The lock is an attribute the client honours (useAppearance.ts)
+     * and removes when the visitor moves into the app without a reload.
+     */
+    $publicPage = in_array($page['component'], ['Welcome', 'legal/Document'], true);
+@endphp
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}"  @class(['dark' => ! $publicPage && ($appearance ?? 'system') == 'dark']) @if ($publicPage) data-theme-lock="light" @endif>
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -14,7 +23,7 @@
             (function() {
                 const appearance = '{{ $appearance ?? "system" }}';
 
-                if (appearance === 'system') {
+                if (appearance === 'system' && !document.documentElement.dataset.themeLock) {
                     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
                     if (prefersDark) {

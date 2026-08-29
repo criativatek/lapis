@@ -3,6 +3,7 @@ import { Head, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import LandingFooter from '@/components/landing/LandingFooter.vue';
 import LandingHeader from '@/components/landing/LandingHeader.vue';
+import { useLightThemeLock } from '@/composables/useLightThemeLock';
 
 /**
  * Uma página legal — Termos ou Privacidade, o mesmo componente para as duas.
@@ -47,6 +48,8 @@ const props = defineProps<{
 
 const page = usePage();
 const authenticated = computed(() => page.props.auth.user !== null);
+
+useLightThemeLock();
 
 /** «27 de agosto de 2026», a partir de «2026-08-27». */
 const effectiveFrom = computed(() => {

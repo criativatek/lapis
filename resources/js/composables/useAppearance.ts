@@ -15,6 +15,14 @@ export function updateTheme(value: Appearance): void {
         return;
     }
 
+    // The public pages are locked to light by the server (app.blade.php);
+    // useLightThemeLock() lifts the lock when the visitor enters the app.
+    if (document.documentElement.dataset.themeLock === 'light') {
+        document.documentElement.classList.remove('dark');
+
+        return;
+    }
+
     if (value === 'system') {
         const mediaQueryList = window.matchMedia(
             '(prefers-color-scheme: dark)',

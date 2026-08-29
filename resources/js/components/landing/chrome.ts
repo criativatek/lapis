@@ -22,8 +22,10 @@
  * measures 4.9:1 in light and 6.8:1 in dark. Saturating the chrome without
  * moving the text would have made the footer quietly unreadable.
  */
-// ponytail: 2026-08-29 — light theme went white (design/landing-light); the
-// warm paper described above now only survives in dark mode.
+// 2026-08-29: the public pages are light only and white (design/landing-light).
+// The warm paper described above survives only in the dark variants, which
+// app.blade.php never activates on these pages — kept so the tokens stay
+// coherent if the lock is ever lifted.
 export const CHROME_SURFACE = 'bg-white dark:bg-[#33200f]';
 
 /**
