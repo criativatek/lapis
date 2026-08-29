@@ -14,6 +14,107 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > cada um sob o título da frente a que pertenceu. A 0.85.0 é o primeiro
 > release em que as duas linhagens voltam a ser uma só.
 
+## [0.89.0] — 2026-08-29
+
+As condições comerciais deixam de viver na landing e passam a viver na base de
+dados. Até aqui, «Gratuito no ano letivo 2026/27» e «Faça parte dos primeiros
+250» eram frases numa página: uma adesão não guardava rasto nenhum daquilo que
+lhe tinha sido prometido, e o contador dos lugares lia as subscrições com
+condição `founder` — uma população que **nenhum fluxo escrevia**. O checkout
+marcava a condição no pagamento e a subscrição só passava a fundadora se, dias
+depois, um operador o dissesse à mão; o contador mostrava «restam 250» para
+sempre, e o 251.º comprador veria o preço de fundador sem forma de saber que
+era o 251.º. A partir desta versão, uma adesão grava a condição que lhe foi
+dada — com o preço congelado e a data até quando vale — e um lugar de Membro
+Fundador é uma linha com um ordinal que a base de dados recusa duplicar. A
+decisão está registada na **ADR-0009**.
+
+### Added
+
+- **Condições comerciais gravadas no momento da adesão.** `CommercialTerms`
+  decide os termos de uma subscrição a partir do que foi de facto contratado, e
+  `ContractedTerms` transporta-os como um valor único — condição, preço em
+  cêntimos, moeda, periodicidade e a data até quando o termo comercial vale.
+  Deixa de ser preciso ler a base de dados para saber em que condições uma
+  conta entrou.
+- **Promoção Base 2026/27.** Uma adesão Base nova grava
+  `Promotional / 0 / EUR / 2027-08-31` enquanto a janela estiver aberta. As
+  contas que já lá estavam **não** são tocadas — nem por migração, nem por
+  comando nenhum — porque aplicar a promoção retroativamente afirmaria uma
+  coisa que a base de dados nunca teve prova para dizer.
+- **Anualidade explícita.** `BillingPeriod::Annual` passa a ficar registado na
+  subscrição, onde «subscrição anual» estava simplesmente em falta. O enum não
+  tem caso mensal, de propósito: é o único ciclo pago que este produto tem.
+- **Lugares de Membro Fundador auditáveis** (`founder_seats`). Cada lugar é uma
+  linha com o ordinal prometido, o preço congelado no momento da adesão, quando
+  foi tomado, até quando a reserva se aguenta e quando o dinheiro entrou. O
+  lugar é **reservado no checkout** — o único momento transacional e auditável
+  que existe — e liberta-se sozinho se a janela de transferência passar sem
+  confirmação, sem job e sem *scheduler*. Um lugar não é um direito: um Membro
+  Fundador tem exatamente os módulos de um Pro normal.
+- **A regra dos primeiros 250, imposta pela base de dados.** `UNIQUE` sobre
+  `seat_number`, ordinais densos e o teto verificado antes de inserir tornam o
+  251.º lugar um estado que a base de dados recusa, e não apenas algo que o
+  código desaconselha. O teto comercial vive em `billing.founder.seats`; a
+  `CHECK` na tabela é um travão de sanidade num valor deliberadamente mais alto.
+- **Pré-voo comercial** (`lapis:commercial-preflight`). Só leitura, sem
+  `--apply`, e sai diferente de zero quando há subscrições em vigor sem
+  condição registada — para que um procedimento de deploy pare sem ninguém ter
+  de ler a saída com atenção. Não classifica contas nem inventa uma noção de
+  conta interna: mostra os factos e deixa a leitura a quem sabe.
+- **Backoffice comercial: o que foi contratado, em leitura.** O ecrã de conta
+  passa a mostrar as condições contratadas — preço, moeda, periodicidade, fim
+  do termo, versão de plano — e o lugar de Fundador, se existir. Tudo sem
+  edição: são prova imutável, e um campo editável faria a promessa dos 250
+  depender de quem escrevesse por cima. As três ocorrências do lugar
+  (atribuído, confirmado, libertado) entram no trilho de auditoria.
+- **ADR-0009** — «Os primeiros 250» é um lugar, e um lugar é uma linha.
+
+### Changed
+
+- **Checkout Fundador coerente com a reserva e a sua expiração.** O lugar é
+  tomado quando o comprador recebe a referência e confirmado quando o pagamento
+  entra; uma reserva vencida deixa de contar para os 250 e o lugar volta ao
+  bolo. Esgotadas as tentativas de atribuição, o checkout segue ao preço de
+  tabela e regista a ocorrência — em nenhum caminho sai um erro de base de
+  dados para quem está a comprar.
+- **Referências de transferência caducadas passam a ser revalidadas.** Quem
+  voltasse ao checkout depois de a reserva expirar recebia de volta a mesma
+  referência a 29,90 € — um preço de fundador sem lugar por trás, que já
+  ninguém podia honrar. `revalidate()` decide antes: reafirma o lugar se ainda
+  o houver, toma um novo se houver vaga, e caso contrário emite a referência ao
+  preço de tabela.
+- **A landing deixa de oferecer Fundador quando o prazo passou ou os lugares
+  esgotaram.** A promessa tinha duas condições de validade e a página continuava
+  a fazê-la de qualquer maneira. Passa a ser um booleano vindo do servidor —
+  ainda disponível, ou já não — e não um contador público, que continua a ser
+  uma decisão comercial por tomar.
+
+### Segurança e salvaguardas
+
+- **Concorrência dos lugares, em quatro camadas.** `UNIQUE(seat_number)`,
+  `lockForUpdate()` sobre uma linha que existe sempre, um ciclo de tentativas
+  que converge para o menor número livre, e o teto verificado em PHP antes de
+  inserir. A camada do bloqueio é provada em MySQL com duas ligações reais
+  (`FounderSeatsMysqlGuaranteesTest`, *opt-in*), porque o SQLite dos testes
+  ignora `lockForUpdate()`.
+- **Rollback recusado depois de haver lugares.** O `down()` da migração reverte
+  enquanto a tabela estiver vazia e **recusa-se** assim que houver um lugar
+  atribuído: cada linha é a prova de uma condição acordada com uma pessoa, e
+  nada a reconstrói depois de a tabela desaparecer.
+- **O pré-voo nunca escreve.** Não tem `--apply`, e a ausência é deliberada: um
+  comando de inspeção que também soubesse corrigir seria um comando que alguém
+  corrige por engano. Aplicar uma condição a uma conta antiga faz-se uma a uma
+  no backoffice, por `SetCommercialCondition`, que regista quem o disse e
+  quando. O pré-voo corre também **antes** da migração, contra o esquema da
+  release anterior, e nessa passagem adia a secção dos lugares em vez de
+  rebentar — para que o código de saída continue a significar «há contas por
+  classificar» e não «correste-me cedo demais».
+- **Nenhum corte automático depois de 31/08/2027.** `commercial_term_ends_at`
+  diz até quando o termo comercial vale e **não é lido por nada no caminho do
+  acesso**. O que acontece a uma conta quando o termo chega ao fim é uma
+  política que ainda não existe; nada nesta versão a inventa.
+
 ## [0.88.0] — 2026-08-29
 
 Um plano deixa de **ser** a sua composição. Até aqui, mover uma capacidade
