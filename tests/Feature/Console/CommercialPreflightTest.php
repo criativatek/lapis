@@ -9,6 +9,7 @@ use App\Support\Commercial\FounderSeats;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -110,6 +111,58 @@ class CommercialPreflightTest extends TestCase
             ->expectsOutputToContain($reservada->name)
             ->expectsOutputToContain('confirmado')
             ->run();
+    }
+
+    /**
+     * A PASSAGEM DE ANTES DA MIGRAÇÃO — a que nenhum teste cobria.
+     *
+     * O deploy extrai o código desta release por cima do que está no ar e só
+     * DEPOIS corre `migrate`. Entre uma coisa e outra existe uma janela — a
+     * única em que ainda dá para parar sem ter mudado nada — em que este
+     * comando é a versão nova a olhar para o esquema antigo, sem
+     * `founder_seats`. Todos os testes deste ficheiro corriam sobre a base já
+     * migrada, e por isso nenhum via que, nessa janela, o comando rebentava.
+     */
+    #[Test]
+    public function it_still_reports_against_the_schema_that_precedes_the_migration(): void
+    {
+        Schema::drop('founder_seats');
+
+        $this->organization();
+
+        $this->artisan('lapis:commercial-preflight')
+            ->expectsOutputToContain('tabela ainda não existe')
+            ->assertExitCode(0);
+    }
+
+    /**
+     * E o veredicto continua a poder dizer PÁRA nessa mesma janela.
+     *
+     * É a razão de a tabela em falta não contaminar o código de saída: 1 tem de
+     * continuar a significar «há contas por classificar, alguém tem de decidir»
+     * e não «correste-me cedo demais». Um portão que não distingue as duas
+     * coisas é um portão que se aprende a ignorar.
+     */
+    #[Test]
+    public function the_verdict_still_stops_the_deploy_before_the_migration(): void
+    {
+        Schema::drop('founder_seats');
+
+        $organization = $this->organization();
+
+        DB::table('organization_subscriptions')
+            ->where('organization_id', $organization->getKey())
+            ->update([
+                'commercial_condition' => null,
+                'contracted_price_cents' => null,
+                'contracted_currency' => null,
+                'billing_period' => null,
+                'commercial_term_ends_at' => null,
+            ]);
+
+        $this->artisan('lapis:commercial-preflight')
+            ->expectsOutputToContain($organization->name)
+            ->assertExitCode(1);
     }
 
     // ------------------------------------------------------------ fixtures

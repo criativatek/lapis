@@ -10,6 +10,7 @@ use App\Support\Commercial\CommercialTerms;
 use App\Support\Commercial\SubscriptionCondition;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * O QUE ESTÁ LÁ, ANTES DE ISTO IR PARA PRODUÇÃO. Só leitura.
@@ -53,10 +54,10 @@ class CommercialConditionsPreflight extends Command
         $semTermos = $this->subscriptionsWithoutTerms();
         $this->newLine();
 
-        $this->founderSeats();
+        $lugaresLidos = $this->founderSeats();
         $this->newLine();
 
-        return $this->verdict($semTermos);
+        return $this->verdict($semTermos, $lugaresLidos);
     }
 
     protected function promotionWindow(CommercialTerms $terms): void
@@ -116,8 +117,35 @@ class CommercialConditionsPreflight extends Command
         return $candidatas->count();
     }
 
-    protected function founderSeats(): void
+    /**
+     * O ESTADO DOS LUGARES — QUANDO HÁ ONDE O LER.
+     *
+     * Este comando corre DUAS VEZES no deploy, e a primeira é antes de
+     * `migrate`: é o único momento em que ainda dá para parar sem ter mudado
+     * nada. Nessa passagem `founder_seats` ainda não existe — o código desta
+     * release já está no disco, o esquema ainda é o da anterior — e ler a
+     * tabela rebentava o comando a meio, com um rasto de pilha em vez de um
+     * veredicto, e com o mesmo código de saída 1 que significa «há contas por
+     * classificar». Um portão que não distingue «pára, decide» de «correste-me
+     * cedo demais» não é um portão.
+     *
+     * A ausência da tabela antes da migração não é uma anomalia, é o esperado,
+     * e por isso não contamina o veredicto — apenas se diz, alto, que esta
+     * secção fica por ver até `migrate` correr.
+     *
+     * @return bool se os lugares chegaram a ser lidos
+     */
+    protected function founderSeats(): bool
     {
+        if (! Schema::hasTable('founder_seats')) {
+            $this->components->twoColumnDetail(
+                '<fg=gray>Lugares de Membro Fundador</>',
+                '<fg=yellow>tabela ainda não existe</> — secção adiada para depois da migração',
+            );
+
+            return false;
+        }
+
         $seats = FounderSeat::query()->orderBy('seat_number')->get();
         $agora = Carbon::now();
 
@@ -130,7 +158,7 @@ class CommercialConditionsPreflight extends Command
         $this->components->twoColumnDetail('<fg=gray>… com reserva vencida (contam como livres)</>', (string) $vencidos);
 
         if ($seats->isEmpty()) {
-            return;
+            return true;
         }
 
         $this->newLine();
@@ -156,6 +184,8 @@ class CommercialConditionsPreflight extends Command
                 ];
             })->all(),
         );
+
+        return true;
     }
 
     /**
@@ -166,10 +196,16 @@ class CommercialConditionsPreflight extends Command
      * com atenção. Não é um erro — é «alguém tem de olhar para isto antes de
      * seguir».
      */
-    protected function verdict(int $semTermos): int
+    protected function verdict(int $semTermos, bool $lugaresLidos): int
     {
         if ($semTermos === 0) {
-            $this->components->info('Nenhuma subscrição em vigor sem condição registada. Nada a decidir antes do deploy.');
+            $this->components->info(
+                $lugaresLidos
+                    ? 'Nenhuma subscrição em vigor sem condição registada. Nada a decidir antes do deploy.'
+                    : 'Nenhuma subscrição em vigor sem condição registada — que é a pergunta que tinha de ser '
+                        .'respondida ANTES de migrar. Os lugares de fundador ficaram por ver: volte a correr este '
+                        .'comando depois de `migrate`, e só então esta release está inspeccionada.'
+            );
 
             return self::SUCCESS;
         }
