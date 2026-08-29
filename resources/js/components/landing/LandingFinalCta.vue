@@ -3,7 +3,6 @@ import { Link } from '@inertiajs/vue3';
 import { ArrowRight } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import { dashboard, login, register } from '@/routes';
-import { LANDING_PRIMARY } from './chrome';
 import RevealOnScroll from './RevealOnScroll.vue';
 
 /**
@@ -20,12 +19,9 @@ defineProps<{ authenticated: boolean }>();
 </script>
 
 <template>
-    <section class="relative overflow-hidden border-t border-border/60">
-        <div
-            aria-hidden="true"
-            class="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(48rem_26rem_at_50%_120%,var(--color-accent),transparent_70%)] opacity-90 dark:opacity-25"
-        />
-
+    <!-- The one full-colour band on the page. Everything above it is white
+         with blue for actions; this is where the blue becomes the ground. -->
+    <section class="bg-blue-600 text-white">
         <div
             class="mx-auto w-full max-w-3xl px-6 py-20 text-center sm:px-8 sm:py-28"
         >
@@ -37,7 +33,7 @@ defineProps<{ authenticated: boolean }>();
                     os alunos.
                 </h2>
                 <p
-                    class="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-pretty text-muted-foreground"
+                    class="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-pretty text-blue-100"
                 >
                     O Lapispro não pretende substituir o professor. Pretende
                     dar-lhe melhor informação, melhor organização e mais tempo
@@ -54,8 +50,7 @@ defineProps<{ authenticated: boolean }>();
                     <Button
                         as-child
                         size="lg"
-                        class="group/cta"
-                        :class="LANDING_PRIMARY"
+                        class="group/cta bg-white text-blue-700 hover:bg-blue-50"
                     >
                         <Link :href="authenticated ? dashboard() : register()">
                             {{
@@ -73,13 +68,13 @@ defineProps<{ authenticated: boolean }>();
                         as-child
                         variant="outline"
                         size="lg"
-                        class="transition-transform duration-300 motion-safe:hover:-translate-y-0.5"
+                        class="border-white/40 bg-transparent text-white transition-transform duration-300 hover:bg-white/10 hover:text-white motion-safe:hover:-translate-y-0.5"
                     >
                         <a href="#planos">Conhecer o Pro</a>
                     </Button>
                 </div>
 
-                <p class="mt-5 text-sm text-muted-foreground">
+                <p class="mt-5 text-sm text-blue-100">
                     Não é necessário cartão de crédito. O plano Base fica ativo
                     de imediato.
                     <!-- «Já tenho conta» was a button here before the two CTAs
@@ -90,7 +85,7 @@ defineProps<{ authenticated: boolean }>();
                     <template v-if="!authenticated">
                         <Link
                             :href="login()"
-                            class="rounded font-medium text-foreground underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                            class="rounded font-medium text-white underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none"
                             >Já tenho conta</Link
                         >.
                     </template>

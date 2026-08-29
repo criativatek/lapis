@@ -41,12 +41,32 @@ const uses = [
         body: 'Reescreve o que o Lapispro já compôs. Números e datas saem como marcadores e um guarda recusa o que voltar alterado.',
     },
 ] as const;
+
+/**
+ * The three rules of the calculation, said next to the AI on purpose: they are
+ * the same promise from two sides. The number is deterministic and the model
+ * never touches it; the model reads, the teacher decides. Was its own section
+ * («O cálculo») until 0.92.0.
+ */
+const rules = [
+    {
+        claim: 'Vazio nunca é zero.',
+        body: 'Uma avaliação por preencher não conta como zero. O Lapispro distingue o que falta avaliar de uma classificação de zero.',
+    },
+    {
+        claim: '«Não aplicável» fica fora do cálculo.',
+        body: 'Se um critério, questão ou domínio não se aplica, sai do cálculo — o resultado usa só o que era avaliável.',
+    },
+    {
+        claim: 'Quem chega mais tarde não é penalizado.',
+        body: 'Um aluno que entra a meio do período é avaliado só com os elementos em que podia participar.',
+    },
+] as const;
 </script>
 
 <template>
     <LandingSection
         id="ia"
-        warm
         eyebrow="Inteligência artificial"
         title="IA para professores, com o professor sempre no controlo."
         lead="A IA pedagógica do Lapispro não escreve a avaliação por si. Lê a informação que já registou, ajuda a compreender o que ela pode significar e propõe um caminho — que o professor confirma, corrige ou descarta."
@@ -113,5 +133,33 @@ const uses = [
                 </div>
             </RevealOnScroll>
         </div>
+
+        <RevealOnScroll>
+            <h3
+                class="mt-16 text-[11px] font-semibold tracking-[0.14em] text-blue-700 uppercase"
+            >
+                Três regras que uma folha de cálculo não trata sozinha
+            </h3>
+        </RevealOnScroll>
+        <dl class="mt-5 grid gap-8 sm:grid-cols-3 sm:gap-6">
+            <RevealOnScroll
+                v-for="(rule, index) in rules"
+                :key="rule.claim"
+                :delay="index * 80"
+            >
+                <div class="border-t-2 border-blue-100 pt-5">
+                    <dt
+                        class="text-lg font-semibold tracking-tight text-balance"
+                    >
+                        {{ rule.claim }}
+                    </dt>
+                    <dd
+                        class="mt-2 text-sm leading-relaxed text-muted-foreground"
+                    >
+                        {{ rule.body }}
+                    </dd>
+                </div>
+            </RevealOnScroll>
+        </dl>
     </LandingSection>
 </template>

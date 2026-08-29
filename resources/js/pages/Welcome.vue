@@ -2,11 +2,7 @@
 import { Head, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import LandingAi from '@/components/landing/LandingAi.vue';
-import LandingBenefits from '@/components/landing/LandingBenefits.vue';
-import LandingBrandStory from '@/components/landing/LandingBrandStory.vue';
 import LandingCompare from '@/components/landing/LandingCompare.vue';
-import LandingCustomEvaluation from '@/components/landing/LandingCustomEvaluation.vue';
-import LandingDailyWork from '@/components/landing/LandingDailyWork.vue';
 import LandingFaq from '@/components/landing/LandingFaq.vue';
 import LandingFeatures from '@/components/landing/LandingFeatures.vue';
 import LandingFinalCta from '@/components/landing/LandingFinalCta.vue';
@@ -15,8 +11,6 @@ import LandingHeader from '@/components/landing/LandingHeader.vue';
 import LandingHero from '@/components/landing/LandingHero.vue';
 import LandingHowItWorks from '@/components/landing/LandingHowItWorks.vue';
 import LandingPricing from '@/components/landing/LandingPricing.vue';
-import LandingProblem from '@/components/landing/LandingProblem.vue';
-import LandingRules from '@/components/landing/LandingRules.vue';
 import LandingSecurity from '@/components/landing/LandingSecurity.vue';
 import LandingVoucher from '@/components/landing/LandingVoucher.vue';
 import type { LandingPlan } from '@/components/landing/types';
@@ -83,15 +77,9 @@ useLightThemeLock();
 
         <main id="conteudo">
             <LandingHero :authenticated="authenticated" />
-            <LandingProblem />
-            <LandingBrandStory />
-            <LandingHowItWorks />
-            <LandingCustomEvaluation />
             <LandingFeatures />
-            <LandingDailyWork />
+            <LandingHowItWorks />
             <LandingAi />
-            <LandingRules />
-            <LandingBenefits />
             <LandingSecurity />
             <LandingPricing
                 :plans="plans"
@@ -104,6 +92,9 @@ useLightThemeLock();
             <LandingFinalCta :authenticated="authenticated" />
         </main>
 
-        <LandingFooter :authenticated="authenticated" />
+        <LandingFooter
+            :authenticated="authenticated"
+            :contact-email="contactEmail"
+        />
     </div>
 </template>

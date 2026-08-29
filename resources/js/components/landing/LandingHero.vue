@@ -4,7 +4,6 @@ import { ArrowRight } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import { dashboard, register } from '@/routes';
 import { LANDING_PRIMARY } from './chrome';
-import ClassificationPreview from './ClassificationPreview.vue';
 import ProductWindow from './ProductWindow.vue';
 import RevealOnScroll from './RevealOnScroll.vue';
 
@@ -98,10 +97,21 @@ defineProps<{ authenticated: boolean }>();
 
             <RevealOnScroll :delay="150" variant="scale" class="min-w-0">
                 <ProductWindow
-                    path="lapispro.com/classes/9b/classifications"
-                    label="Ecrã de classificações de uma turma no Lapispro: a proposta calculada para cada aluno, a menção na escala da escola e a confirmação do professor."
+                    path="lapispro.com/classes/7a/results"
+                    label="Grelha de resultados de uma turma no Lapispro: a média ponderada por domínio, a proposta na escala e o nível que o professor atribui."
                 >
-                    <ClassificationPreview />
+                    <!-- A real screen from the demo scenario (fictional
+                         students), not a drawing: the hero should show the
+                         thing itself. -->
+                    <img
+                        src="/images/landing/grid.webp"
+                        alt=""
+                        width="1600"
+                        height="854"
+                        fetchpriority="high"
+                        decoding="async"
+                        class="block h-auto w-full"
+                    />
                 </ProductWindow>
             </RevealOnScroll>
         </div>

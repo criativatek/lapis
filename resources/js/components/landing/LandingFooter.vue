@@ -24,7 +24,10 @@ import { LANDING_NAV } from './navigation';
  * pode não estar preenchida, e o mesmo raciocínio de então continua a aplicar-se.
  */
 
-defineProps<{ authenticated: boolean }>();
+withDefaults(
+    defineProps<{ authenticated: boolean; contactEmail?: string | null }>(),
+    { contactEmail: null },
+);
 
 const version = computed(() => usePage().props.appVersion);
 </script>
@@ -32,7 +35,7 @@ const version = computed(() => usePage().props.appVersion);
 <template>
     <footer class="border-t" :class="[CHROME_SURFACE, CHROME_BORDER]">
         <div
-            class="mx-auto grid w-full max-w-6xl gap-10 px-6 py-14 sm:px-8 md:grid-cols-[minmax(0,1.4fr)_repeat(2,minmax(0,1fr))]"
+            class="mx-auto grid w-full max-w-6xl gap-10 px-6 py-14 sm:px-8 md:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))]"
         >
             <div>
                 <span class="flex items-center gap-2.5">
@@ -117,6 +120,29 @@ const version = computed(() => usePage().props.appVersion);
                             class="inline-block rounded transition-all duration-300 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-safe:hover:translate-x-0.5"
                             :class="CHROME_LINK"
                             >Painel do Professor</Link
+                        >
+                    </li>
+                </ul>
+            </nav>
+            <!-- Contact in the footer, not hidden behind a form: a school
+                 deciding whether to trust student data to a platform looks
+                 for who is behind it. The address comes from the platform
+                 settings; the column disappears when none is set. -->
+            <nav v-if="contactEmail" aria-labelledby="footer-contact">
+                <h2
+                    id="footer-contact"
+                    class="text-[11px] font-semibold tracking-[0.14em] uppercase"
+                    :class="CHROME_MUTED"
+                >
+                    Contacto
+                </h2>
+                <ul class="mt-4 space-y-2.5 text-sm">
+                    <li>
+                        <a
+                            :href="`mailto:${contactEmail}`"
+                            class="inline-block rounded break-all transition-all duration-300 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-safe:hover:translate-x-0.5"
+                            :class="CHROME_LINK"
+                            >{{ contactEmail }}</a
                         >
                     </li>
                 </ul>

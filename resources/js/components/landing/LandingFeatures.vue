@@ -87,6 +87,20 @@ const stages: readonly Stage[] = [
         ],
     },
     {
+        key: 'planear',
+        tab: 'Planear',
+        title: 'Aulas, sumários e horário no mesmo sítio',
+        line: 'A agenda do ano letivo está em todos os planos; o Pro traz o horário, as aulas com sumário e as sequências reutilizáveis para junto das turmas.',
+        path: 'lapispro.com/calendar',
+        label: 'Calendário do ano letivo no Lapispro: o mês com os períodos, as interrupções e os acontecimentos marcados pelo professor.',
+        image: {
+            src: '/images/landing/calendar.webp',
+            width: 1600,
+            height: 1017,
+        },
+        modules: ['Horário', 'Aulas e sumários', 'Planeamento', 'Agenda'],
+    },
+    {
         key: 'intervir',
         tab: 'Intervir',
         title: 'O que fez fica registado',

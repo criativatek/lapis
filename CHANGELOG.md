@@ -14,6 +14,31 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > cada um sob o título da frente a que pertenceu. A 0.85.0 é o primeiro
 > release em que as duas linhagens voltam a ser uma só.
 
+## [0.92.0] — 2026-08-29
+
+Landing mais curta: 17 secções passam a 10, e a página passa de ~22 600px para
+~14 700px no telemóvel (15 600 → 9 400 no desktop). Os Planos aparecem ao
+sexto bloco, não ao décimo segundo. Base: a revisão com o ui-ux-pro-max
+(«Minimal single column» — CTA único, muito branco, poucas secções, contacto
+visível) e a leitura das capturas full-page.
+
+- **Saíram** «O problema», «Porquê Lapispro?», «O modelo da sua escola»,
+  «O dia a dia» e «O que ganha»: repetiam, com outro título, o que o hero e
+  Funcionalidades já diziam.
+- **Fundiram-se** «O cálculo» (as três regras) em «Inteligência artificial»:
+  são a mesma promessa vista de dois lados — o número é determinístico, o
+  modelo lê, o professor decide.
+- «O dia a dia» virou a tab **Planear** em Funcionalidades, com captura real
+  do calendário. Funcionalidades vem logo a seguir ao hero.
+- O **hero mostra a grelha de resultados real**, não o mock em CSS.
+- **FAQ** de 18 perguntas para 8 (as de intenção de compra e de confiança).
+- **Comparação** fechada por omissão (`<details>` nativo): trinta linhas são
+  para quem já está a escolher.
+- O **CTA final é a única faixa de cor cheia** da página (`blue-600`, texto
+  branco) — o azul deixa de ser só botões.
+- O rodapé mostra o **e-mail de contacto** das definições da plataforma quando
+  existe: uma escola que confia dados de menores procura quem está por trás.
+
 ## [0.91.0] — 2026-08-29
 
 Landing com o produto a sério. As secções «Organizar», «Avaliar» e
