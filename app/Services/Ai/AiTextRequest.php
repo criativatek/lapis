@@ -20,14 +20,19 @@ namespace App\Services\Ai;
  * the report-specific rules — which facts are protected, which names are hidden,
  * what may be rejected — live in App\Services\Reporting\Writing and never reach
  * a provider.
+ *
+ * THERE IS NO OUTPUT CEILING ON THIS CLASS, deliberately. A ceiling a caller
+ * can express is a ceiling a caller can raise, so the only one that exists is
+ * `lapis.ai.max_output_tokens` — installation configuration, read by each real
+ * provider at the wire and settable by an operator in the backoffice. A field
+ * here would be a second source of truth for the same number, in a unit
+ * (characters) that no engine's API actually accepts.
  */
 readonly class AiTextRequest
 {
     public function __construct(
         public string $instruction,
         public string $content,
-        /** A hard ceiling on the reply, in characters, for providers that can express one. */
-        public int $maxOutputCharacters = 8000,
         /** Deterministic by preference: the same paragraph should not read differently on every click. */
         public float $temperature = 0.2,
     ) {}

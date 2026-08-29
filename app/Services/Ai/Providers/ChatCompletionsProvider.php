@@ -25,6 +25,18 @@ use Illuminate\Support\Facades\Http;
  * concatenated, so a report containing «ignora as instruções acima» arrives as
  * content — which is what it is.
  *
+ * THE OUTPUT CEILING IS EXPLICIT AND NOT THE CALLER'S TO RAISE — the same rule
+ * GeminiProvider states, and the reason this file no longer differs from it.
+ * `max_tokens` comes from installation config; a ceiling a caller could lift is
+ * not a ceiling, and an engine with no ceiling at all answers a two-line
+ * question with two thousand lines, which is directly a bill.
+ *
+ * THE FIELD IS `max_tokens` AND THAT IS DELIBERATE. It is the spelling the wire
+ * format itself carries, honoured by every hosted engine and every self-hosted
+ * runner that implements `/chat/completions`; a newer vendor-specific alias
+ * would name a company in the one file whose whole point is naming none, and
+ * would be silently ignored by the school-owned machine at the other end.
+ *
  * ONE ATTEMPT. No retry: a rephrase is a convenience, and a teacher who waited
  * twenty seconds for nothing would rather click again than wait forty (§27).
  */
@@ -35,6 +47,7 @@ class ChatCompletionsProvider implements AiTextProvider
         protected string $key,
         protected string $model,
         protected int $timeout,
+        protected int $maxOutputTokens,
     ) {}
 
     public function name(): string
@@ -62,6 +75,7 @@ class ChatCompletionsProvider implements AiTextProvider
                 ->post($this->endpoint, [
                     'model' => $this->model,
                     'temperature' => $request->temperature,
+                    'max_tokens' => $this->maxOutputTokens,
                     'messages' => [
                         ['role' => 'system', 'content' => $request->instruction],
                         ['role' => 'user', 'content' => $request->content],

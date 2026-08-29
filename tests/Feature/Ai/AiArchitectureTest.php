@@ -2,8 +2,12 @@
 
 namespace Tests\Feature\Ai;
 
+use App\Services\Ai\AiTextProvider;
+use App\Services\Ai\Providers\FakeAiTextProvider;
 use Illuminate\Support\Facades\File;
 use PHPUnit\Framework\Attributes\Test;
+use ReflectionClass;
+use ReflectionParameter;
 use Tests\TestCase;
 
 /**
@@ -222,6 +226,110 @@ class AiArchitectureTest extends TestCase
                 "{$relative} must reach an engine through AiGateway.",
             );
         }
+    }
+
+    /**
+     * NO REAL ENGINE ANSWERS WITHOUT A CEILING.
+     *
+     * The third guarantee of this file, and the one that was missing. An engine
+     * with no output limit is the only setting in `lapis.ai` that is directly an
+     * invoice: asked a two-line question it will cheerfully return two thousand
+     * lines, bill for every one of them, and look like a working feature the
+     * whole time. `GeminiProvider` was written with a ceiling; the older
+     * `/chat/completions` driver was not, and nothing noticed for three releases
+     * because no test asked.
+     *
+     * ASKED STRUCTURALLY, NOT PER DRIVER, so the answer stays true for the
+     * fourth engine somebody adds. Every concrete `AiTextProvider` under
+     * `Providers/` must take a `maxOutputTokens` and must actually put it on the
+     * wire — the wire field is the driver's business (`maxOutputTokens` for
+     * Gemini, `max_tokens` on the `/chat/completions` format), but HAVING one is
+     * not.
+     *
+     * `FakeAiTextProvider` is exempt and only it: it makes no request, it is
+     * refused in production, and a ceiling on a fake is a ceiling on nothing.
+     */
+    #[Test]
+    public function every_real_provider_takes_an_explicit_output_ceiling_and_sends_it(): void
+    {
+        foreach ($this->realProviders() as $class => $contents) {
+            $parameters = (new ReflectionClass($class))->getConstructor()?->getParameters() ?? [];
+            $names = array_map(fn (ReflectionParameter $p): string => $p->getName(), $parameters);
+
+            $this->assertContains(
+                'maxOutputTokens',
+                $names,
+                "{$class} must be given an output ceiling from configuration.",
+            );
+
+            foreach ($parameters as $parameter) {
+                if ($parameter->getName() !== 'maxOutputTokens') {
+                    continue;
+                }
+
+                $this->assertSame('int', (string) $parameter->getType(), "{$class}: the ceiling must be an int.");
+                // No default. A ceiling with a fallback is a ceiling somebody
+                // forgets to wire, and it fails silently rather than loudly.
+                $this->assertFalse(
+                    $parameter->isDefaultValueAvailable(),
+                    "{$class}: the ceiling must have no default — the installation decides it.",
+                );
+            }
+
+            $this->assertStringContainsString(
+                '$this->maxOutputTokens',
+                $contents,
+                "{$class} takes a ceiling but never puts it on the wire.",
+            );
+        }
+    }
+
+    /**
+     * AND IT COMES FROM ONE PLACE. Each real driver is bound with the same
+     * config key, so «what is the output ceiling» has one answer for the whole
+     * installation and the backoffice field means what it says.
+     */
+    #[Test]
+    public function the_output_ceiling_is_wired_from_the_one_config_key(): void
+    {
+        $bindings = File::get(base_path('app/Providers/AppServiceProvider.php'));
+
+        $this->assertSame(
+            count($this->realProviders()),
+            substr_count($bindings, "maxOutputTokens: (int) config('lapis.ai.max_output_tokens')"),
+            'Every real driver must take its ceiling from lapis.ai.max_output_tokens, and nothing may invent one of its own.',
+        );
+    }
+
+    /**
+     * The engines that actually leave the building, keyed by class name.
+     *
+     * `FakeAiTextProvider` is the one exemption and it is exempt by identity
+     * rather than by pattern: it makes no request, it is refused in production,
+     * and a ceiling on a fake is a ceiling on nothing.
+     *
+     * @return array<class-string, string>
+     */
+    private function realProviders(): array
+    {
+        $providers = [];
+
+        foreach (File::files(app_path('Services/Ai/Providers')) as $file) {
+            /** @var class-string $class */
+            $class = 'App\\Services\\Ai\\Providers\\'.$file->getFilenameWithoutExtension();
+
+            if (! is_subclass_of($class, AiTextProvider::class) || $class === FakeAiTextProvider::class) {
+                continue;
+            }
+
+            $providers[$class] = File::get($file->getPathname());
+        }
+
+        // A guard on the guard: a move that emptied this list would turn every
+        // assertion above into a test that always passes.
+        $this->assertGreaterThanOrEqual(2, count($providers), 'The real providers were not found — did they move?');
+
+        return $providers;
     }
 
     /**

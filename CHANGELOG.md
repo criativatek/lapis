@@ -107,6 +107,25 @@ que planos pertencem as capabilities de IA — foi tomada, e vem da Matriz Mestr
   do servidor», e o aviso «nenhum plano inclui esta funcionalidade» dá lugar aos
   planos reais de cada capability, lidos da base de dados.
 
+### Fixed
+
+- **O motor compatível com `/chat/completions` passa a enviar um teto de
+  resposta.** O driver do Gemini nasceu com um; este, mais antigo, nunca teve
+  nenhum — e um motor sem teto responde a uma pergunta de duas linhas com duas
+  mil, que é a única definição de `lapis.ai` que é diretamente uma fatura. Passa
+  a enviar `max_tokens` a partir de `lapis.ai.max_output_tokens`, a mesma
+  configuração que a Administração já mostrava como «teto de tokens de resposta»
+  e que já valia para o Gemini. **Nenhuma instalação foi afetada:** não há
+  fornecedor de IA configurado em produção.
+
+- **`AiTextRequest::maxOutputCharacters` foi removido.** Estava declarado desde
+  a criação da camada de texto, nunca foi preenchido por quem chamava e nunca
+  foi lido por motor nenhum — e estava em caracteres, unidade que nenhuma API
+  aceita. Um teto que quem chama pode exprimir é um teto que quem chama pode
+  levantar: o único que existe é `lapis.ai.max_output_tokens`, decidido pela
+  instalação. `AiArchitectureTest` passa a afirmar que todos os motores reais o
+  recebem, que o recebem sem valor por omissão, e que o põem no fio.
+
 ### Notas — o que continua por ligar
 
 - **O Gemini real continua por ativar.** Sem credencial e sem fornecedor

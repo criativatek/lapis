@@ -194,9 +194,12 @@ return [
          | cheerfully answer a two-line question with two thousand lines.
          |
          | Expressed in tokens rather than characters because that is the unit
-         | every engine's API actually accepts. `AiTextRequest::maxOutputCharacters`
-         | stays as the caller's own preference for drivers that can express one;
-         | this is the installation-wide floor under it that no caller can raise.
+         | every engine's API actually accepts.
+         |
+         | THE ONLY OUTPUT CEILING THERE IS, and every real driver reads it —
+         | `maxOutputTokens` for Gemini, `max_tokens` on the `/chat/completions`
+         | wire. `AiTextRequest` deliberately carries no ceiling of its own: one
+         | a caller could express is one a caller could raise.
          */
         'max_output_tokens' => (int) env('LAPIS_AI_MAX_OUTPUT_TOKENS', 2048),
 

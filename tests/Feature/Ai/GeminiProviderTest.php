@@ -140,12 +140,11 @@ class GeminiProviderTest extends TestCase
     {
         $this->fakeAnswer(['candidates' => [['content' => ['parts' => [['text' => 'ok']]]]]]);
 
-        // The caller asks for a huge character budget; the installation's token
-        // ceiling is what is actually sent.
+        // The request carries no ceiling of its own to argue with — the
+        // installation's token ceiling is the only one there is.
         $this->provider(maxOutputTokens: 256)->complete(new AiTextRequest(
             instruction: 'i',
             content: 'c',
-            maxOutputCharacters: 999_999,
         ));
 
         Http::assertSent(function (Request $request): bool {

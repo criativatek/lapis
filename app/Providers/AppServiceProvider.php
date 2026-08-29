@@ -85,6 +85,7 @@ class AppServiceProvider extends ServiceProvider
             key: (string) config('lapis.ai.key'),
             model: (string) config('lapis.ai.model'),
             timeout: (int) config('lapis.ai.timeout'),
+            maxOutputTokens: (int) config('lapis.ai.max_output_tokens'),
         ));
 
         // Registered exactly like the driver above, and that is the point:
