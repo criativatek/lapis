@@ -42,15 +42,18 @@ class BuildPackageCommand extends Command
     protected $description = 'Build the production package from the tracked tree, stamped with the current commit';
 
     /**
-     * Generated, gitignored, and required in production. The only two things in
+     * Generated, gitignored, and required in production. The only things in
      * the package that git does not know about — listed here so that "what is in
-     * the package and why" is one readable answer.
+     * the package and why" is one readable answer. bootstrap/ssr is the
+     * server-rendering bundle (`npm run build:ssr`); without it the public
+     * pages render on the client only.
      *
      * @var list<string>
      */
     protected const GENERATED = [
         BuildStamp::FILENAME,
         'public/build',
+        'bootstrap/ssr',
     ];
 
     /**

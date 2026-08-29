@@ -73,6 +73,16 @@ class LandingSeo
      * The trailing slash is trimmed because every consumer here appends its
      * own, and `https://lapispro.com//#planos` is a different url to a crawler.
      */
+    /**
+     * The social-share image: the hero as rendered, 1200×630, regenerated from
+     * the real page whenever the hero changes (see the note in docs/seo.md).
+     * Absolute, because scrapers do not resolve relative URLs.
+     */
+    public static function ogImage(): string
+    {
+        return self::canonical().'/images/landing/og.jpg';
+    }
+
     public static function canonical(): string
     {
         $configured = config('lapis.public_url');
@@ -173,6 +183,7 @@ class LandingSeo
             'softwareVersion' => (string) config('app.version'),
             'inLanguage' => 'pt-PT',
             'url' => self::canonical(),
+            'image' => self::ogImage(),
             'description' => self::DESCRIPTION,
             'featureList' => self::featureList(),
             'audience' => [

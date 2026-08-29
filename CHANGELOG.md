@@ -14,6 +14,25 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > cada um sob o título da frente a que pertenceu. A 0.85.0 é o primeiro
 > release em que as duas linhagens voltam a ser uma só.
 
+## [0.93.0] — 2026-08-29
+
+**Render no servidor** para a landing e as páginas legais. A resposta de `/`
+era uma casca de 14 KB sem `<h1>`, sem texto e sem links — tudo chegava com o
+JavaScript, que o Google renderiza tarde e com orçamento e que Bing, LinkedIn,
+WhatsApp e os bots de LLM não renderizam. Era o achado n.º 1 da auditoria de
+SEO. Agora `resources/js/ssr.ts` (modo auto do Inertia 3: o plugin do Vite
+embrulha o `createInertiaApp` em `createServer`) corre como
+`php artisan inertia:start-ssr`; título e layout ficam num módulo partilhado
+(`resources/js/inertia.ts`) para o cliente e o servidor não divergirem.
+`RevealOnScroll` passa a nascer visível — no HTML do servidor o texto não pode
+estar em `opacity-0` — e só se esconde, já no cliente, o que está abaixo da
+dobra. `bootstrap/ssr` entra no pacote de release. Sem o processo Node o
+Inertia cai para render no cliente: página igual, só o crawler perde.
+
+**og:image.** O hero real, 1200×630 (`public/images/landing/og.jpg`), em
+`og:image`, `twitter:image` (`summary_large_image`) e na `image` do JSON-LD;
+as páginas legais partilham-no. Regenerar quando o hero mudar.
+
 ## [0.92.0] — 2026-08-29
 
 Landing mais curta: 17 secções passam a 10, e a página passa de ~22 600px para

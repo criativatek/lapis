@@ -614,6 +614,26 @@ chmod -R ug+rw storage bootstrap/cache
 - WebAuthn/passkeys dependem do domínio (RP ID) — testar login + registo de passkey
   em produção.
 
+## SSR (render no servidor) — landing e páginas legais
+
+Desde a 0.93.0 o Inertia renderiza no servidor (`resources/js/ssr.ts`). Sem
+isto a resposta de `/` era uma casca de 14 KB sem `<h1>` nem texto — o Google
+renderiza JS tarde e com orçamento; Bing, LinkedIn, WhatsApp e os bots de LLM
+não renderizam de todo. Com o SSR em baixo o Inertia cai para render no
+cliente: página igual, só o crawler é que perde.
+
+- `npm run build:ssr` gera `bootstrap/ssr/` (gitignored; vai no pacote de
+  release tal como `public/build` — ver `BuildPackageCommand::GENERATED`).
+- Processo: `php artisan inertia:start-ssr` (Node, porta 13714,
+  `config/inertia.php`). Tem de correr em permanência — no CloudPanel, um
+  serviço `systemd` de utilizador ou o cron `@reboot` do site user, com
+  `Restart=always`. Depois de cada deploy: `php artisan inertia:stop-ssr` e
+  arrancar de novo, senão o Node continua a servir o bundle antigo.
+- Confirmar: `curl -s https://lapispro.com/ | grep -c "<h1"` → `1`.
+  `0` significa que o SSR está em baixo (a página continua a abrir).
+- Os testes PHP correm sem o servidor Node: `LandingSeoTest` e
+  `LegalDocumentsTest` afirmam o que vem do blade e do payload, não do SSR.
+
 ## Nota — build de assets sem Node no servidor
 
 Se não houver Node no servidor, correr localmente antes de enviar:

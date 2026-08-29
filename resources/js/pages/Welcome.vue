@@ -24,9 +24,9 @@ import { useLightThemeLock } from '@/composables/useLightThemeLock';
  * what somebody arriving from a shared link expects and the only shape that
  * cannot loop against the dashboard.
  *
- * The SEO tags are NOT here: Inertia SSR is off, so anything a crawler must
- * read lives in resources/views/app.blade.php. This <Head> only sets the tab
- * title, which the browser applies after hydration anyway.
+ * The SEO tags are NOT here: they live in resources/views/app.blade.php, which
+ * is rendered even when the SSR process (resources/js/ssr.ts) is down. This
+ * <Head> only sets the tab title.
  */
 
 defineProps<{

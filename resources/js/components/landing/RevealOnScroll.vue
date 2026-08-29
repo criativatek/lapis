@@ -41,7 +41,15 @@ const HIDDEN: Record<RevealVariant, string> = {
 };
 
 const root = ref<HTMLElement | null>(null);
-const shown = ref(false);
+/**
+ * Starts SHOWN. The server renders this component, and a crawler must get the
+ * text visible — `opacity-0` in the HTML is text Google may treat as hidden.
+ * On the client, the element is hidden again only when it is below the fold
+ * (nobody sees that happen) and revealed by the observer as it scrolls in.
+ * What is already in view on load simply stays; the first screen is faster
+ * for it.
+ */
+const shown = ref(true);
 let observer: IntersectionObserver | null = null;
 
 onMounted(() => {
@@ -49,11 +57,16 @@ onMounted(() => {
         '(prefers-reduced-motion: reduce)',
     ).matches;
 
-    if (prefersReducedMotion || !('IntersectionObserver' in window)) {
-        shown.value = true;
-
+    if (
+        prefersReducedMotion ||
+        !('IntersectionObserver' in window) ||
+        !root.value ||
+        root.value.getBoundingClientRect().top < window.innerHeight
+    ) {
         return;
     }
+
+    shown.value = false;
 
     observer = new IntersectionObserver(
         (entries) => {
@@ -67,9 +80,7 @@ onMounted(() => {
         { rootMargin: '0px 0px -8% 0px', threshold: 0.05 },
     );
 
-    if (root.value) {
-        observer.observe(root.value);
-    }
+    observer.observe(root.value);
 });
 
 onBeforeUnmount(() => observer?.disconnect());

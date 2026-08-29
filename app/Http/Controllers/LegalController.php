@@ -13,10 +13,11 @@ use Inertia\Response;
  * criar conta tem de os conseguir abrir sem ter conta, e um pedido de
  * privacidade não pertence a nenhum tenant.
  *
- * O TEXTO VEM DE `LegalDocuments`, não do componente Vue. Com o SSR do Inertia
- * desligado, texto escrito dentro de um `.vue` não chega à resposta e nenhum
- * teste de servidor lhe pode tocar — daqui viaja no payload do Inertia, que
- * está no HTML, e `LegalDocumentsTest` consegue afirmar o que lá está.
+ * O TEXTO VEM DE `LegalDocuments`, não do componente Vue. Foi decidido quando
+ * o SSR do Inertia estava desligado (texto num `.vue` não chegava à resposta)
+ * e mantém-se com o SSR ligado: o payload está no HTML mesmo quando o processo
+ * de SSR está em baixo, e `LegalDocumentsTest` afirma o que lá está sem
+ * precisar de um servidor Node a correr.
  */
 class LegalController extends Controller
 {

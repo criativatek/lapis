@@ -71,6 +71,9 @@
             <meta property="og:site_name" content="Lapispro">
             <meta property="og:locale" content="pt_PT">
             <meta property="og:url" content="{{ $publicUrl }}">
+            <meta property="og:image" content="{{ \App\Support\Seo\LandingSeo::ogImage() }}">
+            <meta name="twitter:card" content="summary_large_image">
+            <meta name="twitter:image" content="{{ \App\Support\Seo\LandingSeo::ogImage() }}">
         @elseif ($isLanding)
             <meta name="description" content="{{ \App\Support\Seo\LandingSeo::DESCRIPTION }}">
             <link rel="canonical" href="{{ \App\Support\Seo\LandingSeo::canonical() }}">
@@ -85,11 +88,12 @@
             <meta property="og:url" content="{{ \App\Support\Seo\LandingSeo::canonical() }}">
             <meta property="og:title" content="{{ \App\Support\Seo\LandingSeo::SOCIAL_TITLE }}">
             <meta property="og:description" content="{{ \App\Support\Seo\LandingSeo::SOCIAL_DESCRIPTION }}">
-            {{-- summary, not summary_large_image: there is still no og:image
-                 asset, and the large card renders as a broken box without one.
-                 When one exists, add og:image / twitter:image here and switch
-                 this to summary_large_image in the same edit. --}}
-            <meta name="twitter:card" content="summary">
+            <meta property="og:image" content="{{ \App\Support\Seo\LandingSeo::ogImage() }}">
+            <meta property="og:image:width" content="1200">
+            <meta property="og:image:height" content="630">
+            <meta property="og:image:alt" content="{{ \App\Support\Seo\LandingSeo::SOCIAL_TITLE }}">
+            <meta name="twitter:card" content="summary_large_image">
+            <meta name="twitter:image" content="{{ \App\Support\Seo\LandingSeo::ogImage() }}">
             <meta name="twitter:title" content="{{ \App\Support\Seo\LandingSeo::SOCIAL_TITLE }}">
             <meta name="twitter:description" content="{{ \App\Support\Seo\LandingSeo::SOCIAL_DESCRIPTION }}">
             <script type="application/ld+json">
