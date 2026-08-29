@@ -14,6 +14,25 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > cada um sob o título da frente a que pertenceu. A 0.85.0 é o primeiro
 > release em que as duas linhagens voltam a ser uma só.
 
+## [0.89.0] — 2026-08-29
+
+Landing pública com base branca. O creme «papel» do cabeçalho, rodapé e das
+secções `warm`, e a alternância cinzenta das secções `tinted`, davam à página
+um peso que não vinha do conteúdo — o Pedro chamou-lhe «muito mau», e uma
+auditoria independente (Codex) chegou à mesma conclusão: competente, mas
+monótono e pesado. Esta versão é o primeiro passo da direcção
+«caderno branco»: fundo branco em todo o lado, azul (`blue-600`) como cor de
+acção (CTAs do hero e do cabeçalho, eyebrows e réguas das secções), a faixa
+navy de «O que ganha» passou a azul-claro, e o wash âmbar do hero passou a
+azul. A paleta quente sobrevive apenas em modo escuro, onde continua a fazer
+sentido. Ficam para os passos seguintes: screenshots reais do produto,
+fotografia, e a redução de 17 para ~10 secções.
+
+- `chrome.ts`: `CHROME_SURFACE` e companhia em branco/tokens neutros no tema claro.
+- `LandingSection.vue`: `tinted` deixa de pintar; `warm` passa a `blue-50/60`.
+- `LandingBenefits.vue`: faixa navy → azul-claro em tema claro.
+- Cores do cartão Fundador e dos botões de Planos/CTA final ainda navy/creme — próximo passo.
+
 ## [0.88.0] — 2026-08-29
 
 Um plano deixa de **ser** a sua composição. Até aqui, mover uma capacidade

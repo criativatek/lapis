@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { CHROME_SURFACE } from './chrome';
 import RevealOnScroll from './RevealOnScroll.vue';
 
 /**
@@ -44,7 +43,7 @@ withDefaults(
     <section
         :id="id"
         class="scroll-mt-[4.5rem] border-t border-border/60 pt-12 pb-16 sm:py-24 lg:py-28"
-        :class="warm ? CHROME_SURFACE : tinted ? 'bg-muted/40 dark:bg-muted/10' : undefined"
+        :class="warm ? 'bg-blue-50/60 dark:bg-muted/10' : undefined"
         :aria-labelledby="id && title ? `${id}-title` : undefined"
     >
         <div class="mx-auto w-full max-w-6xl px-6 sm:px-8">
@@ -55,12 +54,12 @@ withDefaults(
                 >
                     <p
                         v-if="eyebrow"
-                        class="flex items-center gap-2.5 text-[11px] font-semibold tracking-[0.14em] text-muted-foreground uppercase"
+                        class="flex items-center gap-2.5 text-[11px] font-semibold tracking-[0.14em] text-blue-700 uppercase dark:text-(--brand-amber)"
                         :class="centered ? 'justify-center' : undefined"
                     >
                         <span
                             aria-hidden="true"
-                            class="h-px w-7 origin-left bg-primary transition-transform delay-150 duration-700 ease-out dark:bg-(--brand-amber)"
+                            class="h-px w-7 origin-left bg-blue-600 transition-transform delay-150 duration-700 ease-out dark:bg-(--brand-amber)"
                             :class="shown ? 'scale-x-100' : 'scale-x-0'"
                         />
                         {{ eyebrow }}

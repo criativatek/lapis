@@ -22,31 +22,33 @@
  * measures 4.9:1 in light and 6.8:1 in dark. Saturating the chrome without
  * moving the text would have made the footer quietly unreadable.
  */
-export const CHROME_SURFACE = 'bg-[#fbf0e0] dark:bg-[#33200f]';
+// ponytail: 2026-08-29 — light theme went white (design/landing-light); the
+// warm paper described above now only survives in dark mode.
+export const CHROME_SURFACE = 'bg-white dark:bg-[#33200f]';
 
 /**
  * The same tone for the sticky header, which sits over the page and blurs what
  * passes under it — an opaque colour would make the backdrop filter pointless.
  */
 export const CHROME_SURFACE_STICKY =
-    'bg-[#fbf0e0]/85 backdrop-blur-md dark:bg-[#33200f]/85';
+    'bg-white/85 backdrop-blur-md dark:bg-[#33200f]/85';
 
 /** The chrome's own border, a shade harder than the ground. */
-export const CHROME_BORDER = 'border-[#ebddcb] dark:border-[#47321f]';
+export const CHROME_BORDER = 'border-border dark:border-[#47321f]';
 
 /** Secondary text on the chrome. Warm, and above 4.5:1 in both themes. */
-export const CHROME_MUTED = 'text-[#72675a] dark:text-[#b4aa9c]';
+export const CHROME_MUTED = 'text-muted-foreground dark:text-[#b4aa9c]';
 
 /** Primary text on the chrome. */
-export const CHROME_FOREGROUND = 'text-[#2a2118] dark:text-[#f5efe6]';
+export const CHROME_FOREGROUND = 'text-foreground dark:text-[#f5efe6]';
 
 /** A secondary link on the chrome: muted at rest, primary under the pointer. */
 export const CHROME_LINK =
-    'text-[#72675a] hover:text-[#2a2118] dark:text-[#b4aa9c] dark:hover:text-[#f5efe6]';
+    'text-muted-foreground hover:text-foreground dark:text-[#b4aa9c] dark:hover:text-[#f5efe6]';
 
 /**
  * The ghost button's own hover, because the shared `accent` token is a pale
  * amber picked against white — on this ground the two are within a hair of
  * each other and the hover reads as nothing happening.
  */
-export const CHROME_GHOST_HOVER = 'hover:bg-[#f3e3cc] dark:hover:bg-[#432c16]';
+export const CHROME_GHOST_HOVER = 'hover:bg-blue-50 dark:hover:bg-[#432c16]';

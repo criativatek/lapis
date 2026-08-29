@@ -179,7 +179,11 @@ const items: readonly LandingNavItem[] = LANDING_NAV;
                     >
                         <Link :href="login()">Entrar</Link>
                     </Button>
-                    <Button as-child size="sm">
+                    <Button
+                        as-child
+                        size="sm"
+                        class="bg-blue-600 text-white hover:bg-blue-700"
+                    >
                         <Link :href="register()">Experimentar Lapispro</Link>
                     </Button>
                 </template>

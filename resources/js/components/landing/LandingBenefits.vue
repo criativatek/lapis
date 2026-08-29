@@ -29,27 +29,31 @@ const gains = [
 </script>
 
 <template>
-    <section class="bg-sidebar py-16 text-sidebar-foreground sm:py-24 lg:py-28">
+    <section
+        class="bg-blue-50/60 py-16 sm:py-24 lg:py-28 dark:bg-sidebar dark:text-sidebar-foreground"
+    >
         <div class="mx-auto w-full max-w-6xl px-6 sm:px-8">
             <RevealOnScroll v-slot="{ shown }">
                 <p
-                    class="flex items-center gap-2.5 text-[11px] font-semibold tracking-[0.14em] text-(--brand-amber) uppercase"
+                    class="flex items-center gap-2.5 text-[11px] font-semibold tracking-[0.14em] text-blue-700 uppercase dark:text-(--brand-amber)"
                 >
                     <span
                         aria-hidden="true"
-                        class="h-px w-7 origin-left bg-(--brand-amber) transition-transform delay-150 duration-700 ease-out"
+                        class="h-px w-7 origin-left bg-blue-600 transition-transform delay-150 duration-700 ease-out dark:bg-(--brand-amber)"
                         :class="shown ? 'scale-x-100' : 'scale-x-0'"
                     />
                     O que ganha
                 </p>
                 <h2
-                    class="mt-3 max-w-2xl text-3xl font-semibold tracking-tight text-balance text-white sm:text-4xl"
+                    class="mt-3 max-w-2xl text-3xl font-semibold tracking-tight text-balance sm:text-4xl dark:text-white"
                 >
                     Mais simples.
-                    <span class="text-(--brand-amber)">Mais tempo.</span>
+                    <span class="text-blue-600 dark:text-(--brand-amber)"
+                        >Mais tempo.</span
+                    >
                 </h2>
                 <p
-                    class="mt-4 max-w-2xl leading-relaxed text-pretty text-sidebar-foreground/80"
+                    class="mt-4 max-w-2xl leading-relaxed text-pretty text-muted-foreground dark:text-sidebar-foreground/80"
                 >
                     O trabalho administrativo não desaparece. Deixa é de ser
                     feito duas vezes.
@@ -62,12 +66,16 @@ const gains = [
                     :key="gain.title"
                     :delay="index * 90"
                 >
-                    <div class="border-t border-sidebar-border pt-5">
-                        <dt class="font-semibold tracking-tight text-white">
+                    <div
+                        class="border-t border-blue-200 pt-5 dark:border-sidebar-border"
+                    >
+                        <dt
+                            class="font-semibold tracking-tight dark:text-white"
+                        >
                             {{ gain.title }}
                         </dt>
                         <dd
-                            class="mt-2 text-sm leading-relaxed text-sidebar-foreground/75"
+                            class="mt-2 text-sm leading-relaxed text-muted-foreground dark:text-sidebar-foreground/75"
                         >
                             {{ gain.body }}
                         </dd>

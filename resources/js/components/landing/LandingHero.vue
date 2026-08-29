@@ -16,7 +16,7 @@ defineProps<{ authenticated: boolean }>();
              lot to say further down; the first screen should not compete. -->
         <div
             aria-hidden="true"
-            class="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(60rem_32rem_at_78%_-12%,var(--color-accent),transparent_65%)] opacity-90 dark:opacity-25"
+            class="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(60rem_32rem_at_78%_-12%,#dbeafe,transparent_65%)] opacity-90 dark:opacity-25"
         />
 
         <div
@@ -60,7 +60,11 @@ defineProps<{ authenticated: boolean }>();
                 </p>
 
                 <div class="mt-9 flex flex-wrap items-center gap-3">
-                    <Button as-child size="lg" class="group/cta">
+                    <Button
+                        as-child
+                        size="lg"
+                        class="group/cta bg-blue-600 text-white hover:bg-blue-700"
+                    >
                         <Link :href="authenticated ? dashboard() : register()">
                             {{
                                 authenticated
