@@ -26,11 +26,19 @@ use Illuminate\Support\Carbon;
  * @property string $timezone
  * @property string $locale
  * @property string|null $jurisdiction ISO 3166-1 alpha-2; NULL = never stated, not "Portugal"
+ * @property bool $is_test_account An account that exists to try the product out, and
+ *                                 to which nothing was ever promised. Says nothing
+ *                                 about what it may do — see `SetTestAccount`.
  * @property Carbon|null $closure_requested_at
  * @property Carbon|null $scheduled_deletion_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
+// `is_test_account` is DELIBERATELY ABSENT from this list. A public signup must
+// never be able to declare itself a test account — not through a stray
+// `$request->all()`, not by a caller copying another organization's attributes.
+// It is written in exactly one place, `SetTestAccount`, which demands an
+// operator and leaves an audit trail.
 #[Fillable(['name', 'type', 'owner_id', 'timezone', 'locale', 'jurisdiction'])]
 class Organization extends Model
 {
@@ -57,6 +65,7 @@ class Organization extends Model
     {
         return [
             'type' => OrganizationType::class,
+            'is_test_account' => 'boolean',
             'closure_requested_at' => 'datetime',
             'scheduled_deletion_at' => 'datetime',
         ];

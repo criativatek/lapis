@@ -36,7 +36,7 @@ const measures = [
     {
         icon: KeyRound,
         title: 'Dois fatores e passkeys',
-        body: 'Autenticação em dois passos, códigos de recuperação e passkeys. Sessões e dispositivos geridos pelo próprio utilizador.',
+        body: 'Autenticação em dois passos, códigos de recuperação e passkeys, geridos pelo próprio professor nas definições da conta.',
     },
     {
         icon: ScrollText,

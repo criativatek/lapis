@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Navigation;
 
+use App\Http\Controllers\PlaceholderController;
 use App\Models\OrganizationSubscription;
 use App\Models\Plan;
 use App\Models\SubscriptionStatus;
@@ -501,6 +502,74 @@ class ShellNavigationTest extends TestCase
     }
 
     /**
+     * «Alunos» stopped being a placeholder, and this is the same assertion the
+     * calendar's above makes, for the same reason: the entry that carried no
+     * route until now points at a real page, AT THE VERY ADDRESS THE PLACEHOLDER
+     * ANSWERED AT, so a bookmark made before the page existed still lands on it.
+     * Key, module, label, description and position are untouched — what changed
+     * is that there is something behind it (§17, §23).
+     *
+     * The route NAME moved from `students` to `students.index`, which is what
+     * every other real destination uses. Nothing referenced the old one; the URL
+     * is what a teacher has, and the URL did not move.
+     */
+    #[Test]
+    public function alunos_is_now_a_real_destination_and_no_longer_a_placeholder(): void
+    {
+        $user = User::factory()->create();
+
+        $configured = collect(config('navigation.sections'))
+            ->flatMap(fn (array $section): array => $section['items'])
+            ->firstWhere('key', 'students');
+
+        $this->assertSame('Alunos', $configured['label']);
+        $this->assertSame('students', $configured['module']);
+        $this->assertSame('Consultar os alunos.', $configured['description']);
+        $this->assertSame('students.index', $configured['route']);
+        $this->assertTrue($configured['built']);
+
+        // Base, deliberately: `students` was a Base module before this page
+        // existed and this slice did not move it.
+        $this->actingAs($user)->get('/dashboard')->assertInertia(function (AssertableInertia $page) {
+            $students = collect($this->navItems($page))->firstWhere('key', 'students');
+
+            $this->assertSame('Alunos', $students['label']);
+            $this->assertSame('Turmas e alunos', $students['section']);
+            $this->assertTrue($students['built']);
+            $this->assertStringEndsWith('/students', (string) $students['href']);
+        });
+
+        $this->assertSame('/students', route('students.index', absolute: false));
+
+        $this->actingAs($user)->get('/students')->assertOk()->assertInertia(
+            fn (AssertableInertia $page) => $page->component('students/Index')
+        );
+    }
+
+    /**
+     * The neighbour «Alunos» deliberately did not touch. Turmas keeps its own
+     * route and its own `built` flag, and it is still where a roll is created,
+     * edited and imported — the directory points at it and recreates none of it.
+     */
+    #[Test]
+    public function turmas_is_untouched_by_the_students_directory(): void
+    {
+        $user = User::factory()->create();
+
+        $items = collect(config('navigation.sections'))
+            ->flatMap(fn (array $section): array => $section['items'])
+            ->keyBy('key');
+
+        $this->assertSame('classes.index', $items['classes']['route']);
+        $this->assertTrue($items['classes']['built']);
+        $this->assertSame('classes', $items['classes']['module']);
+
+        $this->actingAs($user)->get('/classes')->assertOk()->assertInertia(
+            fn (AssertableInertia $page) => $page->component('classes/Index')
+        );
+    }
+
+    /**
      * The two neighbours this phase deliberately did not touch: «Estrutura do
      * Ano Letivo» and «Horário do Professor» (Fase 5.1) keep their own routes,
      * their own `built` flag and their place in the same group.
@@ -629,17 +698,54 @@ class ShellNavigationTest extends TestCase
         }
     }
 
+    /**
+     * «Alunos» WAS THE LAST PLACEHOLDER, and this test is what that one used to
+     * be. It asserted that /students rendered the «em construção» page with its
+     * phase; there is a directory behind that address now, so the assertion
+     * moved up one level rather than being deleted: NO navigation entry renders
+     * the placeholder any more, and the loop in routes/app.php generates no
+     * route at all.
+     *
+     * The machinery itself stays exactly where it is — PlaceholderController,
+     * the Placeholder page and the loop that would register a route for any
+     * future entry are all untouched, and the second half of this test proves
+     * they still work. What changed is that nothing needs them today.
+     */
     #[Test]
-    public function a_placeholder_route_renders_the_placeholder_page_with_its_phase(): void
+    public function no_navigation_entry_renders_the_placeholder_any_more(): void
     {
         $user = User::factory()->create();
+        $this->upgrade($user, 'institutional');
 
-        // Alunos is still a placeholder (Fase 1); everything around it is built.
-        $this->actingAs($user)->get('/students')->assertInertia(
+        $items = collect(config('navigation.sections'))
+            ->flatMap(fn (array $section): array => $section['items'])
+            ->concat(config('navigation.footer'));
+
+        foreach ($items as $item) {
+            $this->assertTrue(
+                $item['phase'] === 0 || ! empty($item['built']),
+                "«{$item['label']}» would still be registered as a placeholder route.",
+            );
+        }
+
+        // /students is the entry that changed, asked directly: a real page, at
+        // the address the placeholder answered at.
+        $this->actingAs($user)->get('/students')->assertOk()->assertInertia(
+            fn (AssertableInertia $page) => $page->component('students/Index')
+        );
+
+        // And the placeholder is not gone, only unused: registered here the way
+        // routes/app.php would register it, it still renders label and phase.
+        Route::middleware(['web', 'auth', 'verified', 'organization'])
+            ->get('_test/placeholder', PlaceholderController::class)
+            ->defaults('navLabel', 'Módulo futuro')
+            ->defaults('navPhase', 9);
+
+        $this->actingAs($user)->get('/_test/placeholder')->assertInertia(
             fn (AssertableInertia $page) => $page
                 ->component('Placeholder')
-                ->where('title', 'Alunos')
-                ->where('phase', 1)
+                ->where('title', 'Módulo futuro')
+                ->where('phase', 9)
         );
     }
 

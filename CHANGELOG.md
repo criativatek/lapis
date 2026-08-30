@@ -14,6 +14,46 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > cada um sob o título da frente a que pertenceu. A 0.85.0 é o primeiro
 > release em que as duas linhagens voltam a ser uma só.
 
+> **Nota de reconciliação (0.99.5).** Entre 2026-08-29 e 2026-08-30 correram
+> **duas linhas em paralelo** a partir da 0.88.0: uma de produto (0.89.0 →
+> 0.91.0 — condições comerciais e lugares Fundador, diretório de alunos, contas
+> de teste), publicada e instalada em produção; e uma do site público (0.89.0 →
+> 0.99.4 — landing, multi-página, SSR, SEO). Os números repetem-se porque cada
+> linha os atribuiu sem ver a outra. A 0.99.5 funde as duas. As entradas da
+> linha do produto ficam com os números com que foram publicadas e instaladas
+> (0.89.0, 0.90.0, 0.91.0); as da linha do site, que nunca saíram desta
+> máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
+> único por definição, e `ReleaseVersionTest` afirma-o.
+
+## [0.99.5] — 2026-08-30
+
+Fusão das duas linhas (ver nota acima). Nada foi reescrito: o site público
+desta linha, com as funcionalidades da outra. Uma ligação nova: `/planos`
+recebe do servidor se a condição Membro Fundador ainda está aberta
+(`FounderAvailability`), tal como a landing antiga recebia, e esconde o
+distintivo e a banda Fundador quando fecha.
+
+Uma revisão adversarial da fusão (37 agentes, três lentes, cada achado
+sujeito a dois céticos) confirmou doze problemas, todos corrigidos aqui:
+
+- **O hero de `/planos` prometia a condição Fundador mesmo depois de fechada.**
+  O distintivo, a banda e a resposta do FAQ já estavam presos ao
+  `founder.open`; o primeiro ecrã não estava, e a descrição de SEO também não
+  — um snippet sobrevive à promoção. Agora o texto e os chips do hero mudam
+  com a condição, e a meta description não a nomeia.
+- **A home dizia «sem prazo» sobre o plano Base**, que é gratuito *no ano
+  letivo 2026/27* — a única frase materialmente falsa que restava no site.
+- **`/seguranca` prometia gestão de sessões e dispositivos**, que não existe.
+- Os `Offer` do JSON-LD apontavam para `#planos`, âncora que a home deixou de
+  ter na 0.94.0; passam a apontar para `/planos`.
+- `Welcome.vue` declarava `plans` e `founder` que ninguém enviava nem lia, e o
+  `HomeController` ainda fazia a consulta dos planos por nada. Os testes de
+  payload dos planos passam para `/planos`, que é onde eles vivem.
+- `commercial.test.ts` montava o FAQ sem a prop obrigatória `founderOpen`.
+- `og.jpg` era o hero da 0.93; regenerada a partir do hero actual.
+- O CHANGELOG repetia 0.89.0, 0.90.0 e 0.91.0 (uma vez por linha): as da linha
+  do produto ficam com o número publicado, as do site passam a 0.91.1–0.91.4.
+
 ## [0.99.4] — 2026-08-30
 
 Revisão técnica das nove páginas públicas (headings, alt, alvos de toque,
@@ -246,7 +286,7 @@ visível) e a leitura das capturas full-page.
 - O rodapé mostra o **e-mail de contacto** das definições da plataforma quando
   existe: uma escola que confia dados de menores procura quem está por trás.
 
-## [0.91.0] — 2026-08-29
+## [0.91.4] — 2026-08-29
 
 Landing com o produto a sério. As secções «Organizar», «Avaliar» e
 «Acompanhar» de Funcionalidades mostram agora capturas reais da aplicação —
@@ -260,7 +300,7 @@ mostra proposta e decisão lado a lado.
 
 Saiu a linha descritiva de quatro linhas ao lado do logótipo no cabeçalho.
 
-## [0.90.0] — 2026-08-29
+## [0.91.3] — 2026-08-29
 
 Landing: uma cor de acção. A 0.89.0 pintou de azul o hero e o cabeçalho e
 deixou os botões dos Planos, do FAQ e do fecho em navy, e o cartão Fundador em
@@ -273,7 +313,7 @@ Corrigido o scroll horizontal no telemóvel: a 375px o cabeçalho media 424px
 (logo + «Experimentar Lapispro» + botão do menu). Abaixo de `sm` o botão diz
 só «Experimentar».
 
-## [0.89.1] — 2026-08-29
+## [0.91.2] — 2026-08-29
 
 A landing e as páginas legais são só claras. Com o sistema em modo escuro, a
 0.89.0 aparecia a preto — o Pedro viu-a assim e perguntou «assim?». Marketing
@@ -283,7 +323,7 @@ O servidor põe `data-theme-lock="light"` no `<html>` para `Welcome` e
 `useLightThemeLock()` levanta-o ao sair por Inertia para que o painel volte à
 preferência real sem reload.
 
-## [0.89.0] — 2026-08-29
+## [0.91.1] — 2026-08-29
 
 Landing pública com base branca. O creme «papel» do cabeçalho, rodapé e das
 secções `warm`, e a alternância cinzenta das secções `tinted`, davam à página
@@ -301,6 +341,215 @@ fotografia, e a redução de 17 para ~10 secções.
 - `LandingSection.vue`: `tinted` deixa de pintar; `warm` passa a `blue-50/60`.
 - `LandingBenefits.vue`: faixa navy → azul-claro em tema claro.
 - Cores do cartão Fundador e dos botões de Planos/CTA final ainda navy/creme — próximo passo.
+## [0.91.0] — 2026-08-30
+
+A aplicação passa a saber distinguir uma conta real de uma conta de ensaio. Até
+aqui não sabia, e isso parou um deploy: o pré-voo comercial recusou-se a avançar
+sobre subscrições em vigor sem condição registada — e fez bem, porque uma conta
+de um cliente sem termos gravados é uma dívida por esclarecer. Só que nenhuma
+daquelas contas era de um cliente: eram todas de ensaio, incluindo as de
+professores parceiros convidados para experimentar o produto. O portão estava a
+fazer, sobre uma população inteira, uma pergunta que não se lhe aplicava, e as
+únicas saídas eram fabricar contratos que ninguém acordou ou desligar o portão.
+Nenhuma das duas é verdade, e a lacuna era estrutural. Passa a haver uma marca
+explícita — e continua a não haver contrato nenhum, porque não existe.
+
+### Added
+
+- **Classificação explícita de conta de teste.** `organizations.is_test_account`
+  diz que uma organização existe para experimentar o produto. É um booleano e
+  não um enum, de propósito: não há hoje um terceiro estado que se consiga
+  nomear sem o inventar.
+- **Gestão auditada no backoffice.** A ficha da conta mostra se é conta de teste
+  ou conta real, e um operador marca ou desmarca com confirmação. Cada alteração
+  regista quem decidiu, o valor anterior e o novo. O pedido leva o estado que
+  quer, nunca «inverte o que lá estiver».
+- **Comando seguro para classificação histórica**
+  (`lapis:mark-test-accounts`). Aplica em bloco uma decisão já tomada, pela
+  mesma acção que o botão usa e com uma auditoria por organização. Exige um
+  administrador identificado, confirmação explícita e um instante-limite
+  obrigatório, lido à letra e recusado se for futuro — uma classificação
+  histórica que alcança contas ainda por existir seria uma armadilha à espera do
+  próximo cliente.
+
+### Changed
+
+- **O pré-voo comercial exclui apenas as contas explicitamente marcadas como
+  teste**, e diz quantas excluiu. Uma conta real sem condição registada continua
+  a parar o deploy, exactamente como antes.
+
+### Security/Safety
+
+- **Um registo público novo continua a ser conta real**, por omissão da base de
+  dados. A coluna está fora do `Fillable` do modelo, por isso nenhum formulário
+  — nem um `$request->all()` distraído — a consegue escrever.
+- **Nenhuma inferência.** Nada deduz «conta de teste» a partir do email, do
+  domínio, do nome, do plano, do id ou da ausência de pagamentos. A marca vem de
+  um operador, e só de um operador.
+- **Classificar não altera planos, direitos nem snapshots comerciais.** Plano,
+  versão do plano, estado, módulos, limites, condição comercial, preço
+  contratado e prazo ficam como estavam. Nenhuma conta existente recebeu
+  condição comercial: `commercial_condition` e `contracted_price_cents`
+  continuam por preencher, porque continua a não existir contrato.
+
+## [0.90.0] — 2026-08-29
+
+«Alunos» deixa de ser uma promessa no menu e passa a ser uma página. A entrada
+existia desde a primeira fase da navegação, com o seu módulo e o seu lugar, e
+respondia com o *placeholder* de «em breve»: um professor com trezentos alunos
+distribuídos por oito turmas não tinha nenhum sítio onde perguntar «onde está o
+João?» sem abrir turma a turma até dar com ele. A partir desta versão há um
+diretório — encontra a pessoa, mostra em que turmas ela está, e entrega a
+pergunta a quem já a sabia responder. Não é uma segunda ficha do aluno: o
+**Acompanhamento** continua a ser a leitura pedagógica de uma pessoa e as
+**Turmas** continuam a ser a casa administrativa da inscrição. Esta página é o
+índice sobre as duas, e por isso não escreve nada.
+
+### Added
+
+- **Diretório central de alunos** (`/students`). A lista dos alunos das turmas
+  do professor, cem por página, cada linha com o pseudónimo, o nome, a
+  fotografia e todas as inscrições dessa pessoa nas turmas que este professor
+  leciona.
+- **Pesquisa e filtros.** Pesquisa pelo **nome completo** — através do índice
+  cego, que responde a igualdade e mais nada — ou pelo **início do pseudónimo**.
+  Filtros por turma, por ano letivo e por estado da inscrição, todos resolvidos
+  contra as turmas que o professor vê e não contra a base de dados.
+- **Acesso rápido ao acompanhamento individual.** Cada inscrição da linha abre
+  o acompanhamento no par (turma, inscrição) correto — a rota que já existia,
+  sem rota nova e sem leitura nova.
+- **Navegação para o acompanhamento a partir da turma.** A pauta de
+  «Turmas → turma» ganha, por aluno, o atalho para o mesmo acompanhamento, que
+  até aqui obrigava a sair e a escolher outra vez a mesma turma.
+
+### Changed
+
+- **«Alunos» deixa de ser um *placeholder*.** A entrada do menu passa a apontar
+  para um destino real, no mesmo endereço `/students` a que o *placeholder*
+  respondia — um marcador criado antes da página existir continua a chegar lá.
+  A chave, o módulo, o rótulo e a posição no menu não mudaram.
+- **A listagem respeita apenas as turmas do professor.** O diretório parte de
+  `SchoolClass::taughtBy()`, o mesmo âmbito que «Turmas» e o «Horário do
+  Professor» já usam: os alunos de um colega da mesma escola não aparecem aqui.
+- **Suporte explícito a alunos em várias turmas.** Quem está inscrito em mais do
+  que uma turma deste professor é **uma linha**, com as suas inscrições listadas
+  dentro dela — e não uma linha por inscrição.
+
+### Security/Privacy
+
+- **Isolamento entre organizações testado.** A listagem parte de `Student`, que
+  carrega o âmbito global da organização; `StudentIdentity` não o carrega, e por
+  isso todas as consultas deste ecrã que lhe tocam declaram `organization_id`
+  explicitamente.
+- **Isolamento entre professores da mesma organização testado.** Um `ulid` de
+  uma turma de um colega não resolve como filtro: a página responde como se
+  nenhuma turma tivesse sido pedida, sem confirmar que essa turma existe.
+- ***Payload* minimizado.** Sai o pseudónimo, o nome, uma URL para a rota
+  guardada da fotografia — nunca o caminho nem os *bytes* — e o mínimo de cada
+  inscrição. Nada mais da identidade atravessa a fronteira.
+- **Pesquisa sobre `StudentIdentity` protegida explicitamente por
+  `organization_id`**, além do âmbito que já a cobria.
+
+## [0.89.0] — 2026-08-29
+
+As condições comerciais deixam de viver na landing e passam a viver na base de
+dados. Até aqui, «Gratuito no ano letivo 2026/27» e «Faça parte dos primeiros
+250» eram frases numa página: uma adesão não guardava rasto nenhum daquilo que
+lhe tinha sido prometido, e o contador dos lugares lia as subscrições com
+condição `founder` — uma população que **nenhum fluxo escrevia**. O checkout
+marcava a condição no pagamento e a subscrição só passava a fundadora se, dias
+depois, um operador o dissesse à mão; o contador mostrava «restam 250» para
+sempre, e o 251.º comprador veria o preço de fundador sem forma de saber que
+era o 251.º. A partir desta versão, uma adesão grava a condição que lhe foi
+dada — com o preço congelado e a data até quando vale — e um lugar de Membro
+Fundador é uma linha com um ordinal que a base de dados recusa duplicar. A
+decisão está registada na **ADR-0009**.
+
+### Added
+
+- **Condições comerciais gravadas no momento da adesão.** `CommercialTerms`
+  decide os termos de uma subscrição a partir do que foi de facto contratado, e
+  `ContractedTerms` transporta-os como um valor único — condição, preço em
+  cêntimos, moeda, periodicidade e a data até quando o termo comercial vale.
+  Deixa de ser preciso ler a base de dados para saber em que condições uma
+  conta entrou.
+- **Promoção Base 2026/27.** Uma adesão Base nova grava
+  `Promotional / 0 / EUR / 2027-08-31` enquanto a janela estiver aberta. As
+  contas que já lá estavam **não** são tocadas — nem por migração, nem por
+  comando nenhum — porque aplicar a promoção retroativamente afirmaria uma
+  coisa que a base de dados nunca teve prova para dizer.
+- **Anualidade explícita.** `BillingPeriod::Annual` passa a ficar registado na
+  subscrição, onde «subscrição anual» estava simplesmente em falta. O enum não
+  tem caso mensal, de propósito: é o único ciclo pago que este produto tem.
+- **Lugares de Membro Fundador auditáveis** (`founder_seats`). Cada lugar é uma
+  linha com o ordinal prometido, o preço congelado no momento da adesão, quando
+  foi tomado, até quando a reserva se aguenta e quando o dinheiro entrou. O
+  lugar é **reservado no checkout** — o único momento transacional e auditável
+  que existe — e liberta-se sozinho se a janela de transferência passar sem
+  confirmação, sem job e sem *scheduler*. Um lugar não é um direito: um Membro
+  Fundador tem exatamente os módulos de um Pro normal.
+- **A regra dos primeiros 250, imposta pela base de dados.** `UNIQUE` sobre
+  `seat_number`, ordinais densos e o teto verificado antes de inserir tornam o
+  251.º lugar um estado que a base de dados recusa, e não apenas algo que o
+  código desaconselha. O teto comercial vive em `billing.founder.seats`; a
+  `CHECK` na tabela é um travão de sanidade num valor deliberadamente mais alto.
+- **Pré-voo comercial** (`lapis:commercial-preflight`). Só leitura, sem
+  `--apply`, e sai diferente de zero quando há subscrições em vigor sem
+  condição registada — para que um procedimento de deploy pare sem ninguém ter
+  de ler a saída com atenção. Não classifica contas nem inventa uma noção de
+  conta interna: mostra os factos e deixa a leitura a quem sabe.
+- **Backoffice comercial: o que foi contratado, em leitura.** O ecrã de conta
+  passa a mostrar as condições contratadas — preço, moeda, periodicidade, fim
+  do termo, versão de plano — e o lugar de Fundador, se existir. Tudo sem
+  edição: são prova imutável, e um campo editável faria a promessa dos 250
+  depender de quem escrevesse por cima. As três ocorrências do lugar
+  (atribuído, confirmado, libertado) entram no trilho de auditoria.
+- **ADR-0009** — «Os primeiros 250» é um lugar, e um lugar é uma linha.
+
+### Changed
+
+- **Checkout Fundador coerente com a reserva e a sua expiração.** O lugar é
+  tomado quando o comprador recebe a referência e confirmado quando o pagamento
+  entra; uma reserva vencida deixa de contar para os 250 e o lugar volta ao
+  bolo. Esgotadas as tentativas de atribuição, o checkout segue ao preço de
+  tabela e regista a ocorrência — em nenhum caminho sai um erro de base de
+  dados para quem está a comprar.
+- **Referências de transferência caducadas passam a ser revalidadas.** Quem
+  voltasse ao checkout depois de a reserva expirar recebia de volta a mesma
+  referência a 29,90 € — um preço de fundador sem lugar por trás, que já
+  ninguém podia honrar. `revalidate()` decide antes: reafirma o lugar se ainda
+  o houver, toma um novo se houver vaga, e caso contrário emite a referência ao
+  preço de tabela.
+- **A landing deixa de oferecer Fundador quando o prazo passou ou os lugares
+  esgotaram.** A promessa tinha duas condições de validade e a página continuava
+  a fazê-la de qualquer maneira. Passa a ser um booleano vindo do servidor —
+  ainda disponível, ou já não — e não um contador público, que continua a ser
+  uma decisão comercial por tomar.
+
+### Segurança e salvaguardas
+
+- **Concorrência dos lugares, em quatro camadas.** `UNIQUE(seat_number)`,
+  `lockForUpdate()` sobre uma linha que existe sempre, um ciclo de tentativas
+  que converge para o menor número livre, e o teto verificado em PHP antes de
+  inserir. A camada do bloqueio é provada em MySQL com duas ligações reais
+  (`FounderSeatsMysqlGuaranteesTest`, *opt-in*), porque o SQLite dos testes
+  ignora `lockForUpdate()`.
+- **Rollback recusado depois de haver lugares.** O `down()` da migração reverte
+  enquanto a tabela estiver vazia e **recusa-se** assim que houver um lugar
+  atribuído: cada linha é a prova de uma condição acordada com uma pessoa, e
+  nada a reconstrói depois de a tabela desaparecer.
+- **O pré-voo nunca escreve.** Não tem `--apply`, e a ausência é deliberada: um
+  comando de inspeção que também soubesse corrigir seria um comando que alguém
+  corrige por engano. Aplicar uma condição a uma conta antiga faz-se uma a uma
+  no backoffice, por `SetCommercialCondition`, que regista quem o disse e
+  quando. O pré-voo corre também **antes** da migração, contra o esquema da
+  release anterior, e nessa passagem adia a secção dos lugares em vez de
+  rebentar — para que o código de saída continue a significar «há contas por
+  classificar» e não «correste-me cedo demais».
+- **Nenhum corte automático depois de 31/08/2027.** `commercial_term_ends_at`
+  diz até quando o termo comercial vale e **não é lido por nada no caminho do
+  acesso**. O que acontece a uma conta quando o termo chega ao fim é uma
+  política que ainda não existe; nada nesta versão a inventa.
 
 ## [0.88.0] — 2026-08-29
 

@@ -147,6 +147,27 @@ class MarketingPagesTest extends TestCase
                 ->has('plans', 3));
     }
 
+    /**
+     * THE FIRST SCREEN MAY NOT OUTLIVE THE PROMOTION. The badge, the Fundador
+     * band and the FAQ answer are gated on FounderAvailability::isOpen(); the
+     * hero of /planos was not, so once the seats or the deadline ran out the
+     * page still opened by offering 29,90 € to somebody who could no longer
+     * have it. The server side of that gate is asserted here (the copy itself
+     * is asserted in resources/js/components/landing/commercial.test.ts);
+     * closed by the deadline, which needs no seats sold.
+     */
+    #[Test]
+    public function the_plans_page_tells_the_client_when_the_founder_condition_has_closed(): void
+    {
+        $this->get('/planos')->assertOk()
+            ->assertInertia(fn ($page) => $page->where('founder.open', true));
+
+        config(['billing.founder.deadline' => '2020-01-01']);
+
+        $this->get('/planos')->assertOk()
+            ->assertInertia(fn ($page) => $page->where('founder.open', false));
+    }
+
     #[Test]
     public function the_about_page_names_the_same_entity_as_the_legal_pages(): void
     {

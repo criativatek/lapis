@@ -20,6 +20,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\RollsBackPlanVersions;
 use Tests\TestCase;
 
 /**
@@ -50,9 +51,7 @@ use Tests\TestCase;
 class PlanVersionBackfillTest extends TestCase
 {
     use RefreshDatabase;
-
-    /** The three migrations of this lot, rolled back and forward as a unit. */
-    private const MIGRATION_STEPS = 3;
+    use RollsBackPlanVersions;
 
     #[Test]
     public function the_effective_access_map_is_identical_before_and_after_the_backfill(): void
@@ -281,6 +280,10 @@ class PlanVersionBackfillTest extends TestCase
      * replica below reads them the way the old code did. Migrating forward
      * again re-runs the real backfill over the real rows.
      *
+     * How the lot is taken off — the step count and the commercial snapshot
+     * that has to be cleared first — is `RollsBackPlanVersions`, shared with
+     * the two other files that roll the same lot back.
+     *
      * @template T
      *
      * @param  callable(): T  $read
@@ -288,7 +291,7 @@ class PlanVersionBackfillTest extends TestCase
      */
     private function inTheOldWorld(callable $read)
     {
-        $this->artisan('migrate:rollback', ['--step' => self::MIGRATION_STEPS])->run();
+        $this->rollBackPlanVersionLot();
 
         $this->assertTrue(Schema::hasTable('module_plan'), 'the rollback must restore the legacy composition');
         $this->assertFalse(Schema::hasColumn('organization_subscriptions', 'plan_version_id'));

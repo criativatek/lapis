@@ -12,12 +12,12 @@ class LandingPageTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_the_landing_page_shows_the_plans_that_actually_exist(): void
+    public function test_the_plans_page_shows_the_plans_that_actually_exist(): void
     {
-        $this->get(route('home'))
+        $this->get(route('marketing.plans'))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->component('Welcome')
+                ->component('marketing/Plans')
                 ->has('plans', 3)
                 ->where('plans.0.key', 'base')
                 ->where('plans.1.key', 'pro')
@@ -33,7 +33,7 @@ class LandingPageTest extends TestCase
      */
     public function test_each_plan_carries_the_entitlement_keys_the_comparison_reads(): void
     {
-        $plans = $this->get(route('home'))->viewData('page')['props']['plans'];
+        $plans = $this->get(route('marketing.plans'))->viewData('page')['props']['plans'];
 
         $keys = array_column($plans, 'moduleKeys', 'key');
 
@@ -68,7 +68,7 @@ class LandingPageTest extends TestCase
      */
     public function test_the_payload_places_the_calendar_in_base_and_its_import_in_pro(): void
     {
-        $plans = $this->get(route('home'))->viewData('page')['props']['plans'];
+        $plans = $this->get(route('marketing.plans'))->viewData('page')['props']['plans'];
 
         $keys = array_column($plans, 'moduleKeys', 'key');
 
@@ -98,13 +98,13 @@ class LandingPageTest extends TestCase
      */
     public function test_the_contact_address_comes_from_the_platform_settings(): void
     {
-        $this->get(route('home'))
+        $this->get(route('marketing.plans'))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page->where('contactEmail', null));
 
         PlatformSetting::current()->update(['contact_email' => 'geral@exemplo.pt']);
 
-        $this->get(route('home'))
+        $this->get(route('marketing.plans'))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page->where('contactEmail', 'geral@exemplo.pt'));
     }

@@ -14,7 +14,6 @@ import {
 import LandingAi from '@/components/landing/LandingAi.vue';
 import LandingFinalCta from '@/components/landing/LandingFinalCta.vue';
 import LandingHowItWorks from '@/components/landing/LandingHowItWorks.vue';
-import type { LandingPlan } from '@/components/landing/types';
 import ColorBand from '@/components/marketing/ColorBand.vue';
 import HeroCard from '@/components/marketing/HeroCard.vue';
 import MarketingShell from '@/components/marketing/MarketingShell.vue';
@@ -25,6 +24,10 @@ import TileArt from '@/components/marketing/TileArt.vue';
 
 /**
  * The home page of the marketing site.
+ *
+ * NO PLANS HERE. Since 0.94.0 they live on /planos (marketing/Plans.vue), so
+ * this page stopped rendering them; the merge of the product lineage briefly
+ * left a plans/founder prop pair behind that nothing sent and nothing read.
  *
  * Since 0.94.0 it is a front door, not the whole house: each area of the
  * product has its own page (see App\Support\Seo\PublicPages), and this one
@@ -38,7 +41,6 @@ import TileArt from '@/components/marketing/TileArt.vue';
  */
 
 defineProps<{
-    plans: LandingPlan[];
     contactEmail: string | null;
 }>();
 
@@ -107,7 +109,7 @@ const facts = [
     {
         icon: Database,
         value: '0 €',
-        label: 'no plano Base, sem cartão e sem prazo',
+        label: 'no plano Base, sem cartão, gratuito no ano letivo 2026/27',
         tone: 'bg-blue-100 text-blue-700',
     },
 ] as const;

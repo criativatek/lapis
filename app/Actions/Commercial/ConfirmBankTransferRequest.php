@@ -2,12 +2,14 @@
 
 namespace App\Actions\Commercial;
 
+use App\Models\CommercialCondition;
 use App\Models\Organization;
 use App\Models\PaymentMethod;
 use App\Models\PaymentStatus;
 use App\Models\SubscriptionPayment;
 use App\Models\User;
 use App\Support\Commercial\CheckoutUnavailable;
+use App\Support\Commercial\FounderSeats;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -36,6 +38,7 @@ class ConfirmBankTransferRequest
     public function __construct(
         protected RecordSubscriptionPayment $records,
         protected CorrectSubscriptionPayment $corrections,
+        protected FounderSeats $seats,
     ) {}
 
     /**
@@ -65,6 +68,15 @@ class ConfirmBankTransferRequest
                 'Substituído pelo pagamento recebido (referência :reference).',
                 ['reference' => $referencia],
             ));
+
+            // O LUGAR DEIXA DE PODER EXPIRAR. Foi reservado quando o comprador
+            // concluiu o checkout e aguentou-se durante a janela de
+            // transferência; o dinheiro que acabou de entrar é o que o torna
+            // definitivo. Não faz nada quando esta organização não tem lugar,
+            // que é o caso de toda a gente depois dos 250.
+            if ($request->commercial_condition === CommercialCondition::Founder) {
+                $this->seats->confirm($organization, $operator, $paidAt);
+            }
 
             return $this->records->record(
                 organization: $organization,

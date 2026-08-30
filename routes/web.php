@@ -56,6 +56,7 @@ use App\Http\Controllers\RosterImportController;
 use App\Http\Controllers\ScaleController;
 use App\Http\Controllers\SelfAssessmentController;
 use App\Http\Controllers\SeoController;
+use App\Http\Controllers\StudentDirectoryController;
 use App\Http\Controllers\StudentPhotoController;
 use App\Http\Controllers\StudentProgressController;
 use App\Http\Controllers\SubjectController;
@@ -383,6 +384,20 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
             ->name('classes.roster-imports.preview-photo');
 
         Route::get('students/{student}/photo', [StudentPhotoController::class, 'show'])->name('students.photo');
+    });
+
+    // «Alunos» — the directory. Its own module gate, `students`, which is the
+    // one config/navigation.php has always declared for this entry and which
+    // routes/app.php's placeholder route already enforced: the entitlement
+    // existed long before there was a page behind it, and nothing about who may
+    // reach /students changed with this slice.
+    //
+    // THE URL IS THE ONE THE PLACEHOLDER ANSWERED AT, so a bookmark made before
+    // the page existed still lands on it. Only the route NAME moved, from
+    // `students` to `students.index` — nothing referenced the old one, and the
+    // dotted form is what every other real destination uses.
+    Route::middleware('module:students')->group(function () {
+        Route::get('students', [StudentDirectoryController::class, 'index'])->name('students.index');
     });
 
     Route::middleware('module:lessons')->group(function () {

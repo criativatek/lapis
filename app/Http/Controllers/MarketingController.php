@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\PlatformSetting;
+use App\Support\Commercial\FounderAvailability;
 use App\Support\Landing\PlanCards;
 use App\Support\Legal\LegalDocuments;
 use App\Support\Seo\PublicPages;
@@ -20,6 +21,8 @@ use Inertia\Response;
  */
 class MarketingController extends Controller
 {
+    public function __construct(protected FounderAvailability $founder) {}
+
     public function feature(string $slug): Response
     {
         abort_unless(in_array($slug, PublicPages::FEATURE_SLUGS, true), 404);
@@ -36,6 +39,9 @@ class MarketingController extends Controller
         return Inertia::render('marketing/Plans', [
             'seoTitle' => $this->seoTitle('marketing/Plans', '/planos'),
             'plans' => fn (): array => PlanCards::all(),
+            // Whether the launch condition is still open — see HomeController's
+            // note in the product lineage: a boolean, never a count.
+            'founder' => fn (): array => ['open' => $this->founder->isOpen()],
             'contactEmail' => fn (): ?string => PlatformSetting::current()->publicContactEmail(),
         ]);
     }

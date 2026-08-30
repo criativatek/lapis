@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\Test;
 use RuntimeException;
 use Tests\Concerns\PublishesPlanVersions;
+use Tests\Concerns\RollsBackPlanVersions;
 use Tests\TestCase;
 use Throwable;
 
@@ -43,9 +44,7 @@ class PlanVersionRollbackSafetyTest extends TestCase
 {
     use PublishesPlanVersions;
     use RefreshDatabase;
-
-    /** The three migrations of this lot, rolled back as a unit. */
-    private const MIGRATION_STEPS = 3;
+    use RollsBackPlanVersions;
 
     // ------------------------------------------- the state that IS reversible
 
@@ -92,10 +91,10 @@ class PlanVersionRollbackSafetyTest extends TestCase
         $this->assertNothingWasDestroyed();
 
         // WHAT «NOTHING WAS DESTROYED» MEANS PRECISELY, because the rollback
-        // does stop half-way: `migrate:rollback --step=3` reverses the
-        // migrations in order, so the commercial-snapshot one goes first and
-        // succeeds — its columns are all NULL here, so there is nothing in them
-        // to lose — and the version one then refuses. The database is left
+        // does stop half-way: `migrate:rollback` reverses the migrations
+        // newest-first, so the commercial-snapshot one goes before the version
+        // one and succeeds — its columns are all NULL here, so there is nothing
+        // in them to lose — and the version one then refuses. The database is left
         // consistent and one migration short, not corrupt; the next `migrate`
         // puts that migration back, which
         // `a_refused_rollback_leaves_a_database_that_still_works` asserts.
@@ -195,9 +194,16 @@ class PlanVersionRollbackSafetyTest extends TestCase
 
     // ------------------------------------------------------------- helpers
 
+    /**
+     * DELIBERATELY NOT `rollBackPlanVersionLot()`. That helper clears the
+     * commercial snapshot first, which is right for a test reconstructing the
+     * pre-0.88 world — and exactly wrong here, where the refusals ARE the
+     * subject. This file rolls back with the data as it stands and asserts what
+     * the guards do about it, so only the step count is shared.
+     */
     private function rollback(): void
     {
-        $this->artisan('migrate:rollback', ['--step' => self::MIGRATION_STEPS])->run();
+        $this->artisan('migrate:rollback', ['--step' => $this->stepsBackToPlanVersions()])->run();
     }
 
     /**

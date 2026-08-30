@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\PlatformSetting;
-use App\Support\Landing\PlanCards;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -44,7 +43,6 @@ class HomeController extends Controller
     public function __invoke(Request $request): Response
     {
         return Inertia::render('Welcome', [
-            'plans' => fn (): array => PlanCards::all(),
             'contactEmail' => fn (): ?string => PlatformSetting::current()->publicContactEmail(),
         ]);
     }

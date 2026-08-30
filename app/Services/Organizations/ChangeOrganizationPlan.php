@@ -8,6 +8,8 @@ use App\Models\Plan;
 use App\Models\PlanVersion;
 use App\Models\SubscriptionStatus;
 use App\Models\User;
+use App\Support\Commercial\CommercialTerms;
+use App\Support\Commercial\ContractedTerms;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Trial\TrialEligibility;
 use App\Support\Trial\TrialException;
@@ -47,6 +49,7 @@ class ChangeOrganizationPlan
     public function __construct(
         protected Entitlements $entitlements,
         protected TrialEligibility $trialEligibility,
+        protected CommercialTerms $terms,
     ) {}
 
     /**
@@ -74,16 +77,31 @@ class ChangeOrganizationPlan
      * period to renew in this model, so a second identical subscription would
      * record nothing the first one does not already say, and would only add a
      * row for a future reader to wonder about.
+     *
+     * WHAT WAS AGREED TRAVELS WITH THE ROW (ADR-0008 §8). A caller that knows
+     * — the operator activating an account whose transfer has just been
+     * confirmed — hands the terms in; a caller that does not gets the terms of
+     * a plain adhesion made right now, which is the free-Base promotion for
+     * Base and NULL for everything else. Nothing is invented for a plan an
+     * operator simply moved by hand: the backoffice keeps saying «Origem não
+     * registada», which is the truth.
+     *
+     * @param  ContractedTerms|null  $terms  What was agreed, when the caller knows it.
      */
-    public function to(Organization $organization, Plan|PlanVersion $target): OrganizationSubscription
+    public function to(Organization $organization, Plan|PlanVersion $target, ?ContractedTerms $terms = null): OrganizationSubscription
     {
-        return DB::transaction(function () use ($organization, $target): OrganizationSubscription {
+        return DB::transaction(function () use ($organization, $target, $terms): OrganizationSubscription {
             $locked = $this->lock($organization);
             // Resolved INSIDE the lock: «the current version» is live state
             // like any other, and a version published between the caller's own
             // read and this transaction must not be the one that lands.
             $version = $this->resolveVersion($target);
             $changedAt = Carbon::now();
+            // Resolved inside the lock for the same reason the version is: the
+            // promotion could have closed between the caller's read and this
+            // transaction, and the row must record the offer that was actually
+            // open when it landed.
+            $terms ??= $this->terms->forNewAdhesion($version);
 
             $subscriptions = $this->subscriptionsOf($locked);
             $inForce = $subscriptions->filter(fn (OrganizationSubscription $subscription): bool => $subscription->isInForce());
@@ -104,6 +122,7 @@ class ChangeOrganizationPlan
                 'plan_version_id' => $version->getKey(),
                 'status' => SubscriptionStatus::Active,
                 'starts_at' => $changedAt,
+                ...($terms?->toAttributes() ?? []),
             ]);
 
             $this->entitlements->flush();
@@ -189,6 +208,17 @@ class ChangeOrganizationPlan
             $trialVersion = $this->resolveVersion($trialPlan);
             $fallbackVersion = $this->resolveVersion($fallbackPlan);
 
+            // AND SO ARE BOTH SETS OF TERMS, at the same instant and for the
+            // same reason. The trial records that it costs nothing — `0` in a
+            // currency, no billing cycle, no invented price and no condition,
+            // because `status = Trial` already carries that fact. The dormant
+            // fallback records the terms of the Base ON SALE TODAY, so that
+            // when the trial lapses the organization lands on the condition it
+            // was actually promised rather than on whichever one happens to be
+            // open thirty days later.
+            $trialTerms = $this->terms->forTrial();
+            $fallbackTerms = $this->terms->forNewAdhesion($fallbackVersion);
+
             $startsAt = Carbon::now();
             $endsAt = $startsAt->copy()->addDays($days);
 
@@ -201,6 +231,7 @@ class ChangeOrganizationPlan
                 'status' => SubscriptionStatus::Trial,
                 'starts_at' => $startsAt,
                 'ends_at' => $endsAt,
+                ...$trialTerms->toAttributes(),
             ]);
 
             OrganizationSubscription::withoutGlobalScope('organization')->create([
@@ -209,6 +240,7 @@ class ChangeOrganizationPlan
                 'plan_version_id' => $fallbackVersion->getKey(),
                 'status' => SubscriptionStatus::Active,
                 'starts_at' => $endsAt,
+                ...($fallbackTerms?->toAttributes() ?? []),
             ]);
 
             $this->entitlements->flush();

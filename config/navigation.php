@@ -58,7 +58,15 @@ return [
             'label' => 'Turmas e alunos',
             'items' => [
                 ['key' => 'classes', 'label' => 'Turmas', 'icon' => 'Users', 'module' => 'classes', 'phase' => 1, 'route' => 'classes.index', 'built' => true, 'description' => 'Gerir e aceder às suas turmas.'],
-                ['key' => 'students', 'label' => 'Alunos', 'icon' => 'GraduationCap', 'module' => 'students', 'phase' => 1, 'description' => 'Consultar os alunos.'],
+                // A REAL DESTINATION, and no longer a placeholder: the directory
+                // answers at the same /students the placeholder used to, so a
+                // bookmark predating the page still lands on it. The key, the
+                // module, the label, the description and the position are all
+                // untouched — what changed is that there is something behind it
+                // (§17, §23). It FINDS and NAVIGATES; the ficha do aluno stays
+                // in «Acompanhamento → Aluno» and the administração da inscrição
+                // stays in «Turmas».
+                ['key' => 'students', 'label' => 'Alunos', 'icon' => 'GraduationCap', 'module' => 'students', 'phase' => 1, 'route' => 'students.index', 'built' => true, 'description' => 'Consultar os alunos.'],
             ],
         ],
 

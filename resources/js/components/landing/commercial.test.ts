@@ -140,9 +140,20 @@ function plans() {
     ];
 }
 
-function pricing(contactEmail: string | null = null) {
+/**
+ * A secção de preços, com a condição de lançamento AINDA ABERTA salvo quando
+ * um teste diz o contrário. Aberta é o estado em que a página vive hoje, e é o
+ * estado sobre o qual a maior parte destas afirmações é feita; o caso fechado
+ * tem os seus próprios testes, mais abaixo, porque é uma página diferente.
+ */
+function pricing(contactEmail: string | null = null, founderOpen = true) {
     return mount(LandingPricing, {
-        props: { plans: plans(), authenticated: false, contactEmail },
+        props: {
+            plans: plans(),
+            authenticated: false,
+            contactEmail,
+            founderOpen,
+        },
     });
 }
 
@@ -198,6 +209,29 @@ describe('the commercial offer', () => {
         expect(text).not.toMatch(/restam/i);
         expect(text).not.toMatch(/lugares? (disponíve|restante)/i);
         expect(text).not.toMatch(/\d+\s+de\s+250/);
+    });
+
+    /**
+     * A ÚNICA PROMESSA DESTA PÁGINA QUE DEIXA DE SER VERDADE SOZINHA.
+     *
+     * «Faça parte dos primeiros 250» e «disponível até 31 de dezembro de 2026»
+     * têm duas condições de fim, e a página fazia-as na mesma depois de
+     * qualquer uma delas passar: no dia em que os lugares acabassem, um
+     * visitante continuaria a ver 29,90 € oferecidos a quem já os não podia
+     * ter. Quem decide se ainda está aberta é o servidor, que agora conta os
+     * lugares a sério.
+     */
+    it('stops offering the launch condition once it has closed', () => {
+        const text = pricing(null, false).text();
+
+        expect(text).not.toContain(FOUNDER.title);
+        expect(text).not.toContain(FOUNDER_PRICE);
+        expect(text).not.toContain('31 de dezembro de 2026');
+
+        // E o Pro continua lá, ao preço de tabela: o que fecha é a condição,
+        // não o produto.
+        expect(text).toContain(PRO_PRICE);
+        expect(text).toContain('Não existe pagamento mensal');
     });
 
     it('drops «Falar connosco» when no address is configured, and mails it when one is', () => {
@@ -439,7 +473,7 @@ describe('the offer against the composition', () => {
                         (benefit) => `${benefit.title} ${benefit.body}`,
                     )
                     .join(' '),
-                mount(LandingFaq).text(),
+                mount(LandingFaq, { props: { founderOpen: true } }).text(),
             ].join(' '),
         );
 

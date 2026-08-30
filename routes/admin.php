@@ -35,6 +35,11 @@ Route::middleware(['auth', 'verified', 'platform-admin'])
         Route::post('accounts/{organization}/reactivate', [AdminAccountController::class, 'reactivate'])->name('accounts.reactivate');
         Route::post('accounts/{organization}/toggle-admin', [AdminAccountController::class, 'toggleAdmin'])->name('accounts.toggle-admin');
 
+        // «Conta de teste». Deliberately here and not under `commercial`: it is
+        // a fact about the ORGANIZATION, not a condition of its subscription,
+        // and it grants nothing. The commercial preflight is its only reader.
+        Route::post('accounts/{organization}/test-account', [AdminAccountController::class, 'setTestAccount'])->name('accounts.test-account');
+
         // The person, not the subscription. `suspend`/`reactivate` above answer
         // "does this account still have a product"; these answer "may this
         // person sign in", which is a different question with a different blast

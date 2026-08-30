@@ -135,7 +135,7 @@ class PlanController extends Controller
             return null;
         }
 
-        $pendente = $this->transferRequests->pendingFor($organization);
+        $pendente = $this->transferRequests->validPendingFor($organization);
         $cents = $this->transferRequests->priceFor($plan);
 
         return [

@@ -71,7 +71,7 @@ class LandingSeo
      * for a local install and for any site served on exactly one domain.
      *
      * The trailing slash is trimmed because every consumer here appends its
-     * own, and `https://lapispro.com//#planos` is a different url to a crawler.
+     * own, and a trailing slash makes a different url to a crawler.
      */
     /**
      * The social-share image: the hero as rendered, 1200×630, regenerated from
@@ -151,7 +151,7 @@ class LandingSeo
                 'priceCurrency' => 'EUR',
                 'priceValidUntil' => '2027-08-31',
                 'description' => 'Gratuito no ano letivo 2026/27.',
-                'url' => self::canonical().'#planos',
+                'url' => PublicPages::url('/planos'),
             ],
             [
                 '@type' => 'Offer',
@@ -159,7 +159,7 @@ class LandingSeo
                 'price' => '44.90',
                 'priceCurrency' => 'EUR',
                 'description' => 'Subscrição anual. Não existe pagamento mensal.',
-                'url' => self::canonical().'#planos',
+                'url' => PublicPages::url('/planos'),
             ],
         ];
     }

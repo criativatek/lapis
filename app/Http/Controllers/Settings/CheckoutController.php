@@ -54,7 +54,11 @@ class CheckoutController extends Controller
             abort(404, $exception->getMessage());
         }
 
-        $pendente = $this->requests->pendingFor($organization);
+        // A referência que o ecrã mostra tem de continuar a valer: fora da
+        // janela de transferência, ou sem lugar de fundador a segurá-la, um
+        // pedido antigo deixa de ser uma compra a meio e passa a ser um preço
+        // que ninguém pode honrar. Ver `validPendingFor()`.
+        $pendente = $this->requests->validPendingFor($organization);
 
         return Inertia::render('settings/Checkout', [
             'plan' => ['key' => $plan->key, 'name' => $plan->name],

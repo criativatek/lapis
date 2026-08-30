@@ -44,7 +44,7 @@ class PublicPages
                 'Relatórios cujas secções partem do que já registou, pautas por período e quadro síntese exportável. Finalizar fixa o documento.'),
 
             self::page('/planos', 'marketing/Plans', 'Planos e preços para professores | Lapispro',
-                'Base gratuito, Pro por 44,90 € por ano e Institucional para escolas. Sem cartão no Base; condição Membro Fundador para os primeiros 250.', 'weekly', '0.9'),
+                'Base gratuito, Pro por 44,90 € por ano e Institucional para escolas. Sem cartão no Base, sem pagamento mensal, e sem compromisso de permanência.', 'weekly', '0.9'),
             self::page('/seguranca', 'marketing/Security', 'Segurança e proteção de dados de alunos | Lapispro',
                 'Pseudonimização, isolamento por organização, 2FA e passkeys, registo de operações e IA sem dados identificáveis. RGPD desde a arquitetura.', 'monthly', '0.7'),
             self::page('/sobre', 'marketing/About', 'Sobre o Lapispro e contacto | Lapispro',
