@@ -25,6 +25,22 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.99.11] — 2026-08-30
+
+O render no servidor está ligado em produção. Node 22 por nvm na conta
+`lapis` (o Node 12 do sistema não foi tocado), o bundle a correr como serviço
+`lapis-ssr` do systemd com `Restart=always`, a porta 13714 fechada ao exterior
+e `INERTIA_SSR_ENABLED=true`.
+
+O que um crawler recebe passou de 13 KB sem um único `<h1>` para 45–185 KB
+com o texto todo. Testado a valer: com o serviço parado o site responde na
+mesma (volta a render no cliente), e um `kill -9` traz o processo de volta
+sozinho.
+
+`docs/deployment.md` passa a dizer o que está instalado, que **cada deploy
+tem de reiniciar o serviço** — o Node tem o bundle em memória — e as duas
+armadilhas que custaram uma release cada.
+
 ## [0.99.10] — 2026-08-30
 
 O bundle de SSR passa a levar as dependências dentro. O Vite externaliza-as

@@ -104,6 +104,10 @@ php artisan config:cache && php artisan route:cache && php artisan view:cache
 php artisan up
 EOF
 
+# 5b. Reiniciar o render no servidor — tem o bundle em memória e continuaria a
+#     servir o da release anterior.
+ssh lapis-prod 'sudo systemctl restart lapis-ssr'
+
 # 6. O deploy SÓ está concluído depois disto. Substituir pela versão e commit
 #    que se pretendia enviar (`git rev-parse --short HEAD` local). Sai != 0 e
 #    diz o que difere se a aplicação estiver a correr outra coisa.
@@ -614,25 +618,74 @@ chmod -R ug+rw storage bootstrap/cache
 - WebAuthn/passkeys dependem do domínio (RP ID) — testar login + registo de passkey
   em produção.
 
-## SSR (render no servidor) — landing e páginas legais
+## SSR (render no servidor) — instalado em produção desde 0.99.10
 
-Desde a 0.93.0 o Inertia renderiza no servidor (`resources/js/ssr.ts`). Sem
-isto a resposta de `/` era uma casca de 14 KB sem `<h1>` nem texto — o Google
-renderiza JS tarde e com orçamento; Bing, LinkedIn, WhatsApp e os bots de LLM
-não renderizam de todo. Com o SSR em baixo o Inertia cai para render no
-cliente: página igual, só o crawler é que perde.
+Sem SSR, `/` respondia 13 KB sem um único `<h1>`: o conteúdo só existia depois
+de o browser correr o JavaScript. O Google renderiza-o tarde e com orçamento;
+o Bing, o LinkedIn, o WhatsApp e os bots de LLM não o renderizam de todo. Com
+SSR, as mesmas páginas respondem 45–185 KB com o texto todo.
 
-- `npm run build:ssr` gera `bootstrap/ssr/` (gitignored; vai no pacote de
-  release tal como `public/build` — ver `BuildPackageCommand::GENERATED`).
-- Processo: `php artisan inertia:start-ssr` (Node, porta 13714,
-  `config/inertia.php`). Tem de correr em permanência — no CloudPanel, um
-  serviço `systemd` de utilizador ou o cron `@reboot` do site user, com
-  `Restart=always`. Depois de cada deploy: `php artisan inertia:stop-ssr` e
-  arrancar de novo, senão o Node continua a servir o bundle antigo.
-- Confirmar: `curl -s https://lapispro.com/ | grep -c "<h1"` → `1`.
-  `0` significa que o SSR está em baixo (a página continua a abrir).
-- Os testes PHP correm sem o servidor Node: `LandingSeoTest` e
-  `LegalDocumentsTest` afirmam o que vem do blade e do payload, não do SSR.
+**Se o SSR parar, o site não parte** — o Inertia volta a render no cliente,
+a página abre na mesma e só quem indexa perde. Foi testado assim: com o
+serviço parado, `/planos` responde 200 com 13,8 KB.
+
+### O que está instalado no servidor
+
+| Peça | Onde |
+|---|---|
+| Node 22 (nvm, conta `lapis`) | `/home/lapis/.nvm/versions/node/v22.23.2/bin/node` |
+| Bundle | `bootstrap/ssr/ssr.js` (viaja no pacote; `ssr.noExternal` no `vite.config.ts` mete as dependências lá dentro, por isso **não** é preciso `node_modules` no servidor) |
+| Serviço | `/etc/systemd/system/lapis-ssr.service`, `Restart=always`, `enabled` |
+| Registo | `/home/lapis/logs/ssr.log` |
+| Porta | 13714, só localhost — o ufw tem `deny 13714/tcp` explícito |
+| Interruptor | `INERTIA_SSR_ENABLED` no `.env` |
+
+O Node do sistema continua a ser o 12 e não foi tocado; o 22 vive na conta
+`lapis` e é usado só por este serviço.
+
+### Em cada deploy, reiniciar o serviço
+
+O Node tem o bundle **em memória**. Sem reinício, continua a servir o da
+release anterior — e nada se queixa. A seguir ao `php artisan up`:
+
+```bash
+ssh lapis-prod 'sudo systemctl restart lapis-ssr'
+```
+
+### Confirmar
+
+```bash
+# 1 = está a renderizar; 0 = está em baixo (a página continua a abrir)
+curl -s https://lapispro.com/ | grep -c "<h1"
+
+ssh lapis-prod 'systemctl is-active lapis-ssr; tail -3 /home/lapis/logs/ssr.log'
+```
+
+### Desligar (se alguma vez for preciso)
+
+```bash
+ssh lapis-prod 'cd /home/lapis/htdocs/lapis.criativatek.com &&
+  sudo -u lapis-deploy sed -i "s/^INERTIA_SSR_ENABLED=true/INERTIA_SSR_ENABLED=false/" .env &&
+  sudo -u lapis-deploy php artisan config:cache &&
+  sudo systemctl stop lapis-ssr'
+```
+
+### Duas armadilhas que custaram uma release cada
+
+1. **O bundle não viajava.** A 0.93.0 acrescentou `bootstrap/ssr` à constante
+   `GENERATED` do `BuildPackageCommand` — que não é lida por nada. A lista do
+   pacote é `git ls-files` + carimbo + `public/build`. Corrigido na 0.99.9 com
+   `ssrBundle()` e um teste que o afirma.
+2. **O bundle procurava `node_modules`.** O Vite externaliza as dependências
+   em SSR por omissão; em produção não há árvore de `node_modules`. Corrigido
+   na 0.99.10 com `ssr.noExternal`.
+
+### Testes
+
+Os testes PHP correm com `INERTIA_SSR_ENABLED=false` (`phpunit.xml`). Com o
+SSR ligado, o `<title>` servido é o do `<Head>` do Vue e não o do blade — é
+por isso que as páginas de marketing recebem `seoTitle` do servidor
+(`PublicPages`) e o `<Head>` o usa: os dois dizem a mesma coisa.
 
 ## Nota — build de assets sem Node no servidor
 
