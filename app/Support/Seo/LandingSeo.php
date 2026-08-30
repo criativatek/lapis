@@ -77,10 +77,14 @@ class LandingSeo
      * The social-share image: the hero as rendered, 1200×630, regenerated from
      * the real page whenever the hero changes (see the note in docs/seo.md).
      * Absolute, because scrapers do not resolve relative URLs.
+     *
+     * STAMPED WITH THE RELEASE. The file name never changes, and Cloudflare
+     * caches it for ten years — a regenerated image would reach nobody. The
+     * query string is the only part of the url a deploy can move.
      */
     public static function ogImage(): string
     {
-        return self::canonical().'/images/landing/og.jpg';
+        return self::canonical().'/images/landing/og.jpg?v='.config('app.version');
     }
 
     public static function canonical(): string

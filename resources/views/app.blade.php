@@ -44,10 +44,14 @@
             }
         </style>
 
-        <link rel="icon" href="/favicon.ico" sizes="any">
-        <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-        <link rel="manifest" href="/site.webmanifest" type="application/manifest+json">
+        {{-- Stamped with the release: these names never change and the CDN
+             caches them for years, so the query string is the only way a new
+             icon reaches anybody. --}}
+        @php($assetVersion = config('app.version'))
+        <link rel="icon" href="/favicon.ico?v={{ $assetVersion }}" sizes="any">
+        <link rel="icon" href="/favicon.svg?v={{ $assetVersion }}" type="image/svg+xml">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png?v={{ $assetVersion }}">
+        <link rel="manifest" href="/site.webmanifest?v={{ $assetVersion }}" type="application/manifest+json">
         <meta name="theme-color" content="#ffffff">
 
         {{-- Server-rendered SEO for the public landing page.

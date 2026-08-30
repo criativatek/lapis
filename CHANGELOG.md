@@ -25,6 +25,15 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.99.7] — 2026-08-30
+
+Os ícones novos da 0.99.6 chegaram ao servidor e a ninguém: o Cloudflare serve
+`favicon.ico`, `icon-*.png` e `og.jpg` com `max-age` de dez anos, e o nome
+destes ficheiros nunca muda. Os `<link>` dos ícones, o manifesto e o
+`og:image` passam a levar `?v=` da versão da aplicação — a única parte do
+endereço que um deploy consegue mover. Um ficheiro estático sem hash no nome
+precisa disto para voltar a ser lido.
+
 ## [0.99.6] — 2026-08-30
 
 Ícones renderizados do vetor, não redimensionados de um PNG pequeno. Os
