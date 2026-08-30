@@ -2,6 +2,7 @@
 
 namespace App\Support\Import;
 
+use App\Support\Storage\RemovalOutcome;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -61,13 +62,58 @@ class DataImportTempStorage
         return Storage::disk(self::DISK)->path($relativePath);
     }
 
-    public function delete(?string $relativePath): void
+    /**
+     * Removes the stored upload and says what actually happened.
+     *
+     * Deliberately not `void`, and deliberately not a bare bool. Flysystem's
+     * local adapter opens its delete with `file_exists()` and returns early
+     * when that is false — but a directory the process may not traverse also
+     * answers false, so "I cannot see it" was being reported as "it is gone".
+     * The caller has to be able to tell those apart before it drops the only
+     * pointer to the file (see RemovalOutcome).
+     */
+    public function delete(?string $relativePath): RemovalOutcome
     {
         if ($relativePath === null || $relativePath === '') {
-            return;
+            return RemovalOutcome::AlreadyAbsent;
         }
 
-        Storage::disk(self::DISK)->delete($relativePath);
+        $disk = Storage::disk(self::DISK);
+
+        if (! $disk->exists($relativePath)) {
+            return $this->absenceIsProvable($relativePath)
+                ? RemovalOutcome::AlreadyAbsent
+                : RemovalOutcome::Failed;
+        }
+
+        if (! $disk->delete($relativePath)) {
+            return RemovalOutcome::Failed;
+        }
+
+        // Ask the filesystem itself rather than trust the return value: the
+        // delete we care about is the one that actually happened. Safe to
+        // read `file_exists()` straight here, unlike above — getting this far
+        // means the file could be seen a moment ago, so the directory is
+        // traversable and a false now really does mean gone.
+        $absolutePath = $disk->path($relativePath);
+        clearstatcache(true, $absolutePath);
+
+        return file_exists($absolutePath) ? RemovalOutcome::Failed : RemovalOutcome::Removed;
+    }
+
+    /**
+     * Whether "not found" can be believed.
+     *
+     * A file inside a directory we cannot read is indistinguishable from a
+     * file that was never there — unless we ask the directory itself, which
+     * needs only its own parent to be traversable. When the directory is
+     * gone entirely there is nothing left to doubt.
+     */
+    protected function absenceIsProvable(string $relativePath): bool
+    {
+        $directory = dirname(Storage::disk(self::DISK)->path($relativePath));
+
+        return ! is_dir($directory) || is_readable($directory);
     }
 
     /**

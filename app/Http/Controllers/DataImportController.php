@@ -179,7 +179,23 @@ class DataImportController extends Controller
             // records only that it failed and who was told.
             Log::error('data_import.confirm failed', ['data_import_id' => $dataImport->getKey(), 'exception' => $exception->getMessage()]);
 
-            $dataImport->forceFill(['status' => DataImportStatus::Failed->value, 'failure_reason' => __('A importação falhou. Tente novamente ou contacte o suporte.')])->save();
+            // `Failed` is terminal (DataImportStatus::isFinal), and its own
+            // docblock says the upload has no reason to exist past this
+            // point — but until 0.101.3 nothing acted on that: the row was
+            // marked and the backup was left on the private disk, outside
+            // every cleanup pass. Removed here, at the moment the state
+            // becomes terminal; and if the delete cannot be proven, the
+            // pointer stays so data-imports:prune can retry it later.
+            $attributes = [
+                'status' => DataImportStatus::Failed->value,
+                'failure_reason' => __('A importação falhou. Tente novamente ou contacte o suporte.'),
+            ];
+
+            if ($this->storage->delete($dataImport->stored_path)->pointerMayBeCleared()) {
+                $attributes['stored_path'] = null;
+            }
+
+            $dataImport->forceFill($attributes)->save();
 
             $this->audit->record(
                 'data_import.failed',
@@ -191,8 +207,12 @@ class DataImportController extends Controller
             return back()->withErrors(['import' => __('A importação falhou. Tente novamente ou contacte o suporte.')]);
         }
 
-        $this->storage->delete($imported->stored_path);
-        $imported->forceFill(['stored_path' => null])->save();
+        // The pointer is dropped only on a delete we can prove happened. A
+        // file still on disk with no row naming it is unattributable — worse
+        // than one the nightly prune will pick up on its next pass.
+        if ($this->storage->delete($imported->stored_path)->pointerMayBeCleared()) {
+            $imported->forceFill(['stored_path' => null])->save();
+        }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Importação concluída.')]);
 
@@ -204,8 +224,13 @@ class DataImportController extends Controller
         Gate::authorize('cancel', $dataImport);
         $this->refuseDuringImpersonation($request);
 
-        $this->storage->delete($dataImport->stored_path);
-        $dataImport->forceFill(['status' => DataImportStatus::Cancelled->value, 'stored_path' => null])->save();
+        $attributes = ['status' => DataImportStatus::Cancelled->value];
+
+        if ($this->storage->delete($dataImport->stored_path)->pointerMayBeCleared()) {
+            $attributes['stored_path'] = null;
+        }
+
+        $dataImport->forceFill($attributes)->save();
 
         $this->audit->record(
             'data_import.cancelled',

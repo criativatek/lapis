@@ -2,37 +2,72 @@
 
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schedule;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
+/**
+ * Every cleanup task states its own failure, in one grep-able line.
+ *
+ * NOT belt and braces — the braces do not hold. `scheduler.log`'s DONE/FAIL
+ * column cannot report a failure at all in the Laravel installed here:
+ * ScheduleRunCommand::runEvent() hands `$event->exitCode == 0` (a bool) to
+ * Task::render(), which matches it STRICTLY against TaskResult::Failure->value
+ * (the int 2) and falls through to `default => DONE`. A bool is never
+ * identical to an int, so the FAIL branch is unreachable and every scheduled
+ * task prints DONE whether it worked or not.
+ *
+ * That is exactly how `data-imports:prune` failed 22 hours in a row on
+ * 2026-08-30 with `DONE=24, FAIL=0` in the log an operator was told to trust
+ * (docs/deployment.md). Laravel does separately log "Scheduled command [...]
+ * failed with exit code [1]" through the exception handler; this adds the
+ * stable, structured event next to it, so a failure can be found by name
+ * rather than by recognising a stack trace.
+ *
+ * Do not replace this with a vendor patch.
+ */
+$reportFailure = static fn (string $command): Closure => static function () use ($command): void {
+    Log::error('scheduler.task_failed', ['command' => $command]);
+};
+
 // Abandoned roster-import temp photo folders (uploaded, previewed, never
 // confirmed) are never otherwise cleaned up — see
 // App\Console\Commands\PruneRosterImportTempStorage's docblock.
-Schedule::command('roster-imports:prune')->hourly();
+Schedule::command('roster-imports:prune')
+    ->hourly()
+    ->onFailure($reportFailure('roster-imports:prune'));
 
 // Correction grids uploaded into the import wizard and never confirmed. Same
 // reasoning as above and the same promise: the uploaded file is not kept
 // indefinitely. See App\Console\Commands\PruneCorrectionImportTempStorage.
-Schedule::command('correction-imports:prune')->hourly();
+Schedule::command('correction-imports:prune')
+    ->hourly()
+    ->onFailure($reportFailure('correction-imports:prune'));
 
 // INOVAR grids uploaded, previewed, and never generated. Generating deletes the
 // folder itself, so this only catches the abandoned ones — and an INOVAR grid
 // holds names, process numbers and marks. See
 // App\Console\Commands\PruneInovarExportTempStorage.
-Schedule::command('inovar-exports:prune')->hourly();
+Schedule::command('inovar-exports:prune')
+    ->hourly()
+    ->onFailure($reportFailure('inovar-exports:prune'));
 
 // "Exportar os meus dados" ZIPs (Fatia 4, §27) — a convenience artifact, not
 // a technical backup, kept only for the configured availability window
 // (default 24h). See App\Console\Commands\PruneDataExports.
-Schedule::command('data-exports:prune')->hourly();
+Schedule::command('data-exports:prune')
+    ->hourly()
+    ->onFailure($reportFailure('data-exports:prune'));
 
 // Backup restores uploaded, previewed, and never confirmed (Fatia 6) — a
 // backup can carry real students' pseudonymised data, so it is not kept
 // indefinitely either. See App\Console\Commands\PruneDataImports.
-Schedule::command('data-imports:prune')->hourly();
+Schedule::command('data-imports:prune')
+    ->hourly()
+    ->onFailure($reportFailure('data-imports:prune'));
 
 // The account closures whose 60-day recovery window has ended. Until this line
 // existed, asking to close an account started a countdown that reached zero and
@@ -48,7 +83,8 @@ Schedule::command('data-imports:prune')->hourly();
 // but two processes anonymising the same row is not something to rely on.
 Schedule::command('retention:execute')
     ->dailyAt('03:40')
-    ->withoutOverlapping();
+    ->withoutOverlapping()
+    ->onFailure($reportFailure('retention:execute'));
 
 // O relógio da Central de Suporte: o lembrete dos 23 dias, o auto-resolve dos
 // 30 e a anonimização dos 24 meses (ADR-0011 §7).
@@ -64,4 +100,5 @@ Schedule::command('retention:execute')
 // coisa em que se confie.
 Schedule::command('support:retention')
     ->dailyAt('03:50')
-    ->withoutOverlapping();
+    ->withoutOverlapping()
+    ->onFailure($reportFailure('support:retention'));

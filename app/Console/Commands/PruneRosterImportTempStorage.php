@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\PrunesPrivateStorage;
 use Illuminate\Console\Command;
-use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -21,6 +21,8 @@ use Illuminate\Support\Facades\Storage;
  */
 class PruneRosterImportTempStorage extends Command
 {
+    use PrunesPrivateStorage;
+
     protected const ROOT = 'roster-imports';
 
     protected $signature = 'roster-imports:prune {--older-than=360 : Minutes a temp folder must sit untouched before it is deleted}';
@@ -29,6 +31,8 @@ class PruneRosterImportTempStorage extends Command
 
     public function handle(): int
     {
+        $this->pruneFailures = 0;
+
         $disk = Storage::disk('local');
         $cutoff = now()->subMinutes((int) $this->option('older-than'))->getTimestamp();
 
@@ -36,33 +40,46 @@ class PruneRosterImportTempStorage extends Command
             return self::SUCCESS;
         }
 
+        $folders = $this->listDirectoriesSafely($disk, self::ROOT);
+
+        if ($folders === null) {
+            $this->error('Não foi possível listar a pasta de importações temporárias — ver o registo.');
+
+            return self::FAILURE;
+        }
+
         $pruned = 0;
 
-        foreach ($disk->directories(self::ROOT) as $tokenFolder) {
-            if ($this->lastModifiedAt($disk, $tokenFolder) < $cutoff) {
-                $disk->deleteDirectory($tokenFolder);
-                $pruned++;
+        foreach ($folders as $tokenFolder) {
+            // An empty folder still reports 0 — ancient, and pruned at once
+            // rather than lingering forever, exactly as before. Null is the
+            // new case: an age we could not read at all, which is not a
+            // licence to delete a folder holding real students' photographs.
+            $modifiedAt = $this->newestModifiedAt($disk, $tokenFolder);
+
+            if ($modifiedAt === null || $modifiedAt >= $cutoff) {
+                continue;
             }
+
+            $disk->deleteDirectory($tokenFolder);
+
+            if ($disk->exists($tokenFolder)) {
+                $this->noteFailure('roster_import.prune.delete_failed', ['directory' => self::ROOT]);
+
+                continue;
+            }
+
+            $pruned++;
         }
 
         $this->info("{$pruned} pasta(s) de importação temporária removida(s).");
 
-        return self::SUCCESS;
-    }
+        if ($this->pruneFailed()) {
+            $this->error("{$this->pruneFailures} operação(ões) de limpeza falhou/falharam — ver o registo para o motivo.");
 
-    /**
-     * The most recent modification time of any file inside the folder — an
-     * empty folder (no files at all) is treated as ancient (0) so it is
-     * pruned immediately rather than lingering forever.
-     */
-    protected function lastModifiedAt(Filesystem $disk, string $folder): int
-    {
-        $latest = 0;
-
-        foreach ($disk->allFiles($folder) as $file) {
-            $latest = max($latest, $disk->lastModified($file));
+            return self::FAILURE;
         }
 
-        return $latest;
+        return self::SUCCESS;
     }
 }

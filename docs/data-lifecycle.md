@@ -196,6 +196,68 @@ real fica marcada como dívida técnica explícita, para trabalho futuro.
   carregado do disco privado — nunca os dados já restaurados. Detalhe em
   [docs/data-import.md](data-import.md).
 
+## A regra do ponteiro (0.101.3)
+
+> **Nunca limpar `stored_path`/`disk_path` antes de o ficheiro estar
+> comprovadamente removido.**
+
+Não é uma preferência de estilo. O ponteiro é o **único registo de quem eram
+os dados** que um upload privado continha: uma vez a `null`, um ficheiro que
+sobreviva em disco deixa de ser atribuível a qualquer organização, e a limpeza
+retroativa passa a ser feita por data de modificação e a olho. Um ficheiro
+retido é um problema; um ficheiro retido *e* órfão é um problema pior.
+
+O que tornava isto fácil de errar: o adaptador local do Flysystem começa o seu
+`delete()` por `file_exists()` e sai em silêncio quando este é falso — mas
+`file_exists()` responde falso tanto a «não existe» como a «este diretório não
+me deixa ver», e só o primeiro é prova. Um diretório privado nasce `0700` (ver
+armadilha 10 em [deployment.md](deployment.md)), portanto a segunda hipótese é
+real e foi exatamente o que aconteceu em produção.
+
+A resposta está em `App\Support\Storage\RemovalOutcome`, que dá três respostas
+em vez de duas — `Removed`, `AlreadyAbsent`, `Failed` — e onde `AlreadyAbsent`
+só é devolvido quando a ausência é **verificável**. Tudo o resto, incluindo
+«não consegui perceber», é `Failed`, e um `Failed` deixa a linha exatamente
+como estava para a execução seguinte tentar de novo.
+
+### Estados finais de `DataImport`, e o ficheiro de cada um
+
+`DataImportStatus::isFinal()` diz que «the uploaded file has no reason to exist
+past this point». Até 0.101.3 nada agia sobre essa frase no caso `Failed`.
+
+| Estado | Final? | Quem remove o ficheiro |
+|---|---|---|
+| `uploaded` / `validated` | não | `data-imports:prune`, passagem 1, depois de `expires_at` |
+| `imported` | sim | `DataImportController::confirm()` ao concluir |
+| `cancelled` | sim | `DataImportController::destroy()` ao cancelar |
+| `failed` | sim | `DataImportController::confirm()` no `catch` — **novo em 0.101.3**; antes ficava indefinidamente |
+
+E por baixo de todos, a **passagem 2** do `data-imports:prune`: qualquer estado
+final que ainda tenha `stored_path` depois de expirado tem o ficheiro removido
+e o ponteiro limpo, **sem reescrever o estado**. Um import que falhou, falhou;
+o que se corrige é o ficheiro que não devia ter-lhe sobrevivido. É a rede por
+baixo dos três caminhos da tabela, para o caso de qualquer um deles não ter
+conseguido apagar na altura.
+
+### Os irmãos, e onde o desenho é legitimamente diferente
+
+`correction-imports:prune`, `data-exports:prune`, `roster-imports:prune` e
+`inovar-exports:prune` passaram a ter a mesma proteção de listagem, o mesmo
+delete verificado e o mesmo código de saída. Duas diferenças ficam de pé de
+propósito:
+
+- **`roster-imports` e `inovar-exports` não têm ponteiro em base de dados** —
+  são pastas por token, identificadas por data de modificação. A regra do
+  ponteiro não se lhes aplica; a da listagem sim.
+- **`ImportCorrectionGrid` limpa `stored_path` dentro da transação e só depois
+  apaga o ficheiro.** É deliberado e está documentado no próprio ficheiro: se a
+  transação reverter depois desse ponto, a linha aponta para nada, que é a
+  direção segura de falhar. O ficheiro que sobreviva a essa janela **fica sem
+  ponteiro** — e é por isso que a varredura de órfãos o apanha na passagem
+  seguinte. **Não foi uniformizado**: mexer nas fronteiras de transação de um
+  serviço de escrita académica não pertence a uma fatia sobre retenção de
+  ficheiros, e o controlo compensatório existe e está testado.
+
 ## Configuração de retenção
 
 Os valores por omissão vivem em `config/retention.php` e são lidos através de

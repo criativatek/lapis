@@ -295,6 +295,40 @@ lição sobre `composer install` (armadilha 2) continua a valer.
    quando a release "não mexeu em planos" — quem diz isso é a mesma pessoa que
    não se lembra de ter acrescentado um módulo há três semanas.
 
+10. **Uma pasta em `storage/app/private/` criada pela aplicação nasce `0700` —
+    e o scheduler não corre com o utilizador que a criou.** O disk `local` em
+    `config/filesystems.php` não declara `visibility` nem
+    `directory_visibility`, por isso o Laravel cai em `Visibility::PRIVATE` e o
+    `PortableVisibilityConverter` traduz isso em **`0700` para diretórios**
+    (`0600` para ficheiros). O `LocalFilesystemAdapter` faz
+    `mkdir($dirname, 0700, true)` e **não faz `chmod` a seguir** — o `umask` só
+    pode tirar bits, nunca acrescentar. Resultado: `drwx------ lapis:lapis`,
+    criada pelo php-fpm no primeiro upload. O grupo `lapis` não tem `r` nem
+    `x`, e o `lapis-deploy` — que corre o cron — só partilha o grupo.
+    Aconteceu com `storage/app/private/data-imports`, criada a **2026-08-30
+    01:47:29** (Lisboa) no primeiro restauro de backup em produção, portanto
+    depois do `chmod -R g+rwX storage` de 2026-08-14 que tinha regularizado as
+    irmãs. A partir das 02:00 desse dia, `data-imports:prune` falhou **todas as
+    horas**, sempre com o mesmo erro:
+    ```
+    League\Flysystem\UnableToListContents: Unable to list contents for 'data-imports', shallow listing
+    Reason: DirectoryIterator::__construct(...): Failed to open directory: Permission denied
+    ```
+    As outras quatro tarefas escaparam por acaso, não por desenho: ou as suas
+    pastas são anteriores ao `chmod`, ou não existem em produção — e nesse caso
+    o guard `exists()` devolve zero e o comando reporta um sucesso que não
+    ganhou.
+    **Diagnosticar com o comando dedicado, que não altera nada:**
+    ```bash
+    sudo -u lapis-deploy php artisan storage:private-status
+    ```
+    Responde, para cada pasta privada e **com o utilizador que interessa**, se
+    existe, se é listável, se é gravável, com que modo e que dono. Sai com
+    código não-zero se alguma existir e não puder ser usada, portanto serve
+    como sonda e não só como leitura.
+    **Correção preferida: alinhar o executor, não abrir as permissões** — ver
+    «Que utilizador deve correr o scheduler», abaixo.
+
 O `tar x` usa `--no-same-owner/permissions` para não tentar impor donos e modos
 do ambiente local; o `|| true` engole o aviso de `chmod` na própria pasta `.`.
 Esse `|| true` é também o que torna a armadilha 8 silenciosa — daí a verificação
@@ -335,8 +369,14 @@ entrada, e é o Laravel que decide o que está devido.
 > `scripts/backup-database.sh` e para `/home/lapis`.
 
 Instalada no **crontab do `lapis-deploy`** (`crontab -e` como esse utilizador —
-é quem é dono do código e pertence ao grupo `lapis`, pelo que consegue apagar
-o que o php-fpm escreveu em `storage/app/private/*`, a `770`):
+é quem é dono do código e pertence ao grupo `lapis`).
+
+> **A parte a seguir estava errada e custou 22 horas de falhas silenciosas.**
+> Esta frase dizia que o `lapis-deploy` «consegue apagar o que o php-fpm
+> escreveu em `storage/app/private/*`, a `770`». As pastas que lá estavam
+> **eram** `770`, mas só porque um `chmod -R g+rwX storage` de raiz as tinha
+> tocado a 2026-08-14 (armadilha 8). Não é o que a aplicação cria — ver a
+> armadilha 10.
 
 ```cron
 # >>> LAPIS scheduler >>> (gerido por docs/deployment.md; nao editar a mao)
@@ -398,11 +438,68 @@ depois de passar o minuto `:00`, assim:
   2026-08-27 09:00:03 Running ['artisan' roster-imports:prune] ....... 1s DONE
 ```
 
-**Onde é que um erro aparece.** O Laravel corre cada tarefa agendada com o seu
-próprio `> /dev/null 2>&1`, pelo que a *saída* de cada comando não vai para o
-`scheduler.log` — vai o **veredito**, `DONE` ou `FAIL`, nesta linha. Uma
-exceção continua a ser registada normalmente em `storage/logs/laravel.log`.
-Para ver o que um comando específico imprime, correr esse comando à mão.
+**Onde é que um erro aparece — e onde NÃO aparece.** O Laravel corre cada
+tarefa agendada com o seu próprio `> /dev/null 2>&1`, pelo que a *saída* de
+cada comando não vai para o `scheduler.log`. Para ver o que um comando
+específico imprime, correr esse comando à mão.
+
+> ### O `DONE` do `scheduler.log` **não é prova de nada** nesta versão
+>
+> Esta secção dizia que o veredito `DONE`/`FAIL` daquela linha era o sinal a
+> ler. **Não é: o `FAIL` é inalcançável.** No Laravel instalado aqui,
+> `ScheduleRunCommand::runEvent()` entrega `$event->exitCode == 0` — um
+> **booleano** — ao `Task::render()`, que o compara **estritamente** (`match`)
+> com `TaskResult::Failure->value`, que é o **inteiro `2`**. Um booleano nunca
+> é idêntico a um inteiro, portanto nenhum braço corresponde e cai sempre no
+> `default => DONE`. Toda e qualquer tarefa agendada imprime `DONE`, corra bem
+> ou mal.
+>
+> Foi assim que ninguém reparou que `data-imports:prune` falhou 22 horas
+> seguidas a 2026-08-30: nesse dia o `scheduler.log` tinha **`DONE=24`,
+> `FAIL=0`** enquanto o `laravel.log` registava 21 falhas.
+>
+> **É código de terceiros — não corrigir no `vendor/`.** Ler os sinais certos:
+>
+> ```bash
+> # o que o Laravel regista mesmo, pela via do exception handler:
+> grep -c 'failed with exit code' storage/logs/laravel.log
+>
+> # o evento estruturado que routes/console.php acrescenta em cada tarefa:
+> grep 'scheduler.task_failed' storage/logs/laravel.log | tail -20
+>
+> # e a pergunta a montante, antes de haver falhas para contar:
+> sudo -u lapis-deploy php artisan storage:private-status
+> ```
+>
+> Cada tarefa em [`routes/console.php`](../routes/console.php) leva um
+> `->onFailure(...)` que escreve `scheduler.task_failed` com o nome do comando,
+> precisamente para uma falha se poder encontrar pelo nome em vez de por
+> reconhecimento de um stack trace.
+
+### Que utilizador deve correr o scheduler
+
+O cron está no `lapis-deploy`; o php-fpm corre como `lapis`. Enquanto as pastas
+privadas nascerem `0700` (armadilha 10), **são utilizadores diferentes a criar e
+a limpar os mesmos ficheiros** — e é isso, não o modo, que está errado.
+
+Duas saídas, e a ordem de preferência importa:
+
+1. **Correr as tarefas de manutenção como `lapis`** — o dono, o utilizador do
+   processo web. O `0700` mantém-se, e mais ninguém no VPS passa a ler backups
+   de alunos. É a opção alinhada com a minimização de acesso.
+   **Confirmar antes de mudar o cron:** que o `lapis` consegue correr o
+   `artisan` (o painel recusa-lhe password/chave por SSH — ver «Estado»), que
+   consegue escrever `storage/logs/scheduler.log`, que os caches em
+   `bootstrap/cache` continuam graváveis, e que nada no fluxo de deploy depende
+   de o scheduler ser o `lapis-deploy`.
+2. **Declarar `permissions` no disk `local`** (`dir.private => 0770`) e/ou pôr
+   as pastas a `2770`. Funciona, mas **abre leitura ao grupo `lapis`** — e a
+   armadilha 6 regista chaves SSH de terceiros injetadas neste site por não se
+   sabe que via. `getent group lapis` não lista membros secundários hoje, o que
+   é tranquilizador mas não é uma resposta a *porquê* aquelas chaves aparecem.
+   **Não abrir ao grupo enquanto essa questão estiver por esclarecer.**
+
+Nunca `chmod 777`, por nenhuma das duas vias.
 
 ### Fuso horário
 

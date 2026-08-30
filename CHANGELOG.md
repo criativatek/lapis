@@ -25,6 +25,98 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.101.3] — 2026-08-31
+
+Um restauro de backup carregado a 2026-08-30 criou a pasta
+`storage/app/private/data-imports` — e o `data-imports:prune` passou a falhar de
+hora a hora, 22 vezes seguidas, sem que nada visível o dissesse. A causa era
+banal: o disk `local` não declara visibilidade, o Flysystem cria diretórios
+privados a `0700`, o php-fpm criou-a como `lapis`, e o scheduler corre como
+`lapis-deploy` — que só partilha o grupo. A investigação encontrou por baixo
+disso dois problemas mais sérios do que a falha em si, e é o que esta versão
+corrige.
+
+### Fixed
+
+- **Nunca mais se limpa o ponteiro de um ficheiro que não foi apagado.** Os
+  `delete()` dos armazenamentos temporários devolviam `void`, e o adaptador
+  local do Flysystem começa o seu delete por `file_exists()` — que responde
+  falso tanto a «não existe» como a «este diretório não me deixa ver». Num
+  diretório `0700` pertencente a outro utilizador, cada remoção reportava
+  sucesso sem apagar nada, e a linha ficava a caminho de ser marcada com «o
+  ficheiro carregado foi removido» sobre um ficheiro ainda em disco — o que
+  destruiria o único registo de a quem pertenciam aqueles dados. Novo
+  `App\Support\Storage\RemovalOutcome` com três respostas em vez de duas, onde
+  `AlreadyAbsent` só é devolvido quando a ausência é **verificável**; tudo o
+  resto é `Failed` e deixa a linha intacta para a execução seguinte tentar de
+  novo. Aplicado a `data-imports`, `correction-imports` e `data-exports`, no
+  comando agendado e nos controladores.
+- **`data-exports:prune` largava o ponteiro de todas as exportações expiradas
+  antes sequer de tentar apagar seja o que for.** Abria com um
+  `update(['disk_path' => null])` em bloco e só depois procurava pastas para
+  remover, pelo que uma pasta que sobrevivesse ficava órfã no mesmo movimento.
+  A ordem foi invertida: apagar, provar que foi, e só então deixar a linha
+  esquecer onde estava.
+- **Uma importação em estado `failed` guardava o backup indefinidamente.** O
+  `catch` do `confirm()` marcava a linha e ia-se embora, e nenhuma passagem do
+  prune a apanhava depois: a primeira só olhava para importações abertas, e a
+  varredura de órfãos ignora tudo o que uma linha ainda referencia. O ficheiro
+  passa a ser removido no momento em que o estado se torna final, e o
+  `data-imports:prune` ganhou uma **segunda passagem** que recolhe qualquer
+  estado final que ainda tenha ficheiro depois de expirado — sem reescrever o
+  estado: um import que falhou continua a dizer que falhou.
+- **Uma pasta privada ilegível deixa de rebentar o comando.**
+  `Storage::files()`, `directories()`, `allFiles()` e `lastModified()` não são
+  cobertos pelo `'throw' => false` do disk — ao contrário de `delete()` e
+  `copy()`, o Laravel não os embrulha em try/catch. Passa a ser uma condição
+  operacional reportada e contada, nunca engolida e nunca disfarçada de
+  sucesso: o comando termina com código de saída não-zero e regista o motivo.
+  Aplicado aos cinco prunes através de `PrunesPrivateStorage`.
+- **Uma falha numa unidade deixou de afetar as outras.** Um ficheiro
+  inalcançável de uma organização não impede a limpeza das restantes.
+
+### Added
+
+- **`php artisan storage:private-status`** (`--json`), só de leitura: responde,
+  para cada pasta privada e **com o utilizador que a corre**, se existe, se é
+  listável, se é gravável, com que modo e que dono. Sai com código não-zero se
+  alguma existir e não puder ser usada, por isso serve como sonda. Correr como
+  `sudo -u lapis-deploy php artisan storage:private-status` responde à pergunta
+  que ninguém conseguiu responder a 2026-08-30.
+- **Sinal explícito de falha para todas as tarefas agendadas.** Cada tarefa em
+  `routes/console.php` leva um `->onFailure(...)` que escreve
+  `scheduler.task_failed` com o nome do comando.
+
+### Changed
+
+- `docs/deployment.md` — armadilha 10 (as pastas privadas nascem `0700`), nova
+  secção sobre que utilizador deve correr o scheduler, e a correção do que a
+  própria doc afirmava sobre as permissões e sobre o `scheduler.log`.
+- `docs/data-lifecycle.md` — a regra do ponteiro, a tabela dos estados finais de
+  `DataImport`, e onde o desenho dos irmãos é legitimamente diferente.
+
+### Known issue (código de terceiros, não corrigido aqui)
+
+- **O `DONE`/`FAIL` do `scheduler.log` não é fiável nesta versão do Laravel.**
+  `ScheduleRunCommand::runEvent()` entrega `$event->exitCode == 0` — um
+  booleano — ao `Task::render()`, que o compara estritamente (`match`) com
+  `TaskResult::Failure->value`, que é o inteiro `2`. Nenhum braço corresponde e
+  cai sempre no `default => DONE`: **o ramo `FAIL` é inalcançável**, e toda a
+  tarefa agendada imprime `DONE` corra bem ou mal. Foi assim que 22 falhas
+  seguidas passaram despercebidas, com `DONE=24, FAIL=0` no mesmo dia em que o
+  `laravel.log` registava 21 exceções. Não é corrigido no `vendor/`; a doc
+  deixou de o usar como prova de saúde e há agora dois sinais próprios que não
+  dependem dele.
+
+### Não incluído nesta versão
+
+- **Nada foi apagado em produção.** O ficheiro do import `failed` que está no
+  servidor continua lá, de propósito. A limpeza retroativa é uma fase à parte,
+  depois do deploy e da confirmação do executor.
+- **Nenhuma permissão foi alterada em produção**, e o disk `local` **não**
+  passou a `0770`: abrir leitura ao grupo `lapis` fica pendente do
+  esclarecimento das chaves SSH de terceiros (armadilha 6).
+
 ## [0.101.2] — 2026-08-30
 
 A Central de Suporte trouxe um canal que os textos legais não descreviam e um

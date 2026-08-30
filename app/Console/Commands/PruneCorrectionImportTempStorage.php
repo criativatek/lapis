@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\PrunesPrivateStorage;
 use App\Models\CorrectionImport;
 use App\Models\CorrectionImportStatus;
 use App\Support\Import\CorrectionImportTempStorage;
@@ -24,6 +25,8 @@ use Illuminate\Support\Facades\Storage;
  */
 class PruneCorrectionImportTempStorage extends Command
 {
+    use PrunesPrivateStorage;
+
     protected $signature = 'correction-imports:prune {--older-than=1440 : Minutes an upload may sit untouched before it is deleted}';
 
     protected $description = 'Delete abandoned correction-grid uploads and close the imports that owned them';
@@ -35,6 +38,7 @@ class PruneCorrectionImportTempStorage extends Command
 
     public function handle(): int
     {
+        $this->pruneFailures = 0;
         $minutes = (int) $this->option('older-than');
         $cutoff = now()->subMinutes($minutes);
 
@@ -50,8 +54,21 @@ class PruneCorrectionImportTempStorage extends Command
             ->where('updated_at', '<', $cutoff)
             ->get();
 
+        $cancelled = 0;
+
         foreach ($abandoned as $import) {
-            $this->storage->delete($import->stored_path);
+            // The message below asserts the upload was removed, so it may only
+            // be written once that is true. An unproven delete leaves the row
+            // exactly as it was, for the next run to retry — never a pointer
+            // dropped over a file that is still on disk.
+            if (! $this->storage->delete($import->stored_path)->pointerMayBeCleared()) {
+                $this->noteFailure('correction_import.prune.delete_failed', [
+                    'correction_import_id' => $import->getKey(),
+                    'organization_id' => $import->organization_id,
+                ]);
+
+                continue;
+            }
 
             // The canonical snapshot stays: it is the record of what the file
             // said, and it is what makes deleting the file safe. Only the route
@@ -61,11 +78,19 @@ class PruneCorrectionImportTempStorage extends Command
                 'status' => CorrectionImportStatus::Cancelled,
                 'failure_reason' => __('Importação abandonada; o ficheiro carregado foi removido.'),
             ])->save();
+
+            $cancelled++;
         }
 
         $orphans = $this->pruneOrphanFiles($cutoff->getTimestamp());
 
-        $this->info("{$abandoned->count()} importação(ões) abandonada(s) encerrada(s); {$orphans} ficheiro(s) órfão(s) removido(s).");
+        $this->info("{$cancelled} importação(ões) abandonada(s) encerrada(s); {$orphans} ficheiro(s) órfão(s) removido(s).");
+
+        if ($this->pruneFailed()) {
+            $this->error("{$this->pruneFailures} operação(ões) de limpeza falhou/falharam — ver o registo para o motivo.");
+
+            return self::FAILURE;
+        }
 
         return self::SUCCESS;
     }
@@ -90,15 +115,32 @@ class PruneCorrectionImportTempStorage extends Command
             ->pluck('stored_path')
             ->flip();
 
+        $files = $this->listFilesSafely($disk, $root);
+
+        if ($files === null) {
+            return 0;
+        }
+
         $removed = 0;
 
-        foreach ($disk->files($root) as $file) {
-            if ($known->has($file) || $disk->lastModified($file) >= $cutoff) {
+        foreach ($files as $file) {
+            if ($known->has($file)) {
                 continue;
             }
 
-            $disk->delete($file);
-            $removed++;
+            $modifiedAt = $this->modifiedAtSafely($disk, $file);
+
+            if ($modifiedAt === null || $modifiedAt >= $cutoff) {
+                continue;
+            }
+
+            if ($disk->delete($file)) {
+                $removed++;
+
+                continue;
+            }
+
+            $this->noteFailure('correction_import.prune.orphan_delete_failed', ['directory' => $root]);
         }
 
         return $removed;

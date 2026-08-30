@@ -2,6 +2,7 @@
 
 namespace App\Support\Import;
 
+use App\Support\Storage\RemovalOutcome;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -71,13 +72,52 @@ class CorrectionImportTempStorage
         return Storage::disk(self::DISK)->path($relativePath);
     }
 
-    public function delete(?string $relativePath): void
+    /**
+     * Removes the stored upload and says what actually happened.
+     *
+     * Same contract, and the same reason, as DataImportTempStorage::delete():
+     * Flysystem's local adapter opens its delete with `file_exists()`, which
+     * answers false both for "no such file" and for "this directory will not
+     * let me look". Only the first is proof, and the caller has to be able to
+     * tell them apart before it drops the pointer (see RemovalOutcome).
+     */
+    public function delete(?string $relativePath): RemovalOutcome
     {
         if ($relativePath === null || $relativePath === '') {
-            return;
+            return RemovalOutcome::AlreadyAbsent;
         }
 
-        Storage::disk(self::DISK)->delete($relativePath);
+        $disk = Storage::disk(self::DISK);
+
+        if (! $disk->exists($relativePath)) {
+            return $this->absenceIsProvable($relativePath)
+                ? RemovalOutcome::AlreadyAbsent
+                : RemovalOutcome::Failed;
+        }
+
+        if (! $disk->delete($relativePath)) {
+            return RemovalOutcome::Failed;
+        }
+
+        // Asked of the filesystem, not of the return value. Reading
+        // `file_exists()` directly is safe here and not above: getting this
+        // far means the file was visible a moment ago, so the directory is
+        // traversable and a false now really does mean gone.
+        $absolutePath = $disk->path($relativePath);
+        clearstatcache(true, $absolutePath);
+
+        return file_exists($absolutePath) ? RemovalOutcome::Failed : RemovalOutcome::Removed;
+    }
+
+    /**
+     * Whether "not found" can be believed — the directory itself is asked,
+     * because reaching it needs only its parent to be traversable.
+     */
+    protected function absenceIsProvable(string $relativePath): bool
+    {
+        $directory = dirname(Storage::disk(self::DISK)->path($relativePath));
+
+        return ! is_dir($directory) || is_readable($directory);
     }
 
     /**

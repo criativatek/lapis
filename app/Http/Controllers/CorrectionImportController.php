@@ -334,12 +334,16 @@ class CorrectionImportController extends Controller
     {
         Gate::authorize('delete', $import);
 
-        $this->storage->delete($import->stored_path);
+        // The pointer goes only if the file did. An upload still on disk with
+        // no row naming it is unattributable — worse than one the hourly
+        // prune will collect on its next pass.
+        $attributes = ['status' => CorrectionImportStatus::Cancelled];
 
-        $import->forceFill([
-            'status' => CorrectionImportStatus::Cancelled,
-            'stored_path' => null,
-        ])->save();
+        if ($this->storage->delete($import->stored_path)->pointerMayBeCleared()) {
+            $attributes['stored_path'] = null;
+        }
+
+        $import->forceFill($attributes)->save();
 
         return to_route('correction-imports.create')
             ->with('success', __('Importação cancelada. Os dados analisados foram descartados.'));
