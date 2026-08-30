@@ -13,6 +13,7 @@ use App\Support\Commercial\ContractedTerms;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Trial\TrialEligibility;
 use App\Support\Trial\TrialException;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -108,7 +109,15 @@ class ChangeOrganizationPlan
 
             $unchanged = $inForce->count() === 1
                 && $inForce->first()->plan_version_id === $version->getKey()
-                && $inForce->first()->status === SubscriptionStatus::Active;
+                && $inForce->first()->status === SubscriptionStatus::Active
+                // O MESMO PLANO NÃO É O MESMO CONTRATO. Um chamador que traga
+                // termos diferentes dos que a linha em vigor regista — um
+                // voucher `free_until` resgatado sobre um Base que já estava
+                // activo, por exemplo — está a mudar as condições, e condições
+                // novas são uma linha nova, superseded como qualquer outra
+                // mudança. Sem termos, ou com os mesmos, nada muda e nada se
+                // reescreve.
+                && ($terms === null || $this->sameContractedTerms($inForce->first(), $terms));
 
             if ($unchanged) {
                 return $inForce->first();
@@ -465,6 +474,33 @@ class ChangeOrganizationPlan
     protected function resolveVersion(Plan|PlanVersion $target): PlanVersion
     {
         return $target instanceof PlanVersion ? $target : $target->currentVersionOrFail();
+    }
+
+    /**
+     * A linha em vigor já regista exactamente estes termos?
+     *
+     * Comparado atributo a atributo, com NULL a contar como facto: «sem termo»
+     * e «termo até agosto» são contratos diferentes, e só a igualdade completa
+     * dispensa uma linha nova.
+     */
+    protected function sameContractedTerms(OrganizationSubscription $current, ContractedTerms $terms): bool
+    {
+        $wanted = $terms->toAttributes();
+
+        return $current->commercial_condition === $wanted['commercial_condition']
+            && $current->contracted_price_cents === $wanted['contracted_price_cents']
+            && $current->contracted_currency === $wanted['contracted_currency']
+            && $current->billing_period === $wanted['billing_period']
+            && $this->sameTermEnd($current->commercial_term_ends_at, $wanted['commercial_term_ends_at']);
+    }
+
+    protected function sameTermEnd(?CarbonInterface $current, ?CarbonInterface $wanted): bool
+    {
+        if ($current === null || $wanted === null) {
+            return $current === null && $wanted === null;
+        }
+
+        return $current->equalTo($wanted);
     }
 
     /**

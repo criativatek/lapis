@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\AdminAiController;
 use App\Http\Controllers\Admin\AdminCommercialController;
 use App\Http\Controllers\Admin\AdminImpersonateController;
 use App\Http\Controllers\Admin\AdminSettingsController;
+use App\Http\Controllers\Admin\AdminVoucherController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -68,6 +69,13 @@ Route::middleware(['auth', 'verified', 'platform-admin'])
         // binds as an organization ulid and 404s.
         Route::get('commercial', [AdminCommercialController::class, 'index'])->name('commercial.index');
         Route::get('commercial/export', [AdminCommercialController::class, 'export'])->name('commercial.export');
+
+        // Vouchers — emitir e desactivar; nunca editar nem apagar (o modelo é
+        // imutável depois de emitido). BEFORE `commercial/{organization}`, or
+        // "vouchers" binds as an organization ulid and 404s.
+        Route::get('commercial/vouchers', [AdminVoucherController::class, 'index'])->name('commercial.vouchers.index');
+        Route::post('commercial/vouchers', [AdminVoucherController::class, 'store'])->name('commercial.vouchers.store');
+        Route::post('commercial/vouchers/{voucher}/disable', [AdminVoucherController::class, 'disable'])->name('commercial.vouchers.disable');
         Route::post('commercial/payments/{payment}/confirm', [AdminCommercialController::class, 'confirmTransfer'])->name('commercial.payments.confirm');
         Route::post('commercial/payments/{payment}/refund', [AdminCommercialController::class, 'refundPayment'])->name('commercial.payments.refund');
         Route::post('commercial/payments/{payment}/void', [AdminCommercialController::class, 'voidPayment'])->name('commercial.payments.void');

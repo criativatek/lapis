@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Actions\Admin\SetTestAccount;
+use App\Actions\Commercial\RedeemVoucher;
 use App\Actions\Organizations\AddOrganizationMember;
 use App\Actions\Organizations\CreateInstitutionalOrganization;
 use App\Actions\Organizations\CreatePersonalOrganization;
@@ -62,6 +63,7 @@ class AdminAccountController extends Controller
         // What was agreed, read off the evidence rather than typed into a form.
         protected CommercialTerms $terms,
         protected FounderSeats $founderSeats,
+        protected RedeemVoucher $voucherRedemptions,
         // Says whether an account is real or exists to try the product out.
         // Not a commercial condition — see the action.
         protected SetTestAccount $setTestAccount,
@@ -399,6 +401,10 @@ class AdminAccountController extends Controller
         // Puramente informativo: um operador que abra a ficha vê o número que
         // foi prometido ao lado da subscrição que o materializou.
         $this->founderSeats->attachSubscription($organization, $subscription);
+
+        // O mesmo fio para um resgate de voucher confirmado que ainda não
+        // aponte para contrato nenhum — informativo, como o do lugar.
+        $this->voucherRedemptions->attachSubscription($organization, $subscription);
 
         $this->log($organization, 'admin.plan_changed', "Plano alterado para {$plan->name}.", [
             'plan_key' => $plan->key,

@@ -31,6 +31,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('settings/plan', [PlanController::class, 'edit'])->name('settings.plan.edit');
     Route::post('settings/plan/trial', [PlanController::class, 'activateTrial'])->name('settings.plan.activate-trial');
 
+    // Resgatar um voucher `free_until` — o único tipo sem quantia, e por isso
+    // sem checkout. O plano-alvo vem do corpo, explícito e validado; o código
+    // nunca decide sozinho. Throttled: cada tentativa consulta códigos, e um
+    // campo de texto autenticado não é um oráculo para adivinhar os que restam.
+    Route::post('settings/plan/voucher', [PlanController::class, 'redeemVoucher'])
+        ->middleware('throttle:10,1')
+        ->name('settings.plan.redeem-voucher');
+
     /*
      * Checkout por transferência bancária. Sem parâmetro de plano na rota: só o
      * Pro tem preço, e deixar o plano vir do URL abriria a porta a subscrever o

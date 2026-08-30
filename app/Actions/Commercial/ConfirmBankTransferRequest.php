@@ -8,6 +8,7 @@ use App\Models\PaymentMethod;
 use App\Models\PaymentStatus;
 use App\Models\SubscriptionPayment;
 use App\Models\User;
+use App\Models\VoucherRedemption;
 use App\Support\Commercial\CheckoutUnavailable;
 use App\Support\Commercial\FounderSeats;
 use Illuminate\Support\Carbon;
@@ -39,6 +40,7 @@ class ConfirmBankTransferRequest
         protected RecordSubscriptionPayment $records,
         protected CorrectSubscriptionPayment $corrections,
         protected FounderSeats $seats,
+        protected RedeemVoucher $redemptions,
     ) {}
 
     /**
@@ -78,7 +80,7 @@ class ConfirmBankTransferRequest
                 $this->seats->confirm($organization, $operator, $paidAt);
             }
 
-            return $this->records->record(
+            $paid = $this->records->record(
                 organization: $organization,
                 operator: $operator,
                 amountCents: $amountCents,
@@ -95,6 +97,24 @@ class ConfirmBankTransferRequest
                 periodEndsAt: $paidAt->copy()->addYear(),
                 metadata: ['confirmed_request_ulid' => $request->ulid],
             );
+
+            // A RESERVA DO VOUCHER TORNA-SE DEFINITIVA pelo mesmo motivo que o
+            // lugar: o dinheiro entrou. Idempotente, e uma reserva já caducada
+            // ainda se confirma — «chegou tarde» é decisão da janela do pedido,
+            // que o operador acabou de tomar ao aceitar a transferência. O fio
+            // do resgate passa do pedido anulado para o pagamento verdadeiro,
+            // que é a linha de onde a receita se calcula.
+            if ($request->commercial_condition === CommercialCondition::Voucher) {
+                $redemption = VoucherRedemption::query()
+                    ->where('subscription_payment_id', $request->getKey())
+                    ->first();
+
+                if ($redemption !== null) {
+                    $this->redemptions->confirm($redemption, $operator, $paid);
+                }
+            }
+
+            return $paid;
         });
     }
 }

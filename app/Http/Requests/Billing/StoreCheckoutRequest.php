@@ -34,6 +34,10 @@ class StoreCheckoutRequest extends FormRequest
             'city' => ['required', 'string', 'max:255'],
             'country' => ['required', 'string', 'size:2'],
             'email' => ['required', 'email', 'max:255'],
+            // Um código de voucher, opcional. Só a FORMA se valida aqui — a
+            // existência, a janela e a capacidade são decididas pelo motor, no
+            // controlador e depois sob lock. Ver `VoucherCode::isWellFormed()`.
+            'voucher_code' => ['nullable', 'string', 'max:64'],
         ];
     }
 

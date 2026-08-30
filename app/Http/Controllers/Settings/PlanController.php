@@ -2,23 +2,33 @@
 
 namespace App\Http\Controllers\Settings;
 
+use App\Actions\Commercial\RedeemVoucher;
 use App\Actions\Commercial\RequestBankTransferPayment;
 use App\Actions\Organizations\ActivateProTrial;
 use App\Http\Controllers\Concerns\RefusesDuringImpersonation;
 use App\Http\Controllers\Controller;
+use App\Models\BillingPeriod;
+use App\Models\CommercialCondition;
 use App\Models\Organization;
 use App\Models\OrganizationSubscription;
 use App\Models\Plan;
 use App\Models\SubscriptionStatus;
 use App\Models\User;
+use App\Models\VoucherBenefitType;
 use App\Services\Organizations\ChangeOrganizationPlan;
+use App\Support\Commercial\ContractedTerms;
 use App\Support\Commercial\FounderAvailability;
+use App\Support\Commercial\Vouchers;
+use App\Support\Commercial\VoucherUnavailable;
 use App\Support\Tenancy\CurrentOrganization;
 use App\Support\Trial\TrialEligibility;
 use App\Support\Trial\TrialException;
 use App\Support\Trial\TrialPolicy;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -50,6 +60,8 @@ class PlanController extends Controller
         protected ActivateProTrial $activateProTrial,
         protected RequestBankTransferPayment $transferRequests,
         protected FounderAvailability $founder,
+        protected Vouchers $vouchers,
+        protected RedeemVoucher $voucherRedemptions,
     ) {}
 
     public function edit(Request $request): Response
@@ -99,6 +111,89 @@ class PlanController extends Controller
         Inertia::flash('toast', [
             'type' => 'success',
             'message' => __('O período experimental Pro foi ativado até :date.', ['date' => $trial->ends_at->format('d/m/Y')]),
+        ]);
+
+        return to_route('settings.plan.edit');
+    }
+
+    /**
+     * Resgatar um voucher `free_until` — o único tipo que não passa pelo
+     * checkout, porque não define uma quantia: define um TERMO.
+     *
+     * O PLANO-ALVO VEM DO PEDIDO, EXPLÍCITO — nunca do voucher. `plan_id` no
+     * voucher é uma restrição sobre o alvo, e é contra o alvo pedido que se
+     * verifica; um código nunca decide sozinho para que plano uma conta vai. O
+     * Institucional continua fora: não está disponível para adesão, com ou sem
+     * código, e é a mesma recusa do checkout (não há preço, não há adesão).
+     *
+     * O RESGATE E A MUDANÇA DE PLANO ACONTECEM NA MESMA TRANSAÇÃO, e a mudança
+     * usa o mecanismo normal (`ChangeOrganizationPlan::to()`) com os termos
+     * congelados do resgate: `Voucher / 0 / :moeda / none / free_until`. Nada
+     * aqui toca em versões de plano nem em módulos.
+     */
+    public function redeemVoucher(Request $request): RedirectResponse
+    {
+        $this->refuseDuringImpersonation($request);
+
+        $organization = $this->currentOrganization->get();
+        Gate::authorize('subscribe', $organization);
+
+        $validated = $request->validate([
+            'voucher_code' => ['required', 'string', 'max:64'],
+            'plan_key' => ['required', 'string', Rule::exists('plans', 'key')],
+        ]);
+
+        $target = Plan::where('key', $validated['plan_key'])->firstOrFail();
+
+        if ($target->key === 'institutional') {
+            return back()->withErrors(['voucher_code' => __(
+                'O plano Institucional ainda não está disponível para adesão — fale connosco.',
+            )]);
+        }
+
+        $resolution = $this->vouchers->resolve($validated['voucher_code'], $organization, $target);
+
+        if (! $resolution->isValid() || $resolution->voucher === null) {
+            return back()->withErrors(['voucher_code' => $this->vouchers->messageFor($resolution->outcome)]);
+        }
+
+        if ($resolution->voucher->benefit_type !== VoucherBenefitType::FreeUntil) {
+            return back()->withErrors(['voucher_code' => __(
+                'Este código define um preço e resgata-se no checkout, não aqui.',
+            )]);
+        }
+
+        try {
+            $subscription = DB::transaction(function () use ($resolution, $organization, $request, $target) {
+                $redemption = $this->voucherRedemptions->redeemFreeUntil(
+                    $resolution->voucher,
+                    $organization,
+                    $request->user(),
+                    $target,
+                );
+
+                $subscription = $this->changePlan->to($organization, $target, new ContractedTerms(
+                    condition: CommercialCondition::Voucher,
+                    priceCents: 0,
+                    currency: (string) config('billing.currency'),
+                    billingPeriod: BillingPeriod::None,
+                    termEndsAt: $redemption->result_term_ends_at,
+                ));
+
+                $redemption->forceFill(['organization_subscription_id' => $subscription->getKey()])->save();
+
+                return $subscription;
+            });
+        } catch (VoucherUnavailable $exception) {
+            return back()->withErrors(['voucher_code' => $exception->getMessage()]);
+        }
+
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => __('Voucher aplicado: :plan gratuito até :date.', [
+                'plan' => $subscription->plan->name,
+                'date' => $subscription->commercial_term_ends_at?->format('d/m/Y') ?? '—',
+            ]),
         ]);
 
         return to_route('settings.plan.edit');

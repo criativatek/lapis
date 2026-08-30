@@ -25,6 +25,118 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.100.0] — 2026-08-30
+
+Os vouchers passam a existir. Até aqui a landing pedia um código e dizia, com
+todas as letras, que não o validava; o backoffice guardava o que um operador
+escrevesse como texto e assinalava-o como «não validado nem resgatado»; e a
+condição `voucher` era uma etiqueta sem nada por trás. Tudo isso era honesto e
+nada disso era um motor. A página pública prometia uma confirmação «ao criar a
+conta ou já dentro do Lapispro» que não existia em lado nenhum. Passa a existir:
+emissão, validação, resgate com reserva e confirmação, e o resultado congelado
+no contrato — sem que nenhum voucher toque em módulos, versões de plano ou
+direitos.
+
+### Added
+
+- **Motor de vouchers comerciais** (`vouchers`, `voucher_redemptions`). Três
+  famílias, e só estas, fechadas também em CHECK constraint: **preço fixo**
+  (`fixed_price`), **desconto percentual** (`percent_discount`, 1–100 %) e
+  **gratuito até uma data** (`free_until`). Cada família exige exactamente os
+  seus campos — recusado em PHP e em SQL. Um voucher move o preço e o termo do
+  contrato, nunca o que a conta pode fazer: `Entitlements` não lê estas tabelas.
+- **Códigos legíveis e não enumeráveis.** Gerados no alfabeto sem O/0/I/1 que a
+  referência bancária já usa, com o prefixo da instalação, por sorteio
+  criptográfico e nunca a partir de um id. A comparação é uma só, num só sítio:
+  maiúsculas, sem hífens nem espaços — `lpro a3k9 2xq7` é o mesmo código que
+  `LPRO-A3K9-2XQ7`, e é a forma normalizada que é única.
+- **Validade e limites.** Janela `valid_from`/`valid_until` (NULL = sem limite
+  por data), `max_redemptions` (NULL = ilimitado; zero é recusado), desactivação
+  por operador. Um voucher emitido é **imutável**: errou-se, desactiva-se e
+  emite-se outro, com autoria no rasto.
+- **Restrição por plano-alvo.** `plan_id` é uma restrição sobre o alvo, nunca uma
+  instrução: o plano vem sempre do fluxo (o checkout, o pedido da página do
+  plano), e um voucher restrito apenas recusa o alvo que não coincide. Um
+  voucher sem plano serve qualquer alvo que se possa contratar.
+- **Resgate com ciclo de vida.** Um resgate com preço nasce como **reserva**,
+  presa à mesma janela do pedido de transferência, e passa a **confirmado**
+  quando o dinheiro entra. Uma reserva caducada é libertada — apagada, com o
+  acontecimento na auditoria — e a capacidade volta ao código. Uma confirmação
+  nunca é apagada nem reescrita. Um `free_until` nasce confirmado, porque não há
+  dinheiro a esperar. Cada organização resgata cada código **uma vez**.
+- **Capacidade sem contador.** Não há `redemption_count`: a capacidade é a
+  contagem das linhas vivas (confirmadas + reservas dentro do prazo), feita
+  dentro da transação, sob `lockForUpdate` na linha do voucher. Duas
+  organizações a disputar o último lugar são serializadas pelo lock — provado
+  contra MySQL real.
+- **Idempotência antes da capacidade.** Um duplo clique, um refresh ou um retry
+  da mesma organização recebem de volta a própria reserva — nunca «esgotado»
+  por um lugar que a própria organização detém, mesmo com um único lugar. Um
+  código já confirmado por essa organização responde «já utilizado».
+- **Checkout com voucher.** O campo opcional no checkout valida o código,
+  aplica-o sobre o preço de tabela e emite a referência já com a quantia certa.
+  O resultado — a aritmética feita uma vez, incluindo o arredondamento — fica
+  congelado no resgate e, na activação, no snapshot comercial do contrato
+  (`voucher / preço / moeda`). Um pedido pendente cuja reserva caducou é anulado
+  e reemitido com a condição que vale hoje, como já acontecia com o lugar de
+  fundador.
+- **`free_until` na página do plano.** Resgata-se com o plano-alvo explícito no
+  pedido, muda o plano pelo mecanismo normal e congela `voucher / 0 / EUR /
+  none / data` no snapshot. A data é `commercial_term_ends_at`, não `ends_at`:
+  acabado o termo, a conta deve uma conversa, não um corte de acesso.
+- **Backoffice: Admin > Comercial > Vouchers.** Emitir (formulário tipado por
+  família, código gerado ou de parceiro), desactivar, e ver utilizações
+  derivadas das linhas vivas. Tudo auditado ao nível da plataforma.
+- **Validação pública na landing, a sério.** «Tem um voucher?» passa a chamar
+  `POST /voucher/validate` e a mostrar a resposta do servidor. Responde em três
+  categorias — válido, já não disponível, não reconhecido — e diz onde se
+  resgata; nunca diz quanto vale, e nunca resgata nada.
+- **Auditoria.** `commercial.voucher_issued`, `voucher_disabled`,
+  `voucher_reserved`, `voucher_confirmed`, `voucher_redeemed`,
+  `voucher_reservation_released`, `voucher_reservation_expired`.
+- **Pré-voo comercial** ganha uma linha informativa com o estado do motor.
+  Nunca bloqueia: uma subscrição nascida de um voucher tem termos gravados.
+
+### Changed
+
+- **Fundador e voucher não acumulam.** A decisão acontece antes de se tomar um
+  lugar: o voucher aplica-se sobre o preço de tabela, a oferta normal é o preço
+  de fundador enquanto a condição estiver aberta, e ganha o preço mais baixo. No
+  empate ganha a oferta normal, que não consome o código. Um contrato de
+  voucher nunca toma um lugar; um contrato de fundador nunca consome um voucher.
+- **Um voucher nunca piora a oferta normal.** Um preço fixo igual ou superior
+  ao que o cliente pagaria sem código não é consumido — a compra segue pela
+  condição normal e o código fica na mão do cliente.
+- **O mesmo plano não é o mesmo contrato.** `ChangeOrganizationPlan::to()` só
+  devolve a subscrição em vigor sem tocar nela quando os termos trazidos são os
+  que ela já regista; termos diferentes sobre o mesmo plano geram uma linha
+  nova, superseded como qualquer outra mudança.
+
+### Security/Safety
+
+- **Rate limiting.** O endpoint público de validação e o resgate autenticado
+  estão limitados a 10 pedidos por minuto. Cá fora, «não existe», «foi
+  desactivado» e «mal formado» são indistinguíveis — o mapa dos códigos não se
+  entrega a quem adivinha.
+- **Resgatar exige a conta.** O checkout e a página do plano exigem o dono da
+  organização e recusam durante impersonação; o backoffice de vouchers é só
+  para administradores da plataforma.
+- **Rollback conservador.** A migração recusa recuar enquanto existir um voucher
+  emitido ou um resgate gravado — um código distribuído é uma promessa em mãos
+  alheias, e desactivar é o mecanismo para o corrigir.
+
+### Fora desta release
+
+- **Créditos de IA não fazem parte deste motor.** Nenhuma família de benefício
+  toca em `AiQuota`, `ai_usage_events`, `plan_versions` ou
+  `module_plan_version`, e a lista de famílias está fechada nas três comerciais.
+  Essa família terá ADR e fatia próprios.
+- **O texto legado não foi convertido.** `subscription_payments.voucher_code`
+  escrito à mão num pagamento manual continua a ser texto não validado,
+  assinalado como tal na ficha. Nenhum resgate foi inferido a partir dele.
+- **Nenhuma versão de plano nasceu disto.** Base 13 · Pro 28 · Institucional 34,
+  v1 única.
+
 ## [0.99.11] — 2026-08-30
 
 O render no servidor está ligado em produção. Node 22 por nvm na conta

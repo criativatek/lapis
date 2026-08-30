@@ -52,8 +52,11 @@ class RecordPaymentRequest extends FormRequest
             'provider_reference' => ['nullable', 'string', 'max:191'],
             // The operator states it. It is never derived from `amount`.
             'commercial_condition' => ['nullable', Rule::enum(CommercialCondition::class)],
-            // A literal code. Nothing validates or redeems it — there is no
-            // voucher backend, and pretending to check would be worse than not.
+            // A literal code, stated by the operator on a MANUAL payment.
+            // Deliberately NOT resolved against the voucher engine: a manual
+            // record is testimony about money that arrived, and inventing a
+            // redemption from it would fabricate a contract nobody made. Real
+            // redemptions come through the checkout, where the engine decides.
             'voucher_code' => ['nullable', 'string', 'max:60'],
             'period_starts_at' => ['nullable', 'date'],
             'period_ends_at' => ['nullable', 'date', 'after_or_equal:period_starts_at'],

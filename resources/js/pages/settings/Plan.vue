@@ -61,6 +61,21 @@ function activateTrial(): void {
     form.post('/settings/plan/trial', { preserveScroll: true });
 }
 
+// Resgatar um voucher `free_until`. O plano-alvo segue EXPLÍCITO no pedido —
+// 'pro' é o alvo que esta página oferece, não uma decisão do código: o
+// servidor valida o alvo e confronta-o com a restrição do voucher.
+const voucherForm = useForm({
+    voucher_code: '',
+    plan_key: 'pro',
+});
+
+function redeemVoucher(): void {
+    voucherForm.post('/settings/plan/voucher', {
+        preserveScroll: true,
+        onSuccess: () => voucherForm.reset('voucher_code'),
+    });
+}
+
 /** Consistent with how the rest of the app shows a date to a teacher (§AccountClosure.vue). */
 function formatDate(iso: string): string {
     return new Date(iso).toLocaleDateString('pt-PT');
@@ -226,6 +241,49 @@ function formatDate(iso: string): string {
                     }}
                 </a>
             </Button>
+        </div>
+
+        <!-- Voucher de acesso gratuito até uma data. Só o tipo `free_until` se
+             resgata aqui — os códigos com preço aplicam-se no checkout, onde há
+             uma quantia para eles decidirem. O servidor valida, decide e diz o
+             caso concreto; esta página não adivinha nada. -->
+        <div class="space-y-3 rounded-lg border border-border p-4">
+            <div class="space-y-1">
+                <h3 class="text-sm font-medium">Tem um voucher?</h3>
+                <p class="text-sm text-muted-foreground">
+                    Se recebeu um código de acesso do Lapispro, resgate-o aqui.
+                    Um código de desconto aplica-se no passo de subscrição.
+                </p>
+            </div>
+
+            <form
+                class="flex flex-col gap-2 sm:flex-row sm:items-start"
+                @submit.prevent="redeemVoucher"
+            >
+                <div class="min-w-0 flex-1">
+                    <input
+                        v-model="voucherForm.voucher_code"
+                        type="text"
+                        autocomplete="off"
+                        autocapitalize="characters"
+                        spellcheck="false"
+                        placeholder="Escreva o código como o recebeu"
+                        class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                        aria-label="Código do voucher"
+                    />
+                    <InputError
+                        :message="voucherForm.errors.voucher_code"
+                        class="mt-1"
+                    />
+                </div>
+                <Button
+                    type="submit"
+                    variant="outline"
+                    :disabled="voucherForm.processing"
+                >
+                    Resgatar
+                </Button>
+            </form>
         </div>
     </div>
 </template>

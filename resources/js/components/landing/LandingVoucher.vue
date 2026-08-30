@@ -13,31 +13,37 @@ import RevealOnScroll from './RevealOnScroll.vue';
  * looking for this field, and somebody who does not should be able to read
  * past it without wondering what they are missing.
  *
- * IT DOES NOT PRETEND TO VALIDATE ANYTHING. There is no voucher backend yet —
- * no table, no endpoint, no redemption. So this form does the one honest thing
- * available: it accepts a code, checks that something was typed, and says
- * plainly that the code is confirmed when the account is created, not here.
- * It NEVER answers «voucher aplicado», and it never answers «código
- * inválido» either — a rejection this page is in no position to issue would
- * turn a working code into a lost customer.
+ * IT VALIDATES FOR REAL NOW. `submit()` posts the code to the server
+ * (`POST /voucher/validate`) and renders the server's answer — the voucher
+ * engine exists, and this page stopped pretending otherwise. What it still
+ * does NOT do is redeem: redemption needs an account, and happens in the
+ * checkout (priced codes) or on the plan page (free-until codes). The server
+ * says so in its own words, and this page repeats nothing on its own
+ * authority.
  *
- * THE INTEGRATION POINT IS ONE FUNCTION. When redemption exists, `submit()`
- * is where it goes: post the code, render the server's answer in `status`,
- * delete `PENDING`. Nothing else on the page has to change.
- *
- * WHAT THE VISITOR IS NEVER TOLD is how any of this works — what a code may
- * carry, which campaign it belongs to, whether it is a discount or a period.
- * The benefit is whatever the code carries; explaining the mechanism would
- * invite people to reason about codes they do not have.
+ * WHAT THE VISITOR IS NEVER TOLD is what a code is worth. The server answers
+ * in three public categories — valid, no longer available, not recognised —
+ * and never with amounts: the benefit shows itself to the person redeeming,
+ * signed in. Explaining more here would invite people to reason about codes
+ * they do not have.
  */
 
 const code = ref('');
-const status = ref<'idle' | 'empty' | 'pending'>('idle');
+const status = ref<'idle' | 'empty' | 'checking' | 'answered' | 'failed'>(
+    'idle',
+);
+const answer = ref<{ category: string; message: string } | null>(null);
 
-const PENDING =
-    'Guarde este código. A confirmação é feita ao criar a conta ou já dentro do Lapispro — esta página não valida códigos.';
+/** Laravel's XSRF cookie, for a fetch the framework will accept. */
+function xsrfToken(): string {
+    const raw = document.cookie
+        .split('; ')
+        .find((row) => row.startsWith('XSRF-TOKEN='));
 
-function submit(): void {
+    return raw ? decodeURIComponent(raw.split('=').slice(1).join('=')) : '';
+}
+
+async function submit(): Promise<void> {
     const trimmed = code.value.trim();
 
     if (trimmed === '') {
@@ -46,7 +52,34 @@ function submit(): void {
         return;
     }
 
-    status.value = 'pending';
+    status.value = 'checking';
+    answer.value = null;
+
+    try {
+        const response = await fetch('/voucher/validate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                'X-XSRF-TOKEN': xsrfToken(),
+            },
+            body: JSON.stringify({ code: trimmed }),
+        });
+
+        if (!response.ok) {
+            status.value = 'failed';
+
+            return;
+        }
+
+        answer.value = (await response.json()) as {
+            category: string;
+            message: string;
+        };
+        status.value = 'answered';
+    } catch {
+        status.value = 'failed';
+    }
 }
 </script>
 
@@ -77,8 +110,8 @@ function submit(): void {
                         >
                             Alguns professores poderão beneficiar de condições
                             especiais de acesso atribuídas pelo Lapispro.
-                            Introduza o seu código para ativar o benefício
-                            associado.
+                            Verifique aqui o seu código; o resgate faz-se
+                            depois de entrar na sua conta.
                         </p>
                     </div>
 
@@ -97,14 +130,18 @@ function submit(): void {
                                 autocomplete="off"
                                 autocapitalize="characters"
                                 spellcheck="false"
-                                placeholder="Ex.: LAPISPRO-XXXX-XXXX"
+                                placeholder="Escreva o código como o recebeu"
                                 class="sm:flex-1"
                                 :aria-invalid="status === 'empty'"
                                 aria-describedby="voucher-status"
                                 @input="status = 'idle'"
                             />
-                            <Button type="submit" variant="outline">
-                                Aplicar voucher
+                            <Button
+                                type="submit"
+                                variant="outline"
+                                :disabled="status === 'checking'"
+                            >
+                                Verificar voucher
                             </Button>
                         </div>
 
@@ -112,7 +149,10 @@ function submit(): void {
                             id="voucher-status"
                             class="mt-2 min-h-[1.25rem] text-xs leading-relaxed text-pretty"
                             :class="
-                                status === 'empty'
+                                status === 'empty' ||
+                                status === 'failed' ||
+                                (status === 'answered' &&
+                                    answer?.category !== 'valid')
                                     ? 'text-destructive'
                                     : 'text-muted-foreground'
                             "
@@ -122,9 +162,16 @@ function submit(): void {
                             <span v-if="status === 'empty'"
                                 >Introduza o código do voucher.</span
                             >
-                            <span v-else-if="status === 'pending'">{{
-                                PENDING
+                            <span v-else-if="status === 'checking'"
+                                >A verificar…</span
+                            >
+                            <span v-else-if="status === 'answered'">{{
+                                answer?.message
                             }}</span>
+                            <span v-else-if="status === 'failed'"
+                                >Não foi possível verificar agora. Tente
+                                novamente dentro de instantes.</span
+                            >
                         </p>
                     </form>
                 </div>

@@ -6,6 +6,8 @@ use App\Models\CommercialCondition;
 use App\Models\FounderSeat;
 use App\Models\Organization;
 use App\Models\OrganizationSubscription;
+use App\Models\Voucher;
+use App\Models\VoucherRedemption;
 use App\Support\Commercial\CommercialTerms;
 use App\Support\Commercial\SubscriptionCondition;
 use Illuminate\Console\Command;
@@ -66,7 +68,46 @@ class CommercialConditionsPreflight extends Command
         $lugaresLidos = $this->founderSeats();
         $this->newLine();
 
+        $this->voucherEngine();
+        $this->newLine();
+
         return $this->verdict($semTermos, $lugaresLidos);
+    }
+
+    /**
+     * O motor de vouchers, em números — INFORMATIVO, nunca bloqueia.
+     *
+     * Uma subscrição nascida de um voucher tem termos gravados (condição
+     * `voucher` e o snapshot), portanto nunca cai no portão de cima. Isto é só
+     * a fotografia: códigos activos, resgates confirmados e reservas vivas, e
+     * quantas reservas caducadas aguardam limpeza oportunista — todas
+     * inofensivas, porque a contagem de capacidade as ignora.
+     */
+    protected function voucherEngine(): void
+    {
+        if (! Schema::hasTable('vouchers')) {
+            // O pré-voo corre também ANTES da migração — é o gate pré-migração.
+            $this->components->twoColumnDetail('<fg=gray>Motor de vouchers</>', '<fg=yellow>tabelas ainda não migradas</>');
+
+            return;
+        }
+
+        $now = Carbon::now();
+        $activos = Voucher::query()->whereNull('disabled_at')->count();
+        $confirmados = VoucherRedemption::query()->whereNotNull('confirmed_at')->count();
+        $reservas = VoucherRedemption::query()->whereNull('confirmed_at')->where('reserved_until', '>=', $now)->count();
+        $caducadas = VoucherRedemption::query()->whereNull('confirmed_at')->where('reserved_until', '<', $now)->count();
+
+        $this->components->twoColumnDetail(
+            '<fg=gray>Motor de vouchers</>',
+            sprintf(
+                '%d código(s) ativo(s) · %d resgate(s) confirmado(s) · %d reserva(s) viva(s)%s',
+                $activos,
+                $confirmados,
+                $reservas,
+                $caducadas > 0 ? sprintf(' · %d caducada(s) por limpar (inofensivas)', $caducadas) : '',
+            ),
+        );
     }
 
     protected function promotionWindow(CommercialTerms $terms): void

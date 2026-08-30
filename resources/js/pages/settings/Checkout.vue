@@ -60,6 +60,11 @@ const form = useForm({
     city: props.billing?.city ?? '',
     country: props.billing?.country ?? 'PT',
     email: props.billing?.email ?? '',
+    // Um código de voucher, opcional. É validado e decidido NO SERVIDOR, sob a
+    // transação — esta página não calcula preços com ele: se o código valer, a
+    // referência que sai já vem com a quantia certa, e se não beneficiar face
+    // à oferta em vigor o servidor não o consome.
+    voucher_code: '',
 });
 
 // Erro que vem do domínio (App\Support\Commercial\CheckoutUnavailable) e não de
@@ -246,6 +251,30 @@ function submit(): void {
                     </span>
                 </label>
             </div>
+
+            <label class="block text-sm">
+                <span class="mb-1 block font-medium"
+                    >Voucher
+                    <span class="font-normal text-muted-foreground"
+                        >(opcional)</span
+                    ></span
+                >
+                <input
+                    v-model="form.voucher_code"
+                    type="text"
+                    autocomplete="off"
+                    autocapitalize="characters"
+                    spellcheck="false"
+                    placeholder="Se recebeu um código, escreva-o aqui"
+                    class="w-full rounded-md border border-border bg-background px-3 py-2"
+                />
+                <InputError :message="form.errors.voucher_code" />
+                <span class="mt-1 block text-xs text-muted-foreground">
+                    O código é validado ao pedir os dados de pagamento. Só é
+                    consumido se melhorar o preço em vigor — caso contrário
+                    fica por usar.
+                </span>
+            </label>
 
             <InputError :message="checkoutError" />
 

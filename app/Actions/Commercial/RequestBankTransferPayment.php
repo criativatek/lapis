@@ -11,11 +11,14 @@ use App\Models\PaymentStatus;
 use App\Models\Plan;
 use App\Models\SubscriptionPayment;
 use App\Models\User;
+use App\Models\Voucher;
+use App\Models\VoucherRedemption;
 use App\Services\Audit\AuditLog;
 use App\Support\Commercial\BankTransferReference;
 use App\Support\Commercial\CheckoutUnavailable;
 use App\Support\Commercial\FounderAvailability;
 use App\Support\Commercial\FounderSeats;
+use App\Support\Commercial\Vouchers;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -75,16 +78,20 @@ class RequestBankTransferPayment
         // um `SubscriptionPayment` não muda de sentido a meio — anula-se com um
         // motivo registado e emite-se outro.
         protected CorrectSubscriptionPayment $corrections,
+        protected Vouchers $vouchers,
+        protected RedeemVoucher $redemptions,
+        protected ReleaseVoucherRedemption $releases,
     ) {}
 
     public const PROVIDER = 'bank_transfer';
 
     /**
      * @param  array{name: string, tax_number: ?string, address_line1: string, address_line2: ?string, postal_code: string, city: string, country: string, email: string}  $billing
+     * @param  Voucher|null  $voucher  um código com preço, já resolvido como válido pelo chamador — a decisão final é tomada aqui, sob a transação
      *
      * @throws CheckoutUnavailable
      */
-    public function request(Organization $organization, User $buyer, Plan $plan, array $billing): SubscriptionPayment
+    public function request(Organization $organization, User $buyer, Plan $plan, array $billing, ?Voucher $voucher = null): SubscriptionPayment
     {
         $this->assertAvailable();
 
@@ -94,7 +101,7 @@ class RequestBankTransferPayment
         // lá dentro, a partir do lugar — se houver.
         $listPrice = $this->listPriceFor($plan);
 
-        return DB::transaction(function () use ($organization, $buyer, $plan, $billing, $listPrice): SubscriptionPayment {
+        return DB::transaction(function () use ($organization, $buyer, $plan, $billing, $listPrice, $voucher): SubscriptionPayment {
             $profile = $this->storeBillingProfile($organization, $billing);
 
             // Um segundo clique não gera uma segunda referência: quem voltar ao
@@ -121,11 +128,55 @@ class RequestBankTransferPayment
                 // baixo, para emitir um novo com a condição que vale HOJE.
             }
 
+            // UM VOUCHER É UM BENEFÍCIO, E SÓ SE CONSOME SE BENEFICIAR. A
+            // decisão acontece ANTES de tomar um lugar de fundador, porque as
+            // duas condições não acumulam e um lugar tomado por um contrato que
+            // vai ser de voucher seria um lugar roubado a quem o pagaria:
+            //
+            //  - o voucher aplica-se sempre sobre o preço de TABELA;
+            //  - a oferta normal é o preço de fundador enquanto a condição
+            //    estiver aberta, e o de tabela depois;
+            //  - ganha o preço mais baixo; NO EMPATE ganha a oferta normal, que
+            //    não consome o código — o cliente paga o mesmo e fica com o
+            //    voucher na mão.
+            $voucherPrice = $voucher === null ? null : $this->vouchers->resultPriceFor($voucher, $listPrice);
+            $useVoucher = $voucherPrice !== null
+                && $voucherPrice < ($this->founder->isOpen() ? $this->founder->priceCents() : $listPrice);
+
             // O LUGAR DECIDE, E NÃO A CONFIG. Se houver lugar, este pedido leva
             // o número e o preço que o lugar congelou; se não houver, leva o
             // preço de tabela e a condição normal. Era exactamente aqui que a
             // promessa se desfazia: `isOpen()` dizia «sim» a toda a gente.
-            $seat = $this->seats->claim($organization, null, $buyer);
+            //
+            // Um contrato que vai ser de voucher NUNCA chega ao `claim()`: é a
+            // exclusão estrutural entre as duas condições, no fluxo e não num
+            // `if` tardio.
+            $seat = $useVoucher ? null : $this->seats->claim($organization, null, $buyer);
+
+            // A corrida honesta: a oferta de fundador fechou entre o `isOpen()`
+            // e o `claim()` — o último lugar foi de outra pessoa. A comparação
+            // volta a fazer-se contra o que sobrou, que é o preço de tabela; se
+            // o voucher agora beneficiar, é ele que vale. Continua a nunca
+            // haver lugar E voucher no mesmo pedido: aqui, `$seat` é null.
+            if (! $useVoucher && $seat === null && $voucherPrice !== null && $voucherPrice < $listPrice) {
+                $useVoucher = true;
+            }
+
+            // A reserva do resgate, com a MESMA janela do pedido: quando um
+            // caduca, caduca o outro, e `revalidate()` trata os dois pelo mesmo
+            // padrão que os lugares de fundador estabeleceram.
+            $redemption = null;
+
+            if ($useVoucher && $voucher !== null) {
+                $redemption = $this->redemptions->reserve(
+                    $voucher,
+                    $organization,
+                    $buyer,
+                    $plan,
+                    $listPrice,
+                    Carbon::now()->addDays((int) config('billing.bank_transfer.window_days')),
+                );
+            }
 
             // Escrito como uma verificação explícita e não como `?->x ?? y`: à
             // esquerda de `??` o operador nullsafe é redundante — `??` já tem
@@ -134,6 +185,11 @@ class RequestBankTransferPayment
             // `SubscriptionCondition` já documenta.
             $cents = $seat === null ? $listPrice : $seat->price_cents;
             $currency = $seat === null ? (string) config('billing.currency') : $seat->currency;
+
+            if ($redemption !== null) {
+                $cents = (int) $redemption->result_price_cents;
+                $currency = (string) $redemption->result_currency;
+            }
 
             $payment = SubscriptionPayment::withoutGlobalScope('organization')->create([
                 'organization_id' => $organization->getKey(),
@@ -147,7 +203,15 @@ class RequestBankTransferPayment
                 'method' => PaymentMethod::BankTransfer,
                 'provider' => self::PROVIDER,
                 'provider_reference' => $this->references->generate(),
-                'commercial_condition' => $seat === null ? CommercialCondition::Standard : CommercialCondition::Founder,
+                'commercial_condition' => match (true) {
+                    $redemption !== null => CommercialCondition::Voucher,
+                    $seat !== null => CommercialCondition::Founder,
+                    default => CommercialCondition::Standard,
+                },
+                // O CÓDIGO VALIDADO fica também na coluna de texto histórica —
+                // agora com um resgate do motor por trás, que é o que o
+                // backoffice distingue de um texto avulso.
+                'voucher_code' => $redemption?->voucher()->value('code'),
                 'recorded_by' => null,
                 'metadata' => [
                     'plan_key' => $plan->key,
@@ -156,6 +220,7 @@ class RequestBankTransferPayment
                     'expires_at' => Carbon::now()->addDays((int) config('billing.bank_transfer.window_days'))->toDateTimeString(),
                     // O ordinal prometido, guardado com o pedido que o tomou.
                     'founder_seat_number' => $seat?->seat_number,
+                    'voucher_redemption_ulid' => $redemption?->ulid,
                 ],
             ]);
 
@@ -163,6 +228,11 @@ class RequestBankTransferPayment
             // depois porque o lugar tem de existir ANTES de se saber o preço, e
             // o pagamento tem de existir antes de se poder apontar para ele.
             $seat?->forceFill(['subscription_payment_id' => $payment->getKey()])->save();
+
+            // O mesmo círculo para o resgate: a reserva aponta para o pedido
+            // que a segura, e é por este fio que `stillHolds()` e a confirmação
+            // a reencontram.
+            $redemption?->forceFill(['subscription_payment_id' => $payment->getKey()])->save();
 
             $this->currentOrganization->runFor($organization, fn () => $this->audit->record(
                 'commercial.payment_requested',
@@ -238,6 +308,12 @@ class RequestBankTransferPayment
             return false;
         }
 
+        if ($payment->commercial_condition === CommercialCondition::Voucher) {
+            $redemption = $this->redemptionOf($payment);
+
+            return $redemption !== null && $this->redemptionBacks($redemption, $payment);
+        }
+
         if ($payment->commercial_condition !== CommercialCondition::Founder) {
             return true;
         }
@@ -245,6 +321,27 @@ class RequestBankTransferPayment
         $seat = $this->seats->seatOf($organization);
 
         return $seat !== null && $this->seatBacks($seat, $payment);
+    }
+
+    /** A reserva de voucher que este pedido segura, se ainda existir. */
+    protected function redemptionOf(SubscriptionPayment $payment): ?VoucherRedemption
+    {
+        return VoucherRedemption::query()
+            ->where('subscription_payment_id', $payment->getKey())
+            ->first();
+    }
+
+    /**
+     * A reserva sustenta MESMO este pedido — a mesma pergunta de `seatBacks()`:
+     * viva, ao mesmo preço e na mesma moeda. Se o que a reserva congelou já não
+     * é o que o pedido pede, duas quantias diferentes para a mesma compra é
+     * exactamente o que este domínio está escrito para impedir.
+     */
+    protected function redemptionBacks(VoucherRedemption $redemption, SubscriptionPayment $payment): bool
+    {
+        return $redemption->isHolding()
+            && $redemption->result_price_cents === $payment->amount_cents
+            && $redemption->result_currency === $payment->currency;
     }
 
     /**
@@ -320,6 +417,20 @@ class RequestBankTransferPayment
 
             if ($seat !== null && $this->seatBacks($seat, $payment)) {
                 return $payment;
+            }
+        }
+
+        // Um pedido de voucher que caiu deixa a reserva para trás — e ela tem
+        // de ser LIBERTADA, não abandonada: enquanto existir, consome
+        // capacidade do código e bloqueia o retry desta organização. A
+        // confirmada nunca chega aqui (o pedido dela já não está pendente).
+        if ($payment->commercial_condition === CommercialCondition::Voucher) {
+            $redemption = $this->redemptionOf($payment);
+
+            if ($redemption !== null && ! $redemption->isConfirmed()) {
+                $this->releases->release($redemption, $organization, __(
+                    'O pedido de pagamento que a segurava caducou ou deixou de poder ser honrado.',
+                ), $buyer);
             }
         }
 

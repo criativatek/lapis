@@ -63,6 +63,7 @@ use App\Http\Controllers\SubjectController;
 use App\Http\Controllers\TeacherTimetableController;
 use App\Http\Controllers\TeamController;
 use App\Http\Controllers\TimetableImportController;
+use App\Http\Controllers\VoucherValidationController;
 use Illuminate\Support\Facades\Route;
 
 // The public landing page. A GET (not Route::inertia) because the plan cards
@@ -75,6 +76,13 @@ Route::get('funcionalidades/{slug}', [MarketingController::class, 'feature'])->n
 Route::get('planos', [MarketingController::class, 'plans'])->name('marketing.plans');
 Route::get('seguranca', [MarketingController::class, 'security'])->name('marketing.security');
 Route::get('sobre', [MarketingController::class, 'about'])->name('marketing.about');
+
+// «Este código vale?» — a validação REAL por trás do campo de voucher da
+// landing. Público porque quem pergunta ainda nem conta tem; throttled porque
+// um campo de texto sem sessão é um oráculo de enumeração se ninguém o travar;
+// e só LÊ — resgatar exige conta, no checkout ou na página do plano.
+Route::middleware('throttle:10,1')->post('voucher/validate', VoucherValidationController::class)
+    ->name('voucher.validate');
 
 // robots.txt and sitemap.xml, served by the application so both can name the
 // site's own address instead of a domain frozen into a file in public/.

@@ -141,10 +141,23 @@ consiga levar o novo valor a um pagamento antigo.
 
 ### Vouchers
 
-**Não há backend de vouchers** — nem tabela, nem campanha, nem validação, nem resgate. O
-código é guardado como **texto literal** no pagamento, porque escrevê-lo é registar um
-facto e resolvê-lo seria inventar um sistema que não existe. A `LandingVoucher` continua
-a não validar nada.
+**Existe um motor de vouchers** (`vouchers` / `voucher_redemptions`), com três famílias
+comerciais V1: **preço fixo**, **desconto percentual** e **gratuito até uma data**. Um
+voucher move o preço e o termo do contrato — as quatro colunas de prova comercial — e
+**nunca** módulos nem versões de plano; `Entitlements` não lê nenhuma destas tabelas.
+
+- **Emissão e desativação** em `Admin > Comercial > Vouchers`. Um voucher emitido é
+  imutável: errou-se, desativa-se e emite-se outro, com autoria no rasto.
+- **Resgate** só pelo produto: os com preço no checkout (reserva com a janela da
+  transferência, confirmada quando o dinheiro entra; caducada, é apagada com rasto e a
+  capacidade volta), o `free_until` na página do plano (nasce confirmado). Uma
+  organização resgata cada código **uma vez**; a capacidade conta-se das linhas vivas
+  sob lock, sem contador desnormalizado.
+- **Fundador e voucher não acumulam**: ganha o preço mais baixo, no empate ganha a
+  oferta normal (o código fica por usar), e um contrato de voucher nunca toma um lugar.
+- **O texto legado continua texto.** `subscription_payments.voucher_code` escrito à mão
+  num pagamento manual não é validado nem convertido em resgate — é testemunho, e a
+  ficha assinala-o como tal. Nenhum histórico foi inventado.
 
 ### Institucional
 

@@ -414,9 +414,13 @@ const conditionClasses: Record<string, string> = {
                 plano. Uma conta cuja origem nunca foi registada aparece como
                 «Origem não registada» e nunca é inferida pelo valor pago.
                 <span class="mt-1 block">
-                    «Voucher» é uma marcação administrativa feita por um
-                    operador. Não existe motor de vouchers: nenhum código foi
-                    validado, resgatado ou convertido em desconto pelo sistema.
+                    «Voucher» pode ser um resgate do motor de vouchers — código
+                    validado e resgatado pelo sistema, gerido em
+                    <Link href="/admin/commercial/vouchers" class="underline"
+                        >Vouchers</Link
+                    >
+                    — ou uma marcação administrativa antiga, com o código
+                    guardado como texto e assinalado como tal na ficha.
                 </span>
             </p>
         </section>

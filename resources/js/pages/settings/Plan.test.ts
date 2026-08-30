@@ -36,6 +36,17 @@ vi.mock('@inertiajs/vue3', () => ({
 
 const wrappers: VueWrapper[] = [];
 
+/**
+ * The TRIAL activation control, specifically. The page also carries a voucher
+ * redemption form (its own button, in every state), so «no button at all» is
+ * no longer what these states promise — «no trial control» is.
+ */
+function trialButton(wrapper: VueWrapper): boolean {
+    return wrapper
+        .findAll('button')
+        .some((button) => button.text().includes('Experimentar'));
+}
+
 type Props = {
     state:
         | 'eligible'
@@ -99,7 +110,7 @@ describe('settings/Plan — eligible', () => {
         expect(wrapper.text()).toContain('Experimente o plano Pro');
         expect(wrapper.text()).toContain('14');
         expect(wrapper.text()).not.toContain('30');
-        expect(wrapper.find('button').exists()).toBe(true);
+        expect(trialButton(wrapper)).toBe(true);
         expect(wrapper.text()).toContain('Experimentar Pro por 14 dias');
     });
 
@@ -135,7 +146,7 @@ describe('settings/Plan — trial_active', () => {
             },
         });
 
-        expect(wrapper.find('button').exists()).toBe(false);
+        expect(trialButton(wrapper)).toBe(false);
         expect(wrapper.text()).toContain('Período experimental Pro ativo');
         expect(wrapper.text()).toContain('01/09/2026');
         expect(wrapper.text()).toContain('01/10/2026');
@@ -150,7 +161,7 @@ describe('settings/Plan — trial_expired', () => {
             currentPlanName: 'Base',
         });
 
-        expect(wrapper.find('button').exists()).toBe(false);
+        expect(trialButton(wrapper)).toBe(false);
         expect(wrapper.text()).toContain('já foi utilizado');
         expect(wrapper.text()).toContain('Base');
     });
@@ -164,7 +175,7 @@ describe('settings/Plan — pro_active', () => {
             usedTrialBefore: true,
         });
 
-        expect(wrapper.find('button').exists()).toBe(false);
+        expect(trialButton(wrapper)).toBe(false);
         expect(wrapper.text()).toContain('Pro');
         expect(wrapper.text()).toContain('anteriormente');
     });
@@ -187,7 +198,7 @@ describe('settings/Plan — institutional', () => {
             currentPlanName: 'Institucional',
         });
 
-        expect(wrapper.find('button').exists()).toBe(false);
+        expect(trialButton(wrapper)).toBe(false);
         expect(wrapper.text()).toContain('Institucional');
         expect(wrapper.text().toLowerCase()).not.toContain('experimental');
         expect(wrapper.text().toLowerCase()).not.toContain('trial');
@@ -205,7 +216,7 @@ describe('settings/Plan — institutional', () => {
             currentPlanName: 'Institucional',
         });
 
-        expect(wrapper.find('button').exists()).toBe(false);
+        expect(trialButton(wrapper)).toBe(false);
         expect(wrapper.text()).toContain('Institucional');
     });
 });
@@ -217,7 +228,7 @@ describe('settings/Plan — unavailable', () => {
             currentPlanName: 'Base',
         });
 
-        expect(wrapper.find('button').exists()).toBe(false);
+        expect(trialButton(wrapper)).toBe(false);
         expect(wrapper.text()).toContain('Base');
         expect(wrapper.text().toLowerCase()).not.toContain('experimental');
         expect(wrapper.text().toLowerCase()).not.toContain('trial');
@@ -230,7 +241,7 @@ describe('settings/Plan — unavailable', () => {
             currentPlanName: null,
         });
 
-        expect(wrapper.find('button').exists()).toBe(false);
+        expect(trialButton(wrapper)).toBe(false);
         expect(wrapper.text()).not.toContain('Plano atual');
     });
 });

@@ -10,8 +10,11 @@ use App\Mail\BankTransferInstructionsMail;
 use App\Models\BillingProfile;
 use App\Models\Plan;
 use App\Models\SubscriptionPayment;
+use App\Models\VoucherBenefitType;
 use App\Support\Commercial\CheckoutUnavailable;
 use App\Support\Commercial\FounderAvailability;
+use App\Support\Commercial\Vouchers;
+use App\Support\Commercial\VoucherUnavailable;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Gate;
@@ -39,6 +42,7 @@ class CheckoutController extends Controller
         private readonly RequestBankTransferPayment $requests,
         private readonly FounderAvailability $founder,
         private readonly CurrentOrganization $currentOrganization,
+        private readonly Vouchers $vouchers,
     ) {}
 
     public function create(): Response
@@ -84,12 +88,39 @@ class CheckoutController extends Controller
 
         $plan = $this->proPlan();
 
+        // O CÓDIGO, SE VEIO, TEM DE VALER ANTES DE SE EMITIR UMA REFERÊNCIA. A
+        // resolução aqui é a conversa (mensagem por caso, no campo do código); a
+        // DECISÃO é do `request()`, sob a transação — que revalida sob lock e
+        // pode ainda responder que o último lugar do código acabou de ser
+        // tomado. Um `free_until` não passa por aqui: não define uma quantia, e
+        // resgata-se na página do plano.
+        $voucher = null;
+        $codigo = $request->validated('voucher_code');
+
+        if (is_string($codigo) && trim($codigo) !== '') {
+            $resolution = $this->vouchers->resolve($codigo, $organization, $plan);
+
+            if (! $resolution->isValid()) {
+                return back()->withErrors(['voucher_code' => $this->vouchers->messageFor($resolution->outcome)]);
+            }
+
+            if ($resolution->voucher?->benefit_type === VoucherBenefitType::FreeUntil) {
+                return back()->withErrors(['voucher_code' => __(
+                    'Este código dá acesso gratuito até uma data e resgata-se na página do plano, não no checkout.',
+                )]);
+            }
+
+            $voucher = $resolution->voucher;
+        }
+
         try {
             /** @var array{name: string, tax_number: ?string, address_line1: string, address_line2: ?string, postal_code: string, city: string, country: string, email: string} $dados */
-            $dados = $request->validated();
-            $payment = $this->requests->request($organization, $request->user(), $plan, $dados);
+            $dados = $request->safe()->except(['voucher_code']);
+            $payment = $this->requests->request($organization, $request->user(), $plan, $dados, $voucher);
         } catch (CheckoutUnavailable $exception) {
             return back()->withErrors(['checkout' => $exception->getMessage()]);
+        } catch (VoucherUnavailable $exception) {
+            return back()->withErrors(['voucher_code' => $exception->getMessage()]);
         }
 
         // Falhar a enviar o email não desfaz o pedido: a referência já existe e

@@ -539,26 +539,102 @@ function voucher() {
     return mount(LandingVoucher);
 }
 
-describe('the voucher field', () => {
-    it('never claims a code was accepted', async () => {
-        const wrapper = voucher();
+/** Wait for the fetch promise chain inside submit() to settle. */
+async function flush(): Promise<void> {
+    await Promise.resolve();
+    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+}
 
-        await wrapper.find('input').setValue('LAPISPRO-1234-5678');
+describe('the voucher field', () => {
+    it('renders the SERVER answer and only claims what the server said', async () => {
+        // O motor existe: a página valida a sério e repete a resposta do
+        // servidor — nunca uma frase da sua própria autoria.
+        vi.stubGlobal(
+            'fetch',
+            vi.fn().mockResolvedValue({
+                ok: true,
+                json: () =>
+                    Promise.resolve({
+                        category: 'valid',
+                        message:
+                            'O código LPRO-1234-5678 é válido. Resgata-o no checkout, depois de entrar na sua conta.',
+                    }),
+            }),
+        );
+
+        const wrapper = voucher();
+        await wrapper.find('input').setValue('LPRO-1234-5678');
         await wrapper.find('form').trigger('submit');
+        await flush();
 
         const status = wrapper.find('#voucher-status').text();
+        expect(status).toContain('é válido');
+        expect(status).toContain('checkout');
 
-        expect(status).not.toMatch(/aplicad|válid|ativad/i);
-        expect(status).toContain('esta página não valida códigos');
+        expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+            '/voucher/validate',
+            expect.objectContaining({ method: 'POST' }),
+        );
+
+        vi.unstubAllGlobals();
     });
 
-    it('asks for a code before doing anything else', async () => {
-        const wrapper = voucher();
+    it('repeats a refusal verbatim instead of softening it', async () => {
+        vi.stubGlobal(
+            'fetch',
+            vi.fn().mockResolvedValue({
+                ok: true,
+                json: () =>
+                    Promise.resolve({
+                        category: 'invalid',
+                        message: 'Este código não é reconhecido.',
+                    }),
+            }),
+        );
 
+        const wrapper = voucher();
+        await wrapper.find('input').setValue('LPRO-XXXX-XXXX');
+        await wrapper.find('form').trigger('submit');
+        await flush();
+
+        expect(wrapper.find('#voucher-status').text()).toContain(
+            'não é reconhecido',
+        );
+
+        vi.unstubAllGlobals();
+    });
+
+    it('asks for a code before touching the network', async () => {
+        const spy = vi.fn();
+        vi.stubGlobal('fetch', spy);
+
+        const wrapper = voucher();
         await wrapper.find('form').trigger('submit');
 
         expect(wrapper.find('#voucher-status').text()).toContain(
             'Introduza o código do voucher.',
         );
+        expect(spy).not.toHaveBeenCalled();
+
+        vi.unstubAllGlobals();
+    });
+
+    it('admits a network failure instead of inventing an answer', async () => {
+        vi.stubGlobal(
+            'fetch',
+            vi.fn().mockRejectedValue(new Error('offline')),
+        );
+
+        const wrapper = voucher();
+        await wrapper.find('input').setValue('LPRO-1234-5678');
+        await wrapper.find('form').trigger('submit');
+        await flush();
+
+        expect(wrapper.find('#voucher-status').text()).toContain(
+            'Não foi possível verificar agora',
+        );
+
+        vi.unstubAllGlobals();
     });
 });

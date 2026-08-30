@@ -34,7 +34,13 @@ enum CommercialCondition: string
     /** The launch condition on Pro — first 250 or until 31/12/2026. */
     case Founder = 'founder';
 
-    /** A code was presented. No voucher backend exists; the code is a literal string. */
+    /**
+     * A code was presented. Since the voucher engine (vouchers /
+     * voucher_redemptions) this is usually a real redemption — validated,
+     * capacity-checked and frozen. Rows older than the engine carry only a
+     * literal string in `subscription_payments.voucher_code`, marked as such
+     * in the backoffice; nothing converts them retroactively.
+     */
     case Voucher = 'voucher';
 
     /** An operator granted the plan directly, with no money involved. */
