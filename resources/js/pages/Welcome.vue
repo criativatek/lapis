@@ -146,8 +146,8 @@ const measures = [
     <MarketingShell v-slot="{ authenticated }" :contact-email="contactEmail">
         <PageHero
             eyebrow="Básico · Secundário · Profissional · Universitário"
-            title="Menos peso administrativo."
-            title-accent="Mais espaço para ser professor."
+            title="Avaliar. Compreender. Agir."
+            title-accent="Menos peso administrativo. Mais espaço para ser professor."
             lead="O Lapispro é uma plataforma para professores que reúne avaliação de alunos, gestão de turmas, acompanhamento pedagógico, aulas, sumários e relatórios num único lugar — com IA que interpreta e um professor que decide sempre."
             :image="{
                 src: '/images/marketing/hero.webp',

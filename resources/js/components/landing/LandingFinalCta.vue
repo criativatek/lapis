@@ -29,7 +29,7 @@ withDefaults(
 const chips = [
     'Sem compromisso',
     'Sem cartão',
-    'Plano Base para sempre',
+    'Comece pelo Plano Base',
 ] as const;
 </script>
 

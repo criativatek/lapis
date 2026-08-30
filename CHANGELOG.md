@@ -25,6 +25,21 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.101.1] — 2026-08-30
+
+Correção de texto na landing. Não muda nada do que a 0.101.0 entregou: nenhuma
+rota, nenhum plano, nenhum preço, nenhuma condição comercial.
+
+### Changed
+
+- **Nova headline.** «Avaliar. Compreender. Agir.» passa a abrir a página, com
+  «Menos peso administrativo. Mais espaço para ser professor.» como frase
+  secundária. O que antes era o título passa a ser o que o título explica.
+- **«Plano Base para sempre» → «Comece pelo Plano Base».** A formulação
+  anterior lia-se como uma promessa de gratuidade perpétua, que não é o que as
+  condições comerciais dizem. A nova convida a começar sem afirmar por quanto
+  tempo.
+
 ## [0.101.0] — 2026-08-30
 
 Um professor com um problema tinha um endereço de email e mais nada.
