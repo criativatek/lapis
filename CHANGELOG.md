@@ -14,6 +14,13 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > cada um sob o título da frente a que pertenceu. A 0.85.0 é o primeiro
 > release em que as duas linhagens voltam a ser uma só.
 
+## [0.99.1] — 2026-08-30
+
+A grelha bento da home tinha o cartão «Avaliação de alunos» em 2×2 com 60% de
+branco e a captura escondida no canto — «empoleirado», nas palavras do Pedro.
+Passa a 2×1 com a captura a preencher a metade direita até ao fundo; «Planos»
+vira uma faixa horizontal a fechar a grelha, com botão.
+
 ## [0.99.0] — 2026-08-30
 
 Passagem de `/polish` e uma armadilha de SSR apanhada pelo caminho.

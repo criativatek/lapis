@@ -228,7 +228,9 @@ const measures = [
                     :href="area.href"
                     class="group relative overflow-hidden rounded-3xl bg-white p-6 card-soft transition-[box-shadow,transform] duration-300 hover:card-soft-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-safe:hover:-translate-y-1 sm:p-7"
                     :class="
-                        index === 0 ? 'sm:col-span-2 lg:row-span-2' : undefined
+                        index === 0
+                            ? 'sm:col-span-2 lg:min-h-[19rem]'
+                            : undefined
                     "
                 >
                     <!-- The bento's big tile: the first area shows the product. -->
@@ -240,7 +242,7 @@ const measures = [
                         height="854"
                         loading="lazy"
                         decoding="async"
-                        class="pointer-events-none absolute -right-16 bottom-0 hidden w-[62%] rounded-tl-2xl shadow-[0_20px_50px_-20px_rgba(15,23,42,0.4)] ring-1 ring-black/10 transition-transform duration-500 group-hover:-translate-y-1 lg:block"
+                        class="pointer-events-none absolute top-8 -right-6 hidden h-[calc(100%-2rem)] w-[52%] rounded-tl-2xl object-cover object-left-top shadow-[0_20px_50px_-20px_rgba(15,23,42,0.4)] ring-1 ring-black/10 transition-transform duration-500 group-hover:-translate-y-1 lg:block"
                     />
                     <span
                         aria-hidden="true"
@@ -259,7 +261,7 @@ const measures = [
                         class="mt-2 text-sm leading-relaxed text-muted-foreground"
                         :class="
                             index === 0
-                                ? 'lg:max-w-[38%] lg:text-base'
+                                ? 'lg:max-w-[42%] lg:text-base'
                                 : undefined
                         "
                     >
@@ -278,7 +280,7 @@ const measures = [
                 </Link>
                 <Link
                     href="/planos"
-                    class="group flex flex-col justify-between rounded-3xl bg-amber-100 dots-pattern p-6 transition-[box-shadow,transform] duration-300 hover:card-soft-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-safe:hover:-translate-y-1 sm:p-7"
+                    class="group flex flex-col justify-between gap-6 rounded-3xl bg-amber-100 dots-pattern p-6 transition-[box-shadow,transform] duration-300 hover:card-soft-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-safe:hover:-translate-y-1 sm:col-span-2 sm:flex-row sm:items-center sm:p-7 lg:col-span-3"
                 >
                     <div>
                         <p
@@ -293,7 +295,7 @@ const measures = [
                         </h3>
                     </div>
                     <span
-                        class="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-amber-900"
+                        class="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-amber-900 px-5 py-2.5 text-sm font-medium text-white"
                     >
                         Ver os planos
                         <ArrowRight
