@@ -167,7 +167,7 @@ class VouchersMysqlGuaranteesTest extends TestCase
         $this->insertVoucher(['normalized_code' => 'PC30', 'code' => 'PC-30']);
 
         try {
-            $this->artisan('migrate:rollback', ['--database' => 'founder_scratch', '--step' => 1, '--force' => true])->run();
+            $this->rollbackVouchers();
             $this->assertTrue(
                 $this->scratch()->getSchemaBuilder()->hasTable('vouchers'),
                 'o rollback apagou tabelas com um voucher emitido',
@@ -179,12 +179,42 @@ class VouchersMysqlGuaranteesTest extends TestCase
 
         // Vazio: recua sem drama — e volta a migrar para as corridas seguintes.
         $this->scratch()->table('vouchers')->delete();
-        $this->artisan('migrate:rollback', ['--database' => 'founder_scratch', '--step' => 1, '--force' => true])->run();
+        $this->rollbackVouchers();
         $this->assertFalse($this->scratch()->getSchemaBuilder()->hasTable('vouchers'));
 
         $this->artisan('migrate', ['--database' => 'founder_scratch', '--force' => true])->run();
         $this->assertTrue($this->scratch()->getSchemaBuilder()->hasTable('vouchers'));
         $this->assertTrue($this->scratch()->getSchemaBuilder()->hasTable('voucher_redemptions'));
+    }
+
+    /**
+     * Recuar ATÉ AOS VOUCHERS, e não «um passo».
+     *
+     * `--step 1` funcionou enquanto os vouchers foram a migração mais recente.
+     * A Central de Suporte passou a estar depois deles, e um passo único
+     * recuava a tabela errada — este teste falhava por uma razão que nada tem
+     * que ver com vouchers. `--path` também não serve: o `migrate:rollback` só
+     * considera o ÚLTIMO LOTE, e os dois estão em lotes diferentes.
+     *
+     * Recua-se então lote a lote até a tabela desaparecer, com um limite para
+     * não girar em vazio. Continua a valer quando houver uma décima migração a
+     * seguir, que é a propriedade que faltava — e pára sozinho quando uma
+     * migração pelo caminho se recusar a recuar, que é o que este teste
+     * verifica na primeira metade.
+     */
+    private function rollbackVouchers(): void
+    {
+        for ($passo = 0; $passo < 6; $passo++) {
+            if (! $this->scratch()->getSchemaBuilder()->hasTable('vouchers')) {
+                return;
+            }
+
+            $this->artisan('migrate:rollback', [
+                '--database' => 'founder_scratch',
+                '--step' => 1,
+                '--force' => true,
+            ])->run();
+        }
     }
 
     // ------------------------------------------------------------ fixtures
@@ -237,6 +267,14 @@ class VouchersMysqlGuaranteesTest extends TestCase
         $scratch = $this->scratch();
 
         $scratch->statement('SET FOREIGN_KEY_CHECKS = 0');
+        // Partilhamos a base com o scratch da Central de Suporte. O que é dela
+        // não é deste teste, e um pedido deixado para trás bloquearia o
+        // rollback abaixo por uma razão alheia aos vouchers.
+        foreach (['support_notification_deliveries', 'support_messages', 'support_requests'] as $tabela) {
+            if ($scratch->getSchemaBuilder()->hasTable($tabela)) {
+                $scratch->table($tabela)->delete();
+            }
+        }
         $scratch->table('voucher_redemptions')->delete();
         $scratch->table('vouchers')->delete();
         $scratch->table('founder_seats')->delete();

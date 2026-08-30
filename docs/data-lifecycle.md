@@ -244,3 +244,38 @@ dos 24 meses é anonimizado na execução seguinte.
 **Reabrir para o relógio.** Uma resposta de quem abriu um pedido resolvido põe
 `resolved_at` a NULL: enquanto estiver activo, nada é anonimizado, e a contagem
 só recomeça no próximo `resolved_at`.
+
+### Matriz de retenção — Central de Suporte
+
+| Dados | Titular | Estado | Contagem começa | Prazo | Finalidade | Operação final | Suspensão | Backups |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Pedido e mensagens | Quem escreveu (com ou sem conta) | `open` / `in_progress` | — | **sem prazo** | Responder ao pedido em curso | nenhuma | n/a | rotação documentada |
+| Pedido e mensagens | idem | `waiting_for_user` | `waiting_since` | **23 dias** | Lembrar quem não respondeu | email de lembrete, uma vez (`waiting_reminder_sent_at`) | **não trava** | idem |
+| Pedido e mensagens | idem | `waiting_for_user` | `waiting_since` | **30 dias** | Fechar o que ficou sem resposta | `resolved`, `auto_resolved = true`, mensagem de sistema | **não trava** | idem |
+| Pedido, mensagens, entregas | idem | `resolved` | `resolved_at` | **24 meses** | Conservar o histórico enquanto útil | anonimização (ver abaixo) | **trava** | idem |
+
+**A operação final aos 24 meses**, executada por `support:retention` (03:50):
+
+- **NULL** — `requester_name`, `requester_email`, `user_id`, `organization_id`,
+  `subject`, `description`, `technical_reference`, `technical_route`,
+  `retention_hold_note`.
+- **DELETE** — `support_messages`, `support_notification_deliveries`.
+- **Sobrevive** — `reference`, `category`, `source`, `status`, `app_version`,
+  `technical_code`, carimbos temporais, e os campos da suspensão excepto a nota.
+
+**Reabertura.** Uma resposta de quem abriu um pedido resolvido põe `resolved_at`
+a NULL: a contagem dos 24 meses **para**, e só recomeça no próximo
+`resolved_at`. Um pedido activo nunca é anonimizado.
+
+**Suspensão.** Motivo de lista fechada (`legal_dispute`, `fraud_investigation`,
+`statutory_obligation`, `formal_proceeding`, `other`), aplicada e levantada só
+por platform-admin. Trava **apenas** a anonimização — o lembrete e o
+auto-resolve correm à mesma. Levantá-la **não reinicia o relógio**: a janela
+conta de `resolved_at`, e uma suspensão levantada depois dos 24 meses é
+anonimizada na execução seguinte. A nota interna é o único campo do hold que a
+anonimização apaga.
+
+**Backups.** Não se declara aqui um prazo próprio para a Central: aplica-se a
+rotação de cópias já documentada nesta página, e um pedido eliminado pode
+subsistir numa cópia até essa cópia ser substituída. Nenhum prazo novo é
+afirmado porque nenhum existe em código para o sustentar.

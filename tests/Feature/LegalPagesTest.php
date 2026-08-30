@@ -196,6 +196,11 @@ class LegalPagesTest extends TestCase
             'Cookies e armazenamento no navegador',
             'Subcontratantes',
             'Transferências internacionais',
+            // A Central de Suporte trouxe um canal que a Política descrevia
+            // apenas como um endereço de email, e um titular — o visitante sem
+            // conta — que o fundamento enunciado para «os dados da sua conta»
+            // não cobria.
+            'Contactos e suporte',
         ] as $required) {
             $this->assertTrue($headings->contains($required), "Falta a secção «{$required}».");
         }

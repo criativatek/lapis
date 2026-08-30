@@ -90,6 +90,12 @@ class HandleInertiaRequests extends Middleware
                 // `EnsurePlatformAdmin` is what actually guards /admin, and a
                 // forged `true` here buys a link to a 403.
                 'is_platform_admin' => $user?->isPlatformAdmin() ?? false,
+                // Se há uma Política de Privacidade mais recente do que o
+                // último aviso que esta pessoa fechou. Apenas isso: um booleano
+                // que decide se se desenha uma faixa informativa. Não é uma
+                // aceitação pendente e não bloqueia nada — ver
+                // `User::shouldSeePrivacyNotice()`.
+                'should_see_privacy_notice' => $user?->shouldSeePrivacyNotice() ?? false,
                 'organization' => $hasOrganization ? [
                     'ulid' => $currentOrganization->get()->ulid,
                     'name' => $currentOrganization->get()->name,

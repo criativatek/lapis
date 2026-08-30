@@ -123,6 +123,27 @@ class LegalDocuments
         return (int) config('retention.data_export_availability_hours');
     }
 
+    /*
+     * Os prazos da Central de Suporte, lidos de `config/retention.php` como
+     * todos os outros. O documento não pode afirmar um número que a rotina não
+     * cumpra: mudar o prazo na configuração muda o texto, e nunca ao contrário.
+     */
+
+    private static function supportReminderDays(): int
+    {
+        return (int) config('retention.support_waiting_reminder_days');
+    }
+
+    private static function supportAutoResolveDays(): int
+    {
+        return (int) config('retention.support_waiting_auto_resolve_days');
+    }
+
+    private static function supportRetainedMonths(): int
+    {
+        return (int) config('retention.support_resolved_months_retained');
+    }
+
     /**
      * @return array{title: string, effective_from: string, intro: string, sections: list<array{heading: string, body: list<string>}>, related: list<array{label: string, href: string}>}
      */
@@ -318,7 +339,7 @@ class LegalDocuments
                         'Prestar o serviço: autenticar a sua conta, disponibilizar as funcionalidades do seu plano, e manter a sua organização e as suas configurações.',
                         'Segurança e auditoria: proteger as contas, detetar utilização indevida e manter um registo de quem fez o quê.',
                         'Cópias de segurança, para permitir a recuperação em caso de incidente.',
-                        'Suporte, quando nos contacta através de '.self::contact('support_email').'.',
+                        'Suporte, quando nos contacta através de '.self::contact('support_email').' ou do formulário de contacto do nosso site. A secção «Contactos e suporte» descreve este tratamento em detalhe.',
                         'Gestão do plano e da relação comercial, incluindo faturação quando aplicável.',
                         'Responder a pedidos de exportação ou de eliminação de dados, e a pedidos de autoridades quando a lei o imponha.',
                         'Não usamos os dados para publicidade, para criar perfis comerciais, nem para os vender ou ceder a terceiros. Não usamos dados de alunos para desenvolver ou treinar modelos.',
@@ -330,8 +351,37 @@ class LegalDocuments
                         'Execução do contrato: criar e manter a conta, disponibilizar as funcionalidades do plano, prestar suporte e gerir o encerramento. Sem estes tratamentos não há serviço.',
                         'Cumprimento de obrigações legais: conservar o que a lei obrigue a conservar, dar resposta a pedidos legítimos de autoridades, e cumprir as obrigações fiscais e contabilísticas associadas a um plano pago.',
                         'Interesse legítimo: manter a segurança da plataforma e das contas, prevenir e detetar utilização abusiva, manter o registo de atividade e as cópias de segurança, e assegurar a integridade e a continuidade do serviço. Ponderámos este interesse contra os seus direitos e restringimos os dados ao mínimo que estas finalidades exigem — o registo de atividade, por exemplo, não guarda endereço IP nem identificador de navegador.',
-                        'Estes fundamentos aplicam-se aos dados da sua conta. Não são invocados para os dados pedagógicos dos alunos: esses são tratados por conta do responsável pelo tratamento, nos termos do Acordo de Tratamento de Dados.',
+                        'Estes fundamentos aplicam-se aos dados da sua conta. Não são invocados para os dados pedagógicos dos alunos: esses são tratados por conta do responsável pelo tratamento, nos termos do Acordo de Tratamento de Dados. Os contactos de quem ainda não tem conta têm fundamento próprio, indicado na secção «Contactos e suporte».',
                         'Quando um tratamento assentar no seu consentimento, será pedido de forma separada e pode ser retirado a qualquer momento, sem afetar o que foi feito antes.',
+                    ],
+                ],
+                [
+                    /*
+                     * A SECÇÃO QUE FALTAVA QUANDO O SUPORTE PASSOU A TER
+                     * FORMULÁRIO. Até à Central de Suporte, o suporte era um
+                     * endereço de email e a Política descrevia-o assim; o
+                     * fundamento estava enunciado para «os dados da sua conta»,
+                     * e quem escreve do formulário público pode não ter conta
+                     * nenhuma — é precisamente o caso de «não consigo entrar».
+                     *
+                     * Cada frase aqui corresponde a um comportamento verificado
+                     * no código: os campos são os do formulário, os prazos são
+                     * os de `config/retention.php` que `support:retention`
+                     * executa, e o que se diz não ser guardado não é mesmo
+                     * escrito em lado nenhum.
+                     */
+                    'heading' => 'Contactos e suporte',
+                    'body' => [
+                        'Pode contactar-nos por email para '.self::contact('support_email').' ou pelo formulário de contacto do nosso site, com ou sem conta criada. Se já tiver conta e conseguir entrar, pode também abrir um pedido dentro do Lapispro e acompanhar as respostas.',
+                        'Do formulário do site recolhemos o nome e o endereço de email que nos indicar, o assunto que escolher de uma lista, e o resumo e a descrição que escrever. Não guardamos o seu endereço IP nem informação sobre o seu navegador: o endereço é usado apenas no momento do envio, para limitar submissões automáticas, e não é registado. O formulário não aceita ficheiros anexos.',
+                        'Usamos estes dados para receber, analisar e responder ao seu pedido, e para manter o histórico da conversa enquanto ela for útil a ambos.',
+                        'Fundamento, consoante o motivo do contacto: quando pede informações, uma demonstração ou uma proposta, ou quando o contacto se destina a preparar uma eventual contratação, o tratamento assenta em diligências pré-contratuais (artigo 6.º, n.º 1, alínea b) do Regulamento). Quando já é nosso utilizador — incluindo quando nos escreve por não conseguir entrar na conta —, assenta na execução do contrato (mesma alínea b)). Quando o contacto é de outra natureza, assenta no nosso interesse legítimo em receber, organizar e responder às comunicações que nos são dirigidas (alínea f)). Prevenir e detetar abuso, fraude e incidentes de segurança no canal de suporte assenta também em interesse legítimo (alínea f)); e conservamos o que a lei nos obrigue a conservar, quando exista obrigação concreta aplicável (alínea c)).',
+                        'Não lhe pedimos consentimento para o simples facto de nos contactar, e contactar o suporte não nos autoriza a enviar-lhe comunicações comerciais.',
+                        'Quando o fundamento for o interesse legítimo, pode opor-se ao tratamento a qualquer momento, nos termos descritos em «Os seus direitos».',
+                        'Acedem ao seu pedido as pessoas da nossa equipa responsáveis por responder. Um pedido é da pessoa que o escreveu: não é visível para outros utilizadores, nem para colegas da mesma escola ou agrupamento, nem para quem administre a organização a que pertença.',
+                        'Enviamos-lhe email para confirmar a receção e sempre que houver resposta. Esses emails identificam o pedido por uma referência e não reproduzem o que escreveu. Se responder a um desses emails, a sua mensagem chega à nossa caixa de suporte, mas não fica automaticamente guardada no histórico do pedido — para ficar, escreva-a no Lapispro.',
+                        'A referência de um pedido serve para o identificarmos, e não é uma credencial: não dá acesso ao pedido nem substitui a autenticação.',
+                        'Pedimos-lhe que não inclua no pedido nomes de alunos, dados de saúde ou outros dados pessoais desnecessários. Se os incluir, tratamo-los apenas para lhe responder, e eliminamo-los com o pedido nos prazos indicados em «Durante quanto tempo».',
                     ],
                 ],
                 [
@@ -385,10 +435,13 @@ class LegalDocuments
                         'Pedido de encerramento de conta: existe um período de recuperação de '.self::closureDays().' dias, durante o qual pode cancelar o pedido. Terminado esse período, uma rotina diária remove os dados que o identificam a si, e com eles os dados identificativos dos alunos da sua organização pessoal — é aqui, e só aqui, que há anonimização no sentido próprio: a relação com a pessoa deixa de existir e não pode ser reposta. Os dados de uma organização institucional de que seja apenas membro não são afetados: pertencem à instituição.',
                         'Exportações dos seus dados: ficam disponíveis '.self::exportHours().' horas e são depois eliminadas automaticamente, por uma rotina que corre de hora a hora.',
                         'Ficheiros temporários de importações e exportações não confirmadas: eliminados automaticamente algumas horas depois do último toque, também de hora a hora.',
+                        'Pedidos de suporte à espera de resposta sua: enviamos um lembrete ao fim de '.self::supportReminderDays().' dias e, se não houver resposta, o pedido é encerrado automaticamente ao fim de '.self::supportAutoResolveDays().' dias. Um pedido que esteja do nosso lado, à espera que lhe respondamos, não é encerrado por inatividade.',
+                        'Pedidos de suporte encerrados: o conteúdo completo — o que escreveu, as respostas e o seu nome e endereço de email — é conservado durante '.self::supportRetainedMonths().' meses a contar do encerramento. Findo esse prazo, uma rotina diária elimina as mensagens e coloca a nulo o nome, o endereço de email e o conteúdo do pedido; permanece apenas informação que não permite identificá-lo — a referência, o assunto escolhido da lista, o estado e as datas —, para sabermos quantos pedidos de cada tipo existiram. Se responder a um pedido já encerrado, ele reabre e a contagem só recomeça quando voltar a ser encerrado.',
                         'Registos técnicos do servidor: rotação automática de 14 dias.',
                         'Cópias de segurança da base de dados: rotação de 30 cópias diárias e 12 mensais. Um dado eliminado da aplicação pode subsistir numa cópia de segurança até essa cópia ser substituída pela rotação.',
                         'Registo de atividade: conservado enquanto for necessário como registo de segurança de quem fez o quê. Não está definido um prazo automático de eliminação, e por isso não indicamos um.',
                         'Dados pedagógicos de anos letivos anteriores: não existe hoje eliminação automática por antiguidade. Quando existir, o prazo será indicado aqui antes de ser aplicado.',
+                        'Suspensão excecional de um prazo: a eliminação de um pedido de suporte pode ser suspensa quando a conservação seja necessária ao cumprimento de uma obrigação legal, à investigação de fraude, abuso ou incidente de segurança, ou à declaração, ao exercício ou à defesa de direitos. A suspensão é decidida por um administrador da plataforma, o motivo é registado, e o acesso continua limitado a quem já o tinha. Cessado o fundamento, a suspensão é levantada e o pedido é eliminado ou anonimizado no ciclo seguinte, contado a partir do encerramento e não da data em que a suspensão terminou.',
                     ],
                 ],
                 [

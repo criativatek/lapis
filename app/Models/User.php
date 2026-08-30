@@ -37,6 +37,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property string|null $terms_version
  * @property Carbon|null $terms_accepted_at
  * @property Carbon|null $onboarding_dismissed_at
+ * @property Carbon|null $privacy_notice_dismissed_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -67,6 +68,7 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
             'anonymized_at' => 'datetime',
             'terms_accepted_at' => 'datetime',
             'onboarding_dismissed_at' => 'datetime',
+            'privacy_notice_dismissed_at' => 'datetime',
         ];
     }
 
@@ -132,6 +134,30 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
     public function hasDismissedOnboarding(): bool
     {
         return $this->onboarding_dismissed_at !== null;
+    }
+
+    /**
+     * Se há uma Política de Privacidade mais recente do que o último aviso que
+     * esta pessoa fechou.
+     *
+     * COMPARA DATAS, NÃO VERSÕES. Uma actualização futura da Política volta a
+     * mostrar o aviso sozinha, sem ninguém ter de se lembrar de limpar uma
+     * coluna e sem duas strings de versão que teriam de concordar.
+     *
+     * NÃO É UMA ACEITAÇÃO PENDENTE: fechar o aviso não consente coisa nenhuma,
+     * e não o fechar não bloqueia nada. É informação, e a única coisa que este
+     * método decide é se ela ainda é nova para quem está a ler.
+     */
+    public function shouldSeePrivacyNotice(): bool
+    {
+        $emVigor = config('lapis.legal.privacy_effective_from');
+
+        if (! is_string($emVigor) || $emVigor === '') {
+            return false;
+        }
+
+        return $this->privacy_notice_dismissed_at === null
+            || $this->privacy_notice_dismissed_at->lt(Carbon::parse($emVigor));
     }
 
     /**

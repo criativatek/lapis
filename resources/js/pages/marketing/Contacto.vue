@@ -157,6 +157,33 @@ function submit(): void {
                     <InputError :message="form.errors.description" />
                 </label>
 
+                <!--
+                    A informação curta que a lei exige no momento da recolha,
+                    imediatamente antes do botão e não escondida num rodapé.
+
+                    NÃO HÁ CAIXA DE ACEITAÇÃO, e é deliberado: o tratamento não
+                    assenta em consentimento — assenta em diligências
+                    pré-contratuais, na execução do contrato ou em interesse
+                    legítimo, consoante o motivo do contacto. Pedir «aceito a
+                    Política» daria a entender um consentimento que não é a base
+                    usada, e que a pessoa não poderia retirar sem deixar de
+                    poder ser respondida.
+                -->
+                <p
+                    class="border-t border-border pt-4 text-sm leading-relaxed text-muted-foreground"
+                >
+                    Usamos os dados que nos indicar para analisar e responder ao
+                    seu pedido. Consoante o motivo do contacto, o tratamento
+                    assenta em diligências pré-contratuais, na prestação do
+                    serviço, ou no nosso interesse legítimo em gerir os
+                    contactos que nos são dirigidos e manter a segurança do
+                    suporte. As finalidades, os prazos de conservação e os seus
+                    direitos estão na
+                    <a href="/privacidade" class="underline"
+                        >Política de Privacidade</a
+                    >.
+                </p>
+
                 <Button type="submit" :disabled="form.processing">
                     Enviar pedido
                 </Button>

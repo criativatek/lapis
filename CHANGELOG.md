@@ -25,6 +25,79 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.101.2] — 2026-08-30
+
+A Central de Suporte trouxe um canal que os textos legais não descreviam e um
+titular que eles não previam. A Política de Privacidade dizia — e dizia bem, à
+data — que o suporte se fazia por email, e enunciava o fundamento do tratamento
+para «os dados da sua conta». Quem escreve do formulário público pode não ter
+conta nenhuma: é, por construção, o caso de «não consigo entrar». Esta versão
+alinha o texto com o que o produto passou a fazer, e não o contrário — nenhum
+comportamento foi alterado para caber numa frase.
+
+### Changed
+
+- **Nova secção «Contactos e suporte» na Política de Privacidade.** Descreve o
+  formulário do site e o email, os cinco campos recolhidos, o que **não** é
+  guardado (endereço IP, identificador de navegador, anexos — porque não
+  existem), quem acede, o que os emails levam e não levam, e que a referência
+  de um pedido não é uma credencial.
+- **Fundamento por tipo de contacto.** Diligências pré-contratuais quando o
+  contacto prepara uma eventual contratação, execução do contrato quando já é
+  utilizador — incluindo quando não consegue autenticar-se —, e interesse
+  legítimo para os restantes contactos e para a segurança do canal. Obrigação
+  legal apenas onde exista obrigação concreta. **Não se usa consentimento**, não
+  há caixa de aceitação, e contactar o suporte não autoriza comunicações
+  comerciais. O direito de oposição é indicado onde a base é o interesse
+  legítimo.
+- **Os três prazos passam a constar da Política**, lidos da mesma configuração
+  que a rotina executa: lembrete aos 23 dias, encerramento automático aos 30, e
+  24 meses de conservação a contar do encerramento. Um pedido reaberto pára a
+  contagem, e o texto di-lo. A secção obrigava-se a declarar os prazos que
+  existissem, e estes passaram a existir na 0.101.0.
+- **Suspensão excecional de um prazo**, descrita: motivo registado, acesso
+  inalterado, e eliminação no ciclo seguinte contada a partir do encerramento —
+  não da data em que a suspensão terminou. Não se promete revisão periódica,
+  porque não há rotina que a faça.
+- **Nova data de entrada em vigor da Política.** Os Termos e o Acordo de
+  Tratamento de Dados mantêm a data anterior: não foram alterados.
+
+### Added
+
+- **Informação curta em `/contacto`**, imediatamente antes do botão de envio,
+  com as finalidades, os fundamentos possíveis e ligação para a Política. O
+  aviso de minimização já existente mantém-se. Sem caixa de aceitação.
+- **Aviso informativo a quem já usa o produto**, no topo da aplicação: a
+  Política foi atualizada, com ligação para a ler. Fecha-se, não bloqueia nada,
+  não pede aceitação e não recolhe consentimento. Usa o mesmo mecanismo do
+  cartão de primeiros passos — um carimbo em `users`, sem tabela nova. Compara
+  datas e não versões, por isso uma atualização futura da Política volta a
+  mostrá-lo sem ninguém ter de limpar coluna nenhuma.
+- **Ponderação de interesse legítimo**, em `docs/legitimate-interest-support.md`:
+  interesse, necessidade, impacto, expectativas, salvaguardas e conclusão, com
+  as alternativas consideradas e afastadas. Documento interno, não publicado.
+- **Matriz de retenção da Central de Suporte** em `docs/data-lifecycle.md`, com
+  o início da contagem, o prazo, a operação final e o efeito da suspensão para
+  cada estado. **Não se declara prazo de backup próprio**: aplica-se a rotação
+  de cópias já documentada, e nenhum prazo novo é afirmado porque nenhum existe
+  em código para o sustentar.
+
+### Fixed
+
+- **O teste de garantias de MySQL dos vouchers recuava a migração errada.**
+  Assumia ser a última, e desde a Central de Suporte deixou de o ser: passa a
+  recuar até à sua própria tabela, e a limpar o que não é dele na base
+  partilhada.
+
+### Fora desta release
+
+- **Os Termos de Utilização não foram alterados.** A única menção a suporte
+  remete para a Política de Privacidade, que passou a cobrir o caso; não há
+  promessa de disponibilidade, de anexos nem de conservação que a contradiga.
+- **Sem alteração a planos ou direitos.** Base 13 · Pro 28 · Institucional 34,
+  três versões, nenhuma acima da v1. Nenhuma capability, nenhum entitlement.
+- **Sem worker de filas.** Continua a não haver, e continua a ser decisão.
+
 ## [0.101.1] — 2026-08-30
 
 Correção de texto na landing. Não muda nada do que a 0.101.0 entregou: nenhuma

@@ -44,6 +44,7 @@ use App\Http\Controllers\NationalHolidaySuggestionController;
 use App\Http\Controllers\OnboardingController;
 use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\OrganizationMembershipController;
+use App\Http\Controllers\PrivacyNoticeController;
 use App\Http\Controllers\PublicSelfAssessmentController;
 use App\Http\Controllers\PublicSupportController;
 use App\Http\Controllers\Reports\ReportController;
@@ -193,6 +194,10 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     // The "Primeiros passos" card's own state (A1a, Onboarding & Help) — see
     // OnboardingController. POST to hide it, DELETE to bring it back, same
     // request/cancel shape as settings/account-closure.
+    // Fechar o aviso de que a Política de Privacidade mudou. Informativo: não
+    // regista aceitação e não bloqueia nada — ver PrivacyNoticeController.
+    Route::post('avisos/privacidade', [PrivacyNoticeController::class, 'dismiss'])->name('privacy-notice.dismiss');
+
     Route::post('dashboard/onboarding-dismissal', [OnboardingController::class, 'dismiss'])->name('onboarding.dismiss');
     Route::delete('dashboard/onboarding-dismissal', [OnboardingController::class, 'restore'])->name('onboarding.restore');
 
