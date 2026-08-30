@@ -85,7 +85,7 @@ class SupportController extends Controller
                     'role' => $mensagem->author_role->value,
                     'roleLabel' => $mensagem->author_role->label(),
                     'body' => $mensagem->body,
-                    'createdAt' => $mensagem->created_at?->toIso8601String(),
+                    'createdAt' => $mensagem->created_at->toIso8601String(),
                 ])->all(),
             ],
         ]);

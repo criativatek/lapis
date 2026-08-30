@@ -132,7 +132,7 @@ class AdminSupportController extends Controller
                     'roleLabel' => $mensagem->author_role->label(),
                     'authorName' => $mensagem->author?->name,
                     'body' => $mensagem->body,
-                    'createdAt' => $mensagem->created_at?->toIso8601String(),
+                    'createdAt' => $mensagem->created_at->toIso8601String(),
                 ])->all(),
                 'deliveries' => $support->deliveries->map(fn (SupportNotificationDelivery $entrega): array => [
                     'ulid' => $entrega->ulid,

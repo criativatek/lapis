@@ -287,6 +287,11 @@ class ShellNavigationTest extends TestCase
      * (the account/user area, which `nav.sections` does not carry at all) —
      * pointing at the real named route, never a hardcoded URL, and available
      * to every plan (`module => null`).
+     *
+     * A CENTRAL DE SUPORTE ENTROU NESTA MESMA SECÇÃO, logo a seguir (ADR-0011):
+     * quem tem uma dúvida procura primeiro o artigo e só depois fala connosco,
+     * e as duas coisas pertencem ao mesmo sítio da barra lateral. Ambas com
+     * `module => null` — nenhuma é capability.
      */
     #[Test]
     public function the_help_center_has_its_own_section_last_in_the_menu(): void
@@ -298,7 +303,7 @@ class ShellNavigationTest extends TestCase
             $last = end($sections);
 
             $this->assertSame('Ajuda', $last['label']);
-            $this->assertSame(['help'], array_column($last['items'], 'key'));
+            $this->assertSame(['help', 'support'], array_column($last['items'], 'key'));
 
             $help = $last['items'][0];
             $this->assertSame('Centro de Ajuda', $help['label']);
@@ -352,6 +357,12 @@ class ShellNavigationTest extends TestCase
             // Centro de Ajuda (§Onboarding & Help): module => null, so every
             // plan reaches it — never gated by Base/Pro/Institucional.
             'help',
+            // Central de Suporte (ADR-0011): `module => null` pela mesma razão,
+            // e a razão é mais forte aqui — um professor no Base que não
+            // consegue entrar na conta é quem mais precisa de falar connosco.
+            // Suporte humano não é capability nem entitlement e não entra em
+            // nenhuma PlanVersion: a composição continua 13 / 28 / 34.
+            'support',
         ], array_keys($menu));
     }
 

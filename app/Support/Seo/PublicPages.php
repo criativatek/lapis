@@ -50,7 +50,7 @@ class PublicPages
             self::page('/contacto', 'marketing/Contacto', 'Contacto e suporte | Lapispro',
                 'Fale com a equipa do Lapispro. Abra um pedido de suporte mesmo sem conta — respondemos por email.', 'monthly', '0.5'),
 
-            self::page('/sobre', 'marketing/About',            self::page('/sobre', 'marketing/About', 'Sobre o Lapispro e contacto | Lapispro',
+            self::page('/sobre', 'marketing/About', 'Sobre o Lapispro e contacto | Lapispro',
                 'Quem faz o Lapispro, a entidade responsável pelos dados e como falar connosco. Software para professores feito em Portugal.', 'monthly', '0.5'),
 
             self::page('/termos', 'legal/Document', 'Termos de Utilização — Lapispro', 'Os termos que regem a utilização do Lapispro.', 'yearly', '0.3'),

@@ -307,3 +307,28 @@ Para um piloto, o caminho suportado é um override por organização.
 3. Registar um professor em `/register` com email real → recebe o email de verificação.
 4. `/admin/ai` → fornecedor «Simulado», modelo qualquer, IA ativa → «Testar ligação»
    → toast verde. Recarregar: a credencial continua a dizer só «configurada».
+
+## Suporte
+
+`Admin > Suporte` fecha o ciclo todo: fila ordenada pelo trabalho (abertos,
+em curso, à espera, resolvidos), filtros por estado, assunto, classificação
+técnica e suspensão, pesquisa por **referência ou email** — nunca pelo corpo
+do pedido —, ficha com o histórico completo, resposta, mudança de estado,
+classificação, suspensão/retoma da eliminação e reenvio de notificações.
+
+- **Quem vê o quê.** Um professor vê apenas os pedidos que ele próprio abriu.
+  Um colega da mesma organização não vê; o administrador institucional também
+  não. `organization_id` é contexto para quem responde, nunca autorização. Um
+  visitante cria e mais nada: não há portal, e `SUP-XXXXXX` não é credencial.
+- **`technical_code` é do operador.** Nasce NULL e nada o infere — nem do
+  texto, nem da categoria escolhida, nem da rota. NULL é «ninguém olhou»;
+  `unclassified` é «alguém olhou e não encaixa».
+- **Notificações por entregar aparecem no topo, fora dos filtros.** Não há
+  worker: um aviso que falhou só volta a sair se uma pessoa carregar em
+  «Reenviar», e para isso tem de o ver sem o procurar. O reenvio reconstrói o
+  email a partir do pedido — a tabela de entregas não guarda conteúdo nenhum,
+  só tipo, destinatário por papel, tentativas e um código de falha fechado.
+- **A nota da suspensão vive só nesta ficha.** Não vai para auditoria nem para
+  email, e é o único campo do hold que a anonimização apaga.
+
+Ver [ADR-0011](adr/0011-support-centre.md) e [data-lifecycle.md](data-lifecycle.md).

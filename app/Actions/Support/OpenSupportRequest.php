@@ -15,6 +15,7 @@ use App\Services\Audit\AuditLog;
 use App\Support\Support\SupportNotifier;
 use App\Support\Support\SupportReference;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 
 /**
  * Abrir um pedido — de um visitante ou de quem tem sessão iniciada.
@@ -50,15 +51,27 @@ class OpenSupportRequest
         ?User $user = null,
         ?Organization $organization = null,
     ): SupportRequest {
-        $request = DB::transaction(function () use ($data, $user, $organization): SupportRequest {
+        // A IDENTIDADE, RESOLVIDA ANTES DA TRANSAÇÃO E NUM SÓ SÍTIO.
+        //
+        // Com sessão, vem do servidor: aceitar o nome e o email do corpo de um
+        // pedido autenticado deixaria qualquer pessoa abrir um pedido em nome
+        // de outra. Sem sessão, tem de vir do formulário — é a única forma de
+        // responder —, e o `throw` diz isso em vez de deixar a linha nascer sem
+        // destinatário e a falha aparecer só quando o email não sai.
+        $requesterName = $user === null
+            ? ($data['requester_name'] ?? throw new InvalidArgumentException('A guest support request needs a name to answer to.'))
+            : $user->name;
+
+        $requesterEmail = $user === null
+            ? ($data['requester_email'] ?? throw new InvalidArgumentException('A guest support request needs an email to answer to.'))
+            : $user->email;
+
+        $request = DB::transaction(function () use ($data, $user, $organization, $requesterName, $requesterEmail): SupportRequest {
             /** @var SupportRequest $request */
             $request = SupportRequest::create([
                 'reference' => SupportReference::generate(),
-                // A IDENTIDADE VEM DO SERVIDOR quando há sessão. Aceitar o nome
-                // e o email do corpo do pedido de um utilizador autenticado
-                // deixaria qualquer pessoa abrir um pedido em nome de outra.
-                'requester_name' => $user?->name ?? $data['requester_name'],
-                'requester_email' => $user?->email ?? $data['requester_email'],
+                'requester_name' => $requesterName,
+                'requester_email' => $requesterEmail,
                 'user_id' => $user?->getKey(),
                 'organization_id' => $organization?->getKey(),
                 'source' => $user === null ? SupportSource::Guest : SupportSource::Authenticated,

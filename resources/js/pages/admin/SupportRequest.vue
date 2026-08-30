@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { Button } from '@/components/ui/button';
 import InputError from '@/components/InputError.vue';
+import { Button } from '@/components/ui/button';
 
 /**
  * Admin > Suporte > um pedido: o fio, as decisões e as entregas.
@@ -109,6 +109,7 @@ function releaseHold(): void {
     if (!window.confirm('Retomar a eliminação deste pedido?')) {
         return;
     }
+
     releaseForm.delete(`${base}/hold`, { preserveScroll: true });
 }
 

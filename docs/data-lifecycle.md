@@ -207,3 +207,40 @@ Overrides ao nível da organização/instituição (por exemplo, uma escola com
 obrigação contratual de conservar dados por mais tempo) são uma extensão
 futura possível, limitada pelos limites legais/contratuais aplicáveis — não
 implementada nesta fatia.
+
+## Central de Suporte (ADR-0011)
+
+| O quê | Janela | Onde vive o número |
+| --- | --- | --- |
+| Pedido `open` ou `in_progress` | **sem expiração** | — |
+| Pedido `waiting_for_user` — lembrete | **23 dias** | `retention.support_waiting_reminder_days` |
+| Pedido `waiting_for_user` — auto-resolve | **30 dias** | `retention.support_waiting_auto_resolve_days` |
+| Pedido `resolved` — conteúdo completo | **24 meses** de `resolved_at` | `retention.support_resolved_months_retained` |
+
+Executado por `support:retention`, agendado às **03:50** — dez minutos depois de
+`retention:execute`, porque os dois podem tocar nas mesmas contas e correr em
+série evita que a ordem seja uma questão de sorte.
+
+**A anonimização é verdadeira.** Passados os 24 meses sem suspensão em vigor,
+`requester_name`, `requester_email`, `user_id`, `organization_id`, `subject`,
+`description`, `technical_reference`, `technical_route` e `retention_hold_note`
+vão a **NULL**; as mensagens e os registos de entrega são **apagados**. Sem
+marcas de substituição — as colunas nascem nullable exactamente para isto, ao
+contrário de `AnonymiseClosedAccount`, que usa marcas porque a linha do
+utilizador tem restrições `NOT NULL` a satisfazer.
+
+Sobrevive o que serve estatística e não identifica ninguém: `reference`,
+`category`, `source`, `status`, `app_version`, os carimbos temporais, o
+`technical_code` (vocabulário fechado) e os campos da suspensão **excepto a
+nota**.
+
+**Suspensão (`retention hold`).** Motivo de vocabulário fechado — `legal_dispute`,
+`fraud_investigation`, `statutory_obligation`, `formal_proceeding`, `other` —
+aplicada e libertada por platform-admin. Trava **apenas** a anonimização: o
+lembrete e o auto-resolve continuam a correr. **Libertar não reinicia o
+relógio**: a janela conta sempre de `resolved_at`, e um hold levantado depois
+dos 24 meses é anonimizado na execução seguinte.
+
+**Reabrir para o relógio.** Uma resposta de quem abriu um pedido resolvido põe
+`resolved_at` a NULL: enquanto estiver activo, nada é anonimizado, e a contagem
+só recomeça no próximo `resolved_at`.

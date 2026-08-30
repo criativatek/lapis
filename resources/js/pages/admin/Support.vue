@@ -88,6 +88,11 @@ const hasFilters = computed(() =>
     Object.values(form).some((value) => value !== ''),
 );
 
+/** Os rótulos de paginação do Laravel vêm com entidades HTML. */
+function decodeLabel(label: string): string {
+    return label.replace(/&laquo;/g, '«').replace(/&raquo;/g, '»');
+}
+
 function formatDate(iso: string | null): string {
     return iso ? new Date(iso).toLocaleDateString('pt-PT') : '—';
 }
@@ -320,8 +325,8 @@ const statusClasses: Record<string, string> = {
                 :href="link.url ?? '#'"
                 class="rounded border border-border px-2 py-1 text-xs"
                 :class="link.active ? 'bg-muted font-medium' : ''"
-                v-html="link.label"
-            />
+                >{{ decodeLabel(link.label) }}</Link
+            >
         </nav>
     </div>
 </template>

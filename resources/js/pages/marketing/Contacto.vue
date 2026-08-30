@@ -50,11 +50,16 @@ function submit(): void {
 <template>
     <Head :title="seoTitle" />
 
-    <MarketingShell :contact-email="contactEmail">
+    <MarketingShell v-slot="{ authenticated }" :contact-email="contactEmail">
         <PageHero
             eyebrow="Contacto"
             title="Fale connosco"
             lead="Escreva-nos e respondemos por email. Não precisa de ter conta — e se já tiver, pode abrir o pedido dentro do Lapispro para acompanhar as respostas."
+            :image="{
+                src: '/images/marketing/teacher-laptop.webp',
+                alt: 'Professora a escrever no computador portátil.',
+            }"
+            :authenticated="authenticated"
         />
 
         <section class="mx-auto w-full max-w-2xl px-6 pb-20 sm:px-8">
