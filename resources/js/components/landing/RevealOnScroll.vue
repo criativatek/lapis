@@ -89,7 +89,7 @@ onBeforeUnmount(() => observer?.disconnect());
 <template>
     <div
         ref="root"
-        class="motion-safe:transition-all motion-safe:duration-[900ms] motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)]"
+        class="motion-safe:transition-all motion-safe:duration-[650ms] motion-safe:ease-[var(--ease-spring)]"
         :class="
             shown
                 ? 'translate-x-0 translate-y-0 scale-100 opacity-100'

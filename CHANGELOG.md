@@ -25,6 +25,29 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.99.8] — 2026-08-30
+
+Movimento afinado com as curvas do Motion (via o servidor MCP), em CSS puro —
+sem a biblioteca, que numa página que já monta tudo no cliente custaria mais
+do que rende. Três variáveis em `app.css`: `--ease-snap` (0,2s), `--ease-spring`
+(0,35s) e `--ease-pop` (0,5s com overshoot). São curvas `linear()` de molas:
+assentam em vez de pararem a seco, que é a diferença entre uma transição
+cronometrada e uma desenhada.
+
+- **O FAQ e a comparação de planos abrem com altura animada.** Era o único
+  sítio do site onde algo se movia sem ser animado. `interpolate-size:
+  allow-keywords` com `::details-content`; onde o browser não o suporta, o
+  `<details>` abre como sempre abriu — não vale um acordeão em JavaScript.
+- **A linha de evolução do mosaico «Acompanhamento» desenha-se** à medida que
+  entra no ecrã, com `animation-timeline: view()`: sem observer e sem
+  JavaScript. Sem suporte, aparece desenhada.
+- O `RevealOnScroll` troca o `cubic-bezier` escolhido à mão pela mola de
+  0,35s, e a decisão do professor no cartão do herói passa a ter o overshoot
+  de 0,5s.
+- Os quatro factos por baixo do herói entram escalonados, 70 ms entre cada.
+
+Tudo dentro de `motion-safe`/`prefers-reduced-motion`.
+
 ## [0.99.7] — 2026-08-30
 
 Os ícones novos da 0.99.6 chegaram ao servidor e a ninguém: o Cloudflare serve

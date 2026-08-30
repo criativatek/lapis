@@ -14,6 +14,7 @@ import {
 import LandingAi from '@/components/landing/LandingAi.vue';
 import LandingFinalCta from '@/components/landing/LandingFinalCta.vue';
 import LandingHowItWorks from '@/components/landing/LandingHowItWorks.vue';
+import RevealOnScroll from '@/components/landing/RevealOnScroll.vue';
 import ColorBand from '@/components/marketing/ColorBand.vue';
 import HeroCard from '@/components/marketing/HeroCard.vue';
 import MarketingShell from '@/components/marketing/MarketingShell.vue';
@@ -174,9 +175,10 @@ const measures = [
             <dl
                 class="mx-auto grid w-full max-w-6xl gap-3 sm:grid-cols-2 lg:grid-cols-4"
             >
-                <div
-                    v-for="fact in facts"
+                <RevealOnScroll
+                    v-for="(fact, index) in facts"
                     :key="fact.label"
+                    :delay="index * 70"
                     class="flex items-start gap-4 rounded-2xl bg-white px-5 py-5 card-soft"
                 >
                     <span
@@ -198,7 +200,7 @@ const measures = [
                             {{ fact.label }}
                         </dd>
                     </div>
-                </div>
+                </RevealOnScroll>
             </dl>
         </section>
 

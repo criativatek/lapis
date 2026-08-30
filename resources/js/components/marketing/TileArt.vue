@@ -68,6 +68,8 @@ const points = trend
                 stroke-linejoin="round"
                 stroke-linecap="round"
                 vector-effect="non-scaling-stroke"
+                class="draws-in"
+                style="--draw-length: 320"
             />
             <circle
                 v-for="(value, index) in trend"

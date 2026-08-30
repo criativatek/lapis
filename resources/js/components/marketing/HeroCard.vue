@@ -110,7 +110,7 @@ onBeforeUnmount(() => {
                             class="inline-block min-w-6 rounded-md bg-blue-600 px-1.5 py-0.5 text-center text-[11px] font-semibold text-white"
                             :class="
                                 rowIndex === rows.length - 1
-                                    ? 'motion-safe:animate-[pop_500ms_cubic-bezier(0.34,1.56,0.64,1)]'
+                                    ? 'motion-safe:animate-[pop_850ms_var(--ease-pop)]'
                                     : undefined
                             "
                             >{{ row.level }}</span
