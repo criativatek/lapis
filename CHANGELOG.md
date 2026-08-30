@@ -25,6 +25,17 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.99.6] — 2026-08-30
+
+Ícones renderizados do vetor, não redimensionados de um PNG pequeno. Os
+`icon-192` e `icon-512` do manifesto tinham sido gerados por ampliação do
+`apple-touch-icon` de 180px e mostravam os contornos serrilhados; o
+`favicon.ico` tinha um único tamanho de 48px. Agora todos saem de
+`favicon.svg` a 1024px (variante escura do vetor sobre o navy da marca, que é
+a composição que o ícone sempre teve): `favicon.ico` com seis tamanhos de 16
+a 256, `apple-touch-icon` 180, `icon-192` e `icon-512`. O `<link rel=manifest>`
+declara `type="application/manifest+json"`.
+
 ## [0.99.5] — 2026-08-30
 
 Fusão das duas linhas (ver nota acima). Nada foi reescrito: o site público
