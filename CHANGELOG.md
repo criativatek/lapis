@@ -25,6 +25,138 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.101.0] — 2026-08-30
+
+Um professor com um problema tinha um endereço de email e mais nada.
+`suporte@lapispro.com` aparecia nos Termos como o canal, e o produto não sabia
+que ele existia: nenhuma tabela, nenhum ecrã, nenhuma forma de ver o que estava
+por responder. Um pedido perdido era indistinguível de um que nunca chegou, a
+conversa vivia em caixas de correio pessoais que ninguém pode auditar nem
+apagar, e um texto que quase sempre contém mais dados pessoais do que qualquer
+outro que um professor escreve — «o aluno X não aparece na turma Y» — não tinha
+prazo nem eliminação. Passa a ter as três coisas. Ver
+[ADR-0011](docs/adr/0011-support-centre.md).
+
+### Added
+
+- **Central de Suporte.** Três tabelas novas (`support_requests`,
+  `support_messages`, `support_notification_deliveries`), fora da tenancy como o
+  resto do domínio da plataforma. Quatro estados e nenhum a mais: `open`,
+  `in_progress`, `waiting_for_user`, `resolved`. **Não existe `closed`** — dois
+  estados finais que ninguém sabe distinguir é a armadilha que
+  `CommercialCondition` já documenta entre `Other` e NULL.
+- **Quem não tem conta também pede ajuda.** `/contacto` é público e limitado a 5
+  pedidos por minuto. Nome, email, assunto de uma lista de sete, resumo e
+  descrição — e um aviso visível para não incluir nomes de alunos nem dados de
+  saúde. **O IP e o User-Agent não são guardados**: o IP serve ao limitador e
+  morre aí.
+- **Quem tem conta acompanha.** `/support` lista os pedidos **que a própria
+  pessoa abriu**, com o fio de conversa e a resposta. A identidade vem sempre do
+  servidor: o formulário autenticado não aceita nome nem email.
+- **Backoffice completo em `Admin > Suporte`.** Fila ordenada pelo trabalho
+  (abertos, em curso, à espera, resolvidos), filtros por estado, assunto,
+  classificação técnica e suspensão, pesquisa por referência ou email — **nunca
+  pelo corpo do pedido** —, ficha com histórico, resposta, mudança de estado,
+  classificação técnica, suspensão e retoma da eliminação, e reenvio de avisos.
+- **Retry de notificações, durável e manual.** Sem fila e sem worker: em
+  produção `QUEUE_CONNECTION=database` e não há processo nenhum a consumir a
+  tabela `jobs`, por isso um mailable `ShouldQueue` seria escrito e **nunca
+  enviado**. O envio é síncrono depois do commit; o estado de cada entrega fica
+  numa tabela técnica que guarda tipo, destinatário **por papel**, tentativas e
+  um código de falha de vocabulário fechado — **nunca o corpo, o assunto, o
+  endereço, a mensagem da excepção ou a resposta do servidor**. O código é
+  deduzido da classe da excepção e do código SMTP numérico, sem ler texto. O que
+  falhou aparece no topo do backoffice com um botão, e o reenvio **reconstrói o
+  email a partir do pedido**.
+- **Emails que não levam o que a pessoa escreveu.** Assuntos fixos («Pedido de
+  suporte SUP-XXXXXX recebido», «Novo pedido de suporte SUP-XXXXXX») e corpo com
+  a referência, a categoria e o estado. Nunca o assunto livre, nunca a descrição,
+  nunca uma mensagem do fio. `Reply-To` é `lapis.support.inbox`; o `From`
+  mantém-se, porque mudá-lo partiria o SPF que autoriza o relay actual.
+- **`lapis.support.inbox`**, configuração operacional nova, distinta de
+  `lapis.legal.support_email` — hoje o mesmo endereço, e um teste afirma-o, mas
+  conceitos diferentes: um é para onde a aplicação encaminha, o outro é o canal
+  que os Termos declaram. `platform_settings.support_email` **não** é lida e
+  não foi tocada, sem fallback automático.
+- **`AuditLog::recordPlatformWithoutCauser()`** — método novo, com assinatura
+  **sem** parâmetro de causer, para que passar um seja impossível e não apenas
+  desaconselhado.
+- **`support:retention`**, agendado às **03:50**, dez minutos depois de
+  `retention:execute`. Idempotente, uma request por unidade de trabalho, com a
+  falha de uma a não interromper as outras, `--dry-run` que mostra apenas
+  referências e ULIDs, e contagens de lembretes, auto-resolvidos, anonimizados,
+  retidos e falhas.
+
+### Changed
+
+- **A conversa canónica é a do Lapispro.** O email é aviso e recurso, nunca o
+  registo. **Não há processamento de email de entrada nesta versão**: responder
+  a uma notificação chega à caixa de suporte e **não** entra no histórico — e o
+  rodapé de cada email di-lo, em vez de deixar a pessoa descobrir que a resposta
+  se perdeu.
+- **Reabrir é responder.** Uma resposta de quem abriu um pedido resolvido
+  devolve-o a `open` e limpa `resolved_at`, `waiting_since` e o carimbo do
+  lembrete. Consequência deliberada: **o relógio da retenção pára** e só
+  recomeça no próximo `resolved_at`.
+- **A navegação ganha «Suporte»**, ao lado do Centro de Ajuda e com
+  `module => null` pela mesma razão — e a razão é mais forte aqui: um professor
+  no Base que não consegue entrar na conta é quem mais precisa de falar
+  connosco.
+
+### Security/Safety
+
+- **Um pedido é de uma pessoa, não de um inquilino.** Quem o abriu vê-o; um
+  colega da mesma organização **não** vê, e o administrador institucional
+  também não. `organization_id` é contexto para quem responde e não autoriza
+  nada — é a única coluna deste domínio que se parece com tenancy e não é.
+- **`SUP-XXXXXX` não é uma credencial.** É um número de protocolo, legível de
+  propósito e por isso adivinhável. Não há portal para visitantes, não há GET
+  público de um pedido, não há URL assinada e não há recuperação pela
+  referência. Quem quer histórico cria conta — e criar conta com o mesmo email
+  de um pedido de visitante **não** dá acesso a esse pedido.
+- **Retenção 23 / 30 / 24.** Um pedido à espera do utilizador leva um lembrete
+  aos 23 dias e resolve-se sozinho aos 30, com uma mensagem do sistema a dizer
+  porquê. `open` e `in_progress` **não expiram**: o nosso atraso não pode ser um
+  fim de conversa. Um pedido resolvido guarda o conteúdo completo 24 meses.
+- **Anonimização verdadeira.** Passados os 24 meses sem suspensão em vigor, os
+  campos identificantes vão a **NULL** e as mensagens e as entregas são
+  **apagadas**. Sem marcas de substituição — nada de «Pedido anonimizado» nem de
+  endereços fictícios. As colunas nascem nullable exactamente para isto, ao
+  contrário de `AnonymiseClosedAccount`, que usa marcas porque a linha do
+  utilizador tem `NOT NULL` a satisfazer. Sobrevive o que serve estatística e não
+  identifica ninguém.
+- **A suspensão da eliminação é uma excepção provada.** Motivo de vocabulário
+  fechado (`legal_dispute`, `fraud_investigation`, `statutory_obligation`,
+  `formal_proceeding`, `other`), aplicada e libertada por platform-admin, com
+  nota opcional **interna** que nunca sai para auditoria nem para email. Trava
+  **apenas** a anonimização — o lembrete e o auto-resolve continuam. **Libertar
+  não reinicia o relógio**: a janela conta de `resolved_at`, e um hold levantado
+  depois dos 24 meses é anonimizado na execução seguinte.
+- **A criação de um pedido não tem autor no rasto**, tanto de visitante como de
+  quem tem sessão iniciada. Parece estranho perder o autor de um acto que o tem,
+  e é a escolha entre saber quem abriu um pedido em 2026 e conseguir cumprir a
+  promessa de o anonimizar em 2028: um evento de auditoria é imutável. Os actos
+  do operador — responder, mudar estado, resolver, suspender, libertar —
+  mantêm o autor. **O rasto nunca guarda conteúdo livre**, e um teste com
+  sentinela prova-o em vez de o prometer.
+
+### Fora desta release
+
+- **Sem alteração a planos.** O suporte humano existe igual no Base, no Pro e no
+  Institucional: não é capability, não é entitlement e não entra em nenhuma
+  `PlanVersion`. A composição continua **Base 13 · Pro 28 · Institucional 34**,
+  três versões, nenhuma acima da v1. Sem SLA nem prioridade paga.
+- **Sem worker de filas.** É uma decisão de desenho, não um adiamento: ver
+  Added. Instalá-lo será uma fatia de infraestrutura própria.
+- **Duas regras não couberam no esquema.** O MySQL recusa (erro 3823) uma CHECK
+  sobre coluna que participa numa chave estrangeira com `SET NULL`, e tanto
+  `user_id` como `author_user_id` o são — porque um pedido e uma mensagem têm de
+  sobreviver ao apagamento da conta que os escreveu. «Um pedido de visitante não
+  tem conta» e «uma resposta de operador tem operador» vivem em guards dos
+  modelos, com testes que as afirmam.
+- **Nada foi convertido.** Os emails já trocados em caixas pessoais ficam onde
+  estão: inventar-lhes um pedido seria fabricar um registo que ninguém escreveu.
+
 ## [0.100.0] — 2026-08-30
 
 Os vouchers passam a existir. Até aqui a landing pedia um código e dizia, com

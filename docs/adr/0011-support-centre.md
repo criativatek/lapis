@@ -1,7 +1,8 @@
 # ADR-0011 — A conversa de suporte vive no Lapispro, e o email é só o aviso
 
-- **Status:** Accepted — implementado em `feat/central-support-v1`. Ainda
-  **não** integrado em `main`, sem release e sem deploy.
+- **Status:** Accepted — implementado em `feat/central-support-v1`, com a
+  release **0.101.0** preparada nessa branch. Ainda **não** integrado em `main`
+  e **sem deploy**.
 - **Date:** 2026-08-30
 - **Não altera:** [ADR-0002](0002-container-resolved-tenancy.md). As tabelas
   novas são lidas entre organizações e não levam o global scope, pela mesma
