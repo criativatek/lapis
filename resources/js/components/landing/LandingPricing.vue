@@ -121,6 +121,7 @@ function visitHref(plan: LandingPlan) {
                 : 'Menos peso administrativo. Mais espaço para ser professor. O que muda entre os planos não é a qualidade do que faz — é até onde o Lapispro o acompanha.'
         "
     >
+        <h2 v-if="headless" class="sr-only">Os planos</h2>
         <div v-if="plans.length" class="grid gap-5 lg:grid-cols-3">
             <RevealOnScroll
                 v-for="(plan, index) in plans"
@@ -172,14 +173,14 @@ function visitHref(plan: LandingPlan) {
                             >
                         </p>
                         <p
-                            class="mt-1.5 text-xs leading-relaxed text-pretty text-muted-foreground"
+                            class="mt-1.5 text-[13px] leading-relaxed text-pretty text-muted-foreground"
                             :class="isPro(plan) ? 'italic' : undefined"
                         >
                             {{ copyFor(plan).priceNote }}
                         </p>
                         <p
                             v-if="copyFor(plan).priceFootnote"
-                            class="mt-1 text-xs leading-relaxed text-pretty text-muted-foreground/80"
+                            class="mt-1 text-[13px] leading-relaxed text-pretty text-muted-foreground/80"
                         >
                             {{ copyFor(plan).priceFootnote }}
                         </p>
@@ -214,7 +215,7 @@ function visitHref(plan: LandingPlan) {
                     <a
                         v-if="isPro(plan)"
                         href="#fundadores"
-                        class="mt-3 block rounded-lg border border-blue-200 bg-blue-50 px-3.5 py-2.5 text-xs leading-relaxed transition-colors hover:bg-blue-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none dark:border-(--brand-amber)/30 dark:bg-(--brand-amber)/10 dark:hover:bg-(--brand-amber)/15"
+                        class="mt-3 block rounded-lg border border-blue-200 bg-blue-50 px-3.5 py-2.5 text-[13px] leading-relaxed transition-colors hover:bg-blue-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none dark:border-(--brand-amber)/30 dark:bg-(--brand-amber)/10 dark:hover:bg-(--brand-amber)/15"
                     >
                         <span
                             class="font-semibold tracking-tight text-accent-foreground dark:text-(--brand-amber)"

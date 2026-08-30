@@ -104,7 +104,7 @@ const feature = computed(() => featureFor(props.slug));
                     v-for="link in feature.related"
                     :key="link.href"
                     :href="link.href"
-                    class="group inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-medium ring-1 ring-amber-900/10 transition-colors hover:bg-amber-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                    class="group inline-flex items-center gap-2 rounded-full bg-white px-4 py-3 text-sm font-medium ring-1 ring-amber-900/10 transition-colors hover:bg-amber-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                 >
                     {{ link.label }}
                     <ArrowRight

@@ -119,7 +119,7 @@ const measures = [
                     ]"
                     :key="doc.href"
                     :href="doc.href"
-                    class="rounded-full bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-800 ring-1 ring-emerald-900/10 transition-colors hover:bg-emerald-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                    class="rounded-full bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 ring-1 ring-emerald-900/10 transition-colors hover:bg-emerald-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                 >
                     {{ doc.label }}
                 </Link>

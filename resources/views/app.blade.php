@@ -47,6 +47,8 @@
         <link rel="icon" href="/favicon.ico" sizes="any">
         <link rel="icon" href="/favicon.svg" type="image/svg+xml">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        <link rel="manifest" href="/site.webmanifest">
+        <meta name="theme-color" content="#ffffff">
 
         {{-- Server-rendered SEO for the public landing page.
 
@@ -87,6 +89,12 @@
                 <script type="application/ld+json">
                     {!! json_encode(\App\Support\Seo\LandingSeo::structuredData(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) !!}
                 </script>
+            @else
+                @foreach (\App\Support\Seo\PublicPages::structuredData($public) as $block)
+                    <script type="application/ld+json">
+                        {!! json_encode($block, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) !!}
+                    </script>
+                @endforeach
             @endif
         @else
             {{-- EVERY OTHER PAGE IS OUT OF THE INDEX. The teacher-facing app is

@@ -2,6 +2,8 @@
 
 namespace App\Support\Seo;
 
+use App\Support\Legal\LegalDocuments;
+
 /**
  * Every public, indexable page of the marketing site, in one list.
  *
@@ -85,6 +87,85 @@ class PublicPages
         }
 
         return false;
+    }
+
+    /**
+     * The structured data of a public page other than the landing (which has
+     * its own SoftwareApplication block in LandingSeo): the page itself and
+     * its breadcrumb, plus the Organization on /sobre — with the real entity
+     * from the legal configuration and nothing else. No ratings, no
+     * invented social profiles.
+     *
+     * @param  PublicPage  $page
+     * @return list<array<string, mixed>>
+     */
+    public static function structuredData(array $page): array
+    {
+        $url = self::url($page['path']);
+        $crumbs = [['name' => 'Lapispro', 'item' => self::url('/')]];
+
+        if (str_starts_with($page['path'], '/funcionalidades/')) {
+            $crumbs[] = ['name' => 'Funcionalidades', 'item' => self::url('/funcionalidades/avaliacao')];
+        }
+
+        $crumbs[] = ['name' => self::shortTitle($page['title']), 'item' => $url];
+
+        $blocks = [
+            [
+                '@context' => 'https://schema.org',
+                '@type' => 'WebPage',
+                'name' => self::shortTitle($page['title']),
+                'url' => $url,
+                'description' => $page['description'],
+                'inLanguage' => 'pt-PT',
+                'isPartOf' => ['@type' => 'WebSite', 'name' => 'Lapispro', 'url' => self::url('/')],
+                'primaryImageOfPage' => LandingSeo::ogImage(),
+            ],
+            [
+                '@context' => 'https://schema.org',
+                '@type' => 'BreadcrumbList',
+                'itemListElement' => array_map(fn (array $crumb, int $index): array => [
+                    '@type' => 'ListItem',
+                    'position' => $index + 1,
+                    'name' => $crumb['name'],
+                    'item' => $crumb['item'],
+                ], $crumbs, array_keys($crumbs)),
+            ],
+        ];
+
+        if ($page['path'] === '/sobre') {
+            $controller = LegalDocuments::controller();
+            $organization = [
+                '@context' => 'https://schema.org',
+                '@type' => 'Organization',
+                'name' => 'Lapispro',
+                'url' => self::url('/'),
+                'logo' => self::url('/apple-touch-icon.png'),
+                'email' => config('lapis.legal.support_email'),
+            ];
+
+            if ($controller['name'] !== null) {
+                $organization['legalName'] = $controller['name'];
+            }
+
+            if ($controller['vat'] !== null) {
+                $organization['vatID'] = 'PT'.$controller['vat'];
+            }
+
+            if ($controller['address'] !== null) {
+                $organization['address'] = ['@type' => 'PostalAddress', 'streetAddress' => $controller['address'], 'addressCountry' => 'PT'];
+            }
+
+            $blocks[] = $organization;
+        }
+
+        return $blocks;
+    }
+
+    /** «Planos e preços para professores | Lapispro» → «Planos e preços para professores». */
+    private static function shortTitle(string $title): string
+    {
+        return trim((string) preg_replace('/\s*[|—]\s*Lapispro\s*$/u', '', $title));
     }
 
     /** Absolute URL of a page, rooted at the declared public address. */

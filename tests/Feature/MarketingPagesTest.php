@@ -94,6 +94,28 @@ class MarketingPagesTest extends TestCase
         }
     }
 
+    #[DataProvider('publicPaths')]
+    #[Test]
+    public function every_public_page_carries_valid_structured_data(string $path): void
+    {
+        $html = $this->get($path)->assertOk()->getContent();
+
+        preg_match_all('#<script type="application/ld\+json">(.*?)</script>#s', $html, $matches);
+
+        $this->assertNotEmpty($matches[1], $path.' has JSON-LD');
+
+        foreach ($matches[1] as $json) {
+            $decoded = json_decode(trim($json), true);
+            $this->assertIsArray($decoded, $path.' JSON-LD parses');
+            $this->assertArrayHasKey('@type', $decoded);
+        }
+
+        if ($path === '/sobre') {
+            $this->assertStringContainsString('"@type":"Organization"', $html);
+            $this->assertStringNotContainsString('aggregateRating', $html);
+        }
+    }
+
     #[Test]
     public function the_sitemap_and_robots_list_every_public_page(): void
     {

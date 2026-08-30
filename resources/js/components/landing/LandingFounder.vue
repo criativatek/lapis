@@ -120,12 +120,12 @@ const href = () => (props.authenticated ? planSettings() : register());
                         }}</s>
                     </p>
 
-                    <p class="mt-1 text-xs text-muted-foreground italic">
+                    <p class="mt-1 text-[13px] text-muted-foreground italic">
                         {{ FOUNDER_MONTHLY_EQUIVALENT }}
                     </p>
 
                     <p
-                        class="mt-4 border-t border-border/70 pt-4 text-xs leading-relaxed text-pretty text-muted-foreground"
+                        class="mt-4 border-t border-border/70 pt-4 text-[13px] leading-relaxed text-pretty text-muted-foreground"
                     >
                         {{ FOUNDER.eligibility }}
                     </p>
@@ -144,7 +144,7 @@ const href = () => (props.authenticated ? planSettings() : register());
                         </Link>
                     </Button>
 
-                    <p class="mt-3 text-xs text-muted-foreground">
+                    <p class="mt-3 text-[13px] text-muted-foreground">
                         Subscrição anual. Não existe pagamento mensal.
                     </p>
                 </div>

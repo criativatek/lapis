@@ -14,6 +14,24 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > cada um sob o título da frente a que pertenceu. A 0.85.0 é o primeiro
 > release em que as duas linhagens voltam a ser uma só.
 
+## [0.99.4] — 2026-08-30
+
+Revisão técnica das nove páginas públicas (headings, alt, alvos de toque,
+tamanhos de texto, metas, dados estruturados) e o que dela saiu:
+
+- **JSON-LD em todas as páginas**, não só na home: `WebPage` +
+  `BreadcrumbList` (`PublicPages::structuredData()`), e `Organization` em
+  `/sobre` com a entidade real de `LegalDocuments::controller()` — nome legal,
+  NIF, morada, e-mail. Sem `aggregateRating`, sem perfis sociais inventados;
+  `MarketingPagesTest` valida o JSON de cada página.
+- `site.webmanifest` + ícones 192/512 (do apple-touch-icon) + `theme-color`.
+- Alvos de toque: botão do menu 44px; pills de páginas relacionadas e de
+  documentos legais mais altas.
+- Notas de preço de 12px para 13px; `/planos` sem salto h1→h3 (h2 invisível
+  quando o cabeçalho da secção é o do hero).
+- Confirmado: 1 `<h1>` por página, alts descritivos em todas as fotografias e
+  capturas, sem scroll horizontal a 390px, 10 metas OG por página.
+
 ## [0.99.3] — 2026-08-30
 
 Nas páginas sem faixa de factos (funcionalidades, planos, segurança, sobre) o

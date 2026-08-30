@@ -160,7 +160,7 @@ const current = computed(() => new URL(page.url, 'http://x').pathname);
                         <Button
                             variant="ghost"
                             size="icon"
-                            class="lg:hidden"
+                            class="size-11 lg:hidden"
                             :class="[CHROME_LINK, CHROME_GHOST_HOVER]"
                             aria-label="Abrir menu"
                         >
