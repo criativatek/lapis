@@ -25,6 +25,14 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.99.10] — 2026-08-30
+
+O bundle de SSR passa a levar as dependências dentro. O Vite externaliza-as
+por omissão, o que faz o bundle procurar um `node_modules` ao lado — e em
+produção não há nenhum: o que lá chega é o pacote da release, não a árvore da
+máquina que constrói. Com `ssr.noExternal`, o Vue, o Inertia e o resto entram
+no `bootstrap/ssr/ssr.js` e o Node só precisa desse ficheiro.
+
 ## [0.99.9] — 2026-08-30
 
 O bundle de render no servidor nunca chegou a viajar no pacote. A 0.93.0
