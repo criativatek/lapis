@@ -88,6 +88,53 @@ class AuditLog
         return $row;
     }
 
+    /**
+     * Um acto da plataforma que NÃO fica ligado a ninguém — nem a um utilizador,
+     * nem a uma organização.
+     *
+     * NÃO TEM PARÂMETRO DE CAUSER, e a ausência é a assinatura. `recordPlatform()`
+     * faz `$causer ??= auth()->user()`, por isso «sem causer» acontece lá por
+     * acidente: basta não haver sessão. Aqui é impossível passar um, e por isso
+     * a ausência é uma DECISÃO declarada em vez de um efeito colateral — a mesma
+     * distinção que `CommercialCondition` faz entre NULL e `Other`.
+     *
+     * PARA QUE SERVE, hoje: a criação de um pedido de suporte, tanto de um
+     * visitante como de um utilizador com sessão iniciada (ADR-0011 §10).
+     * Perder o autor de um acto que o tem parece estranho, e é deliberado: um
+     * evento de auditoria é imutável, e um evento imutável que aponta para o
+     * utilizador e para a organização é um identificador que a anonimização dos
+     * 24 meses não conseguiria apagar. A escolha é entre saber quem abriu um
+     * pedido em 2026 e conseguir cumprir a promessa de o anonimizar em 2028.
+     *
+     * NÃO É PARA OS ACTOS DO OPERADOR. Responder, mudar estado, resolver,
+     * aplicar e libertar um hold são responsabilidade de quem os pratica e
+     * mantêm `causer_id` por `recordPlatform()`.
+     *
+     * @param  array<string, mixed>  $properties  Fechadas por construção: chaves
+     *                                            conhecidas e valores de vocabulário. Nunca texto
+     *                                            escrito por uma pessoa.
+     */
+    public function recordPlatformWithoutCauser(
+        string $event,
+        ?string $summary = null,
+        array $properties = [],
+    ): AuditEvent {
+        $row = new AuditEvent;
+
+        $row->forceFill([
+            'organization_id' => null,
+            'causer_id' => null,
+            'event' => $event,
+            'summary' => $summary,
+            'properties' => $properties === [] ? null : $properties,
+            'created_at' => now(),
+        ]);
+
+        $row->save();
+
+        return $row;
+    }
+
     protected function ulidOf(?Model $subject): ?string
     {
         if ($subject === null || ! array_key_exists('ulid', $subject->getAttributes())) {

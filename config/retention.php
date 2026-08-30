@@ -51,4 +51,16 @@ return [
     // automatic cleanup.
     'data_export_availability_hours' => 24,
 
+    // Central de Suporte (ADR-0011 §7). Um pedido à espera do utilizador leva
+    // um lembrete aos 23 dias e resolve-se sozinho aos 30 — `open` e
+    // `in_progress` não expiram, porque um pedido nosso não caduca por o termos
+    // deixado parado.
+    'support_waiting_reminder_days' => 23,
+    'support_waiting_auto_resolve_days' => 30,
+
+    // Conteúdo completo de um pedido resolvido, contado de `resolved_at`.
+    // Passado isto, os campos identificantes vão mesmo a NULL e as mensagens
+    // são apagadas — sem marcas de substituição.
+    'support_resolved_months_retained' => 24,
+
 ];

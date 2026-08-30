@@ -1,0 +1,97 @@
+<?php
+
+namespace App\Mail;
+
+use App\Models\SupportNotificationType;
+use App\Models\SupportRecipientRole;
+use App\Models\SupportRequest;
+use Illuminate\Mail\Mailable;
+use Illuminate\Queue\SerializesModels;
+
+/**
+ * TODOS OS AVISOS DA CENTRAL, NUM SÓ MAILABLE — porque todos obedecem à mesma
+ * regra e ter quatro classes seria ter quatro sítios onde a quebrar.
+ *
+ * A REGRA: **nunca o assunto escrito pela pessoa, nunca a descrição, nunca o
+ * corpo de uma mensagem.** Um email atravessa servidores que não são nossos e
+ * fica em caixas de entrada que não controlamos; um pedido de suporte contém,
+ * quase sempre, mais dados pessoais do que qualquer outro texto que um
+ * professor escreve — «o aluno X não aparece na turma Y». Por isso o que sai
+ * daqui é a referência, a categoria, o estado, e um caminho para o sítio onde o
+ * conteúdo está protegido.
+ *
+ * ASSUNTOS FIXOS, e é por serem fixos que são seguros: nada do que a pessoa
+ * escreveu chega à linha de assunto, que é a parte do email que aparece em
+ * notificações de telemóvel e em pré-visualizações.
+ *
+ * `Reply-To` É `lapis.support.inbox` — configuração operacional, nunca escrita
+ * à mão aqui. O `From` continua o da instalação: mudá-lo partiria o SPF que
+ * autoriza o relay actual, e uma mensagem que não chega é pior do que uma
+ * mensagem com o remetente genérico.
+ *
+ * SEM `ShouldQueue`, deliberadamente. Não há worker em produção; ver
+ * `SupportNotifier`.
+ */
+class SupportNotificationMail extends Mailable
+{
+    use SerializesModels;
+
+    public function __construct(
+        public SupportRequest $request,
+        public SupportNotificationType $type,
+    ) {}
+
+    public function build(): self
+    {
+        $paraEquipa = $this->type->recipientRole() === SupportRecipientRole::SupportTeam;
+
+        return $this
+            ->subject($this->fixedSubject())
+            ->replyTo((string) config('lapis.support.inbox'))
+            ->view('emails.support-notification', [
+                'reference' => $this->request->reference,
+                'categoryLabel' => $this->request->category->label(),
+                'statusLabel' => $this->request->status->label(),
+                'type' => $this->type,
+                // O CTA existe apenas para quem tem conta e pode abrir o
+                // pedido. Um visitante não tem portal (ADR-0011 §3) e por isso
+                // não recebe caminho nenhum — mandá-lo para uma página de
+                // login que não lhe serve de nada seria pior do que não o
+                // mandar a lado nenhum.
+                'url' => $this->ctaUrl($paraEquipa),
+                'forTeam' => $paraEquipa,
+            ]);
+    }
+
+    /**
+     * Os assuntos, fixos e sem uma única palavra escrita por quem pediu.
+     */
+    protected function fixedSubject(): string
+    {
+        return match ($this->type) {
+            SupportNotificationType::TeamNewRequest => __('Novo pedido de suporte :reference', [
+                'reference' => $this->request->reference,
+            ]),
+            default => __('Pedido de suporte :reference recebido', [
+                'reference' => $this->request->reference,
+            ]),
+        };
+    }
+
+    /**
+     * Para onde o botão aponta — ou NULL quando não deve haver botão.
+     *
+     * A equipa vai para o backoffice; quem tem conta vai para o seu pedido; um
+     * visitante não vai a lado nenhum.
+     */
+    protected function ctaUrl(bool $paraEquipa): ?string
+    {
+        if ($paraEquipa) {
+            return url('/admin/support/'.$this->request->ulid);
+        }
+
+        return $this->request->user_id === null
+            ? null
+            : url('/support/'.$this->request->ulid);
+    }
+}

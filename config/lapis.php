@@ -159,6 +159,35 @@ return [
     |
     */
 
+    /*
+    |--------------------------------------------------------------------------
+    | Central de Suporte — configuração operacional
+    |--------------------------------------------------------------------------
+    |
+    | Para onde a Central encaminha as respostas e os avisos à equipa. É o
+    | `Reply-To` de cada email que sai e o destinatário do aviso «entrou um
+    | pedido novo».
+    |
+    | DISTINTO DE `legal.support_email`, mesmo apontando hoje para o mesmo
+    | endereço — e um teste afirma que apontam. Um é OPERACIONAL: para onde a
+    | aplicação encaminha. O outro é o canal que os Termos declaram. Fundi-los
+    | faria com que trocar de ferramenta de suporte obrigasse a reescrever um
+    | documento legal, que é a única coisa neste produto que não se muda com um
+    | deploy.
+    |
+    | `platform_settings.support_email` NÃO é fonte desta funcionalidade e não é
+    | lida em lado nenhum da Central. Sem fallback automático: um fallback
+    | silencioso entre duas fontes é como se descobre, um ano depois, que os
+    | emails saíam com a marca errada.
+    |
+    */
+
+    'support' => [
+
+        'inbox' => env('LAPIS_SUPPORT_INBOX', 'suporte@lapispro.com'),
+
+    ],
+
     'ai' => [
 
         // null | 'gemini' | 'chat-completions' | 'fake'. Null means the feature is off.

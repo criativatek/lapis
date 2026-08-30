@@ -45,6 +45,7 @@ use App\Http\Controllers\OnboardingController;
 use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\OrganizationMembershipController;
 use App\Http\Controllers\PublicSelfAssessmentController;
+use App\Http\Controllers\PublicSupportController;
 use App\Http\Controllers\Reports\ReportController;
 use App\Http\Controllers\Reports\ReportExportController;
 use App\Http\Controllers\Reports\ReportRewriteController;
@@ -60,6 +61,7 @@ use App\Http\Controllers\StudentDirectoryController;
 use App\Http\Controllers\StudentPhotoController;
 use App\Http\Controllers\StudentProgressController;
 use App\Http\Controllers\SubjectController;
+use App\Http\Controllers\SupportController;
 use App\Http\Controllers\TeacherTimetableController;
 use App\Http\Controllers\TeamController;
 use App\Http\Controllers\TimetableImportController;
@@ -83,6 +85,15 @@ Route::get('sobre', [MarketingController::class, 'about'])->name('marketing.abou
 // e só LÊ — resgatar exige conta, no checkout ou na página do plano.
 Route::middleware('throttle:10,1')->post('voucher/validate', VoucherValidationController::class)
     ->name('voucher.validate');
+
+// «Fale connosco» — a Central de Suporte para quem ainda não tem conta, ou não
+// consegue entrar nela. CRIA E MAIS NADA: não há GET de um pedido, não há URL
+// assinada e não há recuperação por referência — `SUP-XXXXXX` é um número de
+// protocolo, não uma credencial (ADR-0011 §3). Limitado a 5 por minuto; o IP
+// serve ao limitador e não é gravado.
+Route::get('contacto', [PublicSupportController::class, 'create'])->name('support.public.create');
+Route::middleware('throttle:5,1')->post('contacto', [PublicSupportController::class, 'store'])
+    ->name('support.public.store');
 
 // robots.txt and sitemap.xml, served by the application so both can name the
 // site's own address instead of a domain frozen into a file in public/.
@@ -111,6 +122,24 @@ Route::middleware(['auth', 'verified'])->group(function () {
 // article id — the same ordering «reports/novo» before «reports/{report}»
 // already uses.
 Route::middleware(['auth', 'verified'])->group(function () {
+    /*
+     * Central de Suporte, do lado de quem tem conta.
+     *
+     * SEM `module:`, como o Centro de Ajuda logo abaixo: o suporte humano não é
+     * uma capability e não entra em nenhuma PlanVersion — Base, Pro e
+     * Institucional têm o mesmo (ADR-0011). Um professor no Base que não
+     * consegue entrar na conta é quem mais precisa disto.
+     *
+     * O pedido resolve-se pelo ULID e a policy decide; não há rota que aceite
+     * uma referência, de propósito.
+     */
+    Route::get('support', [SupportController::class, 'index'])->name('support.index');
+    Route::get('support/novo', [SupportController::class, 'create'])->name('support.create');
+    Route::middleware('throttle:6,1')->post('support', [SupportController::class, 'store'])->name('support.store');
+    Route::get('support/{support}', [SupportController::class, 'show'])->name('support.show');
+    Route::middleware('throttle:10,1')->post('support/{support}/mensagens', [SupportController::class, 'reply'])
+        ->name('support.reply');
+
     Route::get('help', [HelpController::class, 'index'])->name('help.index');
     Route::get('help/search', [HelpController::class, 'search'])->name('help.search');
     // «Assistente Lapispro» — above the {article} wildcard for the same reason

@@ -49,3 +49,19 @@ Schedule::command('data-imports:prune')->hourly();
 Schedule::command('retention:execute')
     ->dailyAt('03:40')
     ->withoutOverlapping();
+
+// O relógio da Central de Suporte: o lembrete dos 23 dias, o auto-resolve dos
+// 30 e a anonimização dos 24 meses (ADR-0011 §7).
+//
+// DEZ MINUTOS DEPOIS do encerramento de contas, e não à mesma hora: os dois
+// comandos podem tocar nas mesmas contas — um pedido de suporte aponta para um
+// `user_id` que o outro está a anonimizar — e correr em série evita que a
+// ordem entre eles seja uma questão de sorte. Fora da hora certa pela mesma
+// razão que o vizinho documenta.
+//
+// `withoutOverlapping()` porque o passo dos 24 meses apaga mensagens: a
+// operação é idempotente, mas dois processos a apagar as mesmas linhas não é
+// coisa em que se confie.
+Schedule::command('support:retention')
+    ->dailyAt('03:50')
+    ->withoutOverlapping();

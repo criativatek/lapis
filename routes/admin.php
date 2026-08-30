@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\AdminAiController;
 use App\Http\Controllers\Admin\AdminCommercialController;
 use App\Http\Controllers\Admin\AdminImpersonateController;
 use App\Http\Controllers\Admin\AdminSettingsController;
+use App\Http\Controllers\Admin\AdminSupportController;
 use App\Http\Controllers\Admin\AdminVoucherController;
 use Illuminate\Support\Facades\Route;
 
@@ -82,6 +83,23 @@ Route::middleware(['auth', 'verified', 'platform-admin'])
         Route::get('commercial/{organization}', [AdminCommercialController::class, 'show'])->name('commercial.show');
         Route::post('commercial/{organization}/condition', [AdminCommercialController::class, 'setCommercialCondition'])->name('commercial.condition');
         Route::post('commercial/{organization}/payments', [AdminCommercialController::class, 'storePayment'])->name('commercial.payments.store');
+
+        // Admin > Suporte. A fronteira de acesso é o middleware desta secção e
+        // só ele: `SupportRequestPolicy` responde por quem é titular de um
+        // pedido, e dar-lhe um ramo para o operador seria uma segunda porta
+        // para a mesma sala.
+        Route::get('support', [AdminSupportController::class, 'index'])->name('support.index');
+        Route::get('support/{support}', [AdminSupportController::class, 'show'])->name('support.show');
+        Route::post('support/{support}/reply', [AdminSupportController::class, 'reply'])->name('support.reply');
+        Route::post('support/{support}/status', [AdminSupportController::class, 'changeStatus'])->name('support.status');
+        Route::post('support/{support}/classify', [AdminSupportController::class, 'classify'])->name('support.classify');
+        Route::post('support/{support}/hold', [AdminSupportController::class, 'applyHold'])->name('support.hold.apply');
+        Route::delete('support/{support}/hold', [AdminSupportController::class, 'releaseHold'])->name('support.hold.release');
+        // Reenviar um aviso que não chegou. Throttled: reconstrói e envia um
+        // email de verdade a cada clique.
+        Route::post('support/{support}/resend', [AdminSupportController::class, 'resendNotification'])
+            ->middleware('throttle:10,1')
+            ->name('support.resend');
 
         // System email (SMTP) settings.
         Route::get('settings', [AdminSettingsController::class, 'edit'])->name('settings.edit');
