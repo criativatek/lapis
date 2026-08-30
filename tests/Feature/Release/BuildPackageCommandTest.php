@@ -90,6 +90,24 @@ class BuildPackageCommandTest extends TestCase
         $this->assertNotEmpty(array_filter($entries, fn (string $path): bool => str_starts_with($path, 'public/build/assets/')));
     }
 
+    /**
+     * O bundle de SSR também é gitignored, e a 0.93.0 deixou-o de fora sem que
+     * nada se queixasse: o servidor passou a render no cliente e ninguém deu
+     * por isso até um crawler ler uma página vazia. Só se afirma quando o
+     * bundle existe na máquina — um pacote sem SSR continua a ser válido.
+     */
+    #[Test]
+    public function the_server_rendering_bundle_travels_when_it_exists(): void
+    {
+        if (! is_file(base_path('bootstrap/ssr/ssr.js'))) {
+            $this->markTestSkipped('Sem bootstrap/ssr/ssr.js — corre `npm run build:ssr`.');
+        }
+
+        $entries = $this->build();
+
+        $this->assertContains('bootstrap/ssr/ssr.js', $entries);
+    }
+
     #[Test]
     public function an_untracked_file_never_enters_the_package(): void
     {

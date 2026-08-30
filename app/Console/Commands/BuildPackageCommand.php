@@ -57,6 +57,16 @@ class BuildPackageCommand extends Command
     ];
 
     /**
+     * The server-rendering bundle. Listed here and not in MUST_CONTAIN because
+     * a package built without `npm run build:ssr` is still a valid package —
+     * the application falls back to rendering in the browser. What is NOT
+     * valid is thinking it travelled when it did not, which is what happened
+     * in 0.93.0: `bootstrap/ssr` was added to GENERATED, GENERATED was read by
+     * nobody, and the bundle silently stayed on the build machine.
+     */
+    protected const SSR_ENTRY = 'bootstrap/ssr/ssr.js';
+
+    /**
      * Checked against the finished archive. Almost none of these can come from
      * `git ls-files` — they are gitignored or untracked — so for those this is
      * not the defence, it is the proof that the defence worked.
@@ -197,9 +207,48 @@ class BuildPackageCommand extends Command
             return null;
         }
 
-        $this->line('Lista do pacote: '.$trackedCount.' versionados + 1 carimbo + '.count($assets).' assets compilados');
+        $ssr = $this->ssrBundle();
 
-        return [...$paths, ...$assets];
+        $this->line('Lista do pacote: '.$trackedCount.' versionados + 1 carimbo + '.count($assets).' assets compilados + '.count($ssr).' de SSR');
+
+        return [...$paths, ...$assets, ...$ssr];
+    }
+
+    /**
+     * Everything under bootstrap/ssr — the bundle `npm run build:ssr` writes,
+     * which Node runs to render the public pages on the server.
+     *
+     * An empty list is not an error: a deploy that renders in the browser is a
+     * slower crawl, never a broken page. It IS worth saying out loud, because
+     * the alternative is a silent downgrade.
+     *
+     * @return list<string>
+     */
+    protected function ssrBundle(): array
+    {
+        $root = base_path('bootstrap/ssr');
+
+        if (! is_dir($root)) {
+            $this->warn('Sem bootstrap/ssr: o pacote vai sem render no servidor. Corre `npm run build:ssr` se o quiseres.');
+
+            return [];
+        }
+
+        $files = [];
+
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS)) as $file) {
+            if ($file->isFile()) {
+                $files[] = 'bootstrap/ssr/'.str_replace('\\', '/', substr($file->getPathname(), strlen($root) + 1));
+            }
+        }
+
+        sort($files);
+
+        if (! in_array(self::SSR_ENTRY, $files, true)) {
+            $this->warn('bootstrap/ssr existe mas não tem '.self::SSR_ENTRY.' — o Inertia não o vai encontrar.');
+        }
+
+        return $files;
     }
 
     /**

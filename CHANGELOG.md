@@ -25,6 +25,20 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.99.9] — 2026-08-30
+
+O bundle de render no servidor nunca chegou a viajar no pacote. A 0.93.0
+acrescentou `bootstrap/ssr` à constante `GENERATED` d`o BuildPackageCommand` —
+e essa constante não é lida por nada: a lista do pacote é `git ls-files` mais
+o carimbo mais `public/build`. O bundle ficou na máquina de quem constrói, o
+`inertia:start-ssr` não tinha o que correr, e a única prova disso era um
+crawler a ler uma página vazia.
+
+Agora `ssrBundle()` recolhe `bootstrap/ssr` como o `compiledAssets()` recolhe
+`public/build`, a contagem do pacote di-lo, e um pacote sem bundle avisa em
+vez de calar. `BuildPackageCommandTest` afirma que o `ssr.js` entra quando
+existe na máquina.
+
 ## [0.99.8] — 2026-08-30
 
 Movimento afinado com as curvas do Motion (via o servidor MCP), em CSS puro —
