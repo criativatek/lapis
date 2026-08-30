@@ -168,7 +168,7 @@ const measures = [
         <!-- Facts, not figures. The reference mockup had «+120 escolas» and
              «99,9% disponibilidade» here; the product has no such numbers and
              the site invents none. These four are true and checkable. -->
-        <section class="px-4 pt-5 pb-14 sm:px-6 sm:pt-6 sm:pb-20">
+        <section class="-mt-6 px-4 pb-14 sm:-mt-8 sm:px-6 sm:pb-20">
             <dl
                 class="mx-auto grid w-full max-w-6xl gap-3 sm:grid-cols-2 lg:grid-cols-4"
             >

@@ -14,6 +14,12 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > cada um sob o título da frente a que pertenceu. A 0.85.0 é o primeiro
 > release em que as duas linhagens voltam a ser uma só.
 
+## [0.99.3] — 2026-08-30
+
+Nas páginas sem faixa de factos (funcionalidades, planos, segurança, sobre) o
+cartão do hero colava à faixa navy. `PageHero` passa a ter margem inferior
+própria; a home compensa-a na faixa de factos.
+
 ## [0.99.2] — 2026-08-30
 
 A faixa de factos deixa de estar sobreposta à base do cartão do hero — meio

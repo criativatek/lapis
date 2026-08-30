@@ -46,7 +46,7 @@ withDefaults(
 </script>
 
 <template>
-    <section class="px-4 pt-4 sm:px-6 sm:pt-6">
+    <section class="px-4 pt-4 pb-12 sm:px-6 sm:pt-6 sm:pb-16">
         <div
             class="relative mx-auto grid w-full max-w-6xl overflow-hidden rounded-[2rem] bg-slate-50 card-soft sm:rounded-[2.5rem] lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]"
         >
