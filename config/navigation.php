@@ -216,6 +216,10 @@ return [
             'label' => 'Ajuda',
             'items' => [
                 ['key' => 'help', 'label' => 'Centro de Ajuda', 'icon' => 'CircleHelp', 'module' => null, 'phase' => 8, 'route' => 'help.index', 'built' => true, 'description' => 'Consultar artigos de ajuda e pesquisar dúvidas.', 'match' => ['/help/']],
+                // Suporte humano. `module => null` como o Centro de Ajuda acima: nao
+                // e capability, nao entra em PlanVersion, e existe igual no Base, no
+                // Pro e no Institucional (ADR-0011).
+                ['key' => 'support', 'label' => 'Suporte', 'icon' => 'LifeBuoy', 'module' => null, 'phase' => 8, 'route' => 'support.index', 'built' => true, 'description' => 'Falar com a equipa e acompanhar os seus pedidos.', 'match' => ['/support/']],
             ],
         ],
 

@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Actions\Support\OpenSupportRequest;
 use App\Http\Requests\Support\StorePublicSupportRequestRequest;
+use App\Models\PlatformSetting;
 use App\Models\SupportCategory;
+use App\Support\Seo\PublicPages;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -32,6 +34,8 @@ class PublicSupportController extends Controller
     {
         return Inertia::render('marketing/Contacto', [
             'categories' => SupportCategory::options(),
+            'seoTitle' => PublicPages::current('marketing/Contacto', '/contacto')['title'] ?? config('app.name'),
+            'contactEmail' => PlatformSetting::current()->publicContactEmail(),
         ]);
     }
 
