@@ -168,14 +168,14 @@ const measures = [
         <!-- Facts, not figures. The reference mockup had «+120 escolas» and
              «99,9% disponibilidade» here; the product has no such numbers and
              the site invents none. These four are true and checkable. -->
-        <section class="relative z-10 -mt-6 px-4 sm:-mt-8 sm:px-6">
+        <section class="px-4 pt-5 pb-14 sm:px-6 sm:pt-6 sm:pb-20">
             <dl
                 class="mx-auto grid w-full max-w-6xl gap-3 sm:grid-cols-2 lg:grid-cols-4"
             >
                 <div
                     v-for="fact in facts"
                     :key="fact.label"
-                    class="flex items-center gap-4 rounded-2xl bg-white px-5 py-4 card-soft"
+                    class="flex items-start gap-4 rounded-2xl bg-white px-5 py-5 card-soft"
                 >
                     <span
                         aria-hidden="true"

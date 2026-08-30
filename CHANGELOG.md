@@ -14,6 +14,12 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > cada um sob o título da frente a que pertenceu. A 0.85.0 é o primeiro
 > release em que as duas linhagens voltam a ser uma só.
 
+## [0.99.2] — 2026-08-30
+
+A faixa de factos deixa de estar sobreposta à base do cartão do hero — meio
+em cima do cartão, meio colada à faixa navy, «empoleirada». Passa a uma fila
+própria abaixo do hero, com respiro antes da faixa de produto.
+
 ## [0.99.1] — 2026-08-30
 
 A grelha bento da home tinha o cartão «Avaliação de alunos» em 2×2 com 60% de
