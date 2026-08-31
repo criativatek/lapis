@@ -108,6 +108,73 @@ class PublicSelfAssessmentTest extends TestCase
     }
 
     #[Test]
+    public function two_different_signed_links_identify_two_different_students(): void
+    {
+        [$classUlid, $periodUlid, $firstEnrollmentUlid] = $this->seedContext();
+        $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+        $this->subscribeToPro($teacher);
+
+        [$secondEnrollmentUlid, $firstName, $secondName] = app(CurrentOrganization::class)->runFor(
+            $teacher->personalOrganization(),
+            function () use ($classUlid, $firstEnrollmentUlid) {
+                $class = SchoolClass::where('ulid', $classUlid)->firstOrFail();
+                $first = $class->enrollments()->where('ulid', $firstEnrollmentUlid)->with('student.identity')->firstOrFail();
+                $second = $class->enrollments()->where('ulid', '!=', $firstEnrollmentUlid)
+                    ->with('student.identity')->orderBy('class_number')->first();
+
+                return [$second?->ulid, $first->student->identity->display_name, $second?->student->identity->display_name];
+            },
+        );
+
+        $this->assertNotNull($secondEnrollmentUlid, 'Seed class needs at least two students for this test.');
+        $this->assertNotSame($firstName, $secondName);
+
+        // The identity shown comes from the enrollment the SIGNATURE resolves
+        // to, never from anything the caller can choose — this is the whole
+        // point of proving A's link shows A and B's link shows B.
+        $this->get($this->signedEditUrl($classUlid, $periodUlid, $firstEnrollmentUlid))
+            ->assertInertia(fn ($page) => $page->where('student', $firstName));
+        $this->get($this->signedEditUrl($classUlid, $periodUlid, $secondEnrollmentUlid))
+            ->assertInertia(fn ($page) => $page->where('student', $secondName));
+    }
+
+    #[Test]
+    public function the_signed_link_never_carries_the_students_name(): void
+    {
+        [$classUlid, $periodUlid, $enrollmentUlid] = $this->seedContext();
+        $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+
+        $name = app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () use ($classUlid, $enrollmentUlid) {
+            $class = SchoolClass::where('ulid', $classUlid)->firstOrFail();
+
+            return $class->enrollments()->where('ulid', $enrollmentUlid)->with('student.identity')->firstOrFail()
+                ->student->identity->display_name;
+        });
+
+        $url = $this->signedEditUrl($classUlid, $periodUlid, $enrollmentUlid);
+
+        // The route is built entirely from ULIDs plus Laravel's own signature
+        // machinery — the student's name has no path here to leak into what
+        // gets shared, projected or pasted into a chat.
+        $this->assertStringNotContainsString($name, $url);
+    }
+
+    #[Test]
+    public function an_appended_query_parameter_invalidates_the_signature_instead_of_being_read(): void
+    {
+        [$classUlid, $periodUlid, $enrollmentUlid] = $this->seedContext();
+
+        $url = $this->signedEditUrl($classUlid, $periodUlid, $enrollmentUlid);
+        $separator = str_contains($url, '?') ? '&' : '?';
+
+        // A caller cannot smuggle a display name (or anything else) in
+        // through the query string: Laravel's signature covers the exact
+        // query it was issued with, so any addition invalidates it outright
+        // rather than being silently accepted or ignored.
+        $this->get($url.$separator.'student_name=Nome+Errado')->assertForbidden();
+    }
+
+    #[Test]
     public function an_unsigned_link_is_rejected(): void
     {
         [$classUlid, $periodUlid, $enrollmentUlid] = $this->seedContext();

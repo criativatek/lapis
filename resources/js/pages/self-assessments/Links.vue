@@ -146,7 +146,7 @@ function openPrintWindow(): void {
                 <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2">
                         <span class="font-medium">{{ row.name }}</span>
-                        <span v-if="row.status_label" class="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{{ row.status_label }}</span>
+                        <span class="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{{ row.status_label ?? 'Por responder' }}</span>
                     </div>
                     <input
                         :value="row.link"

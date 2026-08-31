@@ -43,7 +43,20 @@ function submit(): void {
     <Head :title="`Autoavaliação — ${student}`" />
 
     <div class="w-full space-y-4">
-        <div class="text-center">
+        <div class="space-y-3 text-center">
+            <p class="text-xs font-medium tracking-wide text-muted-foreground uppercase">Autoavaliação</p>
+
+            <div class="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+                <p>
+                    Esta autoavaliação corresponde a:
+                    <span class="font-medium">{{ student }}</span>
+                </p>
+                <p class="mt-1 text-xs text-muted-foreground">Confirma que este é o teu nome antes de continuar.</p>
+                <p class="mt-1 text-xs text-muted-foreground">
+                    Se este não é o teu nome, não preenchas esta autoavaliação e avisa o teu professor.
+                </p>
+            </div>
+
             <p class="text-sm text-muted-foreground">{{ schoolClass.label }} · {{ period.label }}</p>
         </div>
 
