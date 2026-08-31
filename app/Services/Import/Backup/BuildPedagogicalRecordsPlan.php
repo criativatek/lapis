@@ -82,10 +82,11 @@ class BuildPedagogicalRecordsPlan
     }
 
     /**
-     * `created_by` is NOT NULL on `interim_assessments` — an unmappable
-     * author blocks the row entirely (§31 option 1) rather than inventing
-     * one. The snapshot itself is copied verbatim, never recomputed: this
-     * model is "written once and never updated" by design (§25).
+     * `created_by` is nullable since 0.101.4: an author this import cannot
+     * map leaves the column empty and carries a notice, instead of
+     * invalidating a genuine record. The snapshot itself is copied
+     * verbatim, never recomputed: this model is "written once and never
+     * updated" by design (§25).
      *
      * @param  array<int, array<string, mixed>>  $interimIn
      * @param  Collection<string, array<string, mixed>>  $classesByUlid
@@ -117,10 +118,6 @@ class BuildPedagogicalRecordsPlan
                 return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->t('A turma ou o período desta avaliação intercalar não podem ser restaurados.')];
             }
 
-            if ($authorId === null) {
-                return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->unmappableAuthorReason('desta avaliação intercalar')];
-            }
-
             if ($lookups['elsewhere']->has($row['ulid']) && $class['classification'] === 'existing') {
                 $match = $byBusinessKey->get("{$class['existing_id']}:{$row['snapshot_hash']}");
 
@@ -134,13 +131,15 @@ class BuildPedagogicalRecordsPlan
                 'academic_period_ulid' => $row['academic_period_ulid'], 'name' => $row['name'], 'reference_date' => $row['reference_date'],
                 'note' => $row['note'], 'snapshot_version' => $row['snapshot_version'], 'snapshot' => $row['snapshot'],
                 'snapshot_hash' => $row['snapshot_hash'], 'created_by' => $authorId,
+                'author_unresolved' => $authorId === null,
+                'notice' => $authorId === null ? $this->unresolvedAuthorNotice('desta avaliação intercalar') : null,
             ];
         })->values()->all();
     }
 
     /**
-     * `created_by` is NOT NULL on `evidence_records` — same authorship
-     * block as interim assessments. Blank stays blank throughout: every
+     * `created_by` follows the same authorship rule as interim
+     * assessments. Blank stays blank throughout: every
      * type-specific field (homework_status, participation_level, …) is
      * carried through exactly as validated, never defaulted.
      *
@@ -179,10 +178,6 @@ class BuildPedagogicalRecordsPlan
                 return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->t('A turma, a inscrição, o período ou o domínio deste registo não podem ser restaurados.')];
             }
 
-            if ($authorId === null) {
-                return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->unmappableAuthorReason('deste registo')];
-            }
-
             if ($lookups['elsewhere']->has($row['ulid']) && $class['classification'] === 'existing'
                 && ($enrollment === null || $enrollment['classification'] === 'existing')
                 && ($period === null || $period['classification'] === 'existing')
@@ -208,12 +203,14 @@ class BuildPedagogicalRecordsPlan
                 'homework_status' => $row['homework_status'], 'participation_level' => $row['participation_level'],
                 'activity_evaluation' => $row['activity_evaluation'], 'disciplinary_severity' => $row['disciplinary_severity'],
                 'created_by' => $authorId,
+                'author_unresolved' => $authorId === null,
+                'notice' => $authorId === null ? $this->unresolvedAuthorNotice('deste registo') : null,
             ];
         })->values()->all();
     }
 
     /**
-     * `created_by` is NOT NULL on `interventions` — same authorship block.
+     * `created_by` follows the same authorship rule.
      * `enrollment_id` (legacy single-student) and the participant pivot are
      * both restored, but only the ulids that resolve — an unresolvable
      * participant is dropped from the list rather than blocking the whole
@@ -255,10 +252,6 @@ class BuildPedagogicalRecordsPlan
                 return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->t('A turma, a inscrição, o período ou o domínio desta estratégia não podem ser restaurados.')];
             }
 
-            if ($authorId === null) {
-                return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->unmappableAuthorReason('desta estratégia')];
-            }
-
             if ($lookups['elsewhere']->has($row['ulid']) && $class['classification'] === 'existing'
                 && ($enrollment === null || $enrollment['classification'] === 'existing')
                 && ($period === null || $period['classification'] === 'existing')
@@ -295,13 +288,14 @@ class BuildPedagogicalRecordsPlan
                 'support_measure_level' => $row['support_measure_level'], 'support_measure_code' => $row['support_measure_code'],
                 'evaluation_adaptation_code' => $row['evaluation_adaptation_code'], 'legal_mapping_source' => $row['legal_mapping_source'],
                 'created_by' => $authorId,
+                'author_unresolved' => $authorId === null,
+                'notice' => $authorId === null ? $this->unresolvedAuthorNotice('desta estratégia') : null,
             ];
         })->values()->all();
     }
 
     /**
-     * `reviewed_by` is NOT NULL on `intervention_reviews` — same
-     * authorship block.
+     * `reviewed_by` follows the same authorship rule.
      *
      * @param  array<int, array<string, mixed>>  $reviewsIn
      * @param  Collection<string, array<string, mixed>>  $interventionsByUlid
@@ -329,10 +323,6 @@ class BuildPedagogicalRecordsPlan
                 return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->t('A estratégia desta revisão não pode ser restaurada.')];
             }
 
-            if ($authorId === null) {
-                return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->unmappableAuthorReason('desta revisão')];
-            }
-
             if ($lookups['elsewhere']->has($row['ulid']) && $intervention['classification'] === 'existing') {
                 $match = $candidates->first(fn (InterventionReview $review): bool => $review->intervention_id === $intervention['existing_id']
                     && $review->reviewed_on->toDateString() === $row['reviewed_on'] && $review->effectiveness?->value === $row['effectiveness']
@@ -346,13 +336,15 @@ class BuildPedagogicalRecordsPlan
             return [
                 'ulid' => $row['ulid'], 'classification' => 'new', 'reason' => null, 'preserve_ulid' => ! $lookups['elsewhere']->has($row['ulid']), 'intervention_ulid' => $row['intervention_ulid'],
                 'reviewed_on' => $row['reviewed_on'], 'effectiveness' => $row['effectiveness'], 'notes' => $row['notes'], 'reviewed_by' => $authorId,
+                'author_unresolved' => $authorId === null,
+                'notice' => $authorId === null ? $this->unresolvedAuthorNotice('desta revisão') : null,
             ];
         })->values()->all();
     }
 
     /**
-     * `created_by` is NOT NULL on `reports` — same authorship block;
-     * `finalized_by` is nullable and simply left empty when unmappable.
+     * `created_by` follows the same authorship rule; `finalized_by` has
+     * always been nullable and is simply left empty when unmappable.
      * Only finalized reports ever reach this method (GenerateDataExport
      * never exports a draft) — `document`/`document_hash` are the frozen
      * artifact of record and are copied verbatim, never regenerated and
@@ -398,10 +390,6 @@ class BuildPedagogicalRecordsPlan
                 return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->t('A turma, a inscrição, o ano letivo, o período ou a avaliação intercalar deste relatório não podem ser restaurados.')];
             }
 
-            if ($authorId === null) {
-                return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->unmappableAuthorReason('deste relatório')];
-            }
-
             if ($lookups['elsewhere']->has($row['ulid']) && ($class === null || $class['classification'] === 'existing')) {
                 $match = $byBusinessKey->get(($class['existing_id'] ?? 'null').":{$row['document_hash']}");
 
@@ -423,6 +411,8 @@ class BuildPedagogicalRecordsPlan
                 'document' => $row['document'], 'document_version' => $row['document_version'], 'document_hash' => $row['document_hash'],
                 'finalized_at' => $row['finalized_at'], 'finalized_by' => $this->resolveAuthor($row['finalized_by_email'], $actor),
                 'created_by' => $authorId, 'based_on_report_ulid' => $basedOn !== null ? $basedOnUlid : null,
+                'author_unresolved' => $authorId === null,
+                'notice' => $authorId === null ? $this->unresolvedAuthorNotice('deste relatório') : null,
                 'template_key' => $row['template_key'], 'template_snapshot' => $row['template_snapshot'],
             ];
         })->values()->all();

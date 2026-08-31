@@ -3,6 +3,7 @@
 namespace App\Services\Import\Backup;
 
 use App\Models\Classification;
+use App\Models\ClassificationStatus;
 use App\Models\Instrument;
 use App\Models\InstrumentGroup;
 use App\Models\InstrumentItem;
@@ -378,10 +379,32 @@ class BuildAssessmentDataPlan
             ->keyBy(fn (Classification $classification): string => "{$classification->enrollment_id}:".($classification->academic_period_id ?? 'null').":{$classification->scope->value}");
 
         return collect($classificationsIn)->map(function (array $row) use ($enrollmentsByUlid, $periodsByUlid, $profileVersionsByUlid, $scaleResolution, $actor, $lookups, $byUlidForSelfRef, $byBusinessKey): array {
+            // THE CONFIRMER DECIDES THE STATUS THIS IMPORT MAY WRITE, and it
+            // is settled here, before any comparison, because everything
+            // downstream must agree on ONE status.
+            //
+            // `classifications_confirmed_has_author_check` refuses
+            // `status = 'confirmed'` with an empty `confirmed_by`. A backup
+            // confirmed by an account this installation cannot map used to
+            // reach the writer as `confirmed` + `null` and take the WHOLE
+            // transaction down with a constraint violation — invisible in
+            // the test suite, because `addCheck()` only runs on MySQL and
+            // the suite is SQLite. Now the values the teacher recorded are
+            // restored in full and only the confirmation step goes back to
+            // them (§3.3 — the teacher decides).
+            //
+            // Computed BEFORE the existing/conflict comparisons on purpose:
+            // comparing the SOURCE status against a row this same importer
+            // wrote as `proposed` would classify every re-run as a conflict
+            // and break idempotency (§11, §44).
+            $confirmedBy = $this->resolveAuthor($row['confirmed_by_email'], $actor);
+            $unconfirmable = $row['status'] === ClassificationStatus::Confirmed->value && $confirmedBy === null;
+            $status = $unconfirmable ? ClassificationStatus::Proposed->value : $row['status'];
+
             $existing = $lookups['existing']->get($row['ulid']);
 
             if ($existing !== null) {
-                $diverges = $existing->status->value !== $row['status'] || (string) $existing->final_value !== (string) $row['final_value'];
+                $diverges = $existing->status->value !== $status || (string) $existing->final_value !== (string) $row['final_value'];
 
                 return ['ulid' => $row['ulid'], 'classification' => $diverges ? 'conflict' : 'existing', 'reason' => $diverges ? $this->conflictReason() : null, 'existing_id' => $existing->getKey()];
             }
@@ -403,7 +426,7 @@ class BuildAssessmentDataPlan
                 $match = $byBusinessKey->get("{$enrollment['existing_id']}:".($period['existing_id'] ?? 'null').":{$row['scope']}");
 
                 if ($match !== null) {
-                    $diverges = $match->status->value !== $row['status'] || (string) $match->final_value !== (string) $row['final_value'];
+                    $diverges = $match->status->value !== $status || (string) $match->final_value !== (string) $row['final_value'];
 
                     return ['ulid' => $row['ulid'], 'classification' => $diverges ? 'conflict' : 'existing', 'reason' => $diverges ? $this->conflictReason() : null, 'existing_id' => $match->getKey()];
                 }
@@ -418,13 +441,15 @@ class BuildAssessmentDataPlan
             return [
                 'ulid' => $row['ulid'], 'classification' => 'new', 'reason' => null, 'preserve_ulid' => ! $lookups['elsewhere']->has($row['ulid']),
                 'enrollment_ulid' => $row['enrollment_ulid'], 'academic_period_ulid' => $row['academic_period_ulid'],
-                'assessment_profile_version_ulid' => $row['assessment_profile_version_ulid'], 'scope' => $row['scope'], 'status' => $row['status'],
+                'assessment_profile_version_ulid' => $row['assessment_profile_version_ulid'], 'scope' => $row['scope'], 'status' => $status,
                 'proposed_normalized_value' => $row['proposed_normalized_value'], 'proposed_value' => $row['proposed_value'],
                 'proposed_scale_level' => $row['proposed_scale_level'], 'final_value' => $row['final_value'],
                 'final_scale_level' => $row['final_scale_level'], 'override_reason' => $row['override_reason'],
                 'overridden_by' => $this->resolveAuthor($row['overridden_by_email'], $actor), 'overridden_at' => $row['overridden_at'],
-                'confirmed_by' => $this->resolveAuthor($row['confirmed_by_email'], $actor), 'confirmed_at' => $row['confirmed_at'],
+                'confirmed_by' => $confirmedBy, 'confirmed_at' => $unconfirmable ? null : $row['confirmed_at'],
                 'published_at' => $row['published_at'], 'superseded_by_ulid' => $supersedes !== null ? $supersededByUlid : null,
+                'author_unresolved' => $unconfirmable,
+                'notice' => $unconfirmable ? $this->unconfirmableDecisionNotice() : null,
             ];
         })->values()->all();
     }

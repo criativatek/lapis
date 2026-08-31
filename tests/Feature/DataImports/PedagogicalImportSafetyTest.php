@@ -189,8 +189,17 @@ class PedagogicalImportSafetyTest extends TestCase
         $this->assertFalse($restoredClass->teachers()->exists());
         $this->assertFalse(Gate::forUser($owner)->allows('view', $restoredClass));
         $this->assertSame(1, $this->tenantCount(Classification::class, $organization));
-        $this->assertSame(0, $this->tenantCount(EvidenceRecord::class, $organization));
         $this->assertSame(1, $import->fresh()->summary['classifications_created']);
+
+        // The colleague's record IS restored now (0.101.4 — authorship is
+        // metadata, not a precondition), and that changes nothing about who
+        // can reach it: evidence and interventions are authorised entirely
+        // through their class, and the owner still cannot view this one.
+        // What must never happen is the record arriving signed by the owner.
+        $this->assertSame(1, $this->tenantCount(EvidenceRecord::class, $organization));
+        $evidence = EvidenceRecord::withoutGlobalScope('organization')->where('organization_id', $organization->id)->firstOrFail();
+        $this->assertNull($evidence->created_by);
+        $this->assertFalse(Gate::forUser($owner)->allows('view', $evidence->schoolClass));
     }
 
     #[Test]
@@ -211,7 +220,8 @@ class PedagogicalImportSafetyTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->where('plan.counts.student_item_scores.new', 2)
                 ->where('plan.counts.classifications.new', 1)
-                ->where('plan.counts.evidence_records.invalid', 1));
+                ->where('plan.counts.evidence_records.new', 1)
+                ->where('plan.counts.evidence_records.invalid', 0));
         $this->confirm($destination, $teacherB, $importAsB);
 
         $scoreAsB = StudentItemScore::withoutGlobalScope('organization')->where('organization_id', $destination->id)->firstOrFail();
@@ -219,7 +229,11 @@ class PedagogicalImportSafetyTest extends TestCase
         $this->assertNull($scoreAsB->assessed_by);
         $this->assertNull($classificationAsB->confirmed_by);
         $this->assertNotSame($teacherB->id, $scoreAsB->assessed_by);
-        $this->assertSame(0, $this->tenantCount(EvidenceRecord::class, $destination));
+
+        // Restored, and signed by nobody — never by B.
+        $this->assertSame(1, $this->tenantCount(EvidenceRecord::class, $destination));
+        $evidenceAsB = EvidenceRecord::withoutGlobalScope('organization')->where('organization_id', $destination->id)->firstOrFail();
+        $this->assertNull($evidenceAsB->created_by);
 
         $restoredClass = SchoolClass::withoutGlobalScope('organization')->where('organization_id', $destination->id)->firstOrFail();
         $this->deletePedagogicalData($destination, $restoredClass);

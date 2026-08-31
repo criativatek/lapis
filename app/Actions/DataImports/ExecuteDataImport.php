@@ -119,6 +119,10 @@ class ExecuteDataImport
                 'evidence_records_created' => $recordCounts['evidence_records'],
                 'interventions_created' => $recordCounts['interventions'],
                 'reports_created' => $recordCounts['reports'],
+                'records_without_original_author' => $this->countUnresolvedAuthors($rows, [
+                    'interim_assessments', 'evidence_records', 'interventions', 'intervention_reviews', 'reports',
+                ]),
+                'classifications_left_unconfirmed' => $this->countUnresolvedAuthors($rows, ['classifications']),
             ];
 
             $lockedImport->forceFill([
@@ -139,6 +143,7 @@ class ExecuteDataImport
                     'created_count' => $summary['classes']['created'] + $summary['students']['created'] + $summary['enrollments']['created'],
                     'skipped_count' => $summary['classes']['skipped'] + $summary['students']['skipped'] + $summary['enrollments']['skipped'],
                     'conflict_count' => ($plan['counts']['classes']['conflict'] ?? 0) + ($plan['counts']['students']['conflict'] ?? 0) + ($plan['counts']['enrollments']['conflict'] ?? 0),
+                    'unresolved_author_count' => $summary['records_without_original_author'] + $summary['classifications_left_unconfirmed'],
                 ],
             ));
 
@@ -261,6 +266,32 @@ class ExecuteDataImport
         }
 
         return ['byUlid' => $byUlid, 'createdCount' => $created];
+    }
+
+    /**
+     * How many rows this run wrote WITHOUT attributing authorship to anyone.
+     *
+     * Reported so the teacher sees it after the fact, not only in the
+     * preview they already dismissed: a restore into a new account is
+     * exactly the case where several records legitimately arrive with no
+     * author, and silence would read as "nothing happened" (§54).
+     *
+     * @param  array<string, array<int, array<string, mixed>>>  $rows
+     * @param  list<string>  $domains
+     */
+    private function countUnresolvedAuthors(array $rows, array $domains): int
+    {
+        $count = 0;
+
+        foreach ($domains as $domain) {
+            foreach ($rows[$domain] ?? [] as $row) {
+                if (($row['classification'] ?? null) === 'new' && ($row['author_unresolved'] ?? false) === true) {
+                    $count++;
+                }
+            }
+        }
+
+        return $count;
     }
 
     /**

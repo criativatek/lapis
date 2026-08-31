@@ -19,7 +19,14 @@ type RowClassification =
 
 type PlanRow = {
     classification: RowClassification;
+    /** Why this row will NOT be written. */
     reason: string | null;
+    /**
+     * Something worth knowing about a row that WILL be written — today,
+     * always historical authorship the import could not associate with the
+     * current account. Deliberately not an error: the record is imported.
+     */
+    notice?: string | null;
     label?: string;
     name?: string;
     title?: string;
@@ -148,6 +155,19 @@ const summaryGroups: {
         title: 'Documentos',
         items: [{ key: 'reports_created', label: 'Relatórios' }],
     },
+    {
+        title: 'Autoria',
+        items: [
+            {
+                key: 'records_without_original_author',
+                label: 'Registos importados sem autoria associada',
+            },
+            {
+                key: 'classifications_left_unconfirmed',
+                label: 'Classificações que ficaram por confirmar',
+            },
+        ],
+    },
 ];
 
 const props = defineProps<{
@@ -258,6 +278,37 @@ const allIssueRows = computed(() => {
                 row.classification === 'invalid' ||
                 row.classification === 'unsupported',
         );
+});
+
+/**
+ * Rows that WILL be imported and carry something the teacher should read
+ * — kept apart from "Pontos a rever" on purpose. Mixing "we could not
+ * attribute this authorship" into a list of blocked rows is what made the
+ * old behaviour read as a refusal even after it stopped being one.
+ */
+const authorshipNotices = computed<{ notice: string; count: number }[]>(() => {
+    if (props.plan === null) {
+        return [];
+    }
+
+    const counts = new Map<string, number>();
+
+    for (const row of Object.values(props.plan.rows).flat()) {
+        if (row.classification !== 'new') {
+            continue;
+        }
+
+        const notice = row.notice;
+
+        if (typeof notice === 'string' && notice.length > 0) {
+            counts.set(notice, (counts.get(notice) ?? 0) + 1);
+        }
+    }
+
+    return [...counts.entries()].map(([notice, count]) => ({
+        notice,
+        count,
+    }));
 });
 
 const confirmForm = useForm({});
@@ -542,6 +593,28 @@ const needingReassignment = computed(() => {
                         </tbody>
                     </template>
                 </table>
+            </div>
+
+            <div
+                v-if="authorshipNotices.length > 0"
+                class="space-y-2 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm dark:border-blue-900 dark:bg-blue-950"
+            >
+                <h2 class="font-medium text-blue-900 dark:text-blue-200">
+                    Autoria original
+                </h2>
+                <p class="text-blue-900 dark:text-blue-200">
+                    Estes registos são importados normalmente. A autoria
+                    original fica por associar — não é atribuída à conta atual,
+                    porque não foi esta conta que os escreveu.
+                </p>
+                <ul
+                    class="list-inside list-disc space-y-1 text-blue-900 dark:text-blue-200"
+                >
+                    <li v-for="entry in authorshipNotices" :key="entry.notice">
+                        <strong>{{ entry.count }} registo(s)</strong> —
+                        {{ entry.notice }}
+                    </li>
+                </ul>
             </div>
 
             <div

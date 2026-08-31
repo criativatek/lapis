@@ -105,10 +105,22 @@ trait ResolvesBackupReferences
      * recorded email is literally the email of whoever is confirming THIS
      * import (§30 of the import brief — "current user quando a autoria
      * original é o próprio exportador e isso é inequívoco", generalised to
-     * any individual author field on the same footing). Never a lookup
-     * against other users in the destination organization — that would be
-     * matching a stranger's account by email, which is exactly the kind of
-     * invention the brief forbids.
+     * any individual author field on the same footing).
+     *
+     * STILL NEVER A LOOKUP AGAINST OTHER ACCOUNTS, including members of the
+     * destination organization, and the reason is sharper than "we might
+     * pick the wrong person". The author email is a value inside an
+     * uploaded file, and this application authenticates by email: matching
+     * it against a colleague's account would let anyone who can edit a JSON
+     * file write pedagogical records signed by a colleague who never wrote
+     * them. Forging a colleague's professional record is a far worse
+     * outcome than leaving authorship empty, and self-attribution is not
+     * forgery — an account can already write its own records.
+     *
+     * What CHANGED in 0.101.4 is not this function; it is what an
+     * unresolved author costs. It used to invalidate the row. It now leaves
+     * the author column empty and the record intact — see
+     * {@see unresolvedAuthorNotice()}.
      */
     private function resolveAuthor(?string $email, User $actor): ?int
     {
@@ -120,20 +132,45 @@ trait ResolvesBackupReferences
     }
 
     /**
-     * The reason shown when a `NOT NULL` author column can't be resolved
-     * (§30-31): spells out that this is about WHOSE account is confirming,
-     * not a generic failure — a teacher cloning a colleague's materials
-     * into their own organization should read this as "some of what you
-     * exported has personal authorship and needs to be restored from your
-     * own account", not as an unexplained block. Never names the original
-     * author here — the backup's own `exported_by` is provenance about the
-     * file, not something this message repeats to a different importer.
+     * Shown when an author email belongs to nobody this import may claim.
+     *
+     * IT IS A NOTICE, NOT A REFUSAL. Until 0.101.4 this text blocked the
+     * row: an author that could not be mapped made the whole record
+     * `invalid`, so a teacher who had changed email — or a school moving a
+     * class between teachers — could not restore their own materials at
+     * all. Authorship is historical metadata about a record; it was never
+     * a precondition for the record to exist. The row is imported, the
+     * author column is left empty, and the message says so in the words a
+     * teacher can act on.
+     *
+     * Never names the original author: the backup's `exported_by` is
+     * provenance about the FILE, and a colleague's email is not something
+     * this importer repeats into an organization that has no relationship
+     * with them (§22.4).
      */
-    private function unmappableAuthorReason(string $domain): string
+    private function unresolvedAuthorNotice(string $domain): string
     {
         return $this->t(
-            'A autoria :domain é obrigatória e só pode ser confirmada com a conta que a criou — inicia sessão com essa conta para o recuperar, ou prossegue sem este registo para clonar apenas os restantes dados.',
+            'A autoria original :domain não pôde ser associada à conta atual. Pode continuar a importação — o registo é clonado sem atribuir indevidamente a autoria à conta atual.',
             ['domain' => $domain],
+        );
+    }
+
+    /**
+     * The notice for a decision that arrives confirmed by an account this
+     * import cannot resolve (§13.3, §3.3 — the teacher decides).
+     *
+     * The alternative was to keep `status = confirmed` with an empty
+     * `confirmed_by`, which the database refuses outright
+     * (`classifications_confirmed_has_author_check`) and which would be a
+     * lie either way: nobody in this installation confirmed it. So the
+     * grade the teacher recorded is restored in full and only the
+     * CONFIRMATION step is handed back to them.
+     */
+    private function unconfirmableDecisionNotice(): string
+    {
+        return $this->t(
+            'Esta classificação estava confirmada por uma conta que não pôde ser associada. Os valores são importados tal como estavam, mas fica por confirmar — a confirmação é uma decisão sua.',
         );
     }
 

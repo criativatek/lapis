@@ -63,9 +63,22 @@ use Illuminate\Support\Collection;
  * author-shaped field the backup carries is an email. The only safe,
  * non-inventive resolution is "this row's author is literally the person
  * confirming THIS import" — their own email, compared case-insensitively.
- * Anything else leaves a nullable author field empty (the fact survives,
- * the provenance doesn't) or, for a NOT NULL author column, blocks the row
- * as `invalid` rather than substituting anyone.
+ *
+ * AUTHORSHIP IS METADATA, NOT A PRECONDITION (0.101.4). An email that
+ * resolves to nobody leaves the author field empty and the row is
+ * imported anyway, carrying a `notice` the preview shows as information
+ * rather than as a block. It used to make the row `invalid`, which meant
+ * a teacher who changed email, a class that changed teacher, a school
+ * transferring responsibility and a restore into a second authorised
+ * account all lost their pedagogical records at the door. Nothing is
+ * attributed to the importer that they did not write, no account is
+ * invented or created, and no email is matched against anyone else's
+ * account.
+ *
+ * A row therefore carries two independent signals: `reason` (why this
+ * row will NOT be written) and `notice` (what will be written, with
+ * something the teacher should know). Only `reason` ever accompanies a
+ * non-`new` classification.
  */
 class BuildImportPlan
 {
