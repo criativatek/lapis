@@ -25,6 +25,61 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.104.1] — 2026-09-01
+
+A importação do calendário escolar chamava **feriado** a tudo o que o documento
+marcasse. Não era um rótulo infeliz: nesta aplicação «feriado» é uma
+`AcademicCalendarException`, e uma exceção letiva é a afirmação de que naquele
+dia **não há aula**. Uma «Reunião de avaliação», uma «Apresentação dos alunos» ou
+um «Almoço-convívio» lidos da grelha entravam na estrutura do ano como dias sem
+aula — e a Fase 5.5 lê essa tabela para decidir que aulas materializar. O ecrã
+dizia «Feriados» por cima da lista inteira, e o professor não tinha como
+descobrir o que a aplicação estava a afirmar em seu nome.
+
+A causa era uma linha só: no fim de `AcademicCalendarParser::readDayGrid()`, tudo
+o que sobrasse dos filtros saía como `AcademicCalendarExceptionType::Holiday`.
+Não havia classificação nenhuma a correr — «feriado» era o valor por omissão de
+uma pergunta que nunca chegava a ser feita.
+
+**Sem migração e sem reclassificação de histórico.** As duas tabelas e os dois
+enums já tinham a forma certa (`holiday`/`school_break`/`non_teaching_day` de um
+lado, `meeting`/`activity`/`field_trip`/`other` do outro); o que faltava era a
+leitura. As linhas que importações anteriores escreveram como feriado ficam como
+estão: distingui-las hoje exigiria reler os ficheiros que já não existem, e
+apagar por regra o que um professor possa ter confirmado ou corrigido à mão seria
+trocar um erro por outro. Corrige-se o comportamento futuro.
+
+### Fixed
+
+- **«Feriado» deixa de ser o valor por omissão.** `ClassifyCalendarDay` decide
+  cada dia com nome por ordem de força da prova: o que o **documento escreve**
+  («Feriado municipal», «Dia não letivo», «Reunião de avaliação», «Visita de
+  estudo», «convívio», «atividade» que não seja «atividade letiva»); o que a
+  **lei** diz daquela data, pelo mesmo `NationalHolidayProvider` que a sugestão de
+  feriados já usa e só para o país do ano letivo; o que o documento **pinta**, que
+  é como o «Dia de Leiria» — feriado municipal que provider nenhum conhece —
+  continua a ser lido como feriado. Sem nenhuma das três, a resposta é o tipo
+  **neutro** («Data relevante»), nunca a mais destrutiva.
+- **Palavras frágeis não classificam nada.** «Apresentação» não está na lista e
+  não vai estar — tanto é o primeiro dia de aulas como um sarau. Fica genérico, à
+  vista e por confirmar (§1, §3.3).
+- **A espécie classificada chega à base de dados.** Uma reunião lida do documento
+  entra no calendário do professor como reunião, e já não como «outro» para toda a
+  gente: `events.*.type` aceita as quatro espécies do enum em vez de só `other`.
+
+### Changed
+
+- **«Datas e eventos escolares»**, e já não «Feriados», é o título da secção — com
+  o texto que diz o que a lista é de facto. As duas listas anteriores («feriados»
+  e «outros acontecimentos») passam a **uma só**, ordenada **por data**, que é a
+  ordem por que um calendário se lê; cada linha diz o que é e para onde vai.
+- A mensagem final da importação conta «dias sem aula criados na estrutura do
+  ano» em vez de enumerar duas das três espécies que a tabela recebe.
+- `ParsedAcademicCalendar` passa a devolver `dayExceptions` e `datedEvents` em vez
+  de `holidays` e `otherDatedItems`. A segunda lista deixou de ser a gaveta do que
+  sobra: é o destino normal de tudo o que um calendário escolar traz e não é um
+  dia sem aula.
+
 ## [0.104.0] — 2026-08-31
 
 Clareza pedagógica na edição de relatórios e na autoavaliação por link, sem

@@ -2,29 +2,35 @@
 
 namespace App\Domain\Import\AcademicCalendar;
 
+use App\Models\CalendarEventType;
+
 /**
- * Uma data com nome que o documento marca e que esta aplicação NÃO SABE
- * CLASSIFICAR — hoje, na prática, os «Fim 9.º ano», «Fim 5/6/7/8.º» e «Fim
- * Pré/1.ºCiclo» que os calendários reais escrevem na coluna de junho.
+ * Uma data com nome que o documento marca e que NÃO É UM DIA SEM AULA — e é isso,
+ * e só isso, que a separa de um ParsedCalendarRange.
  *
- * NEM SE DEITA FORA NEM SE FORÇA NUMA GAVETA. Não é uma exceção letiva — não diz
- * que naquele dia não há aula, diz que a partir dali uma coorte acabou o ano —,
- * e não é o `ends_on` de um AcademicPeriod, porque são três datas para um campo
- * só e a aplicação não modela coortes. Fingir qualquer uma das duas coisas era
- * escrever no calendário uma afirmação que o documento não faz.
+ * ISTO DEIXOU DE SER A GAVETA DO QUE SOBRA. Nasceu para os «Fim 9.º ano» que a
+ * aplicação não sabe arrumar, e hoje é também o destino NORMAL de tudo o que um
+ * calendário escolar traz e não é feriado nem interrupção: reuniões,
+ * apresentações, atividades, convívios. A mudança é de fundo — antes essas datas
+ * eram escritas como feriados, e um feriado apaga a aula do dia.
  *
- * Fica portanto o que é honesto: uma data com um nome, proposta como
- * CalendarEvent do tipo «Data relevante» (valor interno `other`), SEMPRE POR
- * CONFIRMAR, com a explicação à vista. O professor aceita ou rejeita; nenhum dos
- * dois é o que acontece por omissão.
+ * O TIPO VIAJA COM A DATA. `CalendarEventType::Other` («Data relevante») é o
+ * neutro honesto de quando o documento não diz que espécie de acontecimento é;
+ * quando diz — «Reunião de avaliação», «Visita de estudo a Belém» —, é o que ele
+ * diz que fica. Nunca se adivinha a partir de uma palavra frágil (ver
+ * ClassifyCalendarDay).
+ *
+ * `$kind` explica PORQUÊ isto não é uma exceção letiva, que é uma pergunta
+ * diferente de «que espécie de acontecimento é», e a pré-visualização escreve
+ * uma frase diferente para cada uma.
  */
 final readonly class ParsedCalendarMarker
 {
     /**
-     * @param  string  $title  a coorte escrita por extenso — «Fim das atividades
-     *                         letivas — 9.º ano» —, normalizada pelo
-     *                         CohortMarkerTitle a partir da abreviatura da
-     *                         célula, que fica guardada em `$rawText`
+     * @param  string  $title  o nome já em condições de ser lido fora da grelha —
+     *                         num `CohortEnd`, a coorte escrita por extenso pelo
+     *                         CohortMarkerTitle a partir da abreviatura da célula,
+     *                         que fica guardada em `$rawText`
      * @param  string  $date  «Y-m-d»
      * @param  string  $rawText  a célula tal como está escrita no ficheiro
      */
@@ -32,5 +38,7 @@ final readonly class ParsedCalendarMarker
         public string $title,
         public string $date,
         public string $rawText,
+        public CalendarEventType $type = CalendarEventType::Other,
+        public ParsedCalendarMarkerKind $kind = ParsedCalendarMarkerKind::SchoolEvent,
     ) {}
 }

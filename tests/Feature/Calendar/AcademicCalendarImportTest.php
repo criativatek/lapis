@@ -176,8 +176,20 @@ class AcademicCalendarImportTest extends TestCase
 
             $this->assertCount(2, $props['semesters']);
             $this->assertCount(4, $props['schoolBreaks']);
-            $this->assertCount(13, $props['holidays']);
-            $this->assertCount(3, $props['otherItems']);
+            // «Datas e eventos escolares» É UMA LISTA SÓ — quinze dias sem aula
+            // (treze feriados realçados, o feriado municipal escrito por extenso e
+            // o dia não letivo) e sete acontecimentos (quatro do documento e os
+            // três fins de ano por coorte), misturados por data.
+            $this->assertCount(22, $props['datedItems']);
+            $this->assertCount(15, $this->exceptionRows($props));
+            $this->assertCount(7, $this->eventRows($props));
+
+            // POR DATA, e não por tabela de destino: é assim que se confere uma
+            // importação contra um calendário impresso.
+            $dates = array_column($props['datedItems'], 'starts_on');
+            $sorted = $dates;
+            sort($sorted);
+            $this->assertSame($sorted, $dates);
 
             $this->assertSame(Fixture::SCHOOL, $props['schoolName']);
             $this->assertFalse($props['yearMismatch']);
@@ -185,23 +197,83 @@ class AcademicCalendarImportTest extends TestCase
     }
 
     /**
-     * NENHUMA REUNIÃO, NENHUMA ATIVIDADE, NENHUMA VISITA DE ESTUDO. O documento
-     * não tem nenhuma, e os únicos acontecimentos propostos são os três fins de
-     * ano por coorte — todos com o valor `other`, que o professor lê como «Data
-     * relevante», e todos por confirmar.
+     * A PRÉ-VISUALIZAÇÃO NUNCA IMPRIME «FERIADO» POR OMISSÃO.
+     *
+     * Era o que fazia: o professor lia «Reunião de avaliação · Feriado» e não
+     * tinha como saber que a aplicação estava a afirmar que naquele dia não havia
+     * aula. Cada linha diz agora o que É, e o rótulo vem do enum — que é a única
+     * fonte deste texto no servidor — e nunca de uma palavra escrita na página.
      */
     #[Test]
-    public function no_meeting_activity_or_field_trip_is_ever_invented(): void
+    public function every_row_carries_the_kind_it_really_is(): void
     {
         $this->preview()->assertInertia(function (AssertableInertia $page): void {
-            foreach ($page->toArray()['props']['otherItems'] as $item) {
-                $this->assertSame(CalendarEventType::Other->value, $item['type']);
-                // O RÓTULO VIAJA COM A PROPOSTA e vem do enum, que é a única
-                // fonte deste texto no servidor.
-                $this->assertSame('Data relevante', $item['type_label']);
-                $this->assertFalse($item['include']);
+            $props = $page->toArray()['props'];
+
+            $byDate = [];
+            foreach ($props['datedItems'] as $row) {
+                $byDate[$row['starts_on']] = $row;
+            }
+
+            $expected = [
+                // O documento pinta-o de laranja: é a classificação dele.
+                '2030-12-25' => ['Feriado', 'academic_calendar_exception'],
+                // O documento escreve-o por extenso, sem cor nenhuma.
+                '2031-05-13' => ['Feriado', 'academic_calendar_exception'],
+                '2031-04-15' => ['Dia não letivo', 'academic_calendar_exception'],
+                // E estes NÃO retiram aula nenhuma a ninguém.
+                '2030-10-16' => ['Reunião', 'calendar_event'],
+                '2030-11-07' => ['Atividade', 'calendar_event'],
+                '2031-01-15' => ['Visita de estudo', 'calendar_event'],
+                '2030-09-17' => ['Data relevante', 'calendar_event'],
+            ];
+
+            foreach ($expected as $date => [$label, $destination]) {
+                $this->assertArrayHasKey($date, $byDate);
+                $this->assertSame($label, $byDate[$date]['type_label'], "A linha de {$date}.");
+                $this->assertSame($destination, $byDate[$date]['destination'], "A linha de {$date}.");
             }
         });
+    }
+
+    /**
+     * UM ACONTECIMENTO NUNCA VEM PRÉ-MARCADO (§29), seja ele um fim de coorte ou
+     * uma reunião que o documento nomeia. É pessoal — fica com o nome de quem
+     * importa — e traz sempre a explicação de porque é que não é um dia sem aula.
+     */
+    #[Test]
+    public function no_school_event_is_ever_pre_ticked(): void
+    {
+        $this->preview()->assertInertia(function (AssertableInertia $page): void {
+            foreach ($this->eventRows($page->toArray()['props']) as $item) {
+                $this->assertFalse($item['include'], "«{$item['title']}» veio pré-marcado.");
+                $this->assertNotSame('', (string) $item['explanation']);
+            }
+        });
+    }
+
+    /**
+     * A ESPÉCIE CLASSIFICADA CHEGA À BASE DE DADOS, e não «outro» para toda a
+     * gente: uma reunião lida do documento entra no calendário do professor como
+     * reunião.
+     */
+    #[Test]
+    public function a_confirmed_meeting_is_stored_as_a_meeting(): void
+    {
+        $payload = $this->payload();
+
+        foreach ($payload['events'] as $index => $row) {
+            $payload['events'][$index]['include'] = $row['starts_on'] === '2030-10-16';
+        }
+
+        $this->confirm($payload)->assertRedirect();
+
+        $meeting = $this->inTenant(fn () => CalendarEvent::query()
+            ->where('title', 'Reunião de avaliação')
+            ->first());
+
+        $this->assertNotNull($meeting);
+        $this->assertSame(CalendarEventType::Meeting, $meeting->type);
     }
 
     #[Test]
@@ -302,7 +374,7 @@ class AcademicCalendarImportTest extends TestCase
     {
         $props = $this->previewProps();
 
-        foreach ([...$props['schoolBreaks'], ...$props['holidays']] as $row) {
+        foreach ([...$props['schoolBreaks'], ...$this->exceptionRows($props)] as $row) {
             $this->assertSame(Preview::STATE_NEW, $row['state']);
             $this->assertTrue($row['include']);
             $this->assertNull($row['current']);
@@ -354,7 +426,7 @@ class AcademicCalendarImportTest extends TestCase
     {
         $this->existingException(AcademicCalendarExceptionType::SchoolBreak, 'Natal', '2030-12-23', '2030-12-31');
 
-        $christmas = $this->rowFor($this->previewProps()['holidays'], '2030-12-25');
+        $christmas = $this->rowFor($this->exceptionRows($this->previewProps()), '2030-12-25');
 
         $this->assertSame(Preview::STATE_NEW, $christmas['state']);
         $this->assertTrue($christmas['include']);
@@ -383,7 +455,7 @@ class AcademicCalendarImportTest extends TestCase
                 $this->assertTrue($props['yearMismatch']);
                 $this->assertSame('2030/2031', $props['fileAcademicYear']);
 
-                foreach ($props['holidays'] as $row) {
+                foreach ($this->exceptionRows($props) as $row) {
                     $this->assertSame(Preview::STATE_OUT_OF_YEAR, $row['state']);
                     $this->assertFalse($row['include']);
                 }
@@ -422,7 +494,7 @@ class AcademicCalendarImportTest extends TestCase
 
             // Quatro interrupções e treze feriados; nenhum acontecimento, porque
             // nenhum vinha marcado.
-            $this->assertSame(17, AcademicCalendarException::query()->count());
+            $this->assertSame(19, AcademicCalendarException::query()->count());
             $this->assertSame(0, CalendarEvent::query()->count());
         });
     }
@@ -437,7 +509,7 @@ class AcademicCalendarImportTest extends TestCase
         $this->confirm($this->payload())->assertRedirect();
 
         $this->inTenant(function (): void {
-            $this->assertSame(17, AcademicCalendarException::query()->count());
+            $this->assertSame(19, AcademicCalendarException::query()->count());
             $this->assertSame(
                 0,
                 AcademicCalendarException::query()
@@ -519,7 +591,7 @@ class AcademicCalendarImportTest extends TestCase
 
         $this->inTenant(function (): void {
             $this->assertSame(['1.º Semestre'], AcademicPeriod::query()->pluck('label')->all());
-            $this->assertSame(17, AcademicCalendarException::query()->count());
+            $this->assertSame(19, AcademicCalendarException::query()->count());
         });
     }
 
@@ -619,7 +691,7 @@ class AcademicCalendarImportTest extends TestCase
 
         $props = $this->previewProps();
 
-        foreach ([...$props['schoolBreaks'], ...$props['holidays']] as $row) {
+        foreach ([...$props['schoolBreaks'], ...$this->exceptionRows($props)] as $row) {
             $this->assertSame(Preview::STATE_EXISTS, $row['state'], "{$row['title']} devia estar já existente.");
         }
 
@@ -637,7 +709,14 @@ class AcademicCalendarImportTest extends TestCase
     public function a_confirmed_marker_becomes_an_ordinary_calendar_event_of_the_importing_teacher(): void
     {
         $payload = $this->payload();
-        $payload['events'][0]['include'] = true;
+
+        // PELA DATA E NÃO PELA POSIÇÃO. A lista dos acontecimentos deixou de ser
+        // só dos três fins de coorte no momento em que as reuniões e as atividades
+        // pararam de ser escritas como feriados, e vem ordenada por data — «o
+        // primeiro da lista» já não quer dizer nada.
+        foreach ($payload['events'] as $index => $row) {
+            $payload['events'][$index]['include'] = $row['starts_on'] === '2031-06-04';
+        }
 
         $this->confirm($payload)->assertRedirect();
 
@@ -703,7 +782,9 @@ class AcademicCalendarImportTest extends TestCase
         ]);
 
         $this->assertSame($before, $after);
-        $this->assertSame(3, $this->inTenant(fn (): int => CalendarEvent::query()->count()));
+        // Sete: os três fins de coorte e os quatro acontecimentos que o documento
+        // nomeia (a apresentação, a reunião, o convívio e a visita de estudo).
+        $this->assertSame(7, $this->inTenant(fn (): int => CalendarEvent::query()->count()));
     }
 
     /**
@@ -718,9 +799,13 @@ class AcademicCalendarImportTest extends TestCase
                 $message = (string) ($flash['toast']['message'] ?? '');
 
                 return str_contains($message, '2 período(s) criado(s).')
-                    && str_contains($message, '17 feriado(s)/interrupção(ões) criado(s).')
-                    // Os três marcadores de coorte, que ninguém marcou.
-                    && str_contains($message, '3 linha(s) não foram selecionadas.');
+                    // «DIAS SEM AULA» E JÁ NÃO «FERIADOS/INTERRUPÇÕES»: a mesma
+                    // tabela recebe agora também os dias não letivos, e a frase
+                    // tinha de deixar de enumerar duas das três espécies.
+                    && str_contains($message, '19 dia(s) sem aula criado(s) na estrutura do ano.')
+                    // Os sete acontecimentos, que ninguém marcou — nenhum deles
+                    // vem pré-selecionado, e é essa a razão de estarem aqui.
+                    && str_contains($message, '7 linha(s) não foram selecionadas.');
             });
     }
 
@@ -917,7 +1002,7 @@ class AcademicCalendarImportTest extends TestCase
             'starts_on' => $row['starts_on'],
             'ends_on' => $row['ends_on'],
             'note' => $row['note'],
-        ], [...$props['schoolBreaks'], ...$props['holidays']]);
+        ], [...$props['schoolBreaks'], ...$this->exceptionRows($props)]);
 
         $events = array_map(fn (array $row): array => [
             'include' => $row['include'],
@@ -925,7 +1010,7 @@ class AcademicCalendarImportTest extends TestCase
             'title' => $row['title'],
             'starts_on' => $row['starts_on'],
             'ends_on' => $row['ends_on'],
-        ], $props['otherItems']);
+        ], $this->eventRows($props));
 
         return [
             'academic_year_ulid' => $props['academicYear']['ulid'],
@@ -1056,5 +1141,45 @@ class AcademicCalendarImportTest extends TestCase
     private function inTenant(callable $callback): mixed
     {
         return app(CurrentOrganization::class)->runFor($this->organization, $callback);
+    }
+
+    /**
+     * As linhas de «Datas e eventos escolares» que vão para a estrutura do ano —
+     * os dias em que NÃO há aula.
+     *
+     * A SECÇÃO É UMA E OS DESTINOS SÃO DOIS, e é `destination` que os separa. Era
+     * `$props['holidays']` enquanto tudo o que o documento marcasse era escrito
+     * como feriado; hoje a lista traz feriados, dias não letivos, reuniões e
+     * atividades misturados por data, que é a ordem por que um calendário se lê.
+     *
+     * @param  array<string, mixed>  $props
+     * @return list<array<string, mixed>>
+     */
+    private function exceptionRows(array $props): array
+    {
+        return $this->rowsGoingTo($props, 'academic_calendar_exception');
+    }
+
+    /**
+     * As que vão para o calendário do professor e não retiram aula nenhuma.
+     *
+     * @param  array<string, mixed>  $props
+     * @return list<array<string, mixed>>
+     */
+    private function eventRows(array $props): array
+    {
+        return $this->rowsGoingTo($props, 'calendar_event');
+    }
+
+    /**
+     * @param  array<string, mixed>  $props
+     * @return list<array<string, mixed>>
+     */
+    private function rowsGoingTo(array $props, string $destination): array
+    {
+        return array_values(array_filter(
+            $props['datedItems'],
+            fn (array $row): bool => $row['destination'] === $destination,
+        ));
     }
 }

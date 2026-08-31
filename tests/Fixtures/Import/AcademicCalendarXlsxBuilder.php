@@ -126,6 +126,41 @@ class AcademicCalendarXlsxBuilder
         '2031-02-04' => 'Carnaval',
     ];
 
+    /**
+     * O QUE UM CALENDÁRIO ESCOLAR TEM E NÃO É FERIADO NENHUM — e que, até esta
+     * correção, era escrito como feriado só por estar escrito numa célula.
+     *
+     * Cada um destes está aqui por responder a uma pergunta diferente:
+     *
+     *   «Apresentação dos alunos» — a palavra é FRÁGIL de propósito. Tanto pode
+     *     ser o primeiro dia de aulas como um sarau, e a resposta certa a isso é
+     *     não adivinhar: fica «Data relevante». O que NUNCA pode ser é feriado.
+     *   «Reunião de avaliação» — a palavra é segura e o tipo sai dela.
+     *   «Almoço-convívio» — a palavra é segura, e é o exemplo de que um dia com
+     *     nome pode ser uma atividade da escola e não um dia sem aulas.
+     *   «Visita de estudo a Belém» — «visita de estudo» inteira, e nunca a
+     *     palavra «visita» sozinha.
+     *   «Dia não letivo (concedido)» — a escola a dizer por extenso que não há
+     *     aula sem ser por ser feriado. É uma exceção letiva, mas não é Holiday.
+     *   «Feriado municipal» — a palavra «feriado» escrita pela escola, numa
+     *     célula SEM realce de cor nenhum: prova que a palavra do documento
+     *     chega sozinha, sem depender do laranja.
+     *
+     * Todos caem em dias de semana, dentro de um semestre e fora de qualquer
+     * interrupção — ou seja, em células que o documento pinta com o tom pálido
+     * do semestre e nunca com o laranja dos feriados.
+     *
+     * @var array<string, string> data => rótulo, tal como fica escrito a seguir ao dia
+     */
+    public const SCHOOL_EVENTS = [
+        '2030-09-17' => 'Apresentação dos alunos',
+        '2030-10-16' => 'Reunião de avaliação',
+        '2030-11-07' => 'Almoço-convívio',
+        '2031-01-15' => 'Visita de estudo a Belém',
+        '2031-04-15' => 'Dia não letivo (concedido)',
+        '2031-05-13' => 'Feriado municipal',
+    ];
+
     /** @var array<string, string>  marcadores de período na grelha, que têm de ser IGNORADOS */
     public const PERIOD_MARKERS = [
         '2030-09-12' => 'Início 1º S',
@@ -313,6 +348,10 @@ class AcademicCalendarXlsxBuilder
 
         if (isset(self::NAMED_BREAK_DAYS[$date])) {
             return $day.' '.self::NAMED_BREAK_DAYS[$date];
+        }
+
+        if (isset(self::SCHOOL_EVENTS[$date])) {
+            return $day.' '.self::SCHOOL_EVENTS[$date];
         }
 
         return (string) $day;

@@ -66,39 +66,49 @@ type CurrentException = {
     source_label: string;
 };
 
-type ExceptionProposal = {
+/**
+ * PARA ONDE A LINHA VAI, que é a única diferença que resta entre uma data e
+ * outra: `academic_calendar_exception` é a estrutura do ano — um dia em que NÃO
+ * HÁ AULA —, `calendar_event` é o calendário do professor, que não retira aula
+ * nenhuma a ninguém.
+ */
+type Destination = 'academic_calendar_exception' | 'calendar_event';
+
+/**
+ * Uma data com nome lida do documento — feriado, interrupção, reunião, atividade
+ * ou uma data que o documento marca sem dizer o que é.
+ *
+ * UM TIPO SÓ PARA AS DUAS ESPÉCIES, e é isso que o ecrã passou a mostrar: eram
+ * dois («feriados» e «outros acontecimentos») quando tudo o que o documento
+ * marcasse era escrito como feriado. `destination` diz para onde vai e
+ * `type_label` diz o que é; nenhuma linha volta a dizer «Feriado» por o servidor
+ * não ter sabido responder.
+ *
+ * `type_short_label` só existe nas exceções e `explanation` só nos
+ * acontecimentos — cada um vem de um lado do servidor e nenhum dos dois se
+ * inventa aqui quando falta.
+ */
+type DatedItem = {
     key: string;
+    destination: Destination;
     type: string;
     type_label: string;
-    type_short_label: string;
+    type_short_label?: string;
     title: string;
     starts_on: string;
     ends_on: string;
     note: string | null;
     raw_text: string;
+    explanation?: string;
     state: State;
     current: CurrentException | null;
     include: boolean;
 };
 
-type EventProposal = {
-    key: string;
-    type: string;
-    type_label: string;
-    title: string;
-    starts_on: string;
-    ends_on: string;
-    raw_text: string;
-    explanation: string;
-    state: State;
-    include: boolean;
-};
-
 const props = defineProps<{
     semesters: SemesterProposal[];
-    schoolBreaks: ExceptionProposal[];
-    holidays: ExceptionProposal[];
-    otherItems: EventProposal[];
+    schoolBreaks: DatedItem[];
+    datedItems: DatedItem[];
     counts: Record<string, number>;
     academicYear: {
         ulid: string;
@@ -139,41 +149,65 @@ const form = useForm({
     })),
     breaks: props.schoolBreaks.map((row) => ({
         include: row.include,
+        destination: row.destination,
         type: row.type,
         title: row.title,
         starts_on: row.starts_on,
         ends_on: row.ends_on,
         note: row.note,
     })),
-    holidays: props.holidays.map((row) => ({
+    datedItems: props.datedItems.map((row) => ({
         include: row.include,
+        destination: row.destination,
         type: row.type,
         title: row.title,
         starts_on: row.starts_on,
         ends_on: row.ends_on,
         note: row.note,
-    })),
-    events: props.otherItems.map((row) => ({
-        include: row.include,
-        type: row.type,
-        title: row.title,
-        starts_on: row.starts_on,
-        ends_on: row.ends_on,
     })),
 });
 
-// As duas secções de exceções são UMA lista para o servidor — a mesma tabela, a
-// mesma validação — e duas para quem lê, porque um feriado e uma interrupção
-// respondem à mesma pergunta em escalas muito diferentes.
+/**
+ * UMA SECÇÃO PARA QUEM LÊ, DUAS LISTAS PARA QUEM GRAVA.
+ *
+ * «Datas e eventos escolares» é uma lista só porque é assim que um calendário se
+ * lê — por data, e não por tabela de destino. Mas as duas espécies gravam-se em
+ * sítios diferentes e sob validações diferentes, e por isso separam-se aqui, no
+ * último momento, por `destination` — que veio do servidor e não de um palpite
+ * desta página.
+ */
 form.transform((data) => ({
     academic_year_ulid: data.academic_year_ulid,
     semesters: data.semesters,
-    exceptions: [...data.breaks, ...data.holidays],
-    events: data.events,
+    exceptions: [
+        ...data.breaks,
+        ...data.datedItems.filter(
+            (row) => row.destination === 'academic_calendar_exception',
+        ),
+    ],
+    events: data.datedItems.filter(
+        (row) => row.destination === 'calendar_event',
+    ),
 }));
 
-/** Onde as interrupções acabam e os feriados começam, na lista fundida acima. */
-const holidayOffset = computed(() => form.breaks.length);
+/**
+ * Em que posição da lista submetida é que cada data desta secção vai parar — o
+ * que é preciso para pôr o erro do servidor debaixo da linha CERTA.
+ *
+ * As interrupções ocupam o início de `exceptions`, e por isso as exceções desta
+ * secção começam a contar depois delas. Os acontecimentos têm lista própria e
+ * contam do zero.
+ */
+const submittedIndexes = computed(() => {
+    let exceptionIndex = form.breaks.length;
+    let eventIndex = 0;
+
+    return props.datedItems.map((row) =>
+        row.destination === 'academic_calendar_exception'
+            ? exceptionIndex++
+            : eventIndex++,
+    );
+});
 
 const errors = computed(
     () => form.errors as unknown as Record<string, string | undefined>,
@@ -187,17 +221,24 @@ function semesterError(index: number): string | undefined {
     );
 }
 
-function exceptionError(index: number): string | undefined {
+function breakError(index: number): string | undefined {
     return (
         errors.value[`exceptions.${index}.ends_on`] ??
         errors.value[`exceptions.${index}.starts_on`]
     );
 }
 
-function eventError(index: number): string | undefined {
+function datedItemError(index: number): string | undefined {
+    const row = props.datedItems[index];
+    const group =
+        row.destination === 'academic_calendar_exception'
+            ? 'exceptions'
+            : 'events';
+    const at = submittedIndexes.value[index];
+
     return (
-        errors.value[`events.${index}.ends_on`] ??
-        errors.value[`events.${index}.starts_on`]
+        errors.value[`${group}.${at}.ends_on`] ??
+        errors.value[`${group}.${at}.starts_on`]
     );
 }
 
@@ -243,7 +284,7 @@ function range(startsOn: string, endsOn: string): string {
  * do documento na linha que já existe. Duas ações diferentes atrás da mesma caixa
  * exigem que a caixa diga qual é, e não que o professor a descubra depois.
  */
-function includeLabel(row: ExceptionProposal): string {
+function includeLabel(row: DatedItem): string {
     return row.state === 'correspondence'
         ? `Adotar a designação «${row.title}»`
         : `Incluir ${row.title}`;
@@ -263,8 +304,7 @@ const selectedCount = computed(
     () =>
         form.semesters.filter((row) => row.include).length +
         form.breaks.filter((row) => row.include).length +
-        form.holidays.filter((row) => row.include).length +
-        form.events.filter((row) => row.include).length,
+        form.datedItems.filter((row) => row.include).length,
 );
 
 const unresolvedChoices = computed(
@@ -276,24 +316,45 @@ const unresolvedChoices = computed(
         ).length,
 );
 
-const exceptionSections = computed(() => [
+/**
+ * «DATAS E EVENTOS ESCOLARES» E JÁ NÃO «FERIADOS».
+ *
+ * O título anterior era uma afirmação sobre coisas que a aplicação não tinha
+ * verificado: o documento marca também reuniões, apresentações, atividades e
+ * convívios, e todos apareciam aqui debaixo da palavra «Feriados» — que nesta
+ * aplicação não é um rótulo, é a declaração de que naquele dia não há aula.
+ * O texto de apoio diz agora o que a lista é de facto, e cada linha diz o que é.
+ */
+const sections = computed(() => [
     {
+        key: 'breaks' as const,
         title: 'Interrupções letivas',
         description:
             'Cada uma é um intervalo em que não há aula. Vão para a estrutura do ano, ao lado dos períodos.',
+        empty: 'O documento não traz nenhuma.',
         rows: props.schoolBreaks,
         model: form.breaks,
-        offset: 0,
     },
     {
-        title: 'Feriados',
+        key: 'dated' as const,
+        title: 'Datas e eventos escolares',
         description:
-            'Um dia cada. Um feriado que caia dentro de uma interrupção é proposto na mesma — o documento nomeia-o, e as duas coisas são verdadeiras.',
-        rows: props.holidays,
-        model: form.holidays,
-        offset: holidayOffset.value,
+            'Selecione as datas e eventos que pretende importar. Alguns correspondem a feriados; outros podem representar reuniões, atividades, apresentações ou outros acontecimentos do calendário escolar.',
+        empty: 'O documento não marca nenhuma.',
+        rows: props.datedItems,
+        model: form.datedItems,
     },
 ]);
+
+/** O erro daquela linha, seja qual for a lista em que ela vai ser gravada. */
+function rowError(
+    sectionKey: 'breaks' | 'dated',
+    index: number,
+): string | undefined {
+    return sectionKey === 'breaks'
+        ? breakError(index)
+        : datedItemError(index);
+}
 
 function submit(): void {
     form.post('/academic-calendar-imports/confirm');
@@ -504,10 +565,10 @@ function submit(): void {
                 </div>
             </section>
 
-            <!-- ────────────────────────── feriados e interrupções letivas ─── -->
+            <!-- ──────── interrupções letivas · datas e eventos escolares ──── -->
             <section
-                v-for="section in exceptionSections"
-                :key="section.title"
+                v-for="section in sections"
+                :key="section.key"
                 class="space-y-3 rounded-lg border border-border p-4"
             >
                 <div>
@@ -521,7 +582,7 @@ function submit(): void {
                     v-if="section.rows.length === 0"
                     class="text-sm text-muted-foreground"
                 >
-                    O documento não traz nenhuma.
+                    {{ section.empty }}
                 </p>
 
                 <ul v-else class="divide-y divide-border">
@@ -561,6 +622,20 @@ function submit(): void {
                                         class="block text-xs text-muted-foreground"
                                     >
                                         {{ row.note }}
+                                    </span>
+                                    <!--
+                                        PORQUE É QUE ESTA DATA NÃO É UM DIA SEM
+                                        AULA, dito na própria linha. Só as que
+                                        vão para o calendário do professor a
+                                        trazem, e é o servidor que a escreve —
+                                        esta página não tem opinião sobre o
+                                        assunto.
+                                    -->
+                                    <span
+                                        v-if="row.explanation"
+                                        class="block text-xs text-muted-foreground"
+                                    >
+                                        {{ row.explanation }}
                                     </span>
                                     <!--
                                         O QUE ESTA CAIXA FAZ, ao lado da caixa.
@@ -668,78 +743,7 @@ function submit(): void {
                             por isso esta linha não pode ser gravada.
                         </p>
 
-                        <InputError
-                            :message="exceptionError(section.offset + index)"
-                        />
-                    </li>
-                </ul>
-            </section>
-
-            <!-- ────────────────────────────── outros acontecimentos ───────── -->
-            <section
-                v-if="props.otherItems.length > 0"
-                class="space-y-3 rounded-lg border border-dashed border-border p-4"
-            >
-                <div>
-                    <h2 class="text-base font-semibold">
-                        Outros acontecimentos
-                    </h2>
-                    <!--
-                        NEM SE DEITA FORA NEM SE FORÇA NUMA GAVETA (§28/29). Estas
-                        datas existem no documento e esta aplicação não as sabe
-                        classificar — ficam propostas, explicadas, e SEMPRE por
-                        confirmar.
-                    -->
-                    <p class="mt-1 text-xs text-muted-foreground">
-                        O documento marca estas datas e esta aplicação não as
-                        sabe classificar. Ficam como acontecimentos teus, se as
-                        quiseres guardar — nenhuma vem pré-selecionada.
-                    </p>
-                </div>
-
-                <ul class="divide-y divide-border">
-                    <li
-                        v-for="(row, index) in props.otherItems"
-                        :key="row.key"
-                        class="space-y-2 py-3"
-                    >
-                        <div
-                            class="flex flex-wrap items-start justify-between gap-3"
-                        >
-                            <label class="flex min-w-0 items-start gap-2.5">
-                                <input
-                                    v-model="form.events[index].include"
-                                    type="checkbox"
-                                    class="mt-1"
-                                    :disabled="row.state === 'out_of_year'"
-                                    :aria-label="`Incluir ${row.title}`"
-                                />
-                                <span class="min-w-0 text-sm">
-                                    <span class="block font-medium">{{
-                                        row.title
-                                    }}</span>
-                                    <span class="block text-muted-foreground">
-                                        {{ longDate(row.starts_on) }} ·
-                                        {{ row.type_label }}
-                                    </span>
-                                    <span
-                                        class="block text-xs text-muted-foreground"
-                                    >
-                                        No documento: «{{ row.raw_text }}»
-                                    </span>
-                                    <span
-                                        class="block text-xs text-muted-foreground"
-                                    >
-                                        {{ row.explanation }}
-                                    </span>
-                                </span>
-                            </label>
-                            <Badge variant="outline">
-                                {{ stateLabels[row.state] }}
-                            </Badge>
-                        </div>
-
-                        <InputError :message="eventError(index)" />
+                        <InputError :message="rowError(section.key, index)" />
                     </li>
                 </ul>
             </section>

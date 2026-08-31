@@ -12,7 +12,6 @@ use App\Models\AcademicCalendarExceptionType;
 use App\Models\AcademicPeriod;
 use App\Models\AcademicYear;
 use App\Models\CalendarEvent;
-use App\Models\CalendarEventType;
 use App\Models\User;
 use App\Services\AcademicCalendar\MatchAcademicCalendarExceptions;
 use App\Services\AcademicYearService;
@@ -143,6 +142,12 @@ class AcademicCalendarImportController extends Controller implements HasMiddlewa
             $calendar = $this->parser->parse(
                 $data['calendar']->getRealPath(),
                 (int) $academicYear->starts_on->year,
+                // O PAÍS DO ANO LETIVO E NÃO UM PAÍS POR OMISSÃO (§16). Serve só
+                // para o leitor poder confirmar que uma data é feriado nacional POR
+                // LEI antes de a classificar como tal; um ano sem país, ou de um
+                // país sem provider, apenas fica com menos uma prova — e nunca com
+                // o calendário português a passar por universal.
+                $academicYear->country_code,
             );
         } catch (AcademicCalendarFileException $exception) {
             // Todas estas mensagens são escritas para o professor — uma folha que
@@ -464,9 +469,11 @@ class AcademicCalendarImportController extends Controller implements HasMiddlewa
             // A mesma disciplina de chave natural das exceções, com a chave que um
             // acontecimento tem: dono, espécie, título e datas. Sem ela, confirmar
             // duas vezes a mesma proposta deixava dois «Fim 9.º ano» no mesmo dia.
+            $type = (string) $row['type'];
+
             $duplicate = CalendarEvent::query()
                 ->where('user_id', $actor->getKey())
-                ->where('type', CalendarEventType::Other->value)
+                ->where('type', $type)
                 ->where('title', $title)
                 ->whereDate('starts_on', $startsOn)
                 ->whereDate('ends_on', $endsOn)
@@ -481,7 +488,12 @@ class AcademicCalendarImportController extends Controller implements HasMiddlewa
             $this->saveCalendarEvent->execute(
                 null,
                 [
-                    'type' => CalendarEventType::Other->value,
+                    // A ESPÉCIE QUE FOI CLASSIFICADA, e não «outro» para toda a
+                    // gente. Uma reunião lida do documento entra no calendário como
+                    // reunião; o que não se soube classificar entra como «Data
+                    // relevante», que é o neutro e não um feriado. A lista do que é
+                    // aceitável está no Form Request, e é ele quem a impõe.
+                    'type' => $type,
                     'title' => $title,
                     'starts_on' => $startsOn,
                     'ends_on' => $endsOn,
@@ -533,7 +545,7 @@ class AcademicCalendarImportController extends Controller implements HasMiddlewa
         }
 
         if ($result['exceptions_created'] > 0) {
-            $parts[] = __(':total feriado(s)/interrupção(ões) criado(s).', ['total' => $result['exceptions_created']]);
+            $parts[] = __(':total dia(s) sem aula criado(s) na estrutura do ano.', ['total' => $result['exceptions_created']]);
         }
 
         if ($result['exceptions_retitled'] > 0) {

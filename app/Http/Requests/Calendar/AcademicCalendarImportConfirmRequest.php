@@ -134,9 +134,21 @@ class AcademicCalendarImportConfirmRequest extends FormRequest
             // uma importação podia declarar-se escrita à mão, e a coluna deixava de
             // responder honestamente à pergunta que existe para responder.
 
-            'events' => ['sometimes', 'array', 'max:50'],
+            // `max:50` SUBIU PARA 200, a par das exceções. Enquanto tudo o que o
+            // documento marcava era escrito como feriado, esta lista tinha três
+            // linhas — os fins de coorte — e cinquenta era um teto que ninguém
+            // alcançava. Agora é aqui que aterram as reuniões, as atividades e os
+            // convívios de um ano inteiro, e cinquenta passou a ser um limite que um
+            // calendário real atinge.
+            'events' => ['sometimes', 'array', 'max:200'],
             'events.*.include' => ['required', 'boolean'],
-            'events.*.type' => ['required', Rule::in([CalendarEventType::Other->value])],
+            // AS QUATRO ESPÉCIES, e já não só «outro». Deixou de haver uma única
+            // espécie possível no momento em que a importação passou a classificar o
+            // que lê: recusar aqui uma «Reunião» que a pré-visualização propôs como
+            // reunião seria recusar o próprio ecrã anterior. O conjunto continua
+            // FECHADO — é o enum e nada mais —, e continua a ser este pedido a
+            // decidi-lo e nunca o cliente a declará-lo.
+            'events.*.type' => ['required', Rule::enum(CalendarEventType::class)],
             'events.*.title' => ['required', 'string', 'max:200'],
             'events.*.starts_on' => ['nullable', 'date_format:Y-m-d'],
             'events.*.ends_on' => ['nullable', 'date_format:Y-m-d'],

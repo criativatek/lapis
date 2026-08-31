@@ -5,13 +5,13 @@ namespace App\Services\Import\AcademicCalendar;
 use App\Domain\AcademicCalendar\AcademicCalendarExceptionMatch;
 use App\Domain\Import\AcademicCalendar\ParsedAcademicCalendar;
 use App\Domain\Import\AcademicCalendar\ParsedCalendarMarker;
+use App\Domain\Import\AcademicCalendar\ParsedCalendarMarkerKind;
 use App\Domain\Import\AcademicCalendar\ParsedCalendarRange;
 use App\Domain\Import\AcademicCalendar\ParsedSemester;
 use App\Models\AcademicCalendarException;
 use App\Models\AcademicPeriod;
 use App\Models\AcademicPeriodKind;
 use App\Models\AcademicYear;
-use App\Models\CalendarEventType;
 use App\Services\AcademicCalendar\MatchAcademicCalendarExceptions;
 use Illuminate\Database\Eloquent\Collection;
 
@@ -69,10 +69,24 @@ use Illuminate\Database\Eloquent\Collection;
  * ─────────────────────────────────────────────────────────────────────────────
  * O QUE NUNCA VAI PARA DOIS SÍTIOS (§30). Cada facto tem UM destino canónico: as
  * datas dos semestres são AcademicPeriod, os feriados e as interrupções são
- * AcademicCalendarException, e os fins de ano por coorte são CalendarEvent do tipo
- * «outro». Um feriado não é também um acontecimento, e um semestre não é também
- * uma exceção — copiar o mesmo facto para duas tabelas era garantir que um dia
- * discordariam.
+ * AcademicCalendarException, e os acontecimentos escolares são CalendarEvent. Um
+ * feriado não é também um acontecimento, e um semestre não é também uma exceção —
+ * copiar o mesmo facto para duas tabelas era garantir que um dia discordariam.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * «DATAS E EVENTOS ESCOLARES» É UMA LISTA SÓ, E TEM DE SER.
+ *
+ * Havia aqui duas: «feriados» e «outros acontecimentos». A separação era falsa,
+ * porque a primeira recebia TUDO o que o documento marcasse — o professor lia
+ * «Reunião de avaliação · Feriado» e não tinha como saber que a aplicação estava a
+ * afirmar que naquele dia não havia aula.
+ *
+ * Hoje as duas espécies vêm classificadas e vêm MISTURADAS, por data, numa única
+ * secção. É a ordem em que estão no documento e é a ordem por que se lê um
+ * calendário; cada linha diz o que É — «Feriado», «Reunião», «Atividade», «Data
+ * relevante» — e para onde vai. Duas caixas separadas obrigavam quem lê a saber de
+ * antemão a diferença entre duas tabelas desta aplicação para encontrar uma data.
+ * `destination` viaja em cada linha, e é ele que separa o que se grava onde.
  */
 class BuildAcademicCalendarImportPreview
 {
@@ -103,8 +117,7 @@ class BuildAcademicCalendarImportPreview
      * @return array{
      *     semesters: list<array<string, mixed>>,
      *     schoolBreaks: list<array<string, mixed>>,
-     *     holidays: list<array<string, mixed>>,
-     *     otherItems: list<array<string, mixed>>,
+     *     datedItems: list<array<string, mixed>>,
      *     counts: array<string, int>
      * }
      */
@@ -123,22 +136,30 @@ class BuildAcademicCalendarImportPreview
             $schoolBreaks[] = $this->exceptionProposal($range, "break-{$index}", $exceptions, $academicYear);
         }
 
-        $holidays = [];
-        foreach ($calendar->holidays as $index => $range) {
-            $holidays[] = $this->exceptionProposal($range, "holiday-{$index}", $exceptions, $academicYear);
+        $datedItems = [];
+        foreach ($calendar->dayExceptions as $index => $range) {
+            $datedItems[] = $this->exceptionProposal($range, "exception-{$index}", $exceptions, $academicYear);
         }
 
-        $otherItems = [];
-        foreach ($calendar->otherDatedItems as $index => $marker) {
-            $otherItems[] = $this->markerProposal($marker, $index, $academicYear);
+        foreach ($calendar->datedEvents as $index => $marker) {
+            $datedItems[] = $this->markerProposal($marker, $index, $academicYear);
         }
+
+        // POR DATA, e não «primeiro as exceções e depois os acontecimentos». Quem
+        // confere uma importação está a comparar esta lista com um calendário
+        // impresso, e um calendário impresso está por data. A ordem interna das
+        // tabelas desta aplicação não é assunto de quem lê.
+        usort(
+            $datedItems,
+            fn (array $left, array $right): int => [$left['starts_on'], $left['title']]
+                <=> [$right['starts_on'], $right['title']],
+        );
 
         return [
             'semesters' => $semesters,
             'schoolBreaks' => $schoolBreaks,
-            'holidays' => $holidays,
-            'otherItems' => $otherItems,
-            'counts' => $this->counts($semesters, $schoolBreaks, $holidays, $otherItems),
+            'datedItems' => $datedItems,
+            'counts' => $this->counts($semesters, $schoolBreaks, $datedItems),
         ];
     }
 
@@ -293,7 +314,7 @@ class BuildAcademicCalendarImportPreview
         ];
     }
 
-    // ───────────────────────────────────────────────────── outros acontecimentos
+    // ────────────────────────────────────────────────── acontecimentos escolares
 
     /**
      * @return array<string, mixed>
@@ -303,20 +324,25 @@ class BuildAcademicCalendarImportPreview
         $inYear = $this->insideYear($academicYear, $marker->date, $marker->date);
 
         return [
-            'key' => "other-{$index}",
+            'key' => "event-{$index}",
             'destination' => 'calendar_event',
-            'type' => CalendarEventType::Other->value,
-            'type_label' => CalendarEventType::Other->label(),
+            'type' => $marker->type->value,
+            'type_label' => $marker->type->label(),
             'title' => $marker->title,
             'starts_on' => $marker->date,
             'ends_on' => $marker->date,
+            'note' => null,
             'raw_text' => $marker->rawText,
             // A explicação viaja com a proposta e não vive só na página: é ela que
-            // torna «outro acontecimento» uma escolha informada em vez de uma
-            // gaveta onde se despejou o que não se soube arrumar.
-            'explanation' => __('Nomeia o fim do ano letivo de um grupo de anos de escolaridade. Esta aplicação não distingue anos de escolaridade dentro de um período, por isso não pode ser guardado como data de fim de período — fica como acontecimento, se quiser guardá-lo.'),
-            // SEMPRE POR CONFIRMAR (§29). É a proposta menos segura de toda a
-            // importação e é a única que não vem pré-selecionada mesmo sendo nova.
+            // torna a linha uma escolha informada. E SÃO DUAS, porque as duas razões
+            // são mesmo diferentes — dizer «não sei classificar isto» sobre uma
+            // reunião seria falso, e dizer «é um acontecimento como os outros» sobre
+            // um fim de coorte escondia a única coisa que ali é preciso explicar.
+            'explanation' => $marker->kind === ParsedCalendarMarkerKind::CohortEnd
+                ? __('Nomeia o fim do ano letivo de um grupo de anos de escolaridade. Esta aplicação não distingue anos de escolaridade dentro de um período, por isso não pode ser guardado como data de fim de período — fica como acontecimento, se quiser guardá-lo.')
+                : __('O documento marca esta data sem lhe chamar feriado nem interrupção. Fica como acontecimento do seu calendário e não retira aulas a este dia.'),
+            // SEMPRE POR CONFIRMAR (§29). Um acontecimento é PESSOAL — fica com o
+            // nome de quem importa —, e nada disto é pré-selecionado por comodidade.
             'state' => $inYear ? self::STATE_NEW : self::STATE_OUT_OF_YEAR,
             'current' => null,
             'include' => false,

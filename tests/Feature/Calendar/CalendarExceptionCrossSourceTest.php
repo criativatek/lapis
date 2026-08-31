@@ -113,7 +113,7 @@ class CalendarExceptionCrossSourceTest extends TestCase
 
         $this->assertStoredTitle(self::LABOUR_DAY, self::LABOUR_DAY_NATIONAL);
 
-        $holidays = $this->previewProps()['holidays'];
+        $holidays = $this->exceptionRows($this->previewProps());
 
         // O 1 DE MAIO: designações diferentes, e por isso «designação diferente» —
         // e NUNCA «novo», que é a asserção que importa.
@@ -352,7 +352,7 @@ class CalendarExceptionCrossSourceTest extends TestCase
 
         $props = $this->previewProps();
 
-        foreach ([...$props['schoolBreaks'], ...$props['holidays']] as $row) {
+        foreach ([...$props['schoolBreaks'], ...$this->exceptionRows($props)] as $row) {
             $this->assertSame(
                 Preview::STATE_EXISTS,
                 $row['state'],
@@ -459,7 +459,7 @@ class CalendarExceptionCrossSourceTest extends TestCase
             'starts_on' => $row['starts_on'],
             'ends_on' => $row['ends_on'],
             'note' => $row['note'],
-        ], [...$props['schoolBreaks'], ...$props['holidays']]);
+        ], [...$props['schoolBreaks'], ...$this->exceptionRows($props)]);
 
         return [
             'academic_year_ulid' => $props['academicYear']['ulid'],
@@ -572,5 +572,45 @@ class CalendarExceptionCrossSourceTest extends TestCase
     private function inTenant(callable $callback): mixed
     {
         return app(CurrentOrganization::class)->runFor($this->organization, $callback);
+    }
+
+    /**
+     * As linhas de «Datas e eventos escolares» que vão para a estrutura do ano —
+     * os dias em que NÃO há aula.
+     *
+     * A SECÇÃO É UMA E OS DESTINOS SÃO DOIS, e é `destination` que os separa. Era
+     * `$props['holidays']` enquanto tudo o que o documento marcasse era escrito
+     * como feriado; hoje a lista traz feriados, dias não letivos, reuniões e
+     * atividades misturados por data, que é a ordem por que um calendário se lê.
+     *
+     * @param  array<string, mixed>  $props
+     * @return list<array<string, mixed>>
+     */
+    private function exceptionRows(array $props): array
+    {
+        return $this->rowsGoingTo($props, 'academic_calendar_exception');
+    }
+
+    /**
+     * As que vão para o calendário do professor e não retiram aula nenhuma.
+     *
+     * @param  array<string, mixed>  $props
+     * @return list<array<string, mixed>>
+     */
+    private function eventRows(array $props): array
+    {
+        return $this->rowsGoingTo($props, 'calendar_event');
+    }
+
+    /**
+     * @param  array<string, mixed>  $props
+     * @return list<array<string, mixed>>
+     */
+    private function rowsGoingTo(array $props, string $destination): array
+    {
+        return array_values(array_filter(
+            $props['datedItems'],
+            fn (array $row): bool => $row['destination'] === $destination,
+        ));
     }
 }

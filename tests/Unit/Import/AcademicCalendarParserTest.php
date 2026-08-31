@@ -3,10 +3,15 @@
 namespace Tests\Unit\Import;
 
 use App\Domain\Import\AcademicCalendar\ParsedAcademicCalendar;
+use App\Domain\Import\AcademicCalendar\ParsedCalendarMarker;
+use App\Domain\Import\AcademicCalendar\ParsedCalendarMarkerKind;
+use App\Domain\Import\AcademicCalendar\ParsedCalendarRange;
 use App\Models\AcademicCalendarExceptionType;
+use App\Models\CalendarEventType;
 use App\Services\Import\AcademicCalendar\AcademicCalendarFileException;
 use App\Services\Import\AcademicCalendar\AcademicCalendarParser;
 use App\Support\Import\SpreadsheetZipSafety;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Fixtures\Import\AcademicCalendarXlsxBuilder;
 use Tests\TestCase;
@@ -184,30 +189,119 @@ class AcademicCalendarParserTest extends TestCase
 
         $this->assertNotContains('Carnaval', array_map(
             fn ($holiday): string => $holiday->title,
-            $parsed->holidays,
+            $parsed->dayExceptions,
         ));
     }
 
+    /**
+     * OS TREZE QUE O DOCUMENTO PINTA DE LARANJA. A cor forte é a classificação
+     * que a ESCOLA deu àqueles dias, e é ela que mantém o «Dia de Leiria» —
+     * feriado MUNICIPAL, que provider nacional nenhum pode conhecer — a ser lido
+     * como feriado. Continuam todos a sê-lo depois de a classificação passar a
+     * ser feita: corrigir o padrão não podia custar o caso comum.
+     */
     #[Test]
-    public function it_reads_every_named_holiday_from_the_day_grid(): void
+    public function every_holiday_the_document_highlights_is_read_as_a_holiday(): void
     {
-        $holidays = $this->parse()->holidays;
+        $holidays = $this->holidaysFrom($this->parse()->dayExceptions);
 
-        $this->assertCount(13, $holidays);
-        $this->assertSame(
-            array_keys(AcademicCalendarXlsxBuilder::HOLIDAYS),
-            array_map(fn ($holiday): string => $holiday->startsOn, $holidays),
-        );
-        $this->assertSame(
-            array_values(AcademicCalendarXlsxBuilder::HOLIDAYS),
-            array_map(fn ($holiday): string => $holiday->title, $holidays),
-        );
+        foreach (AcademicCalendarXlsxBuilder::HOLIDAYS as $date => $title) {
+            $holiday = $holidays[$date] ?? null;
 
-        foreach ($holidays as $holiday) {
+            $this->assertNotNull($holiday, "O feriado de {$date} deixou de ser lido.");
+            $this->assertSame($title, $holiday->title);
             $this->assertSame(AcademicCalendarExceptionType::Holiday, $holiday->type);
             // Um feriado é um dia, e um dia é `starts_on === ends_on` — a mesma
             // convenção que a Fase 5.4 já fixou.
             $this->assertSame($holiday->startsOn, $holiday->endsOn);
+        }
+    }
+
+    /**
+     * ─────────────────────────────────────────────────────────────────────────
+     * O PADRÃO DEIXOU DE SER «FERIADO», E É ISTO QUE O PROVA.
+     *
+     * Antes, tudo o que sobrasse dos filtros da grelha era escrito como feriado —
+     * e um feriado, nesta aplicação, não é um rótulo: é a afirmação de que
+     * naquele dia NÃO HÁ AULA. Uma reunião importada apagava as aulas do dia.
+     */
+    #[Test]
+    public function a_day_the_document_calls_a_holiday_is_one_even_without_the_colour(): void
+    {
+        // «Feriado municipal», numa célula com o tom pálido do semestre e sem
+        // realce nenhum: a PALAVRA do documento chega sozinha.
+        $municipal = $this->holidaysFrom($this->parse()->dayExceptions)['2031-05-13'] ?? null;
+
+        $this->assertNotNull($municipal);
+        $this->assertSame(AcademicCalendarExceptionType::Holiday, $municipal->type);
+        $this->assertSame('Feriado municipal', $municipal->title);
+    }
+
+    /**
+     * «Dia não letivo» é uma exceção letiva — não há aula — mas NÃO é um feriado,
+     * e o enum da Fase 5.4 sempre teve as duas espécies separadas. A que faltava
+     * era a leitura.
+     */
+    #[Test]
+    public function a_non_teaching_day_is_read_as_one_and_never_as_a_holiday(): void
+    {
+        $day = $this->holidaysFrom($this->parse()->dayExceptions)['2031-04-15'] ?? null;
+
+        $this->assertNotNull($day);
+        $this->assertSame(AcademicCalendarExceptionType::NonTeachingDay, $day->type);
+    }
+
+    /**
+     * @return iterable<string, array{0: string, 1: CalendarEventType}>
+     */
+    public static function schoolEvents(): iterable
+    {
+        yield 'uma reunião' => ['2030-10-16', CalendarEventType::Meeting];
+        yield 'um almoço-convívio' => ['2030-11-07', CalendarEventType::Activity];
+        yield 'uma visita de estudo' => ['2031-01-15', CalendarEventType::FieldTrip];
+        // A PALAVRA FRÁGIL. «Apresentação» tanto é o primeiro dia de aulas como
+        // um sarau, e a resposta a não saber é o tipo NEUTRO — nunca um feriado,
+        // e nunca um palpite vestido de certeza (§1).
+        yield 'uma apresentação, que não se adivinha' => ['2030-09-17', CalendarEventType::Other];
+    }
+
+    #[Test]
+    #[DataProvider('schoolEvents')]
+    public function a_school_event_is_never_read_as_a_day_without_lessons(string $date, CalendarEventType $type): void
+    {
+        $parsed = $this->parse();
+
+        $this->assertNull(
+            $this->holidaysFrom($parsed->dayExceptions)[$date] ?? null,
+            "A data {$date} foi escrita como um dia sem aula.",
+        );
+
+        $event = collect($parsed->datedEvents)->firstWhere('date', $date);
+
+        $this->assertNotNull($event, "A data {$date} desapareceu da leitura.");
+        $this->assertSame($type, $event->type);
+        $this->assertSame(ParsedCalendarMarkerKind::SchoolEvent, $event->kind);
+    }
+
+    /**
+     * A garantia em bloco, e não uma data de cada vez: NENHUM dos acontecimentos
+     * escolares da fixture aterra na tabela dos dias sem aula, com a única exceção
+     * dos dois que o próprio documento classifica por extenso.
+     */
+    #[Test]
+    public function no_day_becomes_a_day_without_lessons_just_for_having_a_name(): void
+    {
+        $exceptions = $this->holidaysFrom($this->parse()->dayExceptions);
+
+        foreach (AcademicCalendarXlsxBuilder::SCHOOL_EVENTS as $date => $label) {
+            $classifiedByTheDocument = str_contains(mb_strtolower($label), 'feriado')
+                || str_contains(mb_strtolower($label), 'não letivo');
+
+            $this->assertSame(
+                $classifiedByTheDocument,
+                isset($exceptions[$date]),
+                "«{$label}» ({$date}) está do lado errado da linha.",
+            );
         }
     }
 
@@ -216,7 +310,7 @@ class AcademicCalendarParserTest extends TestCase
     {
         $parsed = $this->parse();
 
-        $hyphenated = collect($parsed->holidays)
+        $hyphenated = collect($parsed->dayExceptions)
             ->firstWhere('startsOn', AcademicCalendarXlsxBuilder::HYPHENATED_HOLIDAY);
 
         $this->assertNotNull($hyphenated);
@@ -231,7 +325,7 @@ class AcademicCalendarParserTest extends TestCase
     #[Test]
     public function a_holiday_that_falls_inside_an_interruption_is_still_read(): void
     {
-        $christmas = collect($this->parse()->holidays)->firstWhere('startsOn', '2030-12-25');
+        $christmas = collect($this->parse()->dayExceptions)->firstWhere('startsOn', '2030-12-25');
 
         $this->assertNotNull($christmas);
         $this->assertSame('Natal', $christmas->title);
@@ -245,7 +339,7 @@ class AcademicCalendarParserTest extends TestCase
     public function a_holiday_that_falls_on_a_weekend_is_still_read(): void
     {
         // 2031-03-30 é um domingo.
-        $this->assertNotNull(collect($this->parse()->holidays)->firstWhere('startsOn', '2031-03-30'));
+        $this->assertNotNull(collect($this->parse()->dayExceptions)->firstWhere('startsOn', '2031-03-30'));
     }
 
     /**
@@ -260,11 +354,11 @@ class AcademicCalendarParserTest extends TestCase
 
         foreach (array_keys(AcademicCalendarXlsxBuilder::PERIOD_MARKERS) as $date) {
             $this->assertNull(
-                collect($parsed->holidays)->firstWhere('startsOn', $date),
+                collect($parsed->dayExceptions)->firstWhere('startsOn', $date),
                 "O marcador de período de {$date} foi lido como feriado.",
             );
             $this->assertNull(
-                collect($parsed->otherDatedItems)->firstWhere('date', $date),
+                collect($parsed->datedEvents)->firstWhere('date', $date),
                 "O marcador de período de {$date} foi lido como acontecimento.",
             );
         }
@@ -278,7 +372,13 @@ class AcademicCalendarParserTest extends TestCase
     #[Test]
     public function the_cohort_year_end_markers_are_kept_as_unclassified_dated_items(): void
     {
-        $markers = $this->parse()->otherDatedItems;
+        // FILTRADOS PELA SUA ESPÉCIE e já não «tudo o que está nesta lista»: a
+        // lista dos acontecimentos deixou de ser só deles no momento em que as
+        // reuniões e as atividades pararam de ser escritas como feriados.
+        $markers = array_values(array_filter(
+            $this->parse()->datedEvents,
+            fn (ParsedCalendarMarker $marker): bool => $marker->kind === ParsedCalendarMarkerKind::CohortEnd,
+        ));
 
         $this->assertCount(3, $markers);
         $this->assertSame(
@@ -313,34 +413,54 @@ class AcademicCalendarParserTest extends TestCase
         $parsed = $this->parse();
 
         $dates = [
-            ...array_map(fn ($holiday): string => $holiday->startsOn, $parsed->holidays),
-            ...array_map(fn ($marker): string => $marker->date, $parsed->otherDatedItems),
+            ...array_map(fn ($holiday): string => $holiday->startsOn, $parsed->dayExceptions),
+            ...array_map(fn ($marker): string => $marker->date, $parsed->datedEvents),
         ];
 
         // O 6 de outubro de 2030 é um domingo comum, sem nome nenhum.
         $this->assertNotContains('2030-10-06', $dates);
-        $this->assertLessThan(20, count($dates));
+        // Vinte e duas datas com nome contra oitenta e um fins-de-semana: o teto
+        // existe para provar que os sábados e domingos não estão cá, e não para
+        // fixar o número de datas que a fixture tem.
+        $this->assertLessThan(30, count($dates));
     }
 
     /**
-     * NÃO SE INVENTAM REUNIÕES, ATIVIDADES NEM VISITAS. O documento de referência
-     * não tem nenhuma, e uma lista vazia devolvida «para o caso» convidava a página
-     * seguinte a arranjar secções para as mostrar.
+     * NADA SAI DAQUI SEM UMA CÉLULA POR TRÁS. Cada data proposta — exceção ou
+     * acontecimento — traz o texto exato da célula de onde veio, e é isso que
+     * permite à pré-visualização mostrar «no documento: «…»» ao lado do que
+     * propõe. Uma proposta que não conseguisse citar a sua origem seria uma
+     * proposta inventada.
      */
     #[Test]
     public function nothing_that_is_not_in_the_document_is_invented(): void
     {
         $parsed = $this->parse();
 
-        // Os únicos acontecimentos propostos são os três marcadores de coorte, e
-        // todos os itens datados vêm de uma célula que existe mesmo no ficheiro.
-        foreach ($parsed->otherDatedItems as $marker) {
+        foreach ($parsed->datedEvents as $marker) {
             $this->assertNotSame('', $marker->rawText);
         }
 
-        foreach ([...$parsed->holidays, ...$parsed->schoolBreaks] as $range) {
+        foreach ([...$parsed->dayExceptions, ...$parsed->schoolBreaks] as $range) {
             $this->assertNotSame('', $range->rawText);
         }
+    }
+
+    /**
+     * As exceções de um dia lidas da grelha, indexadas pela data.
+     *
+     * @param  list<ParsedCalendarRange>  $exceptions
+     * @return array<string, ParsedCalendarRange>
+     */
+    private function holidaysFrom(array $exceptions): array
+    {
+        $byDate = [];
+
+        foreach ($exceptions as $exception) {
+            $byDate[$exception->startsOn] = $exception;
+        }
+
+        return $byDate;
     }
 
     #[Test]
@@ -350,7 +470,9 @@ class AcademicCalendarParserTest extends TestCase
 
         $this->assertSame([], $parsed->semesters);
         $this->assertSame([], $parsed->schoolBreaks);
-        $this->assertCount(13, $parsed->holidays);
+        // Os treze que o documento realça, mais o feriado municipal e o dia não
+        // letivo que ele escreve por extenso.
+        $this->assertCount(15, $parsed->dayExceptions);
         $this->assertFalse($parsed->isEmpty());
     }
 
