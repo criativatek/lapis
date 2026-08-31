@@ -818,7 +818,7 @@ function derive() {
 
                     <!-- §14: dificuldade → estratégia → objetivo. -->
                     <div v-if="library && characterisation.asks_difficulties" class="space-y-2 border-t border-border pt-4">
-                        <Label>Dificuldades identificadas</Label>
+                        <Label>Dificuldades identificadas ({{ characterisationForm.teacher_input.difficulties.length }})</Label>
                         <p class="text-xs text-muted-foreground">
                             O Lapispro não infere dificuldades a partir dos resultados. Estas são as que validar — e
                             as estratégias que escolher ficam ligadas a cada uma.

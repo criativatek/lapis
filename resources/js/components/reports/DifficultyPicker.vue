@@ -111,37 +111,33 @@ function setField(index: number, field: 'domain' | 'note', value: string) {
             <li
                 v-for="(difficulty, index) in modelValue"
                 :key="`${difficulty.code ?? 'livre'}-${index}`"
-                class="space-y-3 rounded-lg border border-border p-3"
+                data-test="difficulty-card"
+                class="space-y-4 rounded-lg border border-border p-4"
             >
                 <div class="flex items-start justify-between gap-2">
-                    <p class="font-medium">{{ difficulty.label }}</p>
-                    <Button variant="ghost" size="sm" @click="remove(index)">
+                    <p class="font-medium tabular-nums">{{ index + 1 }} · {{ difficulty.label }}</p>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label="Remover esta dificuldade"
+                        @click="remove(index)"
+                    >
                         <X class="size-3.5" />
                     </Button>
                 </div>
 
-                <div class="grid gap-2 sm:grid-cols-2">
-                    <label class="grid gap-1">
-                        <span class="text-xs text-muted-foreground">Domínio associado (opcional)</span>
-                        <select
-                            class="h-8 rounded-md border border-border bg-background px-2 text-sm"
-                            :value="difficulty.domain ?? ''"
-                            @change="setField(index, 'domain', ($event.target as HTMLSelectElement).value)"
-                        >
-                            <option value="">Nenhum</option>
-                            <option v-for="domain in domains" :key="domain" :value="domain">{{ domain }}</option>
-                        </select>
-                    </label>
-
-                    <label class="grid gap-1">
-                        <span class="text-xs text-muted-foreground">Nota (opcional)</span>
-                        <Input
-                            class="h-8"
-                            :model-value="difficulty.note ?? ''"
-                            @update:model-value="setField(index, 'note', String($event))"
-                        />
-                    </label>
-                </div>
+                <label class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <span>Domínio:</span>
+                    <select
+                        data-test="difficulty-domain"
+                        class="h-7 rounded-md border border-border bg-background px-2 text-xs text-foreground"
+                        :value="difficulty.domain ?? ''"
+                        @change="setField(index, 'domain', ($event.target as HTMLSelectElement).value)"
+                    >
+                        <option value="">Nenhum</option>
+                        <option v-for="domain in domains" :key="domain" :value="domain">{{ domain }}</option>
+                    </select>
+                </label>
 
                 <div v-if="strategiesFor(difficulty).length > 0" class="space-y-1.5">
                     <p class="text-xs font-medium text-muted-foreground">Estratégias para esta dificuldade</p>
@@ -168,34 +164,75 @@ function setField(index: number, field: 'domain' | 'note', value: string) {
                 <p v-else-if="difficulty.code === null" class="text-xs text-muted-foreground">
                     Dificuldade escrita por si — as estratégias podem ser acrescentadas no texto da secção.
                 </p>
+
+                <label class="grid gap-1">
+                    <span class="text-xs text-muted-foreground">Nota complementar</span>
+                    <Input
+                        data-test="difficulty-note"
+                        class="h-8"
+                        :model-value="difficulty.note ?? ''"
+                        @update:model-value="setField(index, 'note', String($event))"
+                    />
+                </label>
             </li>
         </ul>
 
-        <div class="flex flex-wrap items-end gap-2">
-            <label class="grid flex-1 gap-1">
-                <span class="text-xs text-muted-foreground">Acrescentar da biblioteca</span>
-                <select v-model="picking" class="h-9 rounded-md border border-border bg-background px-2 text-sm">
-                    <option value="">Escolher…</option>
-                    <option v-for="entry in available" :key="entry.code ?? entry.label" :value="entry.code ?? ''">
-                        {{ entry.label }}
-                    </option>
-                </select>
-            </label>
-            <Button variant="outline" size="sm" :disabled="picking === ''" @click="addFromLibrary">
-                <Plus class="size-3.5" />
-                Acrescentar
-            </Button>
-        </div>
+        <div
+            data-test="difficulty-add-zone"
+            class="space-y-3 rounded-lg border border-dashed border-border bg-muted/30 p-4"
+        >
+            <p class="flex items-center gap-2 text-sm font-medium">
+                <Plus class="size-4" />
+                Acrescentar outra dificuldade
+            </p>
 
-        <div class="flex flex-wrap items-end gap-2">
-            <label class="grid flex-1 gap-1">
-                <span class="text-xs text-muted-foreground">Ou escrever a sua</span>
-                <Input v-model="ownLabel" class="h-9" placeholder="Ex.: Leitura em voz alta" />
-            </label>
-            <Button variant="outline" size="sm" :disabled="ownLabel.trim() === ''" @click="addOwn">
-                <Plus class="size-3.5" />
-                Acrescentar
-            </Button>
+            <div class="flex flex-wrap items-end gap-2">
+                <label class="grid flex-1 gap-1">
+                    <span class="text-xs text-muted-foreground">Acrescentar da biblioteca</span>
+                    <select
+                        v-model="picking"
+                        data-test="library-difficulty-select"
+                        class="h-9 rounded-md border border-border bg-background px-2 text-sm"
+                    >
+                        <option value="">Escolher…</option>
+                        <option v-for="entry in available" :key="entry.code ?? entry.label" :value="entry.code ?? ''">
+                            {{ entry.label }}
+                        </option>
+                    </select>
+                </label>
+                <Button
+                    data-test="add-library-difficulty"
+                    variant="outline"
+                    size="sm"
+                    :disabled="picking === ''"
+                    @click="addFromLibrary"
+                >
+                    <Plus class="size-3.5" />
+                    Acrescentar
+                </Button>
+            </div>
+
+            <div class="flex flex-wrap items-end gap-2">
+                <label class="grid flex-1 gap-1">
+                    <span class="text-xs text-muted-foreground">Ou escrever a sua</span>
+                    <Input
+                        v-model="ownLabel"
+                        data-test="own-difficulty-input"
+                        class="h-9"
+                        placeholder="Ex.: Leitura em voz alta"
+                    />
+                </label>
+                <Button
+                    data-test="add-own-difficulty"
+                    variant="outline"
+                    size="sm"
+                    :disabled="ownLabel.trim() === ''"
+                    @click="addOwn"
+                >
+                    <Plus class="size-3.5" />
+                    Acrescentar
+                </Button>
+            </div>
         </div>
     </div>
 </template>
