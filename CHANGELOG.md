@@ -25,6 +25,82 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.101.4] — 2026-08-31
+
+A autoria de um registo é um facto histórico **sobre** o registo. O
+importador de backups tratava-a como uma credencial que o registo tinha de
+apresentar para poder existir: se o email do autor não correspondesse à conta
+que estava a confirmar a importação, e a coluna fosse `NOT NULL`, a linha
+inteira ficava `invalid`. Isso não bloqueava fraudes — bloqueava a
+portabilidade, e exatamente nos casos legítimos: o professor mudou de email
+ou de conta, a turma mudou de professor, a instituição transferiu a
+responsabilidade, os dados foram restaurados noutra conta autorizada. Em
+qualquer deles, o professor perdia à porta todo o acompanhamento pedagógico,
+as estratégias e medidas e os relatórios.
+
+Esta versão separa as duas coisas que estavam coladas: **o registo é
+importado**, e **a autoria nunca é atribuída a quem não a tem**.
+
+### Fixed
+
+- **Uma classificação confirmada com confirmador não resolúvel derrubava a
+  importação inteira.** A `CHECK` `classifications_confirmed_has_author_check`
+  recusa `status = 'confirmed'` com `confirmed_by` vazio; a linha chegava ao
+  escritor nesse estado impossível e a transação caía com ela — todo o resto
+  do ficheiro perdido por causa de um email. Não era visível em testes:
+  `addCheck()` só corre em MySQL e a suite corre em SQLite. Passa a ser
+  importada como **`proposed`**, com os valores intactos e sem `confirmed_at`
+  — a confirmação volta a ser uma decisão do professor (§3.3). O estado
+  efetivo é decidido no plano, **antes** de qualquer comparação, para que uma
+  reimportação continue a classificar a linha como `existing` em vez de
+  conflito (§11, §44).
+
+### Changed
+
+- **A autoria deixou de invalidar linhas.** `interim_assessments.created_by`,
+  `evidence_records.created_by`, `interventions.created_by`,
+  `intervention_reviews.reviewed_by` e `reports.created_by` passaram a aceitar
+  `null` (migração
+  `2026_09_22_000100_let_an_imported_record_keep_an_unresolved_author`). Um
+  `null` nessas colunas significa uma só coisa — a autoria original não pôde
+  ser associada e o sistema recusou-se a adivinhar; nenhum caminho de criação
+  da aplicação escreve `null` ali. A reversão da migração recusa-se em voz
+  alta se existirem linhas nesse estado, em vez de apagar histórico para
+  caber no esquema antigo (§31).
+- **O que a janela de importação diz mudou de tom.** A mensagem bloqueante
+  «a autoria … só pode ser confirmada com a conta que a criou» foi substituída
+  por informação: «A autoria original desta estratégia não pôde ser associada
+  à conta atual. Pode continuar a importação — o registo é clonado sem
+  atribuir indevidamente a autoria à conta atual.» No pré-visualizador vive
+  num bloco próprio, «Autoria original», separado de «Pontos a rever»: uma é
+  informação sobre o que **vai** ser escrito, a outra é a lista do que **não**
+  vai. O resumo da importação passa a contar «registos importados sem autoria
+  associada» e «classificações que ficaram por confirmar», e o evento de
+  auditoria leva o mesmo número.
+
+### Security
+
+- **Continua a não haver correspondência de autoria por email contra outras
+  contas** — nem sequer contra membros da organização de destino, e agora está
+  documentado porquê: o email do autor é um valor dentro de um ficheiro
+  carregado, e esta aplicação autentica por email. Bastaria editar o JSON para
+  escrever registos pedagógicos assinados por um colega que nunca os escreveu.
+  Atribuir a si próprio não é falsificação; atribuir a um colega é. Nenhuma
+  conta é criada, nenhum utilizador é inventado.
+- **Nenhum email de autor é copiado para dentro da organização de destino.** A
+  referência histórica segura já existe e já tem retenção:
+  `data_imports.canonical_snapshot` guarda o que o backup dizia e o
+  `data-imports:prune` decide durante quanto tempo.
+- **Os acessos não mudam.** Registos pedagógicos, estratégias e medidas são
+  autorizados através da **turma**, não da autoria, e a única política que olha
+  para o autor (`ReportPolicy::authored()`) compara `(int) null` com um id
+  real — falha fechada. Coberto por
+  `tests/Feature/DataImports/ImportAuthorshipPortabilityTest.php`, que fixa a
+  matriz completa: mesma conta, email alterado, outro professor autorizado,
+  autor inexistente, autor ausente, classificação confirmada sem confirmador,
+  importação parcial, ausência de atribuição falsa e isolamento por
+  organização.
+
 ## [0.101.3] — 2026-08-31
 
 Um restauro de backup carregado a 2026-08-30 criou a pasta
