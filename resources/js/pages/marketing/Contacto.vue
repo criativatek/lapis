@@ -24,11 +24,34 @@ defineProps<{
 
 const page = usePage();
 
+type SupportFlash = {
+    supportReference?: string;
+    supportEmailDelivered?: boolean;
+};
+
+/**
+ * `page.flash`, NÃO `page.props.flash`.
+ *
+ * A flash do Inertia viaja ao lado dos props no objeto da página, não dentro
+ * deles — `usePage()` expõe-na em `flash`. Lida do sítio errado é sempre
+ * `undefined`, e este painel de confirmação nunca chegava a aparecer.
+ */
+const flash = computed(() => (page.flash as SupportFlash | undefined) ?? {});
+
 /** A referência devolvida pelo servidor, quando o envio correu bem. */
-const reference = computed(
-    () =>
-        (page.props.flash as Record<string, string> | undefined)
-            ?.supportReference ?? null,
+const reference = computed(() => flash.value.supportReference ?? null);
+
+/**
+ * A confirmação por email chegou a sair?
+ *
+ * O pedido fica registado de qualquer maneira — é o email que pode ter
+ * falhado, e o ecrã tem de o dizer. Para um visitante isto pesa mais do que
+ * para quem tem conta: sem portal, o email é o único sítio onde ele voltaria a
+ * ver este pedido, e se não saiu a referência no ecrã passa a ser tudo o que
+ * ele tem.
+ */
+const emailDelivered = computed(
+    () => flash.value.supportEmailDelivered === true,
 );
 
 const form = useForm({
@@ -68,18 +91,26 @@ function submit(): void {
                 class="rounded-2xl border border-border bg-card p-6"
             >
                 <h2 class="text-lg font-semibold tracking-tight">
-                    Recebemos o seu pedido.
+                    Pedido enviado com sucesso
                 </h2>
                 <p class="mt-2 text-sm text-muted-foreground">
-                    A referência é
-                    <strong class="font-mono">{{ reference }}</strong
-                    >. Guarde-a: é por ela que identificamos o seu pedido.
-                    Enviámos também uma confirmação para o seu email.
+                    O seu pedido
+                    <strong class="font-mono">{{ reference }}</strong> foi
+                    recebido pela equipa de suporte. Lamentamos o incómodo e
+                    iremos analisá-lo com a maior brevidade possível.
                 </p>
-                <p class="mt-2 text-sm text-muted-foreground">
-                    Se responder a esse email, a sua mensagem chega à nossa
-                    caixa de suporte — mas não fica guardada no histórico do
-                    pedido.
+                <p
+                    v-if="emailDelivered"
+                    class="mt-2 text-sm text-muted-foreground"
+                >
+                    Enviámos também uma confirmação para o seu email. Se
+                    responder a essa mensagem, ela chega à nossa caixa de
+                    suporte — mas não fica guardada no histórico do pedido.
+                </p>
+                <p v-else class="mt-2 text-sm text-muted-foreground">
+                    A confirmação por email não pôde ser enviada neste momento,
+                    mas o pedido ficou registado normalmente. Guarde esta
+                    referência: é por ela que o identificamos.
                 </p>
             </div>
 

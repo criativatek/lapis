@@ -160,6 +160,59 @@ class SupportRequest extends Model
         return $this->status->isResolved();
     }
 
+    /**
+     * O PRIMEIRO NOME DE QUEM PEDIU — para o email poder cumprimentar alguém.
+     *
+     * O nome completo é o que a pessoa escreveu, no formulário público, ou o
+     * que tem na conta. Só o primeiro token sai para o email: um cumprimento é
+     * «Olá, Maria» e não «Olá, Maria Antunes Ferreira da Silva», e cortar aqui
+     * evita que uma saudação se transforme numa ficha de identificação.
+     *
+     * NULL quando o pedido já foi anonimizado, ou quando o que sobrou não tem
+     * uma única letra — e nesse caso o email cumprimenta sem nome em vez de
+     * inventar um. Ver o template, que trata os dois casos.
+     */
+    public function requesterFirstName(): ?string
+    {
+        $nome = trim((string) $this->requester_name);
+
+        if ($nome === '') {
+            return null;
+        }
+
+        // `\s+` em modo unicode apanha também o espaço duro que um copiar-colar
+        // traz do Word. Se a divisão falhar — um nome que não seja UTF-8
+        // válido —, fica o nome inteiro: cumprimentar com um nome comprido é
+        // pior do que cumprimentar sem nenhum, mas melhor do que rebentar.
+        $primeiro = (preg_split('/\s+/u', $nome) ?: [$nome])[0];
+
+        return $primeiro === '' ? null : $primeiro;
+    }
+
+    /**
+     * A CONFIRMAÇÃO DE RECEÇÃO CHEGOU A SAIR?
+     *
+     * Pergunta-o à tabela de entregas, que é o registo durável do que aconteceu
+     * ao aviso — a mesma linha que o backoffice lista por entregar e que o
+     * botão «Reenviar» volta a tentar. Depois de um reenvio com sucesso isto
+     * passa a `true` sem que mais nada tenha de ser actualizado, porque não há
+     * segunda cópia deste facto em lado nenhum.
+     *
+     * É POR ISTO QUE O ECRÃ NÃO MENTE. Dizer «enviámos uma confirmação para o
+     * seu email» quando o servidor recusou a mensagem põe a pessoa à espera de
+     * algo que não vem — e, quando não vier, a duvidar do pedido inteiro, que
+     * ficou perfeitamente registado. A pergunta vai à base de dados e não à
+     * relação já carregada em memória: quem a faz fá-la logo a seguir ao envio
+     * e precisa do estado de agora, não do que estava carregado antes dele.
+     */
+    public function acknowledgementWasDelivered(): bool
+    {
+        return $this->deliveries()
+            ->where('notification_type', SupportNotificationType::RequestReceived)
+            ->whereNotNull('delivered_at')
+            ->exists();
+    }
+
     public function isAnonymised(): bool
     {
         return $this->anonymized_at !== null;

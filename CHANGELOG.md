@@ -25,6 +25,67 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.102.0] — 2026-08-31
+
+Um pedido de suporte era enviado para o silêncio. A Central registava-o, a
+equipa via-o, e quem o escreveu ficava sem nada: um aviso de receção existia no
+código, mas dizia «Recebemos o seu pedido de suporte» sobre uma tabela de
+referência, categoria e estado — um recibo, não uma resposta. E o ecrã de
+confirmação prometia, sempre, que uma confirmação tinha sido enviada por email,
+mesmo quando o servidor a tinha recusado.
+
+Esta versão dá uma voz à confirmação e obriga a interface a dizer a verdade
+sobre ela. **A confirmação não é o registo**: o pedido é gravado primeiro, o
+email sai depois do commit, e uma falha de SMTP continua a não desfazer nada.
+
+### Added
+
+- **Confirmação de receção escrita para uma pessoa.** Cumprimenta pelo primeiro
+  nome, lamenta o incómodo, diz que a equipa vai analisar o caso e destaca a
+  referência `SUP-XXXXXX` — sem prazo nenhum. «Com a maior brevidade possível»
+  é uma intenção; «em 24 horas» é um contrato que ninguém assinou, e que se lê
+  de volta no dia em que a resposta demora 26. Um teste recusa a lista de
+  promessas de prazo.
+- **Duas mensagens, porque a promessa é diferente.** A quem tem conta diz-se
+  que pode acompanhar o pedido na aplicação, e há botão para lá ir; a um
+  visitante diz-se que a equipa lhe escreve para aquele endereço, e não há botão
+  nenhum — um visitante não tem portal (ADR-0011 §3), e mandá-lo para um login
+  que não lhe serve seria pior do que não o mandar a lado nenhum.
+- **Assunto que diz o que é antes de dizer o número**: «Recebemos o seu pedido
+  de suporte — SUP-XXXXXX». É a linha que aparece na notificação do telemóvel, e
+  é aí que a pessoa fica descansada.
+
+### Fixed
+
+- **A interface deixa de afirmar que enviou um email que não saiu.** Depois de
+  criar um pedido, o ecrã lê o estado real da entrega em
+  `support_notification_deliveries` — o mesmo registo durável que o backoffice
+  lista por entregar e que o botão «Reenviar» actualiza. Se a confirmação
+  falhou, diz-se: «o pedido ficou registado normalmente», sem mandar ninguém
+  esperar por uma mensagem que não vem.
+- **O painel de confirmação do `/contacto` nunca chegava a aparecer.** A
+  referência era escrita na flash do Laravel (`->with()`), e a página lia
+  `page.props.flash` — dois sítios que não se tocam: a flash do Inertia viaja no
+  objeto da página, ao lado dos props e não dentro deles, e só
+  `Inertia::flash()` a preenche. Um visitante submetia o formulário e voltava a
+  vê-lo em branco, sem referência e sem confirmação.
+
+### Security
+
+- **O resumo do pedido continua a não sair por email, e agora está escrito
+  porquê.** A confirmação identifica o pedido pela **categoria**, que é
+  vocabulário fechado. O campo que o formulário chama «Resumo» é texto livre — é
+  exactamente onde é mais fácil escrever «o aluno João não aparece na turma
+  5.ºB» sem pensar —, e um email atravessa servidores que não são nossos. O
+  único dado pessoal que a confirmação acrescenta é o primeiro nome de quem
+  pediu, a caminho da caixa de correio dessa mesma pessoa.
+- **A tabela técnica de entregas continua a não guardar conteúdo.** Um teste
+  novo provoca uma recusa 550 cuja mensagem cita o endereço e o servidor, e
+  depois procura na linha gravada o corpo do email, o resumo, a descrição, o
+  endereço, a mensagem da excepção e o stack trace. Não encontra nada disso —
+  fica o tipo de aviso, o papel do destinatário, as tentativas e um
+  `failure_code` de vocabulário fechado.
+
 ## [0.101.5] — 2026-08-31
 
 A «Síntese de acompanhamento (IA)» falhava sempre, com uma credencial válida, um

@@ -65,9 +65,17 @@ class SupportController extends Controller
 
         $pedido = $this->open->open($dados, $request->user(), $this->currentOrganization->get());
 
-        Inertia::flash('toast', [
-            'type' => 'success',
-            'message' => __('Pedido :reference registado. Respondemos por email.', ['reference' => $pedido->reference]),
+        // O ECRÃ SEGUINTE NÃO PODE MENTIR SOBRE O EMAIL.
+        //
+        // O pedido está gravado — isso é certo, e é o que importa. A
+        // confirmação por email é outra coisa, e pode ter falhado: dizer
+        // «enviámos uma confirmação» quando o servidor a recusou põe a pessoa à
+        // espera de algo que não vem e, quando não vier, a duvidar do pedido
+        // inteiro. A resposta vem da tabela de entregas, que é o registo
+        // durável do que aconteceu — e que o reenvio do backoffice actualiza.
+        Inertia::flash('supportAcknowledgement', [
+            'reference' => $pedido->reference,
+            'emailDelivered' => $pedido->acknowledgementWasDelivered(),
         ]);
 
         return to_route('support.show', $pedido);
