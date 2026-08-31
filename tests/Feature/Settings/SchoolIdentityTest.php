@@ -324,12 +324,13 @@ class SchoolIdentityTest extends TestCase
 
         $this->assertSame('Agrupamento de Escolas de Exemplo', $identity['name']);
         $this->assertTrue($identity['is_configured']);
-        // Already assembled, with nothing empty in it.
+        // Already assembled, with nothing empty in it — and condensed: the
+        // address and the locality share a line, the phone and the email share
+        // the next, and the site closes without its scheme (§50).
         $this->assertSame([
-            'Rua das Escolas, 12',
-            '1000-001 Lisboa',
+            'Rua das Escolas, 12 · 1000-001 Lisboa',
             '+351 210 000 000 · geral@aeexemplo.pt',
-            'https://aeexemplo.pt',
+            'aeexemplo.pt',
         ], $identity['header_lines']);
     }
 
@@ -382,7 +383,7 @@ class SchoolIdentityTest extends TestCase
                 ->component('settings/SchoolIdentity')
                 ->where('identity.official_name', 'Agrupamento de Escolas de Exemplo')
                 ->where('preview.is_configured', true)
-                ->has('preview.header_lines', 4)
+                ->has('preview.header_lines', 3)
                 ->where('canEdit', true));
     }
 }

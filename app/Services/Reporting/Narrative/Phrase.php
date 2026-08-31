@@ -101,7 +101,45 @@ class Phrase
      */
     public static function studentsDid(int $number, string $singularVerb, string $pluralVerb): string
     {
-        return self::students($number).' '.($number === 1 || $number === 0 ? $singularVerb : $pluralVerb);
+        $verb = $number === 1 || $number === 0 ? $singularVerb : $pluralVerb;
+
+        // «nenhum» is a negative subject and pulls the clitic in front of the
+        // verb: «nenhum aluno se manteve», never «nenhum aluno manteve-se».
+        return self::students($number).' '.($number === 0 ? self::proclitic($verb) : $verb);
+    }
+
+    /**
+     * A verb with its pronoun moved in front of it.
+     *
+     * PORTUGUESE PUTS THE CLITIC FIRST AFTER A NEGATIVE SUBJECT. «Nenhum aluno
+     * manteve-se» is the enclitic form a template produces by concatenation and
+     * the one a teacher reads as wrong; the rule that fixes it («nenhum»,
+     * «ninguém», «nada» attract the pronoun) is mechanical, so it is applied
+     * here rather than asked of every composer that counts something.
+     *
+     * Only the hyphenated pronouns Portuguese actually writes are moved, and
+     * only at the very end of the verb — «não dispõe» has no clitic and comes
+     * back untouched, and so does a compound like «bem-estar» that never
+     * reaches here as a verb.
+     */
+    public static function proclitic(string $verb): string
+    {
+        // The mesoclitic future («manter-se-á») is left alone: moving the
+        // pronoun would have to re-join a verb the template split in two, and
+        // no sentence in this module is written in that tense.
+        if (substr_count($verb, '-') !== 1) {
+            return $verb;
+        }
+
+        [$stem, $clitic] = explode('-', $verb, 2);
+
+        $pronouns = ['se', 'o', 'a', 'os', 'as', 'lhe', 'lhes', 'me', 'nos', 'te', 'vos'];
+
+        if ($stem === '' || ! in_array(mb_strtolower($clitic, 'UTF-8'), $pronouns, strict: true)) {
+            return $verb;
+        }
+
+        return $clitic.' '.$stem;
     }
 
     /**

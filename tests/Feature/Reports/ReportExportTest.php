@@ -132,8 +132,10 @@ class ReportExportTest extends TestCase
 
         $this->assertNotEmpty($structure['sections']);
         $this->assertSame('Agrupamento de Escolas de Teste', $structure['identity']['name']);
-        // The letterhead arrives already assembled and free of blanks.
-        $this->assertContains('2414-015 Leiria', $structure['identity']['header_lines']);
+        // The letterhead arrives already assembled, free of blanks and
+        // condensed: address and locality on ONE line, not two (§50).
+        $this->assertContains('Rua Paulo VI, 12 · 2414-015 Leiria', $structure['identity']['header_lines']);
+        $this->assertNotContains('2414-015 Leiria', $structure['identity']['header_lines']);
 
         // Every heading in the structure has to appear in BOTH files, or the
         // two documents differ (§47).

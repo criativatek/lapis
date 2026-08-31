@@ -6,6 +6,7 @@ use App\Models\Report;
 use App\Models\ReportSection;
 use App\Services\Documents\DocumentIdentity;
 use App\Services\Documents\SchoolLogoService;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -23,9 +24,12 @@ use Illuminate\Support\Facades\Storage;
  * a working copy to a conselho de turma is a real thing to want and pretending
  * otherwise just means they print the screen instead.
  *
- * THE LOGO TRAVELS AS BYTES. A renderer cannot follow a session-protected URL,
- * and it should not: the file is read here, server-side, from the private disk,
- * and handed over already embedded.
+ * THE LOGO TRAVELS AS BYTES, AND ONLY WHEN IT WAS ASKED FOR. A renderer cannot
+ * follow a session-protected URL, and it should not: the file is read here,
+ * server-side, from the private disk, and handed over already embedded. It is
+ * read at all only for a report whose `show_logo` option is on — a school that
+ * uploaded a logo for its own screens did not thereby decide that every
+ * relatório de turma leaving the building carries it (§50).
  */
 class ReportDocumentBuilder
 {
@@ -42,6 +46,43 @@ class ReportDocumentBuilder
     }
 
     /**
+     * What the document is called and the line of metadata under it.
+     *
+     * PUBLIC BECAUSE THE SCREEN NEEDS THE SAME ANSWER. The online preview is
+     * the third rendering of this document, and a heading it composed for
+     * itself would be a fourth opinion about what the report is called (§47).
+     * Cheap on purpose — it reads no sections and no logo bytes.
+     *
+     * @return array{title: string, subtitle: string}
+     */
+    public function heading(Report $report): array
+    {
+        if (! $report->isFinalized()) {
+            return DocumentHeading::for(
+                title: $report->title,
+                typeLabel: $report->type->label(),
+                metadata: $this->metadata($report),
+            );
+        }
+
+        $document = (array) $report->document;
+
+        // FROM THE SNAPSHOT, NOT FROM THE RELATIONS. The heading names a turma,
+        // a disciplina and a período as they were — a class renamed in
+        // September does not rename a report signed in February (§39).
+        return DocumentHeading::for(
+            title: (string) data_get($document, 'report.title', $report->title),
+            typeLabel: (string) data_get($document, 'report.type_label', $report->type->label()),
+            metadata: [
+                data_get($document, 'context.class.label'),
+                data_get($document, 'context.class.subject'),
+                data_get($document, 'context.enrollment.name'),
+                data_get($document, 'report.scope_label', $report->scope_label),
+            ],
+        );
+    }
+
+    /**
      * @return array<string, mixed>
      */
     protected function fromDocument(Report $report): array
@@ -49,12 +90,17 @@ class ReportDocumentBuilder
         $document = (array) $report->document;
         $identity = (array) ($document['identity'] ?? []);
 
+        $heading = $this->heading($report);
+
         return [
-            'title' => (string) data_get($document, 'report.title', $report->title),
-            'subtitle' => $this->subtitle($report),
+            'title' => $heading['title'],
+            'subtitle' => $heading['subtitle'],
             // Never labelled a draft: this one is signed.
             'draft_note' => null,
-            'identity' => $this->identityBlock($identity, (string) ($identity['logo_path'] ?? '')),
+            'identity' => $this->identityBlock(
+                $identity,
+                $report->showsLogo() ? (string) ($identity['logo_path'] ?? '') : '',
+            ),
             'sections' => $this->sectionsFromDocument($document),
             'meta' => [
                 'author' => data_get($document, 'report.author'),
@@ -62,6 +108,10 @@ class ReportDocumentBuilder
                 'finalized_by' => data_get($document, 'finalized_by'),
                 'scope_label' => (string) data_get($document, 'report.scope_label', $report->scope_label),
                 'status' => 'finalized',
+                'closing' => $this->closing(
+                    data_get($document, 'finalized_by'),
+                    data_get($document, 'finalized_at'),
+                ),
             ],
         ];
     }
@@ -72,11 +122,13 @@ class ReportDocumentBuilder
     protected function fromDraft(Report $report): array
     {
         $identity = $this->identity->forCurrentOrganization();
-        $logoPath = $report->organization->identity?->logo_path;
+        $logoPath = $report->showsLogo() ? $report->organization->identity?->logo_path : null;
+
+        $heading = $this->heading($report);
 
         return [
-            'title' => $report->title,
-            'subtitle' => $this->subtitle($report),
+            'title' => $heading['title'],
+            'subtitle' => $heading['subtitle'],
             // STAMPED, NOT HIDDEN. A working copy that looks finished is how a
             // draft ends up in a parent's hands as though it were the record.
             'draft_note' => 'RASCUNHO — documento de trabalho, ainda não finalizado.',
@@ -88,20 +140,53 @@ class ReportDocumentBuilder
                 'finalized_by' => null,
                 'scope_label' => $report->scope_label,
                 'status' => 'draft',
+                'closing' => null,
             ],
         ];
     }
 
-    protected function subtitle(Report $report): string
+    /**
+     * What the document is about, one fact per entry.
+     *
+     * ATOMIC ON PURPOSE. DocumentHeading compares these against the title's own
+     * segments, and a composite «7.º A · Português» would never match the
+     * «7.º A» a generated title carries — the duplication would survive the
+     * very step that exists to remove it.
+     *
+     * @return list<string|null>
+     */
+    protected function metadata(Report $report): array
     {
-        $parts = array_filter([
-            $report->type->label(),
-            $report->schoolClass === null ? null : $report->schoolClass->label.' · '.$report->schoolClass->subject->name,
+        return [
+            $report->schoolClass?->label,
+            $report->schoolClass?->subject->name,
             $report->enrollment === null ? null : optional($report->enrollment->student->identity)->display_name,
             $report->scope_label,
-        ]);
+        ];
+    }
 
-        return implode(' · ', $parts);
+    /**
+     * The sentence that closes a finished document.
+     *
+     * BUILT AS ONE STRING, not assembled by a template out of conditional
+     * blocks. Doing it in Blade printed «finalizado por Ana Martins em
+     * 19/08/2026 .» — the newline before the full stop became a space, which is
+     * exactly the kind of detail a teacher notices on a document they are about
+     * to send to a família.
+     */
+    protected function closing(mixed $finalizedBy, mixed $finalizedAt): string
+    {
+        $parts = ['Relatório finalizado'];
+
+        if (is_string($finalizedBy) && trim($finalizedBy) !== '') {
+            $parts[] = 'por '.trim($finalizedBy);
+        }
+
+        if (is_string($finalizedAt) && trim($finalizedAt) !== '') {
+            $parts[] = 'em '.Carbon::parse($finalizedAt)->format('d/m/Y');
+        }
+
+        return implode(' ', $parts).'.';
     }
 
     /**

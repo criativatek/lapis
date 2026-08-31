@@ -207,6 +207,27 @@ class Report extends Model
     }
 
     /**
+     * WHETHER THIS DOCUMENT CARRIES THE SCHOOL'S LOGO (§50).
+     *
+     * FALSE UNLESS THE TEACHER SAID OTHERWISE, exactly like `name_students`. A
+     * school uploads a logo so its own screens and its own letterhead can use
+     * it; that is not a decision that every relatório de turma, individual
+     * report and logbook leaving the building is a branded institutional
+     * document. Where the option was never touched, the letterhead is the
+     * school's name and address — which is what identifies it — and no space is
+     * reserved for an image that is not there.
+     *
+     * IT IS ANSWERED THE SAME WAY BEFORE AND AFTER SIGNATURE. The option is a
+     * creation-time choice the teacher may revise while the report is a draft,
+     * and `options` is not in EDITABLE_AFTER_FINALIZING — so finalizing freezes
+     * the answer along with everything else (§39).
+     */
+    public function showsLogo(): bool
+    {
+        return (bool) $this->option('show_logo', false);
+    }
+
+    /**
      * WHETHER THIS REPORT MAY NAME A STUDENT (§28, §57).
      *
      * False unless the teacher explicitly said otherwise, and irrelevant for an

@@ -97,12 +97,16 @@ class FinalizationTest extends TestCase
             ->academicYear->periods()->where('sequence', $sequence)->firstOrFail());
     }
 
-    private function draft(int $sequence = 1): Report
+    /**
+     * @param  array<string, mixed>  $options
+     */
+    private function draft(int $sequence = 1, array $options = []): Report
     {
         return $this->asTenant(fn (): Report => app(CreateReport::class)->forClass(
             class: $this->schoolClass(),
             author: $this->teacher,
             period: $this->period($sequence),
+            options: $options,
         ));
     }
 
@@ -140,7 +144,10 @@ class FinalizationTest extends TestCase
 
         $this->giveIdentity('Agrupamento de Escolas de Fevereiro', SchoolLogoService::DIRECTORY.'/original.png');
 
-        $report = $this->finalize($this->draft(1));
+        // The report has to ASK for a logo before there is one to freeze: a
+        // school having uploaded one is not a decision about this document
+        // (§50). What §68 is testing here is that once frozen it stays frozen.
+        $report = $this->finalize($this->draft(1, ['show_logo' => true]));
 
         $documentBefore = $report->document;
         $this->assertNotNull($documentBefore);

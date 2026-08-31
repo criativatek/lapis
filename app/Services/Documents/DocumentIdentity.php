@@ -80,8 +80,15 @@ class DocumentIdentity
      * The address and contact lines a header would print, with nothing empty
      * in them.
      *
-     * «1000-001 Lisboa» is one line when both halves exist and either half
-     * alone when only one does — never «1000-001 ·» with a gap after it.
+     * THREE LINES AT MOST, AND NEVER FOUR (§50). A letterhead identifies; it
+     * does not describe. The address and the locality share a line, the phone
+     * and the email share the next, and the site closes. Giving every field a
+     * line of its own — the previous shape — spent a fifth of a relatório de
+     * turma's first page before the document had said anything.
+     *
+     * «1000-001 Lisboa» is one half of the address line when both parts exist
+     * and either part alone when only one does — never «1000-001 ·» with a gap
+     * after it.
      *
      * @return list<string>
      */
@@ -93,16 +100,18 @@ class DocumentIdentity
 
         $lines = [];
 
-        $address = $this->clean($identity->address);
-
-        if ($address !== null) {
-            $lines[] = $address;
-        }
-
         $place = array_filter([$this->clean($identity->postal_code), $this->clean($identity->locality)]);
 
-        if ($place !== []) {
-            $lines[] = implode(' ', $place);
+        $address = array_filter([
+            // An address is often typed as the first line of two and ends with
+            // a comma; joined with a middot that reads «Rua das Escolas, 12, ·
+            // 1000-001 Lisboa». The separator does the punctuation's work.
+            $this->trimTrailingPunctuation($this->clean($identity->address)),
+            $place === [] ? null : implode(' ', $place),
+        ]);
+
+        if ($address !== []) {
+            $lines[] = implode(' · ', $address);
         }
 
         $contacts = array_filter([$this->clean($identity->phone), $this->clean($identity->email)]);
@@ -111,13 +120,44 @@ class DocumentIdentity
             $lines[] = implode(' · ', $contacts);
         }
 
-        $website = $this->clean($identity->website);
+        $website = $this->displayWebsite($this->clean($identity->website));
 
         if ($website !== null) {
             $lines[] = $website;
         }
 
         return $lines;
+    }
+
+    /**
+     * A site as a letterhead prints it: «aeexemplo.pt», not
+     * «https://aeexemplo.pt/».
+     *
+     * A PDF is not clickable paper and the scheme carries nothing a reader
+     * needs. The stored value is untouched — this is presentation, and
+     * `website` still leaves here in full for anything that follows it.
+     */
+    protected function displayWebsite(?string $website): ?string
+    {
+        if ($website === null) {
+            return null;
+        }
+
+        $display = rtrim((string) preg_replace('#^[a-z][a-z0-9+.-]*://#i', '', $website), '/');
+
+        return $display === '' ? $website : $display;
+    }
+
+    /** A trailing comma or semicolon that a middot is about to make redundant. */
+    protected function trimTrailingPunctuation(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $trimmed = rtrim($value, " \t,;·-");
+
+        return $trimmed === '' ? null : $trimmed;
     }
 
     /** An empty string is «not filled in», which is the same as null. */
