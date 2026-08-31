@@ -55,7 +55,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $document_hash
  * @property Carbon|null $finalized_at
  * @property int|null $finalized_by
- * @property int $created_by
+ * @property int|null $created_by
  * @property Carbon $created_at
  * @property Carbon $updated_at
  *

@@ -31,7 +31,7 @@ use Illuminate\Support\Carbon;
  * @property bool|null $activity_include_in_report
  * @property DisciplinarySeverity|null $disciplinary_severity
  * @property string $description
- * @property int $created_by
+ * @property int|null $created_by
  */
 #[Fillable([
     'class_id', 'enrollment_id', 'academic_period_id', 'domain_id',

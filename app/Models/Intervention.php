@@ -61,7 +61,7 @@ use Illuminate\Support\Carbon;
  * @property SupportMeasureCode|null $support_measure_code
  * @property EvaluationAdaptationCode|null $evaluation_adaptation_code
  * @property LegalMappingSource|null $legal_mapping_source
- * @property int $created_by
+ * @property int|null $created_by
  */
 #[Fillable([
     'class_id', 'enrollment_id', 'academic_period_id', 'domain_id',

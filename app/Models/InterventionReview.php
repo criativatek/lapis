@@ -19,7 +19,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon $reviewed_on
  * @property InterventionEffectiveness|null $effectiveness
  * @property string|null $notes
- * @property int $reviewed_by
+ * @property int|null $reviewed_by
  */
 #[Fillable(['intervention_id', 'reviewed_on', 'effectiveness', 'notes', 'reviewed_by'])]
 class InterventionReview extends Model

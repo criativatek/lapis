@@ -28,7 +28,7 @@ use Illuminate\Support\Carbon;
  * @property int $organization_id
  * @property int $class_id
  * @property int $academic_period_id
- * @property int $created_by
+ * @property int|null $created_by
  * @property string $name
  * @property Carbon $reference_date
  * @property string|null $note
