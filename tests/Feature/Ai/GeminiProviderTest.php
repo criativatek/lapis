@@ -5,6 +5,7 @@ namespace Tests\Feature\Ai;
 use App\Services\Ai\AiRequestFailed;
 use App\Services\Ai\AiTextRequest;
 use App\Services\Ai\Providers\GeminiProvider;
+use App\Services\Ai\Providers\GeminiThinking;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -32,12 +33,12 @@ class GeminiProviderTest extends TestCase
 
     private const BASE_URL = 'https://generativelanguage.exemplo.invalid/v1beta';
 
-    private function provider(int $timeout = 20, int $maxOutputTokens = 512): GeminiProvider
+    private function provider(int $timeout = 20, int $maxOutputTokens = 512, string $model = 'gemini-2.5-flash'): GeminiProvider
     {
         return new GeminiProvider(
             baseUrl: self::BASE_URL,
             key: self::FICTITIOUS_KEY,
-            model: 'gemini-2.5-flash',
+            model: $model,
             timeout: $timeout,
             maxOutputTokens: $maxOutputTokens,
         );
@@ -234,7 +235,11 @@ class GeminiProviderTest extends TestCase
     {
         $bodies = [
             'blocked prompt' => ['promptFeedback' => ['blockReason' => 'SAFETY']],
-            'truncated answer' => ['candidates' => [['finishReason' => 'MAX_TOKENS', 'content' => ['parts' => [['text' => 'metade da']]]]]],
+            // MAX_TOKENS used to live on this list. It is still refused — see
+            // `a_truncated_answer_is_told_apart_from_every_other_refusal` — but
+            // under a category of its own, because it is the one failure here
+            // that an operator can fix and a teacher cannot retry away.
+            'safety stop' => ['candidates' => [['finishReason' => 'SAFETY', 'content' => ['parts' => [['text' => 'metade da']]]]]],
             'no candidates' => ['candidates' => []],
             'no parts' => ['candidates' => [['content' => []]]],
             'empty text' => ['candidates' => [['content' => ['parts' => [['text' => '   ']]]]]],
@@ -359,5 +364,171 @@ class GeminiProviderTest extends TestCase
         }
 
         Http::assertSentCount(1);
+    }
+
+    /**
+     * THINKING IS PAID FOR OUT OF `maxOutputTokens`, so it is turned off where
+     * the vendor allows it to be turned off.
+     *
+     * This is the regression that started all of this: a six-section synthesis
+     * under a 2048-token ceiling came back as `MAX_TOKENS` with no parts at
+     * all, because the model had spent the entire budget reasoning. Nothing in
+     * this application's prompts is a reasoning problem — every one of them is
+     * a closed instruction over facts that were already computed — so the
+     * budget belongs to the answer.
+     */
+    #[Test]
+    public function thinking_is_disabled_on_the_models_that_allow_it(): void
+    {
+        foreach (['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-flash-preview-05-20'] as $model) {
+            $this->fakeAnswer(['candidates' => [['content' => ['parts' => [['text' => 'ok']]]]]]);
+
+            $this->provider(model: $model)->complete($this->request());
+
+            Http::assertSent(function (Request $request) use ($model): bool {
+                $this->assertSame(
+                    ['thinkingBudget' => 0],
+                    $request->data()['generationConfig']['thinkingConfig'] ?? null,
+                    "{$model} should have been asked not to think.",
+                );
+
+                return true;
+            });
+        }
+    }
+
+    /**
+     * `gemini-2.5-pro` CANNOT HAVE THINKING DISABLED — zero is rejected by the
+     * API — so the cheapest LEGAL value is sent instead of an invalid one.
+     *
+     * The distinction matters more than the number: a driver that sent 0
+     * everywhere would turn a working model into a 400, which is a worse
+     * failure than the one it set out to fix.
+     */
+    #[Test]
+    public function a_model_that_requires_a_minimum_gets_the_minimum_and_never_zero(): void
+    {
+        $this->fakeAnswer(['candidates' => [['content' => ['parts' => [['text' => 'ok']]]]]]);
+
+        $this->provider(model: 'gemini-2.5-pro')->complete($this->request());
+
+        Http::assertSent(function (Request $request): bool {
+            $budget = $request->data()['generationConfig']['thinkingConfig']['thinkingBudget'] ?? null;
+
+            $this->assertSame(GeminiThinking::PRO_MINIMUM, $budget);
+            $this->assertNotSame(0, $budget, 'Zero is rejected by this model.');
+
+            return true;
+        });
+    }
+
+    /**
+     * NO `thinkingConfig` AT ALL for a model this application has not been told
+     * about.
+     *
+     * An unknown field is a 400 on the 1.5 and 2.0 lines, and a model name is
+     * operator-supplied configuration — somebody can type anything into that
+     * box. Sending nothing is always a valid request; guessing a budget for a
+     * model nobody has checked is how a working installation breaks on a
+     * deploy.
+     */
+    #[Test]
+    public function no_thinking_config_is_sent_for_a_model_whose_rules_are_not_known(): void
+    {
+        foreach (['gemini-2.0-flash', 'gemini-1.5-pro', 'algo-que-o-operador-escreveu'] as $model) {
+            $this->fakeAnswer(['candidates' => [['content' => ['parts' => [['text' => 'ok']]]]]]);
+
+            $this->provider(model: $model)->complete($this->request());
+
+            Http::assertSent(function (Request $request) use ($model): bool {
+                $this->assertArrayNotHasKey(
+                    'thinkingConfig',
+                    $request->data()['generationConfig'],
+                    "{$model} should have been sent no thinkingConfig.",
+                );
+
+                return true;
+            });
+        }
+    }
+
+    /**
+     * MAX_TOKENS IS ITS OWN CATEGORY, and both shapes of it are refused.
+     *
+     * With no parts is the signature of a model that spent the whole budget
+     * thinking; with partial text is a genuinely long answer cut in half. Half
+     * a synthesis is still worse than none — that judgement has not changed —
+     * but the CAUSE is a number this installation set, so it is reported as
+     * something an operator can act on rather than as one more vendor mishap.
+     */
+    #[Test]
+    public function a_truncated_answer_is_told_apart_from_every_other_refusal(): void
+    {
+        $bodies = [
+            'no parts at all' => ['candidates' => [['finishReason' => 'MAX_TOKENS']]],
+            'empty content' => ['candidates' => [['finishReason' => 'MAX_TOKENS', 'content' => ['parts' => []]]]],
+            'partial text' => ['candidates' => [['finishReason' => 'MAX_TOKENS', 'content' => ['parts' => [['text' => 'SINTESE: metade da']]]]]],
+        ];
+
+        foreach ($bodies as $label => $body) {
+            $this->fakeAnswer($body);
+
+            try {
+                $this->provider()->complete($this->request());
+                $this->fail("The provider accepted a truncated answer: {$label}.");
+            } catch (AiRequestFailed $exception) {
+                $this->assertSame('truncated_answer', $exception->category(), $label);
+                $this->assertFalse($exception->isRetryable(), "{$label} must not offer a retry.");
+                // The technical reason is useful in a log and says nothing
+                // about what was being written about.
+                $this->assertStringContainsString('MAX_TOKENS', $exception->getMessage());
+                $this->assertStringNotContainsString('metade da', $exception->getMessage(), $label);
+                $this->assertStringNotContainsString('metade da', $exception->publicMessage(), $label);
+            }
+        }
+    }
+
+    /**
+     * A REQUEST MAY CARRY ITS OWN BUDGET, because `AiGateway` resolved one for
+     * a use case that needs more room. Nothing a caller builds can.
+     */
+    #[Test]
+    public function a_resolved_budget_on_the_request_overrides_the_installation_default(): void
+    {
+        $this->fakeAnswer(['candidates' => [['content' => ['parts' => [['text' => 'ok']]]]]]);
+
+        $this->provider(maxOutputTokens: 2048)->complete(new AiTextRequest(
+            instruction: 'i',
+            content: 'c',
+            maxOutputTokens: 3072,
+        ));
+
+        Http::assertSent(function (Request $request): bool {
+            $this->assertSame(3072, $request->data()['generationConfig']['maxOutputTokens']);
+
+            return true;
+        });
+    }
+
+    /**
+     * A MODEL'S PRIVATE REASONING IS NOT THE ANSWER.
+     *
+     * This driver never asks for thought summaries, so in practice no part
+     * arrives flagged `thought`. It drops them anyway: a field that only
+     * matters once somebody changes a setting is exactly the field that gets
+     * forgotten when they do, and the failure mode is a model's working-out
+     * presented to a teacher under a heading promising a reading of a child.
+     */
+    #[Test]
+    public function a_part_marked_as_thought_is_never_part_of_the_answer(): void
+    {
+        $this->fakeAnswer(['candidates' => [['content' => ['parts' => [
+            ['text' => 'O utilizador quer seis secções. Deixa-me pensar.', 'thought' => true],
+            ['text' => 'SINTESE: uma leitura.'],
+        ]]]]]);
+
+        $response = $this->provider()->complete($this->request());
+
+        $this->assertSame('SINTESE: uma leitura.', $response->text);
     }
 }

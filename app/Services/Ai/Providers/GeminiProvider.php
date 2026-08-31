@@ -32,8 +32,21 @@ use Illuminate\Support\Facades\Http;
  * cannot be read as one.
  *
  * THE OUTPUT CEILING IS EXPLICIT AND NOT THE CALLER'S TO RAISE.
- * `maxOutputTokens` comes from installation config, not from the request: a
- * ceiling a caller can lift is not a ceiling.
+ * `maxOutputTokens` comes from installation config; a request may carry a
+ * budget of its own, but only because `AiGateway` put it there after clamping
+ * it against the installation's hard ceiling. Nothing a caller builds has a
+ * field for it — see `AiTextRequest`.
+ *
+ * THINKING IS PAID FOR OUT OF THE SAME BUDGET, WHICH IS THE WHOLE REASON
+ * `thinkingConfig` IS SENT. On the Gemini 2.5 line `maxOutputTokens` is not the
+ * size of the answer — it is the size of the answer plus everything the model
+ * thought on the way to it, and the thinking is spent first. A six-section
+ * instruction under a 2048-token ceiling could therefore come back as
+ * `finishReason: MAX_TOKENS` with no `parts` at all, having produced nothing but
+ * reasoning nobody asked for: a deterministic failure that looked exactly like
+ * a flaky provider and survived every retry. `GeminiThinking` holds the table of
+ * what each model will accept, and this driver sends the budget it names or
+ * sends no `thinkingConfig` at all (§13 — nothing is guessed at the wire).
  *
  * ONE ATTEMPT, NO RETRY — the same reasoning as ChatCompletionsProvider. A
  * caller who waited out one timeout would rather be told than wait out a second.
@@ -83,10 +96,7 @@ class GeminiProvider implements AiTextProvider
                         'role' => 'user',
                         'parts' => [['text' => $request->content]],
                     ]],
-                    'generationConfig' => [
-                        'temperature' => $request->temperature,
-                        'maxOutputTokens' => $this->maxOutputTokens,
-                    ],
+                    'generationConfig' => $this->generationConfig($request),
                 ]);
         } catch (ConnectionException $exception) {
             // Reported WITHOUT its message: a connection exception's text
@@ -117,6 +127,54 @@ class GeminiProvider implements AiTextProvider
     }
 
     /**
+     * Everything under `generationConfig`, assembled in one place.
+     *
+     * THE `thinkingConfig` KEY IS PRESENT OR ABSENT — never present and empty,
+     * and never present with a value the model rejects. `GeminiThinking`
+     * returns null for every model whose thinking behaviour this application
+     * has not been told about, including every model that predates the feature,
+     * and a null means the key is simply not written. An unknown field is a 400
+     * on the 1.5 and 2.0 lines, so «send nothing» is the only safe default for
+     * a model name an operator typed by hand.
+     *
+     * @return array<string, mixed>
+     */
+    protected function generationConfig(AiTextRequest $request): array
+    {
+        $config = [
+            'temperature' => $request->temperature,
+            'maxOutputTokens' => $this->budgetFor($request),
+        ];
+
+        $thinkingBudget = GeminiThinking::budgetFor($this->model);
+
+        if ($thinkingBudget !== null) {
+            $config['thinkingConfig'] = ['thinkingBudget' => $thinkingBudget];
+        }
+
+        return $config;
+    }
+
+    /**
+     * The ceiling for THIS call.
+     *
+     * A request that carries its own budget was given one by `AiGateway`, which
+     * is the only thing that may hand out one and has already clamped it
+     * against `lapis.ai.max_output_tokens_ceiling`. Anything else — a request
+     * built without one, and every path in the product that does not need more
+     * room — gets the installation default this provider was constructed with.
+     *
+     * A non-positive value is treated as absent rather than sent: zero output
+     * tokens is a request for an empty answer, and no caller means that.
+     */
+    protected function budgetFor(AiTextRequest $request): int
+    {
+        return $request->maxOutputTokens !== null && $request->maxOutputTokens > 0
+            ? $request->maxOutputTokens
+            : $this->maxOutputTokens;
+    }
+
+    /**
      * A 200 IS NOT AN ANSWER. Gemini reports a refused prompt, a safety block
      * and a truncated reply all with HTTP 200 and a differently-shaped body, so
      * every one of them has to be recognised here or it becomes an empty string
@@ -134,9 +192,22 @@ class GeminiProvider implements AiTextProvider
 
         $finish = $response->json('candidates.0.finishReason');
 
-        // STOP is the ordinary end. MAX_TOKENS means the ceiling above cut the
-        // answer in half, and half an answer is worse than none — the same
-        // judgement the writing assistant already makes about half a section.
+        // MAX_TOKENS IS ITS OWN FAILURE, not one more unusable answer. Half an
+        // answer is still worse than none — that judgement has not changed —
+        // but the CAUSE is a budget this installation set, not a vendor having
+        // a bad day, and only an operator can fix it. Reported with whether
+        // anything came back at all, because a truncation with no text is the
+        // signature of a model that spent the entire budget thinking, and a
+        // truncation with text is a genuinely long answer.
+        if ($finish === 'MAX_TOKENS') {
+            throw AiRequestFailed::truncatedAnswer(
+                'MAX_TOKENS, '.($this->hasText($response) ? 'partial text discarded' : 'no text produced')
+            );
+        }
+
+        // STOP is the ordinary end. Everything else — a safety stop, a recitation
+        // block, a vendor enum this application has never seen — is an answer
+        // that ended somewhere other than where the instruction asked it to.
         if (is_string($finish) && ! in_array($finish, ['STOP', 'FINISH_REASON_UNSPECIFIED'], true)) {
             throw AiRequestFailed::unusableAnswer('the answer ended early ('.$this->slug($finish).')');
         }
@@ -147,16 +218,51 @@ class GeminiProvider implements AiTextProvider
             throw AiRequestFailed::unusableAnswer('no content parts in the first candidate');
         }
 
-        $text = '';
-
-        foreach ($parts as $part) {
-            if (is_array($part) && isset($part['text']) && is_string($part['text'])) {
-                $text .= $part['text'];
-            }
-        }
+        $text = $this->joinParts($parts);
 
         if (trim($text) === '') {
             throw AiRequestFailed::unusableAnswer('no text in the first candidate');
+        }
+
+        return $text;
+    }
+
+    /** Whether the first candidate carried any text at all. Used only to describe a truncation. */
+    protected function hasText(Response $response): bool
+    {
+        $parts = $response->json('candidates.0.content.parts');
+
+        return is_array($parts) && trim($this->joinParts($parts)) !== '';
+    }
+
+    /**
+     * Gemini splits one answer across several parts, and they are reassembled in
+     * order.
+     *
+     * A PART MARKED `thought` IS NOT THE ANSWER. When an installation asks for
+     * thought summaries the model returns its reasoning as ordinary text parts
+     * flagged with `thought: true`, and concatenating those would put the
+     * model's private working-out in front of a teacher under a heading that
+     * promises a reading. This driver never asks for them; it drops them anyway,
+     * because a field that only matters when somebody changes a setting is
+     * exactly the field that gets forgotten when they do.
+     *
+     * @param  array<int|string, mixed>  $parts
+     */
+    protected function joinParts(array $parts): string
+    {
+        $text = '';
+
+        foreach ($parts as $part) {
+            if (! is_array($part) || ! isset($part['text']) || ! is_string($part['text'])) {
+                continue;
+            }
+
+            if (($part['thought'] ?? false) === true) {
+                continue;
+            }
+
+            $text .= $part['text'];
         }
 
         return $text;

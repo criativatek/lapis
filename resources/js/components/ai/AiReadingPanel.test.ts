@@ -225,6 +225,57 @@ describe('AiReadingPanel — failure', () => {
 
         expect(wrapper.findAll('button')).toHaveLength(0);
     });
+
+    /**
+     * A RETRY LINK IS A PROMISE, AND FOR SOME FAILURES IT IS A FALSE ONE.
+     *
+     * When the engine ran out of output budget, or the credential was rejected,
+     * or the answer arrived in a shape the application cannot read, the next
+     * press reproduces the same failure exactly — and costs the school another
+     * request to prove it. The server is the only layer that knows which kind of
+     * failure this was, so it says so, and the panel simply obeys.
+     */
+    it('offers no retry for a failure the server says is deterministic', () => {
+        const wrapper = mountPanel({
+            error: { message: 'Não foi possível obter uma sugestão neste momento.', retryable: false },
+        });
+
+        expect(wrapper.text()).toContain('Não foi possível obter uma sugestão neste momento.');
+        expect(wrapper.findAll('button').find((button) => button.text().includes('Tentar novamente'))).toBeUndefined();
+    });
+
+    /** And it does offer one when the server says the failure was weather. */
+    it('offers a retry for a failure the server says is transient', () => {
+        const wrapper = mountPanel({
+            error: { message: 'O pedido demorou demasiado a responder.', retryable: true },
+        });
+
+        expect(wrapper.findAll('button').find((button) => button.text().includes('Tentar novamente'))).toBeDefined();
+    });
+
+    /**
+     * AN OLDER SCREEN THAT FLASHES NO FLAG STILL GETS ITS BUTTON. Every error
+     * that existed before this field was introduced was describing weather, so
+     * the absent case must not silently take the button away from them.
+     */
+    it('treats an absent flag as retryable', () => {
+        const wrapper = mountPanel({ error: { message: 'Falhou.' } });
+
+        expect(wrapper.findAll('button').find((button) => button.text().includes('Tentar novamente'))).toBeDefined();
+    });
+
+    /**
+     * A DETERMINISTIC FAILURE NEVER SAYS «O TEXTO ATUAL FOI PRESERVADO» ON A
+     * PANEL WITH NO TEXT UNDER IT — the copy that used to travel from a shared
+     * exception to five features that had nothing to preserve.
+     */
+    it('shows the neutral sentence the server now sends for a reading', () => {
+        const wrapper = mountPanel({
+            error: { message: 'Não foi possível obter uma sugestão neste momento.', retryable: false },
+        });
+
+        expect(wrapper.text()).not.toContain('preservado');
+    });
 });
 
 describe('AiReadingPanel — accessibility and safety', () => {

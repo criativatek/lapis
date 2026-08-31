@@ -81,7 +81,7 @@ class ClassStatisticsAnalysisController extends Controller
         } catch (AiRequestFailed $exception) {
             report($exception);
 
-            return $this->failed($exception->publicMessage());
+            return $this->failed($exception->publicMessage(), $exception->isRetryable());
         }
 
         return back()->with('aiAnalysis', [
@@ -96,12 +96,18 @@ class ClassStatisticsAnalysisController extends Controller
 
     /**
      * A controlled failure: a sentence a teacher may read, on a page that
-     * still works, with the button still there to press again. Never a 500,
-     * never a raw exception, never a status code.
+     * still works. Never a 500, never a raw exception, never a status code.
+     *
+     * THE BUTTON IS NOT ALWAYS STILL THERE, which is the one thing that has
+     * changed. `retryable` is false when the engine failed for a reason that is
+     * arithmetic rather than weather — an answer that did not fit in its token
+     * budget, a rejected credential — and offering «Tentar novamente» for one
+     * of those is the interface promising something it already knows will not
+     * happen, at the school's expense. See `AiRequestFailed::isRetryable()`.
      */
-    protected function failed(string $message): RedirectResponse
+    protected function failed(string $message, bool $retryable = true): RedirectResponse
     {
-        return back()->with('aiAnalysisError', ['message' => $message]);
+        return back()->with('aiAnalysisError', ['message' => $message, 'retryable' => $retryable]);
     }
 
     /**

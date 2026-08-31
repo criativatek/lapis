@@ -23,6 +23,24 @@ use RuntimeException;
  * things went wrong at the vendor, and an operator debugging a key is useless
  * without it. The category is a closed vocabulary written here, never a vendor
  * string passed through.
+ *
+ * A FOURTH THING: `isRetryable()`. Some of these failures are weather — a
+ * timeout, a 503, a rate limit — and pressing the button again is a reasonable
+ * thing to do. Others are ARITHMETIC: an answer that did not fit in its token
+ * budget will not fit on the second press either. Offering «Tentar novamente»
+ * for one of those is not a neutral courtesy — it is the interface telling a
+ * teacher something untrue, and charging the school for each demonstration. The
+ * distinction is drawn here, in the one place that knows which failure it was.
+ *
+ * A NOTE ON THE COPY. These sentences are read by SIX different features — the
+ * rewrite, the help assistant, two analyses, the synthesis and the strategy
+ * suggester — so they name none of them, and in particular they no longer
+ * promise that «o texto atual foi preservado». That was true where it was
+ * written, beside a paragraph the teacher had already typed, and false
+ * everywhere else: there is no previous text under a synthesis of a student's
+ * Evolução, and reassuring somebody that nothing was lost is a strange thing to
+ * say when nothing was ever there. `ReportRewriteController` adds that sentence
+ * back on the one screen where it means something.
  */
 class AiRequestFailed extends RuntimeException
 {
@@ -34,7 +52,34 @@ class AiRequestFailed extends RuntimeException
         'refused',
         'provider_error',
         'unusable_answer',
+        'truncated_answer',
+        'unparsable_answer',
         'unreachable',
+    ];
+
+    /**
+     * The categories a second attempt cannot fix.
+     *
+     * `truncated_answer` is the reason this list exists. It means the engine ran
+     * out of output budget, which is a function of the configured ceiling, the
+     * model's thinking cost and the length of the instruction — three things
+     * that are identical on the next press of the button. An operator can change
+     * it; a teacher cannot.
+     *
+     * `unparsable_answer` is here for a subtly different reason: the engine
+     * answered fully and in good health, and what it said did not match the
+     * shape this application requires. That is a prompt-and-model mismatch, and
+     * retrying at temperature 0.2 mostly reproduces it.
+     *
+     * `unauthorized` is a credential, and `unusable_answer` covers the refusals
+     * — a blocked prompt, an empty candidate — that come back the same way each
+     * time for the same input.
+     */
+    public const DETERMINISTIC_CATEGORIES = [
+        'unauthorized',
+        'truncated_answer',
+        'unparsable_answer',
+        'unusable_answer',
     ];
 
     protected function __construct(
@@ -49,7 +94,7 @@ class AiRequestFailed extends RuntimeException
     {
         return new self(
             "The writing assistant did not answer within {$seconds}s.",
-            'O apoio à redação demorou demasiado a responder. O texto atual foi preservado.',
+            'O pedido demorou demasiado a responder. Tente novamente dentro de instantes.',
             'timeout',
         );
     }
@@ -68,8 +113,8 @@ class AiRequestFailed extends RuntimeException
         return new self(
             "The writing assistant answered {$status}.",
             $status === 429
-                ? 'O apoio à redação está a receber demasiados pedidos. Tente novamente dentro de instantes.'
-                : 'Não foi possível obter uma sugestão neste momento. O texto atual foi preservado.',
+                ? 'Estão a chegar demasiados pedidos neste momento. Tente novamente dentro de instantes.'
+                : 'Não foi possível obter uma sugestão neste momento.',
             match (true) {
                 $status === 429 => 'rate_limited',
                 in_array($status, [401, 403], true) => 'unauthorized',
@@ -83,8 +128,47 @@ class AiRequestFailed extends RuntimeException
     {
         return new self(
             "The writing assistant answered something unusable: {$why}.",
-            'Não foi possível obter uma sugestão neste momento. O texto atual foi preservado.',
+            'Não foi possível obter uma sugestão neste momento.',
             'unusable_answer',
+        );
+    }
+
+    /**
+     * THE ANSWER HIT THE OUTPUT CEILING. A distinct category rather than one
+     * more `unusableAnswer`, because it is the one failure on this list an
+     * OPERATOR can actually fix — and because it is deterministic, so the
+     * interface must not offer to try again.
+     *
+     * `$why` is a reduced vendor enum (`MAX_TOKENS`) plus, where the provider
+     * can tell, whether anything came back at all. It reaches the log and never
+     * the teacher: neither the prompt nor the fragment of an answer is written
+     * down anywhere by this class.
+     */
+    public static function truncatedAnswer(string $why): self
+    {
+        return new self(
+            "The writing assistant ran out of output budget: {$why}.",
+            'Não foi possível obter uma sugestão neste momento.',
+            'truncated_answer',
+        );
+    }
+
+    /**
+     * THE ENGINE ANSWERED; THIS APPLICATION COULD NOT READ IT.
+     *
+     * Told apart from every category above on purpose. Those are the provider's
+     * failures — it refused, it errored, it ran out of room. This one is a
+     * disagreement about SHAPE between a prompt and a parser, both of which are
+     * written here, and conflating the two would leave a meter that cannot
+     * answer «is the model wrong, or is our prompt wrong?» — the first question
+     * anybody debugging this feature needs to ask.
+     */
+    public static function unparsableAnswer(string $why): self
+    {
+        return new self(
+            "The writing assistant answered in a shape this application could not read: {$why}.",
+            'Não foi possível obter uma sugestão neste momento.',
+            'unparsable_answer',
         );
     }
 
@@ -92,7 +176,7 @@ class AiRequestFailed extends RuntimeException
     {
         return new self(
             'The writing assistant could not be reached.',
-            'Não foi possível contactar o apoio à redação. O texto atual foi preservado.',
+            'Não foi possível contactar o serviço. Tente novamente dentro de instantes.',
             'unreachable',
         );
     }
@@ -110,5 +194,15 @@ class AiRequestFailed extends RuntimeException
     public function category(): string
     {
         return $this->category;
+    }
+
+    /**
+     * Whether pressing the button again could plausibly produce a different
+     * outcome. False means the cause is deterministic and the interface must
+     * not offer a retry — see `DETERMINISTIC_CATEGORIES`.
+     */
+    public function isRetryable(): bool
+    {
+        return ! in_array($this->category, self::DETERMINISTIC_CATEGORIES, true);
     }
 }

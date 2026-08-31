@@ -142,7 +142,7 @@ class ResultsAnalyst
         $this->record($class, $author, count($context->fields()), $sanitised->wasPseudonymised(), $analysis !== null, $answer->provider, $answer->model);
 
         if ($analysis === null) {
-            throw AiRequestFailed::unusableAnswer('no analysis could be parsed from the answer');
+            throw AiRequestFailed::unparsableAnswer('no analysis could be parsed from the answer');
         }
 
         return $analysis;

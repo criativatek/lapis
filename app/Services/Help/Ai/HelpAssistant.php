@@ -134,7 +134,7 @@ class HelpAssistant
         $this->record($author, array_keys($grounding), $parsed !== null && $parsed->sufficient, $answer);
 
         if ($parsed === null) {
-            throw AiRequestFailed::unusableAnswer('no answer could be parsed from the reply');
+            throw AiRequestFailed::unparsableAnswer('no answer could be parsed from the reply');
         }
 
         return $parsed;

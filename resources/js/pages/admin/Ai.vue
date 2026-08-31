@@ -180,6 +180,18 @@ function removeCredential(): void {
 function testConnection(): void {
     router.post('/admin/ai/test', {}, { preserveScroll: true });
 }
+
+/**
+ * The second, dearer test — see `AiCapabilityProbe` on the server.
+ *
+ * «Testar ligação» asks for the word «OK» and proves a credential. This asks the
+ * configured model to do the actual work — the real síntese instruction over a
+ * synthetic record, and a six-section answer the real parser accepts — because a
+ * model can pass the first and fail every request the product makes.
+ */
+function probeCapability(): void {
+    router.post('/admin/ai/probe', {}, { preserveScroll: true });
+}
 </script>
 
 <template>
@@ -377,7 +389,24 @@ function testConnection(): void {
                     Testar ligação
                 </button>
                 <p class="mt-1.5 text-xs text-muted-foreground">
-                    Faz um pedido real ao fornecedor com as definições em vigor. Consome tokens e fica registado na auditoria.
+                    Pede a palavra «OK» ao fornecedor com as definições em vigor. Confirma a credencial, o endereço e a rede —
+                    e mais nada. Consome tokens e fica registado na auditoria.
+                </p>
+            </div>
+
+            <!-- Two tests, and the distinction is deliberate. Uma ligação que
+                 funciona não é um modelo que serve: o teste acima passa com uma
+                 resposta de três tokens, e a aplicação pede seis secções sob uma
+                 instrução de duas páginas. -->
+            <div class="border-t border-border pt-3">
+                <button type="button" class="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted/40" @click="probeCapability">
+                    Testar capacidade
+                </button>
+                <p class="mt-1.5 text-xs text-muted-foreground">
+                    Pede ao modelo configurado uma síntese completa de seis secções, sobre um registo fictício escrito na
+                    aplicação — nenhum dado de aluno ou de professor é enviado. Confirma que o modelo consegue produzir uma
+                    resposta que a aplicação sabe ler, e não apenas que a ligação existe. Consome mais tokens do que o teste
+                    de ligação e fica registado na auditoria.
                 </p>
             </div>
         </div>

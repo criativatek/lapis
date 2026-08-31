@@ -587,7 +587,7 @@ class StudentProgressController extends Controller
         } catch (AiRequestFailed $exception) {
             report($exception);
 
-            return $this->suggestionFailed($exception->publicMessage());
+            return $this->suggestionFailed($exception->publicMessage(), $exception->isRetryable());
         }
 
         return back()->with('aiSuggestion', [
@@ -656,9 +656,10 @@ class StudentProgressController extends Controller
         return preg_match('/[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}/iu', $text) === 1;
     }
 
-    protected function suggestionFailed(string $message): RedirectResponse
+    /** Same contract as `synthesisFailed()` — see the note there on `retryable`. */
+    protected function suggestionFailed(string $message, bool $retryable = true): RedirectResponse
     {
-        return back()->with('aiSuggestionError', ['message' => $message]);
+        return back()->with('aiSuggestionError', ['message' => $message, 'retryable' => $retryable]);
     }
 
     /**
@@ -724,11 +725,16 @@ class StudentProgressController extends Controller
 
             // The «too little evidence» refusal arrives here too, as an
             // unusable answer that never reached an engine. Its own sentence,
-            // because it is the one failure here the teacher can fix.
+            // because it is the one failure here the teacher can fix — and the
+            // one the button should still be offered for, since adding a
+            // registo is exactly what would make the next press work.
+            $tooLittleEvidence = ! $this->synthesist->hasEnoughEvidence($progress);
+
             return $this->synthesisFailed(
-                $this->synthesist->hasEnoughEvidence($progress)
-                    ? $exception->publicMessage()
-                    : 'Ainda não há resultados, registos ou intervenções suficientes para uma síntese deste aluno.',
+                $tooLittleEvidence
+                    ? 'Ainda não há resultados, registos ou intervenções suficientes para uma síntese deste aluno.'
+                    : $exception->publicMessage(),
+                $tooLittleEvidence || $exception->isRetryable(),
             );
         }
 
@@ -741,9 +747,21 @@ class StudentProgressController extends Controller
         ]);
     }
 
-    protected function synthesisFailed(string $message): RedirectResponse
+    /**
+     * `retryable` TRAVELS WITH THE MESSAGE, and the panel uses it to decide
+     * whether to offer «Tentar novamente» at all.
+     *
+     * It defaults to true because every caller that passes a sentence of its
+     * own — «não está incluída no plano», «ainda não há resultados suficientes»
+     * — is describing a state that a teacher or an administrator can change,
+     * and the button costs nothing there. The one place it is false is a
+     * deterministic engine failure, where `AiRequestFailed::isRetryable()` has
+     * already worked out that the next press produces the identical outcome and
+     * bills the school for the privilege.
+     */
+    protected function synthesisFailed(string $message, bool $retryable = true): RedirectResponse
     {
-        return back()->with('aiSynthesisError', ['message' => $message]);
+        return back()->with('aiSynthesisError', ['message' => $message, 'retryable' => $retryable]);
     }
 
     /**

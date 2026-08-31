@@ -141,7 +141,7 @@ class InterventionStrategySuggester
         );
 
         if ($suggestions === []) {
-            throw AiRequestFailed::unusableAnswer('no suggestion could be parsed from the answer');
+            throw AiRequestFailed::unparsableAnswer('no suggestion could be parsed from the answer');
         }
 
         return $suggestions;

@@ -131,11 +131,16 @@ class ResultsController extends Controller
 
             // The «too little evidence» refusal arrives here too, as an
             // unusable answer that never reached an engine. Its own sentence,
-            // because it is the one failure on this screen the teacher can fix.
+            // because it is the one failure on this screen the teacher can fix
+            // — and the one where the button stays, since registering more
+            // elements is exactly what makes the next press work.
+            $tooLittleEvidence = ! $this->analyst->hasEnoughEvidence($view);
+
             return $this->analysisFailed(
-                $this->analyst->hasEnoughEvidence($view)
-                    ? $exception->publicMessage()
-                    : 'Ainda não há resultados suficientes neste período para uma análise. Registe mais elementos e volte a tentar.',
+                $tooLittleEvidence
+                    ? 'Ainda não há resultados suficientes neste período para uma análise. Registe mais elementos e volte a tentar.'
+                    : $exception->publicMessage(),
+                $tooLittleEvidence || $exception->isRetryable(),
             );
         }
 
@@ -153,9 +158,9 @@ class ResultsController extends Controller
      * works, with the button still there to press again. Never a 500, never a
      * raw exception, never a status code.
      */
-    protected function analysisFailed(string $message): RedirectResponse
+    protected function analysisFailed(string $message, bool $retryable = true): RedirectResponse
     {
-        return back()->with('resultsAiAnalysisError', ['message' => $message]);
+        return back()->with('resultsAiAnalysisError', ['message' => $message, 'retryable' => $retryable]);
     }
 
     /**

@@ -8,7 +8,10 @@ use App\Models\PlatformSetting;
 use App\Models\User;
 use App\Providers\AppServiceProvider;
 use App\Services\Ai\AiRequestFailed;
+use App\Services\Ai\Gateway\AiCapabilityProbe;
+use App\Services\Ai\Gateway\AiUseCase;
 use App\Services\Ai\Providers\FakeAiTextProvider;
+use App\Services\Progress\Ai\FollowupSynthesisPrompt;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -28,6 +31,25 @@ class AdminAiSettingsTest extends TestCase
     use RefreshDatabase;
 
     private const FICTITIOUS_KEY = 'AIza-CHAVE-FICTICIA-DE-TESTE-1234ABCD';
+
+    /**
+     * What a model that can do the work would answer the capability probe:
+     * six labelled sections, in the shape `FollowupSynthesisParser` accepts.
+     * Invented prose about the invented record in `AiCapabilityProbe`.
+     */
+    private const USABLE_SYNTHESIS = <<<'ANSWER'
+    SINTESE: Os registos mostram um percurso estável, com um domínio mais consolidado do que os restantes.
+    POSITIVOS:
+    - Os registos mostram um resultado consolidado em Números e operações.
+    ATENCAO:
+    - Os registos mostram dois trabalhos de casa por realizar.
+    MUDOU:
+    - O resultado do período mantém-se face ao período anterior.
+    PROXIMO:
+    - Pode ser útil verificar com o aluno o que torna Geometria e medida mais difícil.
+    CAUTELAS:
+    - Um domínio ficou sem resultado no período, pelo que a cobertura é parcial.
+    ANSWER;
 
     private function admin(): User
     {
@@ -436,5 +458,171 @@ class AdminAiSettingsTest extends TestCase
 
         $event = AuditEvent::withoutGlobalScope('organization')->where('event', 'ai.connection_tested')->sole();
         $this->assertSame('unauthorized', $event->properties['error_category']);
+    }
+
+    // ------------------------------------------------------ teste de capacidade
+
+    /**
+     * THE CONNECTION TEST IS UNCHANGED, AND THAT IS THE POINT OF KEEPING IT.
+     *
+     * It asks for the word «OK» and it still asks for the word «OK» — a fast,
+     * cheap proof that a credential, a base URL and a route out of the building
+     * all work. What changed is that it is no longer the only test, because it
+     * was never a test of whether the configured model can do the product's
+     * work: it stayed green throughout an outage in which every síntese de
+     * acompanhamento failed.
+     */
+    #[Test]
+    public function the_connection_test_still_asks_only_for_a_word(): void
+    {
+        config(['lapis.ai.driver' => 'fake', 'lapis.ai.model' => 'fake-model']);
+        $fake = app(FakeAiTextProvider::class);
+        $fake->willReturn('OK');
+
+        $this->actingAs($this->admin())->post('/admin/ai/test')->assertRedirect();
+
+        $this->assertStringContainsString('OK', $fake->received[0]->instruction);
+        $this->assertLessThan(400, mb_strlen($fake->received[0]->instruction));
+    }
+
+    /**
+     * THE CAPABILITY TEST ASKS FOR THE WORK. The real synthesis instruction, a
+     * realistic record, and a six-section answer that the product's own parser
+     * accepts — which is the demand that runs out of budget, and therefore the
+     * demand worth testing.
+     */
+    #[Test]
+    public function the_capability_test_sends_a_representative_request(): void
+    {
+        config(['lapis.ai.driver' => 'fake', 'lapis.ai.model' => 'fake-model']);
+        $fake = app(FakeAiTextProvider::class);
+        $fake->willReturn(self::USABLE_SYNTHESIS);
+
+        $this->actingAs($this->admin())->post('/admin/ai/probe')->assertRedirect();
+
+        $sent = $fake->received[0];
+
+        $this->assertSame(FollowupSynthesisPrompt::text(), $sent->instruction);
+        $this->assertGreaterThan(2000, mb_strlen($sent->instruction));
+        // Several sections' worth of facts, not a one-line ping.
+        $this->assertGreaterThan(10, substr_count($sent->content, "\n"));
+        // And it runs under the budget of the feature it stands for.
+        $this->assertSame(
+            AiUseCase::FollowupSynthesis->minimumOutputTokens(),
+            $sent->maxOutputTokens,
+        );
+    }
+
+    #[Test]
+    public function a_usable_capability_test_is_recorded_with_its_dimensions_and_no_text(): void
+    {
+        config(['lapis.ai.driver' => 'fake', 'lapis.ai.model' => 'fake-model']);
+        app(FakeAiTextProvider::class)->willReturn(self::USABLE_SYNTHESIS);
+
+        $this->actingAs($this->admin())->post('/admin/ai/probe')->assertRedirect();
+
+        $event = AuditEvent::withoutGlobalScope('organization')->where('event', 'ai.capability_probed')->sole();
+
+        $this->assertSame('succeeded', $event->properties['outcome']);
+        $this->assertSame(6, $event->properties['sections']);
+        $this->assertSame(AiCapabilityProbe::VERSION, $event->properties['prompt_version']);
+
+        // The answer itself is nowhere in the trail — only how big it was.
+        $properties = json_encode($event->properties, JSON_UNESCAPED_UNICODE);
+        $this->assertIsString($properties);
+        $this->assertStringNotContainsString('SINTESE', $properties);
+        $this->assertStringNotContainsString('Aluno A', $properties);
+    }
+
+    /**
+     * A MODEL THAT ANSWERS FLUENTLY IN THE WRONG SHAPE FAILS THIS TEST, which
+     * is the entire difference between it and «Testar ligação». A 200 is not a
+     * pass; a parseable synthesis is.
+     */
+    #[Test]
+    public function a_fluent_answer_in_the_wrong_shape_fails_the_capability_test(): void
+    {
+        config(['lapis.ai.driver' => 'fake', 'lapis.ai.model' => 'fake-model']);
+        app(FakeAiTextProvider::class)->willReturn('O aluno tem tido um percurso muito positivo este ano.');
+
+        $this->actingAs($this->admin())->post('/admin/ai/probe')->assertRedirect();
+
+        $event = AuditEvent::withoutGlobalScope('organization')->where('event', 'ai.capability_probed')->sole();
+
+        $this->assertSame('failed', $event->properties['outcome']);
+        $this->assertSame('unparsable_answer', $event->properties['error_category']);
+    }
+
+    /**
+     * AND A TRUNCATION IS REPORTED AS THE SETTING IT IS. This is the sentence
+     * that would have ended the outage on the first afternoon: the credential
+     * works, the endpoint works, the budget does not.
+     */
+    #[Test]
+    public function a_truncated_answer_points_the_operator_at_the_output_budget(): void
+    {
+        config(['lapis.ai.driver' => 'fake', 'lapis.ai.model' => 'fake-model']);
+        app(FakeAiTextProvider::class)->willFail(AiRequestFailed::truncatedAnswer('MAX_TOKENS, no text produced'));
+
+        $this->actingAs($this->admin())
+            ->post('/admin/ai/probe')
+            ->assertRedirect()
+            ->assertSessionHas('inertia.flash_data', function (array $flash): bool {
+                $this->assertSame('error', $flash['toast']['type']);
+                $this->assertStringContainsString('orçamento de resposta', $flash['toast']['message']);
+                $this->assertStringContainsString('tokens de saída', $flash['toast']['message']);
+
+                return true;
+            });
+
+        $event = AuditEvent::withoutGlobalScope('organization')->where('event', 'ai.capability_probed')->sole();
+        $this->assertSame('truncated_answer', $event->properties['error_category']);
+    }
+
+    /** The operator's diagnostic, like the connection test, is billed to no school. */
+    #[Test]
+    public function the_capability_test_is_measured_but_billed_to_no_organization(): void
+    {
+        config(['lapis.ai.driver' => 'fake', 'lapis.ai.model' => 'fake-model']);
+        app(FakeAiTextProvider::class)->willReturn(self::USABLE_SYNTHESIS);
+
+        $this->actingAs($this->admin())->post('/admin/ai/probe');
+
+        $usage = AiUsageEvent::query()->sole();
+
+        $this->assertNull($usage->organization_id);
+        $this->assertSame('platform', $usage->capability);
+        $this->assertSame(AiUseCase::AdminCapabilityProbe, $usage->use_case);
+    }
+
+    /** The two diagnostics are told apart in the meter, because they cost differently. */
+    #[Test]
+    public function the_two_diagnostics_are_distinguishable_in_the_meter(): void
+    {
+        config(['lapis.ai.driver' => 'fake', 'lapis.ai.model' => 'fake-model']);
+        app(FakeAiTextProvider::class)
+            ->willReturn('OK')
+            ->willReturn(self::USABLE_SYNTHESIS);
+
+        $this->actingAs($this->admin())->post('/admin/ai/test');
+        $this->actingAs($this->admin())->post('/admin/ai/probe');
+
+        $useCases = AiUsageEvent::query()->orderBy('id')->pluck('use_case')->all();
+
+        $this->assertSame(
+            [AiUseCase::AdminConnectionTest, AiUseCase::AdminCapabilityProbe],
+            $useCases,
+        );
+    }
+
+    /** Only the operator runs it. A teacher's session must not reach the route at all. */
+    #[Test]
+    public function the_capability_test_is_out_of_reach_of_a_teacher(): void
+    {
+        $this->actingAs(User::factory()->create())
+            ->post('/admin/ai/probe')
+            ->assertForbidden();
+
+        $this->assertSame(0, AiUsageEvent::query()->count());
     }
 }

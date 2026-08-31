@@ -152,7 +152,7 @@ class StudentFollowupSynthesist
         );
 
         if ($synthesis === null) {
-            throw AiRequestFailed::unusableAnswer('no synthesis could be parsed from the answer');
+            throw AiRequestFailed::unparsableAnswer('no synthesis could be parsed from the answer');
         }
 
         return $synthesis;

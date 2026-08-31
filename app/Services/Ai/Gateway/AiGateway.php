@@ -240,6 +240,7 @@ class AiGateway
                 instruction: $ask->instruction,
                 content: $ask->content->text,
                 temperature: $ask->temperature,
+                maxOutputTokens: $this->outputBudgetFor($ask),
             ));
         } catch (AiRequestFailed $exception) {
             $this->usage->failed(
@@ -260,6 +261,37 @@ class AiGateway
         $this->usage->succeeded($ask, $answer, $organization, $user, $this->elapsed($startedAt));
 
         return $answer;
+    }
+
+    /**
+     * The output ceiling for one ask, in tokens — resolved here and nowhere
+     * else.
+     *
+     * THREE NUMBERS, AND THE ORDER MATTERS. The installation's configured
+     * default (`max_output_tokens`) is the floor under everything. A use case
+     * may declare that its answer does not fit in that default —
+     * `AiUseCase::minimumOutputTokens()`, an application-authored constant on a
+     * closed enum — and the larger of the two is taken. The installation's hard
+     * ceiling (`max_output_tokens_ceiling`) is then applied over the result, so
+     * the raise is bounded by a number an operator controls.
+     *
+     * WHY THE CLAMP IS NOT DECORATION. Without it, «a use case may ask for
+     * more» would be a licence for the next use case to ask for a great deal
+     * more, and the output ceiling is the one setting in this file that is
+     * directly a bill. With it, the worst a new enum case can do is reach a
+     * limit the installation already agreed to.
+     *
+     * A CEILING BELOW THE DEFAULT WINS, and that is deliberate rather than a
+     * missing guard: an operator who lowers the hard ceiling is lowering the
+     * most a call may cost, and a default that quietly overrode it would make
+     * the hard ceiling the soft one.
+     */
+    protected function outputBudgetFor(AiAsk $ask): int
+    {
+        $default = max(1, (int) config('lapis.ai.max_output_tokens'));
+        $ceiling = max(1, (int) config('lapis.ai.max_output_tokens_ceiling'));
+
+        return min($ceiling, max($default, $ask->useCase->minimumOutputTokens() ?? 0));
     }
 
     protected function elapsed(float|int $startedAt): int

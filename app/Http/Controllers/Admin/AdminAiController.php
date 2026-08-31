@@ -12,6 +12,7 @@ use App\Services\Ai\AiTextProviders;
 use App\Services\Ai\AiUnavailable;
 use App\Services\Ai\Gateway\AiAsk;
 use App\Services\Ai\Gateway\AiCapability;
+use App\Services\Ai\Gateway\AiCapabilityProbe;
 use App\Services\Ai\Gateway\AiGateway;
 use App\Services\Ai\Gateway\AiQuota;
 use App\Services\Ai\Gateway\AiUsageSummary;
@@ -231,6 +232,102 @@ class AdminAiController extends Controller
         return back();
     }
 
+    /**
+     * Prove the configured MODEL can do the work, not merely that the key opens
+     * the door.
+     *
+     * THE SECOND BUTTON, AND THE REASON IT EXISTS. «Testar ligação» asks for the
+     * word «OK» and passed continuously through an outage in which every
+     * síntese de acompanhamento failed — because a three-token answer proves a
+     * credential and nothing else. This sends the feature's real instruction
+     * over a synthetic record and requires a genuinely usable six-section answer
+     * back, which is the shape of the work and the shape that runs out of
+     * budget. See `AiCapabilityProbe`.
+     *
+     * SYNTHETIC, FIXED, AND CHECKED IN. There is no student, no teacher and no
+     * organization anywhere in what it sends — the operator running it is not
+     * inside a tenant, and there is nothing here that would need to be.
+     *
+     * ITS OWN USE CASE, so the meter can tell the two diagnostics apart: this
+     * one costs real output tokens where «OK» costs three, and an operator
+     * reading `ai_usage_events` should not have to guess which was which.
+     */
+    public function probe(Request $request, AiGateway $gateway, AiPayloadSanitizer $sanitizer): RedirectResponse
+    {
+        $ask = new AiAsk(
+            useCase: AiUseCase::AdminCapabilityProbe,
+            instruction: AiCapabilityProbe::instruction(),
+            // Sanitised like every other payload. It has nothing in it to
+            // remove, and it goes through anyway: the exception would be the
+            // precedent.
+            content: $sanitizer->sanitise(AiCapabilityProbe::content()),
+            promptVersion: AiCapabilityProbe::VERSION,
+        );
+
+        try {
+            $answer = $gateway->ask($ask, $request->user());
+        } catch (AiUnavailable $exception) {
+            return $this->probeFailed($request, $exception->reason(), $exception->publicMessage());
+        } catch (AiRequestFailed $exception) {
+            report($exception);
+
+            return $this->probeFailed($request, $exception->category(), $this->explain($exception->category()));
+        }
+
+        // THE ANSWER ARRIVED AND STILL MAY NOT BE USABLE, which is the whole
+        // point of running the real parser rather than checking for a 200. A
+        // model that answers fluently in the wrong shape fails here, and the
+        // operator is told that rather than being told everything is fine.
+        if (! AiCapabilityProbe::isUsable($answer->text)) {
+            return $this->probeFailed(
+                $request,
+                'unparsable_answer',
+                $this->explain('unparsable_answer'),
+            );
+        }
+
+        $this->audit->recordPlatform(
+            'ai.capability_probed',
+            $request->user(),
+            summary: 'Teste de capacidade da IA bem-sucedido.',
+            properties: [
+                'outcome' => 'succeeded',
+                'provider' => $answer->provider,
+                'model' => $answer->model,
+                'prompt_version' => AiCapabilityProbe::VERSION,
+                // Dimensions, never the answer. See `AiCapabilityProbe`.
+                'sections' => AiCapabilityProbe::sectionsFound($answer->text),
+                'input_tokens' => $answer->inputTokens,
+                'output_tokens' => $answer->outputTokens,
+                'duration_ms' => $answer->durationMilliseconds,
+            ],
+        );
+
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => __('O modelo :model produziu uma resposta utilizável, com :sections de 6 secções.', [
+                'model' => $answer->model,
+                'sections' => AiCapabilityProbe::sectionsFound($answer->text),
+            ]),
+        ]);
+
+        return back();
+    }
+
+    protected function probeFailed(Request $request, string $category, string $message): RedirectResponse
+    {
+        $this->audit->recordPlatform(
+            'ai.capability_probed',
+            $request->user(),
+            summary: 'Teste de capacidade da IA falhou ('.$category.').',
+            properties: ['outcome' => 'failed', 'error_category' => $category],
+        );
+
+        Inertia::flash('toast', ['type' => 'error', 'message' => $message]);
+
+        return back();
+    }
+
     protected function testFailed(Request $request, string $category, string $message): RedirectResponse
     {
         $this->audit->recordPlatform(
@@ -261,6 +358,13 @@ class AdminAiController extends Controller
             'unreachable' => __('Não foi possível contactar o fornecedor. Verifique a rede e o endereço configurado.'),
             'provider_error' => __('O fornecedor devolveu um erro interno. O problema é do lado dele.'),
             'unusable_answer' => __('O fornecedor respondeu, mas a resposta não era utilizável. A ligação funciona; o modelo ou os limites podem não servir.'),
+            // THE ONE CATEGORY ON THIS LIST WITH A SETTING BEHIND IT. Worded so
+            // that the operator is pointed at the number, because on the Gemini
+            // 2.5 line the budget is spent on the model's own reasoning before
+            // any of it reaches the answer — which is how a working credential
+            // and a working endpoint still produce nothing.
+            'truncated_answer' => __('O fornecedor ficou sem orçamento de resposta antes de terminar. A ligação e a credencial funcionam; aumente o limite de tokens de saída ou escolha um modelo com menos raciocínio interno.'),
+            'unparsable_answer' => __('O fornecedor respondeu por inteiro, mas a resposta não tinha o formato que a aplicação precisa. A ligação funciona; o modelo pode não ser adequado a esta funcionalidade.'),
             default => __('Não foi possível concluir o teste de ligação.'),
         };
     }

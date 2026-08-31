@@ -25,6 +25,82 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.101.5] — 2026-08-31
+
+A «Síntese de acompanhamento (IA)» falhava sempre, com uma credencial válida, um
+endereço válido e o «Testar ligação» verde de ponta a ponta. A causa não era a
+ligação: nos modelos Gemini 2.5, o `maxOutputTokens` não é o tamanho da resposta
+— é o tamanho da resposta **mais tudo o que o modelo pensa antes de a escrever**,
+e o raciocínio é gasto primeiro. Um pedido de seis secções com um teto de 2048
+tokens voltava com `finishReason: MAX_TOKENS` e nenhum texto: o orçamento inteiro
+tinha ido para raciocínio que ninguém pediu. Determinista, repetível — e a
+interface oferecia «Tentar novamente», que falhava identicamente e custava mais
+um pedido à escola de cada vez.
+
+### Fixed
+
+- **O raciocínio deixa de comer o orçamento da resposta.** O `GeminiProvider`
+  passa a enviar `thinkingConfig` explicitamente, a partir de uma tabela única em
+  `App\Services\Ai\Providers\GeminiThinking`: `0` — sem raciocínio — nos modelos
+  que o aceitam (`gemini-2.5-flash`, `gemini-2.5-flash-lite`), o mínimo legal de
+  `128` no `gemini-2.5-pro`, que não permite desligá-lo, e **nada** em qualquer
+  modelo cujas regras a aplicação não conheça — porque um campo desconhecido é um
+  400 nas linhas 1.5 e 2.0, e o nome do modelo é configuração que um operador
+  escreve à mão. Nenhum condicional espalhado por controladores: a tabela é o
+  único sítio onde a decisão existe.
+- **A síntese passa a ter orçamento para as seis secções que pede.** Novo
+  `AiUseCase::minimumOutputTokens()` — um mínimo por caso de uso, num enum
+  fechado escrito pela aplicação, e não um campo que um caller possa levantar
+  (`AiAsk` continua sem nenhum). O `AiGateway` resolve
+  `min(teto, max(default, mínimo do caso de uso))` e é o único que constrói o
+  pedido que chega ao fio. Só a síntese o levanta (3072); tudo o resto fica no
+  default de 2048. Novo teto absoluto `LAPIS_AI_MAX_OUTPUT_TOKENS_CEILING`
+  (8192), para que «um caso de uso pode pedir mais» tenha sempre algo por cima.
+- **`MAX_TOKENS` deixa de ser confundido com uma falha do fornecedor.** Nova
+  categoria `truncated_answer`, distinta de `unusable_answer`: é a única falha
+  desta lista que um operador consegue corrigir, e a mensagem do backoffice
+  aponta-lhe o teto de tokens. Uma resposta truncada continua inutilizável —
+  meia síntese sobre uma criança, sob rótulos que prometem uma leitura inteira,
+  continua a ser pior do que nenhuma. Nem o prompt nem o fragmento de resposta
+  entram no erro ou no log.
+- **A falha do parser deixa de ser confundida com a falha do motor.** Nova
+  categoria `unparsable_answer`, aplicada nos cinco sítios onde a aplicação não
+  consegue ler uma resposta que chegou inteira. `ai_usage_events` passa a
+  conseguir responder à primeira pergunta de quem depura isto: falhou o modelo,
+  ou falhámos nós a ler o que ele disse?
+- **A interface deixa de prometer que «Tentar novamente» resolve.** As falhas
+  deterministas — orçamento esgotado, credencial rejeitada, resposta ilegível,
+  prompt bloqueado — chegam ao painel com `retryable: false` e o botão não é
+  desenhado. As transitórias — timeout, 429, 5xx, host inacessível — mantêm-no.
+  «Ainda não há evidência suficiente» mantém-no também, e de propósito: é a
+  única em que a próxima tentativa é exatamente o que funcionaria.
+
+### Changed
+
+- **«O texto atual foi preservado» sai das mensagens partilhadas.** A frase era
+  verdadeira onde foi escrita — ao lado de um parágrafo que o professor tinha
+  escrito — e viajava, através de uma exceção partilhada, para cinco
+  funcionalidades que nunca tiveram texto nenhum para preservar. Uma síntese de
+  Evolução não tem texto por baixo, e tranquilizar alguém de que nada se perdeu
+  é estranho quando nunca lá esteve nada. As mensagens partilhadas passam a ser
+  neutras («Não foi possível obter uma sugestão neste momento.») e o
+  `ReportRewriteController` volta a acrescentar a frase no único ecrã onde ela é
+  verdadeira.
+
+### Added
+
+- **«Testar capacidade», ao lado de «Testar ligação».** O teste antigo pede a
+  palavra «OK» e fica exatamente como está: prova uma credencial, um endereço e
+  uma rota para fora do edifício — e passou verde durante toda a avaria, porque
+  uma resposta de três tokens não prova nada sobre seis secções. O novo envia a
+  **instrução real** da síntese sobre um registo sintético escrito no
+  repositório, e exige de volta uma resposta que o `FollowupSynthesisParser`
+  aceite — a forma do trabalho real, sob o mesmo orçamento da funcionalidade que
+  representa. Nenhum dado de aluno ou de professor é enviado: não há aluno
+  nenhum ali. Caso de uso próprio (`admin_capability_probe`), sem organização e
+  sem quota, para que o medidor distinga dois diagnósticos que custam ordens de
+  grandeza diferentes.
+
 ## [0.101.4] — 2026-08-31
 
 A autoria de um registo é um facto histórico **sobre** o registo. O

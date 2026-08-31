@@ -79,7 +79,16 @@ class ReportRewriteController extends Controller
             // (§47, §48, §49).
             report($exception);
 
-            return $this->failed($section, $exception->publicMessage());
+            // «O texto atual foi preservado» IS ADDED HERE, AND ONLY HERE.
+            // It used to live inside `AiRequestFailed`, which meant six
+            // features said it and five of them were lying: there is no
+            // previous text under a synthesis of a student's Evolução or under
+            // a class analysis, and reassuring somebody that nothing was lost
+            // is a strange thing to say when nothing was ever there. This is
+            // the one screen where the sentence is true — the teacher's own
+            // paragraph is still in the editor, untouched — so this is the one
+            // screen that says it.
+            return $this->failed($section, $this->preservingText($exception->publicMessage()));
         }
 
         return back()->with('rewrite', $suggestion->toArray());
@@ -98,5 +107,19 @@ class ReportRewriteController extends Controller
             'section' => $section->ulid,
             'message' => $message,
         ]);
+    }
+
+    /**
+     * The reassurance this screen — and no other — is entitled to give.
+     *
+     * «Aperfeiçoar redação» is the one AI feature that operates ON something the
+     * teacher already wrote, so it is the one place where «nothing was lost» is
+     * a fact worth stating rather than a non sequitur. Appended rather than
+     * baked into the exception, because the exception is shared with five
+     * features that have no previous text to preserve.
+     */
+    protected function preservingText(string $message): string
+    {
+        return rtrim($message).' '.__('O texto atual foi preservado.');
     }
 }

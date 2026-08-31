@@ -64,8 +64,16 @@ const props = withDefaults(
         insufficientEvidenceMessage?: string;
         /** The blocks to render, in order, once an answer arrives. Empty while there is none. */
         sections?: AiReadingSection[];
-        /** A flashed error from the server, if the last attempt failed. */
-        error?: { message: string } | null;
+        /**
+         * A flashed error from the server, if the last attempt failed.
+         *
+         * `retryable` is the server saying whether a second press could produce
+         * a different outcome. Absent means yes — every screen that flashed an
+         * error before this field existed was describing weather, and the
+         * server is now explicit about the cases that are arithmetic. See
+         * `AiRequestFailed::isRetryable()`.
+         */
+        error?: { message: string; retryable?: boolean } | null;
         /** Whether the payload that produced this reading was pseudonymised. */
         pseudonymised?: boolean;
         /** A line above the answer saying what it is a reading OF. */
@@ -106,6 +114,18 @@ const hasReading = computed(() => props.sections.length > 0);
 
 /** The button may be pressed when the capability is on AND there is something to read. */
 const canRun = computed(() => props.available && props.hasEnoughEvidence);
+
+/**
+ * Whether to offer «Tentar novamente» beside the error that is showing.
+ *
+ * A RETRY LINK IS A PROMISE, and for a deterministic failure it is a false one.
+ * When the engine ran out of output budget, or the credential was rejected, or
+ * the answer came back in a shape this application cannot read, the next press
+ * reproduces the same failure exactly — and costs the school another request to
+ * do it. The server is the only layer that knows which kind of failure this
+ * was, so it says so, and this is the whole of what the panel does with it.
+ */
+const canRetry = computed(() => canRun.value && visibleError.value?.retryable !== false);
 
 const buttonLabel = computed(() => {
     if (running.value) {
@@ -188,7 +208,7 @@ function run(): void {
             <div v-else-if="visibleError" class="mt-4 rounded-lg bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-400">
                 <p>{{ visibleError.message }}</p>
                 <button
-                    v-if="canRun"
+                    v-if="canRetry"
                     type="button"
                     class="mt-2 inline-flex items-center gap-1.5 font-medium underline underline-offset-2"
                     @click="run"

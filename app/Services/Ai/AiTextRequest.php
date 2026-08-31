@@ -21,12 +21,15 @@ namespace App\Services\Ai;
  * what may be rejected — live in App\Services\Reporting\Writing and never reach
  * a provider.
  *
- * THERE IS NO OUTPUT CEILING ON THIS CLASS, deliberately. A ceiling a caller
- * can express is a ceiling a caller can raise, so the only one that exists is
- * `lapis.ai.max_output_tokens` — installation configuration, read by each real
- * provider at the wire and settable by an operator in the backoffice. A field
- * here would be a second source of truth for the same number, in a unit
- * (characters) that no engine's API actually accepts.
+ * `maxOutputTokens` IS RESOLVED, NOT REQUESTED, and the distinction is the
+ * whole of why it is allowed to exist here at all. This class used to carry no
+ * ceiling on the stated grounds that «a ceiling a caller can express is a
+ * ceiling a caller can raise», and that reasoning still holds — so nothing a
+ * caller touches has gained a field. `AiAsk`, which is what callers build, has
+ * none. This object is constructed by `AiGateway` and by nobody else, from the
+ * installation's configured default, the use case's declared minimum, and the
+ * installation's hard ceiling. A null still means «take the provider's
+ * installation default», which is what every path that does not need more gets.
  */
 readonly class AiTextRequest
 {
@@ -35,5 +38,11 @@ readonly class AiTextRequest
         public string $content,
         /** Deterministic by preference: the same paragraph should not read differently on every click. */
         public float $temperature = 0.2,
+        /**
+         * The budget for this one call, already clamped by `AiGateway`, or null
+         * to use `lapis.ai.max_output_tokens`. Never caller-supplied — see the
+         * class docblock.
+         */
+        public ?int $maxOutputTokens = null,
     ) {}
 }

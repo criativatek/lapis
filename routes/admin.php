@@ -123,6 +123,15 @@ Route::middleware(['auth', 'verified', 'platform-admin'])
             ->middleware('throttle:6,1')
             ->name('ai.test');
 
+        // The capability probe sends a full instruction and asks for a full
+        // answer, so one click costs roughly what a real síntese costs —
+        // materially more than «OK». Throttled harder for that reason alone:
+        // the ceiling is about spend, not about abuse, and this route is
+        // already behind `platform-admin`.
+        Route::post('ai/probe', [AdminAiController::class, 'probe'])
+            ->middleware('throttle:3,1')
+            ->name('ai.probe');
+
         // Start impersonating the org's owner (support).
         Route::post('accounts/{organization}/impersonate', [AdminImpersonateController::class, 'start'])->name('accounts.impersonate');
     });

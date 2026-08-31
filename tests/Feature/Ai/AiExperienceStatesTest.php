@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Ai;
 
+use App\Http\Controllers\Reports\ReportRewriteController;
 use App\Models\Enrollment;
 use App\Models\Organization;
 use App\Models\OrganizationSubscription;
@@ -308,10 +309,18 @@ class AiExperienceStatesTest extends TestCase
         config(['lapis.ai.driver' => 'fake', 'lapis.ai.model' => 'modelo-de-teste']);
     }
 
-    private function engine(string $answer): FakeAiTextProvider
+    /**
+     * `$answer` is optional so that a test which is about a FAILURE can script
+     * one without first scripting an answer nobody will read.
+     */
+    private function engine(?string $answer = null): FakeAiTextProvider
     {
         $engine = new FakeAiTextProvider('modelo-de-teste');
-        $engine->willReturn($answer);
+
+        if ($answer !== null) {
+            $engine->willReturn($answer);
+        }
+
         $this->app->instance(FakeAiTextProvider::class, $engine);
 
         return $engine;
@@ -353,5 +362,170 @@ class AiExperienceStatesTest extends TestCase
         return $this->asTenant(
             fn (): Enrollment => $this->schoolClass()->enrollments()->where('class_number', $classNumber)->firstOrFail(),
         );
+    }
+
+    // -------------------------------------------------- copy e «tentar novamente»
+
+    /**
+     * THE SYNTHESIS NEVER TELLS A TEACHER THAT THEIR TEXT WAS PRESERVED.
+     *
+     * There is no text under this panel. «O texto atual foi preservado» was
+     * written for «Aperfeiçoar redação», where the teacher's own paragraph is
+     * still sitting in the editor, and it travelled to five other features
+     * through a shared exception — where it is a reassurance about something
+     * that never existed. Neutral copy here; the rewrite keeps its sentence.
+     */
+    #[Test]
+    public function a_failed_synthesis_does_not_claim_a_previous_text_was_kept(): void
+    {
+        $this->givePlan('pro');
+        $this->configureEngine();
+        $this->engine()->willFail(AiRequestFailed::truncatedAnswer('MAX_TOKENS, no text produced'));
+
+        $class = $this->schoolClass();
+        $enrollment = $this->enrollment();
+
+        $this->actingAs($this->teacher)
+            ->from("/classes/{$class->ulid}/evolucao/{$enrollment->ulid}")
+            ->post("/classes/{$class->ulid}/evolucao/{$enrollment->ulid}/sintese-ia")
+            ->assertRedirect()
+            ->assertSessionHas('aiSynthesisError');
+
+        $error = session('aiSynthesisError');
+
+        $this->assertStringNotContainsStringIgnoringCase('preservado', $error['message']);
+        $this->assertSame('Não foi possível obter uma sugestão neste momento.', $error['message']);
+    }
+
+    /**
+     * AND IT DOES NOT OFFER A BUTTON THAT CANNOT WORK.
+     *
+     * A truncation is arithmetic: the ceiling, the prompt and the model's
+     * thinking cost are identical on the next press, so the next press fails
+     * identically and bills the school for the demonstration. The server says
+     * so, and the panel reads it.
+     */
+    #[Test]
+    public function a_deterministic_failure_does_not_offer_to_try_again(): void
+    {
+        $this->givePlan('pro');
+        $this->configureEngine();
+        $this->engine()->willFail(AiRequestFailed::truncatedAnswer('MAX_TOKENS, no text produced'));
+
+        $class = $this->schoolClass();
+        $enrollment = $this->enrollment();
+
+        $this->actingAs($this->teacher)
+            ->from("/classes/{$class->ulid}/evolucao/{$enrollment->ulid}")
+            ->post("/classes/{$class->ulid}/evolucao/{$enrollment->ulid}/sintese-ia")
+            ->assertRedirect();
+
+        $this->assertFalse(session('aiSynthesisError')['retryable']);
+    }
+
+    /** A timeout is weather, and the button stays where it is. */
+    #[Test]
+    public function a_transient_failure_still_offers_to_try_again(): void
+    {
+        $this->givePlan('pro');
+        $this->configureEngine();
+        $this->engine()->willFail(AiRequestFailed::timedOut(20));
+
+        $class = $this->schoolClass();
+        $enrollment = $this->enrollment();
+
+        $this->actingAs($this->teacher)
+            ->from("/classes/{$class->ulid}/evolucao/{$enrollment->ulid}")
+            ->post("/classes/{$class->ulid}/evolucao/{$enrollment->ulid}/sintese-ia")
+            ->assertRedirect();
+
+        $this->assertTrue(session('aiSynthesisError')['retryable']);
+    }
+
+    /**
+     * AN ANSWER THE PARSER REFUSES IS ALSO DETERMINISTIC — the engine was
+     * healthy and said something this application cannot read, and at
+     * temperature 0.2 it will mostly say it again.
+     */
+    #[Test]
+    public function an_unreadable_answer_does_not_offer_to_try_again(): void
+    {
+        $this->givePlan('pro');
+        $this->configureEngine();
+        $this->engine('Uma resposta fluente, sem um único rótulo de secção.');
+
+        $class = $this->schoolClass();
+        $enrollment = $this->enrollment();
+
+        $this->actingAs($this->teacher)
+            ->from("/classes/{$class->ulid}/evolucao/{$enrollment->ulid}")
+            ->post("/classes/{$class->ulid}/evolucao/{$enrollment->ulid}/sintese-ia")
+            ->assertRedirect()
+            ->assertSessionHas('aiSynthesisError');
+
+        $error = session('aiSynthesisError');
+
+        $this->assertFalse($error['retryable']);
+        $this->assertStringNotContainsStringIgnoringCase('preservado', $error['message']);
+    }
+
+    /**
+     * «AINDA NÃO HÁ EVIDÊNCIA SUFICIENTE» KEEPS ITS BUTTON, and that is the
+     * distinction worth drawing: unlike a budget the teacher cannot change,
+     * this one is fixed by registering another element — so the next press is
+     * exactly the thing that would work.
+     */
+    #[Test]
+    public function too_little_evidence_keeps_the_button_it_can_actually_use(): void
+    {
+        $this->givePlan('pro');
+        $this->configureEngine();
+        $this->engine('SINTESE: nunca deveria ser pedido.');
+
+        // The same empty September class as
+        // `a_period_with_too_little_evidence_says_so_instead_of_asking_an_engine`
+        // — no roster, no instruments, no results.
+        $class = $this->asTenant(function (): SchoolClass {
+            $class = SchoolClass::factory()->recycle($this->organization)->create([
+                'academic_year_id' => $this->schoolClass()->academic_year_id,
+            ]);
+            $class->teachers()->attach($this->teacher, ['role' => 'owner']);
+
+            return $class;
+        });
+
+        $this->actingAs($this->teacher)
+            ->from("/classes/{$class->ulid}/results")
+            ->post("/classes/{$class->ulid}/results/analise-ia")
+            ->assertRedirect()
+            ->assertSessionHas('resultsAiAnalysisError');
+
+        $error = session('resultsAiAnalysisError');
+
+        $this->assertTrue($error['retryable']);
+        $this->assertStringContainsString('resultados suficientes', (string) $error['message']);
+    }
+
+    /**
+     * «APERFEIÇOAR REDAÇÃO» IS THE ONE SCREEN THAT STILL SAYS IT, because it is
+     * the one screen where it is true: the teacher's paragraph is still in the
+     * editor, untouched, and saying so is worth saying.
+     */
+    #[Test]
+    public function the_rewrite_still_reassures_the_teacher_that_their_text_is_intact(): void
+    {
+        $controller = new \ReflectionMethod(
+            ReportRewriteController::class,
+            'preservingText',
+        );
+        $controller->setAccessible(true);
+
+        $message = $controller->invoke(
+            app(ReportRewriteController::class),
+            AiRequestFailed::truncatedAnswer('MAX_TOKENS')->publicMessage(),
+        );
+
+        $this->assertStringContainsString('O texto atual foi preservado.', $message);
+        $this->assertStringContainsString('Não foi possível obter uma sugestão neste momento.', $message);
     }
 }

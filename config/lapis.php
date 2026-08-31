@@ -233,6 +233,23 @@ return [
         'max_output_tokens' => (int) env('LAPIS_AI_MAX_OUTPUT_TOKENS', 2048),
 
         /*
+         | THE HARD CEILING ABOVE THE CEILING.
+         |
+         | `max_output_tokens` is the DEFAULT budget; this is the absolute
+         | maximum any single call may be given, whatever else asks for more.
+         | It exists because `AiUseCase::minimumOutputTokens()` may raise the
+         | budget for a use case whose answer does not fit in the default — and
+         | a raise with nothing above it is not a ceiling, which is the same
+         | objection this file has always made to a caller-supplied one.
+         |
+         | So the arithmetic `AiGateway` does is closed on both sides:
+         | `min(ceiling, max(default, use-case floor))`. An installation that
+         | lowers this below `max_output_tokens` gets this number, because the
+         | hard ceiling is the one that wins — that is what makes it hard.
+         */
+        'max_output_tokens_ceiling' => (int) env('LAPIS_AI_MAX_OUTPUT_TOKENS_CEILING', 8192),
+
+        /*
          | Where the Gemini driver posts.
          |
          | A BASE, NOT AN ENDPOINT: the model is part of the path

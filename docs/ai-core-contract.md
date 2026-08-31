@@ -142,10 +142,25 @@ $answer->durationMilliseconds;  // ?int
 |---|---|---|
 | `AiUnavailable` | «isto não está ligado» — clicar nunca vai ajudar | `publicMessage()`, `reason()`: `plan` \| `provider` |
 | `AiQuotaExceeded` | «gastou o que tinha» — amanhã, ou no próximo mês | `publicMessage()`, `scope()`: `user_daily` \| `organization_monthly` |
-| `AiRequestFailed` | «o motor não respondeu» — tentar outra vez | `publicMessage()`, `category()`, `getMessage()` (só para log) |
+| `AiRequestFailed` | «o motor não respondeu» — às vezes tentar outra vez ajuda, às vezes não | `publicMessage()`, `category()`, `isRetryable()`, `getMessage()` (só para log) |
 
 `AiRequestFailed::category()`: `timeout`, `unauthorized`, `rate_limited`,
-`refused`, `provider_error`, `unusable_answer`, `unreachable`.
+`refused`, `provider_error`, `unusable_answer`, `truncated_answer`,
+`unparsable_answer`, `unreachable`.
+
+Três dessas categorias merecem ser lidas com atenção, porque descrevem falhas
+que parecem iguais no ecrã e não são a mesma coisa:
+
+| Categoria | O que aconteceu | Quem a pode corrigir |
+|---|---|---|
+| `unusable_answer` | O motor recusou ou respondeu vazio — prompt bloqueado, candidato sem texto | Ninguém, a partir do ecrã |
+| `truncated_answer` | O motor ficou **sem orçamento de saída** (`MAX_TOKENS`) antes de acabar | O **operador**, em Administração → IA |
+| `unparsable_answer` | O motor respondeu inteiro e **a aplicação não conseguiu ler** a resposta | Quem escreve o prompt ou escolhe o modelo |
+
+`truncated_answer` existe porque, nos modelos Gemini 2.5, `maxOutputTokens` é o
+teto da resposta **mais o raciocínio interno**, e o raciocínio é gasto primeiro
+— pelo que uma resposta longa pode voltar completamente vazia. Ver
+`GeminiThinking` e `AiUseCase::minimumOutputTokens()`.
 
 **Regras de apresentação, não negociáveis:**
 
@@ -154,6 +169,12 @@ $answer->durationMilliseconds;  // ?int
 - Chamar `report($exception)` para `AiRequestFailed` — a razão técnica é útil no
   log e não carrega endpoint nem chave.
 - Distinguir `plan` de `provider` no ecrã. São problemas de pessoas diferentes.
+- **Não oferecer «Tentar novamente» quando `isRetryable()` é falso.** Passar a
+  bandeira para o painel (`error.retryable`) e deixá-lo decidir. Um retry sobre
+  uma causa determinista falha identicamente e custa mais um pedido à escola.
+- **Nenhuma mensagem partilhada promete que «o texto atual foi preservado».**
+  Só «Aperfeiçoar redação» tem texto por baixo para preservar, e é esse
+  controlador que acrescenta a frase.
 
 ### Antes de desenhar o botão
 
@@ -231,6 +252,7 @@ capabilities que nunca controlou.
 | `PedagogicalStrategySuggestion` | `ai_strategies` |
 | `ReportSectionRewrite` | `ai_reports` |
 | `AdminConnectionTest` | nenhuma (só `platform-admin`) |
+| `AdminCapabilityProbe` | nenhuma (só `platform-admin`) |
 
 Falta um caso de uso? Acrescentar uma `case` ao enum e mapeá-la. **Não** passar
 uma string.
