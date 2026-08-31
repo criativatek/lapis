@@ -200,6 +200,59 @@ O guest não reabre, porque não tem por onde — e é o preço coerente de §3.
 O suporte humano é o mesmo nos três planos. Não há prioridade paga na V1, e por
 isso não há nada a declarar em nenhuma `PlanVersion`.
 
+### 14. A confirmação de receção identifica o pedido pela CATEGORIA (0.102.0)
+
+A confirmação automática que sai quando alguém abre um pedido tem de dizer **de
+que pedido se trata** — quem escreveu duas vezes na mesma semana precisa de
+saber qual deles é este. A escolha óbvia seria o `subject`, e é a escolha
+errada.
+
+O campo que o formulário mostra como **«Resumo»** é `subject`, e é **texto
+livre**. É o primeiro sítio onde alguém escreve «o aluno João não aparece na
+turma 5.ºB» sem pensar duas vezes — mais depressa até do que na descrição, que
+pelo menos parece um formulário. Pô-lo num email fá-lo atravessar servidores que
+não são nossos e ficar numa caixa de entrada que não controlamos, que é
+exactamente o que §4 e o próprio `SupportNotificationMail` já recusam para a
+descrição e para as mensagens do fio.
+
+**Fica a categoria.** `SupportCategory` é vocabulário fechado: chega para
+distinguir dois pedidos da mesma pessoa e não pode conter o nome de ninguém. O
+resumo continua a existir onde está protegido — no pedido, dentro da aplicação,
+atrás de autenticação.
+
+**Excepção deliberada e única: o primeiro nome de quem pediu.** A confirmação
+cumprimenta pelo primeiro nome, e esse é o único dado pessoal que os emails
+desta Central acrescentam. Não é conteúdo do pedido, e vai para a caixa de
+correio da própria pessoa — a regra que estes emails cumprem é sobre **o que foi
+escrito no pedido**, que pode falar de alunos, não sobre reconhecer quem o
+escreveu. Sem nome, a mensagem cumprimenta na mesma, sem inventar um.
+
+**Sem prazo.** «Com a maior brevidade possível» é uma intenção; «em 24 horas» é
+um contrato que ninguém assinou, e que se lê de volta no dia em que a resposta
+demora 26. §13 já dizia que não há SLA; a confirmação é o sítio onde seria mais
+fácil criar um por descuido, e um teste recusa a lista de promessas de prazo.
+
+### 15. O ecrã não afirma um email que não saiu (0.102.0)
+
+Depois de criar um pedido, a interface lê o estado real da entrega em
+`support_notification_deliveries` — o mesmo registo durável de §6 — antes de
+dizer seja o que for sobre o email.
+
+O pedido ficou registado: isso é certo, e é o que importa. A confirmação por
+email é **outra coisa**, e pode ter falhado. Dizer «enviámos uma confirmação»
+quando o servidor a recusou põe a pessoa à espera de algo que não vem e, quando
+não vier, a duvidar do pedido inteiro — que está perfeitamente guardado. Numa
+falha, o ecrã diz que o pedido ficou registado e que a confirmação não pôde ser
+enviada, e é tudo.
+
+Para um visitante isto pesa mais: sem portal, o email era o único sítio onde ele
+voltaria a ver este pedido, e se não saiu a referência no ecrã passa a ser tudo
+o que ele tem.
+
+**Não há segunda fonte deste facto.** Depois de um reenvio bem sucedido no
+backoffice, a mesma linha passa a dizer «entregue» sem que nada mais tenha de
+ser actualizado.
+
 ## Consequences
 
 - Um pedido de suporte passa a ter fila, histórico, prazo e apagamento.

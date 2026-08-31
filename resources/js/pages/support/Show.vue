@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, useForm, usePage } from '@inertiajs/vue3';
+import { computed } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
@@ -10,6 +11,12 @@ import { Button } from '@/components/ui/button';
  * RESPONDER A UM PEDIDO RESOLVIDO REABRE-O, e o botão di-lo em vez de o
  * esconder: não há acção separada de reabertura, porque quem tem mais a dizer
  * já está a dizê-lo (ADR-0011 §12).
+ *
+ * O AVISO DE RECEÇÃO APARECE UMA VEZ, vindo da flash de quem acabou de abrir o
+ * pedido, e diz a VERDADE sobre o email: se a confirmação não saiu, não a dá
+ * como enviada. Não é um toast porque não é uma nota de rodapé — é a resposta à
+ * pergunta com que a pessoa carregou no botão, e desaparecer em quatro segundos
+ * deixá-la-ia sem ela.
  */
 
 type Message = {
@@ -44,6 +51,22 @@ defineOptions({
     },
 });
 
+type Acknowledgement = { reference: string; emailDelivered: boolean };
+
+const page = usePage();
+
+/**
+ * Só existe na navegação que vem de abrir o pedido; nas seguintes, não.
+ *
+ * `page.flash` e não `page.props.flash`: a flash do Inertia viaja ao lado dos
+ * props no objeto da página, não dentro deles.
+ */
+const acknowledgement = computed<Acknowledgement | null>(
+    () =>
+        (page.flash as { supportAcknowledgement?: Acknowledgement } | undefined)
+            ?.supportAcknowledgement ?? null,
+);
+
 const form = useForm({ body: '' });
 
 function submit(): void {
@@ -67,6 +90,33 @@ function formatDateTime(iso: string | null): string {
             :title="request.subject ?? request.reference"
             :description="`${request.reference} · ${request.categoryLabel} · ${request.statusLabel}`"
         />
+
+        <div
+            v-if="acknowledgement"
+            class="rounded-lg border p-4 text-sm"
+            :class="
+                acknowledgement.emailDelivered
+                    ? 'border-emerald-300 bg-emerald-50 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100'
+                    : 'border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100'
+            "
+        >
+            <p class="font-medium">Pedido enviado com sucesso</p>
+            <p class="mt-1">
+                O seu pedido
+                <strong class="font-mono">{{
+                    acknowledgement.reference
+                }}</strong>
+                foi recebido pela equipa de suporte. Lamentamos o incómodo e
+                iremos analisá-lo com a maior brevidade possível.
+                <template v-if="acknowledgement.emailDelivered">
+                    Enviámos também uma confirmação para o seu email.
+                </template>
+                <template v-else>
+                    A confirmação por email não pôde ser enviada neste momento,
+                    mas o pedido ficou registado normalmente.
+                </template>
+            </p>
+        </div>
 
         <p
             v-if="request.autoResolved"

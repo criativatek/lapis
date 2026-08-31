@@ -50,6 +50,22 @@ class PublicSupportController extends Controller
         // apenas ter o endereço.
         $pedido = $this->open->open($dados);
 
-        return back()->with('supportReference', $pedido->reference);
+        // O ECRÃ NÃO PODE MENTIR SOBRE O EMAIL, e aqui menos ainda: um
+        // visitante não tem portal, e o email é o único sítio onde vai voltar a
+        // ver este pedido. Se a confirmação não saiu, ele tem de o saber na
+        // hora — para guardar a referência do ecrã, que passa a ser tudo o que
+        // tem. O estado vem da tabela de entregas, que é o registo durável.
+        //
+        // `Inertia::flash()` E NÃO `->with()`. São dois sítios diferentes da
+        // sessão: `->with()` escreve na flash do Laravel, que o Inertia não
+        // partilha com a página; o que chega a `page.flash` vem só de
+        // `inertia.flash_data`. Escrita no sítio errado, a referência ficava na
+        // sessão sem ninguém a ler, e este painel nunca chegava a aparecer.
+        Inertia::flash([
+            'supportReference' => $pedido->reference,
+            'supportEmailDelivered' => $pedido->acknowledgementWasDelivered(),
+        ]);
+
+        return back();
     }
 }

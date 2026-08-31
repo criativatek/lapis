@@ -57,7 +57,11 @@ class GuestSupportTest extends TestCase
     {
         $this->post('/contacto', $this->payload())
             ->assertRedirect()
-            ->assertSessionHas('supportReference');
+            // A referência viaja na flash do INERTIA (`inertia.flash_data`), que
+            // é a única que chega a `page.props.flash` — que é onde o ecrã a
+            // vai buscar. Escrita na flash do Laravel, ficava na sessão sem
+            // ninguém a ler.
+            ->assertSessionHas('inertia.flash_data', fn (array $flash): bool => isset($flash['supportReference']));
 
         $pedido = SupportRequest::query()->sole();
 
@@ -113,7 +117,7 @@ class GuestSupportTest extends TestCase
             $this->assertStringNotContainsString('Ver pedido', $rendered);
             $this->assertStringNotContainsString('/support/', $rendered);
             // E diz a verdade sobre responder por email.
-            $this->assertStringContainsString('não fica guardada no histórico', $rendered);
+            $this->assertStringContainsString('não são adicionadas ao pedido no Lapispro', $rendered);
 
             return true;
         });

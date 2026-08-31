@@ -231,6 +231,9 @@ class SupportPrivacyAlignmentTest extends TestCase
             'category' => 'access',
             'subject' => 'Não consigo entrar',
             'description' => 'O email de recuperação não chega.',
-        ])->assertRedirect()->assertSessionHas('supportReference');
+        ])->assertRedirect()->assertSessionHas(
+            'inertia.flash_data',
+            fn (array $flash): bool => isset($flash['supportReference']),
+        );
     }
 }
