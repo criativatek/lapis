@@ -31,6 +31,17 @@ use Illuminate\Support\Facades\Http;
  * not a ceiling, and an engine with no ceiling at all answers a two-line
  * question with two thousand lines, which is directly a bill.
  *
+ * A REQUEST MAY NONETHELESS CARRY ITS OWN BUDGET, AND THIS DRIVER HONOURS IT —
+ * for exactly as long as it takes to notice who put it there. `AiTextRequest`
+ * is built by `AiGateway` and by nobody else, and the number it carries is
+ * already `min(hard ceiling, max(default, use-case floor))`. Ignoring it, which
+ * this file did until 0.101.5, did not make the installation safer — it made
+ * the two drivers disagree. The síntese de acompanhamento declares that it
+ * needs 3072 tokens to produce its six labelled sections; under Gemini it got
+ * them, and under an OpenAI-compatible engine it silently got the 2048 default
+ * and a truncated answer that the parser then refused. A budget that holds on
+ * one driver and not on the other is not a policy, it is a bug with a docblock.
+ *
  * THE FIELD IS `max_tokens` AND THAT IS DELIBERATE. It is the spelling the wire
  * format itself carries, honoured by every hosted engine and every self-hosted
  * runner that implements `/chat/completions`; a newer vendor-specific alias
@@ -75,7 +86,7 @@ class ChatCompletionsProvider implements AiTextProvider
                 ->post($this->endpoint, [
                     'model' => $this->model,
                     'temperature' => $request->temperature,
-                    'max_tokens' => $this->maxOutputTokens,
+                    'max_tokens' => $this->budgetFor($request),
                     'messages' => [
                         ['role' => 'system', 'content' => $request->instruction],
                         ['role' => 'user', 'content' => $request->content],
@@ -109,6 +120,27 @@ class ChatCompletionsProvider implements AiTextProvider
             outputTokens: $this->count($response->json('usage.completion_tokens')),
             latencyMilliseconds: (int) round((hrtime(true) - $startedAt) / 1_000_000),
         );
+    }
+
+    /**
+     * The ceiling for THIS call — the same resolution `GeminiProvider` performs,
+     * deliberately identical so that a use case's declared minimum means the
+     * same thing whichever driver the installation happens to have configured.
+     *
+     * A request that carries its own budget was given one by `AiGateway`, which
+     * is the only thing that may hand out one and has already clamped it
+     * against `lapis.ai.max_output_tokens_ceiling`. Anything else — a request
+     * built without one, and every path in the product that does not need more
+     * room — gets the installation default this provider was constructed with.
+     *
+     * A non-positive value is treated as absent rather than sent: zero output
+     * tokens is a request for an empty answer, and no caller means that.
+     */
+    protected function budgetFor(AiTextRequest $request): int
+    {
+        return $request->maxOutputTokens !== null && $request->maxOutputTokens > 0
+            ? $request->maxOutputTokens
+            : $this->maxOutputTokens;
     }
 
     /** An absent count stays absent. Recording it as zero would be a false measurement. */

@@ -12,12 +12,12 @@ use App\Services\Ai\AiTextProviders;
 use App\Services\Ai\AiUnavailable;
 use App\Services\Ai\Gateway\AiAsk;
 use App\Services\Ai\Gateway\AiCapability;
-use App\Services\Ai\Gateway\AiCapabilityProbe;
 use App\Services\Ai\Gateway\AiGateway;
 use App\Services\Ai\Gateway\AiQuota;
 use App\Services\Ai\Gateway\AiUsageSummary;
 use App\Services\Ai\Gateway\AiUseCase;
 use App\Services\Audit\AuditLog;
+use App\Services\Diagnostics\Ai\AiCapabilityProbe;
 use App\Support\Privacy\AiPayloadSanitizer;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -413,7 +413,16 @@ class AdminAiController extends Controller
                 'driver' => config('lapis.ai.driver'),
                 'model' => config('lapis.ai.model'),
                 'timeout' => (int) config('lapis.ai.timeout'),
+                // TWO NUMBERS, BECAUSE THEY MEAN DIFFERENT THINGS AND THE
+                // OPERATOR IS ENTITLED TO BOTH. `max_output_tokens` is the
+                // DEFAULT budget a call gets; a use case that declares it needs
+                // more may raise it (`AiUseCase::minimumOutputTokens()`).
+                // `max_output_tokens_ceiling` is the number nothing may exceed.
+                // Showing only the first and calling it «máximo» was untrue on
+                // exactly the screen where an operator goes to find out what the
+                // limit is — see the field labels in admin/Ai.vue.
                 'max_output_tokens' => (int) config('lapis.ai.max_output_tokens'),
+                'max_output_tokens_ceiling' => (int) config('lapis.ai.max_output_tokens_ceiling'),
                 'per_minute' => (int) config('lapis.ai.per_minute'),
                 'organization_per_minute' => (int) config('lapis.ai.organization_per_minute'),
                 // NOT `key`. There is no shape of this payload that carries it.

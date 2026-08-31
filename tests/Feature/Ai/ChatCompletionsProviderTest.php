@@ -126,7 +126,11 @@ class ChatCompletionsProviderTest extends TestCase
 
     /**
      * THE NUMBER COMES FROM THE INSTALLATION, not from a literal inside the
-     * driver and not from the caller — `AiTextRequest` has no ceiling to offer.
+     * driver and not from a caller: a request that carries no resolved budget
+     * — which is every request in the product that does not need more room —
+     * falls back to the installation default. The budget a request MAY carry
+     * was put there by `AiGateway`, and nothing a caller builds has a field
+     * for it (see `AiTextRequest`).
      */
     #[Test]
     public function the_ceiling_comes_from_configuration(): void
@@ -182,6 +186,75 @@ class ChatCompletionsProviderTest extends TestCase
         $this->configured()->complete($this->request());
 
         Http::assertSent(fn (Request $request): bool => $request->data()['max_tokens'] === $default);
+    }
+
+    /**
+     * A RESOLVED BUDGET REACHES THE WIRE — the fix this file was missing.
+     *
+     * Until 0.101.5 this driver read only the ceiling it was constructed with
+     * and dropped `AiTextRequest::$maxOutputTokens` on the floor. The síntese de
+     * acompanhamento declares that it needs 3072 tokens; under Gemini it got
+     * them, and under an OpenAI-compatible engine it silently got the 2048
+     * default and came back truncated, on the same installation, from the same
+     * gateway, for the same use case. Two drivers disagreeing about what a use
+     * case is allowed to spend is not a policy — it is the kind of difference
+     * that gets diagnosed as «the model is worse», because from the outside
+     * that is exactly what it looks like.
+     */
+    #[Test]
+    public function a_resolved_budget_on_the_request_overrides_the_installation_default(): void
+    {
+        $this->fakeText();
+
+        $this->provider(maxOutputTokens: 2048)->complete(new AiTextRequest(
+            instruction: 'i',
+            content: 'c',
+            maxOutputTokens: 3072,
+        ));
+
+        Http::assertSent(function (Request $request): bool {
+            $this->assertSame(3072, $request->data()['max_tokens']);
+
+            return true;
+        });
+    }
+
+    /**
+     * AND THE TWO DRIVERS AGREE. The point is not that this number is 3072; it
+     * is that the same use case resolves to the same budget whichever engine
+     * the installation happens to have configured.
+     */
+    #[Test]
+    public function a_request_without_a_resolved_budget_still_falls_back_to_the_installation_default(): void
+    {
+        $this->fakeText();
+
+        $this->provider(maxOutputTokens: 512)->complete(new AiTextRequest(
+            instruction: 'i',
+            content: 'c',
+            maxOutputTokens: null,
+        ));
+
+        Http::assertSent(fn (Request $request): bool => $request->data()['max_tokens'] === 512);
+    }
+
+    /**
+     * A NON-POSITIVE BUDGET IS TREATED AS ABSENT, never sent. Zero output
+     * tokens is a request for an empty answer and no caller means that — the
+     * same rule `GeminiProvider::budgetFor()` applies, deliberately identical.
+     */
+    #[Test]
+    public function a_non_positive_budget_is_ignored_rather_than_sent(): void
+    {
+        $this->fakeText();
+
+        $this->provider(maxOutputTokens: 512)->complete(new AiTextRequest(
+            instruction: 'i',
+            content: 'c',
+            maxOutputTokens: 0,
+        ));
+
+        Http::assertSent(fn (Request $request): bool => $request->data()['max_tokens'] === 512);
     }
 
     /**

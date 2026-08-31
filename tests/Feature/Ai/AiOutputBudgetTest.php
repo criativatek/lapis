@@ -39,7 +39,13 @@ class AiOutputBudgetTest extends TestCase
      */
     private function resolve(AiUseCase $useCase, int $default, int $ceiling): int
     {
-        return min($ceiling, max($default, $useCase->minimumOutputTokens() ?? 0));
+        $minimum = $useCase->minimumOutputTokens();
+
+        if ($minimum !== null && $minimum > $ceiling) {
+            throw AiRequestFailed::misconfiguredBudget($useCase->value, $minimum, $ceiling);
+        }
+
+        return min($ceiling, max($default, $minimum ?? 0));
     }
 
     #[Test]
@@ -102,14 +108,53 @@ class AiOutputBudgetTest extends TestCase
     }
 
     /**
-     * THE HARD CEILING WINS, ALWAYS. Without this the use-case minimum would be
-     * a number any future enum case could set to anything, which is the same
-     * objection the codebase has always made to a caller-supplied ceiling.
+     * THE HARD CEILING WINS, ALWAYS — AND WHEN WINNING WOULD MEAN LYING, IT
+     * REFUSES INSTEAD.
+     *
+     * Until 0.101.5 this test asserted that a 1000-token ceiling clamped the
+     * synthesis's declared 3072 down to 1000 and sent it. That number was never
+     * going to produce an answer: the minimum is not a preference, it is this
+     * application stating that below it the six sections cannot be written at
+     * all, and the parser proves it by refusing anything shorter. So the clamp
+     * bought nothing and cost a request, every time, and the operator read
+     * `truncated_answer` on the meter while the actual cause was a ceiling they
+     * had set on another screen.
+     *
+     * The hard ceiling is still absolute — nothing above it is ever sent. What
+     * changed is that a ceiling too low to honour a REQUIREMENT is now named as
+     * the contradiction it is, before the request is made.
      */
     #[Test]
-    public function the_hard_ceiling_bounds_a_use_case_that_asks_for_too_much(): void
+    public function a_ceiling_below_a_declared_minimum_refuses_instead_of_sending_a_number_that_cannot_work(): void
     {
-        $this->assertSame(1000, $this->resolve(AiUseCase::FollowupSynthesis, default: 512, ceiling: 1000));
+        $this->expectException(AiRequestFailed::class);
+
+        $this->resolve(AiUseCase::FollowupSynthesis, default: 512, ceiling: 1000);
+    }
+
+    /** And it says which setting is wrong, deterministically, with no retry offered. */
+    #[Test]
+    public function the_refusal_names_the_ceiling_and_is_not_retryable(): void
+    {
+        try {
+            $this->resolve(AiUseCase::FollowupSynthesis, default: 512, ceiling: 1000);
+            $this->fail('A ceiling below the declared minimum must refuse.');
+        } catch (AiRequestFailed $failure) {
+            $this->assertSame('misconfigured_budget', $failure->category());
+            $this->assertFalse($failure->isRetryable(), 'Pressing the button again cannot raise a ceiling.');
+            $this->assertStringContainsString('limite máximo', $failure->publicMessage());
+        }
+    }
+
+    /**
+     * THE CLAMP IS STILL THERE for everything that did not declare a
+     * requirement. A use case with no minimum has expressed no floor to
+     * contradict, so the ceiling simply applies.
+     */
+    #[Test]
+    public function a_use_case_without_a_minimum_is_still_clamped_by_the_ceiling(): void
+    {
+        $this->assertSame(1000, $this->resolve(AiUseCase::ReportSectionRewrite, default: 2048, ceiling: 1000));
     }
 
     /**

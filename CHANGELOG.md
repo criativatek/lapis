@@ -75,6 +75,26 @@ um pedido à escola de cada vez.
   «Ainda não há evidência suficiente» mantém-no também, e de propósito: é a
   única em que a próxima tentativa é exatamente o que funcionaria.
 
+- **O `chat-completions` passa a respeitar o orçamento que o gateway resolveu.**
+  O `AiGateway` calcula um orçamento por caso de uso e o `GeminiProvider`
+  honrava-o; o `ChatCompletionsProvider` lia apenas o teto com que tinha sido
+  construído e deitava fora o `maxOutputTokens` do pedido. A mesma síntese, na
+  mesma instalação, com o mesmo caso de uso, recebia 3072 tokens num motor e
+  2048 no outro — e no segundo voltava truncada. Uma diferença destas não se
+  diagnostica como um erro: diagnostica-se como «este modelo é pior». Os dois
+  drivers passam a resolver o orçamento pelo mesmo método, linha por linha.
+
+- **Um teto abaixo de um mínimo declarado recusa, em vez de enviar um número que
+  não pode funcionar.** A aritmética era `min(teto, max(predefinição, mínimo))`,
+  o que fazia um teto de 2048 transformar em silêncio os 3072 que a síntese
+  declara precisar — e a chamada falhava na mesma, como `truncated_answer`, a
+  apontar para o modelo quando a causa era uma definição do próprio operador. O
+  mínimo de um caso de uso não é uma preferência: é a aplicação a dizer que
+  abaixo daquele número a resposta não se produz de todo. Passa a haver uma
+  categoria própria, `misconfigured_budget`, determinista e sem «Tentar
+  novamente», que nomeia a definição errada. O teto duro continua absoluto —
+  nada o ultrapassa.
+
 ### Changed
 
 - **«O texto atual foi preservado» sai das mensagens partilhadas.** A frase era
@@ -86,6 +106,27 @@ um pedido à escola de cada vez.
   neutras («Não foi possível obter uma sugestão neste momento.») e o
   `ReportRewriteController` volta a acrescentar a frase no único ecrã onde ela é
   verdadeira.
+
+- **O backoffice deixa de chamar «máximo» a uma predefinição.** O campo «Máximo
+  de tokens de resposta» era o valor **por omissão**, e uma funcionalidade que
+  declare precisar de mais sobe acima dele — ou seja, o operador via um máximo
+  que era ultrapassado sem explicação, no único ecrã cuja função é responder
+  «qual é o limite?». Passa a chamar-se «Tokens de resposta por predefinição», e
+  o ecrã mostra agora **os dois números**: a predefinição e o teto duro
+  (`LAPIS_AI_MAX_OUTPUT_TOKENS_CEILING`), que é o que nada ultrapassa.
+
+- **O `AiCapabilityProbe` sai do núcleo do gateway.** Estava em
+  `App\Services\Ai\Gateway` a importar `FollowupSynthesisPrompt` e
+  `FollowupSynthesisParser` de `App\Services\Progress\Ai` — isto é, o componente
+  de que todas as funcionalidades dependem passava a depender de uma
+  funcionalidade concreta do Acompanhamento. Nada falhava; a seta ficava
+  invertida. Mudou para `App\Services\Diagnostics\Ai`, onde é o que sempre foi:
+  um diagnóstico de backoffice, que é uma funcionalidade — e uma funcionalidade
+  pode depender do gateway e do Progress. Mantém o registo sintético, o parser
+  real e o orçamento real; só mudou de morada. Um teste de arquitetura
+  (`AiArchitectureTest::the_ai_core_does_not_depend_on_any_feature`) fixa a
+  direcção, e foi verificado a falhar contra uma violação plantada — um guarda
+  que não sabe falhar é ele próprio uma afirmação falsa.
 
 ### Added
 

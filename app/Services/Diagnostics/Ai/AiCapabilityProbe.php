@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services\Ai\Gateway;
+namespace App\Services\Diagnostics\Ai;
 
 use App\Services\Progress\Ai\FollowupSynthesisParser;
 use App\Services\Progress\Ai\FollowupSynthesisPrompt;

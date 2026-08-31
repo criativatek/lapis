@@ -10,10 +10,10 @@ use App\Models\User;
 use App\Services\Ai\AiRequestFailed;
 use App\Services\Ai\Gateway\AiAsk;
 use App\Services\Ai\Gateway\AiCapability;
-use App\Services\Ai\Gateway\AiCapabilityProbe;
 use App\Services\Ai\Gateway\AiGateway;
 use App\Services\Ai\Gateway\AiUseCase;
 use App\Services\Ai\Providers\FakeAiTextProvider;
+use App\Services\Diagnostics\Ai\AiCapabilityProbe;
 use App\Services\Progress\Ai\FollowupSynthesisParser;
 use App\Services\Progress\Ai\FollowupSynthesisPrompt;
 use App\Support\Entitlements\Entitlements;
@@ -142,22 +142,76 @@ class AiFollowupSynthesisFailureTest extends TestCase
     }
 
     /**
-     * AND THE HARD CEILING STILL WINS AT THE WIRE, not merely in a helper. An
-     * installation that caps spend below what the synthesis wants gets its cap
-     * honoured — the feature then fails honestly rather than quietly costing
-     * more than the operator allowed.
+     * AND THE HARD CEILING STILL WINS AT THE WIRE, not merely in a helper — but
+     * a ceiling below a DECLARED MINIMUM refuses instead of sending a number
+     * that cannot work.
+     *
+     * This test used to assert that a 2560 ceiling clamped the synthesis's 3072
+     * and sent it. The docblock claimed the feature would then «fail honestly»,
+     * and it did fail — as `truncated_answer`, which points at the model. The
+     * cause was a setting in the backoffice. Nothing in the product connected
+     * the two, so the honest failure was honest about the wrong thing.
      */
     #[Test]
-    public function the_hard_ceiling_is_enforced_on_the_way_out(): void
+    public function a_ceiling_below_the_declared_minimum_refuses_before_the_request_is_made(): void
     {
         config(['lapis.ai.max_output_tokens' => 2048, 'lapis.ai.max_output_tokens_ceiling' => 2560]);
 
         $fake = $this->fake();
         $fake->willReturn(self::SIX_SECTIONS);
 
-        $this->gateway()->ask($this->ask(), $this->teacher());
+        try {
+            $this->gateway()->ask($this->ask(), $this->teacher());
+            $this->fail('A ceiling below the synthesis minimum must refuse.');
+        } catch (AiRequestFailed $failure) {
+            $this->assertSame('misconfigured_budget', $failure->category());
+            $this->assertFalse($failure->isRetryable());
+        }
 
-        $this->assertSame(2560, $fake->received[0]->maxOutputTokens);
+        $this->assertSame([], $fake->received, 'Nothing may reach the engine when the budget is contradictory.');
+    }
+
+    /**
+     * IT IS ON THE METER, with the category that names the cause. This is how
+     * an operator finds a misconfiguration they cannot see from the failure a
+     * teacher reports.
+     */
+    #[Test]
+    public function a_contradictory_budget_is_metered_as_its_own_kind_of_failure(): void
+    {
+        config(['lapis.ai.max_output_tokens' => 2048, 'lapis.ai.max_output_tokens_ceiling' => 2560]);
+
+        $this->fake()->willReturn(self::SIX_SECTIONS);
+
+        try {
+            $this->gateway()->ask($this->ask(), $this->teacher());
+        } catch (AiRequestFailed) {
+            // recorded below
+        }
+
+        $event = AiUsageEvent::withoutGlobalScope('organization')->latest('id')->firstOrFail();
+
+        $this->assertSame('misconfigured_budget', $event->error_category);
+    }
+
+    /**
+     * AND THE CLAMP IS UNTOUCHED for a use case that declared no minimum: the
+     * hard ceiling still bounds what it may spend.
+     */
+    #[Test]
+    public function the_hard_ceiling_still_clamps_a_use_case_that_declared_no_minimum(): void
+    {
+        config(['lapis.ai.max_output_tokens' => 2048, 'lapis.ai.max_output_tokens_ceiling' => 1024]);
+
+        $fake = $this->fake();
+        $fake->willReturn('Um parágrafo melhor.');
+
+        $user = $this->teacher();
+        $this->grant($user->personalOrganization(), AiCapability::Reports);
+
+        $this->gateway()->ask($this->ask(AiUseCase::ReportSectionRewrite), $user);
+
+        $this->assertSame(1024, $fake->received[0]->maxOutputTokens);
     }
 
     // ------------------------------------------------- the three failure modes

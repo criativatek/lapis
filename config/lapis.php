@@ -246,6 +246,17 @@ return [
          | `min(ceiling, max(default, use-case floor))`. An installation that
          | lowers this below `max_output_tokens` gets this number, because the
          | hard ceiling is the one that wins — that is what makes it hard.
+         |
+         | AND WHEN THIS IS SET BELOW A DECLARED MINIMUM, THE CALL REFUSES.
+         | A use-case minimum is not a preference — it is the application
+         | stating that below that number the answer cannot be produced at all.
+         | Clamping it down therefore does not buy a cheaper answer; it buys
+         | `truncated_answer`, deterministically, while the meter blames the
+         | model for a setting on this line. Since 0.101.5 the gateway raises
+         | `AiRequestFailed::misconfiguredBudget()` before the request is made,
+         | so the contradiction is named where it was created. Setting this
+         | below 3072 therefore turns OFF the síntese de acompanhamento — which
+         | is a legitimate thing to want, and now a visible one.
          */
         'max_output_tokens_ceiling' => (int) env('LAPIS_AI_MAX_OUTPUT_TOKENS_CEILING', 8192),
 

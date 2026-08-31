@@ -130,6 +130,63 @@ class AiArchitectureTest extends TestCase
     }
 
     /**
+     * AND THE CORE GOES NOWHERE NEAR A FEATURE — the same rule read backwards,
+     * which is the direction that actually broke.
+     *
+     * Every other test in this file guards «a feature must not reach an
+     * engine». This one guards the arrow that points the other way: the AI core
+     * must not reach a feature. `AiCapabilityProbe` shipped in
+     * `App\Services\Ai\Gateway` importing `FollowupSynthesisPrompt` and
+     * `FollowupSynthesisParser` from `App\Services\Progress\Ai`, which made the
+     * gateway — the one component every feature depends on — depend in turn on
+     * one concrete feature of Acompanhamento. Nothing failed: it compiled, the
+     * tests passed, and the dependency graph acquired a cycle that would have
+     * been argued about for a year.
+     *
+     * It moved to `App\Services\Diagnostics\Ai` in 0.101.5, where it is what it
+     * always was: a backoffice diagnostic, which is a FEATURE, and features are
+     * allowed to depend on both the gateway and on Progress. The probe kept its
+     * synthetic record, the real parser and the real budget; only its address
+     * changed.
+     *
+     * `App\Support` and `App\Models` are not features and are not scanned for.
+     */
+    #[Test]
+    public function the_ai_core_does_not_depend_on_any_feature(): void
+    {
+        $offenders = [];
+
+        // Plain string scanning, like every other check in this file. A regex
+        // here needs four backslashes to mean one, and the first version of
+        // this test got that wrong in a way that made it pass on a real
+        // violation — a guard that cannot fail is worse than no guard, because
+        // it is also a claim.
+        foreach ($this->phpFiles(app_path('Services/Ai')) as $path => $contents) {
+            foreach (explode("\n", $contents) as $line) {
+                $line = trim($line);
+
+                if (! str_starts_with($line, 'use App\Services\\')) {
+                    continue;
+                }
+
+                if (str_starts_with($line, 'use App\Services\Ai\\')) {
+                    continue;
+                }
+
+                $offenders[] = $path.' imports '.rtrim($line, ';');
+            }
+        }
+
+        $this->assertSame(
+            [],
+            $offenders,
+            'The AI core must not depend on a feature — a feature depends on the core, never the reverse. '
+            ."Move the offender to its own domain (see App\Services\Diagnostics\Ai). Offenders:\n"
+            .implode("\n", $offenders),
+        );
+    }
+
+    /**
      * THE COMMERCIAL RULE, ENFORCED AS A GREP.
      *
      * §2 of the brief: «Não usar `if ($plan === 'pro')`. Usar exclusivamente

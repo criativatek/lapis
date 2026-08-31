@@ -8,13 +8,14 @@ use App\Models\PlatformSetting;
 use App\Models\User;
 use App\Providers\AppServiceProvider;
 use App\Services\Ai\AiRequestFailed;
-use App\Services\Ai\Gateway\AiCapabilityProbe;
 use App\Services\Ai\Gateway\AiUseCase;
 use App\Services\Ai\Providers\FakeAiTextProvider;
+use App\Services\Diagnostics\Ai\AiCapabilityProbe;
 use App\Services\Progress\Ai\FollowupSynthesisPrompt;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -60,6 +61,52 @@ class AdminAiSettingsTest extends TestCase
     }
 
     // ---------------------------------------------------------------- access
+
+    /**
+     * THE SCREEN NAMES BOTH NUMBERS, BECAUSE THEY ARE TWO DIFFERENT PROMISES.
+     *
+     * `max_output_tokens` is the DEFAULT a call gets; a use case that declares a
+     * minimum may raise it. `max_output_tokens_ceiling` is the number nothing
+     * may exceed. Until 0.101.5 the backoffice showed only the first, in a field
+     * labelled «Máximo de tokens de resposta» — and then the síntese de
+     * acompanhamento quietly went above it. An operator reading that field had
+     * been told a maximum that was not one, on the one screen in the product
+     * whose whole job is to answer «what is the limit?».
+     */
+    #[Test]
+    public function the_screen_reports_the_default_and_the_hard_ceiling_as_different_numbers(): void
+    {
+        config([
+            'lapis.ai.max_output_tokens' => 2048,
+            'lapis.ai.max_output_tokens_ceiling' => 8192,
+        ]);
+
+        $this->actingAs($this->admin())->get('/admin/ai')->assertInertia(fn ($page) => $page
+            ->where('status.effective.max_output_tokens', 2048)
+            ->where('status.effective.max_output_tokens_ceiling', 8192));
+    }
+
+    /**
+     * AND IT DOES NOT CALL THE DEFAULT A MAXIMUM. A label is not decoration
+     * here: it is the entire basis on which an operator decides what to type.
+     */
+    #[Test]
+    public function the_budget_field_is_not_labelled_as_a_maximum(): void
+    {
+        $page = File::get(resource_path('js/pages/admin/Ai.vue'));
+
+        $this->assertStringNotContainsString(
+            'Máximo de tokens de resposta',
+            $page,
+            'The default budget must not be presented as a maximum — a use case may raise it.',
+        );
+
+        $this->assertStringContainsString(
+            'Tokens de resposta por predefinição',
+            $page,
+            'The field that sets the default must say so.',
+        );
+    }
 
     #[Test]
     public function a_teacher_cannot_open_the_ai_settings(): void

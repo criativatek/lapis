@@ -55,6 +55,7 @@ class AiRequestFailed extends RuntimeException
         'truncated_answer',
         'unparsable_answer',
         'unreachable',
+        'misconfigured_budget',
     ];
 
     /**
@@ -80,6 +81,7 @@ class AiRequestFailed extends RuntimeException
         'truncated_answer',
         'unparsable_answer',
         'unusable_answer',
+        'misconfigured_budget',
     ];
 
     protected function __construct(
@@ -169,6 +171,32 @@ class AiRequestFailed extends RuntimeException
             "The writing assistant answered in a shape this application could not read: {$why}.",
             'Não foi possível obter uma sugestão neste momento.',
             'unparsable_answer',
+        );
+    }
+
+    /**
+     * The installation's hard ceiling is below what this use case declared it
+     * needs — so there is no honest number to send, and none is sent.
+     *
+     * WHY THIS IS A FAILURE AND NOT A CLAMP. Until 0.101.5 the gateway resolved
+     * the budget as `min(ceiling, max(default, floor))`, which meant a ceiling
+     * of 2048 quietly turned the síntese de acompanhamento's declared 3072 into
+     * 2048 and sent it. The call then failed anyway — `truncated_answer`, every
+     * time, deterministically — and the operator was left reading a truncation
+     * error caused by a setting on their own screen, with nothing connecting
+     * the two. A ceiling that silently rewrites a requirement is worse than one
+     * that refuses it: the refusal names the setting.
+     *
+     * IT IS DETERMINISTIC, so no retry is offered. Pressing the button again
+     * cannot raise a ceiling.
+     */
+    public static function misconfiguredBudget(string $useCase, int $needs, int $ceiling): self
+    {
+        return new self(
+            "The use case {$useCase} needs {$needs} output tokens and the installation ceiling is {$ceiling}.",
+            'Esta funcionalidade precisa de mais tokens de resposta do que o limite máximo configurado permite. '
+                .'Um administrador tem de aumentar o limite máximo antes de a poder usar.',
+            'misconfigured_budget',
         );
     }
 

@@ -285,13 +285,32 @@ class AiGateway
      * missing guard: an operator who lowers the hard ceiling is lowering the
      * most a call may cost, and a default that quietly overrode it would make
      * the hard ceiling the soft one.
+     *
+     * A CEILING BELOW A DECLARED MINIMUM REFUSES, and that is the one case the
+     * clamp above must not be allowed to swallow. A use case's minimum is not a
+     * preference — it is this application saying «below this number the answer
+     * cannot be produced at all», and the síntese de acompanhamento's parser
+     * proves it by rejecting anything shorter. Clamping 3072 down to a 2048
+     * ceiling therefore does not produce a cheaper answer; it produces
+     * `truncated_answer`, every single time, while the operator reads a
+     * truncation error on one screen and a setting they chose on another with
+     * nothing linking them. So the contradiction is named where it is created:
+     * the call fails before it is made, deterministically, and the message
+     * points at the ceiling.
+     *
+     * @throws AiRequestFailed when the hard ceiling is below a declared minimum
      */
     protected function outputBudgetFor(AiAsk $ask): int
     {
         $default = max(1, (int) config('lapis.ai.max_output_tokens'));
         $ceiling = max(1, (int) config('lapis.ai.max_output_tokens_ceiling'));
+        $minimum = $ask->useCase->minimumOutputTokens();
 
-        return min($ceiling, max($default, $ask->useCase->minimumOutputTokens() ?? 0));
+        if ($minimum !== null && $minimum > $ceiling) {
+            throw AiRequestFailed::misconfiguredBudget($ask->useCase->value, $minimum, $ceiling);
+        }
+
+        return min($ceiling, max($default, $minimum ?? 0));
     }
 
     protected function elapsed(float|int $startedAt): int

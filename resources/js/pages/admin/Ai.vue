@@ -79,6 +79,7 @@ type Status = {
         model: string | null;
         timeout: number;
         max_output_tokens: number;
+        max_output_tokens_ceiling: number;
         per_minute: number;
         organization_per_minute: number;
     };
@@ -220,7 +221,8 @@ function probeCapability(): void {
                 Em vigor: fornecedor <strong>{{ status.effective.driver ?? '—' }}</strong>,
                 modelo <strong>{{ status.effective.model ?? '—' }}</strong>,
                 timeout <strong>{{ status.effective.timeout }}s</strong>,
-                máximo de <strong>{{ status.effective.max_output_tokens }}</strong> tokens de resposta.
+                predefinição de <strong>{{ status.effective.max_output_tokens }}</strong> tokens de resposta,
+                limite máximo <strong>{{ status.effective.max_output_tokens_ceiling }}</strong>.
             </div>
         </div>
 
@@ -256,8 +258,21 @@ function probeCapability(): void {
                 </label>
 
                 <label class="text-sm">
-                    <span class="mb-1 block font-medium">Máximo de tokens de resposta</span>
+                    <span class="mb-1 block font-medium">Tokens de resposta por predefinição</span>
                     <input v-model.number="form.ai_max_output_tokens" type="number" min="64" max="32768" placeholder="Herdado do .env" class="w-full rounded-md border border-border bg-background px-3 py-2" />
+                    <!--
+                     THIS FIELD WAS CALLED «Máximo» AND NÃO ERA. A funcionalidade
+                     que declara precisar de mais — a síntese de acompanhamento
+                     pede 3072 — recebe mais, e o operador não tinha como saber.
+                     O teto real é o `max_output_tokens_ceiling` do .env, mostrado
+                     acima em «Em vigor» e nunca ultrapassado por nada.
+                    -->
+                    <span class="mt-1 block text-xs text-muted-foreground">
+                        O que uma resposta recebe por omissão. Uma funcionalidade que declare precisar de mais pode
+                        subir acima deste valor — nunca acima do limite máximo
+                        (<strong>{{ status.effective.max_output_tokens_ceiling }}</strong>), que se define no
+                        <code>.env</code> em <code>LAPIS_AI_MAX_OUTPUT_TOKENS_CEILING</code>.
+                    </span>
                     <span v-if="form.errors.ai_max_output_tokens" class="mt-1 block text-xs text-red-600">{{ form.errors.ai_max_output_tokens }}</span>
                 </label>
             </div>
