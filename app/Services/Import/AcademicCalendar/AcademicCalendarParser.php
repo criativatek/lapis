@@ -4,10 +4,12 @@ namespace App\Services\Import\AcademicCalendar;
 
 use App\Domain\Import\AcademicCalendar\ParsedAcademicCalendar;
 use App\Domain\Import\AcademicCalendar\ParsedCalendarMarker;
+use App\Domain\Import\AcademicCalendar\ParsedCalendarMarkerKind;
 use App\Domain\Import\AcademicCalendar\ParsedCalendarRange;
 use App\Domain\Import\AcademicCalendar\ParsedSemester;
 use App\Domain\Import\AcademicCalendar\ParsedSemesterEnd;
 use App\Models\AcademicCalendarExceptionType;
+use App\Models\CalendarEventType;
 use App\Support\Import\SpreadsheetZipSafety;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -42,8 +44,11 @@ use Throwable;
  *     fim-de-semana lhe corta o meio ao meio. A grelha serve de confirmação, não
  *     de fonte.
  *
- *   - OS FERIADOS COM NOME vêm da GRELHA e não da tabela, pela razão inversa: a
- *     tabela-resumo não os menciona de todo. Só existem escritos dentro do dia.
+ *   - AS DATAS COM NOME vêm da GRELHA e não da tabela, pela razão inversa: a
+ *     tabela-resumo não as menciona de todo. Só existem escritas dentro do dia — e
+ *     nem todas são feriados: um calendário escolar marca ali reuniões,
+ *     apresentações, atividades e convívios ao lado dos feriados, e cada uma vai
+ *     para o seu destino (ver ClassifyCalendarDay).
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * O RÓTULO DECIDE, A COR SÓ DESEMPATA
@@ -54,13 +59,21 @@ use Throwable;
  * resumo já o disse melhor), «Fim <coorte>» é um fim de ano de uma turma, e tudo
  * o resto é um dia com nome.
  *
- * A COR ENTRA UMA VEZ SÓ, para separar dois dias com nome que são coisas
- * diferentes: o amarelo marca um dia DENTRO de uma interrupção que a tabela-resumo
- * já vai propor inteira (é uma nota, não uma proposta nova), e qualquer outra cor
- * marca um feriado. Verificado sobre o documento real: 13 células laranja, todas
- * com nome, todas feriados; 27 amarelas, uma com nome («Carnaval»), toda dentro do
- * intervalo de fevereiro que a tabela já descreve. Sem cor nenhuma, um dia com
- * nome é um feriado — que é o caso comum e o palpite seguro.
+ * A COR É UMA PROVA, E DEIXOU DE SER UM PALPITE. Ela separa dois dias com nome que
+ * são coisas diferentes: o amarelo marca um dia DENTRO de uma interrupção que a
+ * tabela-resumo já vai propor inteira (é uma nota, não uma proposta nova), e um
+ * realce FORTE que não seja esse amarelo é a escola a dizer «isto é feriado» —
+ * verificado sobre o documento real: 13 células laranja, todas com nome, todas
+ * feriados; 27 amarelas, uma com nome («Carnaval»), toda dentro do intervalo de
+ * fevereiro que a tabela já descreve. É por esta prova, e só por ela, que o «Dia de
+ * Leiria» — feriado MUNICIPAL, que provider nenhum pode conhecer — continua a ser
+ * lido como feriado.
+ *
+ * O QUE ESTA REGRA DEIXOU DE DIZER: «sem cor nenhuma, um dia com nome é um
+ * feriado». Era o palpite errado. Uma célula sem realce é uma célula sobre a qual o
+ * documento não se pronunciou, e a resposta a isso é um acontecimento escolar
+ * neutro — nunca a afirmação, que nada sustenta, de que naquele dia não há aula.
+ * Ver ClassifyCalendarDay.
  *
  * A cor é lida por MATIZ E SATURAÇÃO e não por uma lista de hexadecimais: o mesmo
  * amarelo sai de um tema diferente com dois dígitos trocados, e uma lista exata
@@ -131,17 +144,27 @@ class AcademicCalendarParser
         12 => 'dezembro',
     ];
 
-    public function __construct(private readonly SpreadsheetZipSafety $zipSafety) {}
+    public function __construct(
+        private readonly SpreadsheetZipSafety $zipSafety,
+        private readonly ClassifyCalendarDay $classifier,
+    ) {}
 
     /**
      * @param  string  $absolutePath  o caminho real do ficheiro carregado, nunca um nome vindo do cliente
      * @param  int|null  $fallbackFirstYear  o ano civil em que o ano letivo escolhido começa, usado
      *                                       apenas quando o próprio documento não o diz no título
+     * @param  string|null  $countryCode  o `country_code` do ano letivo de destino. Serve UMA pergunta e
+     *                                    mais nenhuma: «esta data é feriado nacional por lei?» — a prova
+     *                                    factual de ClassifyCalendarDay. Sem ele a classificação continua
+     *                                    a funcionar, apenas com menos uma prova.
      *
      * @throws AcademicCalendarFileException
      */
-    public function parse(string $absolutePath, ?int $fallbackFirstYear = null): ParsedAcademicCalendar
-    {
+    public function parse(
+        string $absolutePath,
+        ?int $fallbackFirstYear = null,
+        ?string $countryCode = null,
+    ): ParsedAcademicCalendar {
         // ANTES DE O PhpSpreadsheet VER O FICHEIRO, e nunca depois: um .xlsx é um
         // zip, e quando a biblioteca já o abriu a memória já foi gasta. É a mesma
         // classe — e não uma segunda cópia das mesmas verificações — que os
@@ -164,7 +187,7 @@ class AcademicCalendarParser
             $months = $this->locateMonthColumns($sheet);
 
             if ($months !== null) {
-                return $this->read($sheet, $months, $fallbackFirstYear);
+                return $this->read($sheet, $months, $fallbackFirstYear, $countryCode);
             }
         }
 
@@ -176,7 +199,7 @@ class AcademicCalendarParser
      *
      * @throws AcademicCalendarFileException
      */
-    private function read(Worksheet $sheet, array $months, ?int $fallbackFirstYear): ParsedAcademicCalendar
+    private function read(Worksheet $sheet, array $months, ?int $fallbackFirstYear, ?string $countryCode): ParsedAcademicCalendar
     {
         $title = $this->titleFacts($sheet, $months['row']);
         $firstYear = $title['first_year'] ?? $fallbackFirstYear;
@@ -195,7 +218,7 @@ class AcademicCalendarParser
             ? $months['row'] + self::DAY_GRID_ROWS
             : min($months['row'] + self::DAY_GRID_ROWS, $summary['row'] - 1);
 
-        $grid = $this->readDayGrid($sheet, $months, $monthYears, $gridEndsBefore);
+        $grid = $this->readDayGrid($sheet, $months, $monthYears, $gridEndsBefore, $countryCode);
 
         $semesters = [];
         $schoolBreaks = [];
@@ -209,8 +232,8 @@ class AcademicCalendarParser
         return new ParsedAcademicCalendar(
             semesters: $semesters,
             schoolBreaks: $schoolBreaks,
-            holidays: $grid['holidays'],
-            otherDatedItems: $grid['markers'],
+            dayExceptions: $grid['exceptions'],
+            datedEvents: $grid['events'],
             schoolName: $title['school'],
             academicYearLabel: $title['label'],
             academicYearNormalised: $title['normalised'],
@@ -358,8 +381,18 @@ class AcademicCalendarParser
     // ──────────────────────────────────────────────────────────── a grelha dos dias
 
     /**
-     * Os dias com nome: os feriados, os fins de ano de cada coorte, e os nomes que
-     * o documento dá a dias que já estão dentro de uma interrupção.
+     * Os dias com nome: as datas em que não há aula, os acontecimentos escolares,
+     * os fins de ano de cada coorte, e os nomes que o documento dá a dias que já
+     * estão dentro de uma interrupção.
+     *
+     * O QUE MUDOU AQUI, E É A CORREÇÃO INTEIRA: um dia com nome deixou de ser um
+     * feriado por omissão. Era-o — tudo o que sobrasse dos filtros saía daqui como
+     * AcademicCalendarExceptionType::Holiday —, e por isso uma «Apresentação dos
+     * alunos», um «Almoço-convívio» e uma «Reunião de avaliação» eram escritos na
+     * tabela cuja única afirmação é «neste dia NÃO HÁ AULA». O rótulo era falso e a
+     * consequência era pior: apagava as aulas do dia. Agora cada célula é
+     * CLASSIFICADA (ClassifyCalendarDay) e o que não se souber classificar sai como
+     * acontecimento neutro, que é a resposta que não estraga nada.
      *
      * SÓ A COLUNA-ÂNCORA DE CADA MÊS é lida. Cada mini-calendário ocupa três
      * colunas unidas e só a primeira tem o valor — as outras duas estão vazias por
@@ -369,12 +402,12 @@ class AcademicCalendarParser
      *
      * @param  array{row: int, columns: array<string, int>}  $months
      * @param  array<int, int>  $monthYears
-     * @return array{holidays: list<ParsedCalendarRange>, markers: list<ParsedCalendarMarker>, break_day_labels: array<string, string>}
+     * @return array{exceptions: list<ParsedCalendarRange>, events: list<ParsedCalendarMarker>, break_day_labels: array<string, string>}
      */
-    private function readDayGrid(Worksheet $sheet, array $months, array $monthYears, int $lastRow): array
+    private function readDayGrid(Worksheet $sheet, array $months, array $monthYears, int $lastRow, ?string $countryCode): array
     {
-        $holidays = [];
-        $markers = [];
+        $exceptions = [];
+        $events = [];
         $breakDayLabels = [];
 
         foreach ($months['columns'] as $letter => $month) {
@@ -425,16 +458,20 @@ class AcademicCalendarParser
                     // coluna de junho que lhe dava o contexto. Escrevê-la por
                     // extenso na pré-visualização deixaria a linha gravada por
                     // abreviar; escrevê-la aqui arruma as duas de uma vez.
-                    $markers[] = new ParsedCalendarMarker(
+                    $events[] = new ParsedCalendarMarker(
                         CohortMarkerTitle::normalise($label),
                         $date,
                         $value,
+                        CalendarEventType::Other,
+                        ParsedCalendarMarkerKind::CohortEnd,
                     );
 
                     continue;
                 }
 
-                if ($this->isSchoolBreakFill($this->fillOf($sheet, $coordinate))) {
+                $fill = $this->fillOf($sheet, $coordinate);
+
+                if ($this->isSchoolBreakFill($fill)) {
                     // Dentro de uma interrupção que a tabela-resumo já propõe
                     // inteira. Não é uma proposta nova — é o nome que o documento
                     // lhe dá, e vai como observação da interrupção que o contém.
@@ -443,20 +480,42 @@ class AcademicCalendarParser
                     continue;
                 }
 
-                $holidays[] = new ParsedCalendarRange(
-                    type: AcademicCalendarExceptionType::Holiday,
-                    title: $label,
-                    startsOn: $date,
-                    endsOn: $date,
-                    rawText: $value,
+                // AQUI DECIDE-SE, E ANTES NÃO SE DECIDIA NADA. As provas e a ordem
+                // delas estão em ClassifyCalendarDay; o que sai são dois destinos
+                // diferentes e nunca mais um só.
+                $classification = $this->classifier->classify(
+                    $label,
+                    $date,
+                    $countryCode,
+                    $this->isHolidayFill($fill),
+                );
+
+                if ($classification instanceof AcademicCalendarExceptionType) {
+                    $exceptions[] = new ParsedCalendarRange(
+                        type: $classification,
+                        title: $label,
+                        startsOn: $date,
+                        endsOn: $date,
+                        rawText: $value,
+                    );
+
+                    continue;
+                }
+
+                $events[] = new ParsedCalendarMarker(
+                    $label,
+                    $date,
+                    $value,
+                    $classification,
+                    ParsedCalendarMarkerKind::SchoolEvent,
                 );
             }
         }
 
-        usort($holidays, fn (ParsedCalendarRange $a, ParsedCalendarRange $b): int => $a->startsOn <=> $b->startsOn);
-        usort($markers, fn (ParsedCalendarMarker $a, ParsedCalendarMarker $b): int => $a->date <=> $b->date);
+        usort($exceptions, fn (ParsedCalendarRange $a, ParsedCalendarRange $b): int => $a->startsOn <=> $b->startsOn);
+        usort($events, fn (ParsedCalendarMarker $a, ParsedCalendarMarker $b): int => $a->date <=> $b->date);
 
-        return ['holidays' => $holidays, 'markers' => $markers, 'break_day_labels' => $breakDayLabels];
+        return ['exceptions' => $exceptions, 'events' => $events, 'break_day_labels' => $breakDayLabels];
     }
 
     /**
@@ -935,6 +994,37 @@ class AcademicCalendarParser
         [$hue, $saturation, $value] = $hsv;
 
         return $hue >= 45.0 && $hue <= 70.0 && $saturation >= 0.5 && $value >= 0.5;
+    }
+
+    /**
+     * A célula está pintada como o documento pinta os SEUS feriados?
+     *
+     * UM REALCE FORTE QUE NÃO SEJA O AMARELO DAS INTERRUPÇÕES — o mesmo limiar de
+     * saturação que já separava o laranja dos feriados (#ED7D31, saturação 0,79) do
+     * salmão dos fins-de-semana (#F8CBAD, 0,30) e dos tons pálidos dos semestres
+     * (#C5E0B4 e #BDD7EE, ambos abaixo de 0,21). Não é uma lista de hexadecimais e
+     * não pode ser: o mesmo laranja sai de outro tema com dois dígitos trocados.
+     *
+     * ISTO NÃO ADIVINHA, LÊ. A cor forte é a classificação que a ESCOLA deu àquele
+     * dia no seu próprio documento, e preservá-la é preservar o que o ficheiro diz
+     * (§4). O que não tem realce nenhum não é classificado por aqui — e, por não o
+     * ser, não vira feriado.
+     */
+    private function isHolidayFill(?string $rgb): bool
+    {
+        $hsv = $rgb === null ? null : $this->hsv($rgb);
+
+        if ($hsv === null) {
+            return false;
+        }
+
+        [$hue, $saturation, $value] = $hsv;
+
+        if ($hue >= 45.0 && $hue <= 70.0) {
+            return false;
+        }
+
+        return $saturation >= 0.5 && $value >= 0.5;
     }
 
     /**

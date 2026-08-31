@@ -180,7 +180,7 @@ class AcademicCalendarImportChainTest extends TestCase
     #[Test]
     public function an_imported_one_day_holiday_stops_that_days_lesson_too(): void
     {
-        $christmas = $this->rowFor($this->previewProps()['holidays'], '2030-12-25');
+        $christmas = $this->rowFor($this->exceptionRows($this->previewProps()), '2030-12-25');
 
         $this->assertSame('2030-12-25', $christmas['ends_on']);
 
@@ -410,5 +410,45 @@ class AcademicCalendarImportChainTest extends TestCase
     private function inTenant(callable $callback): mixed
     {
         return app(CurrentOrganization::class)->runFor($this->organization, $callback);
+    }
+
+    /**
+     * As linhas de «Datas e eventos escolares» que vão para a estrutura do ano —
+     * os dias em que NÃO há aula.
+     *
+     * A SECÇÃO É UMA E OS DESTINOS SÃO DOIS, e é `destination` que os separa. Era
+     * `$props['holidays']` enquanto tudo o que o documento marcasse era escrito
+     * como feriado; hoje a lista traz feriados, dias não letivos, reuniões e
+     * atividades misturados por data, que é a ordem por que um calendário se lê.
+     *
+     * @param  array<string, mixed>  $props
+     * @return list<array<string, mixed>>
+     */
+    private function exceptionRows(array $props): array
+    {
+        return $this->rowsGoingTo($props, 'academic_calendar_exception');
+    }
+
+    /**
+     * As que vão para o calendário do professor e não retiram aula nenhuma.
+     *
+     * @param  array<string, mixed>  $props
+     * @return list<array<string, mixed>>
+     */
+    private function eventRows(array $props): array
+    {
+        return $this->rowsGoingTo($props, 'calendar_event');
+    }
+
+    /**
+     * @param  array<string, mixed>  $props
+     * @return list<array<string, mixed>>
+     */
+    private function rowsGoingTo(array $props, string $destination): array
+    {
+        return array_values(array_filter(
+            $props['datedItems'],
+            fn (array $row): bool => $row['destination'] === $destination,
+        ));
     }
 }
