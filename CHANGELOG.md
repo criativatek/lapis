@@ -25,6 +25,131 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.102.0] — 2026-08-31
+
+O relatório de turma dizia a coisa certa e parecia outra coisa. Abria com dois
+títulos consecutivos — «Relatório de turma · 7.º A · Ano letivo» por cima de
+«Relatório de turma · 7.º A · Português · Ano letivo até ao momento» —, com um
+cabeçalho institucional que gastava quatro linhas e um quinto da primeira página
+antes de o documento dizer o que quer que fosse, com um logótipo que ninguém
+tinha pedido, e com um rodapé que numerava as páginas «1 / 0 · 2 / 0 · 3 / 0».
+Nada disto mexe num número: são todos defeitos de composição, e todos visíveis
+na primeira linha de um documento que uma escola envia a uma família.
+
+Nenhum cálculo, nenhuma fórmula de avaliação e nenhum dado de aluno foi
+alterado. Nenhum documento assinado foi reescrito.
+
+### Fixed
+
+- **Um documento, um título.** O título guardado é escrito para uma *listagem*
+  («Relatório de turma · 7.º A · Ano letivo» diz a um professor em qual das onze
+  linhas clicar) e estava a ser impresso por cima de um subtítulo que repetia
+  quase tudo o que ele já dizia. O novo `DocumentHeading` decide a hierarquia
+  uma vez, para os três renderings: um título ainda gerado dissolve-se nos
+  próprios metadados e o documento passa a chamar-se pelo seu tipo («Relatório
+  de turma»), com «7.º A · Português · Ano letivo até ao momento» por baixo; um
+  título que o professor escreveu sobrevive inteiro e é o rótulo de tipo que
+  desce para a linha de metadados. A mesma regra nos dois casos — um segmento
+  que os metadados já dizem é retirado —, e por isso não existe em lado nenhum
+  uma flag a registar se um título foi renomeado.
+- **A paginação do PDF deixa de ser «/ 0».** `counter(pages)` é CSS que o dompdf
+  **não implementa**: a folha de estilos do próprio motor define um contador
+  `page` e não existe `pages` em parte alguma do código, pelo que o total nunca
+  foi um número — era um contador por resolver a devolver zero. O rótulo passa a
+  ser desenhado pelo `PdfRenderer` depois do render, através do `page_script` do
+  canvas, que é o primeiro momento em que o total existe. E se alguma vez não
+  existir, imprime «Página 3» em vez de «Página 3 / 0»: um total a zero não é um
+  documento de uma página, é um motor que falhou a contar.
+- **O subtítulo de um relatório finalizado passa a vir do seu próprio
+  instantâneo.** Estava a ser reconstruído a partir das relações vivas, pelo que
+  uma turma renomeada em setembro renomeava um relatório assinado em fevereiro —
+  precisamente o que §39 existe para impedir.
+- **Um logótipo congelado deixa de apontar para a máquina onde foi assinado.** O
+  `logo_url` gravado no documento era **absoluto** e levava consigo o `APP_URL`
+  do momento: um relatório finalizado num Herd local e lido depois no domínio da
+  escola apontava para `http://lapis.test/…` e o browser desenhava uma imagem
+  partida no cabeçalho. Passa a ser resolvido pela rota de quem o serve. O
+  `ReportLetterhead` esconde a imagem também quando ela falha a carregar, para
+  que uma ausência não deixe uma caixa cinzenta.
+- **«Nenhum aluno manteve-se» passa a «nenhum aluno se manteve».** Em pt-PT
+  «nenhum» é um sujeito negativo e atrai o clítico para antes do verbo; a
+  concatenação de uma contagem com um verbo produz a forma errada. Tratado uma
+  vez em `Phrase::proclitic()`, e só no caso de zero — «um aluno manteve-se» está
+  certo e fica como está.
+- **«Finalizado em 19/08/2026 .»** A frase de fecho era montada em Blade a
+  partir de blocos condicionais e a mudança de linha antes do ponto final
+  tornava-se um espaço. Passa a ser composta como uma só frase no
+  `ReportDocumentBuilder`, e é a mesma no HTML, no Word e no PDF.
+
+### Added
+
+- **O logótipo passa a ser uma decisão por relatório.** Nova opção `show_logo`,
+  **falsa por omissão**, exatamente como `name_students`: ter carregado um
+  logótipo para os ecrãs da escola não é uma decisão sobre o aspeto de todos os
+  documentos que saem do edifício. O professor liga-a e desliga-a enquanto o
+  relatório for rascunho, no próprio editor; sem logótipo configurado o ecrã
+  explica-o em vez de oferecer uma caixa que não faria nada, e sem logótipo não
+  há coluna, não há célula e não fica espaço reservado a uma imagem que não está
+  lá. A finalização fecha a escolha por construção: `options` não está em
+  `EDITABLE_AFTER_FINALIZING` e a política já recusa `update` num relatório
+  finalizado — não há uma segunda regra a manter em passo.
+
+### Changed
+
+- **Cabeçalho institucional discreto (§50).** Três linhas no máximo: morada e
+  localidade juntas, telefone e email juntos, o sítio a fechar — e sem o
+  esquema nem a barra final, porque um PDF não é papel clicável. Tipografia
+  abaixo da do título do relatório: a escola identifica o documento, não é o
+  nome dele.
+- **PDF com ar e sem cortes estranhos.** Margens maiores, `orphans`/`widows` nos
+  parágrafos, cabeçalhos que não ficam sozinhos no fundo da página, legendas
+  agarradas às suas tabelas e linhas de tabela que não se partem ao meio.
+- **Word com as mesmas regras.** Margens de 2,5 cm (a medida anterior dava
+  linhas longas de mais para 11 pt), `keepNext`/`keepLines` nos títulos,
+  `cantSplit` nas linhas das tabelas, ar depois de cada parágrafo e de cada
+  tabela, tabulação do rodapé alinhada com a nova medida e bloco de assinatura
+  que não se parte.
+- **A pré-visualização online é a referência visual.** O mesmo título, o mesmo
+  subtítulo, o mesmo cabeçalho e a mesma assinatura que os ficheiros levam, com
+  o espaçamento e a largura de leitura de um documento — e já não um terceiro
+  fraseado só dela.
+
+### Tests
+
+- `DocumentHeadingTest`, `ReportDocumentCompositionTest` e
+  `ReportLogoOptionTest`: nome institucional nos três ficheiros, cabeçalho de
+  três linhas, título único, metadados da turma/disciplina/período, URL do
+  logótipo nunca absoluto, paginação extraída do PDF real e nunca «/ 0»,
+  gramática do caso de zero, e não regressão dos valores pedagógicos.
+- As afirmações do logótipo, uma por teste: um relatório nasce sem ele; um
+  rascunho liga-o; um rascunho volta a desligá-lo; guardar a escolha não apaga
+  as outras opções; a finalização congela-a; um finalizado não muda de ideias;
+  mudar a escola depois não altera um documento assinado.
+- Os fixtures deixam de conter o nome, a morada, o telefone e o email de uma
+  escola real. Os testes afirmam que o documento imprime **o que a identidade
+  disser**; um nome real ali dentro é dado real que nenhum deles precisava, e
+  lia-se como a resposta estar escrita no código.
+
+### Em aberto, deliberadamente fora desta release
+
+- **Relatórios finalizados antes de `show_logo` existir.** A opção é falsa por
+  omissão e é lida também no caminho do documento assinado, pelo que um
+  relatório finalizado antes desta versão **deixa de imprimir o logótipo que
+  imprimia**. Nenhum dado é alterado: o `document` congelado, o `document_hash`
+  e as secções ficam byte a byte como estavam, e o `identity.logo_path` que
+  assinaram continua lá. O que muda é como esse documento é desenhado hoje.
+  Fechar isto obrigaria a derivar a regra antiga por migração e a escrevê-la na
+  coluna `options` — uma escrita em relatórios assinados, e portanto uma decisão
+  por si só. Fica registada, não resolvida: nenhuma migração e nenhum backfill
+  entram nesta release.
+- **`Report::isIntact()` dá falsos negativos em todos os relatórios
+  finalizados.** O hash é calculado sobre o array em memória; o MySQL normaliza
+  a ordem das chaves da coluna `JSON` ao gravar, pelo que o que volta já não é a
+  cadeia que foi assinada. **Não é corrupção de dados**, é uma verificação que
+  não pode passar, e é anterior a este trabalho. Mexer no esquema de hash de
+  documentos assinados é uma decisão por si só e não entra aqui: fica registada
+  em [docs/status.md](docs/status.md).
+
 ## [0.101.5] — 2026-08-31
 
 A «Síntese de acompanhamento (IA)» falhava sempre, com uma credencial válida, um
