@@ -93,6 +93,27 @@ alterado. Nenhum documento assinado foi reescrito.
   lá. A finalização fecha a escolha por construção: `options` não está em
   `EDITABLE_AFTER_FINALIZING` e a política já recusa `update` num relatório
   finalizado — não há uma segunda regra a manter em passo.
+- **E um documento já assinado continua a ter o aspeto que tinha.** Uma opção
+  falsa por omissão responderia «não» a todos os relatórios finalizados antes
+  de ela existir, e tirava silenciosamente o logótipo a documentos que uma
+  escola já enviou a famílias. A ausência da opção não é lida como «não»: é
+  lida como uma pergunta que o próprio documento já respondeu. Um relatório
+  finalizado congelou o seu timbre na assinatura, e é esse timbre congelado —
+  `document.identity.logo_path`, e mais nada — que diz se ele imprimia um
+  logótipo. Se imprimia, continua a imprimir; se não, continua sem.
+
+  **É compatibilidade de leitura, e só isso.** Não há migração, não há
+  backfill, não se escreve `show_logo` em nenhuma linha antiga, e o `document`,
+  o `document_hash` e as `options` não são tocados — a resposta é recalculada a
+  cada leitura a partir dos bytes congelados. A identidade **atual** da escola
+  nunca é consultada para um relatório finalizado: carregar um logótipo hoje
+  não o acrescenta a um documento assinado em fevereiro, e removê-lo não lho
+  tira. E uma escolha explícita ganha sempre, nos dois sentidos: um relatório
+  com `show_logo` a falso e um logótipo congelado não imprime logótipo nenhum,
+  porque alguém decidiu — a regra de compatibilidade existe para os documentos
+  onde ninguém chegou a ser perguntado. A decisão vive num único sítio,
+  `Report::showsLogo()`, para que a pré-visualização, o PDF e o Word não possam
+  discordar sobre o mesmo documento.
 
 ### Changed
 
@@ -125,6 +146,15 @@ alterado. Nenhum documento assinado foi reescrito.
   rascunho liga-o; um rascunho volta a desligá-lo; guardar a escolha não apaga
   as outras opções; a finalização congela-a; um finalizado não muda de ideias;
   mudar a escola depois não altera um documento assinado.
+- `ReportLegacyLogoCompatibilityTest`, sobre o documento que ninguém chegou a
+  perguntar: um relatório assinado sem a opção e com timbre congelado com
+  logótipo mantém-no, nos três formatos; um assinado sem logótipo continua sem
+  ele e não ganha um quando a escola carrega o seu; uma escolha explícita ganha
+  nos dois sentidos; e um rascunho nunca chega à regra de compatibilidade,
+  porque não congelou nada. Mais a prova de que ler não escreve — a renderização
+  completa, duas vezes, sem um único `UPDATE`, com `document`, `document_hash` e
+  `options` idênticos antes e depois, e a linha antiga a continuar sem a chave
+  `show_logo`.
 - Os fixtures deixam de conter o nome, a morada, o telefone e o email de uma
   escola real. Os testes afirmam que o documento imprime **o que a identidade
   disser**; um nome real ali dentro é dado real que nenhum deles precisava, e
@@ -132,16 +162,6 @@ alterado. Nenhum documento assinado foi reescrito.
 
 ### Em aberto, deliberadamente fora desta release
 
-- **Relatórios finalizados antes de `show_logo` existir.** A opção é falsa por
-  omissão e é lida também no caminho do documento assinado, pelo que um
-  relatório finalizado antes desta versão **deixa de imprimir o logótipo que
-  imprimia**. Nenhum dado é alterado: o `document` congelado, o `document_hash`
-  e as secções ficam byte a byte como estavam, e o `identity.logo_path` que
-  assinaram continua lá. O que muda é como esse documento é desenhado hoje.
-  Fechar isto obrigaria a derivar a regra antiga por migração e a escrevê-la na
-  coluna `options` — uma escrita em relatórios assinados, e portanto uma decisão
-  por si só. Fica registada, não resolvida: nenhuma migração e nenhum backfill
-  entram nesta release.
 - **`Report::isIntact()` dá falsos negativos em todos os relatórios
   finalizados.** O hash é calculado sobre o array em memória; o MySQL normaliza
   a ordem das chaves da coluna `JSON` ao gravar, pelo que o que volta já não é a

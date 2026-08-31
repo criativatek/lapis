@@ -27,9 +27,14 @@ use Illuminate\Support\Facades\Storage;
  * THE LOGO TRAVELS AS BYTES, AND ONLY WHEN IT WAS ASKED FOR. A renderer cannot
  * follow a session-protected URL, and it should not: the file is read here,
  * server-side, from the private disk, and handed over already embedded. It is
- * read at all only for a report whose `show_logo` option is on — a school that
- * uploaded a logo for its own screens did not thereby decide that every
- * relatório de turma leaving the building carries it (§50).
+ * read at all for a report that `Report::showsLogo()` says carries one — a
+ * school that uploaded a logo for its own screens did not thereby decide that
+ * every relatório de turma leaving the building carries it (§50). The question
+ * is asked there and not answered here, so this file and the preview cannot
+ * come to different conclusions about the same document.
+ *
+ * FOR A SIGNED DOCUMENT THE PATH IS THE FROZEN ONE, never the school's current
+ * identity: what this prints is the letterhead as it was at signature (§39).
  */
 class ReportDocumentBuilder
 {

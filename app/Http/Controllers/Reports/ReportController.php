@@ -713,10 +713,11 @@ class ReportController extends Controller
      *
      * TWO THINGS ARE DECIDED HERE RATHER THAN TRUSTED FROM THE SNAPSHOT.
      *
-     * The logo is shown only when this report asked for one, so a document
-     * finalized before `show_logo` existed does not start printing a logo the
-     * teacher never chose — and one that carries no logo reserves no space for
-     * it (§50).
+     * The logo is shown only when this report asked for one — the question is
+     * answered once, by `Report::showsLogo()`, so this screen cannot disagree
+     * with the PDF or the .docx about it (§50). A document signed before the
+     * option existed keeps whatever its own frozen letterhead carried; one that
+     * carries no logo reserves no space for it.
      *
      * And the URL is rebuilt from the route rather than read from the document.
      * A frozen absolute address carried whatever APP_URL happened to be at
@@ -739,7 +740,11 @@ class ReportController extends Controller
         }
 
         $identity = (array) data_get($report->document, 'identity', []);
-        $showsLogo = $report->showsLogo() && is_string(data_get($report->document, 'identity.logo_path'));
+
+        // Asked for AND actually frozen: a report whose teacher turned the
+        // option on before the school had uploaded anything signed a letterhead
+        // with no image in it, and there is nothing to serve.
+        $showsLogo = $report->showsLogo() && $report->frozeALogo();
 
         return [
             ...$identity,

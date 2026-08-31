@@ -221,10 +221,66 @@ class Report extends Model
      * creation-time choice the teacher may revise while the report is a draft,
      * and `options` is not in EDITABLE_AFTER_FINALIZING — so finalizing freezes
      * the answer along with everything else (§39).
+     *
+     * THE ONE PLACE THAT DECIDES, for the preview, the PDF and the .docx alike.
+     * Three renderings that each worked it out for themselves would eventually
+     * disagree, and a document that carries a logo in Word and not in PDF is
+     * worse than one that carries it nowhere.
+     *
+     * ---
+     *
+     * READING A DOCUMENT SIGNED BEFORE THIS OPTION EXISTED. Every report
+     * finalized before `show_logo` was introduced has no such key at all, and
+     * answering those with the new default would silently take the logo off
+     * documents a school has already sent — changing how a signed document
+     * looks, which is exactly what §39 forbids. So absence is not read as
+     * false: it is read as a question the document itself already answered.
+     *
+     * A finalized report froze its letterhead at signature. If that frozen
+     * identity carries a `logo_path`, this document printed a logo when it was
+     * signed and goes on printing it. If it does not, it never did.
+     *
+     * THREE THINGS THIS DELIBERATELY DOES NOT DO. It never reads the school's
+     * CURRENT identity — only the copy frozen inside this document —, so
+     * uploading or removing a logo today cannot change a document signed last
+     * February. It never writes: no option is backfilled, no migration runs,
+     * `document` and `document_hash` are not touched, and the answer is
+     * recomputed from frozen bytes on every read. And it never reaches a draft,
+     * which has frozen nothing and therefore has nothing to be compatible with.
+     *
+     * AN EXPLICIT ANSWER ALWAYS WINS, in both directions. A report that carries
+     * `show_logo => false` and a frozen logo prints no logo: somebody chose
+     * that, and this fallback is for documents where nobody was ever asked.
      */
     public function showsLogo(): bool
     {
-        return (bool) $this->option('show_logo', false);
+        $options = $this->options ?? [];
+
+        // array_key_exists, not option(): `data_get` cannot tell a stored
+        // `false` from a key that was never written, and the whole rule turns
+        // on that distinction.
+        if (array_key_exists('show_logo', $options)) {
+            return (bool) $options['show_logo'];
+        }
+
+        if (! $this->isFinalized()) {
+            return false;
+        }
+
+        return $this->frozeALogo();
+    }
+
+    /**
+     * Whether this document's own frozen letterhead carries a logo.
+     *
+     * Read from `document.identity.logo_path` and from nowhere else — the
+     * school's live identity is a different fact about a different moment.
+     */
+    public function frozeALogo(): bool
+    {
+        $path = data_get($this->document, 'identity.logo_path');
+
+        return is_string($path) && trim($path) !== '';
     }
 
     /**
