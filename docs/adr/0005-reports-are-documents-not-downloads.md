@@ -72,11 +72,32 @@ plano muda isso.
 Ao finalizar, tudo é copiado para `document` e o modelo recusa qualquer escrita
 posterior. O **logótipo é copiado em bytes** para `report-logos/`, porque o URL
 do cabeçalho é estável e substituir o ficheiro por trás dele alteraria
-silenciosamente todos os documentos já assinados.
+silenciosamente todos os documentos já assinados. Só é copiado para relatórios
+cuja opção `show_logo` está ligada: um documento que nunca vai imprimir o
+logótipo não deixa uma cópia de um ficheiro da escola por aí (§65). O URL
+congelado é **relativo** — um absoluto levaria consigo o `APP_URL` do momento e
+apontaria, na instalação seguinte, para uma máquina que já não existe.
+
+**`show_logo` é uma escolha do rascunho que a finalização congela.** Nasce falsa
+— pôr o logótipo de uma escola num documento que uma família recebe é uma decisão
+que alguém toma, não uma consequência de ter carregado um ficheiro (§50) — e o
+professor liga-a e desliga-a enquanto o relatório for rascunho. `options` não
+está em `EDITABLE_AFTER_FINALIZING`, pelo que finalizar congela a escolha com
+tudo o resto, e nenhuma alteração posterior à identidade da escola a muda.
+
+**O que esta versão deliberadamente não faz é reescrever documentos antigos.**
+Relatórios finalizados antes de a opção existir não têm decisão registada e
+`showsLogo()` responde `false` por eles. Isso é uma mudança de apresentação em
+documentos já assinados e está fora do âmbito por decisão de produto: o objetivo
+é que **os relatórios daqui para a frente saiam corretos**. Se algum dia se
+quiser preservar o aspeto dos antigos, o caminho é derivar o valor **uma vez**
+de `document.identity.logo_path` — o que **aquele** documento congelou — e
+escrevê-lo na coluna, nunca inferi-lo em cada render.
 
 Não existe «desfinalizar». Corrigir um relatório terminado significa derivar um
 novo a partir dele, que herda **juízos** (caracterização, dificuldades validadas,
 estratégias, texto reescrito pelo professor) e nunca **números**.
+
 
 ### 5. Dois formatos, um conteúdo
 
@@ -84,6 +105,21 @@ estratégias, texto reescrito pelo professor) e nunca **números**.
 renderizador de PDF e o de DOCX têm — nenhum lê um relatório, uma secção ou um
 documento congelado. Uma diferença entre os dois ficheiros teria de ser uma
 diferença entre renderizadores, não entre duas ideias do que o documento diz.
+
+**Três, na verdade: a pré-visualização online conta.** É o ecrã onde o professor
+verifica o documento antes de o exportar e, quando compunha o seu próprio
+cabeçalho, era uma terceira opinião sobre como o relatório se chama.
+`ReportDocumentBuilder::heading()` é público exatamente por isso, e
+`DocumentHeading` decide a hierarquia uma vez para os três: o título guardado é
+escrito para uma listagem, e um título ainda gerado dissolve-se nos próprios
+metadados em vez de ser impresso por cima de um subtítulo que o repete.
+
+**O rodapé do PDF não é CSS.** `counter(pages)` não existe no dompdf — a folha
+de estilos do motor define `page` e nada define `pages` —, pelo que o total
+vinha sempre a zero e cada página era numerada «1 / 0». O rótulo é desenhado
+pelo `PdfRenderer` depois do render, pelo `page_script` do canvas, que é o
+primeiro momento em que o total é um número. Sem total fiável imprime «Página
+3», nunca «Página 3 / 0».
 
 ## Consequences
 

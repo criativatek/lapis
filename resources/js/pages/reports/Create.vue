@@ -60,6 +60,8 @@ const props = defineProps<{
     templates: TemplateRow[];
     preferredTemplate: string | null;
     preselected: Preselected | null;
+    // Whether there is a logo at all to offer putting on the document (§50).
+    hasSchoolLogo: boolean;
 }>();
 
 const form = useForm({
@@ -73,6 +75,9 @@ const form = useForm({
     title: '',
     sections: props.catalogue.filter((row) => row.default_included).map((row) => row.key),
     name_students: false,
+    // §50: the logo is an explicit decision about this document, never a
+    // consequence of the school having uploaded one.
+    show_logo: false,
     // §17: pre-selected, so the common case needs no choice.
     template: props.preferredTemplate ?? '',
     // Registos only.
@@ -485,6 +490,21 @@ function submit() {
                         <span class="mt-1 block text-xs text-muted-foreground">
                             Sem isto, as secções selecionadas descrevem situações sem identificar quem. Um relatório
                             de turma é agregado por omissão.
+                        </span>
+                    </label>
+                </div>
+
+                <!-- §50: offered only where there is a logo to put on it, so a
+                     school that never uploaded one is not asked about it. -->
+                <div v-if="hasSchoolLogo" class="rounded-lg border border-border p-3 text-sm">
+                    <label class="block">
+                        <span class="flex items-center gap-2 font-medium">
+                            <input v-model="form.show_logo" type="checkbox" class="size-4" />
+                            Incluir o logótipo da escola
+                        </span>
+                        <span class="mt-1 block text-xs text-muted-foreground">
+                            Por omissão o cabeçalho leva apenas o nome e os contactos da escola. O logótipo entra
+                            quando este documento é institucional.
                         </span>
                     </label>
                 </div>

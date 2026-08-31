@@ -24,12 +24,19 @@ use Throwable;
  * finished in February, a renamed domain does not rename it retroactively, and
  * reprinting it in September does not run a single query against live data.
  *
- * THE LOGO IS COPIED, NOT LINKED. This is the one place where «snapshot» would
- * otherwise quietly fail: the letterhead URL is stable, so replacing the file
- * behind it would silently change every finished document. The bytes are
- * duplicated into `report-logos/` at finalization and the frozen identity points
- * at the copy. A 2 MB ceiling already applies to logos, and a school finalizes
- * far fewer reports than it has students.
+ * THE LOGO IS COPIED, NOT LINKED — AND ONLY FOR A REPORT THAT ASKED FOR ONE.
+ * This is the one place where «snapshot» would otherwise quietly fail: the
+ * letterhead URL is stable, so replacing the file behind it would silently
+ * change every finished document. The bytes are duplicated into `report-logos/`
+ * at finalization and the frozen identity points at the copy. A report whose
+ * `show_logo` option is off freezes no logo at all, so nothing is duplicated
+ * for a document that will never print it (§50).
+ *
+ * THE FROZEN URL IS RELATIVE. An absolute one bakes today's APP_URL into a
+ * document meant to outlive the installation: a report finalized on a local
+ * Herd and read afterwards on the real domain pointed its letterhead at
+ * `http://lapis.test/…`, and the browser drew a broken image. The path is
+ * stored; whoever renders the page builds the address it is being served from.
  *
  * SECTIONS WITH NOTHING TO SAY DO NOT ENTER THE DOCUMENT. A heading over a
  * blank is worse than no heading; and a section excluded by the teacher was
@@ -165,10 +172,12 @@ class FinalizeReport
         return [
             ...$identity,
             // The route that served the live logo is replaced by one that
-            // serves THIS report's copy: same shape, frozen bytes.
-            'logo_url' => $logoPath === null ? null : route('reports.logo', $report),
+            // serves THIS report's copy: same shape, frozen bytes — and stored
+            // as a path, so the host it is read from is decided at read time.
+            'logo_url' => $logoPath === null ? null : route('reports.logo', $report, absolute: false),
             'logo_path' => $logoPath,
             'has_logo' => $logoPath !== null,
+            'show_logo' => $report->showsLogo(),
         ];
     }
 
@@ -182,6 +191,12 @@ class FinalizeReport
      */
     protected function copyLogo(Report $report): ?string
     {
+        // Never for a report that does not print one: a copy nothing reads is
+        // a file about a school kept for no reason (§65).
+        if (! $report->showsLogo()) {
+            return null;
+        }
+
         $source = $report->organization->identity?->logo_path;
 
         if ($source === null) {

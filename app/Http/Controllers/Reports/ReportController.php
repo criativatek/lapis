@@ -31,6 +31,7 @@ use App\Services\Documents\SchoolLogoService;
 use App\Services\Reporting\ComposeReport;
 use App\Services\Reporting\CreateReport;
 use App\Services\Reporting\DeriveReport;
+use App\Services\Reporting\Export\ReportDocumentBuilder;
 use App\Services\Reporting\FinalizeReport;
 use App\Services\Reporting\ReportCapabilities;
 use App\Services\Reporting\ReportComparison;
@@ -71,6 +72,7 @@ class ReportController extends Controller
         protected CreateReport $creator,
         protected ComposeReport $composer,
         protected DocumentIdentity $identity,
+        protected ReportDocumentBuilder $documents,
         protected ReportLibraryProvider $library,
         protected TemplateResolver $templates,
         protected ReportWritingAssistant $assistant,
@@ -161,6 +163,9 @@ class ReportController extends Controller
             // «Gerar relatório», this is how the teacher's turma/aluno/período
             // reach the form without being re-picked by hand.
             'preselected' => $this->preselectedFrom($request),
+            // §50: the logo question is only worth asking of a school that has
+            // one. Its absence is not an empty checkbox — it is no checkbox.
+            'hasSchoolLogo' => $this->identity->forCurrentOrganization()['has_logo'] === true,
         ]);
     }
 
@@ -287,6 +292,10 @@ class ReportController extends Controller
             // §28, §57: naming students on a class-wide document is an explicit
             // decision, never a default.
             'name_students' => ['nullable', 'boolean'],
+            // §50: so is putting the school's logo on it. Having uploaded one
+            // for the school's own screens is not a decision about what every
+            // document leaving the building looks like.
+            'show_logo' => ['nullable', 'boolean'],
         ]);
 
         $type = ReportType::from($data['type']);
@@ -314,7 +323,10 @@ class ReportController extends Controller
         }
 
         $tone = ReportTone::tryFrom((string) ($data['tone'] ?? '')) ?? ReportTone::Objective;
-        $options = ['name_students' => (bool) ($data['name_students'] ?? false)];
+        $options = [
+            'name_students' => (bool) ($data['name_students'] ?? false),
+            'show_logo' => (bool) ($data['show_logo'] ?? false),
+        ];
         $template = $this->templates->resolve($this->user(), $type, $data['template'] ?? null);
 
         $report = match ($type) {
@@ -388,9 +400,19 @@ class ReportController extends Controller
             'sections' => $this->sectionsPayload($report),
             // A FINALIZED REPORT SHOWS ITS OWN LETTERHEAD, not the school's
             // current one. That is the whole point of freezing it (§39).
-            'identity' => $report->isFinalized()
-                ? (array) data_get($report->document, 'identity', [])
-                : $this->identity->forCurrentOrganization(),
+            'identity' => $this->letterhead($report),
+            // What the document is called, composed once for all three
+            // renderings so the screen cannot disagree with the PDF (§47).
+            'heading' => $this->documents->heading($report),
+            // §50: the logo is a decision, and the screen has to be able to
+            // state it, revise it while the report is a draft, and explain the
+            // case where there is nothing to decide about.
+            'logo' => [
+                'shown' => $report->showsLogo(),
+                // The school's own file, not this report's frozen copy: what
+                // this answers is «is there a logo available to turn on».
+                'available' => $this->identity->forCurrentOrganization()['has_logo'] === true,
+            ],
             // §35: what moved since the report this one started from. Facts, and
             // no causation.
             //
@@ -563,6 +585,10 @@ class ReportController extends Controller
             'teacher_input.students_requiring_attention.*.enrollment_id' => ['required', new BelongsToCurrentOrganization(Enrollment::class)],
             'teacher_input.students_requiring_attention.*.note' => ['nullable', 'string', 'max:500'],
             'name_students' => ['sometimes', 'boolean'],
+            // §50: revisable while the report is a draft. The policy above
+            // already refuses `update` on a finalized report, so finalizing is
+            // what closes this — there is no second rule to keep in step.
+            'show_logo' => ['sometimes', 'boolean'],
         ]);
 
         // A chosen library entry becomes a COPY of its words, resolved here and
@@ -597,11 +623,19 @@ class ReportController extends Controller
             $attributes['teacher_input_version'] = Report::CURRENT_TEACHER_INPUT_VERSION;
         }
 
-        if (array_key_exists('name_students', $data)) {
-            $attributes['options'] = array_replace(
-                $report->options ?? [],
-                ['name_students' => (bool) $data['name_students']],
-            );
+        // Both options through ONE write. Two separate `array_replace` calls
+        // against `$report->options` would each start from the stored value, so
+        // a form sending both would save only the last one.
+        $options = [];
+
+        foreach (['name_students', 'show_logo'] as $option) {
+            if (array_key_exists($option, $data)) {
+                $options[$option] = (bool) $data[$option];
+            }
+        }
+
+        if ($options !== []) {
+            $attributes['options'] = array_replace($report->options ?? [], $options);
         }
 
         if ($attributes !== []) {
@@ -672,6 +706,49 @@ class ReportController extends Controller
     }
 
     /**
+     * The letterhead this page draws.
+     *
+     * A FINALIZED REPORT SHOWS ITS OWN, frozen at signature; a draft shows the
+     * school's current one (§39).
+     *
+     * TWO THINGS ARE DECIDED HERE RATHER THAN TRUSTED FROM THE SNAPSHOT.
+     *
+     * The logo is shown only when this report asked for one, so a document
+     * finalized before `show_logo` existed does not start printing a logo the
+     * teacher never chose — and one that carries no logo reserves no space for
+     * it (§50).
+     *
+     * And the URL is rebuilt from the route rather than read from the document.
+     * A frozen absolute address carried whatever APP_URL happened to be at
+     * signature time: a report finalized on a local Herd and opened afterwards
+     * on the school's own domain pointed at `http://lapis.test/…`, and the
+     * browser drew a broken image where the letterhead should be.
+     *
+     * @return array<string, mixed>
+     */
+    protected function letterhead(Report $report): array
+    {
+        if (! $report->isFinalized()) {
+            $identity = $this->identity->forCurrentOrganization();
+
+            return [
+                ...$identity,
+                'has_logo' => $report->showsLogo() && $identity['has_logo'] === true,
+                'logo_url' => $report->showsLogo() ? $identity['logo_url'] : null,
+            ];
+        }
+
+        $identity = (array) data_get($report->document, 'identity', []);
+        $showsLogo = $report->showsLogo() && is_string(data_get($report->document, 'identity.logo_path'));
+
+        return [
+            ...$identity,
+            'has_logo' => $showsLogo,
+            'logo_url' => $showsLogo ? route('reports.logo', $report) : null,
+        ];
+    }
+
+    /**
      * The logo frozen into a finalized report (§39).
      *
      * Served by an authorizing controller from the private disk, exactly as the
@@ -681,6 +758,10 @@ class ReportController extends Controller
     public function logo(Report $report): StreamedResponse
     {
         Gate::authorize('view', $report);
+
+        // A report that does not print a logo has no logo to serve, even where
+        // an older finalization left a copy behind (§50).
+        abort_unless($report->showsLogo(), 404);
 
         $path = data_get($report->document, 'identity.logo_path');
 

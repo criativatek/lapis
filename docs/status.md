@@ -80,3 +80,26 @@ placeholder da Fase 1.)*
 [`BuildClassStatistics`](../app/Services/Assessment/BuildClassStatistics.php),
 `resources/js/pages/results/Statistics.vue`. Esta secção não tinha sido
 atualizada depois desse trabalho.)*
+
+## Dívida técnica registada
+
+Coisas conhecidas, deliberadamente **não** corrigidas na release em que foram
+descobertas, para não misturar frentes. Cada uma precisa da sua própria fatia.
+
+- **`Report::isIntact()` dá falsos negativos.** O hash de integridade documental
+  é `sha256(json_encode($document))`, calculado sobre o array em memória no
+  momento da finalização. O MySQL guarda a coluna como `JSON` e **normaliza a
+  ordem das chaves** ao gravar, pelo que o JSON que volta da base de dados já
+  não é a mesma cadeia de bytes que foi assinada. Resultado: `isIntact()`
+  devolve `false` para **todos** os relatórios finalizados, incluindo os que
+  nunca foram tocados — confirmado nos seis relatórios da base local, três dos
+  quais nenhuma ferramenta alterou. Não é corrupção de dados: é uma verificação
+  que não pode passar.
+
+  Descoberto ao trabalhar a composição documental dos relatórios e
+  deliberadamente deixado fora dessa fatia: mexer no esquema de hash de
+  documentos assinados é uma decisão por si só, e a alternativa óbvia —
+  serialização canónica (chaves ordenadas, `JSON_UNESCAPED_*` fixos) — invalida
+  todos os hashes já gravados e obriga a decidir o que fazer com eles.
+  Enquanto não for tratado, **`isIntact()` não serve para detetar adulteração** e
+  não deve ser usado como se servisse.

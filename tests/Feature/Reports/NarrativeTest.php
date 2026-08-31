@@ -40,6 +40,46 @@ class NarrativeTest extends TestCase
         $this->assertSame('nenhum aluno manteve', Phrase::studentsDid(0, 'manteve', 'mantiveram'));
         $this->assertSame('um aluno manteve', Phrase::studentsDid(1, 'manteve', 'mantiveram'));
         $this->assertSame('quatro alunos mantiveram', Phrase::studentsDid(4, 'manteve', 'mantiveram'));
+
+        // The composers' own wording, so a regression there is caught here.
+        $this->assertSame(
+            'nenhum aluno manteve o seu resultado',
+            Phrase::studentsDid(0, 'manteve o seu resultado', 'mantiveram o seu resultado'),
+        );
+    }
+
+    #[Test]
+    public function a_negative_subject_pulls_the_pronoun_in_front_of_the_verb(): void
+    {
+        // «nenhum aluno manteve-se» is grammatically wrong in pt-PT and is what
+        // a template produces by concatenating a count with a verb: «nenhum»
+        // attracts the clitic (§42).
+        $this->assertSame('nenhum aluno se manteve', Phrase::studentsDid(0, 'manteve-se', 'mantiveram-se'));
+
+        // Only the zero case. One student and four students keep the enclitic
+        // form, which is the correct one there.
+        $this->assertSame('um aluno manteve-se', Phrase::studentsDid(1, 'manteve-se', 'mantiveram-se'));
+        $this->assertSame('dois alunos mantiveram-se', Phrase::studentsDid(2, 'manteve-se', 'mantiveram-se'));
+    }
+
+    #[Test]
+    public function a_verb_without_a_pronoun_is_left_alone(): void
+    {
+        $this->assertSame('progrediu', Phrase::proclitic('progrediu'));
+        $this->assertSame('não dispõe', Phrase::proclitic('não dispõe'));
+
+        // Not every hyphen is a clitic, and the mesoclitic future would have to
+        // be rebuilt rather than reordered.
+        $this->assertSame('manter-se-á', Phrase::proclitic('manter-se-á'));
+        $this->assertSame('bem-estar', Phrase::proclitic('bem-estar'));
+    }
+
+    #[Test]
+    public function every_pronoun_portuguese_writes_with_a_hyphen_moves(): void
+    {
+        $this->assertSame('se manteve', Phrase::proclitic('manteve-se'));
+        $this->assertSame('o fez', Phrase::proclitic('fez-o'));
+        $this->assertSame('lhes coube', Phrase::proclitic('coube-lhes'));
     }
 
     #[Test]

@@ -78,6 +78,17 @@ type Identity = {
     is_configured: boolean;
 };
 
+// What the document is called and the line under it, composed by
+// ReportDocumentBuilder so the preview, the .docx and the PDF cannot disagree
+// about it (§47).
+type Heading = { title: string; subtitle: string };
+
+// §50: whether this document carries the school's logo, and whether there is
+// one to carry. `available` is about the school's configuration, not about this
+// report — it is what lets the screen explain an empty choice instead of
+// offering a checkbox that could not do anything.
+type LogoChoice = { shown: boolean; available: boolean };
+
 type Characterisation = {
     available: boolean;
     // Which questions this report type would actually print an answer to.
@@ -112,6 +123,8 @@ const props = defineProps<{
     report: ReportPayload;
     sections: SectionPayload[];
     identity: Identity;
+    heading: Heading;
+    logo: LogoChoice;
     characterisation: Characterisation;
     library: Library | null;
     enrollments: EnrollmentRow[];
@@ -125,6 +138,23 @@ const props = defineProps<{
 
 // A finalized report opens on the document, because that is all it is now.
 const mode = ref<'edit' | 'preview'>(props.report.status === 'draft' ? 'edit' : 'preview');
+
+// The closing sentence of a finished document, assembled as one string:
+// built out of conditional fragments it acquires a space before the full stop.
+const closing = computed(() => {
+    const parts = ['Relatório finalizado'];
+
+    if (props.report.finalized_by) {
+        parts.push(`por ${props.report.finalized_by}`);
+    }
+
+    if (props.report.finalized_at) {
+        parts.push(`em ${formatDate(props.report.finalized_at)}`);
+    }
+
+    return `${parts.join(' ')}.`;
+});
+
 const editing = ref<string | null>(null);
 const draftBody = ref('');
 
@@ -145,6 +175,15 @@ function formatDate(value: string): string {
 // ------------------------------------------------------------------ envelope
 
 const titleForm = useForm({ title: props.report.title });
+
+// SAVED ON THE TOGGLE, not behind a «Guardar». It is one boolean whose whole
+// effect is visible in the preview beside it, so asking for a second click to
+// confirm it would be asking twice for the same decision.
+const logoForm = useForm({ show_logo: props.logo.shown });
+
+function saveLogoChoice() {
+    logoForm.put(`/reports/${props.report.ulid}`, { preserveScroll: true, preserveState: true });
+}
 
 function saveTitle() {
     titleForm.put(`/reports/${props.report.ulid}`, { preserveScroll: true });
@@ -541,10 +580,10 @@ function derive() {
         <Link href="/reports" class="text-sm text-muted-foreground hover:underline">← Relatórios</Link>
 
         <div class="flex flex-wrap items-start justify-between gap-4">
-            <Heading
-                :title="report.title"
-                :description="`${report.type_label} · ${report.subject_label} · ${report.scope_label}`"
-            />
+            <!-- One hierarchy on the page too: the same title and the same
+                 metadata line the document itself carries, rather than a third
+                 phrasing that says «Relatório de turma» twice (§47). -->
+            <Heading :title="heading.title" :description="heading.subtitle" />
 
             <div class="flex flex-wrap items-center gap-2">
                 <span
@@ -653,6 +692,36 @@ function derive() {
                         <Input id="title" v-model="titleForm.title" class="flex-1" />
                         <Button variant="outline" :disabled="titleForm.processing" @click="saveTitle">Guardar</Button>
                     </div>
+                </div>
+
+                <!-- §50: the logo is a decision about THIS document, and the
+                     teacher may revise it for as long as the report is a
+                     draft. Finalizing freezes it with everything else. -->
+                <div class="border-t border-border pt-4">
+                    <label v-if="logo.available" class="block">
+                        <span class="flex items-center gap-2 text-sm font-medium">
+                            <input
+                                v-model="logoForm.show_logo"
+                                type="checkbox"
+                                class="size-4"
+                                :disabled="logoForm.processing"
+                                @change="saveLogoChoice"
+                            />
+                            Mostrar logótipo da instituição
+                        </span>
+                        <span class="mt-1 block text-xs text-muted-foreground">
+                            Por omissão o cabeçalho leva apenas o nome e os contactos da escola. Ao finalizar, esta
+                            escolha fica fixada no documento.
+                        </span>
+                    </label>
+
+                    <!-- No checkbox where there is nothing to turn on, and no
+                         blank where the checkbox would have been. -->
+                    <p v-else class="text-xs text-muted-foreground">
+                        <span class="font-medium text-foreground">Logótipo da instituição.</span>
+                        Ainda não foi carregado nenhum logótipo, por isso o cabeçalho leva apenas o nome e os
+                        contactos da escola. Pode carregá-lo em Definições → Identidade da escola.
+                    </p>
                 </div>
             </section>
 
@@ -1107,32 +1176,61 @@ function derive() {
         </template>
 
         <!-- ========================================================= PREVIEW -->
+        <!--
+            THE REFERENCE RENDERING. This is what the teacher checks before
+            exporting, so it is laid out as the document is: a discreet
+            letterhead, one title, a metadata line, sections with room to
+            breathe between them, and the same closing the .docx and the PDF
+            carry. The words and the figures are the exported ones — nothing
+            here composes text.
+        -->
         <template v-else>
             <div class="overflow-hidden rounded-lg border border-border bg-card">
-                <div class="mx-auto max-w-[52rem] space-y-6 p-8">
+                <div class="mx-auto max-w-[46rem] px-8 py-10 sm:px-12">
                     <ReportLetterhead :identity="identity" />
 
-                    <div class="space-y-1 border-b border-border pb-4">
-                        <h1 class="text-lg font-semibold">{{ report.title }}</h1>
-                        <p class="text-sm text-muted-foreground">
-                            {{ report.subject_label }} · {{ report.scope_label }}
+                    <!-- One hierarchy: the document's name, then what it is
+                         about. Neither repeats the other (§47). -->
+                    <div class="mt-8 border-b border-border pb-5">
+                        <h1 class="text-xl font-semibold leading-tight">{{ heading.title }}</h1>
+                        <p v-if="heading.subtitle" class="mt-1.5 text-sm text-muted-foreground">
+                            {{ heading.subtitle }}
                         </p>
                     </div>
 
-                    <section v-for="section in printable" :key="section.ulid" class="space-y-2">
-                        <h2 class="text-sm font-semibold">{{ section.heading }}</h2>
-                        <p v-if="section.body" class="text-sm leading-relaxed whitespace-pre-line">
-                            {{ section.body }}
-                        </p>
-                        <ReportSectionData :section-key="section.key" :data="section.data" />
-                    </section>
+                    <div class="mt-8 space-y-7">
+                        <section v-for="section in printable" :key="section.ulid" class="space-y-2.5">
+                            <h2 class="text-[0.95rem] font-semibold leading-snug">{{ section.heading }}</h2>
+                            <p
+                                v-if="section.body"
+                                class="text-justify text-sm leading-relaxed whitespace-pre-line hyphens-auto"
+                            >
+                                {{ section.body }}
+                            </p>
+                            <ReportSectionData :section-key="section.key" :data="section.data" />
+                        </section>
+                    </div>
 
-                    <p v-if="printable.length === 0" class="text-sm text-muted-foreground">
+                    <p v-if="printable.length === 0" class="mt-8 text-sm text-muted-foreground">
                         Nenhuma secção com conteúdo. Preencha a caracterização ou verifique se existem dados no
                         período escolhido.
                     </p>
 
-                    <p v-if="identity.footer_note" class="border-t border-border pt-4 text-xs text-muted-foreground">
+                    <!-- §37: the same closing the exported files carry, so the
+                         preview is not a shorter document than the file. -->
+                    <div v-if="printable.length > 0" class="mt-12 space-y-10 text-sm">
+                        <p v-if="!isDraft" class="text-muted-foreground">{{ closing }}</p>
+                        <p v-else-if="report.author" class="text-muted-foreground">{{ report.author }}</p>
+
+                        <div class="w-56 border-t border-foreground/40 pt-1.5 text-xs text-muted-foreground">
+                            O(A) professor(a)
+                        </div>
+                    </div>
+
+                    <p
+                        v-if="identity.footer_note"
+                        class="mt-10 border-t border-border pt-4 text-xs text-muted-foreground"
+                    >
                         {{ identity.footer_note }}
                     </p>
                 </div>
