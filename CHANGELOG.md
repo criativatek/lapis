@@ -25,6 +25,40 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.104.0] — 2026-08-31
+
+Clareza pedagógica na edição de relatórios e na autoavaliação por link, sem
+tocar em cálculos, classificações, planos ou IA.
+
+Na secção «Dificuldades identificadas», cada dificuldade passa a ser um
+cartão numerado com o domínio como metadado discreto, as estratégias sob o
+seu próprio título e a nota complementar no fim — em vez de três controlos a
+competir pelo mesmo espaço. Acrescentar outra dificuldade agora vive numa
+zona claramente separada da lista. Nada mudou na estrutura de dados: já
+suportava 0..N dificuldades, cada uma com o seu domínio, estratégias e nota
+independentes.
+
+Uma ligação de autoavaliação já resolvia a identidade do aluno inteiramente a
+partir do token assinado — nunca de um parâmetro do pedido — mas o ecrã
+público nunca mostrava esse nome, só o punha no título da aba. Passa agora a
+mostrar «Esta autoavaliação corresponde a: <nome>» antes das perguntas, com
+indicação para o aluno confirmar e avisar o professor se a ligação for a
+errada — uma salvaguarda de identificação, não uma autenticação nova. Do
+lado do professor, uma autoavaliação por responder mostra agora esse estado
+em vez de nenhum.
+
+Auditada, sem alteração, a inclusão da autoavaliação no relatório: um
+relatório de turma não a inclui por omissão (decisão deliberada, §45) e um
+relatório derivado de outro preserva a escolha anterior do professor mesmo
+que surja conteúdo novo — o mesmo campo `included` governa o rascunho e o
+documento final, sem divergência entre pré-visualização e ficheiro.
+
+Auditadas, sem alteração por já estarem corretas: a nomenclatura
+«Ano(s) de escolaridade» (todo o ano de escolaridade na aplicação é
+singular por natureza) e «Turma(s)» (já pluralizada onde um aluno pode ter
+mais do que uma), e a etiqueta comercial «Pro» (já não existe «Plus» visível
+em lado nenhum).
+
 ## [0.103.1] — 2026-08-31
 
 A 0.103.0 corrigiu o documento e deixou o ecrã para trás. A pré-visualização dos
