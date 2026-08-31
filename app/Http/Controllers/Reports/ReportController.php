@@ -404,6 +404,11 @@ class ReportController extends Controller
             // What the document is called, composed once for all three
             // renderings so the screen cannot disagree with the PDF (§47).
             'heading' => $this->documents->heading($report),
+            // §14: the caption under the signature rule, read from the same
+            // constant the three renderings read. Copy duplicated on the
+            // screen is copy that drifts from the file — which is exactly how
+            // «O(A) professor(a)» outlived its removal from the document.
+            'signatureCaption' => ReportDocumentBuilder::SIGNATURE_CAPTION,
             // §50: the logo is a decision, and the screen has to be able to
             // state it, revise it while the report is a draft, and explain the
             // case where there is nothing to decide about.
@@ -489,6 +494,10 @@ class ReportController extends Controller
                 'position' => (int) ($section['position'] ?? 0),
                 'included' => true,
                 'body' => $section['body'] ?? null,
+                // The same structure the .docx and the PDF are built from, so
+                // the screen renders a list as a list instead of printing the
+                // marker a composer wrote (§10, §37).
+                'blocks' => $this->documents->blocks($section['body'] ?? null),
                 'edited' => (bool) ($section['edited'] ?? false),
                 'can_restore' => false,
                 'has_content' => true,
@@ -504,6 +513,9 @@ class ReportController extends Controller
             'position' => $section->position,
             'included' => $section->included,
             'body' => $section->body,
+            // Structure for the preview; `body` stays the text the teacher
+            // edits, and the textarea keeps showing exactly that.
+            'blocks' => $this->documents->blocks($section->body),
             'edited' => $section->edited,
             'can_restore' => $section->canRestore(),
             'has_content' => $section->hasContent(),

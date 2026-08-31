@@ -54,6 +54,16 @@ type ReportPayload = {
     based_on: { ulid: string; title: string } | null;
 };
 
+// A section body, already cut into the blocks a document is made of.
+//
+// TYPED ON THE SERVER, NEVER PARSED HERE (§10). `Phrase::ITEM_MARKER` is a
+// convention between the composers and `ReportDocumentBuilder`, and the screen
+// has no business knowing it exists: it receives the same blocks the .docx and
+// the PDF are built from and renders them.
+type DocumentBlock =
+    | { kind: 'paragraph'; text: string }
+    | { kind: 'list'; lead: string | null; items: string[] };
+
 type SectionPayload = {
     ulid: string;
     key: string;
@@ -61,6 +71,7 @@ type SectionPayload = {
     position: number;
     included: boolean;
     body: string | null;
+    blocks: DocumentBlock[];
     edited: boolean;
     can_restore: boolean;
     has_content: boolean;
@@ -124,6 +135,9 @@ const props = defineProps<{
     sections: SectionPayload[];
     identity: Identity;
     heading: Heading;
+    // §14: «Docente responsável», from ReportDocumentBuilder::SIGNATURE_CAPTION.
+    // A role, never a gender, and never retyped on this side.
+    signatureCaption: string;
     logo: LogoChoice;
     characterisation: Characterisation;
     library: Library | null;
@@ -1201,12 +1215,33 @@ function derive() {
                     <div class="mt-8 space-y-7">
                         <section v-for="section in printable" :key="section.ulid" class="space-y-2.5">
                             <h2 class="text-[0.95rem] font-semibold leading-snug">{{ section.heading }}</h2>
-                            <p
-                                v-if="section.body"
-                                class="text-justify text-sm leading-relaxed whitespace-pre-line hyphens-auto"
-                            >
-                                {{ section.body }}
-                            </p>
+                            <!-- The blocks the exported file is built from, in
+                                 the order the document has them: a paragraph is
+                                 a paragraph, and a list is a list (§10). -->
+                            <template v-for="(block, index) in section.blocks" :key="index">
+                                <template v-if="block.kind === 'list'">
+                                    <!-- The lead-in is a sentence, not an item:
+                                         a paragraph above the list, exactly as
+                                         `document.blade.php` prints it. -->
+                                    <p
+                                        v-if="block.lead"
+                                        class="text-justify text-sm leading-relaxed hyphens-auto"
+                                    >
+                                        {{ block.lead }}
+                                    </p>
+                                    <ul class="ml-5 list-disc space-y-1 text-sm leading-relaxed">
+                                        <li v-for="(item, itemIndex) in block.items" :key="itemIndex">
+                                            {{ item }}
+                                        </li>
+                                    </ul>
+                                </template>
+                                <p
+                                    v-else
+                                    class="text-justify text-sm leading-relaxed whitespace-pre-line hyphens-auto"
+                                >
+                                    {{ block.text }}
+                                </p>
+                            </template>
                             <ReportSectionData :section-key="section.key" :data="section.data" />
                         </section>
                     </div>
@@ -1223,7 +1258,7 @@ function derive() {
                         <p v-else-if="report.author" class="text-muted-foreground">{{ report.author }}</p>
 
                         <div class="w-56 border-t border-foreground/40 pt-1.5 text-xs text-muted-foreground">
-                            O(A) professor(a)
+                            {{ signatureCaption }}
                         </div>
                     </div>
 

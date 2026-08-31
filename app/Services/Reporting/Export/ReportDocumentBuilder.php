@@ -315,6 +315,14 @@ class ReportDocumentBuilder
      * can edit; this is the boundary where that text becomes structure, and it
      * is the only place that knows the marker exists.
      *
+     * PUBLIC BECAUSE THE SCREEN IS A FOURTH RENDERING (§37). The Inertia
+     * preview promises to be the same document as the exported file, and it
+     * kept that promise by printing the body through `nl2br` — which was a
+     * paragraph with dashes in it before this method existed and stayed one
+     * after. `ReportController` calls this so the screen reads the convention
+     * from the same place the .docx and the PDF do, rather than the frontend
+     * learning what a marker is.
+     *
      * A BLOCK THAT IS ONLY PARTLY MARKED STAYS PROSE. If any line after the
      * lead-in lacks the marker, the block was not a list — most likely a
      * teacher wrote a dash in the middle of their own paragraph — and it is
@@ -322,7 +330,7 @@ class ReportDocumentBuilder
      *
      * @return list<array{kind: string, text?: string, lead?: string|null, items?: list<string>}>
      */
-    protected function blocks(mixed $body): array
+    public function blocks(mixed $body): array
     {
         if (! is_string($body) || trim($body) === '') {
             return [];

@@ -25,6 +25,57 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.103.1] — 2026-08-31
+
+A 0.103.0 corrigiu o documento e deixou o ecrã para trás. A pré-visualização dos
+relatórios promete, no seu próprio template, levar «o mesmo encerramento que o
+.docx e o PDF levam» — e cumpria essa promessa reescrevendo o encerramento à mão
+e imprimindo o corpo da secção através de `nl2br`. Quando o documento deixou de
+dizer «O(A) professor(a)» e passou a produzir listas a sério, o ecrã continuou a
+dizer e a fazer o que sempre fizera. Duas apresentações do mesmo documento que
+discordam uma da outra são um defeito do documento.
+
+Nenhum cálculo, classificação, peso, domínio ou regra de avaliação é tocado, e
+nenhuma migração corre. O que muda é de onde o ecrã lê aquilo que mostra.
+
+### Corrigido
+
+- **O encerramento deixa de ser copy duplicada.** A legenda por baixo da linha
+  de assinatura passa a chegar ao ecrã como prop, lida de
+  `ReportDocumentBuilder::SIGNATURE_CAPTION` — a mesma constante que as três
+  apresentações do ficheiro já liam. O ecrã deixa de ter uma opinião sobre a
+  legenda, e por isso deixa de poder discordar dela. O género continua a nunca
+  ser inferido de um nome.
+- **As listas passam a ser listas também no ecrã.** `ReportController` envia
+  agora, por secção, os mesmos `blocks` que o `document.blade.php` e o
+  `DocxRenderer` consomem: um parágrafo é um parágrafo, uma lista é um lead-in
+  e os seus itens. A pré-visualização imprime `<ul>`/`<li>`, com o lead-in como
+  frase acima da lista e não como item dela.
+
+### Alterado
+
+- `ReportDocumentBuilder::blocks()` passa a público. A convenção do
+  `Phrase::ITEM_MARKER` continua a ser lida **num só sítio**: o ecrã é a quarta
+  apresentação do documento e chama a mesma fronteira, em vez de o frontend
+  aprender que existe um marcador. O `body` continua a viajar ao lado dos
+  blocos, intacto — é o texto que o professor abre na caixa de edição, e o
+  cartão de edição continua a mostrá-lo tal como é escrito.
+
+### Testes
+
+- `resources/js/pages/reports/Show.test.ts` — 11 casos sobre a apresentação:
+  a legenda vem do servidor, uma lista é `<ul>/<li>`, o marcador `— ` nunca é
+  impresso, o lead-in fica fora dos itens, parágrafos e listas misturados não
+  perdem conteúdo nem ordem, e o texto do professor é sempre escapado. Dez dos
+  onze falham contra o código anterior.
+- `tests/Feature/Reports/ReportPreviewParityTest.php` — 7 casos sobre a costura
+  entre os dois lados: os `blocks` que o ecrã recebe são comparados com os que o
+  `ReportDocumentBuilder` produz para o mesmo corpo, em rascunho e em relatório
+  finalizado. Um ecrã que renderiza bem props que o servidor nunca envia
+  continua a ser um ecrã partido.
+- Uma sentinela estreita no lado Vue vigia «O(A) professor(a)». Não duplica a
+  sentinela documental: vigia a única cadeia que sobreviveu à sua própria
+  remoção do documento por não haver, deste lado, nenhum teste a olhar.
 ## [0.103.0] — 2026-08-31
 
 O relatório dizia a coisa certa e escrevia-a como um programa. «Foram registadas
