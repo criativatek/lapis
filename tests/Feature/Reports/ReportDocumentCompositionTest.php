@@ -379,7 +379,7 @@ class ReportDocumentCompositionTest extends TestCase
 
         // The layout work must not have touched what the sections computed: the
         // section still carries its own figures, from its own sources.
-        $this->assertNotEmpty($overall['paragraphs']);
+        $this->assertNotEmpty($overall['blocks']);
 
         $distribution = collect($structure['sections'])
             ->first(fn (array $section) => str_contains($section['heading'], 'Distribuição'));

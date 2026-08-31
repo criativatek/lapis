@@ -59,6 +59,43 @@ class Scope
         };
     }
 
+    /**
+     * The object of «Comparativamente …» — the moment a report measures itself
+     * against.
+     *
+     * HERE RATHER THAN IN THE COMPOSERS (§7). Two of them were building this by
+     * hand, gluing a fixed «ao» onto a label written for a listing column. That
+     * is the same mistake as «reporta-se a Ano letivo até ao momento», caught
+     * once and left standing at the other end: a label is a name, not a
+     * grammatical fragment, and a preposition chosen by whoever happened to
+     * write the sentence is a rule nobody stated and nothing tested.
+     *
+     * «AO», BECAUSE EVERY SHAPE OF PERIOD THE APPLICATION OFFERS IS MASCULINE —
+     * Semestre, Período, Trimestre, Módulo, Outro, all of them named in
+     * AcademicPeriodKind. That is a fact about the enum, not a guess about the
+     * string, and the day a feminine kind is added this is the one place that
+     * has to answer for it.
+     *
+     * A MISSING LABEL IS STILL A MOMENT. A previous period the caller could not
+     * name does not produce «ao », and it does not produce silence either: the
+     * comparison happened, and the sentence says what it was made against
+     * (§41).
+     */
+    public static function previousPeriodClause(?string $label): string
+    {
+        $label = trim((string) $label);
+
+        if ($label === '') {
+            return 'ao momento anterior';
+        }
+
+        // A caller that hands over «ao 1.º Semestre» meant the period, not the
+        // phrase; printing «ao ao 1.º Semestre» would be the seam showing.
+        $label = (string) preg_replace('/^(ao|à|o|a|no|na)\s+/ui', '', $label);
+
+        return 'ao '.$label;
+    }
+
     protected static function interimName(Report $report): string
     {
         $interim = $report->interimAssessment;

@@ -25,6 +25,113 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.103.0] — 2026-08-31
+
+O relatório dizia a coisa certa e escrevia-a como um programa. «Foram registadas
+uma intervenção pedagógica.» «Um aluno autoavaliou-se acima da classificação
+atribuída, três abaixo e dois coincidiram com a decisão do professor.» Uma
+medida destacada impressa como «— Legado sem dominio.», que é o título que um
+processo antigo escreveu para preencher uma coluna NOT NULL. E, por baixo da
+assinatura, «O(A) professor(a)» — um formulário a pedir a uma pessoa que risque
+uma das hipóteses, num documento que a escola envia a uma família.
+
+Nenhum cálculo, nenhuma fórmula de avaliação, nenhuma classificação, nenhum peso
+e nenhum domínio foi alterado. O que muda é a forma como os mesmos factos são
+ditos.
+
+### Fixed
+
+- **O título de uma linha importada nunca mais chega ao documento.** A regra
+  existia e estava garantida pelo sítio errado: a lista de medidas destacadas
+  excluía intervenções sem tipo, e um tipo é prova de que alguém curou a linha —
+  mas atribuir um tipo a uma intervenção importada é uma coisa banal de fazer na
+  aplicação, e no momento em que alguém o fazia a linha passava a ser citável e
+  imprimia «Legado sem dominio». Agora o que decide é
+  `Intervention::pedagogicalTitle()`, que lê a estratégia, depois o título,
+  depois o rótulo do tipo, cada um através de `PedagogicalText`, e responde nulo
+  quando nenhum deles diz nada. Uma linha sem nada para citar é contada, nunca
+  citada — como já era antes de ter tipo. O mesmo em `ClassReportSource` e em
+  `StudentReportSource`, que usava `displayTitle()` e punha «Intervenção» onde
+  devia estar um nome.
+- **«Foram registadas uma intervenção pedagógica.»** O verbo estava no plural e
+  a contagem podia ser um: a mesma falha que «nenhum aluno mantiveram», noutra
+  secção. E com uma única intervenção a frase seguinte deixa de dizer «todas»,
+  porque não acrescentava nada ao que a primeira já tinha dito.
+- **«O(A) professor(a)» desaparece dos três formatos.** A legenda da linha de
+  assinatura passa a ser **«Docente responsável»**: um papel, não um género. O
+  género nunca é inferido a partir de um nome, e o documento não precisa dele —
+  o que uma linha por baixo de uma assinatura declara é a qualidade em que foi
+  assinada. A frase factual do fecho («Relatório finalizado por … em …») fica
+  separada e intacta, e um relatório cujo autor não foi resolvido continua a não
+  inventar nenhum.
+- **«A decisão do professor» e «a proposta do sistema» saem da prosa.** Ambas
+  nomeiam factos verdadeiros em vocabulário interno: descrevem como o Lapispro
+  pensa, dentro de um documento sobre uma criança. Passam a ser «a classificação
+  atribuída» e «a classificação que consta deste relatório é a atribuída pelo
+  professor» — o mesmo facto, na linguagem que uma escola usa.
+- **A comparação da autoavaliação passa a dizer com o quê.** «Um aluno
+  autoavaliou-se acima» é uma frase com um buraco: acima de quê? A ordem estava
+  invertida — os desvios primeiro e o termo de comparação três orações depois.
+  Agora as coincidências abrem a frase e nomeiam a comparação por inteiro, e os
+  desvios apontam para trás: «Em dois casos, a autoavaliação coincidiu com a
+  classificação atribuída; um aluno autoavaliou-se acima dela e três abaixo.»
+  Onde não há coincidências não há a que apontar, e o primeiro grupo carrega o
+  termo completo.
+
+### Changed
+
+- **O período anterior deixa de ser uma label com uma preposição colada.** Dois
+  composers construíam «Comparativamente ao» + o rótulo escrito para uma coluna
+  de listagem — o mesmo erro de «reporta-se a Ano letivo até ao momento»,
+  corrigido numa ponta e deixado de pé na outra. Passa por
+  `Scope::previousPeriodClause()`, onde o artigo é uma regra declarada: «ao»,
+  porque todas as espécies de período que a aplicação oferece são masculinas em
+  `AcademicPeriodKind`, e um período que o chamador não soube nomear produz «ao
+  momento anterior» em vez de «ao ».
+- **A síntese final passa a sintetizar.** Repetia os dois números que o leitor
+  tinha acabado de encontrar, sob um título que prometia uma síntese. Acrescenta
+  agora, quando existem, o domínio com melhor resultado médio e o de valor mais
+  baixo, e quantos dos alunos comparáveis progrediram face ao momento anterior —
+  todos números que outra secção já estabeleceu. Cada oração é omissível por si:
+  uma turma com um só domínio, nenhum, ou sem período anterior recebe uma síntese
+  mais curta, nunca uma frase partida. Nenhuma causa, nenhum diagnóstico, nenhuma
+  recomendação: o que a síntese faz é pôr os factos no mesmo sítio.
+- **As listas passam a ser listas.** «Destacam-se as seguintes medidas:» seguido
+  de linhas com travessão era um parágrafo com traços lá dentro — uma lista para
+  o olho e nada para o ficheiro. O corpo da secção continua a ser texto que o
+  professor edita, mas a forma é agora declarada (`Phrase::list()`) e traduzida
+  na fronteira do documento: `<ul>` na pré-visualização e no PDF, itens com
+  marca a sério no Word, onde alguém vai clicar e acrescentar uma medida.
+
+### Added
+
+- **Uma sentinela sobre o documento acabado.** A que existia lia
+  `section->body`, que é o texto que os composers escrevem — e não o documento:
+  o título, o subtítulo, os metadados, o fecho, o timbre, o rodapé e a assinatura
+  são acrescentados depois. Foi assim que «O(A) professor(a)» sobreviveu a todas
+  as revisões da prosa: vivia a jusante do sítio onde alguém estava a olhar. A
+  nova rede lê o HTML composto, o texto do .docx e a paginação extraída do PDF
+  real. É deliberadamente estreita — cada entrada é uma cadeia que este código é
+  conhecido por ter produzido, não uma palavra que pareça técnica —, e não
+  substitui nenhum teste: cada comportamento que ela vigia tem também o seu, a
+  dizer a regra pela positiva.
+
+### Tests
+
+- `ReportDocumentProseTest`: a legenda neutra nos três formatos, o fecho de um
+  relatório assinado, o relatório sem autor resolvido, as listas com 1, 2, 3 e
+  nenhum item em HTML e em Word, a paginação real do PDF, e a sentinela.
+- `FinalSynthesisTest`: as nove formas da síntese — vários domínios, um só,
+  nenhum, domínios sem valor, empate entre extremos, progressão de 0/1/N/todos,
+  sem alunos comparáveis, sem período anterior, e sem nada para recapitular —
+  mais a verificação de que a síntese não explica, não diagnostica e não
+  recomenda.
+- `ScopeProseTest`: semestre, período, trimestre, módulo, momento sem nome, e a
+  label que já traz artigo.
+- E, em `ReportWritingTest`, o caso que deu origem a tudo isto: uma linha legacy
+  **tipificada depois** pela aplicação, que é o cenário em que o filtro antigo
+  deixava passar o marcador técnico.
+
 ## [0.102.0] — 2026-08-31
 
 O relatório de turma dizia a coisa certa e parecia outra coisa. Abria com dois

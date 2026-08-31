@@ -115,10 +115,17 @@ class StudentClassificationComposer implements SectionComposer
             return null;
         }
 
+        // WHAT WAS DECIDED, NOT HOW THE APPLICATION WORKS (§7). «A decisão do
+        // professor prevalece sobre a proposta do sistema» is a sentence about
+        // Lapispro, printed in a document about a child; the reader has no
+        // «sistema» in mind and does not need one. Naming the classification as
+        // the teacher's says the same thing in the vocabulary a school uses,
+        // and the fact — the two values differ, and this is the one that
+        // counts — survives intact.
         return Phrase::sentence(
             'O resultado calculado situava-se em',
             (string) $band['label'],
-            '. A classificação atribuída é a decisão do professor e prevalece sobre a proposta do sistema',
+            '. A classificação que consta deste relatório é a atribuída pelo professor',
         );
     }
 }

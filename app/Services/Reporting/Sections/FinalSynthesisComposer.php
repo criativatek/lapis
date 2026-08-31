@@ -110,7 +110,7 @@ class FinalSynthesisComposer implements SectionComposer
             return null;
         }
 
-        return Phrase::sentence(
+        $headline = Phrase::sentence(
             'Em síntese,',
             $context->whenClause(),
             $average === null
@@ -120,6 +120,121 @@ class FinalSynthesisComposer implements SectionComposer
             $placed === 0 || $rate === null
                 ? null
                 : 'uma taxa de sucesso de '.$rate,
+        );
+
+        // THREE SENTENCES AT MOST, AND EACH ONE OMISSIBLE ON ITS OWN. Nothing
+        // here is computed: every figure was established by a section above,
+        // and what this adds is that they finally stand together — which is
+        // what a reader who turns to the last page is looking for. A class with
+        // one domain, none, or no previous period gets a shorter synthesis, not
+        // a broken sentence (§9).
+        return Phrase::paragraph([
+            $headline,
+            $this->domainsSentence($context),
+            $this->progressionSentence($context),
+        ]);
+    }
+
+    /**
+     * The domain that came out highest and the one that came out lowest.
+     *
+     * ONLY WHERE THERE ARE TWO OF THEM AND THEY DIFFER. Naming a single domain
+     * as both extremes is true and absurd; naming two domains that tied is a
+     * distinction the numbers do not make. Domains with no figure are not
+     * extremes of anything and are left out (§41).
+     *
+     * NO READING OF WHAT THE GAP MEANS. Which domain went best is a fact; why,
+     * and what to do about it, are not in this application's gift (§16).
+     */
+    protected function domainsSentence(ReportContext $context): ?string
+    {
+        $facts = $context->fact('domains');
+        $accumulated = $context->fact('primary.kind') === 'accumulated';
+
+        $rows = [];
+
+        foreach (is_array($facts) ? $facts : [] as $domain) {
+            if (! is_array($domain)) {
+                continue;
+            }
+
+            $value = $accumulated
+                ? ($domain['accumulated_average'] ?? $domain['period_average'] ?? null)
+                : ($domain['period_average'] ?? null);
+
+            $label = trim((string) ($domain['label'] ?? ''));
+
+            if ($label === '' || $value === null || ! is_numeric((string) $value)) {
+                continue;
+            }
+
+            $rows[] = ['label' => $label, 'value' => (float) $value];
+        }
+
+        if (count($rows) < 2) {
+            return null;
+        }
+
+        usort($rows, fn (array $a, array $b) => $b['value'] <=> $a['value']);
+
+        $highest = $rows[0];
+        $lowest = $rows[count($rows) - 1];
+
+        // A tie is not an extreme.
+        if ($highest['value'] === $lowest['value']) {
+            return null;
+        }
+
+        return Phrase::sentence(
+            $highest['label'],
+            'é o domínio com melhor resultado médio',
+            '('.Phrase::percentage((string) $highest['value']).')',
+            ', enquanto',
+            $lowest['label'],
+            'apresenta o valor mais baixo',
+            '('.Phrase::percentage((string) $lowest['value']).')',
+        );
+    }
+
+    /**
+     * How many of the students who could be compared moved forward.
+     *
+     * THE DENOMINATOR IS THE COMPARABLE ONES, never the class. A student with
+     * no previous result did not fail to progress — they have nothing to
+     * progress from, and folding them in would understate the movement (§41).
+     * Where nobody is comparable there is no sentence at all: silence is the
+     * honest answer, not «nenhum aluno progrediu».
+     */
+    protected function progressionSentence(ReportContext $context): ?string
+    {
+        $evolution = $context->fact('evolution');
+
+        if (! is_array($evolution)) {
+            return null;
+        }
+
+        $comparable = (int) ($evolution['comparable'] ?? 0);
+
+        if ($comparable === 0) {
+            return null;
+        }
+
+        $progressed = (int) ($evolution['progressed'] ?? 0);
+
+        // Spelled, because a ratio inside a sentence is prose and not a figure
+        // (§19). And «todos» where it is all of them: «seis dos seis» is a
+        // hedge, and a class where everybody moved forward should say so.
+        $who = match (true) {
+            $progressed === 0 => 'nenhum dos '.Phrase::spelled($comparable).' alunos',
+            $progressed === $comparable => 'os '.Phrase::spelled($comparable).' alunos',
+            default => Phrase::spelled($progressed).' dos '.Phrase::spelled($comparable).' alunos',
+        };
+
+        return Phrase::sentence(
+            'Face ao momento anterior,',
+            $who,
+            'com resultados comparáveis',
+            $progressed === 1 || $progressed === 0 ? 'progrediu' : 'progrediram',
         );
     }
 

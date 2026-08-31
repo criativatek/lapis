@@ -385,6 +385,117 @@ class ReportWritingTest extends TestCase
         $this->assertStringContainsString('não tem tipo registado', $body);
     }
 
+    /**
+     * §12: the count agrees with its verb in the singular too.
+     *
+     * «Foram registadas uma intervenção pedagógica» is the shape a plural verb
+     * welded to a counted noun produces, and it is the same class of failure as
+     * «nenhum aluno mantiveram» — visible in the first line of the section.
+     */
+    #[Test]
+    public function a_single_intervention_takes_a_singular_verb(): void
+    {
+        $this->interventions(1);
+
+        $body = $this->bodyOf($this->report(), SectionKey::InterventionsSummary);
+
+        $this->assertStringContainsString('foi registada uma intervenção pedagógica', $body);
+        $this->assertStringNotContainsString('foram registadas uma', $body);
+        // And the follow-up sentence does not call one thing «todas».
+        $this->assertStringNotContainsString('Todas se dirigiram', $body);
+    }
+
+    #[Test]
+    public function several_interventions_keep_the_plural(): void
+    {
+        $this->interventions(3);
+
+        $body = $this->bodyOf($this->report(), SectionKey::InterventionsSummary);
+
+        $this->assertStringContainsString('foram registadas três intervenções pedagógicas', $body);
+        $this->assertStringContainsString('Todas se dirigiram', $body);
+    }
+
+    /** Class-wide interventions the teacher asked to show. */
+    private function interventions(int $count): void
+    {
+        $this->asTenant(function () use ($count): void {
+            $class = $this->schoolClass();
+            $period = $this->period();
+
+            $titles = [
+                'Apoio à planificação textual',
+                'Reforço da leitura em voz alta',
+                'Tutoria entre pares na gramática',
+            ];
+
+            for ($index = 0; $index < $count; $index++) {
+                Intervention::create([
+                    'class_id' => $class->id,
+                    'enrollment_id' => null,
+                    'academic_period_id' => $period->id,
+                    'target_type' => InterventionTargetType::SchoolClass,
+                    'intervention_type' => InterventionType::LearningReinforcement,
+                    'domain_relation' => InterventionDomainRelation::None,
+                    'title' => $titles[$index],
+                    'description_source' => InterventionDescriptionSource::Manual,
+                    'status' => InterventionStatus::InProgress,
+                    'started_on' => $period->starts_on,
+                    'include_in_report' => true,
+                    'available_for_reports' => true,
+                    'created_by' => $this->teacher->id,
+                ]);
+            }
+        });
+    }
+
+    /**
+     * THE DOOR THE TYPE FILTER LEFT OPEN.
+     *
+     * Excluding untyped rows kept the placeholder out of a document only for as
+     * long as nobody typed one. Assigning a type to an imported intervention is
+     * an ordinary thing to do in the UI, and the moment somebody does it the row
+     * becomes quotable and prints the title an old process wrote to fill a NOT
+     * NULL column. The filter was never the guard; reading the title through the
+     * pedagogical accessor is.
+     */
+    #[Test]
+    public function a_legacy_row_typed_afterwards_still_never_prints_its_placeholder(): void
+    {
+        $this->asTenant(function (): void {
+            $class = $this->schoolClass();
+
+            $legacy = Intervention::create([
+                'class_id' => $class->id,
+                'enrollment_id' => null,
+                'academic_period_id' => $this->period()->id,
+                'target_type' => InterventionTargetType::SchoolClass,
+                'intervention_type' => null,
+                'domain_relation' => InterventionDomainRelation::None,
+                'title' => 'Legado sem dominio',
+                'description_source' => InterventionDescriptionSource::Manual,
+                'status' => InterventionStatus::InProgress,
+                'started_on' => $this->period()->starts_on,
+                'include_in_report' => false,
+                'available_for_reports' => true,
+                'created_by' => $this->teacher->id,
+            ]);
+
+            // What a teacher legitimately does next: classifies the imported row
+            // and asks for it in the document.
+            $legacy->forceFill([
+                'intervention_type' => InterventionType::LearningReinforcement,
+                'include_in_report' => true,
+            ])->save();
+        });
+
+        $text = $this->wholeText($this->report());
+
+        $this->assertStringNotContainsString('Legado sem dominio', $text);
+        $this->assertStringNotContainsString('Legado sem domínio', $text);
+        $this->assertStringNotContainsString('Legado', $text);
+    }
+
     // ------------------------------------------------------ §12 interventions
 
     #[Test]
@@ -499,16 +610,72 @@ class ReportWritingTest extends TestCase
             $body,
         );
 
-        // The comparison, complete and in one sentence, with the verb carried
-        // by the first group and elided afterwards.
+        // THE REFERENT COMES FIRST (§11). «acima» and «abaixo» mean nothing
+        // until the reader has been told what they are above and below, so the
+        // coincidences open the sentence and name the comparison in full; the
+        // deviations then point back at it.
         $this->assertStringContainsString(
-            'Um aluno autoavaliou-se acima da classificação atribuída, três abaixo e dois coincidiram com a decisão do professor',
+            'Em dois casos, a autoavaliação coincidiu com a classificação atribuída; '
+            .'um aluno autoavaliou-se acima dela e três abaixo',
             $body,
         );
 
         $this->assertStringNotContainsString('Registaram autoavaliação', $body);
         // §3: no methodological note in the body.
         $this->assertStringNotContainsString('não entra no cálculo', $body);
+        // §7: the report says what was decided, not what the system calls it.
+        $this->assertStringNotContainsString('decisão do professor', $body);
+    }
+
+    #[Test]
+    public function a_comparison_with_no_coincidences_states_the_referent_in_full(): void
+    {
+        $this->classify();
+        // Assigned 2,4,4,4,3,4 — every student off by one, nobody level.
+        $this->selfAssess(['3', '5', '5', '5', '2', '5']);
+
+        $body = $this->bodyOf($this->report(), SectionKey::ClassSelfAssessment);
+
+        // With nothing to point back at, the first group carries the whole
+        // comparison rather than a pronoun. Asserted on the comparison's own
+        // verb: the tendency sentence further down names the classification in
+        // its own lead-in and may legitimately say «acima dela» after it.
+        $this->assertStringContainsString(
+            'autoavaliaram-se acima da classificação atribuída',
+            $body,
+        );
+        $this->assertStringNotContainsString('autoavaliaram-se acima dela', $body);
+        $this->assertStringNotContainsString('autoavaliou-se acima dela', $body);
+    }
+
+    #[Test]
+    public function a_class_that_agrees_with_every_grade_says_only_that(): void
+    {
+        $this->classify();
+        // Exactly the assigned codes: six coincidences, no deviations at all.
+        $this->selfAssess(['2', '4', '4', '4', '3', '4']);
+
+        $body = $this->bodyOf($this->report(), SectionKey::ClassSelfAssessment);
+
+        $this->assertStringContainsString(
+            'Em seis casos, a autoavaliação coincidiu com a classificação atribuída',
+            $body,
+        );
+        $this->assertStringNotContainsString('acima', $body);
+        $this->assertStringNotContainsString('abaixo', $body);
+    }
+
+    #[Test]
+    public function a_single_coincidence_is_said_in_the_singular(): void
+    {
+        $this->classify();
+        // One level (the fifth student), the rest above.
+        $this->selfAssess(['3', '5', '5', '5', '3', '5']);
+
+        $body = $this->bodyOf($this->report(), SectionKey::ClassSelfAssessment);
+
+        $this->assertStringContainsString('Num caso, a autoavaliação coincidiu', $body);
+        $this->assertStringNotContainsString('Em um caso', $body);
     }
 
     #[Test]

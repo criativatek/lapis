@@ -97,9 +97,16 @@ class InterventionsSummaryComposer implements SectionComposer
         $classWide = (int) ($interventions['class_wide'] ?? 0);
         $individual = max(0, $total - $classWide);
 
+        // THE VERB AGREES WITH WHAT IS BEING COUNTED (§12). «Foram registadas
+        // uma intervenção pedagógica» is the same failure as «nenhum aluno
+        // mantiveram»: a plural verb welded to a phrase that turned out to be
+        // singular. One is counted here rather than in Phrase, because the verb
+        // belongs to this sentence and not to the noun.
+        $registered = $total === 1 ? 'foi registada' : 'foram registadas';
+
         $opening = Phrase::sentence(
             Phrase::capitalise($context->whenClause()),
-            'foram registadas',
+            $registered,
             Phrase::count($total, 'intervenção pedagógica', 'intervenções pedagógicas', feminine: true),
         );
 
@@ -116,13 +123,18 @@ class InterventionsSummaryComposer implements SectionComposer
         }
 
         if ($classWide === $total) {
-            return Phrase::paragraph([$opening, 'Todas se dirigiram à turma no seu conjunto.']);
+            // «Todas» for one thing is the same slip in the other direction,
+            // and with a single intervention the breakdown says nothing the
+            // opening did not: the sentence is dropped rather than bent.
+            return $total === 1
+                ? $opening
+                : Phrase::paragraph([$opening, 'Todas se dirigiram à turma no seu conjunto.']);
         }
 
         return $students > 0
             ? Phrase::sentence(
                 Phrase::capitalise($context->whenClause()),
-                'foram registadas',
+                $registered,
                 Phrase::count($total, 'intervenção pedagógica', 'intervenções pedagógicas', feminine: true),
                 ', que',
                 $total === 1 ? 'envolveu' : 'envolveram',
@@ -193,17 +205,23 @@ class InterventionsSummaryComposer implements SectionComposer
             return null;
         }
 
-        $lines = array_map(function (array $intervention): string {
+        $items = array_map(function (array $intervention): string {
             $parts = array_filter([
                 (string) ($intervention['title'] ?? ''),
+                // NO DOMAIN IS NO DOMAIN. The association is simply omitted;
+                // an absence never becomes a category of its own (§2).
                 $intervention['domain'] === null ? null : 'no domínio de '.$intervention['domain'],
             ]);
 
-            return '— '.implode(', ', $parts).'.';
+            return implode(', ', $parts);
         }, $highlighted);
 
-        // A newline, not a space: paragraph() would run the lead-in into the
-        // first bullet («medidas: — Apoio…»).
-        return "Destacam-se as seguintes medidas:\n".implode("\n", $lines);
+        // A REAL LIST, not a paragraph with dashes typed into it (§10). What
+        // this writes is still plain text — the teacher edits this body — but
+        // the shape is declared rather than drawn, so each of the three
+        // renderings can produce its own kind of list.
+        $list = Phrase::list('Destacam-se as seguintes medidas:', $items);
+
+        return $list === '' ? null : $list;
     }
 }

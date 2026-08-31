@@ -180,11 +180,18 @@ class StudentReportSource extends ClassReportSource
             'types' => $byType,
             'concluded' => $individual->filter(fn (Intervention $intervention) => $intervention->status->value === 'concluded')->count(),
             'highlighted' => array_values($individual
-                // Typed only — see ClassReportSource::interventionFacts.
+                // Typed AND with something a person wrote — see
+                // ClassReportSource::interventionFacts for why the second
+                // condition is the one doing the work.
                 ->filter(fn (Intervention $intervention) => $intervention->include_in_report
-                    && $intervention->intervention_type !== null)
+                    && $intervention->intervention_type !== null
+                    && $intervention->pedagogicalTitle() !== null)
                 ->map(fn (Intervention $intervention) => [
-                    'title' => $intervention->displayTitle(),
+                    // pedagogicalTitle(), not displayTitle(): the filter above
+                    // has already excluded the null case, so the «Intervenção»
+                    // stand-in displayTitle() falls back to would only ever be a
+                    // generic word standing where a name should be.
+                    'title' => $intervention->pedagogicalTitle(),
                     'type' => $intervention->intervention_type?->label(),
                     'domain' => $intervention->domain?->name,
                     'status' => $intervention->status->label(),

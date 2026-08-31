@@ -286,6 +286,50 @@ class Phrase
         return implode("\n\n", $clean);
     }
 
+    /**
+     * The one mark that says «this line is an item, not a sentence».
+     *
+     * NOT RENDERER SYNTAX (§10). The section body is text a teacher opens and
+     * edits, so it has to read as text — no HTML, no Markdown, nothing that
+     * would look like machinery in the editor. What it needs is a convention
+     * stated in one place, so that `ReportDocumentBuilder` can turn these lines
+     * into a real list in each of the three renderings instead of every
+     * renderer printing a dash and hoping.
+     */
+    public const ITEM_MARKER = '— ';
+
+    /**
+     * A lead-in and the items under it, as one block.
+     *
+     * THE LEAD-IN IS A SENTENCE AND THE ITEMS ARE NOT (§10). «Destacam-se as
+     * seguintes medidas: — Apoio à planificação textual.» is a paragraph with
+     * dashes in it, which is what a list looks like to a program and what a
+     * mistake looks like to a reader. Kept apart here, they can be a real
+     * `<ul>` in the preview and real numbered paragraphs in Word.
+     *
+     * Returns an empty string for no items, so a caller that has nothing to
+     * list produces nothing rather than an orphan lead-in.
+     *
+     * @param  list<string>  $items
+     */
+    public static function list(?string $lead, array $items): string
+    {
+        $items = array_values(array_filter(
+            array_map(fn (string $item) => trim($item), $items),
+            fn (string $item) => $item !== '',
+        ));
+
+        if ($items === []) {
+            return '';
+        }
+
+        $lines = array_map(fn (string $item) => self::ITEM_MARKER.self::terminate($item), $items);
+
+        $lead = trim((string) $lead);
+
+        return $lead === '' ? implode("\n", $lines) : $lead."\n".implode("\n", $lines);
+    }
+
     public static function capitalise(string $text): string
     {
         if ($text === '') {

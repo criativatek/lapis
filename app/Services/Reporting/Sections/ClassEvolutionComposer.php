@@ -7,6 +7,7 @@ use App\Domain\Reporting\SectionKey;
 use App\Services\Reporting\ComposedSection;
 use App\Services\Reporting\Narrative\Absence;
 use App\Services\Reporting\Narrative\Phrase;
+use App\Services\Reporting\Narrative\Scope;
 use App\Services\Reporting\ReportContext;
 
 /**
@@ -84,10 +85,12 @@ class ClassEvolutionComposer implements SectionComposer
         $regressed = (int) ($evolution['regressed'] ?? 0);
 
         // studentsDid, not a hand-rolled ternary: with zero, «nenhum aluno
-        // mantiveram» is what a count-based ternary produces (§18).
+        // mantiveram» is what a count-based ternary produces (§18). And the
+        // period comes through Scope rather than as a label with a preposition
+        // glued to it — the article is a rule, stated once (§7).
         return Phrase::sentence(
-            'Comparativamente ao',
-            $previous,
+            'Comparativamente',
+            Scope::previousPeriodClause($previous),
             ', considerando o trabalho realizado em cada período isoladamente,',
             Phrase::items([
                 Phrase::studentsDid($progressed, 'progrediu', 'progrediram'),

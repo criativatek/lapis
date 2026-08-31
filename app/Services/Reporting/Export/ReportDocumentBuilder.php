@@ -6,6 +6,7 @@ use App\Models\Report;
 use App\Models\ReportSection;
 use App\Services\Documents\DocumentIdentity;
 use App\Services\Documents\SchoolLogoService;
+use App\Services\Reporting\Narrative\Phrase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 
@@ -38,6 +39,23 @@ use Illuminate\Support\Facades\Storage;
  */
 class ReportDocumentBuilder
 {
+    /**
+     * The line printed under the signature rule.
+     *
+     * A ROLE, NOT A GENDER (§14). «O(A) professor(a)» is a form asking a person
+     * to cross one out, printed under the name of somebody the application
+     * already knows — and the parenthesis is exactly the bureaucratic tell that
+     * makes a school document read as generated. Gender is never inferred from a
+     * name, and the document does not need it: what a line under a signature
+     * states is the capacity in which the document was signed, and «docente» is
+     * the designation Portuguese schools use for it.
+     *
+     * SEPARATE FROM THE CLOSING SENTENCE, which is a fact — who finalized the
+     * report and when. This is a caption on a rule, and it is the same whether
+     * the report is a draft or signed.
+     */
+    public const SIGNATURE_CAPTION = 'Docente responsável';
+
     public function __construct(protected DocumentIdentity $identity) {}
 
     /**
@@ -113,6 +131,7 @@ class ReportDocumentBuilder
                 'finalized_by' => data_get($document, 'finalized_by'),
                 'scope_label' => (string) data_get($document, 'report.scope_label', $report->scope_label),
                 'status' => 'finalized',
+                'signature_caption' => self::SIGNATURE_CAPTION,
                 'closing' => $this->closing(
                     data_get($document, 'finalized_by'),
                     data_get($document, 'finalized_at'),
@@ -145,6 +164,7 @@ class ReportDocumentBuilder
                 'finalized_by' => null,
                 'scope_label' => $report->scope_label,
                 'status' => 'draft',
+                'signature_caption' => self::SIGNATURE_CAPTION,
                 'closing' => null,
             ],
         ];
@@ -253,7 +273,7 @@ class ReportDocumentBuilder
 
             $sections[] = [
                 'heading' => (string) ($section['heading'] ?? ''),
-                'paragraphs' => $this->paragraphs($section['body'] ?? null),
+                'blocks' => $this->blocks($section['body'] ?? null),
                 'tables' => SectionTables::for((string) ($section['key'] ?? ''), $section['data'] ?? null),
             ];
         }
@@ -273,7 +293,7 @@ class ReportDocumentBuilder
             ->filter(fn (ReportSection $section) => $section->hasContent())
             ->map(fn (ReportSection $section) => [
                 'heading' => $section->heading,
-                'paragraphs' => $this->paragraphs($section->body),
+                'blocks' => $this->blocks($section->body),
                 'tables' => SectionTables::for($section->key, $section->data),
             ])
             ->values()
@@ -281,22 +301,79 @@ class ReportDocumentBuilder
     }
 
     /**
-     * A body into paragraphs.
+     * A body into the blocks a document is actually made of.
      *
-     * Blank lines separate paragraphs; single newlines inside one are kept as
-     * lines, because the list sections («— Maria Silva: …») rely on them and
-     * flattening them would run the names together.
+     * TWO KINDS, BECAUSE A DOCUMENT HAS TWO KINDS (§10). A paragraph is prose;
+     * a list is a lead-in and its items. Until now everything was a paragraph
+     * and the items were dashes typed inside one, so the preview ran them
+     * through `nl2br` and Word emitted one flat line each — a list to a reader's
+     * eye and nothing at all to the file. A .docx is a document a school opens
+     * and edits, and a bulleted list that is not a list is a defect in it.
      *
-     * @return list<string>
+     * THE CONVENTION IS READ HERE AND NOWHERE ELSE. Composers write
+     * `Phrase::ITEM_MARKER` because the section body has to stay text a teacher
+     * can edit; this is the boundary where that text becomes structure, and it
+     * is the only place that knows the marker exists.
+     *
+     * A BLOCK THAT IS ONLY PARTLY MARKED STAYS PROSE. If any line after the
+     * lead-in lacks the marker, the block was not a list — most likely a
+     * teacher wrote a dash in the middle of their own paragraph — and it is
+     * printed exactly as they wrote it.
+     *
+     * @return list<array{kind: string, text?: string, lead?: string|null, items?: list<string>}>
      */
-    protected function paragraphs(mixed $body): array
+    protected function blocks(mixed $body): array
     {
         if (! is_string($body) || trim($body) === '') {
             return [];
         }
 
-        $blocks = preg_split('/\n\s*\n/u', trim($body)) ?: [];
+        $chunks = preg_split('/\n\s*\n/u', trim($body)) ?: [];
 
-        return array_values(array_filter(array_map('trim', $blocks), fn (string $block) => $block !== ''));
+        $blocks = [];
+
+        foreach ($chunks as $chunk) {
+            $chunk = trim($chunk);
+
+            if ($chunk === '') {
+                continue;
+            }
+
+            $blocks[] = $this->block($chunk);
+        }
+
+        return $blocks;
+    }
+
+    /**
+     * @return array{kind: string, text?: string, lead?: string|null, items?: list<string>}
+     */
+    private function block(string $chunk): array
+    {
+        $lines = array_values(array_filter(
+            array_map('trim', explode("\n", $chunk)),
+            fn (string $line) => $line !== '',
+        ));
+
+        $marker = Phrase::ITEM_MARKER;
+
+        // The lead-in is the first line only when it is not itself an item.
+        $lead = str_starts_with($lines[0], $marker) ? null : array_shift($lines);
+
+        if ($lines === []) {
+            return ['kind' => 'paragraph', 'text' => $chunk];
+        }
+
+        $items = [];
+
+        foreach ($lines as $line) {
+            if (! str_starts_with($line, $marker)) {
+                return ['kind' => 'paragraph', 'text' => $chunk];
+            }
+
+            $items[] = trim(mb_substr($line, mb_strlen($marker)));
+        }
+
+        return ['kind' => 'list', 'lead' => $lead, 'items' => $items];
     }
 }

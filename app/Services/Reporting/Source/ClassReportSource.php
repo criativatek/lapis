@@ -408,16 +408,32 @@ class ClassReportSource implements ReportSource
             // Marked by the teacher for inclusion in the document itself, as
             // opposed to merely counted.
             'highlighted' => array_values($interventions
-                // A TYPE IS THE PROOF THAT SOMEBODY CURATED THIS ROW (§10).
-                // `include_in_report` predates the type column, so a legacy row
-                // can carry the flag and a placeholder title — which is how
-                // «Legado sem dominio» reached a printed document. A row with
-                // no type is counted, never quoted.
+                // TWO CONDITIONS, AND THE SECOND IS THE ONE THAT GUARDS (§10).
+                //
+                // A type is evidence that somebody curated this row, and
+                // `include_in_report` predates the type column, so requiring one
+                // keeps the untouched imports out. But it is not a guard against
+                // the placeholder itself: assigning a type to an imported
+                // intervention is an ordinary thing to do in the UI, and the
+                // moment somebody does it the row becomes quotable and prints
+                // the title an old process wrote to fill a NOT NULL column —
+                // which is how «Legado sem dominio» reached a printed document.
+                //
+                // So what decides is whether the row has anything a person
+                // wrote: `pedagogicalTitle()` reads the strategy, then the
+                // title, then the type's own label, each through
+                // PedagogicalText, and answers null when none of them says
+                // anything. A row with nothing to quote is counted, never
+                // quoted — as it was before it had a type.
                 ->filter(fn (Intervention $intervention) => $intervention->include_in_report
-                    && $intervention->intervention_type !== null)
+                    && $intervention->intervention_type !== null
+                    && $intervention->pedagogicalTitle() !== null)
                 ->map(fn (Intervention $intervention) => [
-                    'title' => $intervention->title,
+                    // The accessor, never the column: see above.
+                    'title' => $intervention->pedagogicalTitle(),
                     'type' => $intervention->intervention_type?->label(),
+                    // No domain is no domain. The absence never becomes a
+                    // category of its own (§2).
                     'domain' => $intervention->domain?->name,
                     'status' => $intervention->status->label(),
                     'started_on' => $intervention->started_on->toDateString(),

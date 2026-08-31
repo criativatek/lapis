@@ -130,11 +130,25 @@ class ClassSelfAssessmentComposer implements SectionComposer
     }
 
     /**
-     * «Um aluno autoavaliou-se acima da classificação atribuída, três abaixo e
-     * dois coincidiram com a decisão do professor.»
+     * «Em dois casos, a autoavaliação coincidiu com a classificação atribuída;
+     * um aluno autoavaliou-se acima dela e três abaixo.»
      *
-     * The first group carries the verb and the object; the ones after it are
-     * elided, as a person writing would elide them.
+     * THE REFERENT IS ESTABLISHED BEFORE ANY DEVIATION IS NAMED (§11). «Um
+     * aluno situou-se acima» is a sentence with a hole in it: above what? The
+     * previous shape put the deviations first and the thing being deviated from
+     * last, so a reader met «acima» three clauses before learning what it was
+     * measured against. The coincidences say the comparison in full, and the
+     * deviations then point back at it with a pronoun — which is the order a
+     * person writing this by hand would choose.
+     *
+     * WHERE THERE ARE NO COINCIDENCES there is nothing to point back at, so the
+     * first deviation carries the full referent instead. The pronoun is never
+     * left dangling.
+     *
+     * «A CLASSIFICAÇÃO ATRIBUÍDA», NOT «A DECISÃO DO PROFESSOR» (§7). Both name
+     * the same fact; only one of them is a word the reader of a school report
+     * already uses. The internal vocabulary describes how this application
+     * thinks, and a família reading the document is owed the pedagogical term.
      */
     protected function comparisonSentence(int $above, int $aligned, int $below): ?string
     {
@@ -142,26 +156,38 @@ class ClassSelfAssessmentComposer implements SectionComposer
             return null;
         }
 
-        $parts = [];
+        $clauses = [];
+
+        if ($aligned > 0) {
+            $clauses[] = ($aligned === 1 ? 'num caso' : 'em '.Phrase::spelled($aligned).' casos')
+                .', a autoavaliação coincidiu com a classificação atribuída';
+        }
+
+        // Named in full only when the clause above has not already named it.
+        $referent = $aligned > 0 ? 'dela' : 'da classificação atribuída';
+
+        $deviations = [];
 
         if ($above > 0) {
-            $parts[] = Phrase::studentsDid($above, 'autoavaliou-se', 'autoavaliaram-se')
-                .' acima da classificação atribuída';
+            $deviations[] = Phrase::studentsDid($above, 'autoavaliou-se', 'autoavaliaram-se')
+                .' acima '.$referent;
         }
 
         if ($below > 0) {
-            $parts[] = $parts === []
-                ? Phrase::studentsDid($below, 'autoavaliou-se', 'autoavaliaram-se').' abaixo da classificação atribuída'
+            // The second group elides the verb and the referent, as a person
+            // writing would: «…acima dela e três abaixo».
+            $deviations[] = $deviations === []
+                ? Phrase::studentsDid($below, 'autoavaliou-se', 'autoavaliaram-se').' abaixo '.$referent
                 : Phrase::spelled($below).' abaixo';
         }
 
-        if ($aligned > 0) {
-            $parts[] = ($parts === [] ? Phrase::students($aligned).' ' : Phrase::spelled($aligned).' ')
-                .($aligned === 1 ? 'coincidiu' : 'coincidiram')
-                .' com a decisão do professor';
+        if ($deviations !== []) {
+            $clauses[] = implode(' e ', $deviations);
         }
 
-        return Phrase::sentence(Phrase::items($parts));
+        // A semicolon, not a comma: the two halves are complete statements and
+        // the second is not a continuation of the first's subject.
+        return Phrase::sentence(implode('; ', $clauses));
     }
 
     /**
@@ -189,7 +215,10 @@ class ClassSelfAssessmentComposer implements SectionComposer
                 Phrase::spelled($below),
                 'dos',
                 Phrase::spelled($comparable),
-                'alunos se posicionaram abaixo',
+                // «se posicionaram» left the reader to carry the comparison
+                // across two clauses; the pronoun ties it back to the
+                // classification the lead-in just named (§11).
+                'alunos se autoavaliaram abaixo dela',
             );
         }
 
@@ -199,7 +228,7 @@ class ClassSelfAssessmentComposer implements SectionComposer
                 Phrase::spelled($above),
                 'dos',
                 Phrase::spelled($comparable),
-                'alunos se posicionaram acima',
+                'alunos se autoavaliaram acima dela',
             );
         }
 

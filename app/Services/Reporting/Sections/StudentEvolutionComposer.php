@@ -7,6 +7,7 @@ use App\Domain\Reporting\SectionKey;
 use App\Services\Reporting\ComposedSection;
 use App\Services\Reporting\Narrative\Absence;
 use App\Services\Reporting\Narrative\Phrase;
+use App\Services\Reporting\Narrative\Scope;
 use App\Services\Reporting\ReportContext;
 
 /**
@@ -74,8 +75,11 @@ class StudentEvolutionComposer implements SectionComposer
             return null;
         }
 
+        // Through Scope, like the class report: the article belongs to a rule
+        // stated in one place, not to whoever wrote this line (§7).
         return Phrase::sentence(
-            $previous === null ? 'Face ao momento anterior' : 'Face ao '.$previous,
+            'Face',
+            Scope::previousPeriodClause($previous),
             ', considerando o trabalho realizado em cada período isoladamente, o resultado',
             $this->direction((string) ($evolution['direction'] ?? 'stable')),
             $this->magnitude((string) ($evolution['direction'] ?? 'stable'), $points),

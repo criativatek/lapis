@@ -6,6 +6,7 @@ use PhpOffice\PhpWord\Element\Section;
 use PhpOffice\PhpWord\PhpWord;
 use PhpOffice\PhpWord\SimpleType\Jc;
 use PhpOffice\PhpWord\Style\Language;
+use PhpOffice\PhpWord\Style\ListItem;
 use PhpOffice\PhpWord\Style\Tab;
 use PhpOffice\PhpWord\Writer\Word2007;
 
@@ -176,11 +177,17 @@ class DocxRenderer
         foreach ($document['sections'] as $reportSection) {
             $section->addTitle($reportSection['heading'], 2);
 
-            foreach ($reportSection['paragraphs'] as $paragraph) {
-                // Single newlines inside a paragraph are real — the listing
-                // sections keep one name per line — so they become their own
-                // lines rather than being flattened into a run-on.
-                foreach (explode("\n", $paragraph) as $line) {
+            foreach ($reportSection['blocks'] as $block) {
+                if (($block['kind'] ?? 'paragraph') === 'list') {
+                    $this->list($section, $block);
+
+                    continue;
+                }
+
+                // Single newlines inside a paragraph are real — a teacher who
+                // typed a line break meant one — so they become their own lines
+                // rather than being flattened into a run-on.
+                foreach (explode("\n", (string) ($block['text'] ?? '')) as $line) {
                     if (trim($line) === '') {
                         continue;
                     }
@@ -256,6 +263,46 @@ class DocxRenderer
     }
 
     /**
+     * A real Word list: bulleted items Word knows are items.
+     *
+     * `addListItem`, not a paragraph with a dash in it (§10). What a school
+     * receives is an editable document — somebody will click into it, add a
+     * measure, reorder two — and a list Word understands keeps its bullets and
+     * its indentation while they do. A typed dash does none of that.
+     *
+     * The lead-in stays a paragraph and is kept with what follows, so a list
+     * never begins on the page after its own introduction.
+     *
+     * @param  array<string, mixed>  $block
+     */
+    protected function list(Section $section, array $block): void
+    {
+        $lead = $block['lead'] ?? null;
+
+        if (is_string($lead) && trim($lead) !== '') {
+            $section->addText(
+                htmlspecialchars($lead, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                [],
+                ['spaceAfter' => 60, 'keepNext' => true],
+            );
+        }
+
+        foreach ((array) ($block['items'] ?? []) as $item) {
+            $section->addListItem(
+                htmlspecialchars((string) $item, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                0,
+                [],
+                ['listType' => ListItem::TYPE_BULLET_FILLED],
+                ['spaceAfter' => 60],
+            );
+        }
+
+        // The air a paragraph would have left after it, which the items do not
+        // carry individually.
+        $section->addText('', [], ['spaceAfter' => 100]);
+    }
+
+    /**
      * @param  array<string, mixed>  $document
      */
     protected function signature(Section $section, array $document): void
@@ -285,7 +332,7 @@ class DocxRenderer
             ['size' => 9],
             ['spaceBefore' => 600, 'keepNext' => true],
         );
-        $section->addText('O(A) professor(a)', ['size' => 9, 'color' => '555555']);
+        $section->addText(ReportDocumentBuilder::SIGNATURE_CAPTION, ['size' => 9, 'color' => '555555']);
     }
 
     /**

@@ -118,6 +118,25 @@
             widows: 2;
         }
 
+        /* A lead-in belongs to the list under it and never ends a page
+           alone. */
+        p.lead-in {
+            margin-bottom: 1.2mm;
+            page-break-after: avoid;
+        }
+
+        ul {
+            margin: 0 0 2.5mm 0;
+            padding-left: 5mm;
+        }
+
+        li {
+            margin-bottom: 1mm;
+            /* An item split across two pages is a rendering accident on a
+               document a school sends out. */
+            page-break-inside: avoid;
+        }
+
         table.data {
             width: 100%;
             border-collapse: collapse;
@@ -222,10 +241,23 @@
     <section>
         <h2>{{ $section['heading'] }}</h2>
 
-        @foreach ($section['paragraphs'] as $paragraph)
-            {{-- Single newlines inside a paragraph are real: the listing
-                 sections rely on them to keep one name per line. --}}
-            <p>{!! nl2br(e($paragraph)) !!}</p>
+        @foreach ($section['blocks'] as $block)
+            @if ($block['kind'] === 'list')
+                {{-- A real list, not a paragraph with dashes typed into it
+                     (§10). The lead-in keeps its own sentence above them. --}}
+                @if ($block['lead'])
+                    <p class="lead-in">{{ $block['lead'] }}</p>
+                @endif
+                <ul>
+                    @foreach ($block['items'] as $item)
+                        <li>{{ $item }}</li>
+                    @endforeach
+                </ul>
+            @else
+                {{-- Single newlines inside a paragraph are real: a teacher who
+                     typed a line break meant one. --}}
+                <p>{!! nl2br(e($block['text'])) !!}</p>
+            @endif
         @endforeach
 
         @foreach ($section['tables'] as $table)
@@ -263,7 +295,7 @@
         <div>{{ $document['meta']['author'] }}</div>
     @endif
 
-    <div class="line">O(A) professor(a)</div>
+    <div class="line">{{ $document['meta']['signature_caption'] }}</div>
 </div>
 
 </body>
