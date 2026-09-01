@@ -25,11 +25,16 @@ namespace App\Services\Ai\Providers;
  *   - `gemini-2.5-pro` CANNOT have thinking disabled. Zero is rejected by the
  *     API, so the minimum it does accept (128) is sent instead — the cheapest
  *     legal value rather than an invalid one.
- *   - Everything else — the 2.0 and 1.5 lines, anything newer, anything an
- *     operator typed by hand — gets NO `thinkingConfig` at all. An unknown field
- *     is a 400 on models that predate the feature, and guessing a budget for a
- *     model this table has never seen would trade a known failure for an
- *     unknown one.
+ *   - `gemini-3.6-flash` also cannot be silenced — measured, not assumed: zero
+ *     comes back as a 400. It gets the same minimum, which matters more here
+ *     than on the 2.5 line because with no budget at all it spends most of a
+ *     2048-token ceiling thinking.
+ *   - Everything else — the 2.0 and 1.5 lines, the rest of the 3.x line,
+ *     anything an operator typed by hand — gets NO `thinkingConfig` at all. An
+ *     unknown field is a 400 on models that predate the feature, and guessing a
+ *     budget for a model this table has never seen would trade a known failure
+ *     for an unknown one. Every row here was measured against the live API;
+ *     none was inferred from a sibling's name.
  *
  * SILENCE IS THE SAFE ANSWER. `null` means «send nothing», and sending nothing
  * is always a valid request. That is why the default arm returns it.
@@ -67,6 +72,16 @@ class GeminiThinking
 
             // The one model on the 2.5 line that may not be silenced.
             str_starts_with($normalised, 'gemini-2.5-pro') => self::PRO_MINIMUM,
+
+            // Measured against the live API on 2026-09-01, when `gemini-2.5-flash`
+            // was retired and this became the replacement Google itself names in
+            // the 404. It behaves like `2.5-pro`, not like `2.5-flash`: a budget
+            // of 0 is rejected with `400 Request contains an invalid argument`,
+            // and with no `thinkingConfig` at all it spent 976 thinking tokens of
+            // a 2048 ceiling on a single section rewrite — the same shape as the
+            // failure 0.101.5 fixed. The minimum legal budget caps that at ~60-90
+            // without refusing the request.
+            str_starts_with($normalised, 'gemini-3.6-flash') => self::PRO_MINIMUM,
 
             default => null,
         };

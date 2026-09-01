@@ -25,6 +25,33 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.105.5] — 2026-09-01
+
+O Google retirou o `gemini-2.5-flash` e a IA parou em produção. O professor via
+«Não foi possível obter uma sugestão neste momento» — a mensagem certa, que não
+lhe conta a vida interna do sistema — e o log guardava o motivo: **404**, com o
+texto da própria API a dizê-lo por extenso, «this model is no longer available to
+new users», e a nomear a substituta.
+
+### Corrigido
+
+- **Produção passa a `gemini-3.6-flash`**, o modelo que a API nomeia no próprio
+  404. Verificado antes de trocar: responde 200; o `gemini-2.5-pro` está
+  igualmente retirado; o `gemini-flash-latest` responde mas é um apelido que
+  muda de modelo por baixo dos pés, o que numa aplicação que promete resultados
+  estáveis não é uma economia.
+- **A tabela de raciocínio aprende a substituta.** O nome diz «flash» e a
+  tentação era herdar-lhe a regra das outras flash — orçamento zero, raciocínio
+  desligado. Medido contra a API real: zero dá **400**. Comporta-se como a
+  `2.5-pro` e leva o mínimo legal. Aqui o valor pesa mais do que na `pro`: sem
+  `thinkingConfig` nenhum, um só aperfeiçoamento de secção gastou **976 tokens a
+  pensar de um tecto de 2048** — a mesma forma da avaria que a 0.101.5 corrigiu.
+  Com o mínimo, 60 a 90.
+- **Nenhuma linha da tabela foi inferida de um nome.** Cada uma foi medida
+  contra a API; o resto da linha 3.x continua a não receber `thinkingConfig`
+  nenhum, que é sempre um pedido válido.
+- **O exemplo no backoffice** deixou de apontar um modelo morto.
+
 ## [0.105.4] — 2026-09-01
 
 `reports/novo` carregava o contexto da turma (períodos, alunos, avaliações
@@ -56,6 +83,7 @@ em `records/Show.vue`.
   manipulador de evento (clique, submissão) — auditados
   `academic-years/ExceptionsManager.vue`, `config-sharing/Export.vue` e
   `landing/LandingVoucher.vue`, todos já disparados só por interacção.
+
 
 ## [0.105.3] — 2026-09-01
 

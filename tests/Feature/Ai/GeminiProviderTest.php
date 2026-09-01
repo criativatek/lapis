@@ -423,6 +423,36 @@ class GeminiProviderTest extends TestCase
     }
 
     /**
+     * `gemini-3.6-flash` É A SUCESSORA E COMPORTA-SE COMO A `pro`, NÃO COMO A
+     * `flash` QUE SUBSTITUI.
+     *
+     * A 2026-09-01 a API começou a responder 404 a `gemini-2.5-flash` — «no
+     * longer available to new users» — e nomeou esta como substituta. O nome
+     * diz «flash» e a tentação era herdar-lhe a regra: zero, como todas as
+     * outras flash. Medido contra a API real, zero dá **400**.
+     *
+     * E aqui o valor importa mais do que na 2.5-pro: sem `thinkingConfig`
+     * nenhum, um único aperfeiçoamento de secção gastou 976 tokens a pensar de
+     * um tecto de 2048 — a mesma forma da avaria que a 0.101.5 corrigiu.
+     */
+    #[Test]
+    public function the_successor_of_the_retired_flash_gets_the_minimum_and_not_zero(): void
+    {
+        $this->fakeAnswer(['candidates' => [['content' => ['parts' => [['text' => 'ok']]]]]]);
+
+        $this->provider(model: 'gemini-3.6-flash')->complete($this->request());
+
+        Http::assertSent(function (Request $request): bool {
+            $budget = $request->data()['generationConfig']['thinkingConfig']['thinkingBudget'] ?? null;
+
+            $this->assertSame(GeminiThinking::PRO_MINIMUM, $budget);
+            $this->assertNotSame(0, $budget, 'Zero é rejeitado por este modelo com 400.');
+
+            return true;
+        });
+    }
+
+    /**
      * NO `thinkingConfig` AT ALL for a model this application has not been told
      * about.
      *
