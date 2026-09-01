@@ -1216,8 +1216,18 @@ class LessonScheduleTest extends TestCase
             'day_of_week' => 1,
             'starts_at' => '09:30',
             'ends_at' => '10:20',
-            'starts_on' => '2026-09-01',
-            'ends_on' => '2027-06-30',
+            // HOJE, E NÃO UMA DATA ESCRITA À MÃO. O que estes casos querem é um
+            // horário que ainda não começou — o único que
+            // `RecurringLessonSlotRequest` deixa alterar sem `effective_from`.
+            // Enquanto aqui esteve `2026-09-01`, isso foi verdade até à
+            // meia-noite de 1 de setembro de 2026 e mentira a partir daí: a
+            // validação passou a exigir a data de entrada em vigor, o PUT passou
+            // a voltar com erros, e o `assertRedirect()` não distingue um
+            // redirect de sucesso de um redirect de validação falhada. Um teste
+            // que só passa antes de uma data é um teste que deixa de proteger
+            // seja o que for no dia seguinte.
+            'starts_on' => today()->toDateString(),
+            'ends_on' => today()->addYear()->toDateString(),
         ], $overrides);
     }
 
