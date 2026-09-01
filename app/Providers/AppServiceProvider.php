@@ -15,7 +15,9 @@ use App\Services\Import\Correction\IntuitivoXlsxParser;
 use App\Services\Import\Correction\PlickersCsvParser;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Limits\Limits;
+use App\Support\Release\BuildsSsrBundle;
 use App\Support\Release\BuildStamp;
+use App\Support\Release\NpmSsrBundleBuilder;
 use App\Support\Tenancy\CurrentOrganization;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -42,6 +44,11 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(CurrentOrganization::class);
         $this->app->singleton(Entitlements::class);
         $this->app->singleton(Limits::class);
+
+        // Real rebuild in every environment except tests — see BuildsSsrBundle's
+        // docblock for why `lapis:build-package` cannot trust bootstrap/ssr as
+        // found. Tests/TestCase overrides this with a fake that leaves disk alone.
+        $this->app->bind(BuildsSsrBundle::class, NpmSsrBundleBuilder::class);
 
         // Which correction-grid formats Lapispro can read is decided in exactly one
         // place. A new parser is registered here and the interface, the upload

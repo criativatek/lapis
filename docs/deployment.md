@@ -70,14 +70,19 @@ reescrevê-los invalida sessões, 2FA e a password SMTP cifrada. Enviar só cód
 > nomeados de propósito — `build.json` e `public/build/` —, e mais nada.
 
 ```bash
-# 0. Assets: o servidor tem Node 12, demasiado antigo para o build. Compilar
-#    SEMPRE localmente antes de empacotar.
-npm run build
-
-# 1. Carimbar e empacotar, num só comando. NÃO voltar a construir o tar à mão —
-#    ver «Porquê a allowlist» abaixo. Recusa se o repositório não corresponder
-#    ao HEAD (working tree OU staging), verifica o pacote depois de o criar, e
-#    falha em vez de produzir um pacote suspeito.
+# 1. Carimbar e empacotar, num só comando. O servidor tem Node 12, demasiado
+#    antigo para o build — por isso os assets (cliente E SSR) são SEMPRE
+#    compilados aqui, localmente, e é o próprio comando que o faz: reconstrói
+#    `bootstrap/ssr` (`npm run build:ssr`, que já reconstrói o cliente
+#    primeiro) antes de o inventariar, e falha em vez de empacotar um bundle
+#    antigo que já lá estivesse (0.105.8 — ver CHANGELOG.md). Não correr
+#    `npm run build` à parte antes disto: o comando é que decide quando
+#    reconstruir, e um build isolado que não passe por `build:ssr` não conta.
+#
+#    NÃO voltar a construir o tar à mão — ver «Porquê a allowlist» abaixo.
+#    Recusa se o repositório não corresponder ao HEAD (working tree OU
+#    staging), verifica o pacote depois de o criar, e falha em vez de
+#    produzir um pacote suspeito.
 php artisan lapis:build-package
 
 # 2. O comando já verificou o pacote. Isto é só o que se quer ver com os olhos
@@ -781,7 +786,7 @@ ssh lapis-prod 'cd /home/lapis/htdocs/lapis.criativatek.com &&
   sudo systemctl stop lapis-ssr'
 ```
 
-### Duas armadilhas que custaram uma release cada
+### Três armadilhas que custaram release(s) cada
 
 1. **O bundle não viajava.** A 0.93.0 acrescentou `bootstrap/ssr` à constante
    `GENERATED` do `BuildPackageCommand` — que não é lida por nada. A lista do
@@ -790,6 +795,14 @@ ssh lapis-prod 'cd /home/lapis/htdocs/lapis.criativatek.com &&
 2. **O bundle procurava `node_modules`.** O Vite externaliza as dependências
    em SSR por omissão; em produção não há árvore de `node_modules`. Corrigido
    na 0.99.10 com `ssr.noExternal`.
+3. **O bundle viajava, mas era o errado.** `ssrBundle()` inventariava
+   `bootstrap/ssr` tal como estivesse em disco — nunca verificava se
+   correspondia ao código a publicar. Um fix de SSR (0.105.4) ficou comitado
+   três releases seguidas (0.105.4–0.105.6) sem nunca chegar a produção,
+   porque o passo documentado antes de empacotar era `npm run build`, que não
+   toca em `bootstrap/ssr`. Corrigido na 0.105.8: o comando reconstrói o
+   bundle (`BuildsSsrBundle`) antes de o ler, e falha o pacote se a
+   reconstrução falhar — ver CHANGELOG.md e `SsrBundleFreshnessTest`.
 
 ### Testes
 

@@ -25,6 +25,40 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.105.8] — 2026-09-01
+
+O processo de release passa a garantir que o bundle de SSR que viaja é o do
+código que está a ser publicado — nunca um mais antigo.
+
+A correção de SSR da 0.105.4 (`onMounted` em vez de `watch(..., {immediate:
+true})` em `reports/Create.vue` e `records/HomeworkGrid.vue`) estava no
+código-fonte de produção desde essa versão, ancestral de todas as seguintes.
+Nunca chegou a correr lá. `bootstrap/ssr/ssr.js` em produção continuava a ser
+o de 30 de agosto — anterior à correção — porque o passo documentado antes de
+empacotar era `npm run build`, o script só do cliente, que nunca toca em
+`bootstrap/ssr`. `lapis:build-package` inventariava o que encontrasse nessa
+pasta sem nunca verificar se correspondia ao código que estava de facto a
+publicar: três releases seguidas (0.105.4, 0.105.5, 0.105.6) levaram o
+bundle antigo, com o `ERR_INVALID_URL` que a 0.105.4 dizia ter eliminado
+ainda vivo em `reports/Create` e `HomeworkGrid`.
+
+### Corrigido
+
+- **`lapis:build-package` já não confia no que estiver em disco em
+  `bootstrap/ssr`.** Antes de o inventariar, o comando reconstrói-o de facto
+  (`npm run build:ssr`, que já reconstrói cliente e SSR na mesma invocação,
+  para os dois nunca virem de dois estados locais diferentes). Um bundle
+  desatualizado deixa de ser possível por construção — o que é empacotado é
+  sempre o que a reconstrução acabou de produzir, nunca um resíduo de um
+  build anterior.
+- **Uma reconstrução falhada falha o pacote**, em vez de continuar
+  silenciosamente com o bundle antigo que já lá estava. Empacotar sem SSR
+  continua a ser válido — a aplicação renderiza no cliente, nunca fica
+  partida —, mas só quando a reconstrução correu e não produziu nada, nunca
+  quando a reconstrução nem chegou a correr com sucesso.
+- Sem alteração funcional às frentes de IA/Gemini das 0.105.5/0.105.6, que
+  esta versão preserva integralmente.
+
 ## [0.105.7] — 2026-09-01
 
 Um modelo que responde «agora não» deixa de derrubar a funcionalidade.
