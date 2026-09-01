@@ -25,6 +25,38 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.105.1] — 2026-09-01
+
+`reports/novo` carregava o contexto da turma (períodos, alunos, avaliações
+intercalares) com um `watch(..., { immediate: true })` — corre dentro do
+`setup()`, e o `setup()` é exactamente o que o SSR do Inertia executa no
+servidor. O `fetch('/reports/contexto/…')` que essa carga dispara usa uma URL
+relativa: no browser resolve contra a origem da página, mas em Node não há
+origem nenhuma, e o próprio `fetch` nativo lança `TypeError … ERR_INVALID_URL`.
+Como a chamada não tinha `catch`, isso ficava por resolver como rejeição de
+promessa sem apanhador — o tipo de falha que um processo Node em produção não
+perdoa. O mesmo padrão existia na grelha de trabalho de casa
+(`records/HomeworkGrid.vue`), atrás de `<HomeworkGrid v-if="isHomeworkGrid" …>`
+em `records/Show.vue`.
+
+### Fixed
+
+- **A carga inicial do contexto de `reports/novo` passa a acontecer em
+  `onMounted`**, não num `watch` imediato. `onMounted` nunca corre durante o
+  SSR — só `setup()` corre —, por isso o `fetch` relativo deixa de ser
+  chamado no servidor. No browser o comportamento é o mesmo de sempre: a
+  turma inicial carrega o contexto assim que a página monta, e o
+  pré-preenchimento vindo de `preselected` sobrevive a essa primeira carga
+  porque só lê `form.class_id`, nunca o reinicia.
+- **A mesma correção em `records/HomeworkGrid.vue`**: a carga do lote de
+  trabalho de casa também estava presa a um `watch(..., { immediate: true
+  })` — mesmo padrão, mesmo risco, ainda que menos grave aqui porque o
+  `fetch` já tinha `try/catch` e não deixava rejeição por apanhar.
+- Nenhum outro `fetch` relativo do projeto corre fora de `onMounted` ou de um
+  manipulador de evento (clique, submissão) — auditados
+  `academic-years/ExceptionsManager.vue`, `config-sharing/Export.vue` e
+  `landing/LandingVoucher.vue`, todos já disparados só por interacção.
+
 ## [0.105.0] — 2026-09-01
 
 Um Perfil de Avaliação só podia pertencer a um ano de escolaridade — uma

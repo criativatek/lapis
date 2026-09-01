@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { Info, Lock } from '@lucide/vue';
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -115,25 +115,26 @@ async function loadContext(classId: number | null) {
     }
 }
 
-// The prefill from `preselected` survives exactly the first run of this
-// watcher — the one Vue fires immediately on mount for the class it starts
-// on. Any class change the teacher makes afterwards clears período/aluno as
-// it always did, because a different turma invalidates both.
-let classWatcherInitialised = false;
+// The initial load runs from `onMounted`, not an immediate watcher: it fetches
+// the class context over the network, and `onMounted` never fires during SSR
+// (unlike `setup()`, which does) — a relative fetch URL there has no origin to
+// resolve against and crashes the SSR process. The prefill from `preselected`
+// survives this first load because it only reads `form.class_id`, never resets
+// it. Any class change the teacher makes afterwards clears período/aluno, because
+// a different turma invalidates both.
+onMounted(() => {
+    void loadContext(form.class_id);
+});
 
 watch(
     () => form.class_id,
     (classId) => {
-        if (classWatcherInitialised) {
-            form.academic_period_id = null;
-            form.enrollment_id = null;
-            form.interim_assessment_id = null;
-        }
+        form.academic_period_id = null;
+        form.enrollment_id = null;
+        form.interim_assessment_id = null;
 
-        classWatcherInitialised = true;
         void loadContext(classId);
     },
-    { immediate: true },
 );
 
 // Changing type reloads the page so the catalogue matches: which sections exist
