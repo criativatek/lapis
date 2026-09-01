@@ -36,7 +36,7 @@ versão em [CHANGELOG.md](../CHANGELOG.md); o "porquê" das decisões em [docs/a
 | **Backoffice comercial — Frente B** | ✅ | `Admin > Comercial`: contas, subscrições, condição comercial e receita real, só para superadmin. Separa **plano** (o que a conta usa) de **condição comercial** (em que termos lá chegou) de **pagamento** (dinheiro que entrou). «Membro Fundador» é condição do Pro, nunca um plano — `Entitlements` não lê a coluna. Receita = `SUM(amount_cents) WHERE status = 'paid'`, agrupada por `paid_at`; nunca `nº de Pro × preço`. Registo manual de pagamentos recebidos (não há gateway), com correcção por reembolso total ou anulação — sempre com motivo e autoria, nunca por edição. **Nenhum histórico foi inventado**: todas as subscrições existentes ficam «Origem não registada». Vouchers: motor real (emissão, validação, resgate com reserva/confirmação; três famílias V1) — o texto legado em pagamentos manuais continua não convertido. Ver [backoffice.md](backoffice.md). |
 
 Suite: 1986 testes verdes (1 skipped) · Pint/Larastan/vue-tsc limpos. **Em produção** em
-[lapis.criativatek.com](https://lapis.criativatek.com) (versão 0.19.x).
+[lapispro.com](https://lapispro.com) — `lapis.criativatek.com` responde 301 para lá.
 
 ## Regras pedagógicas (5 questões que bloqueavam a Fase 1)
 

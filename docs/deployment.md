@@ -8,6 +8,20 @@ default do CloudPanel («Hello World :-)»). SSH aberto (porta 22), painel na 84
 > de palavras-passe; a configuração de produção vive no `.env` **no servidor**, não
 > no git. Este documento descreve o processo — sem passwords.
 
+> **O domínio público é `lapispro.com`.** `lapis.criativatek.com` responde **301**
+> para lá e continua a ser o nome do site no CloudPanel — e portanto o caminho em
+> disco, `/home/lapis/htdocs/lapis.criativatek.com`. Os dois aparecem neste
+> documento e não são intercambiáveis: **verificar sempre em `lapispro.com`**, ou
+> lê-se o 301 e conclui-se que a página está partida. A rota de preços é
+> `/planos`; `/precos` não existe e devolve 404.
+
+> **O alias `lapis-prod`, usado nos exemplos abaixo, é uma entrada de
+> `~/.ssh/config` de quem escreveu isto — não existe em todas as máquinas.** No
+> Windows do Pedro o que existe é **`xapp-root`** (root por chave `id_ed25519`,
+> mesmo VPS). Com ele, o código mexe-se com `sudo -u lapis-deploy`, o artisan
+> corre com `sudo -u lapis` e o `systemctl` corre como root. O deploy da 0.105.1
+> foi feito assim, passo a passo por este documento.
+
 ## Estado
 
 **Em produção** desde 2026-07-27: `https://lapis.criativatek.com` serve o Lapispro,
@@ -798,7 +812,8 @@ Manter `APP_ENV=production` para o Vite servir os assets compilados, não o dev 
 
 ## Checklist pós-deploy
 
-- [ ] `https://lapis.criativatek.com` mostra o Lapispro (não o «Hello World»).
+- [ ] **`https://lapispro.com`** mostra o Lapispro (não o «Hello World»). Verificar
+      aí e não em `lapis.criativatek.com`, que responde 301 e não prova nada.
 - [ ] Registo/login funcionam; 2FA e passkey testados em HTTPS.
 - [ ] Os três seeders de `ReferenceDataSeeder` correram: `EntitlementsSeeder`
       (sem ele ninguém tem acesso a módulos), `SystemScalesSeeder` (sem ele não

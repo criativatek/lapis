@@ -36,6 +36,26 @@ return [
             'serve' => true,
             'throw' => false,
             'report' => false,
+
+            // O GRUPO TEM DE PODER LER, OU A LIMPEZA NÃO ACONTECE.
+            //
+            // Sem este bloco o Flysystem cria os diretórios privados a `0700` e
+            // os ficheiros a `0600`: legíveis só por quem os escreveu. Em
+            // produção quem escreve é o php-fpm e quem limpa é o scheduler, dois
+            // utilizadores diferentes do mesmo grupo — e o segundo passa a
+            // apanhar `UnableToListContents` numa pasta da sua própria
+            // aplicação. Já aconteceu: a 2026-08-30 matou o `data-imports:prune`
+            // de hora a hora durante 22 horas, e `PrunesPrivateStorage` existe
+            // por causa disso. O trait trata o sintoma — falhar sem ser fatal e
+            // sem mentir que correu bem; isto trata a causa.
+            //
+            // `other` continua a zero: privado quer dizer privado. O que muda é
+            // só o grupo da aplicação poder ler e arrumar o que a aplicação
+            // escreveu.
+            'permissions' => [
+                'file' => ['public' => 0644, 'private' => 0660],
+                'dir' => ['public' => 0755, 'private' => 0770],
+            ],
         ],
 
         'public' => [

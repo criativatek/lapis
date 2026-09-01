@@ -25,6 +25,41 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.105.2] — 2026-09-01
+
+O disco privado criava as suas pastas legíveis só por quem as escreveu, e a
+limpeza corre com outro utilizador. Em produção quem escreve em
+`storage/app/private` é o php-fpm e quem arruma é o scheduler — mesmo grupo,
+utilizadores diferentes. Com a predefinição do Flysystem (`0700` nas pastas,
+`0600` nos ficheiros) o segundo apanha `UnableToListContents` numa pasta da sua
+própria aplicação. Já tinha acontecido: a 2026-08-30 matou o
+`data-imports:prune` de hora a hora durante 22 horas, e o trait
+`PrunesPrivateStorage` nasceu disso — mas trata o sintoma, deixando a falha
+visível sem ser fatal. A causa estava por corrigir e voltou a aparecer no log de
+produção a 2026-09-01.
+
+### Corrigido
+
+- **O disco privado declara as suas permissões** (`0770` nas pastas, `0660` nos
+  ficheiros). `other` continua a zero: privado quer dizer privado, e os dados
+  aqui dentro são de alunos. O que muda é só o grupo da aplicação poder ler e
+  arrumar o que a aplicação escreveu.
+- **Teste que fixa a intenção** — sobre a configuração e não sobre um `stat`,
+  porque o modo real depende também do `umask` do processo e não existe de todo
+  em Windows, onde metade do desenvolvimento acontece. Inclui a asserção de
+  que a correcção não alargou o que «privado» quer dizer.
+
+### Documentação
+
+- **O domínio público é `lapispro.com`**; `lapis.criativatek.com` responde 301 e
+  continua a ser o nome do site no CloudPanel — e portanto o caminho em disco.
+  A checklist pós-deploy verificava o endereço errado, onde um 301 não prova
+  nada. A rota de preços é `/planos`.
+- **O alias `lapis-prod` dos exemplos não existe em todas as máquinas.** Fica
+  escrito o que funciona no Windows do Pedro (`xapp-root`, com `sudo -u
+  lapis-deploy` para código e `sudo -u lapis` para artisan), que foi como a
+  0.105.1 foi instalada.
+
 ## [0.105.1] — 2026-09-01
 
 Uma conta criada antes dos tetos de turmas e alunos deixou de funcionar, e a
