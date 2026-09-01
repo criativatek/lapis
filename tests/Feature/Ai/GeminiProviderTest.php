@@ -423,6 +423,44 @@ class GeminiProviderTest extends TestCase
     }
 
     /**
+     * NA LINHA 3.5 A `flash` E A `flash-lite` NÃO RESPONDEM O MESMO — e é por
+     * isso que a ordem dos prefixos importa.
+     *
+     * Na linha 2.5 as duas aceitavam zero e a separação era preventiva. Aqui
+     * deixou de o ser: medido a 2026-09-01, `gemini-3.5-flash` aceita zero e
+     * desliga o raciocínio; `gemini-3.5-flash-lite` responde **400** a zero e
+     * precisa do mínimo. Se o prefixo mais curto fosse testado primeiro, a lite
+     * herdava um valor que a API recusa.
+     */
+    #[Test]
+    public function the_lite_of_the_same_line_does_not_inherit_what_the_plain_one_accepts(): void
+    {
+        $this->fakeAnswer(['candidates' => [['content' => ['parts' => [['text' => 'ok']]]]]]);
+        $this->provider(model: 'gemini-3.5-flash')->complete($this->request());
+
+        Http::assertSent(function (Request $request): bool {
+            $this->assertSame(
+                ['thinkingBudget' => 0],
+                $request->data()['generationConfig']['thinkingConfig'] ?? null,
+            );
+
+            return true;
+        });
+
+        $this->fakeAnswer(['candidates' => [['content' => ['parts' => [['text' => 'ok']]]]]]);
+        $this->provider(model: 'gemini-3.5-flash-lite')->complete($this->request());
+
+        Http::assertSent(function (Request $request): bool {
+            $budget = $request->data()['generationConfig']['thinkingConfig']['thinkingBudget'] ?? null;
+
+            $this->assertSame(GeminiThinking::PRO_MINIMUM, $budget);
+            $this->assertNotSame(0, $budget, 'A lite recusa zero com 400.');
+
+            return true;
+        });
+    }
+
+    /**
      * `gemini-3.6-flash` É A SUCESSORA E COMPORTA-SE COMO A `pro`, NÃO COMO A
      * `flash` QUE SUBSTITUI.
      *

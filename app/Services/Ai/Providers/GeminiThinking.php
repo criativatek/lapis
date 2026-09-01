@@ -25,6 +25,9 @@ namespace App\Services\Ai\Providers;
  *   - `gemini-2.5-pro` CANNOT have thinking disabled. Zero is rejected by the
  *     API, so the minimum it does accept (128) is sent instead — the cheapest
  *     legal value rather than an invalid one.
+ *   - `gemini-3.5-flash` takes 0, like the 2.5 flashes. `gemini-3.5-flash-lite`
+ *     does NOT — zero is a 400 there — which is why the prefixes are ordered
+ *     the way they are: on this line the two really do diverge.
  *   - `gemini-3.6-flash` also cannot be silenced — measured, not assumed: zero
  *     comes back as a 400. It gets the same minimum, which matters more here
  *     than on the 2.5 line because with no budget at all it spends most of a
@@ -73,14 +76,27 @@ class GeminiThinking
             // The one model on the 2.5 line that may not be silenced.
             str_starts_with($normalised, 'gemini-2.5-pro') => self::PRO_MINIMUM,
 
-            // Measured against the live API on 2026-09-01, when `gemini-2.5-flash`
-            // was retired and this became the replacement Google itself names in
-            // the 404. It behaves like `2.5-pro`, not like `2.5-flash`: a budget
-            // of 0 is rejected with `400 Request contains an invalid argument`,
-            // and with no `thinkingConfig` at all it spent 976 thinking tokens of
-            // a 2048 ceiling on a single section rewrite — the same shape as the
-            // failure 0.101.5 fixed. The minimum legal budget caps that at ~60-90
-            // without refusing the request.
+            // The 3.5 line, measured on 2026-09-01. The `-lite` is checked first
+            // for the same reason as on the 2.5 line, and here the distinction
+            // is not hypothetical: they answer DIFFERENTLY. Plain `3.5-flash`
+            // takes 0 and switches thinking off entirely; `3.5-flash-lite`
+            // rejects 0 with `400 Request contains an invalid argument` and
+            // needs the minimum.
+            str_starts_with($normalised, 'gemini-3.5-flash-lite') => self::PRO_MINIMUM,
+            str_starts_with($normalised, 'gemini-3.5-flash') => 0,
+
+            // Measured on 2026-09-01, when `gemini-2.5-flash` was retired and
+            // this became the replacement Google itself names in the 404. It
+            // behaves like `2.5-pro`, not like the flash it replaces: a budget
+            // of 0 is rejected with a 400, and with no `thinkingConfig` at all
+            // it spent 976 thinking tokens of a 2048 ceiling on a single section
+            // rewrite — the same shape as the failure 0.101.5 fixed. The minimum
+            // legal budget caps that at ~60-90 without refusing the request.
+            //
+            // It is NOT what this installation runs, and the reason belongs
+            // beside the row: it answers in ~30s where `3.5-flash` answers the
+            // same thing in ~6s, and the request budget is 20. A row here is a
+            // vendor fact about a model, not a recommendation to use it.
             str_starts_with($normalised, 'gemini-3.6-flash') => self::PRO_MINIMUM,
 
             default => null,

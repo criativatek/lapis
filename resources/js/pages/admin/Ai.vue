@@ -247,7 +247,7 @@ function probeCapability(): void {
 
                 <label class="text-sm">
                     <span class="mb-1 block font-medium">Modelo</span>
-                    <input v-model="form.ai_model" type="text" placeholder="Ex.: gemini-3.6-flash" class="w-full rounded-md border border-border bg-background px-3 py-2" />
+                    <input v-model="form.ai_model" type="text" placeholder="Ex.: gemini-3.5-flash" class="w-full rounded-md border border-border bg-background px-3 py-2" />
                     <span v-if="form.errors.ai_model" class="mt-1 block text-xs text-red-600">{{ form.errors.ai_model }}</span>
                 </label>
 

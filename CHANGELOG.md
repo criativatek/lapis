@@ -25,6 +25,27 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.105.6] — 2026-09-01
+
+A substituta que a própria Google nomeia é lenta de mais para o tecto desta
+aplicação. Medido em produção com o mesmo pedido, três vezes cada:
+`gemini-3.6-flash` responde em **~30s**, `gemini-3.5-flash` responde **o mesmo**
+em **~6s** — e o orçamento de tempo de um pedido é de 20s. Trocar o 404 por um
+timeout não é corrigir nada; a 0.105.5 fez metade do trabalho.
+
+### Corrigido
+
+- **Produção passa a `gemini-3.5-flash`.** Mesma resposta, um quinto do tempo,
+  dentro do tecto.
+- **A linha 3.5 entra na tabela de raciocínio, e as duas metades divergem.** Na
+  linha 2.5 a `flash` e a `flash-lite` aceitavam ambas zero e separá-las era
+  prevenção. Aqui deixou de o ser: `gemini-3.5-flash` aceita zero e desliga o
+  raciocínio; `gemini-3.5-flash-lite` responde **400** a zero e precisa do
+  mínimo. A ordem dos prefixos, que existia por precaução, passou a ser o que
+  impede um 400.
+- **A linha do `3.6-flash` fica**, com a latência escrita ao lado. Uma linha
+  desta tabela é um facto sobre um modelo, não uma recomendação para o usar.
+
 ## [0.105.5] — 2026-09-01
 
 O Google retirou o `gemini-2.5-flash` e a IA parou em produção. O professor via
