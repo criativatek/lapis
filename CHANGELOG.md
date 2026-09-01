@@ -25,6 +25,42 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.106.0] — 2026-09-02
+
+Reportar um problema deixa de obrigar a sair de onde se está. Um botão em todas
+as páginas autenticadas abre o mesmo pedido de suporte de sempre — mesma fila,
+mesmo fio de conversa, mesmo relógio de retenção — já com o ecrã onde a pessoa
+estava. Quem encontra um defeito raramente o volta a encontrar depois de navegar
+para outro lado, e era justamente essa a informação que se perdia no caminho.
+
+### Corrigido
+
+- **A rota deixa de levar identificadores.** `technical_route` guardava o
+  `pathname` do referrer inteiro — `/classes/01M1…/alunos/01M1…/edit` ficava tal
+  e qual numa coluna que um operador lê. Numa aplicação onde todas as URLs
+  expõem ULIDs (§11.2), isso era guardar um apontador para a criança sobre quem
+  o pedido é. Passa a `/classes/:id/alunos/:id/edit`: o nome do ecrã responde
+  por inteiro a «onde é que a pessoa estava» e o resto não acrescenta nada.
+  Visto a falhar antes de passar.
+
+### Adicionado
+
+- **`RouteMask`**, com um par em TypeScript. A regra vive no servidor — é a
+  única porta, e convidado e autenticado passam ambos por ela; o do ecrã existe
+  para quem envia **ver** o que envia, não para decidir o que sai. A fronteira
+  dos seis algarismos é emprestada do `AiPayloadSanitizer`, e não inventada:
+  duas regras diferentes para a mesma pergunta seria uma delas a estar errada.
+- **`IssueReporter.vue`** no `AppLayout`, o que o põe em todas as páginas
+  autenticadas e o mantém fora do backoffice, do site público e da autenticação,
+  que têm outros layouts.
+- **O que segue é dito por extenso**, com a rota à vista dentro do diálogo. Um
+  aviso genérico não deixa ninguém decidir nada.
+
+### Notas
+
+Primeira fatia do reporte de issues. Sem esquema novo, sem anexos, sem captura
+de ecrã e sem qualquer destinatário externo — essas fatias trazem trabalho legal
+próprio e não entram à boleia desta.
 ## [0.105.8] — 2026-09-01
 
 O processo de release passa a garantir que o bundle de SSR que viaja é o do

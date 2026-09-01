@@ -3,14 +3,32 @@ import { Head, useForm } from '@inertiajs/vue3';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
+import { maskRoute } from '@/lib/routeMask';
+
+/**
+ * A rota de onde a pessoa veio, mascarada.
+ *
+ * Antes ia o `pathname` inteiro, ULIDs incluídos, e ficava assim numa coluna
+ * que um operador lê. O servidor mascara-a de qualquer maneira
+ * (`App\Support\Support\RouteMask`); isto é para o ecrã não dizer uma coisa e
+ * a base guardar outra.
+ */
+function referrerRoute(): string | null {
+    try {
+        return document.referrer ? maskRoute(new URL(document.referrer).pathname) : null;
+    } catch {
+        return null;
+    }
+}
 
 /**
  * Abrir um pedido, de dentro da aplicação.
  *
  * NÃO PEDE NOME NEM EMAIL: vêm da conta, no servidor. A rota do ecrã anterior
- * viaja como contexto técnico — é o que ajuda a equipa a perceber onde a pessoa
- * estava, e é tudo o que se recolhe automaticamente: nada de ficheiros, nada de
- * dados dos alunos, nada de stack traces.
+ * viaja como contexto técnico — MASCARADA, porque o nome do ecrã responde a
+ * «onde é que a pessoa estava» e o ULID que lá vai pelo meio identifica uma
+ * turma ou uma criança. É tudo o que se recolhe automaticamente: nada de
+ * ficheiros, nada de dados dos alunos, nada de stack traces.
  *
  * O AVISO DE MINIMIZAÇÃO ESTÁ VISÍVEL, e não escondido num rodapé. Um pedido de
  * suporte é o texto onde é mais fácil escrever o nome de um aluno sem pensar.
@@ -27,22 +45,11 @@ defineOptions({
     },
 });
 
-/** A rota de onde a pessoa veio, quando o browser a soube dizer. */
-function referrerPath(): string | null {
-    try {
-        return document.referrer
-            ? new URL(document.referrer).pathname.slice(0, 200)
-            : null;
-    } catch {
-        return null;
-    }
-}
-
 const form = useForm({
     category: '',
     subject: '',
     description: '',
-    technical_route: referrerPath(),
+    technical_route: referrerRoute(),
     technical_reference: null as string | null,
 });
 

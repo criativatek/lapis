@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Models\AcademicYear;
 use App\Models\SchoolClass;
 use App\Models\Subject;
+use App\Models\SupportCategory;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Legal\LegalDocuments;
 use App\Support\Navigation\NavigationBuilder;
@@ -81,6 +82,11 @@ class HandleInertiaRequests extends Middleware
                 'name' => LegalDocuments::controller()['name'],
                 'address' => LegalDocuments::controller()['address'],
             ],
+            // O botão de reportar um problema vive no layout, logo está em todas
+            // as páginas autenticadas e não tem um controlador seu de onde
+            // receber a lista. É a MESMA de `SupportController::create()`, e
+            // preguiçosa: só é calculada quando alguém abre o formulário.
+            'supportCategories' => fn (): array => SupportCategory::options(),
             'auth' => [
                 'user' => $user,
                 // The ONE thing the client is told about the backoffice: whether

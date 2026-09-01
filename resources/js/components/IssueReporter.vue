@@ -1,0 +1,158 @@
+<script setup lang="ts">
+import { useForm, usePage } from '@inertiajs/vue3';
+import { computed, ref, watch } from 'vue';
+import InputError from '@/components/InputError.vue';
+import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import { currentMaskedRoute } from '@/lib/routeMask';
+
+/**
+ * Reportar um problema sem sair de onde se está.
+ *
+ * O QUE ISTO RESOLVE. A Central de Suporte já existia e está no menu, mas
+ * obrigava a sair do ecrã, ir a um formulário e descrever por palavras onde a
+ * pessoa estava. Quem encontra um defeito raramente o volta a encontrar depois
+ * de navegar para outro lado — e a informação mais útil para o reproduzir é
+ * justamente a que se perde nesse caminho.
+ *
+ * É O MESMO PEDIDO, NÃO UM SISTEMA PARALELO. Publica em `POST /support`, cai na
+ * mesma fila, no mesmo fio de conversa e no mesmo relógio de retenção. O que
+ * muda é só de onde se abre.
+ *
+ * A ROTA VAI MASCARADA, E O SERVIDOR MASCARA-A OUTRA VEZ. `maskRoute()` existe
+ * para quem envia ver o que envia; a regra é imposta em
+ * `App\Support\Support\RouteMask`, porque o código que decide o que se remove
+ * não pode ser o que viaja no browser de quem envia.
+ */
+
+const page = usePage();
+
+const categories = computed(
+    () => (page.props.supportCategories ?? []) as { value: string; label: string }[],
+);
+
+/** Só para quem tem sessão: um convidado não tem fila onde acompanhar isto. */
+const authenticated = computed(() => Boolean((page.props.auth as { user?: unknown } | undefined)?.user));
+
+const open = ref(false);
+
+const form = useForm({
+    category: '',
+    subject: '',
+    description: '',
+    technical_route: null as string | null,
+    technical_reference: null as string | null,
+});
+
+// A rota é lida no momento em que a janela abre, não quando o componente monta:
+// o layout monta uma vez e a pessoa navega por dentro dele.
+watch(open, (isOpen) => {
+    if (isOpen) {
+        form.clearErrors();
+        form.technical_route = currentMaskedRoute();
+    }
+});
+
+function submit(): void {
+    form.post('/support', {
+        preserveScroll: true,
+        onSuccess: () => {
+            form.reset();
+            open.value = false;
+        },
+    });
+}
+</script>
+
+<template>
+    <div v-if="authenticated">
+        <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            class="fixed bottom-4 right-4 z-40 shadow-lg print:hidden"
+            @click="open = true"
+        >
+            Reportar problema
+        </Button>
+
+        <Dialog v-model:open="open">
+            <DialogContent class="sm:max-w-lg">
+                <DialogHeader class="space-y-2">
+                    <DialogTitle>Reportar um problema</DialogTitle>
+                    <DialogDescription>
+                        Descreva o que aconteceu. O pedido entra na sua área de Suporte, onde pode acompanhar a resposta.
+                    </DialogDescription>
+                </DialogHeader>
+
+                <form class="space-y-4" @submit.prevent="submit">
+                    <div class="space-y-1.5">
+                        <label class="text-sm font-medium" for="issue-category">Assunto</label>
+                        <select
+                            id="issue-category"
+                            v-model="form.category"
+                            class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                            required
+                        >
+                            <option value="" disabled>Escolha um assunto</option>
+                            <option v-for="category in categories" :key="category.value" :value="category.value">
+                                {{ category.label }}
+                            </option>
+                        </select>
+                        <InputError :message="form.errors.category" />
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <label class="text-sm font-medium" for="issue-subject">Resumo</label>
+                        <input
+                            id="issue-subject"
+                            v-model="form.subject"
+                            type="text"
+                            maxlength="200"
+                            class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                            required
+                        />
+                        <InputError :message="form.errors.subject" />
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <label class="text-sm font-medium" for="issue-description">O que aconteceu</label>
+                        <textarea
+                            id="issue-description"
+                            v-model="form.description"
+                            rows="5"
+                            maxlength="5000"
+                            class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                            required
+                        ></textarea>
+                        <InputError :message="form.errors.description" />
+                    </div>
+
+                    <!--
+                        O que segue automaticamente é dito por extenso, e é pouco.
+                        Um aviso genérico não deixa ninguém decidir nada.
+                    -->
+                    <p class="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+                        Segue também o ecrã onde está — <code class="font-mono">{{ form.technical_route ?? 'não identificado' }}</code> —
+                        e a versão da aplicação. Mais nada. Por favor, não escreva nomes de alunos.
+                    </p>
+
+                    <DialogFooter class="gap-2">
+                        <DialogClose as-child>
+                            <Button type="button" variant="secondary">Cancelar</Button>
+                        </DialogClose>
+                        <Button type="submit" :disabled="form.processing">Enviar</Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
+    </div>
+</template>

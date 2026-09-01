@@ -12,6 +12,7 @@ use App\Models\SupportRequestStatus;
 use App\Models\SupportSource;
 use App\Models\User;
 use App\Services\Audit\AuditLog;
+use App\Support\Support\RouteMask;
 use App\Support\Support\SupportNotifier;
 use App\Support\Support\SupportReference;
 use Illuminate\Support\Facades\DB;
@@ -82,7 +83,11 @@ class OpenSupportRequest
                 // Contexto técnico, quando o ecrã o soube dizer. `technical_code`
                 // fica a NULL: nada o infere — quem classifica é um operador.
                 'technical_reference' => $data['technical_reference'] ?? null,
-                'technical_route' => $data['technical_route'] ?? null,
+                // A rota entra mascarada, e entra mascarada AQUI porque esta é a
+                // única porta — convidado e autenticado passam ambos por este
+                // método. Mascarar no ecrã seria pôr a regra a viajar no browser
+                // de quem envia.
+                'technical_route' => RouteMask::apply($data['technical_route'] ?? null),
                 'app_version' => (string) config('app.version'),
             ]);
 

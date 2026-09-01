@@ -2,6 +2,7 @@
 import { router, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import ClosureBanners from '@/components/ClosureBanners.vue';
+import IssueReporter from '@/components/IssueReporter.vue';
 import PrivacyNotice from '@/components/PrivacyNotice.vue';
 import AppLayout from '@/layouts/app/AppSidebarLayout.vue';
 import type { BreadcrumbItem } from '@/types';
@@ -32,4 +33,5 @@ function stopImpersonating(): void {
     <AppLayout :breadcrumbs="breadcrumbs">
         <slot />
     </AppLayout>
+    <IssueReporter />
 </template>
