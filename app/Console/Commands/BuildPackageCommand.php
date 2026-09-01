@@ -202,17 +202,24 @@ class BuildPackageCommand extends Command
 
         $paths[] = BuildStamp::FILENAME;
 
+        // Rebuilds BEFORE either inventory is read. `npm run build:ssr` runs
+        // `vite build` first — it replaces public/build wholesale, with new
+        // content hashes — before building bootstrap/ssr. Reading
+        // compiledAssets() ahead of this rebuild would list a client build
+        // this rebuild is about to erase out from under it.
+        if (! $ssrBuilder->build()) {
+            $this->error('A reconstrução do bundle SSR falhou (`npm run build:ssr`) — o pacote não é criado com um bundle antigo.');
+
+            return null;
+        }
+
         $assets = $this->compiledAssets();
 
         if ($assets === null) {
             return null;
         }
 
-        $ssr = $this->ssrBundle($ssrBuilder);
-
-        if ($ssr === null) {
-            return null;
-        }
+        $ssr = $this->ssrBundle();
 
         $this->line('Lista do pacote: '.$trackedCount.' versionados + 1 carimbo + '.count($assets).' assets compilados + '.count($ssr).' de SSR');
 
@@ -220,35 +227,21 @@ class BuildPackageCommand extends Command
     }
 
     /**
-     * Rebuilds `bootstrap/ssr` (via `$ssrBuilder`, `npm run build:ssr` in
-     * production) and inventories what that rebuild produced.
+     * Inventories `bootstrap/ssr` — called only after `packageList()` has
+     * already rebuilt it via `BuildsSsrBundle`, so what this reads is never
+     * older than the tree being packaged. See that call site's comment for
+     * why the rebuild cannot happen inside this method: it would run after
+     * `compiledAssets()` had already read public/build, and the rebuild
+     * replaces public/build too.
      *
-     * "The directory exists" used to be treated as "the directory matches the
-     * current source" — the command never rebuilt anything, only inventoried
-     * whatever was already there. Three releases (0.105.4–0.105.6) shipped a
-     * committed SSR fix while production kept running a bundle built weeks
-     * earlier, because the documented pre-package step (`npm run build`)
-     * never touches `bootstrap/ssr`. A stale bundle is now structurally
-     * impossible: this method always rebuilds first, so what it inventories
-     * is never older than the tree being packaged.
+     * An empty list is not an error: a deploy that renders in the browser is
+     * a slower crawl, never a broken page. It IS worth saying out loud,
+     * because the alternative is a silent downgrade.
      *
-     * An empty list after a SUCCESSFUL rebuild is still not an error: a
-     * deploy that renders in the browser is a slower crawl, never a broken
-     * page. It IS worth saying out loud, because the alternative is a silent
-     * downgrade. A FAILED rebuild is a different thing entirely — it returns
-     * null, which fails the whole package rather than falling back to
-     * whatever bundle happened to already be on disk.
-     *
-     * @return list<string>|null
+     * @return list<string>
      */
-    protected function ssrBundle(BuildsSsrBundle $ssrBuilder): ?array
+    protected function ssrBundle(): array
     {
-        if (! $ssrBuilder->build()) {
-            $this->error('A reconstrução do bundle SSR falhou (`npm run build:ssr`) — o pacote não é criado com um bundle antigo.');
-
-            return null;
-        }
-
         $root = base_path('bootstrap/ssr');
 
         if (! is_dir($root)) {
