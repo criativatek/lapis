@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { router, useForm } from '@inertiajs/vue3';
 import { MessageSquarePlus } from '@lucide/vue';
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 
 type HomeworkStatus = 'done' | 'partially_done' | 'not_done';
 type HomeworkRow = {
@@ -101,7 +101,14 @@ async function loadBatch(): Promise<void> {
     }
 }
 
-watch(() => props.occurredAt, loadBatch, { immediate: true });
+// Loads once the grid is actually in the browser — `onMounted` never runs
+// during SSR (unlike `setup()`), and this fetches over the network with a
+// relative URL that has no origin to resolve against on the server.
+onMounted(() => {
+    void loadBatch();
+});
+
+watch(() => props.occurredAt, loadBatch);
 
 function setStatus(row: HomeworkRow, status: HomeworkStatus): void {
     row.homework_status = row.homework_status === status ? null : status;
