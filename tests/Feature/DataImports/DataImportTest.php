@@ -3,6 +3,7 @@
 namespace Tests\Feature\DataImports;
 
 use App\Models\AcademicYear;
+use App\Models\AssessmentProfile;
 use App\Models\AuditEvent;
 use App\Models\DataExport;
 use App\Models\DataImport;
@@ -10,11 +11,14 @@ use App\Models\Enrollment;
 use App\Models\Organization;
 use App\Models\OrganizationSubscription;
 use App\Models\Plan;
+use App\Models\Scale;
 use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\Subject;
 use App\Models\SubscriptionStatus;
 use App\Models\User;
+use App\Services\Assessment\ActivateProfileVersion;
+use App\Services\Assessment\ProfileBuilder;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Import\Backup\BackupSchemaCompatibility;
 use App\Support\Tenancy\CurrentOrganization;
@@ -474,5 +478,97 @@ class DataImportTest extends TestCase
         $fresh = $import->fresh();
         $this->assertSame('cancelled', $fresh->status->value);
         $this->assertNull($fresh->stored_path);
+    }
+
+    /**
+     * Builds a class whose active assessment profile version covers three
+     * grade levels — the shape GenerateDataExport only includes a profile
+     * for at all when a class (or classification, or self-assessment
+     * template) actually references its version.
+     */
+    private function classWithMultiGradeProfile(Organization $organization, User $teacher): SchoolClass
+    {
+        return app(CurrentOrganization::class)->runFor($organization, function () use ($organization, $teacher): SchoolClass {
+            $year = AcademicYear::factory()->recycle($organization)->create();
+            $subject = Subject::factory()->recycle($organization)->create();
+
+            $profile = app(ProfileBuilder::class)->create(
+                ['academic_year_id' => $year->id, 'subject_id' => $subject->id, 'name' => 'Perfil Multi-Ano', 'description' => null],
+                Scale::where('name', 'Escala 1 a 5')->firstOrFail()->id,
+                [
+                    ['name' => 'Oralidade', 'weight' => 50],
+                    ['name' => 'Leitura', 'weight' => 50],
+                ],
+                ['7.º', '8.º', '9.º'],
+            );
+            $version = app(ActivateProfileVersion::class)->activate($profile->draftVersion(), $teacher);
+
+            $class = SchoolClass::factory()->recycle($organization)->create([
+                'academic_year_id' => $year->id,
+                'subject_id' => $subject->id,
+                'assessment_profile_version_id' => $version->id,
+            ]);
+            $class->teachers()->attach($teacher, ['role' => 'owner']);
+            Enrollment::factory()->recycle($organization)->create(['class_id' => $class->id]);
+
+            return $class->fresh();
+        });
+    }
+
+    #[Test]
+    public function a_multi_grade_profile_round_trips_every_grade_level_through_export_and_import(): void
+    {
+        Storage::fake('local');
+        [$sourceOrg, $sourceOwner] = $this->institutionalOrganization();
+        $this->classWithMultiGradeProfile($sourceOrg, $sourceOwner);
+        $file = $this->backupUpload($sourceOrg, $sourceOwner);
+
+        // A different destination organization: the class/profile ulids are
+        // therefore genuinely new there, no pre-delete needed to free them up.
+        $destinationOwner = User::factory()->create();
+        $destinationOrg = $destinationOwner->personalOrganization();
+
+        $import = $this->uploadInto($destinationOrg, $destinationOwner, $file);
+
+        $this->actingAs($destinationOwner)->withSession(['organization_id' => $destinationOrg->id])
+            ->post("/data-imports/{$import->ulid}/confirm")->assertRedirect();
+
+        $profile = app(CurrentOrganization::class)->runFor(
+            $destinationOrg,
+            fn () => AssessmentProfile::with('gradeLevels')->where('name', 'Perfil Multi-Ano')->sole(),
+        );
+        $this->assertSame(['7.º', '8.º', '9.º'], $profile->gradeLevels->pluck('grade_level')->all());
+    }
+
+    #[Test]
+    public function a_legacy_backup_with_only_the_singular_grade_level_still_imports_correctly(): void
+    {
+        Storage::fake('local');
+        [$sourceOrg, $sourceOwner] = $this->institutionalOrganization();
+        $this->classWithMultiGradeProfile($sourceOrg, $sourceOwner);
+        $file = $this->backupUpload($sourceOrg, $sourceOwner);
+
+        $destinationOwner = User::factory()->create();
+        $destinationOrg = $destinationOwner->personalOrganization();
+
+        $import = $this->uploadInto($destinationOrg, $destinationOwner, $file);
+
+        // Simulates a backup written before this feature: no `grade_levels`
+        // key at all, only the old singular `grade_level` — the shape every
+        // schema_version <= 5 export produced.
+        $snapshot = $import->canonical_snapshot;
+        $this->assertNotEmpty($snapshot['assessment_profiles']);
+        $snapshot['assessment_profiles'][0]['grade_levels'] = null;
+        $snapshot['assessment_profiles'][0]['grade_level'] = '7.º';
+        $import->forceFill(['canonical_snapshot' => $snapshot])->save();
+
+        $this->actingAs($destinationOwner)->withSession(['organization_id' => $destinationOrg->id])
+            ->post("/data-imports/{$import->ulid}/confirm")->assertRedirect();
+
+        $profile = app(CurrentOrganization::class)->runFor(
+            $destinationOrg,
+            fn () => AssessmentProfile::with('gradeLevels')->where('name', 'Perfil Multi-Ano')->sole(),
+        );
+        $this->assertSame(['7.º'], $profile->gradeLevels->pluck('grade_level')->all());
     }
 }

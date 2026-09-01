@@ -28,7 +28,10 @@ final class ValidateConfigurationPackage
         if (($package['kind'] ?? null) !== 'lapis_configuration_package') {
             throw ValidationException::withMessages(['file' => __('Este ficheiro não é um pacote de configuração do Lapispro.')]);
         }
-        if (($package['schema_version'] ?? null) !== 1) {
+        if (($package['schema_version'] ?? null) === 1) {
+            throw ValidationException::withMessages(['file' => __('Este pacote foi gerado por uma versão anterior; volte a gerar a partilha.')]);
+        }
+        if (($package['schema_version'] ?? null) !== 2) {
             throw ValidationException::withMessages(['file' => __('A versão deste pacote de configuração não é suportada.')]);
         }
         $topLevelKeys = ['kind', 'schema_version', 'exported_at', 'product', 'provenance', 'components', 'payload'];
@@ -42,7 +45,7 @@ final class ValidateConfigurationPackage
 
         $allowedComponents = ['school_identity', 'academic_years', 'subjects', 'scales', 'assessment_profiles'];
         $validator = Validator::make($package, [
-            'kind' => ['required', 'in:lapis_configuration_package'], 'schema_version' => ['required', 'integer', 'in:1'],
+            'kind' => ['required', 'in:lapis_configuration_package'], 'schema_version' => ['required', 'integer', 'in:2'],
             'exported_at' => ['required', 'date'], 'product' => ['required', 'array:name,version'],
             'provenance' => ['required', 'array:note,organization_name'],
             'components' => ['required', 'array'], 'components.*' => ['string', 'in:'.implode(',', $allowedComponents)],
@@ -58,8 +61,9 @@ final class ValidateConfigurationPackage
             'payload.scales' => ['present', 'array'], 'payload.scales.*' => ['array:name,kind,min_value,max_value,levels'], 'payload.scales.*.name' => ['required', 'string'], 'payload.scales.*.kind' => ['required', 'string'], 'payload.scales.*.levels' => ['present', 'array'],
             'payload.scales.*.levels.*' => ['array:code,label,inovar_code,sequence,numeric_value,normalized_value,band_min_normalized,band_max_normalized,is_negative'],
             'payload.scales.*.levels.*.code' => ['required', 'string'], 'payload.scales.*.levels.*.label' => ['required', 'string'], 'payload.scales.*.levels.*.sequence' => ['required', 'integer'],
-            'payload.assessment_profiles' => ['present', 'array'], 'payload.assessment_profiles.*' => ['array:academic_year_label,subject_code,grade_level,name,description,is_institutional_template,scale_reference,version,domains'],
+            'payload.assessment_profiles' => ['present', 'array'], 'payload.assessment_profiles.*' => ['array:academic_year_label,subject_code,grade_levels,name,description,is_institutional_template,scale_reference,version,domains'],
             'payload.assessment_profiles.*.academic_year_label' => ['required', 'string'], 'payload.assessment_profiles.*.subject_code' => ['required', 'string'], 'payload.assessment_profiles.*.name' => ['required', 'string'],
+            'payload.assessment_profiles.*.grade_levels' => ['present', 'array'], 'payload.assessment_profiles.*.grade_levels.*' => ['string'],
             'payload.assessment_profiles.*.scale_reference' => ['required', 'array:name,kind,system'], 'payload.assessment_profiles.*.version' => ['required', 'array:domain_weight_mode,period_result_mode,accumulated_mode,absence_mode,rounding_mode,rounding_scale,rounding_stage,minimum_rules'],
             'payload.assessment_profiles.*.domains' => ['required', 'array'],
             'payload.assessment_profiles.*.domains.*' => ['array:subject_code,code,name,parent_code,domain_sequence,is_active,weight_percent,sequence,expected_element_count,minimum_element_count'],

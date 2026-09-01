@@ -84,7 +84,6 @@ class DemoDataSeeder extends Seeder
             [
                 'academic_year_id' => $year->id,
                 'subject_id' => $subject->id,
-                'grade_level' => '7.º',
                 'name' => 'Português – 7.º Ano',
                 'description' => 'Perfil de demonstração.',
             ],
@@ -96,6 +95,7 @@ class DemoDataSeeder extends Seeder
                 ['name' => 'Gramática', 'weight' => 15],
                 ['name' => 'Educação Literária', 'weight' => 20],
             ],
+            ['7.º'],
         );
 
         return app(ActivateProfileVersion::class)->activate($profile->draftVersion(), $teacher);

@@ -198,7 +198,15 @@ return [
         'periods' => 'períodos',
         'academic_year_id' => 'ano letivo',
         'subject_id' => 'disciplina',
+        // Also the label for App\Http\Requests\ClassRequest and
+        // App\Http\Requests\Lessons\LessonSequenceRequest's own singular
+        // `grade_level` field (classes.grade_level, lesson_sequences.grade_level)
+        // — out of scope for the assessment-profiles multi-grade change, so this
+        // entry stays; grade_levels/grade_levels.* below are the new ones for
+        // AssessmentProfileRequest's array field.
         'grade_level' => 'ano de escolaridade',
+        'grade_levels' => 'anos de escolaridade',
+        'grade_levels.*' => 'ano de escolaridade',
         'scale_id' => 'escala',
         'domains' => 'domínios',
         'assessment_profile_version_id' => 'perfil de avaliação',

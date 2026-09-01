@@ -43,7 +43,6 @@ class ClassProfileMigrationTest extends TestCase
                 'subject_id' => $profile->subject_id,
                 'name' => $profile->name,
                 'description' => $profile->description,
-                'grade_level' => $profile->grade_level,
             ],
             $class->profileVersion->scale_id,
             [
@@ -53,6 +52,7 @@ class ClassProfileMigrationTest extends TestCase
                 ['name' => 'Gramática', 'weight' => 10],
                 ['name' => 'Educação Literária', 'weight' => 10],
             ],
+            $profile->gradeLevels->pluck('grade_level')->all(),
         );
 
         return app(ActivateProfileVersion::class)->activate($profile->refresh()->draftVersion(), $teacher);

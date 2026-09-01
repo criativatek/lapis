@@ -123,7 +123,7 @@ class ValidateBackupPayload
             'domains' => $this->whitelistRows($decoded, 'domains', ['ulid', 'name', 'code', 'subject', 'parent_domain_ulid', 'sequence', 'is_active'], function (array $row) use (&$rowIssues): ?array {
                 return $this->validDomainRow($row, $rowIssues);
             }),
-            'assessment_profiles' => $this->whitelistRows($decoded, 'assessment_profiles', ['ulid', 'name', 'description', 'academic_year', 'subject', 'grade_level', 'is_institutional_template'], function (array $row) use (&$rowIssues): ?array {
+            'assessment_profiles' => $this->whitelistRows($decoded, 'assessment_profiles', ['ulid', 'name', 'description', 'academic_year', 'subject', 'grade_level', 'grade_levels', 'is_institutional_template'], function (array $row) use (&$rowIssues): ?array {
                 return $this->validProfileRow($row, $rowIssues);
             }),
             'assessment_profile_versions' => $this->whitelistRows($decoded, 'assessment_profile_versions', ['ulid', 'profile_ulid', 'version_number', 'status', 'is_current', 'scale', 'domain_weight_mode', 'period_result_mode', 'accumulated_mode', 'absence_mode', 'rounding_mode', 'rounding_scale', 'rounding_stage', 'minimum_rules', 'activated_at', 'frozen_at', 'superseded_at', 'change_note'], function (array $row) use (&$rowIssues): ?array {
@@ -310,6 +310,20 @@ class ValidateBackupPayload
     private function nullableNumeric(mixed $value): ?string
     {
         return is_scalar($value) && is_numeric($value) ? (string) $value : null;
+    }
+
+    /**
+     * @return list<string>|null
+     */
+    private function nullableStringList(mixed $value): ?array
+    {
+        if (! is_array($value)) {
+            return null;
+        }
+
+        $strings = array_values(array_filter($value, fn (mixed $item): bool => is_string($item) && $item !== ''));
+
+        return $strings;
     }
 
     private function nullableInt(mixed $value): ?int
@@ -694,7 +708,13 @@ class ValidateBackupPayload
             'description' => $this->nullableString($row['description'] ?? null),
             'academic_year' => $this->nullableString($row['academic_year'] ?? null),
             'subject' => $this->nullableString($row['subject'] ?? null),
+            // Kept for backups written before schema_version 6 (see
+            // BackupSchemaCompatibility): they carry only the old singular
+            // field. grade_levels is the new, possibly-plural field; a backup
+            // that lacks it entirely (nullable) falls back to grade_level
+            // downstream (BuildAssessmentStructurePlan/WriteAssessmentStructure).
             'grade_level' => $this->nullableString($row['grade_level'] ?? null),
+            'grade_levels' => $this->nullableStringList($row['grade_levels'] ?? null),
             'is_institutional_template' => $row['is_institutional_template'],
         ];
     }

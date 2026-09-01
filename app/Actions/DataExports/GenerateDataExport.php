@@ -198,7 +198,7 @@ class GenerateDataExport
             ->with(['domains.domain', 'periods.academicPeriod'])
             ->get();
         $profiles = AssessmentProfile::query()->whereIn('id', $profileVersions->pluck('assessment_profile_id')->unique())
-            ->with(['academicYear', 'subject'])
+            ->with(['academicYear', 'subject', 'gradeLevels'])
             ->get();
 
         $instrumentGroups = InstrumentGroup::query()->whereIn('instrument_id', $instruments->pluck('id'))->get();
@@ -1221,7 +1221,7 @@ class GenerateDataExport
             'description' => $profile->description,
             'academic_year' => $profile->academicYear?->label,
             'subject' => $profile->subject?->name,
-            'grade_level' => $profile->grade_level,
+            'grade_levels' => $profile->gradeLevels->pluck('grade_level')->all(),
             'is_institutional_template' => $profile->is_institutional_template,
         ];
     }

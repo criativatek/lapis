@@ -37,12 +37,12 @@ class AssessmentProfileRequest extends FormRequest
                     ->where('organization_id', $organizationId)
                     ->where('academic_year_id', $this->input('academic_year_id'))
                     ->where('subject_id', $this->input('subject_id'))
-                    ->where('grade_level', $this->input('grade_level'))
                     ->ignore($profileId),
             ],
             'academic_year_id' => ['required', new BelongsToCurrentOrganization(AcademicYear::class)],
             'subject_id' => ['required', new BelongsToCurrentOrganization(Subject::class)],
-            'grade_level' => ['nullable', 'string', 'max:16'],
+            'grade_levels' => ['sometimes', 'array'],
+            'grade_levels.*' => ['string', 'max:16', 'distinct'],
             'description' => ['nullable', 'string'],
             // Scale may be a system scale (org NULL) or the organization's own.
             // The rule runs through the model, whose visibility scope allows both

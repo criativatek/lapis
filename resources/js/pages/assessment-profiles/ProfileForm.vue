@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
-import { Plus, Trash2 } from '@lucide/vue';
+import { Plus, Trash2, X } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import InputError from '@/components/InputError.vue';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -30,7 +31,7 @@ type ProfileData = {
     name: string;
     academic_year_id: number | null;
     subject_id: number | null;
-    grade_level: string;
+    grade_levels: string[];
     description: string | null;
     scale_id: number | null;
     domains: DomainRow[];
@@ -57,7 +58,7 @@ const form = useForm<ProfileData>(
         name: '',
         academic_year_id: null,
         subject_id: null,
-        grade_level: '',
+        grade_levels: [],
         description: null,
         scale_id: null,
         domains: [
@@ -66,6 +67,25 @@ const form = useForm<ProfileData>(
         ],
     },
 );
+
+const gradeLevelInput = ref('');
+
+function addGradeLevel(): void {
+    const value = gradeLevelInput.value.trim();
+
+    if (value === '' || form.grade_levels.includes(value)) {
+        gradeLevelInput.value = '';
+
+        return;
+    }
+
+    form.grade_levels.push(value);
+    gradeLevelInput.value = '';
+}
+
+function removeGradeLevel(index: number): void {
+    form.grade_levels.splice(index, 1);
+}
 
 const totalWeight = computed(() =>
     form.domains.reduce((sum, domain) => sum + (Number(domain.weight) || 0), 0),
@@ -177,14 +197,45 @@ function submit(): void {
                 <InputError :message="form.errors.subject_id" />
             </div>
             <div class="grid gap-2">
-                <Label for="grade_level">Ano de escolaridade</Label>
-                <Input
-                    id="grade_level"
-                    v-model="form.grade_level"
-                    placeholder="Ex.: 7.º"
-                    :disabled="!canManage"
-                />
-                <InputError :message="form.errors.grade_level" />
+                <Label for="grade_level_input">Ano(s) de escolaridade</Label>
+                <div class="flex gap-2">
+                    <Input
+                        id="grade_level_input"
+                        v-model="gradeLevelInput"
+                        placeholder="Ex.: 7.º"
+                        :disabled="!canManage"
+                        @keydown.enter.prevent="addGradeLevel"
+                    />
+                    <Button
+                        v-if="canManage"
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        @click="addGradeLevel"
+                    >
+                        <Plus class="size-4" /> Adicionar
+                    </Button>
+                </div>
+                <div v-if="form.grade_levels.length" class="flex flex-wrap gap-2">
+                    <Badge
+                        v-for="(gradeLevel, index) in form.grade_levels"
+                        :key="gradeLevel"
+                        variant="secondary"
+                        class="gap-1.5"
+                    >
+                        {{ gradeLevel }}
+                        <button
+                            v-if="canManage"
+                            type="button"
+                            class="rounded-full hover:text-destructive"
+                            :aria-label="`Remover ${gradeLevel}`"
+                            @click="removeGradeLevel(index)"
+                        >
+                            <X class="size-3" />
+                        </button>
+                    </Badge>
+                </div>
+                <InputError :message="form.errors.grade_levels" />
             </div>
             <div class="grid gap-2">
                 <div class="flex items-center justify-between gap-3">

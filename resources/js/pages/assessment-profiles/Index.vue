@@ -10,7 +10,8 @@ type Profile = {
     name: string;
     subject: string;
     academic_year: string;
-    grade_level: string | null;
+    grade_levels: string[];
+    grade_levels_label: string;
     is_active: boolean;
     status_label: string;
     has_draft: boolean;
@@ -66,7 +67,7 @@ function destroy(profile: Profile): void {
                     <tr v-for="profile in profiles" :key="profile.ulid">
                         <td class="px-4 py-3 font-medium">{{ profile.name }}</td>
                         <td class="px-4 py-3 text-muted-foreground">
-                            {{ profile.subject }} · {{ profile.academic_year }}<template v-if="profile.grade_level"> · {{ profile.grade_level }}</template>
+                            {{ profile.subject }} · {{ profile.academic_year }}<template v-if="profile.grade_levels_label"> · {{ profile.grade_levels_label }}</template>
                         </td>
                         <td class="px-4 py-3">
                             <Badge :variant="profile.is_active ? 'default' : 'secondary'">{{ profile.status_label }}</Badge>

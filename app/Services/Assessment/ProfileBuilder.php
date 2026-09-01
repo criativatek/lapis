@@ -20,12 +20,13 @@ use Illuminate\Support\Str;
 class ProfileBuilder
 {
     /**
-     * @param  array<string, mixed>  $attributes  name, academic_year_id, subject_id, grade_level, description
+     * @param  array<string, mixed>  $attributes  name, academic_year_id, subject_id, description
      * @param  list<array{name: string, weight: float}>  $domains
+     * @param  list<string>  $gradeLevels
      */
-    public function create(array $attributes, int $scaleId, array $domains): AssessmentProfile
+    public function create(array $attributes, int $scaleId, array $domains, array $gradeLevels = []): AssessmentProfile
     {
-        return DB::transaction(function () use ($attributes, $scaleId, $domains): AssessmentProfile {
+        return DB::transaction(function () use ($attributes, $scaleId, $domains, $gradeLevels): AssessmentProfile {
             $profile = AssessmentProfile::create($attributes);
 
             // organization_id is stamped by the BelongsToOrganization creating
@@ -47,6 +48,7 @@ class ProfileBuilder
             ]);
 
             $this->syncDomains($version, (int) $attributes['subject_id'], $domains);
+            $this->syncGradeLevels($profile, $gradeLevels);
 
             return $profile;
         });
@@ -58,10 +60,11 @@ class ProfileBuilder
      *
      * @param  array<string, mixed>  $attributes
      * @param  list<array{name: string, weight: float}>  $domains
+     * @param  list<string>  $gradeLevels
      */
-    public function update(AssessmentProfile $profile, array $attributes, int $scaleId, array $domains): AssessmentProfile
+    public function update(AssessmentProfile $profile, array $attributes, int $scaleId, array $domains, array $gradeLevels = []): AssessmentProfile
     {
-        return DB::transaction(function () use ($profile, $attributes, $scaleId, $domains): AssessmentProfile {
+        return DB::transaction(function () use ($profile, $attributes, $scaleId, $domains, $gradeLevels): AssessmentProfile {
             $profile->update($attributes);
 
             $draft = $profile->draftVersion() ?? $this->openNewDraft($profile);
@@ -69,9 +72,26 @@ class ProfileBuilder
             $draft->update(['scale_id' => $scaleId]);
             $draft->domains()->delete();
             $this->syncDomains($draft, (int) $attributes['subject_id'], $domains);
+            $this->syncGradeLevels($profile, $gradeLevels);
 
             return $profile->refresh();
         });
+    }
+
+    /**
+     * Replaces the profile's grade levels with the given set. The set of
+     * grade levels is metadata of the profile itself, not of a calculation
+     * version — it is not versioned/frozen the way domains and weights are.
+     *
+     * @param  list<string>  $gradeLevels
+     */
+    protected function syncGradeLevels(AssessmentProfile $profile, array $gradeLevels): void
+    {
+        $profile->gradeLevels()->delete();
+
+        foreach (array_unique($gradeLevels) as $gradeLevel) {
+            $profile->gradeLevels()->create(['grade_level' => $gradeLevel]);
+        }
     }
 
     /**

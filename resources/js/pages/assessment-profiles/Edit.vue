@@ -19,7 +19,7 @@ const props = defineProps<{
         name: string;
         academic_year_id: number;
         subject_id: number;
-        grade_level: string | null;
+        grade_levels: string[];
         description: string | null;
         scale_id: number | null;
         editing_active: boolean;
@@ -35,7 +35,7 @@ const initial = {
     name: props.profile.name,
     academic_year_id: props.profile.academic_year_id,
     subject_id: props.profile.subject_id,
-    grade_level: props.profile.grade_level ?? '',
+    grade_levels: props.profile.grade_levels,
     description: props.profile.description,
     scale_id: props.profile.scale_id,
     domains: props.profile.domains.length

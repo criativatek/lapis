@@ -22,13 +22,12 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property int $organization_id
  * @property int $academic_year_id
  * @property int $subject_id
- * @property string|null $grade_level
  * @property string $name
  * @property string|null $description
  * @property int|null $current_version_id
  * @property bool $is_institutional_template
  */
-#[Fillable(['academic_year_id', 'subject_id', 'grade_level', 'name', 'description'])]
+#[Fillable(['academic_year_id', 'subject_id', 'name', 'description'])]
 class AssessmentProfile extends Model
 {
     /** @use HasFactory<AssessmentProfileFactory> */
@@ -87,6 +86,14 @@ class AssessmentProfile extends Model
     public function subject(): BelongsTo
     {
         return $this->belongsTo(Subject::class);
+    }
+
+    /**
+     * @return HasMany<AssessmentProfileGradeLevel, $this>
+     */
+    public function gradeLevels(): HasMany
+    {
+        return $this->hasMany(AssessmentProfileGradeLevel::class)->orderBy('grade_level');
     }
 
     /**

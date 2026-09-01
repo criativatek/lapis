@@ -25,6 +25,45 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.105.0] — 2026-09-01
+
+Um Perfil de Avaliação só podia pertencer a um ano de escolaridade — uma
+string livre e opcional, nunca usada para nada além de etiqueta: a atribuição
+de perfil a turma sempre foi manual, filtrada só por disciplina, e o ano
+nunca influenciou critérios, pesos, domínios ou escalas. Uma escola que
+ensinasse os mesmos critérios a 7.º, 8.º e 9.º tinha de manter três perfis
+separados, com o mesmo nome repetido três vezes, para representar o que era
+uma única decisão pedagógica.
+
+### Added
+
+- **Um perfil passa a cobrir vários anos de escolaridade.** Novo modelo:
+  `assessment_profile_grade_levels` guarda um conjunto de anos por perfil, em
+  vez da antiga coluna única `grade_level`. Nada de string composta nem CSV
+  numa coluna — cada ano é uma linha própria, com unicidade e índice
+  próprios. Não existia (nem foi inventado agora) nenhum enum canónico de
+  anos de escolaridade no projeto: o campo continua texto livre, tal como
+  sempre foi.
+- **Migração sem perda.** Todo perfil existente com um `grade_level` migra
+  para exatamente uma linha do novo conjunto; um perfil sem ano fica com o
+  conjunto vazio, tal como antes ficava `null`. A migração que remove a
+  coluna verifica primeiro se estreitar a chave de unicidade do perfil (que
+  deixa de incluir o ano) colidiria com algum perfil existente — e aborta
+  em vez de arriscar, se colidir.
+- **Interface por chips, não texto livre.** "Ano(s) de escolaridade" passa a
+  aceitar 0..N valores, cada um uma etiqueta removível — nunca um campo de
+  texto a ser interpretado.
+- **Partilha, reutilização e cópias de segurança preservam o conjunto
+  inteiro.** A partilha de configuração entre anos letivos sobe para
+  `schema_version 2` (pacotes antigos são recusados com aviso explícito, não
+  lidos às cegas); as cópias de segurança sobem para `schema_version 6` e
+  continuam a ler cópias antigas com um único ano, sem quebrar restauros já
+  feitos.
+
+Não existe nenhum motor de elegibilidade turma↔perfil por ano — não foi
+criado agora, e a auditoria confirmou que também não existia antes: a escolha
+do perfil de uma turma continua inteiramente manual.
+
 ## [0.104.2] — 2026-09-01
 
 Um pedido de suporte era enviado para o silêncio. A Central registava-o, a

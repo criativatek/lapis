@@ -95,8 +95,11 @@ final class WriteConfigurationImport
         $subject = Subject::query()->where('code', $data['subject_code'])->firstOrFail();
         $scale = Scale::query()->where('name', $data['scale_reference']['name'])->where('kind', $data['scale_reference']['kind'])
             ->when($data['scale_reference']['system'], fn ($q) => $q->whereNull('organization_id'), fn ($q) => $q->whereNotNull('organization_id'))->firstOrFail();
-        $profile = AssessmentProfile::query()->create(['academic_year_id' => $year->id, 'subject_id' => $subject->id, 'grade_level' => $data['grade_level'], 'name' => $data['name'], 'description' => $data['description']]);
+        $profile = AssessmentProfile::query()->create(['academic_year_id' => $year->id, 'subject_id' => $subject->id, 'name' => $data['name'], 'description' => $data['description']]);
         $profile->forceFill(['is_institutional_template' => $data['is_institutional_template']])->save();
+        foreach (array_unique($data['grade_levels']) as $gradeLevel) {
+            $profile->gradeLevels()->create(['grade_level' => $gradeLevel]);
+        }
         $version = AssessmentProfileVersion::query()->create([...$data['version'], 'assessment_profile_id' => $profile->id, 'scale_id' => $scale->id, 'status' => ProfileVersionStatus::Draft, 'version_number' => ((int) $profile->versions()->max('version_number')) + 1]);
         $domainMap = [];
         $createdCodes = [];

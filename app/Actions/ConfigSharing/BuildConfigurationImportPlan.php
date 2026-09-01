@@ -39,7 +39,17 @@ final class BuildConfigurationImportPlan
         foreach ($package['payload']['assessment_profiles'] as $data) {
             $year = AcademicYear::query()->where('label', $data['academic_year_label'])->first();
             $subject = Subject::query()->where('code', $data['subject_code'])->first();
-            $existing = $year && $subject ? AssessmentProfile::query()->with(['versions.scale', 'versions.domains.domain'])->where('academic_year_id', $year->id)->where('subject_id', $subject->id)->where('grade_level', $data['grade_level'])->where('name', $data['name'])->first() : null;
+            $candidates = $year && $subject ? AssessmentProfile::query()->with(['versions.scale', 'versions.domains.domain', 'gradeLevels'])->where('academic_year_id', $year->id)->where('subject_id', $subject->id)->where('name', $data['name'])->get() : collect();
+            /** @var list<string> $wantedGradeLevels */
+            $wantedGradeLevels = $data['grade_levels'];
+            sort($wantedGradeLevels);
+            $existing = $candidates->first(function (AssessmentProfile $candidate) use ($wantedGradeLevels): bool {
+                /** @var list<string> $candidateGradeLevels */
+                $candidateGradeLevels = $candidate->gradeLevels->pluck('grade_level')->all();
+                sort($candidateGradeLevels);
+
+                return $candidateGradeLevels === $wantedGradeLevels;
+            });
             $profileRow = $this->profileRow($data, $existing);
             $dependencyConflict = collect($rows)->contains(fn (array $row): bool => $row['status'] === 'conflict' && (
                 ($row['type'] === 'academic_year' && $row['data']['label'] === $data['academic_year_label'])

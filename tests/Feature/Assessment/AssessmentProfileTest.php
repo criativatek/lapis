@@ -61,7 +61,7 @@ class AssessmentProfileTest extends TestCase
             'name' => 'Português – 7.º Ano – Escala 1 a 5',
             'academic_year_id' => $context['year'],
             'subject_id' => $context['subject'],
-            'grade_level' => '7.º',
+            'grade_levels' => ['7.º'],
             'description' => null,
             'scale_id' => $this->scaleId(),
             'domains' => [
@@ -85,6 +85,79 @@ class AssessmentProfileTest extends TestCase
         $version = $profile->versions()->firstOrFail();
         $this->assertSame(ProfileVersionStatus::Draft, $version->status);
         $this->assertSame(5, $version->domains()->count());
+    }
+
+    #[Test]
+    public function a_profile_can_be_created_with_one_two_or_three_grade_levels(): void
+    {
+        foreach ([['7.º'], ['7.º', '8.º'], ['7.º', '8.º', '9.º']] as $index => $gradeLevels) {
+            $this->actingAs($this->user)
+                ->post('/assessment-profiles', $this->payload(['name' => "Perfil {$index}", 'grade_levels' => $gradeLevels]))
+                ->assertRedirect('/assessment-profiles');
+
+            $profile = AssessmentProfile::withoutGlobalScope('organization')->where('name', "Perfil {$index}")->firstOrFail();
+            $this->assertSame($gradeLevels, $profile->gradeLevels->pluck('grade_level')->all());
+        }
+    }
+
+    #[Test]
+    public function a_profile_can_be_created_with_no_grade_level_at_all(): void
+    {
+        $this->actingAs($this->user)->post('/assessment-profiles', $this->payload(['grade_levels' => []]))->assertRedirect('/assessment-profiles');
+
+        $profile = AssessmentProfile::withoutGlobalScope('organization')->firstOrFail();
+        $this->assertSame([], $profile->gradeLevels->pluck('grade_level')->all());
+    }
+
+    #[Test]
+    public function duplicate_grade_levels_in_the_same_request_are_rejected(): void
+    {
+        $this->actingAs($this->user)
+            ->post('/assessment-profiles', $this->payload(['grade_levels' => ['7.º', '7.º']]))
+            ->assertSessionHasErrors('grade_levels.1');
+
+        $this->assertSame(0, AssessmentProfile::withoutGlobalScope('organization')->count());
+    }
+
+    #[Test]
+    public function a_grade_level_longer_than_sixteen_characters_is_rejected(): void
+    {
+        $this->actingAs($this->user)
+            ->post('/assessment-profiles', $this->payload(['grade_levels' => [str_repeat('x', 17)]]))
+            ->assertSessionHasErrors('grade_levels.0');
+
+        $this->assertSame(0, AssessmentProfile::withoutGlobalScope('organization')->count());
+    }
+
+    #[Test]
+    public function editing_a_profile_can_add_and_remove_grade_levels_without_touching_domains(): void
+    {
+        $this->actingAs($this->user)->post('/assessment-profiles', $this->payload(['grade_levels' => ['7.º']]));
+        $profile = AssessmentProfile::withoutGlobalScope('organization')->firstOrFail();
+        $domainsBefore = $profile->draftVersion()->domains()->orderBy('id')->get(['domain_id', 'weight_percent', 'sequence'])->toArray();
+
+        $this->actingAs($this->user)
+            ->put("/assessment-profiles/{$profile->ulid}", $this->payload([
+                'academic_year_id' => $profile->academic_year_id,
+                'subject_id' => $profile->subject_id,
+                'grade_levels' => ['7.º', '8.º'],
+            ]))
+            ->assertRedirect();
+
+        $profile->refresh();
+        $this->assertSame(['7.º', '8.º'], $profile->gradeLevels->pluck('grade_level')->all());
+        $domainsAfter = $profile->draftVersion()->domains()->orderBy('id')->get(['domain_id', 'weight_percent', 'sequence'])->toArray();
+        $this->assertSame($domainsBefore, $domainsAfter, 'Editing grade levels must not touch profile_version_domains.');
+
+        $this->actingAs($this->user)
+            ->put("/assessment-profiles/{$profile->ulid}", $this->payload([
+                'academic_year_id' => $profile->academic_year_id,
+                'subject_id' => $profile->subject_id,
+                'grade_levels' => ['8.º'],
+            ]))
+            ->assertRedirect();
+
+        $this->assertSame(['8.º'], $profile->refresh()->gradeLevels->pluck('grade_level')->all());
     }
 
     #[Test]

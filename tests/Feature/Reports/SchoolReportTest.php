@@ -181,10 +181,9 @@ class SchoolReportTest extends TestCase
             // Its OWN profile: only one version per profile may be active, so
             // the second class needs a profile of its own to sit on the other
             // scale.
-            $profile = AssessmentProfile::factory()->recycle($this->organization)->create([
+            $profile = AssessmentProfile::factory()->recycle($this->organization)->withGradeLevels(['8.º'])->create([
                 'academic_year_id' => $original->academic_year_id,
                 'subject_id' => $original->subject_id,
-                'grade_level' => '8.º',
                 'name' => 'Português – 8.º Ano',
             ]);
 

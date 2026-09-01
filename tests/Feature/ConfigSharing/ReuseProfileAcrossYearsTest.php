@@ -55,6 +55,11 @@ final class ReuseProfileAcrossYearsTest extends TestCase
             );
             $this->assertSame($sourceAttributes, $source->fresh()->getAttributes());
             $this->assertSame($sourceVersionAttributes, $source->currentVersion->fresh()->getAttributes());
+            $this->assertSame(
+                ['7.º', '8.º', '9.º'],
+                $copy->gradeLevels->pluck('grade_level')->all(),
+                'The reuse must not reduce a multi-grade profile down to its first grade level.',
+            );
         });
 
         $this->assertSame($studentCount, $this->tableCount('students'));
@@ -181,7 +186,7 @@ final class ReuseProfileAcrossYearsTest extends TestCase
     private function sourcePackage(): array
     {
         return [
-            'kind' => 'lapis_configuration_package', 'schema_version' => 1, 'exported_at' => now()->toIso8601String(),
+            'kind' => 'lapis_configuration_package', 'schema_version' => 2, 'exported_at' => now()->toIso8601String(),
             'product' => ['name' => 'LAPIS', 'version' => 'test'], 'provenance' => ['note' => 'Teste', 'organization_name' => 'Origem'],
             'components' => ['academic_years', 'subjects', 'assessment_profiles'],
             'payload' => [
@@ -189,7 +194,7 @@ final class ReuseProfileAcrossYearsTest extends TestCase
                 'academic_years' => [['label' => '2026/2027', 'starts_on' => '2026-09-01', 'ends_on' => '2027-07-15', 'status' => 'draft', 'country_code' => 'PT', 'region_code' => null, 'periods' => []]],
                 'subjects' => [['name' => 'Matemática', 'code' => 'MAT']], 'scales' => [],
                 'assessment_profiles' => [[
-                    'academic_year_label' => '2026/2027', 'subject_code' => 'MAT', 'grade_level' => '7', 'name' => 'Perfil MAT', 'description' => 'Estrutural', 'is_institutional_template' => false,
+                    'academic_year_label' => '2026/2027', 'subject_code' => 'MAT', 'grade_levels' => ['7.º', '8.º', '9.º'], 'name' => 'Perfil MAT', 'description' => 'Estrutural', 'is_institutional_template' => false,
                     'scale_reference' => ['name' => 'Escala 1 a 5', 'kind' => 'level', 'system' => true],
                     'version' => ['domain_weight_mode' => 'must_total_100', 'period_result_mode' => 'weighted_domain_average', 'accumulated_mode' => null, 'absence_mode' => null, 'rounding_mode' => null, 'rounding_scale' => 0, 'rounding_stage' => 'final_only', 'minimum_rules' => []],
                     'domains' => [['subject_code' => 'MAT', 'code' => 'NUM', 'name' => 'Números', 'parent_code' => null, 'domain_sequence' => 1, 'is_active' => true, 'weight_percent' => '100.0000', 'sequence' => 1, 'expected_element_count' => null, 'minimum_element_count' => null]],

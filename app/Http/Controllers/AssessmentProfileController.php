@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Services\Assessment\ActivateProfileVersion;
 use App\Services\Assessment\ProfileBuilder;
 use App\Services\Audit\AuditLog;
+use App\Support\Assessment\GradeLevelLabel;
 use App\Support\Assessment\ProfileActivationException;
 use App\Support\Help\HelpArticle;
 use App\Support\Help\HelpCenter;
@@ -34,19 +35,24 @@ class AssessmentProfileController extends Controller
         Gate::authorize('viewAny', AssessmentProfile::class);
 
         return Inertia::render('assessment-profiles/Index', [
-            'profiles' => AssessmentProfile::with(['subject', 'academicYear', 'currentVersion'])
+            'profiles' => AssessmentProfile::with(['subject', 'academicYear', 'currentVersion', 'gradeLevels'])
                 ->orderByDesc('created_at')
                 ->get()
-                ->map(fn (AssessmentProfile $profile) => [
-                    'ulid' => $profile->ulid,
-                    'name' => $profile->name,
-                    'subject' => $profile->subject->name,
-                    'academic_year' => $profile->academicYear->label,
-                    'grade_level' => $profile->grade_level,
-                    'is_active' => $profile->current_version_id !== null,
-                    'status_label' => $profile->currentVersion?->status->label() ?? __('Rascunho'),
-                    'has_draft' => $profile->draftVersion() !== null,
-                ]),
+                ->map(function (AssessmentProfile $profile) {
+                    $gradeLevels = array_values($profile->gradeLevels->pluck('grade_level')->all());
+
+                    return [
+                        'ulid' => $profile->ulid,
+                        'name' => $profile->name,
+                        'subject' => $profile->subject->name,
+                        'academic_year' => $profile->academicYear->label,
+                        'grade_levels' => $gradeLevels,
+                        'grade_levels_label' => GradeLevelLabel::forList($gradeLevels),
+                        'is_active' => $profile->current_version_id !== null,
+                        'status_label' => $profile->currentVersion?->status->label() ?? __('Rascunho'),
+                        'has_draft' => $profile->draftVersion() !== null,
+                    ];
+                }),
             // A member reads and uses a profile to teach; only the
             // organization's owner defines how grades are calculated (Fatia 1).
             'canManage' => Gate::allows('create', AssessmentProfile::class),
@@ -74,9 +80,10 @@ class AssessmentProfileController extends Controller
         Gate::authorize('create', AssessmentProfile::class);
 
         $this->builder->create(
-            $request->safe()->only(['name', 'academic_year_id', 'subject_id', 'grade_level', 'description']),
+            $request->safe()->only(['name', 'academic_year_id', 'subject_id', 'description']),
             (int) $request->validated('scale_id'),
             $request->validated('domains'),
+            $request->validated('grade_levels', []),
         );
 
         return to_route('assessment-profiles.index');
@@ -88,6 +95,7 @@ class AssessmentProfileController extends Controller
 
         $version = $assessmentProfile->draftVersion() ?? $assessmentProfile->currentVersion;
         $version?->load('domains.domain');
+        $assessmentProfile->load('gradeLevels');
 
         return Inertia::render('assessment-profiles/Edit', [
             ...$this->formOptions(),
@@ -96,7 +104,7 @@ class AssessmentProfileController extends Controller
                 'name' => $assessmentProfile->name,
                 'academic_year_id' => $assessmentProfile->academic_year_id,
                 'subject_id' => $assessmentProfile->subject_id,
-                'grade_level' => $assessmentProfile->grade_level,
+                'grade_levels' => $assessmentProfile->gradeLevels->pluck('grade_level')->all(),
                 'description' => $assessmentProfile->description,
                 'scale_id' => $version?->scale_id,
                 'editing_active' => $assessmentProfile->draftVersion() === null && $assessmentProfile->current_version_id !== null,
@@ -117,9 +125,10 @@ class AssessmentProfileController extends Controller
 
         $this->builder->update(
             $assessmentProfile,
-            $request->safe()->only(['name', 'academic_year_id', 'subject_id', 'grade_level', 'description']),
+            $request->safe()->only(['name', 'academic_year_id', 'subject_id', 'description']),
             (int) $request->validated('scale_id'),
             $request->validated('domains'),
+            $request->validated('grade_levels', []),
         );
 
         return to_route('assessment-profiles.index');

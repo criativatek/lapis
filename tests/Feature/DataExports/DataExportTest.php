@@ -386,7 +386,7 @@ class DataExportTest extends TestCase
         $zip = $this->extractZip(Storage::disk('local')->path($export->disk_path));
         $backup = json_decode((string) $zip->getFromName('backup-lapis.json'), true);
 
-        $this->assertSame(5, $backup['schema_version']);
+        $this->assertSame(6, $backup['schema_version']);
         $this->assertNotEmpty($backup['enrollments']);
         foreach ($backup['enrollments'] as $enrollment) {
             $this->assertArrayHasKey('enrolled_on', $enrollment);

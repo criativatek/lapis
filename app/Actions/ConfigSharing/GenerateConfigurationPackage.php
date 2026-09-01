@@ -24,7 +24,7 @@ final class GenerateConfigurationPackage
      */
     public function handle(array $selection): array
     {
-        $profiles = AssessmentProfile::query()->with(['academicYear.periods', 'subject', 'currentVersion.scale.levels', 'currentVersion.domains.domain'])->whereIn('ulid', $selection['assessment_profiles'] ?? [])->get();
+        $profiles = AssessmentProfile::query()->with(['academicYear.periods', 'subject', 'gradeLevels', 'currentVersion.scale.levels', 'currentVersion.domains.domain'])->whereIn('ulid', $selection['assessment_profiles'] ?? [])->get();
         $years = AcademicYear::query()->with('periods')->whereIn('ulid', $selection['academic_years'] ?? [])->get();
         $subjects = Subject::query()->whereIn('ulid', $selection['subjects'] ?? [])->get();
         $scales = Scale::query()->with('levels')->whereNotNull('organization_id')->whereIn('ulid', $selection['scales'] ?? [])->get();
@@ -56,7 +56,7 @@ final class GenerateConfigurationPackage
         $components = collect($payload)->filter(fn ($value): bool => $value !== null && $value !== [])->keys()->values()->all();
 
         return [
-            'kind' => 'lapis_configuration_package', 'schema_version' => 1, 'exported_at' => now()->toIso8601String(),
+            'kind' => 'lapis_configuration_package', 'schema_version' => 2, 'exported_at' => now()->toIso8601String(),
             'product' => ['name' => 'Lapispro', 'version' => (string) config('app.version')],
             'provenance' => ['note' => 'Informativo, nunca usado para autorizar escrita.', 'organization_name' => $identity->official_name ?? $identity->short_name ?? 'Lapispro'],
             'components' => $components, 'payload' => $payload,
@@ -79,7 +79,7 @@ final class GenerateConfigurationPackage
 
         return [
             'academic_year_label' => $profile->academicYear->label, 'subject_code' => $profile->subject->code,
-            'grade_level' => $profile->grade_level, 'name' => $profile->name, 'description' => $profile->description,
+            'grade_levels' => $profile->gradeLevels->pluck('grade_level')->all(), 'name' => $profile->name, 'description' => $profile->description,
             'is_institutional_template' => $profile->is_institutional_template,
             'scale_reference' => ['name' => $scale->name, 'kind' => $scale->kind, 'system' => $scale->isSystem()],
             'version' => Arr::only($version->attributesToArray(), ['domain_weight_mode', 'period_result_mode', 'accumulated_mode', 'absence_mode', 'rounding_mode', 'rounding_scale', 'rounding_stage', 'minimum_rules']),

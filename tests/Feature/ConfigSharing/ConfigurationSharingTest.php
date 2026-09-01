@@ -133,6 +133,38 @@ final class ConfigurationSharingTest extends TestCase
     }
 
     #[Test]
+    public function a_schema_version_1_package_is_rejected_with_a_clear_message(): void
+    {
+        $package = $this->package();
+        $package['schema_version'] = 1;
+
+        try {
+            app(ValidateConfigurationPackage::class)->fromJson(json_encode($package, JSON_THROW_ON_ERROR));
+            $this->fail('Expected validation failure.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                ['Este pacote foi gerado por uma versão anterior; volte a gerar a partilha.'],
+                $exception->errors()['file'],
+            );
+        }
+    }
+
+    #[Test]
+    public function a_profile_shared_with_three_grade_levels_arrives_with_all_three(): void
+    {
+        $organization = User::factory()->create()->personalOrganization();
+        app(CurrentOrganization::class)->runFor($organization, function (): void {
+            $package = $this->package();
+            $package['payload']['assessment_profiles'][0]['grade_levels'] = ['7.º', '8.º', '9.º'];
+
+            app(WriteConfigurationImport::class)->handle($package, ['school_identity', 'academic_year', 'subject', 'assessment_profile']);
+
+            $profile = AssessmentProfile::query()->with('gradeLevels')->sole();
+            $this->assertSame(['7.º', '8.º', '9.º'], $profile->gradeLevels->pluck('grade_level')->all());
+        });
+    }
+
+    #[Test]
     public function import_session_is_bound_to_the_current_tenant_and_provenance_cannot_target_writes(): void
     {
         $user = User::factory()->create();
@@ -198,7 +230,7 @@ final class ConfigurationSharingTest extends TestCase
     private function package(): array
     {
         return [
-            'kind' => 'lapis_configuration_package', 'schema_version' => 1, 'exported_at' => now()->toIso8601String(),
+            'kind' => 'lapis_configuration_package', 'schema_version' => 2, 'exported_at' => now()->toIso8601String(),
             'product' => ['name' => 'LAPIS', 'version' => 'test'], 'provenance' => ['note' => 'Informativo, nunca usado para autorizar escrita.', 'organization_name' => 'Origem'],
             'components' => ['school_identity', 'academic_years', 'subjects', 'assessment_profiles'],
             'payload' => [
@@ -206,7 +238,7 @@ final class ConfigurationSharingTest extends TestCase
                 'academic_years' => [['label' => '2026/2027', 'starts_on' => '2026-09-01', 'ends_on' => '2027-07-15', 'status' => 'draft', 'country_code' => 'PT', 'region_code' => null, 'periods' => []]],
                 'subjects' => [['name' => 'Matemática', 'code' => 'MAT']], 'scales' => [],
                 'assessment_profiles' => [[
-                    'academic_year_label' => '2026/2027', 'subject_code' => 'MAT', 'grade_level' => '7', 'name' => 'Perfil MAT', 'description' => 'Estrutural', 'is_institutional_template' => false,
+                    'academic_year_label' => '2026/2027', 'subject_code' => 'MAT', 'grade_levels' => ['7'], 'name' => 'Perfil MAT', 'description' => 'Estrutural', 'is_institutional_template' => false,
                     'scale_reference' => ['name' => 'Escala 1 a 5', 'kind' => 'level', 'system' => true],
                     'version' => ['domain_weight_mode' => 'must_total_100', 'period_result_mode' => 'weighted_domain_average', 'accumulated_mode' => null, 'absence_mode' => null, 'rounding_mode' => null, 'rounding_scale' => 0, 'rounding_stage' => 'final_only', 'minimum_rules' => []],
                     'domains' => [['subject_code' => 'MAT', 'code' => 'NUM', 'name' => 'Números', 'parent_code' => null, 'domain_sequence' => 1, 'is_active' => true, 'weight_percent' => '100.0000', 'sequence' => 1, 'expected_element_count' => null, 'minimum_element_count' => null]],

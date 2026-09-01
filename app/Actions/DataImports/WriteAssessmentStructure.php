@@ -296,9 +296,12 @@ class WriteAssessmentStructure
                     'ulid' => $this->writableUlid($row), 'name' => $row['name'], 'description' => $row['description'],
                     'academic_year_id' => $row['academic_year_id'] ?? $this->resolveId($row['academic_year_ulid'] ?? null, $academicYearsByUlid),
                     'subject_id' => $row['subject_id'] ?? $this->resolveId($row['subject_ulid'] ?? null, $subjectsByUlid),
-                    'grade_level' => $row['grade_level'], 'is_institutional_template' => $row['is_institutional_template'],
+                    'is_institutional_template' => $row['is_institutional_template'],
                 ]);
                 $profile->save();
+                foreach ($row['grade_levels'] ?? [] as $gradeLevel) {
+                    $profile->gradeLevels()->create(['grade_level' => $gradeLevel]);
+                }
                 $byUlid[$row['ulid']] = $profile->getKey();
                 $createdIds[$profile->getKey()] = true;
             } elseif (in_array($row['classification'], ['existing', 'conflict'], true) && isset($row['existing_id'])) {

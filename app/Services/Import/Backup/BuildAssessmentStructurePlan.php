@@ -439,8 +439,12 @@ class BuildAssessmentStructurePlan
     {
         $ulids = collect($profilesIn)->pluck('ulid');
         $lookups = $this->ulidLookups(AssessmentProfile::class, $ulids, $destination);
-        $byBusinessKey = AssessmentProfile::query()->where('organization_id', $destination->getKey())->whereIn('name', collect($profilesIn)->pluck('name'))->get()
-            ->keyBy(fn (AssessmentProfile $profile): string => ($profile->academic_year_id ?? 'null').':'.($profile->subject_id ?? 'null').":{$profile->grade_level}:{$profile->name}");
+        $byBusinessKey = AssessmentProfile::query()->with('gradeLevels')->where('organization_id', $destination->getKey())->whereIn('name', collect($profilesIn)->pluck('name'))->get()
+            ->keyBy(function (AssessmentProfile $profile): string {
+                $gradeLevels = $profile->gradeLevels->pluck('grade_level')->sort()->values()->implode(',');
+
+                return ($profile->academic_year_id ?? 'null').':'.($profile->subject_id ?? 'null').":{$gradeLevels}:{$profile->name}";
+            });
 
         return collect($profilesIn)->map(function (array $row) use ($academicYearsByLabel, $subjectsByName, $lookups, $byBusinessKey): array {
             $existing = $lookups['existing']->get($row['ulid']);
@@ -473,7 +477,11 @@ class BuildAssessmentStructurePlan
             if ($lookups['elsewhere']->has($row['ulid'])) {
                 $academicYearId = $academicYear['existing_id'] ?? null;
                 $subjectId = $subject['existing_id'] ?? null;
-                $key = ($academicYearId ?? 'null').':'.($subjectId ?? 'null').":{$row['grade_level']}:{$row['name']}";
+                /** @var list<string> $rowGradeLevelList */
+                $rowGradeLevelList = $row['grade_levels'] ?? ($row['grade_level'] !== null ? [$row['grade_level']] : []);
+                sort($rowGradeLevelList);
+                $rowGradeLevels = implode(',', $rowGradeLevelList);
+                $key = ($academicYearId ?? 'null').':'.($subjectId ?? 'null').":{$rowGradeLevels}:{$row['name']}";
                 $match = (($row['academic_year'] === null || $academicYearId !== null) && ($row['subject'] === null || $subjectId !== null)) ? $byBusinessKey->get($key) : null;
 
                 if ($match !== null) {
@@ -488,7 +496,7 @@ class BuildAssessmentStructurePlan
                 'preserve_ulid' => ! $lookups['elsewhere']->has($row['ulid']),
                 'description' => $row['description'], 'academic_year_ulid' => $academicYear['ulid'] ?? null, 'academic_year_id' => $academicYear['existing_id'] ?? null,
                 'subject_ulid' => $subject['ulid'] ?? null, 'subject_id' => $subject['existing_id'] ?? null,
-                'grade_level' => $row['grade_level'], 'is_institutional_template' => $row['is_institutional_template'],
+                'grade_levels' => $row['grade_levels'] ?? ($row['grade_level'] !== null ? [$row['grade_level']] : []), 'is_institutional_template' => $row['is_institutional_template'],
             ];
         })->values()->all();
     }
