@@ -49,6 +49,17 @@ class PrivateDiskIsGroupReadableTest extends TestCase
     }
 
     #[Test]
+    public function the_disk_declares_the_visibility_that_makes_those_permissions_apply(): void
+    {
+        // O `permissions` sozinho engana. O Flysystem só faz `chmod` a um
+        // ficheiro quando lhe passam visibilidade; sem esta linha o bloco acima
+        // vale para os diretórios e o modo dos ficheiros vem do `umask`. Foi
+        // assim que um ficheiro nasceu `664` em produção com `0660`
+        // configurado — uma configuração correcta que não chegava a nada.
+        $this->assertSame('private', config('filesystems.disks.local.visibility'));
+    }
+
+    #[Test]
     public function private_never_means_readable_by_everybody(): void
     {
         // A correção do grupo não pode ter alargado o que «privado» quer dizer:

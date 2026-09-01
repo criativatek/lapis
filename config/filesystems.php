@@ -52,6 +52,13 @@ return [
             // `other` continua a zero: privado quer dizer privado. O que muda é
             // só o grupo da aplicação poder ler e arrumar o que a aplicação
             // escreveu.
+            // SEM ISTO O BLOCO ABAIXO NÃO SE APLICA AOS FICHEIROS. O Flysystem
+            // só faz `chmod` a um ficheiro quando lhe passam visibilidade; sem
+            // ela o modo vem do `umask` do processo e o `permissions` fica a
+            // valer só para os diretórios. Verificado em produção: a pasta
+            // nasceu `2770` e o ficheiro lá dentro nasceu `664`.
+            'visibility' => 'private',
+
             'permissions' => [
                 'file' => ['public' => 0644, 'private' => 0660],
                 'dir' => ['public' => 0755, 'private' => 0770],

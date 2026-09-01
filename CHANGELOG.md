@@ -25,6 +25,23 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.105.3] — 2026-09-01
+
+A correcção anterior aplicava-se aos diretórios e não aos ficheiros. Verificado
+em produção logo a seguir ao deploy da 0.105.2: a pasta nasceu `2770`, como
+devia, e o ficheiro lá dentro nasceu **`664`** — com `0660` configurado. O
+Flysystem só faz `chmod` a um ficheiro quando lhe passam visibilidade; sem ela o
+modo vem do `umask` do processo e o bloco `permissions` fica a valer só para
+metade do que diz. Uma configuração correcta que não chegava a nada.
+
+### Corrigido
+
+- **O disco privado declara `visibility => private`**, que é o que faz as
+  permissões da 0.105.2 aplicarem-se também aos ficheiros.
+- **O teste passa a afirmar essa linha.** Sem ela ficava verde sobre uma
+  configuração que o disco ignorava — exactamente o tipo de verde que não prova
+  nada. Visto a falhar antes de passar.
+
 ## [0.105.2] — 2026-09-01
 
 O disco privado criava as suas pastas legíveis só por quem as escreveu, e a
