@@ -33,7 +33,10 @@ class GeminiProviderTest extends TestCase
 
     private const BASE_URL = 'https://generativelanguage.exemplo.invalid/v1beta';
 
-    private function provider(int $timeout = 20, int $maxOutputTokens = 512, string $model = 'gemini-2.5-flash'): GeminiProvider
+    /**
+     * @param  list<string>  $fallbacks
+     */
+    private function provider(int $timeout = 20, int $maxOutputTokens = 512, string $model = 'gemini-2.5-flash', array $fallbacks = []): GeminiProvider
     {
         return new GeminiProvider(
             baseUrl: self::BASE_URL,
@@ -41,6 +44,7 @@ class GeminiProviderTest extends TestCase
             model: $model,
             timeout: $timeout,
             maxOutputTokens: $maxOutputTokens,
+            fallbackModels: $fallbacks,
         );
     }
 
@@ -420,6 +424,71 @@ class GeminiProviderTest extends TestCase
 
             return true;
         });
+    }
+
+    /**
+     * UM MODELO QUE DIZ «AGORA NÃO» NÃO É UM PEDIDO QUE CORREU MAL.
+     *
+     * A 2026-09-01 a Google retirou o `gemini-2.5-flash` a meio do serviço e o
+     * tier `flash` inteiro passou a tarde em 503. Todas essas respostas chegam
+     * em menos de um segundo e são sobre O MODELO, não sobre o pedido — e a
+     * aplicação tinha um modelo só e nenhuma segunda hipótese.
+     */
+    #[Test]
+    public function a_model_that_cannot_serve_hands_the_request_to_the_next_one(): void
+    {
+        foreach ([404, 429, 503] as $status) {
+            Http::fake([
+                '*models/gemini-indisponivel:*' => Http::response(['error' => ['code' => $status]], $status),
+                '*models/gemini-de-recurso:*' => Http::response(
+                    ['candidates' => [['content' => ['parts' => [['text' => 'respondeu o segundo']]]]]],
+                ),
+            ]);
+
+            $response = $this->provider(model: 'gemini-indisponivel', fallbacks: ['gemini-de-recurso'])
+                ->complete($this->request());
+
+            $this->assertSame('respondeu o segundo', $response->text);
+
+            // O modelo devolvido é o que RESPONDEU, ou o registo de utilização
+            // atribui a resposta a quem nunca a deu.
+            $this->assertSame('gemini-de-recurso', $response->model, "estado {$status}");
+        }
+    }
+
+    /**
+     * UM 400 NÃO ANDA À VOLTA DOS MODELOS. Esse é sobre o pedido, e fazer a
+     * mesma pergunta malformada a um segundo modelo transforma um defeito em
+     * dois — além de gastar o orçamento de tempo de quem espera.
+     */
+    #[Test]
+    public function a_bad_request_is_not_asked_of_a_second_model(): void
+    {
+        Http::fake(['*' => Http::response(['error' => ['code' => 400]], 400)]);
+
+        try {
+            $this->provider(model: 'gemini-primeiro', fallbacks: ['gemini-de-recurso'])
+                ->complete($this->request());
+            $this->fail('Devia ter falhado.');
+        } catch (AiRequestFailed) {
+            // esperado
+        }
+
+        Http::assertSentCount(1);
+    }
+
+    /**
+     * SEM RECURSO CONFIGURADO, NADA MUDA. A resiliência é uma escolha de quem
+     * instala, e uma instalação que não a fez continua a ser avisada à primeira.
+     */
+    #[Test]
+    public function without_a_fallback_the_refusal_arrives_as_it_always_did(): void
+    {
+        Http::fake(['*' => Http::response(['error' => ['code' => 503]], 503)]);
+
+        $this->expectException(AiRequestFailed::class);
+
+        $this->provider(model: 'gemini-primeiro')->complete($this->request());
     }
 
     /**

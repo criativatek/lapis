@@ -98,6 +98,14 @@ class AppServiceProvider extends ServiceProvider
             model: (string) config('lapis.ai.model'),
             timeout: (int) config('lapis.ai.timeout'),
             maxOutputTokens: (int) config('lapis.ai.max_output_tokens'),
+            // Normalizado aqui e nao no config: o que sai de config() e
+            // mixed, e o construtor promete uma list<string>. Reindexar e
+            // converter e o que torna essa promessa verdadeira em vez de
+            // declarada.
+            fallbackModels: array_values(array_map(
+                static fn (mixed $fallbackModel): string => (string) $fallbackModel,
+                (array) config('lapis.ai.gemini.fallback_models', []),
+            )),
         ));
 
         $this->app->singleton(FakeAiTextProvider::class);

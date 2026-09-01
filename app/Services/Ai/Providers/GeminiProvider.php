@@ -58,12 +58,26 @@ use Illuminate\Support\Facades\Http;
  */
 class GeminiProvider implements AiTextProvider
 {
+    /**
+     * The statuses that mean «this model cannot serve you», as opposed to
+     * «this request is wrong». All three come back in well under a second and
+     * all three are about the MODEL: 404 it was retired, 429 the quota for it
+     * is spent, 503 it has no capacity right now. A 400 is not here on purpose
+     * — that one is about the request, and asking a second model the same
+     * malformed question is how one bug becomes two.
+     */
+    protected const TRY_ANOTHER_MODEL = [404, 429, 503];
+
+    /**
+     * @param  list<string>  $fallbackModels  tried in order, once each
+     */
     public function __construct(
         protected string $baseUrl,
         protected string $key,
         protected string $model,
         protected int $timeout,
         protected int $maxOutputTokens,
+        protected array $fallbackModels = [],
     ) {}
 
     public function name(): string
@@ -78,6 +92,27 @@ class GeminiProvider implements AiTextProvider
 
     public function complete(AiTextRequest $request): AiTextResponse
     {
+        // The configured model is always tried, so the loop always runs and a
+        // fall through it always leaves a refusal behind. There is no «no model
+        // was asked» branch to guard against.
+        $refusal = null;
+
+        foreach ([$this->model, ...$this->fallbackModels] as $model) {
+            try {
+                return $this->attempt($request, $model);
+            } catch (ModelCannotServe $exception) {
+                // Remembered, not thrown: if every model answers the same way,
+                // the caller is told about the FIRST one, which is the one the
+                // operator actually configured and the only one they can act on.
+                $refusal ??= $exception;
+            }
+        }
+
+        throw AiRequestFailed::refused($refusal->status);
+    }
+
+    protected function attempt(AiTextRequest $request, string $model): AiTextResponse
+    {
         $startedAt = hrtime(true);
 
         try {
@@ -88,7 +123,7 @@ class GeminiProvider implements AiTextProvider
                 ->connectTimeout(min(5, $this->timeout))
                 ->acceptJson()
                 ->asJson()
-                ->post($this->url(), [
+                ->post($this->url($model), [
                     'systemInstruction' => [
                         'parts' => [['text' => $request->instruction]],
                     ],
@@ -96,7 +131,7 @@ class GeminiProvider implements AiTextProvider
                         'role' => 'user',
                         'parts' => [['text' => $request->content]],
                     ]],
-                    'generationConfig' => $this->generationConfig($request),
+                    'generationConfig' => $this->generationConfig($request, $model),
                 ]);
         } catch (ConnectionException $exception) {
             // Reported WITHOUT its message: a connection exception's text
@@ -113,13 +148,17 @@ class GeminiProvider implements AiTextProvider
             // The STATUS, and nothing else. Gemini's error bodies quote back
             // request metadata, and a rejected key names its Google Cloud
             // project — neither belongs in a log line or an exception (§3).
+            if (in_array($response->status(), self::TRY_ANOTHER_MODEL, strict: true)) {
+                throw new ModelCannotServe($response->status());
+            }
+
             throw AiRequestFailed::refused($response->status());
         }
 
         return new AiTextResponse(
             text: $this->textOf($response),
             provider: $this->name(),
-            model: $this->model,
+            model: $model,
             inputTokens: $this->count($response->json('usageMetadata.promptTokenCount')),
             outputTokens: $this->count($response->json('usageMetadata.candidatesTokenCount')),
             latencyMilliseconds: (int) round((hrtime(true) - $startedAt) / 1_000_000),
@@ -139,14 +178,14 @@ class GeminiProvider implements AiTextProvider
      *
      * @return array<string, mixed>
      */
-    protected function generationConfig(AiTextRequest $request): array
+    protected function generationConfig(AiTextRequest $request, string $model): array
     {
         $config = [
             'temperature' => $request->temperature,
             'maxOutputTokens' => $this->budgetFor($request),
         ];
 
-        $thinkingBudget = GeminiThinking::budgetFor($this->model);
+        $thinkingBudget = GeminiThinking::budgetFor($model);
 
         if ($thinkingBudget !== null) {
             $config['thinkingConfig'] = ['thinkingBudget' => $thinkingBudget];
@@ -273,9 +312,9 @@ class GeminiProvider implements AiTextProvider
      * a model name is operator-supplied configuration, and configuration that
      * builds a URL is configuration that can build a different one.
      */
-    protected function url(): string
+    protected function url(string $model): string
     {
-        return $this->baseUrl.'/models/'.rawurlencode($this->model).':generateContent';
+        return $this->baseUrl.'/models/'.rawurlencode($model).':generateContent';
     }
 
     /** An absent count stays absent. Recording it as zero would be a false measurement. */

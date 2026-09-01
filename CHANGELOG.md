@@ -25,6 +25,35 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.105.7] — 2026-09-01
+
+Um modelo que responde «agora não» deixa de derrubar a funcionalidade.
+
+Ao fim de uma tarde inteira a perseguir isto, o retrato é este: a Google retirou
+o `gemini-2.5-flash` a meio do serviço (404), o tier `flash` passou a tarde em
+503 — seis em seis pedidos — e os modelos `pro` respondem 429 com esta chave.
+Todas essas respostas chegam em **menos de um segundo** e todas dizem a mesma
+coisa: *este modelo* não te serve agora. Não dizem nada sobre o pedido. A
+aplicação tinha um modelo só e nenhuma segunda hipótese, e um professor que
+carregasse no botão não obtinha nada durante horas.
+
+### Adicionado
+
+- **Modelos de recurso** (`LAPIS_AI_GEMINI_FALLBACK_MODELS`), tentados por ordem
+  quando o configurado responde **404, 429 ou 503**. Nada muda para quem não
+  configurar nenhum.
+- **Um 400 não anda à volta dos modelos.** Esse é sobre o pedido, e fazer a
+  mesma pergunta malformada a um segundo modelo transforma um defeito em dois.
+- **Um timeout também não.** A decisão «uma tentativa, sem repetição» que já
+  estava escrita no driver mantém-se inteira, e pela razão que lá está: quem
+  esperou por um timeout prefere ser avisado a esperar outra vez. O recurso só
+  se aplica às falhas que chegam depressa.
+- **Sem predefinição de modelos.** Um nome escrito neste repositório apodrece
+  sem aviso — foi exactamente o que aconteceu hoje. Cada instalação declara o
+  que verificou.
+- **O modelo devolvido é o que respondeu**, não o que foi pedido, ou o registo
+  de utilização atribuiria a resposta a quem nunca a deu.
+
 ## [0.105.6] — 2026-09-01
 
 A substituta que a própria Google nomeia é lenta de mais para o tecto desta

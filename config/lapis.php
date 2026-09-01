@@ -279,6 +279,31 @@ return [
                 'LAPIS_AI_GEMINI_BASE_URL',
                 'https://generativelanguage.googleapis.com/v1beta',
             ), '/'),
+
+            /*
+             * Models to try, in order, when the configured one answers that it
+             * cannot serve this request — 404 (retired), 429 (quota) or 503
+             * (capacity). Comma-separated; empty means no fallback and the
+             * failure is reported as it always was.
+             *
+             * WHY THIS EXISTS. On 2026-09-01 Google retired `gemini-2.5-flash`
+             * mid-service and the whole `flash` tier then spent the evening on
+             * 503. Every one of those answers came back in under a second and
+             * said, in effect, «not me, not now» — which is a statement about
+             * one model, not about the request. The application had one model
+             * and no second thought, so a teacher pressing the button got
+             * nothing for hours.
+             *
+             * WHY IT IS EMPTY BY DEFAULT, and not a helpful list. A default
+             * here is a model name frozen into the repository, and the whole
+             * lesson of that day is that model names rot without warning. An
+             * installation states what it has verified; nothing is inherited
+             * from whoever wrote this file.
+             */
+            'fallback_models' => array_values(array_filter(array_map(
+                'trim',
+                explode(',', (string) env('LAPIS_AI_GEMINI_FALLBACK_MODELS', '')),
+            ), static fn (string $model): bool => $model !== '')),
         ],
 
         /*
