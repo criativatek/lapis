@@ -55,10 +55,12 @@ uma única decisão pedagógica.
   texto a ser interpretado.
 - **Partilha, reutilização e cópias de segurança preservam o conjunto
   inteiro.** A partilha de configuração entre anos letivos sobe para
-  `schema_version 2` (pacotes antigos são recusados com aviso explícito, não
-  lidos às cegas); as cópias de segurança sobem para `schema_version 6` e
-  continuam a ler cópias antigas com um único ano, sem quebrar restauros já
-  feitos.
+  `schema_version 2`; um pacote `schema_version 1` já guardado por alguém
+  continua a importar-se — o único ano que tinha vira o único elemento do
+  novo conjunto — em vez de obrigar a gerar a partilha outra vez. As cópias
+  de segurança sobem para `schema_version 6` e continuam a ler cópias antigas
+  com um único ano, sem quebrar restauros já feitos. O mesmo princípio, dos
+  dois lados.
 
 Não existe nenhum motor de elegibilidade turma↔perfil por ano — não foi
 criado agora, e a auditoria confirmou que também não existia antes: a escolha

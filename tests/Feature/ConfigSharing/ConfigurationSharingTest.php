@@ -133,20 +133,24 @@ final class ConfigurationSharingTest extends TestCase
     }
 
     #[Test]
-    public function a_schema_version_1_package_is_rejected_with_a_clear_message(): void
+    public function a_schema_version_1_package_upgrades_its_singular_grade_level_to_a_list(): void
     {
-        $package = $this->package();
-        $package['schema_version'] = 1;
+        $withGradeLevel = $this->package();
+        $withGradeLevel['schema_version'] = 1;
+        $withGradeLevel['payload']['assessment_profiles'][0]['grade_level'] = '7';
+        unset($withGradeLevel['payload']['assessment_profiles'][0]['grade_levels']);
 
-        try {
-            app(ValidateConfigurationPackage::class)->fromJson(json_encode($package, JSON_THROW_ON_ERROR));
-            $this->fail('Expected validation failure.');
-        } catch (ValidationException $exception) {
-            $this->assertSame(
-                ['Este pacote foi gerado por uma versão anterior; volte a gerar a partilha.'],
-                $exception->errors()['file'],
-            );
-        }
+        $upgraded = app(ValidateConfigurationPackage::class)->fromJson(json_encode($withGradeLevel, JSON_THROW_ON_ERROR));
+        $this->assertSame(2, $upgraded['schema_version']);
+        $this->assertSame(['7'], $upgraded['payload']['assessment_profiles'][0]['grade_levels']);
+
+        $withoutGradeLevel = $this->package();
+        $withoutGradeLevel['schema_version'] = 1;
+        $withoutGradeLevel['payload']['assessment_profiles'][0]['grade_level'] = null;
+        unset($withoutGradeLevel['payload']['assessment_profiles'][0]['grade_levels']);
+
+        $upgraded = app(ValidateConfigurationPackage::class)->fromJson(json_encode($withoutGradeLevel, JSON_THROW_ON_ERROR));
+        $this->assertSame([], $upgraded['payload']['assessment_profiles'][0]['grade_levels']);
     }
 
     #[Test]

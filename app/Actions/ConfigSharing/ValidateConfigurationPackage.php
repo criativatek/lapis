@@ -29,7 +29,7 @@ final class ValidateConfigurationPackage
             throw ValidationException::withMessages(['file' => __('Este ficheiro não é um pacote de configuração do Lapispro.')]);
         }
         if (($package['schema_version'] ?? null) === 1) {
-            throw ValidationException::withMessages(['file' => __('Este pacote foi gerado por uma versão anterior; volte a gerar a partilha.')]);
+            $package = $this->upgradeFromSchemaVersion1($package);
         }
         if (($package['schema_version'] ?? null) !== 2) {
             throw ValidationException::withMessages(['file' => __('A versão deste pacote de configuração não é suportada.')]);
@@ -90,6 +90,37 @@ final class ValidateConfigurationPackage
             }
         });
         $validator->validate();
+
+        return $package;
+    }
+
+    /**
+     * A v1 package is what every export written before this release still
+     * has on disk — a single nullable `grade_level` string, itself never
+     * more than the profile's own `['nullable', 'string', 'max:16']` rule
+     * ever allowed. That maps to v2's `grade_levels` with no ambiguity: a
+     * value becomes a one-element list, absence becomes an empty one. Same
+     * precedent as a legacy backup missing a newer collection
+     * (BackupSchemaCompatibility) — the schema moved, the old file didn't
+     * stop being readable.
+     *
+     * @param  array<string, mixed>  $package
+     * @return array<string, mixed>
+     */
+    private function upgradeFromSchemaVersion1(array $package): array
+    {
+        $package['schema_version'] = 2;
+        if (is_array($package['payload'] ?? null) && is_array($package['payload']['assessment_profiles'] ?? null)) {
+            foreach ($package['payload']['assessment_profiles'] as $index => $profile) {
+                if (! is_array($profile) || ! array_key_exists('grade_level', $profile)) {
+                    continue;
+                }
+                $gradeLevel = $profile['grade_level'];
+                unset($profile['grade_level']);
+                $profile['grade_levels'] = is_string($gradeLevel) && $gradeLevel !== '' ? [$gradeLevel] : [];
+                $package['payload']['assessment_profiles'][$index] = $profile;
+            }
+        }
 
         return $package;
     }
