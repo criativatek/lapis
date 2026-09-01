@@ -615,18 +615,18 @@ scp lapis-prod:/home/lapis/backups/lapis-daily-XXXX.sql.gz .
 sha256sum lapis-daily-XXXX.sql.gz     # comparar com o do servidor
 
 # 2. base temporária, nome que não se confunde com produção
-mysql -h 127.0.0.1 -P 3308 -u root -e \
+mysql -h 127.0.0.1 -P 3306 -u root -e \
   "CREATE DATABASE \`lapis_restore_test_YYYYMMDD_HHMM\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
 
 # 3. restaurar (exit 0 e stderr vazio)
-gzip -dc lapis-daily-XXXX.sql.gz | mysql -h 127.0.0.1 -P 3308 -u root lapis_restore_test_YYYYMMDD_HHMM
+gzip -dc lapis-daily-XXXX.sql.gz | mysql -h 127.0.0.1 -P 3306 -u root lapis_restore_test_YYYYMMDD_HHMM
 
 # 4. comparar — a MESMA consulta nos dois lados, e juntar POR CHAVE
 LC_ALL=C sort prod.txt > prod.sorted; LC_ALL=C sort restored.txt > restored.sorted
 LC_ALL=C join -t $'\t' prod.sorted restored.sorted | awk -F'\t' '$2!=$3'
 
 # 5. apagar a base temporária e a cópia local do dump
-mysql -h 127.0.0.1 -P 3308 -u root -e "DROP DATABASE \`lapis_restore_test_YYYYMMDD_HHMM\`;"
+mysql -h 127.0.0.1 -P 3306 -u root -e "DROP DATABASE \`lapis_restore_test_YYYYMMDD_HHMM\`;"
 rm -f lapis-daily-XXXX.sql.gz
 ```
 

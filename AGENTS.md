@@ -11,7 +11,7 @@ Lê-os — aqui fica só o essencial para uma sessão.
 
 ## Stack
 
-Laravel 13.20 · PHP 8.4 · MySQL 9.7 (porta local **3308**) · Vue 3 + TypeScript ·
+Laravel 13.20 · PHP 8.4 · MySQL 9.7 em CI/produção, 8.4 no serviço local `base` (porta **3306**) · Vue 3 + TypeScript ·
 Inertia · Vite · Tailwind 4 · Fortify · PHPUnit 12 · Pint · Larastan (nível 7).
 
 ## Regras de arquitetura (não-negociáveis)

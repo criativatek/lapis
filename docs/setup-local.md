@@ -12,7 +12,7 @@ Everything a new developer needs. Nothing here depends on hidden state on one ma
 
 Lapispro uses MySQL, not PostgreSQL — see [ADR-0001](adr/0001-mysql-instead-of-postgresql.md) for why the spec was deviated from.
 
-In DBngin, create (or start) a **MySQL 9.7** service. This project expects it on **port 3308**; 3306 and 3307 are other projects' services on this machine.
+In DBngin, start the shared **`base`** service (MySQL 8.4.2) on **port 3306** — one server for every project on this machine, one schema per project. CI and production run MySQL 9.7, so engine-specific guarantees are covered there, not locally.
 
 Then create the schema. The collation is not optional — Portuguese accents depend on it (§24.4):
 
@@ -23,12 +23,12 @@ CREATE DATABASE lapis CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 The DBngin MySQL client lives at:
 
 ```
-C:\Users\<you>\AppData\Local\com.tinyapp.DBngin\Binaries\mysql\9.7.1\bin\mysql.exe
+C:\Users\<you>\AppData\Local\com.tinyapp.DBngin\Binaries\mysql\8.4.2\bin\mysql.exe
 ```
 
 ```powershell
-& "C:\Users\<you>\AppData\Local\com.tinyapp.DBngin\Binaries\mysql\9.7.1\bin\mysql.exe" `
-    -h 127.0.0.1 -P 3308 -u root -e "CREATE DATABASE lapis CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+& "C:\Users\<you>\AppData\Local\com.tinyapp.DBngin\Binaries\mysql\8.4.2\bin\mysql.exe" `
+    -h 127.0.0.1 -P 3306 -u root -e "CREATE DATABASE lapis CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 ```
 
 ## 2. Application
@@ -39,7 +39,7 @@ composer setup     # install deps, copy .env, generate key, migrate, npm install
 php artisan db:seed
 ```
 
-Check `.env` against `.env.example` — `DB_PORT` must be **3308**.
+Check `.env` against `.env.example` — `DB_PORT` must be **3306**.
 
 ## 3. Serving
 
@@ -68,7 +68,7 @@ composer ci:check         # lint + format + larastan + tests, exactly what CI ru
 Then open `http://lapis.test`, register an account, and confirm a personal organization was created:
 
 ```powershell
-& "...\mysql.exe" -h 127.0.0.1 -P 3308 -u root -e "SELECT name, type FROM lapis.organizations;"
+& "...\mysql.exe" -h 127.0.0.1 -P 3306 -u root -e "SELECT name, type FROM lapis.organizations;"
 ```
 
 Mail is caught by Herd — the e-mail verification link appears there.

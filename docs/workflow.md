@@ -136,7 +136,7 @@ segurança. Armadilhas já vividas (todas reais):
   resolverem (senão "Not a valid Inertia response").
 
 Antes de fechar algo com CHECK/colunas geradas: confia na CI (MySQL) ou corre um
-`migrate:fresh` real contra a BD MySQL local (:3308).
+`migrate:fresh` real contra a BD MySQL local (`base`, :3306).
 
 ## Versão, changelog, memória
 

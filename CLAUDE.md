@@ -34,8 +34,9 @@ npm run dev              # vite
 
 **Local URL:** `http://lapis.test` — `D:\HERD` is a parked Herd path, so **no `herd link` is needed** (it hangs). `herd secure lapis` needs UAC; run it from an elevated terminal if you want trusted TLS.
 
-**Database:** DBngin MySQL service `lapis` on **port 3308** (not 3306 — that is another service). Client:
-`C:\Users\Pedro Alves\AppData\Local\com.tinyapp.DBngin\Binaries\mysql\9.7.1\bin\mysql.exe -h 127.0.0.1 -P 3308 -u root`
+**Database:** schema `lapis` on the shared DBngin service `base` — **127.0.0.1:3306**, MySQL 8.4.2, root without password. Client:
+`C:\Users\Pedro Alves\AppData\Local\com.tinyapp.DBngin\Binaries\mysql\8.4.2\bin\mysql.exe -h 127.0.0.1 -P 3306 -u root`
+CI and production run MySQL 9.7 — engine-specific guarantees are what CI covers, not the local server.
 
 ## Architecture rules
 

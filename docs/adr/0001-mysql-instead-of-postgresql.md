@@ -43,3 +43,15 @@ The spec chose PostgreSQL as a sound default, not because Lapispro needs somethi
 
 - **PostgreSQL as specified.** Rejected: the one advantage (RLS) would not be used, and it isolates this project from the team's operational reality.
 - **SQLite.** Not considered for production; used only for the local test suite.
+
+## Note — 2026-08-31
+
+The local server moved. Development now runs on the shared DBngin service `base`
+(`127.0.0.1:3306`, MySQL **8.4.2**), schema `lapis`, same collation — one server
+for every project on this machine instead of one service per project. The
+dedicated 9.7.1 service on 3308 was dumped and imported, then stopped.
+
+The engine decision is unchanged: CI and production stay on **MySQL 9.7**. Local
+is now one minor version behind, which is why the `*MysqlGuarantees` tests read
+`DB_PORT` from the environment and CI — not the laptop — is what proves the
+`CHECK` constraints and generated columns.

@@ -47,7 +47,7 @@ class VouchersMysqlGuaranteesTest extends TestCase
         }
 
         if (! $this->mysqlIsListening()) {
-            $this->markTestSkipped('Não há MySQL à escuta em 127.0.0.1:3308.');
+            $this->markTestSkipped('Não há MySQL à escuta em 127.0.0.1:'.env('DB_PORT', '3306').'.');
         }
 
         $this->configureScratchConnections();
@@ -222,7 +222,7 @@ class VouchersMysqlGuaranteesTest extends TestCase
     private function mysqlIsListening(): bool
     {
         try {
-            new PDO('mysql:host=127.0.0.1;port=3308', 'root', '');
+            new PDO('mysql:host=127.0.0.1;port='.env('DB_PORT', '3306'), 'root', '');
 
             return true;
         } catch (PDOException) {
@@ -235,7 +235,7 @@ class VouchersMysqlGuaranteesTest extends TestCase
         $base = [
             'driver' => 'mysql',
             'host' => '127.0.0.1',
-            'port' => '3308',
+            'port' => env('DB_PORT', '3306'),
             'database' => self::DATABASE,
             'username' => 'root',
             'password' => '',
@@ -252,7 +252,7 @@ class VouchersMysqlGuaranteesTest extends TestCase
 
     private function ensureSchema(): void
     {
-        (new PDO('mysql:host=127.0.0.1;port=3308', 'root', ''))
+        (new PDO('mysql:host=127.0.0.1;port='.env('DB_PORT', '3306'), 'root', ''))
             ->exec('CREATE DATABASE IF NOT EXISTS `'.self::DATABASE.'` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
 
         DB::purge('founder_scratch');

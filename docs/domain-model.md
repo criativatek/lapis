@@ -1277,7 +1277,7 @@ Sub-questões que o modelo já suporta, mas cuja resposta é do PO:
 4. Um instrumento do P1 **anulado** em junho sai do acumulado do P2? (Proposta: sim; e a `classification` já confirmada do P1 **não** muda — só por operação auditada.)
 
 ### Q5 — MySQL vs PostgreSQL (BLOQUEADOR DE ARQUITETURA — decisão de §31)
-O prompt-base §5.2 e §5.4 especificam **PostgreSQL**; §31 lista «substituir PostgreSQL por outro motor» entre as decisões que **não devem ser tomadas sem aprovação**. O `.env` e o `.env.example` do repositório já têm `DB_CONNECTION=mysql` (porta 3308), e este documento está escrito para **MySQL 9.7**.
+O prompt-base §5.2 e §5.4 especificam **PostgreSQL**; §31 lista «substituir PostgreSQL por outro motor» entre as decisões que **não devem ser tomadas sem aprovação**. O `.env` e o `.env.example` do repositório já têm `DB_CONNECTION=mysql` (porta 3306, serviço `base`), e este documento está escrito para **MySQL 9.7**.
 
 Consequências da divergência, já visíveis no desenho: ausência de índices únicos parciais (contornada com colunas geradas, §3.1 e §7.1), `CHECK` em vez de tipos enumerados nativos, e JSON sem os operadores de indexação do PostgreSQL.
 **Recomendação: confirmar MySQL e registar um ADR** em `docs/adr/`, ou reverter para PostgreSQL **agora**, antes de existirem migrations. O desenho é portável (foi escrito com isso em mente), mas o custo da mudança cresce a cada fase. **Necessário do PO/arquitetura:** decisão registada. Nenhuma migration deve ser escrita antes disto.
