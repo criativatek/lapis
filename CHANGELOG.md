@@ -25,6 +25,43 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.105.1] — 2026-09-01
+
+Uma conta criada antes dos tetos de turmas e alunos deixou de funcionar, e a
+mensagem ficou no log. `2026_09_11_000100` congelou a composição de cada plano
+na versão 1 copiando `plans.limits` — e numa instalação onde a coluna ainda
+estava a `NULL`, congelou uma versão sem teto nenhum. `Limits::parse()` trata
+uma chave em falta como erro de configuração e rebenta, de propósito; só que o
+erro estava a montante dele. Resultado: toda a organização fixada nessa versão
+apanhava um 500 em cada escrita que conta para um limite — criar uma turma,
+inscrever um aluno, e tudo o que depende disso.
+
+Nenhum teste podia ver isto. Numa base de testes aquela migração corre com a
+tabela `plans` vazia e não escreve versão nenhuma; o defeito só existe onde os
+planos já lá estavam — isto é, em cada instalação real.
+
+### Corrigido
+
+- **Os tetos em falta são preenchidos com os que o plano publicou primeiro.**
+  Migração nova, sobre as versões que ficaram sem eles. Preencher um teto
+  **ausente** não altera acesso nenhum — não havia termos a preservar, havia um
+  buraco de quando os tetos ainda não existiam — e por isso não toca numa
+  versão que já declare o seu. Mover a subscrição para a versão mais recente
+  respeitaria a letra da ADR-0008 e partiria o seu propósito: entregaria em
+  silêncio uma composição de módulos que ninguém contratou.
+- **O `composition_hash` é recalculado** na mesma passagem, ou o
+  `EntitlementsSeeder` publicaria uma versão seguinte espúria sobre uma
+  composição que não mudou.
+
+### Alterado
+
+- **`DemoDataSeeder` aceita a conta que enche** (`config('lapis.demo_teacher_email')`,
+  por omissão a professora fictícia). A conta que precisa de dados para
+  experimentar nem sempre é a da demonstração.
+- **Base de dados local no servidor partilhado `base`** (`127.0.0.1:3306`,
+  MySQL 8.4.2) em vez do serviço dedicado na 3308. CI e produção continuam em
+  MySQL 9.7 — ver a nota na [ADR-0001](docs/adr/0001-mysql-instead-of-postgresql.md).
+  Os testes `*MysqlGuarantees` deixaram de ter a porta em duro e leem `DB_PORT`.
 ## [0.105.0] — 2026-09-01
 
 Um Perfil de Avaliação só podia pertencer a um ano de escolaridade — uma

@@ -188,6 +188,12 @@ return [
 
     ],
 
+    // Local e demonstração apenas: de quem é a conta que o `DemoDataSeeder`
+    // enche. É um parâmetro porque a conta que precisa de dados para
+    // experimentar nem sempre é a da professora fictícia — e vive aqui
+    // porque `env()` fora de `config/` devolve null com a config em cache.
+    'demo_teacher_email' => env('DEMO_TEACHER_EMAIL', 'ana.martins@lapis.test'),
+
     'ai' => [
 
         // null | 'gemini' | 'chat-completions' | 'fake'. Null means the feature is off.

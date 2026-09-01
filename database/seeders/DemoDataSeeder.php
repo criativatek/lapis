@@ -40,8 +40,13 @@ class DemoDataSeeder extends Seeder
             return;
         }
 
-        $teacher = User::where('email', 'ana.martins@lapis.test')->first()
-            ?? User::factory()->create(['name' => 'Professora Ana Martins', 'email' => 'ana.martins@lapis.test']);
+        // Quem recebe o cenário é um parâmetro: a conta que precisa de dados
+        // para experimentar nem sempre é a da demonstração. Um e-mail
+        // desconhecido cria a professora fictícia, como sempre fez.
+        $email = (string) config('lapis.demo_teacher_email');
+
+        $teacher = User::where('email', $email)->first()
+            ?? User::factory()->create(['name' => 'Professora Ana Martins', 'email' => $email]);
 
         app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () use ($teacher): void {
             $year = $this->academicYear();
