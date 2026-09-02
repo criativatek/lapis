@@ -6,6 +6,7 @@ use App\Models\SupportRequest;
 use App\Services\Audit\AuditLog;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * ANONIMIZAÇÃO A SÉRIO — NULL é NULL, e as mensagens desaparecem.
@@ -53,6 +54,18 @@ class AnonymiseSupportRequest
             // apontar para uma conversa que já não existe.
             $request->deliveries()->delete();
 
+            // AS IMAGENS, E OS FICHEIROS DELAS. Apagar a linha e deixar o
+            // ficheiro no disco seria a pior das duas metades: a promessa de
+            // eliminação passaria a ter uma excepção que ninguém vê, e uma
+            // captura de ecrã do Lapispro é uma imagem de nomes de crianças.
+            // O `delete()` do disco não levanta excepção (`'throw' => false`),
+            // por isso um ficheiro já ausente não trava a transacção.
+            foreach ($request->attachments as $attachment) {
+                Storage::disk('local')->delete($attachment->disk_path);
+            }
+
+            $request->attachments()->delete();
+
             $request->forceFill([
                 'requester_name' => null,
                 'requester_email' => null,
@@ -65,6 +78,11 @@ class AnonymiseSupportRequest
                 // Contexto recolhido sobre a sessão de quem escreveu, e por isso
                 // do mesmo lado da linha que a rota: desaparece com ela.
                 'client_context' => null,
+                // O ÂMBITO do aceite vai; o FACTO de ter havido aceite fica. Saber
+                // que alguém consentiu é o registo de um acto dela, como
+                // `resolved_by`; saber que aquele aceite cobria duas imagens de um
+                // ecrã concreto é informação sobre o que ela enviou.
+                'consent_scope' => null,
                 // O único campo da suspensão que sai: é o que foi escrito à
                 // mão. O motivo, as datas e as autorias ficam — são a prova de
                 // que a excepção existiu, e não dizem nada sobre o titular.

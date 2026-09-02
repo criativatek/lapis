@@ -126,6 +126,20 @@ class AdminSupportController extends Controller
                 // O contexto do ecra, quando o reporte veio do widget. Lista
                 // fechada, logo nao ha aqui texto livre que precise de cuidado.
                 'clientContext' => $support->client_context,
+                // As imagens e o aceite de quem as enviou. O URL é sempre o do
+                // controlador — o ficheiro vive num disco privado e não tem
+                // endereço próprio.
+                'attachments' => $support->attachments->map(fn ($anexo): array => [
+                    'ulid' => $anexo->ulid,
+                    'kind' => $anexo->kind,
+                    'bytes' => $anexo->bytes,
+                    'url' => route('support.image', ['support' => $support, 'attachment' => $anexo]),
+                ])->all(),
+                'consent' => $support->consent_accepted_at === null ? null : [
+                    'acceptedAt' => $support->consent_accepted_at->toIso8601String(),
+                    'termsVersion' => $support->consent_terms_version,
+                    'scope' => $support->consent_scope,
+                ],
                 'anonymizedAt' => $support->anonymized_at?->toIso8601String(),
                 'holdNote' => $support->retention_hold_note,
                 'holdReleasedAt' => $support->retention_hold_released_at?->toIso8601String(),

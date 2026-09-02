@@ -64,6 +64,12 @@ type SupportRequestDetail = {
         network?: { method: string; route: string; status: number; at?: string }[];
         errors?: { name: string; message?: string; where?: string; at?: string }[];
     } | null;
+    attachments: { ulid: string; kind: string; bytes: number; url: string }[];
+    consent: {
+        acceptedAt: string;
+        termsVersion: string | null;
+        scope: { screenshot_certified?: boolean; screenshot_warning?: string | null; screenshots?: number; uploads?: number } | null;
+    } | null;
     description: string | null;
     createdAt: string | null;
     resolvedAt: string | null;
@@ -284,6 +290,39 @@ function formatDateTime(iso: string | null): string {
                             </template>
                         </div>
                     </dl>
+                </section>
+
+                <!--
+                    As imagens que vieram com o reporte, e o aceite com que
+                    vieram. O aceite mostra-se ao lado das imagens de propósito:
+                    quem olha para elas tem de ver, na mesma altura, o que a
+                    pessoa confirmou e que aviso lhe foi mostrado.
+                -->
+                <section v-if="request.attachments.length" class="space-y-3 rounded-lg border border-border p-4">
+                    <h2 class="text-sm font-medium">Imagens</h2>
+
+                    <p v-if="request.consent" class="text-xs text-muted-foreground">
+                        Aceite em {{ new Date(request.consent.acceptedAt).toLocaleString('pt-PT') }}
+                        <template v-if="request.consent.termsVersion"> (termos de {{ request.consent.termsVersion }})</template>.
+                        <template v-if="request.consent.scope?.screenshot_certified">
+                            Certificou a captura de ecrã.
+                        </template>
+                        <template v-if="request.consent.scope?.screenshot_warning">
+                            Aviso mostrado: «{{ request.consent.scope.screenshot_warning }}»
+                        </template>
+                    </p>
+
+                    <ul class="grid grid-cols-2 gap-2">
+                        <li v-for="anexo in request.attachments" :key="anexo.ulid" class="space-y-1">
+                            <a :href="anexo.url" target="_blank" rel="noopener">
+                                <img :src="anexo.url" :alt="anexo.kind" class="w-full rounded border border-border" />
+                            </a>
+                            <p class="text-xs text-muted-foreground">
+                                {{ anexo.kind === 'screenshot' ? 'Captura de ecrã' : 'Enviada pela pessoa' }}
+                                · {{ Math.round(anexo.bytes / 1024) }} KB
+                            </p>
+                        </li>
+                    </ul>
                 </section>
 
                 <!--

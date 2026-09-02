@@ -34,6 +34,7 @@ use App\Http\Controllers\InstrumentController;
 use App\Http\Controllers\InterimAssessmentController;
 use App\Http\Controllers\InterventionController;
 use App\Http\Controllers\InvitationAcceptanceController;
+use App\Http\Controllers\IssueReportController;
 use App\Http\Controllers\LegalController;
 use App\Http\Controllers\LessonController;
 use App\Http\Controllers\LessonScheduleController;
@@ -140,6 +141,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('support/{support}', [SupportController::class, 'show'])->name('support.show');
     Route::middleware('throttle:10,1')->post('support/{support}/mensagens', [SupportController::class, 'reply'])
         ->name('support.reply');
+
+    /*
+     * O widget de reportar problema. Rota propria porque leva multipart, imagens
+     * e uma decisao de consentimento que o formulario de conversa nao tem — mas
+     * cai na MESMA fila, pela mesma accao. Throttle mais apertado: cada pedido
+     * pode trazer tres imagens de 5 MB.
+     */
+    Route::middleware('throttle:5,1')->post('issues', [IssueReportController::class, 'store'])
+        ->name('issues.store');
+    Route::get('support/{support}/imagens/{attachment}', [IssueReportController::class, 'image'])
+        ->name('support.image');
 
     Route::get('help', [HelpController::class, 'index'])->name('help.index');
     Route::get('help/search', [HelpController::class, 'search'])->name('help.search');

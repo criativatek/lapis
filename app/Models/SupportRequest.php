@@ -32,6 +32,10 @@ use LogicException;
  * @property string|null $requester_email
  * @property int|null $user_id
  * @property int|null $organization_id
+ * @property array<string, mixed>|null $client_context
+ * @property Carbon|null $consent_accepted_at
+ * @property string|null $consent_terms_version
+ * @property array<string, mixed>|null $consent_scope
  * @property SupportSource $source
  * @property SupportCategory $category
  * @property string|null $subject
@@ -58,7 +62,7 @@ use LogicException;
     'reference', 'requester_name', 'requester_email', 'user_id', 'organization_id',
     'source', 'category', 'subject', 'description', 'status',
     'technical_reference', 'technical_route', 'technical_code', 'app_version',
-    'client_context',
+    'client_context', 'consent_accepted_at', 'consent_terms_version', 'consent_scope',
 ])]
 class SupportRequest extends Model
 {
@@ -107,6 +111,8 @@ class SupportRequest extends Model
             'technical_code' => SupportTechnicalCode::class,
             'retention_hold_reason_code' => RetentionHoldReason::class,
             'client_context' => 'array',
+            'consent_scope' => 'array',
+            'consent_accepted_at' => 'datetime',
             'waiting_since' => 'datetime',
             'waiting_reminder_sent_at' => 'datetime',
             'resolved_at' => 'datetime',
@@ -115,6 +121,16 @@ class SupportRequest extends Model
             'retention_hold_released_at' => 'datetime',
             'anonymized_at' => 'datetime',
         ];
+    }
+
+    /**
+     * As imagens que vieram com o pedido, quando vieram.
+     *
+     * @return HasMany<SupportAttachment, $this>
+     */
+    public function attachments(): HasMany
+    {
+        return $this->hasMany(SupportAttachment::class);
     }
 
     /**

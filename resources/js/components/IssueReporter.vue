@@ -12,52 +12,59 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
-import { clientContext  } from '@/lib/diagnostics';
-import type {ClientContext} from '@/lib/diagnostics';
+import { clientContext } from '@/lib/diagnostics';
+import type { ClientContext } from '@/lib/diagnostics';
 import { currentMaskedRoute } from '@/lib/routeMask';
+import { capture } from '@/lib/screenshot';
+import type { Screenshot } from '@/lib/screenshot';
 
 /**
  * Reportar um problema sem sair de onde se está.
  *
- * O QUE ISTO RESOLVE. A Central de Suporte já existia e está no menu, mas
- * obrigava a sair do ecrã, ir a um formulário e descrever por palavras onde a
- * pessoa estava. Quem encontra um defeito raramente o volta a encontrar depois
- * de navegar para outro lado — e a informação mais útil para o reproduzir é
- * justamente a que se perde nesse caminho.
+ * É O MESMO PEDIDO, NÃO UM SISTEMA PARALELO. Cai na mesma fila, no mesmo fio de
+ * conversa e no mesmo relógio de retenção. O que muda é de onde se abre e o que
+ * o acompanha.
  *
- * É O MESMO PEDIDO, NÃO UM SISTEMA PARALELO. Publica em `POST /support`, cai na
- * mesma fila, no mesmo fio de conversa e no mesmo relógio de retenção. O que
- * muda é só de onde se abre.
+ * A CAPTURA DE ECRÃ ENTRA DESMARCADA, e sai de novo com um clique. Uma captura
+ * do Lapispro é, por construção, uma imagem dos dados sobre que o defeito é —
+ * uma tabela de nomes de crianças contra classificações — e ninguém deve enviar
+ * uma sem a ter visto. Por isso:
  *
- * A ROTA VAI MASCARADA, E O SERVIDOR MASCARA-A OUTRA VEZ. `maskRoute()` existe
- * para quem envia ver o que envia; a regra é imposta em
- * `App\Support\Support\RouteMask`, porque o código que decide o que se remove
- * não pode ser o que viaja no browser de quem envia.
+ *   1. vê-se antes de seguir, e amplia-se a 1:1, porque uma miniatura dentro de
+ *      um diálogo não se revê;
+ *   2. a certificação é uma caixa PRÓPRIA, por baixo da imagem;
+ *   3. sem essa marca a IMAGEM não segue — e o reporte segue na mesma. Bloquear
+ *      o envio inteiro ensinaria a marcar sem olhar, que é o contrário do que a
+ *      caixa existe para fazer;
+ *   4. quando a aplicação reconhece dados pessoais no texto da página, o aviso é
+ *      concreto — «esta página mostra nomes» — e não uma advertência genérica.
+ *      A aplicação desenhou aquela página: sabe o que lá está.
+ *
+ * A regra do ponto 3 é imposta no SERVIDOR (`OpenIssueReport`). Isto é como a
+ * pessoa a exerce, não onde ela vive.
  */
 
 const page = usePage();
 
-const categories = computed(
-    () => (page.props.supportCategories ?? []) as { value: string; label: string }[],
-);
-
-/** Só para quem tem sessão: um convidado não tem fila onde acompanhar isto. */
+const categories = computed(() => (page.props.supportCategories ?? []) as { value: string; label: string }[]);
 const authenticated = computed(() => Boolean((page.props.auth as { user?: unknown } | undefined)?.user));
 
 const open = ref(false);
+const capturing = ref(false);
+const screenshot = ref<Screenshot | null>(null);
+const certified = ref(false);
+const zoomed = ref(false);
 
-/**
- * Declarado em vez de inferido: com os campos anuláveis todos juntos, a
- * inferência do `useForm` desiste e devolve `unknown`, e depois é o template
- * inteiro que deixa de ser verificado.
- */
 type IssueForm = {
     category: string;
     subject: string;
     description: string;
     technical_route: string | null;
-    technical_reference: string | null;
     client_context: ClientContext | null;
+    screenshot: File | null;
+    screenshot_certified: boolean;
+    screenshot_warning: string | null;
+    images: File[];
 };
 
 const form = useForm<IssueForm>({
@@ -65,23 +72,31 @@ const form = useForm<IssueForm>({
     subject: '',
     description: '',
     technical_route: null,
-    technical_reference: null,
     client_context: null,
+    screenshot: null,
+    screenshot_certified: false,
+    screenshot_warning: null,
+    images: [],
 });
 
-// A rota é lida no momento em que a janela abre, não quando o componente monta:
-// o layout monta uma vez e a pessoa navega por dentro dele.
 watch(open, (isOpen) => {
     if (isOpen) {
         form.clearErrors();
         form.technical_route = currentMaskedRoute();
-        // `page.component` é um literal escrito no repositório — «classes/Show»
-        // — e não uma rota: diz em que ecrã a pessoa estava sem dizer sobre quem.
         form.client_context = clientContext(page.component ?? null);
+
+        return;
     }
+
+    discardScreenshot();
 });
 
-/** O que o aviso mostra: a mesma coisa que vai ser enviada, por extenso. */
+const counts = computed(() => ({
+    console: form.client_context?.console?.length ?? 0,
+    network: form.client_context?.network?.length ?? 0,
+    errors: form.client_context?.errors?.length ?? 0,
+}));
+
 const browserLabel = computed(() => {
     const detected = form.client_context?.environment;
 
@@ -92,18 +107,53 @@ const browserLabel = computed(() => {
     return [detected.browser, detected.browser_major].filter(Boolean).join(' ');
 });
 
-/** As contas que o aviso mostra: o que segue, contado. */
-const counts = computed(() => ({
-    console: form.client_context?.console?.length ?? 0,
-    network: form.client_context?.network?.length ?? 0,
-    errors: form.client_context?.errors?.length ?? 0,
-}));
+async function takeScreenshot(): Promise<void> {
+    capturing.value = true;
+    discardScreenshot();
+
+    try {
+        // O diálogo e o botão escondem-se durante a captura: uma imagem com o
+        // próprio formulário lá dentro não mostra defeito nenhum.
+        const hide = Array.from(
+            document.querySelectorAll<HTMLElement>('[role="dialog"], [data-issue-launcher]'),
+        );
+
+        screenshot.value = await capture(hide);
+        form.screenshot_warning = screenshot.value?.warning ?? null;
+    } finally {
+        capturing.value = false;
+    }
+}
+
+function discardScreenshot(): void {
+    if (screenshot.value) {
+        URL.revokeObjectURL(screenshot.value.url);
+    }
+
+    screenshot.value = null;
+    certified.value = false;
+    zoomed.value = false;
+    form.screenshot = null;
+    form.screenshot_certified = false;
+    form.screenshot_warning = null;
+}
+
+function pickImages(event: Event): void {
+    form.images = Array.from((event.target as HTMLInputElement).files ?? []).slice(0, 3);
+}
 
 function submit(): void {
-    form.post('/support', {
+    // Só vai o que foi certificado. O servidor impõe a mesma regra; isto evita
+    // enviar bytes que vão ser deitados fora do outro lado.
+    form.screenshot = certified.value ? (screenshot.value?.file ?? null) : null;
+    form.screenshot_certified = certified.value;
+
+    form.post('/issues', {
+        forceFormData: true,
         preserveScroll: true,
         onSuccess: () => {
             form.reset();
+            discardScreenshot();
             open.value = false;
         },
     });
@@ -116,6 +166,7 @@ function submit(): void {
             type="button"
             variant="secondary"
             size="sm"
+            data-issue-launcher
             class="fixed bottom-4 right-4 z-40 shadow-lg print:hidden"
             @click="open = true"
         >
@@ -131,7 +182,7 @@ function submit(): void {
                     </DialogDescription>
                 </DialogHeader>
 
-                <form class="space-y-4" @submit.prevent="submit">
+                <form class="max-h-[70vh] space-y-4 overflow-y-auto" @submit.prevent="submit">
                     <div class="space-y-1.5">
                         <label class="text-sm font-medium" for="issue-category">Assunto</label>
                         <select
@@ -166,7 +217,7 @@ function submit(): void {
                         <textarea
                             id="issue-description"
                             v-model="form.description"
-                            rows="5"
+                            rows="4"
                             maxlength="5000"
                             class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
                             required
@@ -174,13 +225,72 @@ function submit(): void {
                         <InputError :message="form.errors.description" />
                     </div>
 
-                    <!--
-                        O QUE SEGUE É DITO POR EXTENSO, E COM AS CONTAS À VISTA.
-                        Um aviso genérico não deixa ninguém decidir nada, e um
-                        aviso desactualizado é pior do que nenhum: se algum dia
-                        passar a seguir mais alguma coisa, esta lista tem de
-                        crescer no mesmo commit.
-                    -->
+                    <!-- Captura de ecrã: desmarcada por omissão, sempre. -->
+                    <div class="space-y-2 rounded-md border border-border p-3">
+                        <div class="flex items-center justify-between gap-3">
+                            <span class="text-sm font-medium">Captura de ecrã</span>
+                            <Button
+                                v-if="!screenshot"
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                :disabled="capturing"
+                                @click="takeScreenshot"
+                            >
+                                {{ capturing ? 'A capturar…' : 'Juntar captura' }}
+                            </Button>
+                            <Button v-else type="button" variant="ghost" size="sm" @click="discardScreenshot">
+                                Remover
+                            </Button>
+                        </div>
+
+                        <p v-if="!screenshot" class="text-xs text-muted-foreground">
+                            Opcional. Nada é capturado sem carregar aqui.
+                        </p>
+
+                        <template v-else>
+                            <div class="max-h-64 overflow-auto rounded border border-border bg-muted">
+                                <img
+                                    :src="screenshot.url"
+                                    alt="Captura do seu ecrã"
+                                    :class="zoomed ? 'max-w-none' : 'w-full'"
+                                    @click="zoomed = !zoomed"
+                                />
+                            </div>
+                            <button type="button" class="text-xs underline" @click="zoomed = !zoomed">
+                                {{ zoomed ? 'Reduzir' : 'Ver em tamanho real' }}
+                            </button>
+
+                            <p
+                                v-if="screenshot.warning"
+                                class="rounded bg-amber-50 px-2 py-1.5 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-100"
+                            >
+                                {{ screenshot.warning }} Reveja a imagem antes de a enviar.
+                            </p>
+
+                            <label class="flex items-start gap-2 text-xs">
+                                <input v-model="certified" type="checkbox" class="mt-0.5" />
+                                <span>Revi esta imagem e confirmo que não mostra dados sensíveis de alunos.</span>
+                            </label>
+                            <p v-if="!certified" class="text-xs text-muted-foreground">
+                                Sem esta confirmação a imagem não segue — o reporte segue na mesma.
+                            </p>
+                        </template>
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <label class="text-sm font-medium" for="issue-images">Outras imagens (opcional)</label>
+                        <input
+                            id="issue-images"
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            multiple
+                            class="w-full text-xs"
+                            @change="pickImages"
+                        />
+                        <InputError :message="form.errors.images" />
+                    </div>
+
                     <div class="space-y-1 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
                         <p>Segue também, sem ação sua:</p>
                         <ul class="list-inside list-disc space-y-0.5">

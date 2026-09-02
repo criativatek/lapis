@@ -25,6 +25,66 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.109.0] — 2026-09-02
+
+Captura de ecrã e imagens num reporte — e a certificação de quem as envia, que é
+a parte que torna isto defensável.
+
+### Adicionado
+
+- **`support_attachments`**, no disco **privado** e sem endereço próprio. Quem
+  serve a imagem é um controlador atrás da política do pedido — o mesmo
+  `user_id` e mais ninguém. O sistema equivalente do Plaanly guardou as capturas
+  num disco público e deixou a rota autenticada: o caminho era adivinhável e a
+  autenticação não valia nada.
+- **O nome original nunca toca no disco.** Um ficheiro chamado
+  «pauta-do-7A-com-notas.png» seria ele próprio um dado pessoal no caminho — e
+  um caminho lê-se sem abrir nada.
+- **`multipart`, nunca base64 em JSON**, que é a classe inteira de 422 de que o
+  código do Plaanly se desculpa em comentários.
+
+### A certificação é uma condição, não um campo
+
+- A captura entra **desmarcada**; é preciso carregar para a tirar.
+- Vê-se antes de seguir, com ampliação a 1:1 — uma miniatura dentro de um
+  diálogo não se revê.
+- A caixa é própria da imagem, separada do resto: *«Revi esta imagem e confirmo
+  que não mostra dados sensíveis de alunos.»*
+- **Sem essa marca a imagem não segue — e o reporte segue na mesma.** Bloquear o
+  envio inteiro ensinaria a marcar sem olhar. A regra vive no servidor: uma
+  imagem que chegue sem certificação é descartada, mesmo que o cliente jure o
+  contrário.
+- Fica registado o que aquele aceite cobria: quantas imagens, se a captura foi
+  certificada, e **que aviso concreto foi mostrado**. Saber que alguém aceitou
+  não diz o que aceitou.
+
+### O aviso nunca falta, e essa foi a correcção mais importante
+
+A primeira versão só avisava quando o detector reconhecia alguma coisa. Mas o
+detector reconhece **formatos** — emails, telefones, identificadores — e um nome
+próprio não tem formato. A página de resultados de uma turma, que é uma tabela
+com seis nomes de crianças contra as suas classificações, não disparava nada: o
+ecrã mais perigoso do produto seria o único a não avisar de coisa nenhuma, e a
+ausência de aviso lê-se como «isto é seguro». Agora avisa sempre, e diz mais
+quando reconhece mais.
+
+### `modern-screenshot`, e não `html2canvas`
+
+O óbvio não servia. O `html2canvas` traz um analisador de CSS próprio e rebenta
+com `Attempting to parse an unsupported color function "oklch"` — e `oklch()` é
+o formato em que o Tailwind 4 escreve **todas** as cores deste projecto. Não é
+configurável. Descoberto a correr no browser, não a ler documentação: a captura
+falhava em silêncio porque o `catch` a engolia. O substituto clona o DOM para um
+`foreignObject` de SVG, o que faz o próprio browser interpretar o CSS.
+
+Antes dele, `getDisplayMedia` — que dá a imagem verdadeira, e que em `http://`
+local nem existe, porque `navigator.mediaDevices` só aparece em contexto seguro.
+
+### Retenção
+
+A anonimização aos 24 meses apaga as linhas **e os ficheiros**. Apagar a linha e
+deixar o ficheiro seria a pior das duas metades.
+
 ## [0.108.0] — 2026-09-02
 
 O reporte passa a levar o que aconteceu no browser antes de alguém carregar no
