@@ -52,10 +52,21 @@ class DataExportTest extends TestCase
         return $member;
     }
 
-    private function classWithEvidence(Organization $organization, User $teacher): SchoolClass
+    /**
+     * @param  string|null  $label  a etiqueta, quando o caso precisa de as
+     *                              distinguir. A fábrica gera `7.º ` mais uma
+     *                              letra ao acaso: com 26 hipóteses, duas turmas
+     *                              no mesmo teste colidem uma vez em cada 26, e
+     *                              um caso que afirma «esta etiqueta não está aqui»
+     *                              falha nessa. É pouco — e é o suficiente para
+     *                              ninguém acreditar na suite quando ela fica
+     *                              vermelha.
+     */
+    private function classWithEvidence(Organization $organization, User $teacher, ?string $label = null): SchoolClass
     {
-        return app(CurrentOrganization::class)->runFor($organization, function () use ($organization, $teacher): SchoolClass {
-            $class = SchoolClass::factory()->recycle($organization)->create();
+        return app(CurrentOrganization::class)->runFor($organization, function () use ($organization, $teacher, $label): SchoolClass {
+            $class = SchoolClass::factory()->recycle($organization)
+                ->create($label === null ? [] : ['label' => $label]);
             $class->teachers()->attach($teacher, ['role' => 'owner']);
             $enrollment = Enrollment::factory()->recycle($organization)->create(['class_id' => $class->id]);
             EvidenceRecord::create([
@@ -167,8 +178,11 @@ class DataExportTest extends TestCase
         Storage::fake('local');
         [$organization, $owner] = $this->institutionalOrganization();
         $member = $this->member($organization);
-        $ownClass = $this->classWithEvidence($organization, $member);
-        $ownersClass = $this->classWithEvidence($organization, $owner);
+        // Etiquetas explícitas: o caso afirma que a turma do outro NÃO aparece,
+        // e com etiquetas ao acaso essa afirmação falha sempre que as duas
+        // saem iguais.
+        $ownClass = $this->classWithEvidence($organization, $member, '7.º Do Membro');
+        $ownersClass = $this->classWithEvidence($organization, $owner, '7.º Do Dono');
 
         $this->actingAs($member)->withSession(['organization_id' => $organization->id])
             ->post('/data-exports')->assertRedirect();
