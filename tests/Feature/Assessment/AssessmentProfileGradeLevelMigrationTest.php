@@ -32,6 +32,9 @@ class AssessmentProfileGradeLevelMigrationTest extends TestCase
     /** The first of the two migrations under test. Both come off together. */
     private const FIRST_MIGRATION = '2026_09_23_000100_create_assessment_profile_grade_levels_table';
 
+    /** A que larga a coluna — a que este caso quer reverter. */
+    private const COLUMN_DROP_MIGRATION = '2026_09_23_000200_drop_grade_level_from_assessment_profiles_table';
+
     #[Test]
     public function backfill_gives_a_single_grade_profile_exactly_one_row_and_a_gradeless_one_zero(): void
     {
@@ -124,8 +127,15 @@ class AssessmentProfileGradeLevelMigrationTest extends TestCase
         ]);
 
         try {
-            // Roll back only migration B (the column drop) — one step.
-            $this->artisan('migrate:rollback', ['--step' => 1])->run();
+            // Recua até desfazer a migração que larga a coluna — CONTANDO, e não
+            // assumindo que ela é a última do repositório. Com `--step => 1` este
+            // caso passava enquanto ninguém acrescentasse uma migração a seguir,
+            // e a partir daí revertia a errada e falhava a queixar-se de outra
+            // coisa. «Ser a mais recente» não é uma propriedade do que aqui se
+            // testa: é um acidente da data em que o teste foi escrito.
+            $this->artisan('migrate:rollback', [
+                '--step' => $this->migrationsFrom(self::COLUMN_DROP_MIGRATION),
+            ])->run();
 
             $this->assertTrue(Schema::hasColumn('assessment_profiles', 'grade_level'));
             $this->assertSame(
@@ -136,6 +146,15 @@ class AssessmentProfileGradeLevelMigrationTest extends TestCase
         } finally {
             $this->artisan('migrate')->run();
         }
+    }
+
+    /**
+     * Quantas migrações correram de $migration para a frente, ela incluída —
+     * ou seja, quantos passos é preciso recuar para a desfazer.
+     */
+    private function migrationsFrom(string $migration): int
+    {
+        return DB::table('migrations')->where('migration', '>=', $migration)->count();
     }
 
     /** @return array{int, int, int} organization_id, academic_year_id, subject_id */
