@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Actions\Support\ChangeSupportStatus;
 use App\Actions\Support\ManageRetentionHold;
 use App\Actions\Support\ReplyToSupportRequest;
+use App\Actions\Support\TriageSupportRequest;
 use App\Http\Controllers\Controller;
 use App\Models\RetentionHoldReason;
 use App\Models\SupportCategory;
@@ -12,6 +13,7 @@ use App\Models\SupportNotificationDelivery;
 use App\Models\SupportNotificationType;
 use App\Models\SupportRequest;
 use App\Models\SupportRequestStatus;
+use App\Models\SupportSeverity;
 use App\Models\SupportTechnicalCode;
 use App\Support\Support\SupportNotifier;
 use Illuminate\Database\Eloquent\Builder;
@@ -43,6 +45,7 @@ class AdminSupportController extends Controller
         protected ChangeSupportStatus $status,
         protected ManageRetentionHold $holds,
         protected SupportNotifier $notifier,
+        protected TriageSupportRequest $triage,
     ) {}
 
     public function index(Request $request): Response
@@ -51,6 +54,8 @@ class AdminSupportController extends Controller
             'status' => (string) $request->query('status', ''),
             'category' => (string) $request->query('category', ''),
             'technical_code' => (string) $request->query('technical_code', ''),
+            'severity' => (string) $request->query('severity', ''),
+            'assigned' => (string) $request->query('assigned', ''),
             'hold' => (string) $request->query('hold', ''),
             'search' => trim((string) $request->query('search', '')),
         ];
@@ -61,6 +66,15 @@ class AdminSupportController extends Controller
             ->when($filtros['technical_code'] !== '', fn (Builder $q) => $filtros['technical_code'] === 'none'
                 ? $q->whereNull('technical_code')
                 : $q->where('technical_code', $filtros['technical_code']))
+            ->when($filtros['severity'] !== '', fn (Builder $q) => $filtros['severity'] === 'none'
+                ? $q->whereNull('severity')
+                : $q->where('severity', $filtros['severity']))
+            // «Por atribuir» é a pergunta que se faz a uma fila, e por isso é um
+            // filtro e não uma ordenação: quem abre o backoffice quer ver o que
+            // ainda não é de ninguém.
+            ->when($filtros['assigned'] !== '', fn (Builder $q) => $filtros['assigned'] === 'none'
+                ? $q->whereNull('assigned_to')
+                : $q->whereNotNull('assigned_to'))
             ->when($filtros['hold'] === 'active', fn (Builder $q) => $q
                 ->whereNotNull('retention_hold_at')->whereNull('retention_hold_released_at'))
             // A PESQUISA É POR REFERÊNCIA OU EMAIL, e nunca pelo corpo: um
@@ -85,6 +99,7 @@ class AdminSupportController extends Controller
                 'statuses' => SupportRequestStatus::options(),
                 'categories' => SupportCategory::options(),
                 'technicalCodes' => SupportTechnicalCode::options(),
+                'severities' => SupportSeverity::options(),
             ],
             // O trabalho que está à espera de uma pessoa: avisos que falharam e
             // ninguém reenviou. Fora dos filtros, como as transferências por
@@ -109,9 +124,12 @@ class AdminSupportController extends Controller
         ]);
     }
 
-    public function show(SupportRequest $support): Response
+    public function show(Request $request, SupportRequest $support): Response
     {
-        $support->load(['messages.author:id,name', 'user:id,name,email', 'organization:id,name', 'deliveries']);
+        $support->load([
+            'messages.author:id,name', 'user:id,name,email', 'organization:id,name',
+            'deliveries', 'attachments', 'assignee:id,name',
+        ]);
 
         return Inertia::render('admin/SupportRequest', [
             'request' => $this->row($support) + [
@@ -126,6 +144,11 @@ class AdminSupportController extends Controller
                 // O contexto do ecra, quando o reporte veio do widget. Lista
                 // fechada, logo nao ha aqui texto livre que precise de cuidado.
                 'clientContext' => $support->client_context,
+                'severity' => $support->severity?->value,
+                'assignedTo' => $support->assigned_to === null ? null : [
+                    'name' => $support->assignee?->name,
+                    'isMe' => (int) $support->assigned_to === (int) $request->user()?->getKey(),
+                ],
                 // As imagens e o aceite de quem as enviou. O URL é sempre o do
                 // controlador — o ficheiro vive num disco privado e não tem
                 // endereço próprio.
@@ -165,6 +188,7 @@ class AdminSupportController extends Controller
             'options' => [
                 'statuses' => SupportRequestStatus::options(),
                 'technicalCodes' => SupportTechnicalCode::options(),
+                'severities' => SupportSeverity::options(),
                 'holdReasons' => RetentionHoldReason::options(),
             ],
         ]);
@@ -202,6 +226,46 @@ class AdminSupportController extends Controller
             $support,
             $code === null ? null : SupportTechnicalCode::from($code),
             $request->user(),
+        );
+
+        return back();
+    }
+
+    public function setSeverity(Request $request, SupportRequest $support): RedirectResponse
+    {
+        $validated = $request->validate([
+            'severity' => ['nullable', Rule::enum(SupportSeverity::class)],
+        ]);
+
+        $severity = $validated['severity'] ?? null;
+
+        $this->triage->setSeverity(
+            $support,
+            $request->user(),
+            $severity === null ? null : SupportSeverity::from($severity),
+        );
+
+        return back();
+    }
+
+    /**
+     * Atribuir a si, ou largar.
+     *
+     * SÓ A SI PRÓPRIO. Uma lista de operadores por quem escolher exigiria um
+     * ecrã de operadores que não existe, e a pergunta que uma fila responde é
+     * «isto é meu?». Quando houver mais do que uma pessoa a triar, isto cresce —
+     * e cresce com um ecrã, não com um campo de texto.
+     */
+    public function assign(Request $request, SupportRequest $support): RedirectResponse
+    {
+        $validated = $request->validate([
+            'assign' => ['required', 'boolean'],
+        ]);
+
+        $this->triage->assign(
+            $support,
+            $request->user(),
+            $validated['assign'] ? $request->user() : null,
         );
 
         return back();

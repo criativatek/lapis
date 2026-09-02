@@ -36,6 +36,9 @@ use LogicException;
  * @property Carbon|null $consent_accepted_at
  * @property string|null $consent_terms_version
  * @property array<string, mixed>|null $consent_scope
+ * @property SupportSeverity|null $severity
+ * @property int|null $assigned_to
+ * @property Carbon|null $assigned_at
  * @property SupportSource $source
  * @property SupportCategory $category
  * @property string|null $subject
@@ -109,6 +112,8 @@ class SupportRequest extends Model
             'category' => SupportCategory::class,
             'status' => SupportRequestStatus::class,
             'technical_code' => SupportTechnicalCode::class,
+            'severity' => SupportSeverity::class,
+            'assigned_at' => 'datetime',
             'retention_hold_reason_code' => RetentionHoldReason::class,
             'client_context' => 'array',
             'consent_scope' => 'array',
@@ -121,6 +126,16 @@ class SupportRequest extends Model
             'retention_hold_released_at' => 'datetime',
             'anonymized_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Quem está a tratar disto, quando alguém está.
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function assignee(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_to');
     }
 
     /**

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
+import { ref } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 
@@ -64,6 +65,8 @@ type SupportRequestDetail = {
         network?: { method: string; route: string; status: number; at?: string }[];
         errors?: { name: string; message?: string; where?: string; at?: string }[];
     } | null;
+    severity: string | null;
+    assignedTo: { name: string | null; isMe: boolean } | null;
     attachments: { ulid: string; kind: string; bytes: number; url: string }[];
     consent: {
         acceptedAt: string;
@@ -90,6 +93,7 @@ const props = defineProps<{
         statuses: { value: string; label: string }[];
         technicalCodes: { value: string; label: string }[];
         holdReasons: { value: string; label: string }[];
+        severities: { value: string; label: string }[];
     };
 }>();
 
@@ -101,6 +105,50 @@ const classifyForm = useForm({ technical_code: props.request.technicalCode });
 const holdForm = useForm({ reason_code: '', note: '' });
 const releaseForm = useForm({});
 const resendForm = useForm({ notification_type: '' });
+
+const copiado = ref(false);
+
+function mudarSeveridade(valor: string): void {
+    useForm({ severity: valor === '' ? null : valor }).post(`${base}/severity`, { preserveScroll: true });
+}
+
+function alternarAtribuicao(): void {
+    useForm({ assign: !props.request.assignedTo?.isMe }).post(`${base}/assign`, { preserveScroll: true });
+}
+
+/**
+ * O pedido em texto, pronto a colar onde for preciso.
+ *
+ * É o que dá quase todo o valor de exportar para um rastreador externo sem sair
+ * daqui — e sem transferir nada para lado nenhum. O que vai para a área de
+ * transferência é o que está no ecrã: quem copia vê o que copiou.
+ */
+async function copiarComoTexto(): Promise<void> {
+    const contexto = props.request.clientContext;
+
+    const linhas = [
+        `${props.request.reference} — ${props.request.subject ?? '(sem resumo)'}`,
+        `Estado: ${props.request.status} · Versão: ${props.request.appVersion}`,
+        props.request.severity ? `Severidade: ${props.request.severity}` : null,
+        props.request.technicalRoute ? `Rota: ${props.request.technicalRoute}` : null,
+        contexto?.page_component ? `Ecrã: ${contexto.page_component}` : null,
+        contexto?.environment
+            ? `Browser: ${[contexto.environment.browser, contexto.environment.browser_major].filter(Boolean).join(' ')} · ${contexto.environment.platform ?? ''} · ${contexto.environment.viewport ?? ''}`
+            : null,
+        '',
+        props.request.description ?? '',
+        contexto?.errors?.length ? '\nErros:' : null,
+        ...(contexto?.errors ?? []).map((erro) => `- ${erro.name}${erro.message ? `: ${erro.message}` : ''}${erro.where ? ` (${erro.where})` : ''}`),
+        contexto?.network?.length ? '\nPedidos:' : null,
+        ...(contexto?.network ?? []).map((pedido) => `- ${pedido.status} ${pedido.method} ${pedido.route}`),
+        contexto?.console?.length ? '\nConsola:' : null,
+        ...(contexto?.console ?? []).map((linha) => `- [${linha.level}] ${linha.text}`),
+    ].filter((linha) => linha !== null);
+
+    await navigator.clipboard.writeText(linhas.join('\n'));
+    copiado.value = true;
+    setTimeout(() => (copiado.value = false), 2000);
+}
 
 function reply(): void {
     replyForm.post(`${base}/reply`, {
@@ -375,6 +423,53 @@ function formatDateTime(iso: string | null): string {
                             </li>
                         </ul>
                     </div>
+                </section>
+
+                <!--
+                    TRIAGEM — INTERNA, SEMPRE. A severidade ordena a fila de quem
+                    trabalha nela e nunca é devolvida ao professor: um nível
+                    mostrado é uma promessa, e a ADR-0011 §13 recusou-a por não
+                    haver nenhuma por trás. Se isto aparecer num ecrã de
+                    utilizador, passou a ser a coisa que a §13 recusou.
+                -->
+                <section class="space-y-3 rounded-lg border border-border p-4">
+                    <h2 class="text-sm font-medium">Triagem</h2>
+
+                    <div class="space-y-1.5">
+                        <label class="text-xs text-muted-foreground" for="severidade">Severidade</label>
+                        <select
+                            id="severidade"
+                            :value="request.severity ?? ''"
+                            class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                            @change="mudarSeveridade(($event.target as HTMLSelectElement).value)"
+                        >
+                            <option value="">Sem severidade</option>
+                            <option v-for="opcao in options.severities" :key="opcao.value" :value="opcao.value">
+                                {{ opcao.label }}
+                            </option>
+                        </select>
+                    </div>
+
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="text-xs text-muted-foreground">
+                            <template v-if="request.assignedTo">
+                                Com {{ request.assignedTo.isMe ? 'consigo' : request.assignedTo.name }}
+                            </template>
+                            <template v-else>Por atribuir</template>
+                        </span>
+                        <Button type="button" variant="secondary" size="sm" @click="alternarAtribuicao">
+                            {{ request.assignedTo?.isMe ? 'Largar' : 'Atribuir a mim' }}
+                        </Button>
+                    </div>
+
+                    <!--
+                        O que dá 90% do valor de exportar para um rastreador
+                        externo, sem sair daqui: o pedido em texto, pronto a colar
+                        onde for preciso.
+                    -->
+                    <Button type="button" variant="ghost" size="sm" class="w-full" @click="copiarComoTexto">
+                        {{ copiado ? 'Copiado' : 'Copiar como texto' }}
+                    </Button>
                 </section>
 
                 <section class="space-y-2 rounded-lg border border-border p-4">

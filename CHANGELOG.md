@@ -25,6 +25,54 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.110.0] — 2026-09-02
+
+A fila do backoffice passa a dizer por onde começar e de quem é cada pedido.
+
+### Adicionado
+
+- **Severidade interna** — impede o trabalho, tem alternativa, cosmético. Três
+  degraus e não cinco: uma escala em que ninguém sabe distinguir o segundo do
+  terceiro dá uma fila ordenada por hesitação.
+- **Atribuição** a si próprio, e largar. Uma lista de operadores por quem
+  escolher exigiria um ecrã de operadores que não existe; quando houver mais do
+  que uma pessoa a triar, isto cresce com um ecrã e não com um campo de texto.
+- **Filtros por severidade e por «por atribuir»** na fila, que é a pergunta que
+  se faz a uma fila ao abri-la.
+- **«Copiar como texto»** na ficha: o pedido inteiro — referência, rota, browser,
+  erros, pedidos falhados e consola — pronto a colar onde for preciso. É o que
+  dá quase todo o valor de exportar para um rastreador externo, sem transferir
+  nada para lado nenhum, e o que vai para a área de transferência é o que está no
+  ecrã.
+
+### Isto não é a prioridade que a ADR-0011 §13 recusou
+
+A §13 rejeitou níveis e SLA, e com razão: um nível **mostrado ao cliente** é uma
+promessa, e não há promessa nenhuma por trás. A severidade daqui é interna, nunca
+devolvida ao professor — exactamente como `technical_code` já não é — e não
+notifica ninguém. Se algum dia aparecer num ecrã de utilizador, passou a ser a
+coisa que a §13 recusou.
+
+### Uma limitação do MySQL que fica escrita
+
+O par `assigned_to` / `assigned_at` **não tem CHECK**, ao contrário dos outros
+pares deste domínio, e não é esquecimento: o MySQL recusa-o com o erro 3823 —
+uma coluna usada numa chave estrangeira **com acção referencial** não pode
+aparecer num CHECK, e `assigned_to` tem `ON DELETE SET NULL`. As alternativas
+eram piores: sem o `nullOnDelete`, apagar a conta de um operador ficaria
+bloqueada por um pedido antigo. A invariante passa a viver numa única porta —
+`TriageSupportRequest::assign()` grava as duas colunas de uma vez — com um teste
+a afirmá-la, que é o que a base faria se pudesse.
+
+### Rasto
+
+`support.severity` e `support.assigned` levam **autor**, ao contrário da criação
+de um pedido (ADR-0011 §10): um pedido nasce sem autor no rasto porque o autor
+seria o titular dos dados; um acto do operador serve justamente por se saber quem
+o praticou. O nome de quem recebe a atribuição **não** entra — um identificador a
+mais no rasto é um a mais. Severidade e atribuição sobrevivem à anonimização,
+como `resolved_by`.
+
 ## [0.109.0] — 2026-09-02
 
 Captura de ecrã e imagens num reporte — e a certificação de quem as envia, que é
