@@ -209,7 +209,7 @@ class PlanDowngradeTest extends TestCase
             'module_id' => Module::where('key', 'lessons')->firstOrFail()->getKey(),
             'enabled' => false,
             'reason' => 'teste',
-            'starts_at' => Carbon::now()->subDay(),
+            'starts_at' => Carbon::parse('2026-01-01 00:00:00'),
         ]);
         app(Entitlements::class)->flush();
 

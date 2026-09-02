@@ -589,7 +589,7 @@ class TimetableImportTest extends TestCase
             'organization_id' => $organization->id,
             'plan_id' => Plan::query()->where('key', 'pro')->firstOrFail()->id,
             'status' => SubscriptionStatus::Active,
-            'starts_at' => Carbon::now()->subDay(),
+            'starts_at' => Carbon::parse('2026-01-01 00:00:00'),
         ]);
         app(Entitlements::class)->flush();
     }

@@ -66,7 +66,7 @@ class InovarInterimExportTest extends TestCase
                 'organization_id' => $this->teacher->personalOrganization()->getKey(),
                 'plan_id' => Plan::where('key', $plan)->firstOrFail()->getKey(),
                 'status' => SubscriptionStatus::Active,
-                'starts_at' => Carbon::now()->subDay(),
+                'starts_at' => Carbon::parse('2026-01-01 00:00:00'),
             ]);
         }
 

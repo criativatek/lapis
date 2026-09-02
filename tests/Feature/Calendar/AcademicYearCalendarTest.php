@@ -1204,6 +1204,19 @@ class AcademicYearCalendarTest extends TestCase
         });
     }
 
+    /**
+     * A subscrição começa ANTES DO ANO LECTIVO, e não «ontem».
+     *
+     * Este ficheiro viaja no tempo — `Carbon::setTestNow()` leva-o a
+     * `2026-09-01`, a `2027-07-31` e a `2029-03-04` — e uma subscrição presa ao
+     * relógio real deixa de estar em vigor assim que o destino da viagem fica
+     * ANTES dela. Com `now()->subDay()` isso acontecia consoante a hora a que a
+     * suite corresse: verde de madrugada, 403 a partir das nove da manhã, com a
+     * falha a aparecer como «esperava 200, recebeu 403», que não diz nada sobre
+     * a causa.
+     *
+     * Uma data fixa antes de tudo o que este ficheiro visita resolve-o de vez.
+     */
     private function subscribeToPro(Organization $organization): void
     {
         OrganizationSubscription::withoutGlobalScope('organization')
@@ -1213,7 +1226,7 @@ class AcademicYearCalendarTest extends TestCase
             'organization_id' => $organization->id,
             'plan_id' => Plan::query()->where('key', 'pro')->firstOrFail()->id,
             'status' => SubscriptionStatus::Active,
-            'starts_at' => Carbon::now()->subDay(),
+            'starts_at' => Carbon::parse('2026-08-01 00:00:00'),
         ]);
         app(Entitlements::class)->flush();
     }

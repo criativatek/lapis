@@ -71,7 +71,7 @@ class StudentProgressPrintTest extends TestCase
             [
                 'plan_id' => Plan::where('key', $key)->firstOrFail()->id,
                 'status' => SubscriptionStatus::Active,
-                'starts_at' => now()->subDay(),
+                'starts_at' => Carbon::parse('2026-01-01 00:00:00'),
                 'ends_at' => null,
             ],
         );
@@ -356,7 +356,7 @@ class StudentProgressPrintTest extends TestCase
             'organization_id' => $this->organization->getKey(),
             'module_id' => Module::where('key', 'advanced_analytics')->firstOrFail()->getKey(),
             'enabled' => true,
-            'starts_at' => Carbon::now()->subDay(),
+            'starts_at' => Carbon::parse('2026-01-01 00:00:00'),
             'ends_at' => Carbon::now()->addDays(14),
             'reason' => 'Período de avaliação (trial).',
         ]);

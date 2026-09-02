@@ -10,6 +10,7 @@ use App\Models\PlanVersion;
 use App\Models\User;
 use App\Services\Organizations\ChangeOrganizationPlan;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\Test;
@@ -149,7 +150,7 @@ class PlanVersionRollbackSafetyTest extends TestCase
             'organization_id' => $organization->getKey(),
             'plan_id' => $this->planId('base'),
             'status' => 'active',
-            'starts_at' => now()->subDay(),
+            'starts_at' => Carbon::parse('2026-01-01 00:00:00'),
             'contracted_price_cents' => 0,
             'contracted_currency' => 'EUR',
             'billing_period' => BillingPeriod::None,

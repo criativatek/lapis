@@ -31,6 +31,7 @@ use Database\Seeders\EntitlementsSeeder;
 use Database\Seeders\InstrumentTypesSeeder;
 use Database\Seeders\SystemScalesSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -103,7 +104,7 @@ class ImportCorrectionGridTest extends TestCase
             'organization_id' => $this->organization->getKey(),
             'plan_id' => Plan::where('key', $planKey)->firstOrFail()->getKey(),
             'status' => SubscriptionStatus::Active,
-            'starts_at' => now()->subDay(),
+            'starts_at' => Carbon::parse('2026-01-01 00:00:00'),
         ]);
 
         app(Entitlements::class)->flush();

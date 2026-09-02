@@ -11,6 +11,7 @@ use App\Models\SubscriptionStatus;
 use App\Models\User;
 use App\Support\Entitlements\Entitlements;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -213,7 +214,7 @@ class DataImportAccessControlTest extends TestCase
             'organization_id' => $organization->getKey(),
             'plan_id' => Plan::where('key', 'pro')->firstOrFail()->getKey(),
             'status' => SubscriptionStatus::Active,
-            'starts_at' => now()->subDay(),
+            'starts_at' => Carbon::parse('2026-01-01 00:00:00'),
         ]);
 
         app(Entitlements::class)->flush();

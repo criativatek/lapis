@@ -19,6 +19,7 @@ use App\Services\Ai\Providers\FakeAiTextProvider;
 use App\Support\Entitlements\Entitlements;
 use Database\Seeders\EntitlementsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\RateLimiter;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -66,7 +67,7 @@ class HelpAssistantTest extends TestCase
             [
                 'plan_id' => Plan::where('key', $key)->firstOrFail()->id,
                 'status' => SubscriptionStatus::Active,
-                'starts_at' => now()->subDay(),
+                'starts_at' => Carbon::parse('2026-01-01 00:00:00'),
                 'ends_at' => null,
             ],
         );

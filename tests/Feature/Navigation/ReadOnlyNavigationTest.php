@@ -43,7 +43,7 @@ class ReadOnlyNavigationTest extends TestCase
                 'plan_id' => $version->plan_id,
                 'plan_version_id' => $version->getKey(),
                 'status' => $status,
-                'starts_at' => Carbon::now()->subDay(),
+                'starts_at' => Carbon::parse('2026-01-01 00:00:00'),
             ]);
 
         app(Entitlements::class)->flush();

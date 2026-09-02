@@ -9,6 +9,7 @@ use App\Models\SubscriptionStatus;
 use App\Support\Limits\LimitKey;
 use App\Support\Limits\Limits;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\Test;
 use RuntimeException;
@@ -123,7 +124,7 @@ class VersionsPublishedWithoutLimitsTest extends TestCase
             'plan_id' => $versionOne->plan_id,
             'plan_version_id' => $versionOne->getKey(),
             'status' => SubscriptionStatus::Active,
-            'starts_at' => now()->subDay(),
+            'starts_at' => Carbon::parse('2026-01-01 00:00:00'),
         ]);
 
         return $organization;

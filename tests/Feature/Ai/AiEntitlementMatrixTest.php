@@ -15,6 +15,7 @@ use App\Support\Entitlements\Entitlements;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\EntitlementsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -228,7 +229,7 @@ class AiEntitlementMatrixTest extends TestCase
             [
                 'plan_id' => Plan::where('key', $planKey)->firstOrFail()->getKey(),
                 'status' => $status,
-                'starts_at' => now()->subDay(),
+                'starts_at' => Carbon::parse('2026-01-01 00:00:00'),
                 'ends_at' => $status === SubscriptionStatus::Trial ? now()->addDays(20) : null,
             ],
         );

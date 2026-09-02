@@ -49,7 +49,7 @@ class RequireModuleTest extends TestCase
             'organization_id' => $user->personalOrganization()->getKey(),
             'plan_id' => Plan::where('key', $planKey)->firstOrFail()->getKey(),
             'status' => SubscriptionStatus::Active,
-            'starts_at' => Carbon::now()->subDay(),
+            'starts_at' => Carbon::parse('2026-01-01 00:00:00'),
         ]);
 
         app(Entitlements::class)->flush();
@@ -73,7 +73,7 @@ class RequireModuleTest extends TestCase
             'organization_id' => $user->personalOrganization()->getKey(),
             'plan_id' => Plan::where('key', $planKey)->firstOrFail()->getKey(),
             'status' => SubscriptionStatus::Suspended,
-            'starts_at' => Carbon::now()->subDay(),
+            'starts_at' => Carbon::parse('2026-01-01 00:00:00'),
         ]);
 
         app(Entitlements::class)->flush();
