@@ -25,6 +25,42 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.108.0] — 2026-09-02
+
+O reporte passa a levar o que aconteceu no browser antes de alguém carregar no
+botão — consola, pedidos que falharam e erros por apanhar.
+
+### Adicionado
+
+- **Anéis ligados no arranque da aplicação, e não no clique.** É a única parte
+  disto que não se pode fazer de outra maneira: quando alguém carrega em
+  «Reportar problema», o erro já aconteceu há dez segundos e a consola já se
+  perdeu. 100 linhas de consola, 50 pedidos, 10 erros — em memória, e só saem
+  se a pessoa abrir o formulário e enviar.
+- **A rede guarda método, rota mascarada e estado. Nunca o URL** — é onde vivem
+  os identificadores e os tokens, e um 500 numa rota diz o mesmo sem os levar.
+  Um estado `0` é «nem chegou a haver resposta», que é diferente de um 500 e se
+  diz diferente.
+- **Diagnóstico do ecrã na ficha do backoffice**, com os erros e os pedidos com
+  estado ≥ 400 em destaque. Não entra na pesquisa: a fila continua a procurar por
+  referência e por email, nunca por dentro do que veio do ecrã de alguém.
+
+### Uma decisão que vale a pena saber
+
+**Um objecto na consola é resumido à sua forma, não serializado.** Um
+`console.log(props)` numa página de resultados é uma pauta inteira; guardado
+assim, fica `props {alunos,turma}`. Com o tecto de 500 caracteres por linha,
+serializar daria um JSON cortado a meio — pior para diagnosticar **e** com os
+primeiros nomes lá dentro. Uma string continua a ir tal e qual. Verificado em
+browser: o nome e o ULID da página não chegam à base.
+
+### Alterado
+
+- **O aviso no diálogo passa a contar o que segue**, item a item e com os
+  números à vista, em vez de dizer «mais nada» — que tinha deixado de ser
+  verdade no momento em que os anéis entraram. Um aviso desactualizado é pior do
+  que nenhum.
+
 ## [0.107.0] — 2026-09-02
 
 Um reporte feito pelo widget passa a dizer de que ecrã saiu e em que browser —

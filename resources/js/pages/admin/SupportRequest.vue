@@ -60,6 +60,9 @@ type SupportRequestDetail = {
             viewport?: string;
             language?: string;
         };
+        console?: { level: string; text: string; at?: string }[];
+        network?: { method: string; route: string; status: number; at?: string }[];
+        errors?: { name: string; message?: string; where?: string; at?: string }[];
     } | null;
     description: string | null;
     createdAt: string | null;
@@ -281,6 +284,58 @@ function formatDateTime(iso: string | null): string {
                             </template>
                         </div>
                     </dl>
+                </section>
+
+                <!--
+                    Os anéis do widget. Aparecem só quando existem — um pedido
+                    aberto pelo formulário antigo não traz nenhum — e não entram
+                    na pesquisa: a fila procura por referência e por email, nunca
+                    por dentro do que veio do ecrã de alguém.
+                -->
+                <section
+                    v-if="request.clientContext?.errors?.length || request.clientContext?.network?.length || request.clientContext?.console?.length"
+                    class="space-y-3 rounded-lg border border-border p-4"
+                >
+                    <h2 class="text-sm font-medium">Diagnóstico do ecrã</h2>
+
+                    <div v-if="request.clientContext?.errors?.length" class="space-y-1">
+                        <h3 class="text-xs font-medium text-muted-foreground">Erros</h3>
+                        <ul class="space-y-1">
+                            <li v-for="(erro, indice) in request.clientContext.errors" :key="`erro-${indice}`" class="font-mono text-xs">
+                                <span class="font-medium">{{ erro.name }}</span>
+                                <template v-if="erro.message"> — {{ erro.message }}</template>
+                                <template v-if="erro.where"> ({{ erro.where }})</template>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div v-if="request.clientContext?.network?.length" class="space-y-1">
+                        <h3 class="text-xs font-medium text-muted-foreground">Pedidos</h3>
+                        <ul class="space-y-1">
+                            <li v-for="(pedido, indice) in request.clientContext.network" :key="`rede-${indice}`" class="font-mono text-xs">
+                                <span :class="pedido.status >= 400 || pedido.status === 0 ? 'font-medium text-destructive' : ''">
+                                    {{ pedido.status === 0 ? 'sem resposta' : pedido.status }}
+                                </span>
+                                {{ pedido.method }} {{ pedido.route }}
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div v-if="request.clientContext?.console?.length" class="space-y-1">
+                        <h3 class="text-xs font-medium text-muted-foreground">
+                            Consola ({{ request.clientContext.console.length }})
+                        </h3>
+                        <ul class="max-h-64 space-y-0.5 overflow-y-auto rounded bg-muted p-2">
+                            <li
+                                v-for="(linha, indice) in request.clientContext.console"
+                                :key="`consola-${indice}`"
+                                class="font-mono text-xs"
+                                :class="linha.level === 'error' ? 'text-destructive' : linha.level === 'warn' ? 'text-amber-700' : 'text-muted-foreground'"
+                            >
+                                {{ linha.text }}
+                            </li>
+                        </ul>
+                    </div>
                 </section>
 
                 <section class="space-y-2 rounded-lg border border-border p-4">

@@ -92,6 +92,13 @@ const browserLabel = computed(() => {
     return [detected.browser, detected.browser_major].filter(Boolean).join(' ');
 });
 
+/** As contas que o aviso mostra: o que segue, contado. */
+const counts = computed(() => ({
+    console: form.client_context?.console?.length ?? 0,
+    network: form.client_context?.network?.length ?? 0,
+    errors: form.client_context?.errors?.length ?? 0,
+}));
+
 function submit(): void {
     form.post('/support', {
         preserveScroll: true,
@@ -168,14 +175,26 @@ function submit(): void {
                     </div>
 
                     <!--
-                        O que segue automaticamente é dito por extenso, e é pouco.
-                        Um aviso genérico não deixa ninguém decidir nada.
+                        O QUE SEGUE É DITO POR EXTENSO, E COM AS CONTAS À VISTA.
+                        Um aviso genérico não deixa ninguém decidir nada, e um
+                        aviso desactualizado é pior do que nenhum: se algum dia
+                        passar a seguir mais alguma coisa, esta lista tem de
+                        crescer no mesmo commit.
                     -->
-                    <p class="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-                        Segue também o ecrã onde está — <code class="font-mono">{{ form.technical_route ?? 'não identificado' }}</code> —,
-                        a versão da aplicação e o seu browser<template v-if="browserLabel"> ({{ browserLabel }})</template>.
-                        Mais nada. Por favor, não escreva nomes de alunos.
-                    </p>
+                    <div class="space-y-1 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+                        <p>Segue também, sem ação sua:</p>
+                        <ul class="list-inside list-disc space-y-0.5">
+                            <li>
+                                o ecrã onde está —
+                                <code class="font-mono">{{ form.technical_route ?? 'não identificado' }}</code>
+                            </li>
+                            <li>a versão da aplicação<template v-if="browserLabel"> e o seu browser ({{ browserLabel }})</template></li>
+                            <li v-if="counts.errors">{{ counts.errors }} erro(s) técnico(s) do seu browser</li>
+                            <li v-if="counts.network">{{ counts.network }} pedido(s) ao servidor, com o endereço do ecrã e o resultado</li>
+                            <li v-if="counts.console">{{ counts.console }} mensagem(ns) técnica(s) da consola do browser</li>
+                        </ul>
+                        <p class="pt-1">Por favor, não escreva nomes de alunos.</p>
+                    </div>
 
                     <DialogFooter class="gap-2">
                         <DialogClose as-child>

@@ -103,6 +103,83 @@ class ClientContextTest extends TestCase
     }
 
     #[Test]
+    public function the_rings_are_stored_with_the_columns_they_declare(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        $this->post('/support', $this->payload([
+            'client_context' => $this->context([
+                'console' => [['level' => 'error', 'text' => 'A grelha rebentou', 'at' => '2026-09-02T01:00:00.000Z']],
+                'network' => [['method' => 'GET', 'route' => '/classes/:id', 'status' => 500, 'at' => '2026-09-02T01:00:00.000Z']],
+                'errors' => [['name' => 'TypeError', 'message' => 'x is not a function', 'where' => 'app-abc.js:1', 'at' => '2026-09-02T01:00:00.000Z']],
+            ]),
+        ]))->assertRedirect();
+
+        $stored = SupportRequest::query()->sole()->client_context;
+
+        $this->assertSame('A grelha rebentou', $stored['console'][0]['text']);
+        $this->assertSame(500, $stored['network'][0]['status']);
+        $this->assertSame('TypeError', $stored['errors'][0]['name']);
+    }
+
+    #[Test]
+    public function a_ring_longer_than_its_ceiling_is_refused(): void
+    {
+        // O tecto não é uma sugestão: um anel que crescesse com a sessão
+        // passaria a ser um registo de tudo o que a pessoa fez, e isso é outra
+        // coisa, com outra base legal.
+        $this->actingAs(User::factory()->create());
+
+        $console = array_fill(0, 101, ['level' => 'log', 'text' => 'x', 'at' => '2026-09-02T01:00:00.000Z']);
+
+        $this->post('/support', $this->payload([
+            'client_context' => $this->context(['console' => $console]),
+        ]))->assertSessionHasErrors('client_context.console');
+
+        $this->assertDatabaseCount('support_requests', 0);
+    }
+
+    #[Test]
+    public function a_column_nobody_declared_is_dropped_from_inside_a_ring(): void
+    {
+        // A poda tem de descer até dentro das linhas. Uma chave a mais numa
+        // entrada de rede é tão boa porta como uma chave a mais no topo.
+        $this->actingAs(User::factory()->create());
+
+        $this->post('/support', $this->payload([
+            'client_context' => $this->context([
+                'network' => [[
+                    'method' => 'GET',
+                    'route' => '/classes/:id',
+                    'status' => 500,
+                    'at' => '2026-09-02T01:00:00.000Z',
+                    'url' => 'https://lapispro.com/classes/01M1CP8P9936KY71CD6GVSJV60?token=abc',
+                    'headers' => ['Authorization' => 'Bearer segredo'],
+                ]],
+            ]),
+        ]))->assertRedirect();
+
+        $stored = SupportRequest::query()->sole()->client_context;
+
+        $this->assertArrayNotHasKey('url', $stored['network'][0]);
+        $this->assertArrayNotHasKey('headers', $stored['network'][0]);
+        $this->assertStringNotContainsString('token', json_encode($stored));
+        $this->assertStringNotContainsString('01M1CP8P', json_encode($stored));
+    }
+
+    #[Test]
+    public function a_console_level_outside_the_closed_list_is_refused(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        $this->post('/support', $this->payload([
+            'client_context' => $this->context([
+                'console' => [['level' => 'trace', 'text' => 'x']],
+            ]),
+        ]))->assertSessionHasErrors('client_context.console.0.level');
+    }
+
+    #[Test]
     public function a_guest_sends_no_context_at_all(): void
     {
         $this->post('/contacto', [
