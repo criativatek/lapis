@@ -186,6 +186,31 @@ return [
 
         'inbox' => env('LAPIS_SUPPORT_INBOX', 'suporte@lapispro.com'),
 
+        /*
+         * EXPORTAÇÃO DE UM REPORTE PARA UM RASTREADOR EXTERNO.
+         *
+         * DESLIGADA SEM CONFIGURAÇÃO, E ISSO NÃO É uma predefinição prudente — é
+         * a condição para isto poder existir. Enquanto o `token` e o
+         * `repository` estiverem vazios, `ExportIssueToGithub` recusa-se a
+         * correr e o botão nem aparece.
+         *
+         * ANTES DE LIGAR, LER A ADR-0013. Exportar um reporte tira-o do relógio
+         * de retenção que a Política de Privacidade promete, e o corpo de um
+         * reporte pode conter uma captura do ecrã de um professor. Há trabalho
+         * legal por fazer que a ADR enumera, e este bloco existe apagado até ele
+         * estar feito.
+         *
+         * O REPOSITÓRIO TEM DE SER PRIVADO. Um issue com nomes de alunos num
+         * repositório público não é uma transferência, é uma divulgação — e essa
+         * é a única coisa aqui que nenhuma configuração consegue desfazer.
+         */
+        'github' => [
+            'token' => env('LAPIS_SUPPORT_GITHUB_TOKEN'),
+            // `dono/repositório`.
+            'repository' => env('LAPIS_SUPPORT_GITHUB_REPOSITORY'),
+            'api_url' => rtrim((string) env('LAPIS_SUPPORT_GITHUB_API', 'https://api.github.com'), '/'),
+        ],
+
     ],
 
     // Local e demonstração apenas: de quem é a conta que o `DemoDataSeeder`

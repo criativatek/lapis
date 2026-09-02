@@ -67,6 +67,7 @@ type SupportRequestDetail = {
     } | null;
     severity: string | null;
     assignedTo: { name: string | null; isMe: boolean } | null;
+    export: { configured: boolean; issueNumber: number | null; issueUrl: string | null };
     attachments: { ulid: string; kind: string; bytes: number; url: string }[];
     consent: {
         acceptedAt: string;
@@ -107,6 +108,11 @@ const releaseForm = useForm({});
 const resendForm = useForm({ notification_type: '' });
 
 const copiado = ref(false);
+const exportForm = useForm({ notes: '' });
+
+function exportar(): void {
+    exportForm.post(`${base}/export`, { preserveScroll: true });
+}
 
 function mudarSeveridade(valor: string): void {
     useForm({ severity: valor === '' ? null : valor }).post(`${base}/severity`, { preserveScroll: true });
@@ -470,6 +476,52 @@ function formatDateTime(iso: string | null): string {
                     <Button type="button" variant="ghost" size="sm" class="w-full" @click="copiarComoTexto">
                         {{ copiado ? 'Copiado' : 'Copiar como texto' }}
                     </Button>
+
+                    <!--
+                        A exportação só aparece quando há para onde exportar, e leva
+                        sempre uma nota escrita: é a única prosa que atravessa a
+                        fronteira, e escrevê-la obriga a ler o pedido antes de o
+                        mandar para fora.
+                    -->
+                    <div v-if="request.export.configured" class="space-y-2 border-t border-border pt-3">
+                        <a
+                            v-if="request.export.issueUrl"
+                            :href="request.export.issueUrl"
+                            target="_blank"
+                            rel="noopener"
+                            class="block text-xs underline"
+                        >
+                            Exportado — issue #{{ request.export.issueNumber }}
+                        </a>
+                        <template v-else>
+                            <label class="text-xs text-muted-foreground" for="nota-exportacao">
+                                Nota para o rastreador externo
+                            </label>
+                            <textarea
+                                id="nota-exportacao"
+                                v-model="exportForm.notes"
+                                rows="3"
+                                maxlength="2000"
+                                class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                                placeholder="O que é preciso saber para reproduzir isto."
+                            ></textarea>
+                            <InputError :message="exportForm.errors.notes" />
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                class="w-full"
+                                :disabled="exportForm.processing || exportForm.notes.trim() === ''"
+                                @click="exportar"
+                            >
+                                Exportar
+                            </Button>
+                            <p class="text-xs text-muted-foreground">
+                                Sai o contexto técnico e esta nota. O que a pessoa escreveu, a conversa e as imagens
+                                ficam aqui.
+                            </p>
+                        </template>
+                    </div>
                 </section>
 
                 <section class="space-y-2 rounded-lg border border-border p-4">

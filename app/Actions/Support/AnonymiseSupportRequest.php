@@ -66,6 +66,16 @@ class AnonymiseSupportRequest
 
             $request->attachments()->delete();
 
+            // O QUE SAIU PARA FORA. Expurgar um issue exportado é o melhor que a
+            // API permite — reescrever e fechar — e o GitHub guarda o histórico
+            // de edições, portanto isto reduz sem eliminar. É essa a diferença
+            // que a ADR-0013 obriga a assumir antes de ligar a exportação, e a
+            // razão de ela ser uma decisão caso a caso.
+            //
+            // Falhar aqui não trava a anonimização: o que este método promete é
+            // que o Lapispro deixa de ter os dados, e essa parte cumpre-se.
+            app(ExportIssueToGithub::class)->redact($request);
+
             $request->forceFill([
                 'requester_name' => null,
                 'requester_email' => null,
@@ -83,6 +93,9 @@ class AnonymiseSupportRequest
                 // `resolved_by`; saber que aquele aceite cobria duas imagens de um
                 // ecrã concreto é informação sobre o que ela enviou.
                 'consent_scope' => null,
+                // Um apontador para conteúdo é conteúdo.
+                'github_issue_number' => null,
+                'github_issue_url' => null,
                 // O único campo da suspensão que sai: é o que foi escrito à
                 // mão. O motivo, as datas e as autorias ficam — são a prova de
                 // que a excepção existiu, e não dizem nada sobre o titular.

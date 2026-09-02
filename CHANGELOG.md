@@ -25,6 +25,51 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.111.0] — 2026-09-02
+
+Um reporte pode sair para um rastreador externo — **por acto de uma pessoa, e com
+a funcionalidade desligada até haver trabalho legal feito**. Ver
+[ADR-0013](docs/adr/0013-issue-export.md).
+
+### Adicionado
+
+- **Exportação para GitHub Issues**, com uma **nota obrigatória** escrita por
+  quem exporta. A nota não é burocracia: é a única prosa que atravessa a
+  fronteira, e tê-la de escrever obriga a ler o pedido antes de o mandar para
+  fora. Um botão que exportasse sem nota seria o automático que o Plaanly faz,
+  com um clique pelo meio.
+- **Lista de permissões, e nunca de exclusões.** `IssueGithubPayload::ALLOWED`
+  enumera o que pode sair, e o teste compara por **igualdade** com uma lista
+  literal. «Tudo menos o `subject`» vaza no dia em que alguém acrescenta uma
+  coluna; isto quebra nesse mesmo dia.
+- **Não sai** o resumo, a descrição, nenhuma mensagem, o nome ou email de quem
+  reportou, as imagens, nem **a consola** — a única parte do contexto que leva
+  texto que a aplicação não compôs. O título também não leva o resumo, pelo
+  mesmo argumento da ADR-0011 §14 que o manteve fora dos emails.
+- **Expurgo aos 24 meses**, com a limitação escrita: a API não permite apagar um
+  issue, só reescrevê-lo e fechá-lo — e o GitHub guarda o histórico de edições.
+  Dentro do Lapispro a anonimização apaga; lá fora, reduz. É essa diferença que
+  faz de exportar uma decisão e não um passo.
+
+### Desligado, e é essa a condição para existir
+
+Sem `LAPIS_SUPPORT_GITHUB_TOKEN` e `LAPIS_SUPPORT_GITHUB_REPOSITORY` o botão não
+aparece e a acção recusa-se a correr. **A ADR-0013 enumera o que falta antes de
+ligar** — reescrever a LIA §2 e §5, nomear o GitHub como subcontratante,
+declarar a excepção à promessa de eliminação, e confirmar que o repositório é
+privado. Nada disso está feito.
+
+### Corrigido
+
+- **68 ficheiros de teste deixam de ter data de validade.** Os fixtures criavam
+  subscrições com `starts_at => now()->subDay()` e os testes viajam para datas
+  fixas: `AcademicYearCalendarTest` passou a devolver 403 às nove da manhã de
+  hoje, quando «ontem à mesma hora» passou a ficar **depois** da data visitada.
+  Terceira armadilha desta família em dois dias, por isso varri a suite: 79
+  ocorrências passam a uma âncora fixa anterior à data mais antiga que a suite
+  visita. Cada uma delas ia partir sozinha, uma a uma, com uma mensagem a apontar
+  para outro sítio que não a causa.
+
 ## [0.110.0] — 2026-09-02
 
 A fila do backoffice passa a dizer por onde começar e de quem é cada pedido.

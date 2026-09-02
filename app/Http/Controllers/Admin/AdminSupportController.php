@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Actions\Support\ChangeSupportStatus;
+use App\Actions\Support\ExportIssueToGithub;
 use App\Actions\Support\ManageRetentionHold;
 use App\Actions\Support\ReplyToSupportRequest;
 use App\Actions\Support\TriageSupportRequest;
@@ -46,6 +47,7 @@ class AdminSupportController extends Controller
         protected ManageRetentionHold $holds,
         protected SupportNotifier $notifier,
         protected TriageSupportRequest $triage,
+        protected ExportIssueToGithub $export,
     ) {}
 
     public function index(Request $request): Response
@@ -145,6 +147,13 @@ class AdminSupportController extends Controller
                 // fechada, logo nao ha aqui texto livre que precise de cuidado.
                 'clientContext' => $support->client_context,
                 'severity' => $support->severity?->value,
+                // O botão só aparece quando há para onde exportar. Esconder um
+                // controlo é apresentação; a regra está na acção, que recusa.
+                'export' => [
+                    'configured' => $this->export->isConfigured(),
+                    'issueNumber' => $support->github_issue_number,
+                    'issueUrl' => $support->github_issue_url,
+                ],
                 'assignedTo' => $support->assigned_to === null ? null : [
                     'name' => $support->assignee?->name,
                     'isMe' => (int) $support->assigned_to === (int) $request->user()?->getKey(),
@@ -267,6 +276,29 @@ class AdminSupportController extends Controller
             $request->user(),
             $validated['assign'] ? $request->user() : null,
         );
+
+        return back();
+    }
+
+    /**
+     * Exportar para o rastreador externo — com uma nota escrita por quem exporta.
+     *
+     * A NOTA É OBRIGATÓRIA, e não é burocracia: é a única prosa que atravessa a
+     * fronteira, e existir obriga quem carrega no botão a ler o pedido antes de
+     * o mandar para fora. Um botão que exportasse sem nota seria o automático
+     * que a ADR-0013 recusa, com um clique pelo meio.
+     */
+    public function export(Request $request, SupportRequest $support): RedirectResponse
+    {
+        $validated = $request->validate([
+            'notes' => ['required', 'string', 'max:2000'],
+        ]);
+
+        try {
+            $this->export->export($support, $request->user(), $validated['notes']);
+        } catch (\RuntimeException $exception) {
+            return back()->withErrors(['notes' => $exception->getMessage()]);
+        }
 
         return back();
     }

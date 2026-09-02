@@ -39,6 +39,8 @@ use LogicException;
  * @property SupportSeverity|null $severity
  * @property int|null $assigned_to
  * @property Carbon|null $assigned_at
+ * @property int|null $github_issue_number
+ * @property string|null $github_issue_url
  * @property SupportSource $source
  * @property SupportCategory $category
  * @property string|null $subject

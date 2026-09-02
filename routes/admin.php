@@ -95,6 +95,11 @@ Route::middleware(['auth', 'verified', 'platform-admin'])
         Route::post('support/{support}/classify', [AdminSupportController::class, 'classify'])->name('support.classify');
         Route::post('support/{support}/severity', [AdminSupportController::class, 'setSeverity'])->name('support.severity');
         Route::post('support/{support}/assign', [AdminSupportController::class, 'assign'])->name('support.assign');
+        // Exportar para o rastreador externo. Throttled: cada clique abre um
+        // issue de verdade num sistema que não é nosso.
+        Route::post('support/{support}/export', [AdminSupportController::class, 'export'])
+            ->middleware('throttle:10,1')
+            ->name('support.export');
         Route::post('support/{support}/hold', [AdminSupportController::class, 'applyHold'])->name('support.hold.apply');
         Route::delete('support/{support}/hold', [AdminSupportController::class, 'releaseHold'])->name('support.hold.release');
         // Reenviar um aviso que não chegou. Throttled: reconstrói e envia um
