@@ -25,6 +25,56 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.112.0] — 2026-09-02
+
+A Política de Privacidade passa a dizer o que o botão de reportar recolhe. Entre
+a 0.106.0 e a 0.109.0 o código foi à frente do texto, e nada os prendia um ao
+outro.
+
+### O que estava mal, com precisão
+
+**Não era falso, era incompleto** — e numa página de privacidade dá no mesmo
+para quem a lê. O parágrafo «do formulário do site recolhemos… não guardamos
+informação sobre o seu navegador… não aceita ficheiros anexos» sempre esteve
+limitado ao formulário público, e esse não mudou: recusa o contexto técnico, e um
+teste afirma-o. O que faltava era a frase seguinte — a Política dizia «pode
+também abrir um pedido dentro do Lapispro» e nunca dizia o que **esse** recolhe.
+
+### Alterado
+
+- **Três parágrafos novos** na secção «Contactos e suporte»: o contexto do ecrã
+  (nome do ecrã, endereço com os identificadores substituídos, família e versão
+  do navegador, sistema, tamanho da janela); as mensagens técnicas, os pedidos
+  falhados e os erros; e as imagens — com a decisão que as acompanha.
+- **O parágrafo do formulário público passa a dizer que é do público.** Uma
+  afirmação verdadeira sobre metade de um canal, escrita como se fosse sobre o
+  canal inteiro, lê-se como uma promessa que não se cumpre.
+- **A LIA fica com o âmbito explícito:** o reporte de dentro da aplicação assenta
+  na alínea b) e está fora daquele documento, que trata do canal público. As
+  duas linhas da tabela §5 que liam mais largo do que a verdade — «Sem anexos» e
+  «User-Agent nunca lido nem guardado» — passam a dizer de que canal falam.
+- **A Política avisa o que a aplicação não consegue fazer:** uma imagem de um ecrã
+  pode mostrar nomes e classificações, a aplicação não os reconhece dentro de uma
+  imagem, e por isso a decisão é de quem a envia — com a imagem à vista.
+
+### Guardas
+
+- **Três casos novos** em `SupportPrivacyAlignmentTest`, vistos a falhar contra o
+  texto antigo antes de passarem com o novo. Um deles não lê texto nenhum:
+  publica no `/contacto` com contexto técnico e afirma que ele não é guardado —
+  porque escrever que o formulário público o recusa não chega, tem de o recusar.
+- **Um teste instável corrigido pelo caminho.** `DataExportTest` criava duas
+  turmas com `'7.º '.fake()->randomLetter()` e afirmava que a etiqueta de uma
+  não aparecia — falso uma vez em cada 26. É o pior tipo de vermelho: o que
+  ensina a repetir a suite em vez de olhar para ela.
+
+### Por fazer
+
+O parágrafo da IA continua a afirmar que nenhum dado é enviado para um
+fornecedor, e é falso desde 2026-09-01. Fica para quando a facturação do projecto
+Google estiver activa **na chave que a aplicação usa** — a API ainda responde
+`FreeTier`, e a frase correcta depende disso.
+
 ## [0.111.0] — 2026-09-02
 
 Um reporte pode sair para um rastreador externo — **por acto de uma pessoa, e com

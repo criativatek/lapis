@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Legal;
 
+use App\Models\SupportRequest;
 use App\Models\User;
 use App\Support\Legal\LegalDocuments;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -65,6 +66,72 @@ class SupportPrivacyAlignmentTest extends TestCase
 
         // Quando a base é a alínea f), o direito de oposição tem de constar.
         $this->assertStringContainsString('pode opor-se', $corpo);
+    }
+
+    /**
+     * A Política tem de descrever o que o botão de dentro da aplicação recolhe.
+     *
+     * O QUE ESTE CASO FECHA. Entre as 0.106.0 e as 0.109.0, o reporte passou a
+     * levar contexto do browser, mensagens de consola, pedidos falhados e uma
+     * imagem do ecrã — e a Política continuou a descrever apenas o formulário
+     * público, dizendo que dele não se recolhe informação do navegador nem se
+     * aceitam anexos. Nada disso era falso; era **incompleto**, que numa página
+     * de privacidade dá no mesmo para quem a lê.
+     *
+     * O código foi à frente do texto porque nada os prendia um ao outro. Isto é
+     * a corda.
+     */
+    #[Test]
+    public function the_policy_describes_what_a_report_from_inside_the_app_collects(): void
+    {
+        $corpo = implode(' ', $this->sectionBody('Contactos e suporte'));
+
+        // O contexto técnico, pelos nomes por que o utilizador o reconhece.
+        $this->assertStringContainsString('navegador', $corpo);
+        $this->assertStringContainsString('tamanho da janela', $corpo);
+        $this->assertStringContainsString('mensagens técnicas', $corpo);
+        $this->assertStringContainsString('pedidos ao servidor que tenham falhado', $corpo);
+
+        // E o que o distingue de tudo o resto: a imagem, e a decisão dela.
+        $this->assertStringContainsString('imagem do seu ecrã', $corpo);
+        $this->assertStringContainsString('Nenhuma imagem é recolhida sem a pedir', $corpo);
+        $this->assertStringContainsString('nomes de alunos e classificações', $corpo);
+    }
+
+    /**
+     * O parágrafo do formulário público tem de dizer que é do público.
+     *
+     * «Não guardamos informação sobre o seu navegador» continua verdadeiro para
+     * `/contacto` e deixou de o ser para o botão de dentro da aplicação. Uma
+     * afirmação verdadeira sobre metade de um canal, escrita como se fosse sobre
+     * o canal inteiro, é lida como uma promessa que não se cumpre.
+     */
+    #[Test]
+    public function the_public_form_paragraph_says_it_is_about_the_public_form(): void
+    {
+        $corpo = implode(' ', $this->sectionBody('Contactos e suporte'));
+
+        $this->assertStringContainsString('o público, que pode usar sem conta', $corpo);
+        $this->assertStringContainsString('Esse formulário não aceita ficheiros anexos', $corpo);
+    }
+
+    /**
+     * E o que a Política diz sobre o formulário público tem de continuar a ser
+     * verdade NO CÓDIGO — não basta escrevê-lo.
+     */
+    #[Test]
+    public function the_public_form_really_refuses_the_technical_context(): void
+    {
+        $this->post('/contacto', [
+            'requester_name' => 'Ana',
+            'requester_email' => 'ana@exemplo.pt',
+            'category' => 'access',
+            'subject' => 'Não entro',
+            'description' => 'A palavra-passe não é aceite.',
+            'client_context' => ['environment' => ['browser' => 'chrome', 'browser_major' => 151]],
+        ])->assertRedirect();
+
+        $this->assertNull(SupportRequest::query()->sole()->client_context);
     }
 
     #[Test]

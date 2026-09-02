@@ -31,6 +31,17 @@ suporte a quem já é utilizador assentam na alínea b) (diligências
 pré-contratuais e execução do contrato); a conservação imposta por lei assenta
 na alínea c).
 
+**Em concreto, o reporte de problemas feito de dentro da aplicação está fora
+deste documento.** Desde a 0.106.0 existe um botão em todas as páginas
+autenticadas que abre um pedido com contexto técnico — e, se a pessoa o
+confirmar, uma imagem do ecrã. Quem o usa tem conta, logo o tratamento assenta na
+execução do contrato (alínea b) e não em interesse legítimo. O que aí se recolhe
+está descrito na secção «Contactos e suporte» da Política de Privacidade.
+
+A distinção é deliberada e está escrita no código: o formulário público
+**recusa** o contexto técnico, e um teste afirma-o. As salvaguardas da §5 abaixo
+descrevem o canal público, que é o objecto deste documento.
+
 ## 1. Interesse prosseguido
 
 Poder **receber, organizar e responder** às comunicações que nos são dirigidas,
@@ -96,9 +107,9 @@ Todas implementadas e cobertas por testes.
 
 | Salvaguarda | O que é, em concreto |
 | --- | --- |
-| **Minimização na recolha** | Cinco campos, dois dos quais de lista fechada ou limitados. Sem anexos. |
+| **Minimização na recolha** | No formulário público, cinco campos, dois dos quais de lista fechada ou limitados, e sem anexos. O contexto técnico e as imagens do reporte feito dentro da aplicação **não existem neste canal**: o pedido público recusa-os, e um teste afirma-o. |
 | **IP não persistido** | Usado apenas em memória pelo limitador de 5 pedidos/minuto; não é escrito na base de dados nem na auditoria. |
-| **User-Agent não persistido** | Nunca lido nem guardado. |
+| **User-Agent não persistido** | Neste canal, nunca lido nem guardado. (No reporte feito dentro da aplicação — fora deste documento — guarda-se a família e a versão principal do navegador, derivadas no browser; a cadeia completa nunca é enviada nem guardada.) |
 | **Aviso no ponto de recolha** | Pedido explícito para não incluir nomes de alunos, dados de saúde ou outros dados desnecessários, visível acima dos campos. |
 | **Guest sem portal** | Um visitante não tem forma de consultar o pedido depois de o submeter: não há GET público, não há URL assinada. |
 | **A referência não autentica** | `SUP-XXXXXX` é um número de protocolo; nenhuma rota o aceita como credencial. |
