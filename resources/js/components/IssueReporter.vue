@@ -12,6 +12,8 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { clientContext  } from '@/lib/diagnostics';
+import type {ClientContext} from '@/lib/diagnostics';
 import { currentMaskedRoute } from '@/lib/routeMask';
 
 /**
@@ -44,12 +46,27 @@ const authenticated = computed(() => Boolean((page.props.auth as { user?: unknow
 
 const open = ref(false);
 
-const form = useForm({
+/**
+ * Declarado em vez de inferido: com os campos anuláveis todos juntos, a
+ * inferência do `useForm` desiste e devolve `unknown`, e depois é o template
+ * inteiro que deixa de ser verificado.
+ */
+type IssueForm = {
+    category: string;
+    subject: string;
+    description: string;
+    technical_route: string | null;
+    technical_reference: string | null;
+    client_context: ClientContext | null;
+};
+
+const form = useForm<IssueForm>({
     category: '',
     subject: '',
     description: '',
-    technical_route: null as string | null,
-    technical_reference: null as string | null,
+    technical_route: null,
+    technical_reference: null,
+    client_context: null,
 });
 
 // A rota é lida no momento em que a janela abre, não quando o componente monta:
@@ -58,7 +75,21 @@ watch(open, (isOpen) => {
     if (isOpen) {
         form.clearErrors();
         form.technical_route = currentMaskedRoute();
+        // `page.component` é um literal escrito no repositório — «classes/Show»
+        // — e não uma rota: diz em que ecrã a pessoa estava sem dizer sobre quem.
+        form.client_context = clientContext(page.component ?? null);
     }
+});
+
+/** O que o aviso mostra: a mesma coisa que vai ser enviada, por extenso. */
+const browserLabel = computed(() => {
+    const detected = form.client_context?.environment;
+
+    if (!detected?.browser || detected.browser === 'unknown') {
+        return null;
+    }
+
+    return [detected.browser, detected.browser_major].filter(Boolean).join(' ');
 });
 
 function submit(): void {
@@ -141,8 +172,9 @@ function submit(): void {
                         Um aviso genérico não deixa ninguém decidir nada.
                     -->
                     <p class="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-                        Segue também o ecrã onde está — <code class="font-mono">{{ form.technical_route ?? 'não identificado' }}</code> —
-                        e a versão da aplicação. Mais nada. Por favor, não escreva nomes de alunos.
+                        Segue também o ecrã onde está — <code class="font-mono">{{ form.technical_route ?? 'não identificado' }}</code> —,
+                        a versão da aplicação e o seu browser<template v-if="browserLabel"> ({{ browserLabel }})</template>.
+                        Mais nada. Por favor, não escreva nomes de alunos.
                     </p>
 
                     <DialogFooter class="gap-2">

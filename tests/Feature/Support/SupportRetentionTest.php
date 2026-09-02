@@ -54,6 +54,10 @@ class SupportRetentionTest extends TestCase
             'category' => SupportCategory::Imports->value,
             'subject' => 'A pauta não importa',
             'description' => 'O ficheiro da escola dá erro.',
+            // Com contexto tecnico, ou a asserção de que ele desaparece aos 24
+            // meses estaria a afirmar coisa nenhuma.
+            'technical_route' => '/imports/:id',
+            'client_context' => ['page_component' => 'imports/Show'],
         ], $user, $user->personalOrganization());
 
         app(ReplyToSupportRequest::class)->fromOperator($pedido, $operator, 'Pode enviar o ficheiro?');
@@ -143,6 +147,9 @@ class SupportRetentionTest extends TestCase
         $this->assertNull($pedido->description);
         $this->assertNull($pedido->technical_reference);
         $this->assertNull($pedido->technical_route);
+        // O contexto tecnico do widget e recolhido sobre a sessao de quem
+        // escreveu, e por isso desaparece com o resto do que a identifica.
+        $this->assertNull($pedido->client_context);
         $this->assertNotNull($pedido->anonymized_at);
 
         // As mensagens e as entregas desaparecem.

@@ -51,6 +51,16 @@ type SupportRequestDetail = {
     appVersion: string;
     technicalReference: string | null;
     technicalRoute: string | null;
+    clientContext: {
+        page_component?: string;
+        environment?: {
+            browser?: string;
+            browser_major?: number | null;
+            platform?: string;
+            viewport?: string;
+            language?: string;
+        };
+    } | null;
     description: string | null;
     createdAt: string | null;
     resolvedAt: string | null;
@@ -245,6 +255,30 @@ function formatDateTime(iso: string | null): string {
                         </div>
                         <div v-if="request.technicalRoute" class="text-xs">
                             rota: {{ request.technicalRoute }}
+                        </div>
+                        <!--
+                            O contexto do ecrã, quando o reporte veio do widget.
+                            Vocabulário fechado de ponta a ponta: nada aqui é
+                            texto que alguém tenha escrito.
+                        -->
+                        <div v-if="request.clientContext?.page_component" class="text-xs">
+                            ecrã: {{ request.clientContext.page_component }}
+                        </div>
+                        <div v-if="request.clientContext?.environment" class="text-xs">
+                            {{
+                                [
+                                    request.clientContext.environment.browser,
+                                    request.clientContext.environment.browser_major,
+                                ]
+                                    .filter(Boolean)
+                                    .join(' ')
+                            }}
+                            <template v-if="request.clientContext.environment.platform">
+                                · {{ request.clientContext.environment.platform }}
+                            </template>
+                            <template v-if="request.clientContext.environment.viewport">
+                                · {{ request.clientContext.environment.viewport }}
+                            </template>
                         </div>
                     </dl>
                 </section>

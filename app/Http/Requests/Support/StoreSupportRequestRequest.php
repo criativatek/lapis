@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Support;
 
 use App\Models\SupportCategory;
+use App\Support\Support\ClientContext;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -33,6 +34,9 @@ class StoreSupportRequestRequest extends FormRequest
             'description' => ['required', 'string', 'max:5000'],
             'technical_reference' => ['nullable', 'string', 'max:120'],
             'technical_route' => ['nullable', 'string', 'max:200'],
+            // O contexto do ecrã, quando o reporte vem do widget. Lista fechada:
+            // ver `ClientContext`, que é onde as chaves e os vocabulários vivem.
+            ...ClientContext::rules(),
         ];
     }
 

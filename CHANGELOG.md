@@ -25,6 +25,44 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.107.0] — 2026-09-02
+
+Um reporte feito pelo widget passa a dizer de que ecrã saiu e em que browser —
+o suficiente para tentar reproduzir sem ter de perguntar, e nada além disso.
+
+### Adicionado
+
+- **`client_context`**, uma coluna JSON em `support_requests`. Uma coluna e não
+  uma tabela: há exactamente uma linha destas por pedido, lê-se com ele e
+  apaga-se com ele. Uma tabela 1:1 seria mais uma coisa que
+  `AnonymiseSupportRequest` teria de se lembrar de limpar — e o que essa acção
+  esquece não é um erro que se veja, é uma promessa de eliminação que deixa de
+  ser verdade em silêncio.
+- **A lista é fechada, e é essa a defesa.** `ClientContext` declara as chaves e
+  os vocabulários: o browser vem de uma lista de sete, a versão é um inteiro, o
+  viewport tem de ter a forma de um viewport. O que o esquema não reconhece **não
+  entra** — não é limpo depois. Sobre dados que um cliente compõe, é a única
+  forma de negar por omissão que funciona, e é o oposto de fazer expressões
+  regulares sobre um despejo de consola.
+- **Família e versão maior, nunca o User-Agent.** A string completa é uma
+  impressão digital; «chrome 151» responde à única pergunta que um diagnóstico
+  faz. O fuso horário não entra de todo: a aplicação corre toda em
+  `Europe/Lisbon`, logo o fuso só distingue quem está fora dele — e aí
+  distingue demais.
+- **O aviso no diálogo diz agora o browser detectado**, por extenso. O que se
+  mostra é o que segue.
+- **O convidado não envia nada disto.** `/contacto` continua nos cinco campos do
+  formulário, tal como a avaliação de interesse legítimo escrita promete.
+
+### Guardas
+
+- A **sentinela de auditoria** passa a injectar sentinelas também na rota e no
+  contexto: é o teste que vai policiar isto sozinho, sem ninguém se lembrar de o
+  actualizar.
+- A **anonimização** anula `client_context` com o resto do que identifica, e o
+  caso de retenção passa a criar o pedido **com** contexto — sem isso, afirmar
+  que ele desaparece aos 24 meses seria afirmar coisa nenhuma.
+
 ## [0.106.0] — 2026-09-02
 
 Reportar um problema deixa de obrigar a sair de onde se está. Um botão em todas

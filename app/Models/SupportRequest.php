@@ -58,6 +58,7 @@ use LogicException;
     'reference', 'requester_name', 'requester_email', 'user_id', 'organization_id',
     'source', 'category', 'subject', 'description', 'status',
     'technical_reference', 'technical_route', 'technical_code', 'app_version',
+    'client_context',
 ])]
 class SupportRequest extends Model
 {
@@ -105,6 +106,7 @@ class SupportRequest extends Model
             'status' => SupportRequestStatus::class,
             'technical_code' => SupportTechnicalCode::class,
             'retention_hold_reason_code' => RetentionHoldReason::class,
+            'client_context' => 'array',
             'waiting_since' => 'datetime',
             'waiting_reminder_sent_at' => 'datetime',
             'resolved_at' => 'datetime',

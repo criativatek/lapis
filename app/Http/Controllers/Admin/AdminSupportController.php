@@ -123,6 +123,9 @@ class AdminSupportController extends Controller
                 'appVersion' => $support->app_version,
                 'technicalReference' => $support->technical_reference,
                 'technicalRoute' => $support->technical_route,
+                // O contexto do ecra, quando o reporte veio do widget. Lista
+                // fechada, logo nao ha aqui texto livre que precise de cuidado.
+                'clientContext' => $support->client_context,
                 'anonymizedAt' => $support->anonymized_at?->toIso8601String(),
                 'holdNote' => $support->retention_hold_note,
                 'holdReleasedAt' => $support->retention_hold_released_at?->toIso8601String(),

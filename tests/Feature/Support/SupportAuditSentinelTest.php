@@ -39,6 +39,8 @@ class SupportAuditSentinelTest extends TestCase
         'SENTINELA-RESPOSTA-OPERADOR',
         'SENTINELA-RESPOSTA-PESSOA',
         'SENTINELA-NOTA-HOLD',
+        'SENTINELA-ROTA',
+        'SENTINELA-ECRA',
     ];
 
     protected function setUp(): void
@@ -60,6 +62,11 @@ class SupportAuditSentinelTest extends TestCase
             'category' => SupportCategory::Assessment->value,
             'subject' => 'SENTINELA-ASSUNTO',
             'description' => 'SENTINELA-DESCRICAO',
+            // O contexto técnico do widget entra aqui pela mesma razão que o
+            // resto: não é texto que uma pessoa escreveu, mas é recolhido sobre
+            // ela, e o rasto de auditoria não o pode levar consigo.
+            'technical_route' => '/SENTINELA-ROTA',
+            'client_context' => ['page_component' => 'SENTINELA-ECRA'],
         ], $user, $user->personalOrganization());
 
         app(ReplyToSupportRequest::class)->fromOperator($pedido->fresh(), $operator, 'SENTINELA-RESPOSTA-OPERADOR');

@@ -12,6 +12,7 @@ use App\Models\SupportRequestStatus;
 use App\Models\SupportSource;
 use App\Models\User;
 use App\Services\Audit\AuditLog;
+use App\Support\Support\ClientContext;
 use App\Support\Support\RouteMask;
 use App\Support\Support\SupportNotifier;
 use App\Support\Support\SupportReference;
@@ -45,7 +46,7 @@ class OpenSupportRequest
     ) {}
 
     /**
-     * @param  array{category: string, subject: string, description: string, requester_name?: string, requester_email?: string, technical_reference?: ?string, technical_route?: ?string}  $data
+     * @param  array{category: string, subject: string, description: string, requester_name?: string, requester_email?: string, technical_reference?: ?string, technical_route?: ?string, client_context?: ?array<string, mixed>}  $data
      */
     public function open(
         array $data,
@@ -88,6 +89,11 @@ class OpenSupportRequest
                 // método. Mascarar no ecrã seria pôr a regra a viajar no browser
                 // de quem envia.
                 'technical_route' => RouteMask::apply($data['technical_route'] ?? null),
+                // Podado para a lista declarada. A validação recusa um valor mal
+                // formado; isto remove uma chave que ninguém pediu — são coisas
+                // diferentes, e sem a segunda o array validado traria tudo o que
+                // viesse ao lado.
+                'client_context' => ClientContext::only($data['client_context'] ?? null),
                 'app_version' => (string) config('app.version'),
             ]);
 

@@ -62,6 +62,9 @@ class AnonymiseSupportRequest
                 'description' => null,
                 'technical_reference' => null,
                 'technical_route' => null,
+                // Contexto recolhido sobre a sessão de quem escreveu, e por isso
+                // do mesmo lado da linha que a rota: desaparece com ela.
+                'client_context' => null,
                 // O único campo da suspensão que sai: é o que foi escrito à
                 // mão. O motivo, as datas e as autorias ficam — são a prova de
                 // que a excepção existiu, e não dizem nada sobre o titular.
