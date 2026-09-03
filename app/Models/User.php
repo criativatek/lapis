@@ -30,6 +30,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property Carbon|null $two_factor_confirmed_at
  * @property string|null $remember_token
  * @property bool $is_platform_admin
+ * @property bool $is_support_technician
  * @property Carbon|null $deactivated_at
  * @property Carbon|null $closure_requested_at
  * @property Carbon|null $scheduled_deletion_at
@@ -41,8 +42,8 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-// is_platform_admin and deactivated_at are intentionally absent — neither the
-// admin flag nor a person's access to the application is ever mass-assigned.
+// Platform capability flags and deactivated_at are intentionally absent: none
+// of them is ever mass-assigned.
 #[Fillable(['name', 'email', 'password'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
@@ -62,6 +63,7 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
             'password' => 'hashed',
             'two_factor_confirmed_at' => 'datetime',
             'is_platform_admin' => 'boolean',
+            'is_support_technician' => 'boolean',
             'deactivated_at' => 'datetime',
             'closure_requested_at' => 'datetime',
             'scheduled_deletion_at' => 'datetime',
@@ -75,6 +77,11 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
     public function isPlatformAdmin(): bool
     {
         return $this->is_platform_admin === true;
+    }
+
+    public function isSupportTechnician(): bool
+    {
+        return $this->is_support_technician === true;
     }
 
     /**

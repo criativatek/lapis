@@ -27,7 +27,10 @@ class MakePlatformAdmin extends Command
         }
 
         $grant = ! $this->option('revoke');
-        $user->forceFill(['is_platform_admin' => $grant])->save();
+        $user->forceFill([
+            'is_platform_admin' => $grant,
+            'is_support_technician' => $grant,
+        ])->save();
 
         $this->info($grant
             ? "{$user->email} é agora administrador da plataforma."

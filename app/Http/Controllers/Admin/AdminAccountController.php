@@ -449,7 +449,10 @@ class AdminAccountController extends Controller
         $owner = $organization->owner;
         if ($owner !== null) {
             $grant = ! $owner->is_platform_admin;
-            $owner->forceFill(['is_platform_admin' => $grant])->save();
+            $owner->forceFill([
+                'is_platform_admin' => $grant,
+                'is_support_technician' => $grant,
+            ])->save();
             $this->log($organization, $grant ? 'admin.admin_granted' : 'admin.admin_revoked',
                 ($grant ? 'Concedido' : 'Revogado')." acesso de administrador a {$owner->email}.");
         }

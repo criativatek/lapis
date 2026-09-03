@@ -27,7 +27,7 @@ class AdminPasswordResetTest extends TestCase
     private function admin(): User
     {
         $admin = User::factory()->create();
-        $admin->forceFill(['is_platform_admin' => true])->save();
+        $admin->forceFill(['is_platform_admin' => true, 'is_support_technician' => true])->save();
 
         return $admin;
     }
@@ -126,7 +126,7 @@ class AdminPasswordResetTest extends TestCase
         [, $otherOrganization] = $this->targetAccount();
 
         $this->actingAs($this->admin())
-            ->post("/admin/accounts/{$targetOrganization->ulid}/impersonate")
+            ->post("/admin/accounts/{$targetOrganization->ulid}/impersonate", ['category' => 'technical_assistance'])
             ->assertRedirect('/dashboard');
         $this->assertAuthenticatedAs($target);
 

@@ -23,9 +23,9 @@ function stopImpersonating(): void {
         v-if="impersonating"
         class="flex items-center justify-center gap-3 bg-amber-500 px-4 py-1.5 text-center text-sm font-medium text-amber-950"
     >
-        <span>A ver a app como <strong>{{ impersonating.name }}</strong> (impersonação de suporte)</span>
+        <span>Acesso técnico ativo — a ver como <strong>{{ impersonating.name }}</strong></span>
         <button type="button" class="rounded bg-amber-950/10 px-2 py-0.5 text-xs hover:bg-amber-950/20" @click="stopImpersonating">
-            Terminar
+            Terminar acesso
         </button>
     </div>
     <PrivacyNotice />
