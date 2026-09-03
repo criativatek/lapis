@@ -23,6 +23,7 @@ import {
     scaleBandFor,
 } from '@/lib/instrumentQualitativeRating';
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
+import { statusToneClasses } from '@/lib/statusTone';
 
 // Preserves where the teacher came from without a general-purpose breadcrumb:
 // arriving from assessments/Show.vue (via ?from=assessments) returns there;
@@ -952,7 +953,7 @@ function revertCancellation(): void {
                 </Link>
             </div>
             <div class="flex items-center gap-3">
-                <Badge variant="secondary">{{ instrument.status_label }}</Badge>
+                <Badge variant="secondary" :class="statusToneClasses(instrument.status)">{{ instrument.status_label }}</Badge>
                 <template v-if="!isCancelled">
                     <!--
                       A real anchor, not an Inertia Link: this returns a file,

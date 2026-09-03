@@ -25,6 +25,31 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.117.2] — 2026-09-03
+
+Os estados dos elementos de avaliação ganham cor semântica — pedido no reporte
+SUP-UEVAH4 («é tudo muito neutro»), cuja captura mostrava três estados
+diferentes em três pílulas cinzentas iguais.
+
+### Adicionado
+
+- **`lib/statusTone.ts`** — mapa estado→tom sobre a paleta que já existia
+  (`qualitativeToneClasses`), aplicado nas pílulas da lista de elementos e da
+  grelha de correção: concluído/publicado verdes, em correção âmbar,
+  preparado azul, cancelado vermelho, rascunho e arquivado neutros.
+- Mapeado pelo **valor** do enum e nunca pelo rótulo — os rótulos são pt-PT e
+  mudam; um estado desconhecido fica neutro em vez de inventar cor. A cor é
+  reforço: o rótulo continua sempre lá.
+
+### Guardas
+
+- `statusTone.test.ts`, visto vermelho com o mapa deliberadamente trocado
+  antes de verde — inclui a asserção de que as classes vêm da paleta da casa
+  e não de uma segunda.
+
+As restantes pílulas de estado da aplicação (turmas, relatórios, aulas, …)
+usam o mesmo padrão e ficam para alastrar com o mesmo mapa.
+
 ## [0.117.1] — 2026-09-03
 
 O ecrã de Alunos passa a ocupar a largura toda, como o Painel — pedido no

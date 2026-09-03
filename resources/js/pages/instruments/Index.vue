@@ -4,6 +4,7 @@ import { ClipboardList, Plus } from '@lucide/vue';
 import Heading from '@/components/Heading.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { statusToneClasses } from '@/lib/statusTone';
 
 type Instrument = {
     ulid: string;
@@ -68,7 +69,10 @@ defineProps<{
                         </td>
                         <td class="px-4 py-3 text-muted-foreground">{{ instrument.class_label }}</td>
                         <td class="px-4 py-3 text-muted-foreground">{{ instrument.applied_on }}</td>
-                        <td class="px-4 py-3"><Badge variant="secondary">{{ instrument.status_label }}</Badge></td>
+                        <td class="px-4 py-3">
+                            <!-- Tom pelo VALOR do estado (SUP-UEVAH4): distinguem-se sem ler. -->
+                            <Badge variant="secondary" :class="statusToneClasses(instrument.status)">{{ instrument.status_label }}</Badge>
+                        </td>
                     </tr>
                 </tbody>
             </table>
