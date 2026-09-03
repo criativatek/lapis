@@ -66,6 +66,7 @@ function mountMenu(auth: Partial<Auth> = {}) {
     mocks.auth = {
         user,
         is_platform_admin: false,
+        is_support_technician: false,
         organization: personalOrganization,
         organizations: [personalOrganization],
         ...auth,

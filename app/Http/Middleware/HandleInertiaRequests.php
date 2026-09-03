@@ -96,6 +96,7 @@ class HandleInertiaRequests extends Middleware
                 // `EnsurePlatformAdmin` is what actually guards /admin, and a
                 // forged `true` here buys a link to a 403.
                 'is_platform_admin' => $user?->isPlatformAdmin() ?? false,
+                'is_support_technician' => $user?->isSupportTechnician() ?? false,
                 // Se há uma Política de Privacidade mais recente do que o
                 // último aviso que esta pessoa fechou. Apenas isso: um booleano
                 // que decide se se desenha uma faixa informativa. Não é uma

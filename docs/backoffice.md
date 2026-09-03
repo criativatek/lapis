@@ -63,7 +63,7 @@ Lapispro»**, que devolve o operador ao `/dashboard` da aplicação normal.
 | Página | Ações |
 |---|---|
 | **Contas** (`/admin`) | Lista **todas** as organizações (cross-org), com dono, plano, estado da subscrição e verificação. Pesquisa por nome/email, paginada. |
-| **Detalhe da conta** | Verificar email do dono · mudar plano (Base/Pro/Institucional) · suspender/reativar subscrição · conceder/revogar admin · **impersonar**. |
+| **Detalhe da conta** | Verificar email do dono · mudar plano (Base/Pro/Institucional) · suspender/reativar subscrição · conceder/revogar admin · **acesso técnico** (só quem tem `is_support_technician`). |
 | **Nova conta** (`/admin/accounts/create`) | Provisiona professor+organização+plano de uma vez. Email já verificado (contas provisionadas saltam a verificação). Password opcional — em branco gera uma temporária. |
 | **Comercial** (`/admin/commercial`) | Contas, subscrições, condição comercial e **receita real** — ver abaixo. |
 | **Email (SMTP)** (`/admin/settings`) | Configura o email do sistema **e o endereço de contacto público** — ver abaixo. |
@@ -177,12 +177,24 @@ email do titular — o mínimo para gerir uma subscrição.
 CSV da listagem, **respeitando os filtros no ecrã**, só para superadmin, com BOM UTF-8
 (senão o Excel abre «Condição» como mojibake) e sem uma única coluna pedagógica.
 
-## Impersonar (suporte)
+## Acesso técnico / Impersonar (suporte)
 
-No detalhe de uma conta, «Impersonar» faz o operador ver a app **como aquele professor**,
-para dar apoio. Enquanto dura, um **banner âmbar** persistente («A ver a app como X —
-Terminar») fica no topo; «Terminar» devolve a sessão de operador. **Nunca impersona outro
-admin.** Início e fim são **auditados** na org-alvo — é a ação mais sensível.
+No detalhe de uma conta, «Iniciar acesso técnico» faz o operador ver a app **como aquele
+professor**, para dar apoio. Só aparece a quem tem `is_support_technician` — **não** é toda
+a gente com `is_platform_admin`: é uma segunda capability, concedida por defeito a quem é
+promovido a admin interno (`lapis:make-admin` / «Tornar admin da plataforma»), mas
+revogável individualmente com `lapis:grant-support-access {email} --revoke` sem retirar o
+resto do acesso administrativo. Exige uma categoria (assistência técnica, diagnóstico,
+manutenção, segurança, incidente, verificação técnica, outro); referência de pedido e nota
+são opcionais — nunca é exigido um pedido de suporte prévio.
+
+Enquanto dura, um **banner âmbar** persistente («Acesso técnico ativo — a ver como X —
+Terminar acesso») fica no topo; «Terminar acesso» devolve a sessão de operador. **Nunca
+impersona outro admin.** Início e fim são **auditados** na org-alvo, correlacionados por um
+`support_access_id` — é a ação mais sensível. Qualquer ação normal praticada durante o
+acesso fica atribuída ao operador real no registo de atividade, nunca ao professor
+(`AuditLog::record()` resolve o causer a partir de `impersonator_id` em sessão). Ver
+[ADR-0014](adr/0014-technical-support-access.md).
 
 ## Email do sistema (SMTP)
 

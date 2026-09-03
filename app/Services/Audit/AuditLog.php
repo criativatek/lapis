@@ -25,7 +25,9 @@ class AuditLog
         ?string $summary = null,
         array $properties = [],
     ): AuditEvent {
-        $causer ??= auth()->user();
+        if ($causer === null) {
+            $causer = $this->resolveCauser($properties);
+        }
 
         return AuditEvent::create([
             'causer_id' => $causer?->getKey(),
@@ -37,6 +39,26 @@ class AuditLog
             'properties' => $properties === [] ? null : $properties,
             'created_at' => now(),
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $properties
+     */
+    protected function resolveCauser(array &$properties): ?User
+    {
+        $impersonatorId = session('impersonator_id');
+
+        if ($impersonatorId !== null) {
+            $currentUserId = auth()->id();
+
+            if ($currentUserId !== null && (int) $currentUserId !== (int) $impersonatorId) {
+                $properties['acting_as_user_id'] = $currentUserId;
+            }
+
+            return User::query()->whereKey($impersonatorId)->first();
+        }
+
+        return auth()->user();
     }
 
     /**

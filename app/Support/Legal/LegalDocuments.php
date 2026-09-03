@@ -207,6 +207,7 @@ class LegalDocuments
                         'Quanto aos dados da sua conta — nome, email, autenticação, plano, segurança e suporte — a '.self::entity().' é a responsável pelo tratamento. Está descrito na Política de Privacidade.',
                         'Quanto aos dados dos alunos, quem os introduz no Lapispro deve fazê-lo enquanto responsável pelo tratamento ou devidamente autorizado pelo responsável pelo tratamento competente. Isso abrange tanto o professor que exerce a atividade a título próprio e determina ele mesmo as finalidades, como o professor que atua sob a autoridade de uma escola ou agrupamento — caso em que a responsável é a instituição.',
                         'Quando a HORIZONLEVEL, LDA trata esses dados apenas para prestar o serviço, atua como subcontratante. As condições dessa relação estão no Acordo de Tratamento de Dados, que faz parte integrante destes Termos.',
+                        'No âmbito da relação descrita no parágrafo anterior, a '.self::entity().' pode realizar acessos técnicos às contas quando necessário para prestar assistência, diagnosticar anomalias, fazer manutenção, proteger a segurança do serviço ou investigar incidentes — nos termos descritos na Política de Privacidade e no Acordo de Tratamento de Dados.',
                     ],
                 ],
                 [
@@ -469,6 +470,17 @@ class LegalDocuments
                     ],
                 ],
                 [
+                    'heading' => 'Acesso técnico da nossa equipa',
+                    'body' => [
+                        'Pessoal técnico especificamente autorizado da '.self::entity().' pode aceder à sua conta e aos dados nela tratados quando isso for necessário para prestar assistência, diagnosticar uma anomalia, fazer manutenção, proteger a segurança do serviço, investigar um incidente ou verificar o correto funcionamento.',
+                        'Esse acesso pode ocorrer sem ter existido um pedido seu, quando a verificação técnica o justifique — não depende de ter aberto previamente um pedido de suporte.',
+                        'É limitado a quem foi especificamente autorizado para o efeito, essas pessoas estão vinculadas a um dever de confidencialidade, e o acesso nunca é usado para publicidade, para criar perfis, nem para qualquer finalidade que não seja prestar, manter ou proteger o serviço.',
+                        'Fica sempre registado no registo de atividade, identificado como acesso técnico.',
+                        'Quanto aos dados dos seus alunos, este acesso segue o regime e os limites descritos no Acordo de Tratamento de Dados.',
+                        'O fundamento deste tratamento é o mesmo indicado em «Com que fundamento tratamos os dados da sua conta» para a segurança e a integridade do serviço: interesse legítimo, exceto quando a lei nos obrigue a agir de outra forma.',
+                    ],
+                ],
+                [
                     'heading' => 'Cookies e armazenamento no navegador',
                     'body' => [
                         'A auditoria técnica ao produto encontrou apenas cookies estritamente necessários e de funcionamento. Não há cookies de publicidade, de marketing ou de análise de tráfego, e não é carregado qualquer serviço de terceiros no seu navegador — os tipos de letra são servidos do nosso próprio domínio.',
@@ -572,7 +584,8 @@ class LegalDocuments
                     'heading' => 'Confidencialidade',
                     'body' => [
                         'O acesso aos dados está limitado a quem precisa dele para operar e manter o serviço, e essas pessoas estão vinculadas a um dever de confidencialidade.',
-                        'A aplicação permite que um operador da plataforma aceda a uma conta para prestar assistência. Esse acesso fica registado no registo de atividade, identificado como tal.',
+                        'A aplicação permite que pessoal técnico especificamente autorizado aceda a uma conta para prestar assistência, diagnosticar uma anomalia, fazer manutenção, proteger a segurança do serviço, investigar um incidente ou verificar o correto funcionamento. Esse acesso não depende de ter existido um pedido seu: pode ser iniciado pela nossa própria verificação técnica quando isso se justifique. Fica limitado ao necessário para essas finalidades e é feito apenas por quem foi especificamente autorizado para o efeito.',
+                        'Esse acesso fica sempre registado no registo de atividade, identificado como acesso técnico e não como uma ação sua — e não altera a repartição de responsabilidades descrita neste acordo: continuamos subcontratantes quanto aos dados dos alunos, mesmo quando o acesso técnico implica vê-los para reproduzir ou verificar um problema.',
                     ],
                 ],
                 [

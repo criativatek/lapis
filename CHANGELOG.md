@@ -25,6 +25,51 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.112.0] — 2026-09-03
+
+Acesso técnico deixa de ser só "um admin da plataforma pode impersonar
+qualquer conta" e passa a ser uma permissão distinta, com motivo e o ator real
+preservado no registo de atividade. Ver [ADR-0014](docs/adr/0014-technical-support-access.md).
+
+### Adicionado
+
+- **`is_support_technician`**, uma capability de plataforma distinta de
+  `is_platform_admin` — não basta ser admin da plataforma para iniciar acesso
+  técnico a uma conta. Autorizada por defeito a quem é promovido a admin
+  interno (`lapis:make-admin` ou «Tornar admin da plataforma»), e **revogável
+  individualmente**, sem tocar no resto do acesso administrativo, com
+  `lapis:grant-support-access {email} --revoke`.
+- **Motivo com categoria fechada** ao iniciar o acesso — assistência técnica,
+  diagnóstico, manutenção, segurança, incidente, verificação técnica ou outro
+  — com referência de pedido e nota opcionais. **Nenhum pedido de suporte é
+  exigido**: o acesso não depende de ter existido um.
+- **`support_access_id`**, um identificador que junta o início e o fim de uma
+  mesma sessão de acesso técnico no registo de atividade, mesmo com o ID de
+  sessão PHP a mudar no `Auth::login()`.
+- Banner e botão do backoffice atualizados para "Acesso técnico ativo" /
+  "Iniciar acesso técnico" / "Terminar acesso" — deixa de se ler como uma
+  frase solta sobre impersonação e passa a nomear o que está a acontecer.
+
+### Corrigido
+
+- **O registo de atividade deixava de dizer a verdade a meio de uma sessão de
+  acesso técnico.** `AuditLog::record()` atribuía o causer a
+  `auth()->user()`, que durante a impersonação já é o professor — qualquer
+  ação normal praticada nesse intervalo ficava gravada como tendo sido feita
+  por ele, não por quem estava de facto a operar a conta. Corrigido na única
+  função que decide isto: quando existe uma sessão de acesso técnico ativa, o
+  causer é sempre quem entrou, e a distinção fica em
+  `properties['acting_as_user_id']`. Fora de uma sessão de acesso técnico, o
+  comportamento é idêntico ao de antes.
+
+### Documentos legais
+
+- Termos, Política de Privacidade e Acordo de Tratamento de Dados passam a
+  descrever expressamente o acesso técnico: pessoal especificamente
+  autorizado, as finalidades enumeradas, sem depender de pedido prévio, e
+  sempre identificado como tal no registo de atividade — nunca como uma ação
+  do professor. Versão `2026-09-03` nos três; sem reaceitação forçada.
+
 ## [0.111.0] — 2026-09-02
 
 Um reporte pode sair para um rastreador externo — **por acto de uma pessoa, e com

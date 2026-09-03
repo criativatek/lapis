@@ -193,6 +193,7 @@ class LegalPagesTest extends TestCase
             'Durante quanto tempo',
             'Os seus direitos',
             'Segurança',
+            'Acesso técnico da nossa equipa',
             'Cookies e armazenamento no navegador',
             'Subcontratantes',
             'Transferências internacionais',
@@ -204,6 +205,19 @@ class LegalPagesTest extends TestCase
         ] as $required) {
             $this->assertTrue($headings->contains($required), "Falta a secção «{$required}».");
         }
+    }
+
+    #[Test]
+    public function technical_access_is_disclosed_in_the_privacy_policy_and_processing_agreement(): void
+    {
+        $confidentiality = collect(LegalDocuments::processing()['sections'])
+            ->firstWhere('heading', 'Confidencialidade');
+        $privacyHeadings = collect(LegalDocuments::privacy()['sections'])->pluck('heading');
+        $confidentialityText = implode(' ', $confidentiality['body']);
+
+        $this->assertStringContainsString('pessoal técnico especificamente autorizado', $confidentialityText);
+        $this->assertStringNotContainsString('um operador da plataforma', $confidentialityText);
+        $this->assertTrue($privacyHeadings->contains('Acesso técnico da nossa equipa'));
     }
 
     #[Test]

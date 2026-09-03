@@ -25,6 +25,27 @@ antes de criar conta tem de as conseguir abrir sem ter conta. Indexáveis, cada
 uma canonical a si própria, e listadas no `sitemap.xml` e no `robots.txt`. As
 três remetem umas para as outras através de `related`.
 
+### Atualização de 2026-09-03 — acesso técnico
+
+Os Termos, a Política de Privacidade e o Acordo de Tratamento de Dados passam a
+descrever expressamente o acesso técnico às contas: pessoal especificamente
+autorizado, finalidades limitadas de assistência, diagnóstico, manutenção,
+segurança, investigação de incidentes e verificação do funcionamento, sem
+depender de pedido prévio, e sempre identificado como acesso técnico no registo
+de atividade.
+
+O acesso já existia como impersonation; esta alteração acrescenta autorização
+específica através da capability `is_support_technician`, motivo obrigatório e
+preservação do ator real através de `AuditLog::record()` no registo de atividade.
+Os três documentos recebem a versão `2026-09-03`. Não há nova aceitação forçada:
+os Termos e o Acordo mantêm o fluxo existente, e a Política volta a apresentar o
+aviso não bloqueante já implementado, porque `User::shouldSeePrivacyNotice()`
+compara `privacy_notice_dismissed_at` com
+`config('lapis.legal.privacy_effective_from')`. O desenho do mecanismo em si —
+porquê reforçar a impersonação existente em vez de construir outra, e a
+correção do ator real no registo de atividade — está em
+[ADR-0014](adr/0014-technical-support-access.md).
+
 **O texto está em PHP e não nos componentes Vue.** Com o SSR do Inertia
 desligado, texto escrito dentro de um `.vue` não chega à resposta e nenhum
 teste de servidor lhe pode tocar. Daqui viaja no payload do Inertia — que está

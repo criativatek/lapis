@@ -116,20 +116,25 @@ class SupportPrivacyAlignmentTest extends TestCase
     }
 
     #[Test]
-    public function the_effective_date_moved_for_the_privacy_policy_only(): void
+    public function the_policy_discloses_authorized_technical_access_and_its_audit_record(): void
+    {
+        $corpo = implode(' ', $this->sectionBody('Acesso técnico da nossa equipa'));
+
+        $this->assertStringContainsString('pessoal técnico', mb_strtolower($corpo));
+        $this->assertStringContainsString('registo de atividade', $corpo);
+    }
+
+    #[Test]
+    public function the_effective_dates_moved_for_all_three_legal_documents(): void
     {
         $this->assertSame(
             config('lapis.legal.privacy_effective_from'),
             LegalDocuments::privacy()['effective_from'],
         );
 
-        // Os outros dois documentos não foram alterados por esta release.
-        $this->assertSame('2026-08-27', config('lapis.legal.terms_effective_from'));
-        $this->assertSame('2026-08-27', config('lapis.legal.processing_effective_from'));
-        $this->assertNotSame(
-            config('lapis.legal.terms_effective_from'),
-            config('lapis.legal.privacy_effective_from'),
-        );
+        $this->assertSame('2026-09-03', config('lapis.legal.terms_effective_from'));
+        $this->assertSame('2026-09-03', config('lapis.legal.privacy_effective_from'));
+        $this->assertSame('2026-09-03', config('lapis.legal.processing_effective_from'));
     }
 
     // ------------------------------------------------- o aviso a quem já usa

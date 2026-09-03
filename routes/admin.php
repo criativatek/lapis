@@ -140,7 +140,9 @@ Route::middleware(['auth', 'verified', 'platform-admin'])
             ->name('ai.probe');
 
         // Start impersonating the org's owner (support).
-        Route::post('accounts/{organization}/impersonate', [AdminImpersonateController::class, 'start'])->name('accounts.impersonate');
+        Route::post('accounts/{organization}/impersonate', [AdminImpersonateController::class, 'start'])
+            ->middleware('support-technician')
+            ->name('accounts.impersonate');
     });
 
 // Stop impersonation — reached AS the impersonated teacher, so it is only `auth`,

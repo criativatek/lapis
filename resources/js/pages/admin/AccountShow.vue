@@ -82,8 +82,14 @@ const userForm = useForm({
 const memberForm = useForm({ email: '' });
 const resetPasswordForm = useForm({});
 const temporaryPasswordForm = useForm({});
+const supportAccessForm = useForm({
+    category: '',
+    ticket_reference: '',
+    note: '',
+});
 const resetPasswordDialogOpen = ref(false);
 const temporaryPasswordDialogOpen = ref(false);
+const supportAccessDialogOpen = ref(false);
 const temporaryPassword = ref<{ value: string; email: string } | null>(null);
 const page = usePage();
 
@@ -118,6 +124,13 @@ function generateTemporaryPassword(): void {
     temporaryPasswordForm.post(`${base.value}/temporary-password`, {
         preserveScroll: true,
         onSuccess: () => (temporaryPasswordDialogOpen.value = false),
+    });
+}
+
+function startSupportAccess(): void {
+    supportAccessForm.post(`${base.value}/impersonate`, {
+        preserveScroll: true,
+        onSuccess: () => (supportAccessDialogOpen.value = false),
     });
 }
 
@@ -339,15 +352,82 @@ function destroy(): void {
                     <button type="button" class="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40" @click="post('/toggle-admin')">
                         {{ account.owner.is_platform_admin ? 'Revogar admin da plataforma' : 'Tornar admin da plataforma' }}
                     </button>
-                    <button
-                        v-if="!account.owner.is_platform_admin && account.owner.active"
-                        type="button"
-                        class="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
-                        title="Apenas para suporte. Permite visualizar a aplicação com o contexto deste utilizador."
-                        @click="post('/impersonate')"
+                    <Dialog
+                        v-if="!account.owner.is_platform_admin && account.owner.active && page.props.auth.is_support_technician"
+                        v-model:open="supportAccessDialogOpen"
                     >
-                        Aceder como utilizador
-                    </button>
+                        <DialogTrigger as-child>
+                            <button
+                                type="button"
+                                class="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
+                                title="Acesso técnico autorizado com o contexto deste utilizador."
+                            >
+                                Iniciar acesso técnico
+                            </button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader class="space-y-3">
+                                <DialogTitle>Iniciar acesso técnico</DialogTitle>
+                                <DialogDescription>
+                                    Vai aceder à aplicação com o contexto de {{ account.owner.email }}. Indique a categoria obrigatória; a referência e a nota são opcionais.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <div class="space-y-3">
+                                <label class="block text-sm">
+                                    <span class="mb-1 block font-medium">Categoria</span>
+                                    <select
+                                        v-model="supportAccessForm.category"
+                                        required
+                                        class="w-full rounded-md border border-border bg-background px-3 py-2"
+                                    >
+                                        <option value="" disabled>Selecionar categoria</option>
+                                        <option value="technical_assistance">Assistência técnica</option>
+                                        <option value="diagnosis">Diagnóstico</option>
+                                        <option value="maintenance">Manutenção</option>
+                                        <option value="security">Segurança</option>
+                                        <option value="incident">Incidente</option>
+                                        <option value="technical_verification">Verificação técnica</option>
+                                        <option value="other">Outro</option>
+                                    </select>
+                                    <span v-if="supportAccessForm.errors.category" class="mt-1 block text-xs text-red-600">
+                                        {{ supportAccessForm.errors.category }}
+                                    </span>
+                                </label>
+                                <label class="block text-sm">
+                                    <span class="mb-1 block font-medium">Referência do pedido (opcional)</span>
+                                    <input
+                                        v-model="supportAccessForm.ticket_reference"
+                                        type="text"
+                                        maxlength="100"
+                                        class="w-full rounded-md border border-border bg-background px-3 py-2"
+                                    />
+                                    <span v-if="supportAccessForm.errors.ticket_reference" class="mt-1 block text-xs text-red-600">
+                                        {{ supportAccessForm.errors.ticket_reference }}
+                                    </span>
+                                </label>
+                                <label class="block text-sm">
+                                    <span class="mb-1 block font-medium">Nota (opcional)</span>
+                                    <textarea
+                                        v-model="supportAccessForm.note"
+                                        maxlength="500"
+                                        rows="3"
+                                        class="w-full rounded-md border border-border bg-background px-3 py-2"
+                                    />
+                                    <span v-if="supportAccessForm.errors.note" class="mt-1 block text-xs text-red-600">
+                                        {{ supportAccessForm.errors.note }}
+                                    </span>
+                                </label>
+                            </div>
+                            <DialogFooter class="gap-2">
+                                <DialogClose as-child>
+                                    <Button variant="secondary">Cancelar</Button>
+                                </DialogClose>
+                                <Button :disabled="supportAccessForm.processing || supportAccessForm.category === ''" @click="startSupportAccess">
+                                    Iniciar acesso
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
 
                     <button
                         v-if="account.owner.active"

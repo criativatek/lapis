@@ -107,13 +107,13 @@ return [
         // Datas de entrada em vigor de cada documento (YYYY-MM-DD). Escritas à
         // mão porque uma alteração ao texto legal é um ato deliberado, não algo
         // que deva mover-se sozinho a cada deploy.
-        'terms_effective_from' => env('LAPIS_LEGAL_TERMS_DATE', '2026-08-27'),
+        'terms_effective_from' => env('LAPIS_LEGAL_TERMS_DATE', '2026-09-03'),
 
-        'privacy_effective_from' => env('LAPIS_LEGAL_PRIVACY_DATE', '2026-08-30'),
+        'privacy_effective_from' => env('LAPIS_LEGAL_PRIVACY_DATE', '2026-09-03'),
 
         // O Acordo de Tratamento de Dados — o professor como responsável, o
         // Lapispro como subcontratante dos dados dos alunos.
-        'processing_effective_from' => env('LAPIS_LEGAL_PROCESSING_DATE', '2026-08-27'),
+        'processing_effective_from' => env('LAPIS_LEGAL_PROCESSING_DATE', '2026-09-03'),
 
     ],
 
