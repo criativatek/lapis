@@ -25,6 +25,39 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.115.0] — 2026-09-03
+
+A Política de Privacidade nomeia o GitHub antes de a exportação de reportes
+ligar — os pontos 2 e 3 do ADR-0013, que eram a condição legal para configurar
+o token.
+
+### Alterado
+
+- **«Subcontratantes»** ganha o GitHub, Inc. — sociedade dos EUA, subsidiária
+  da Microsoft — como alojamento do sistema interno de acompanhamento de
+  problemas; **«Transferências internacionais»** diz que essa parte não fica
+  necessariamente no EEE.
+- **«Contactos e suporte»** descreve a exportação como ela é: caso a caso, por
+  decisão da equipa, só composição técnica — e diz pela negativa o que nunca
+  segue: **o texto que o utilizador escreveu, o nome, o email e as imagens**.
+  É a lista `ALLOWED` do `IssueGithubPayload` dita por palavras.
+- **«Durante quanto tempo»** ganha a exceção que estava implícita: no fim do
+  prazo o issue exportado é reescrito e fechado, que é o máximo que a API do
+  GitHub permite — e o histórico de edições fica, acessível à equipa. É
+  exactamente por isso que exportar é uma decisão e não um automático.
+
+### Guardas
+
+- **Um caso novo em `SupportPrivacyAlignmentTest`**, visto vermelho contra o
+  texto antigo: prende quem recebe, o que nunca segue, o «caso a caso», a
+  exceção do histórico de edições — e que não há `**` a fingir ênfase numa
+  página que renderiza texto plano.
+
+### Por fazer
+
+O parágrafo da IA (falso desde 2026-09-01) continua bloqueado em confirmar o
+tier da chave Gemini. O ADR-0013 regista-o no item 2.
+
 ## [0.114.0] — 2026-09-03
 
 > **Escrita como 0.112.0 num ramo paralelo e renumerada no merge.** Esse

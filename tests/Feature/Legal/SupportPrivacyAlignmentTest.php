@@ -127,6 +127,46 @@ class SupportPrivacyAlignmentTest extends TestCase
     }
 
     /**
+     * A Política tem de nomear o GitHub antes de a exportação ligar.
+     *
+     * O ADR-0013 fez desta nomeação uma condição para configurar o token — um
+     * reporte exportado é a única parte deste domínio que sai para uma
+     * plataforma de terceiros. Três afirmações, e cada uma prende uma promessa
+     * diferente: quem recebe (subcontratante nomeado, com jurisdição), o que
+     * NUNCA segue (texto, identidade, imagens — é a lista `ALLOWED` do
+     * `IssueGithubPayload` dita por palavras), e o que acontece no fim do prazo
+     * — incluindo o que o GitHub não deixa apagar.
+     */
+    #[Test]
+    public function the_policy_names_github_and_what_never_leaves(): void
+    {
+        $texto = $this->privacyText();
+        $suporte = implode(' ', $this->sectionBody('Contactos e suporte'));
+        $subcontratantes = implode(' ', $this->sectionBody('Subcontratantes'));
+        $prazos = implode(' ', $this->sectionBody('Durante quanto tempo'));
+        $transferencias = implode(' ', $this->sectionBody('Transferências internacionais'));
+
+        // Quem recebe, e onde.
+        $this->assertStringContainsString('GitHub, Inc.', $subcontratantes);
+        $this->assertStringContainsString('Estados Unidos da América', $subcontratantes);
+        $this->assertStringContainsString('GitHub', $transferencias);
+
+        // O que nunca segue — a frase que transforma a lista ALLOWED em promessa.
+        $this->assertStringContainsString('Não seguem o texto que escreveu, o seu nome, o seu email, nem as imagens', $suporte);
+
+        // Caso a caso, não automático — a decisão que o ADR-0013 regista.
+        $this->assertStringContainsString('caso a caso', $suporte);
+
+        // E a exceção à eliminação, dita em vez de implícita: reescrever e
+        // fechar é o máximo que a API permite, e o histórico de edições fica.
+        $this->assertStringContainsString('histórico de edições', $prazos);
+        $this->assertStringContainsString('reescrito', $prazos);
+
+        // Sem markdown a fingir ênfase: a página renderiza texto plano.
+        $this->assertStringNotContainsString('**', $texto);
+    }
+
+    /**
      * O parágrafo do formulário público tem de dizer que é do público.
      *
      * «Não guardamos informação sobre o seu navegador» continua verdadeiro para

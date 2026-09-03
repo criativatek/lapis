@@ -1,7 +1,7 @@
 # ADR-0013 — Um reporte pode sair para um rastreador externo, por acto de uma pessoa
 
 - **Status:** Accepted — implementado na 0.111.0, **desligado por configuração**.
-  Ligar exige o trabalho legal da secção «Antes de ligar», que **não está feito**.
+  Ligar exige o trabalho legal da secção «Antes de ligar» — estado por item na própria secção (actualizada a 2026-09-03).
 - **Date:** 2026-09-02
 - **Contradiz:** [ADR-0011](0011-support-centre.md) §4 — «a conversa canónica é a
   do Lapispro» — e a §31 do `CLAUDE.md`, que põe enviar dados identificáveis de
@@ -84,19 +84,26 @@ Sem `LAPIS_SUPPORT_GITHUB_TOKEN` e `LAPIS_SUPPORT_GITHUB_REPOSITORY`,
 método recusa-se a correr. **O código existe apagado**, e é assim que fica até o
 trabalho abaixo estar feito.
 
-## Antes de ligar — o que está por fazer
+## Antes de ligar — estado a 2026-09-03
 
-1. **`docs/legitimate-interest-support.md`** — a §2 diz «não é recolhido nada
-   mais» e a tabela de salvaguardas da §5 diz «User-Agent não persistido» e «Sem
-   anexos». As três deixaram de ser verdade com as 0.107.0–0.109.0, e nenhuma
-   delas foi reescrita.
-2. **`LegalDocuments::privacy()`** — nomear o **GitHub (Microsoft)** como
-   subcontratante, com a localização do tratamento, e declarar que um reporte de
-   problema pode conter uma imagem do ecrã de quem reportou. Na mesma passagem, a
-   correcção do parágrafo que ainda afirma que nenhum dado é enviado para um
-   fornecedor de IA — falso desde 2026-09-01.
-3. **A excepção da §6 escrita na Política**, em vez de implícita.
-4. **Confirmar que o repositório é privado.**
+1. ~~**`docs/legitimate-interest-support.md`**~~ — **feito na 0.112.0**: a §2
+   ganhou o âmbito explícito (o reporte de dentro da aplicação assenta na
+   alínea b) e está fora daquele documento) e as duas linhas da §5 passaram a
+   dizer de que canal falam. `SupportPrivacyAlignmentTest` prende-o.
+2. **`LegalDocuments::privacy()`** — **GitHub nomeado na 0.115.0**: entrada nos
+   Subcontratantes (GitHub, Inc., EUA, subsidiária da Microsoft), linha nas
+   Transferências internacionais, e o parágrafo em «Contactos e suporte» com o
+   que segue e — mais importante — o que nunca segue (a lista `ALLOWED` dita
+   por palavras: sem texto do utilizador, sem identidade, sem imagens).
+   **Continua por fazer** a correção do parágrafo da IA — falso desde
+   2026-09-01 —, bloqueada em confirmar o tier (Free/Paid) da chave Gemini do
+   projecto Google; é trabalho da IA e não desta exportação, mas fica registado
+   aqui até estar fechado.
+3. ~~**A exceção da §6 escrita na Política**~~ — **feito na 0.115.0**: item
+   próprio em «Durante quanto tempo» — reescrito e fechado é o máximo que a
+   API permite, e o histórico de edições fica, dito por palavras.
+4. **Confirmar que o repositório é privado** — verifica-se pela API no momento
+   de configurar o token, antes de o escrever no `.env` de produção.
 
 ## Consequences
 
