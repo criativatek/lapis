@@ -99,6 +99,34 @@ class SupportPrivacyAlignmentTest extends TestCase
     }
 
     /**
+     * A Política tem de dizer quem transcreve a voz de quem dita, e para onde
+     * vai o áudio.
+     *
+     * O DITADO É O ÚNICO CAMINHO EM QUE ALGO DO UTILIZADOR SAI SEM PASSAR POR
+     * NÓS. O áudio vai do navegador para o serviço de reconhecimento do
+     * fornecedor dele — hoje, no Chrome, a Google — e o Lapispro nunca o vê. É
+     * precisamente por não passar por nós que é fácil não o declarar: nada nos
+     * nossos registos o mostraria. Daí este caso.
+     *
+     * O ecrã já avisa (`lib/dictation.ts`), e o aviso no ecrã não substitui o
+     * documento: quem lê a Política para saber o que acontece aos dados não abre
+     * o diálogo de reporte para descobrir.
+     */
+    #[Test]
+    public function the_policy_says_who_transcribes_dictated_speech(): void
+    {
+        $corpo = implode(' ', $this->sectionBody('Contactos e suporte'));
+
+        $this->assertStringContainsString('Pode ditar a descrição', $corpo);
+        // Quem transcreve, e que não somos nós.
+        $this->assertStringContainsString('o seu próprio navegador, e não o Lapispro', $corpo);
+        // O destinatário, pelo nome. Sem isto o parágrafo diz «sai» e não diz para onde.
+        $this->assertStringContainsString('o fornecedor dele — hoje, no Chrome e no Edge, é este segundo caso, e o fornecedor é a Google', $corpo);
+        // E o que continua a ser verdade: nós não guardamos som.
+        $this->assertStringContainsString('o som passa por nós nem é gravado', $corpo);
+    }
+
+    /**
      * O parágrafo do formulário público tem de dizer que é do público.
      *
      * «Não guardamos informação sobre o seu navegador» continua verdadeiro para

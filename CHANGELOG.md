@@ -25,6 +25,89 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.113.0] — 2026-09-03
+
+Quem reporta um problema pode ditá-lo em vez de o escrever — e sabe, antes de
+falar, quem transcreve a sua voz.
+
+### Adicionado
+
+- **Botão «Ditar»** ao lado de «O que aconteceu», no diálogo de reporte. Fala
+  contigo em pt-PT, contínuo, e reata sozinho quando o browser se desliga no
+  silêncio — sem isso perde-se a segunda metade da frase e a culpa fica do
+  botão. O texto entra numa linha nova a partir do que já estava escrito, e
+  edita-se à mão depois de parar.
+- **`resources/js/lib/dictation.ts`** — API nativa do browser, zero
+  dependências novas, zero código de servidor, zero áudio guardado.
+
+### A decisão que este trabalho obrigou a tomar
+
+A API de reconhecimento de voz do browser é, **por omissão, um serviço
+remoto**. A MDN di-lo por palavras suas: «your audio is sent to a web service
+for recognition processing». Desde o Chrome 138 existe um modo no dispositivo
+(`processLocally`), e a sonda em produção, no Chrome 152, respondeu isto:
+
+```
+pt-PT · local  · dictation → unavailable
+pt-PT · local  · command   → downloadable
+pt-PT · remoto · dictation → available
+```
+
+Igual em pt-BR, en-US, es-ES e fr-FR. **Ditado contínuo no dispositivo não
+existe hoje, em língua nenhuma**; só existe o nível `command` — «frases curtas
+de vocabulário limitado» — que não serve para descrever um defeito em fala
+corrida.
+
+Por isso o código **tenta primeiro o dispositivo e cai no remoto**, e por isso o
+ecrã diz qual dos dois se aplica **antes** de começar a ouvir. Quem só vê o
+aviso depois de falar já falou — e essa é a única decisão que aquele texto
+existe para permitir. É também a única diferença de fundo em relação ao sistema
+equivalente do Plaanly, que usa o motor remoto sem o dizer em sítio nenhum.
+
+`processLocally` **só fica `true` quando foi verificado**. Num browser sem o
+estático `available()` atribuí-la é um no-op silencioso e o áudio segue para a
+rede exactamente como seguiria sem ela: nesse caso o modo é `remote`, que avisa,
+e nunca `local`, que prometeria o que não pode cumprir.
+
+### Alterado
+
+- **A Política de Privacidade diz quem transcreve.** Parágrafo novo em
+  «Contactos e suporte»: que é o próprio navegador e não o Lapispro, que hoje no
+  Chrome e no Edge o áudio vai para a Google, que o som **nunca passa por nós
+  nem é gravado**, e que o pedido de não escrever nomes de alunos vale igual
+  para os ditar.
+- **As mensagens de erro deixam de ser nomes técnicos.** `no-speech` — o mais
+  comum de todos, porque se chega ao fim de uma pausa e o browser desiste —
+  passa a «Não ouvi nada» em vez de fazer parecer defeito o que foi silêncio.
+
+### Guardas
+
+- **16 casos** em `dictation.test.ts`, dois deles vistos a falhar de propósito
+  contra a versão partida: o que impede `dictationMode()` de dizer `local` num
+  browser onde isso não se pode verificar, e o que impede o aviso de deixar de
+  nomear para onde vai o áudio.
+- **O texto do aviso vive na biblioteca, não no template** — mesmo motivo por
+  que o aviso da captura de ecrã vive no `screenshot.ts`. Um aviso escrito só
+  no `.vue` desaparece no primeiro refactor e não há nada que se queixe.
+- **Um caso novo em `SupportPrivacyAlignmentTest`**, visto a falhar contra o
+  texto anterior. O ditado é o único caminho em que algo do utilizador sai sem
+  passar por nós — e é por isso mesmo fácil de não declarar: nada nos nossos
+  registos o mostraria.
+
+### Verificado no browser
+
+Chrome 152 em `lapis.test` (tratado como contexto seguro — a API não existe em
+`http://`), sessão autenticada: o botão aparece, o aviso está lá antes de haver
+voz, o estado alterna para «Parar de ouvir» com o prefixo «A ouvir», e a sessão
+termina sozinha com `no-speech` quando não há som. A 375×812: zero overflow
+horizontal, botão dentro do viewport, sem sobreposição com a etiqueta.
+
+### Por fazer
+
+Continua o parágrafo da IA — a Política afirma que nenhum dado é enviado para
+um fornecedor de IA, falso desde 2026-09-01 —, à espera de confirmar se a chave
+do Gemini está em tier pago.
+
 ## [0.112.0] — 2026-09-02
 
 A Política de Privacidade passa a dizer o que o botão de reportar recolhe. Entre

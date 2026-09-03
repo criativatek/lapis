@@ -14,6 +14,8 @@ import {
 } from '@/components/ui/dialog';
 import { clientContext } from '@/lib/diagnostics';
 import type { ClientContext } from '@/lib/diagnostics';
+import { dictationMode, dictationNotice, startDictation } from '@/lib/dictation';
+import type { DictationMode, DictationSession } from '@/lib/dictation';
 import { currentMaskedRoute } from '@/lib/routeMask';
 import { capture } from '@/lib/screenshot';
 import type { Screenshot } from '@/lib/screenshot';
@@ -42,6 +44,16 @@ import type { Screenshot } from '@/lib/screenshot';
  *
  * A regra do ponto 3 é imposta no SERVIDOR (`OpenIssueReport`). Isto é como a
  * pessoa a exerce, não onde ela vive.
+ *
+ * O DITADO É OUTRA COISA, e não leva certificação: o que sai dele é texto que
+ * fica no ecrã, à frente de quem falou, editável antes de seguir. Leva **aviso**,
+ * que é o que o caso pede. Hoje nenhum browser transcreve português contínuo no
+ * dispositivo (medido — ver `lib/dictation.ts`), portanto a voz vai para o
+ * serviço do fornecedor do browser, e quem vai falar tem de o saber **antes** de
+ * falar: «quando abro a turma da Ana Martins dá erro» é a frase natural de quem
+ * reporta, não a excepção. O aviso muda com o modo, e o modo é verificado a cada
+ * abertura — no dia em que houver modelo local, o texto passa a dizer isso sem
+ * ninguém mexer aqui.
  */
 
 const page = usePage();
@@ -54,6 +66,11 @@ const capturing = ref(false);
 const screenshot = ref<Screenshot | null>(null);
 const certified = ref(false);
 const zoomed = ref(false);
+
+const dictation = ref<DictationMode>('none');
+const listening = ref<DictationSession | null>(null);
+const dictationError = ref<string | null>(null);
+const notice = computed(() => dictationNotice(dictation.value));
 
 type IssueForm = {
     category: string;
@@ -85,9 +102,15 @@ watch(open, (isOpen) => {
         form.technical_route = currentMaskedRoute();
         form.client_context = clientContext(page.component ?? null);
 
+        // A sonda é feita ao abrir, e não ao carregar a aplicação: perguntar por
+        // um modelo de voz em todas as páginas para um diálogo que quase nunca
+        // se abre é trabalho a mais em todos os ecrãs do produto.
+        void probeDictation();
+
         return;
     }
 
+    stopListening();
     discardScreenshot();
 });
 
@@ -106,6 +129,58 @@ const browserLabel = computed(() => {
 
     return [detected.browser, detected.browser_major].filter(Boolean).join(' ');
 });
+
+async function probeDictation(): Promise<void> {
+    dictation.value = await dictationMode();
+}
+
+function toggleDictation(): void {
+    if (listening.value) {
+        stopListening();
+
+        return;
+    }
+
+    if (dictation.value === 'none') {
+        return;
+    }
+
+    dictationError.value = null;
+
+    // O que já estava escrito não se perde nem se mistura: o ditado começa numa
+    // linha nova a partir do que lá está, e quem dita continua a poder corrigir
+    // à mão depois de parar.
+    const existing = form.description.trimEnd();
+
+    listening.value = startDictation(dictation.value, {
+        onText: (text) => {
+            form.description = existing ? `${existing}\n${text}` : text;
+        },
+        onError: (error) => {
+            // Os três que acontecem de verdade. `no-speech` é o mais comum de
+            // todos — chega-se ao fim de uma pausa e o browser desiste — e
+            // mostrá-lo pelo nome técnico faz parecer defeito o que foi silêncio.
+            dictationError.value = {
+                'not-allowed': 'O browser não deu acesso ao microfone.',
+                'no-speech': 'Não ouvi nada. Carregue em «Ditar» e fale.',
+                network: 'Sem ligação para transcrever. Escreva, ou tente mais tarde.',
+            }[error] ?? `Não foi possível transcrever (${error}).`;
+            listening.value = null;
+        },
+        onEnd: () => {
+            listening.value = null;
+        },
+    });
+
+    if (!listening.value) {
+        dictationError.value = 'Não foi possível começar a ouvir.';
+    }
+}
+
+function stopListening(): void {
+    listening.value?.stop();
+    listening.value = null;
+}
 
 async function takeScreenshot(): Promise<void> {
     capturing.value = true;
@@ -143,6 +218,10 @@ function pickImages(event: Event): void {
 }
 
 function submit(): void {
+    // Um microfone que continua ligado depois de o diálogo fechar é uma luz
+    // acesa que ninguém pediu.
+    stopListening();
+
     // Só vai o que foi certificado. O servidor impõe a mesma regra; isto evita
     // enviar bytes que vão ser deitados fora do outro lado.
     form.screenshot = certified.value ? (screenshot.value?.file ?? null) : null;
@@ -213,7 +292,21 @@ function submit(): void {
                     </div>
 
                     <div class="space-y-1.5">
-                        <label class="text-sm font-medium" for="issue-description">O que aconteceu</label>
+                        <div class="flex items-center justify-between gap-3">
+                            <label class="text-sm font-medium" for="issue-description">O que aconteceu</label>
+
+                            <Button
+                                v-if="dictation !== 'none'"
+                                type="button"
+                                :variant="listening ? 'destructive' : 'secondary'"
+                                size="sm"
+                                data-issue-dictate
+                                @click="toggleDictation"
+                            >
+                                {{ listening ? 'Parar de ouvir' : 'Ditar' }}
+                            </Button>
+                        </div>
+
                         <textarea
                             id="issue-description"
                             v-model="form.description"
@@ -222,6 +315,19 @@ function submit(): void {
                             class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
                             required
                         ></textarea>
+
+                        <!--
+                            O AVISO APARECE ANTES DE HAVER VOZ, e não só enquanto
+                            o microfone está ligado. Quem só o vê depois de falar
+                            já falou — e é essa a única decisão que este texto
+                            existe para permitir.
+                        -->
+                        <p v-if="notice" class="text-xs text-muted-foreground" data-issue-dictation-notice>
+                            <template v-if="listening">A ouvir. </template>{{ notice }}
+                        </p>
+
+                        <p v-if="dictationError" class="text-xs text-destructive">{{ dictationError }}</p>
+
                         <InputError :message="form.errors.description" />
                     </div>
 
