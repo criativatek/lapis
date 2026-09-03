@@ -219,6 +219,8 @@ class PlanVersionBackfillTest extends TestCase
             ->where('organization_id', $unsubscribed->getKey())
             ->delete();
 
+        $this->normalisePromotionalFixtures();
+
         app(Entitlements::class)->flush();
 
         return compact(

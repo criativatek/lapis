@@ -27,9 +27,23 @@ use Illuminate\Support\Facades\DB;
  * on a Base adhesion. So the snapshot is cleared first, deliberately and
  * visibly, rather than the guard being weakened to let tests through.
  *
- * `commercial_condition` is NOT cleared: it predates this lot, survives the
- * rollback, and is one of the columns the backfill test compares across the two
- * worlds.
+ * `commercial_condition` is NOT cleared: the COLUMN predates this lot, survives
+ * the rollback, and is one of the columns the backfill test compares across the
+ * two worlds.
+ *
+ * THE VALUE «promotional» IS A DIFFERENT MATTER, and it has to be dealt with
+ * when the fixtures are built rather than on the way back. The snapshot
+ * migration added it to the CHECK, so a row carrying it makes the narrowing
+ * ALTER fail with a bare «check constraint is violated» — the error that was
+ * failing CI. Fixtures acquire it honestly, because `SubscribeOrganization`
+ * records the 2026/27 promotion on a Base adhesion. Clearing it during the
+ * rollback would be worse than useless: the backfill test compares the
+ * commercial columns before and after, so a value changed in between reads as
+ * the backfill having rewritten it. `normalisePromotionalFixtures()` is
+ * therefore called while the fixtures are being built, before anything is read,
+ * and both worlds then see the same value. The migration itself refuses rather
+ * than relabels — right for production data, wrong for a fixture whose whole
+ * job is to describe the world before.
  */
 trait RollsBackPlanVersions
 {
@@ -63,5 +77,16 @@ trait RollsBackPlanVersions
             'billing_period' => null,
             'commercial_term_ends_at' => null,
         ]);
+    }
+
+    /**
+     * Puts the fixtures on a condition both worlds have a name for. Call it
+     * while building them, never between two reads.
+     */
+    protected function normalisePromotionalFixtures(): void
+    {
+        DB::table('organization_subscriptions')
+            ->where('commercial_condition', 'promotional')
+            ->update(['commercial_condition' => 'standard']);
     }
 }

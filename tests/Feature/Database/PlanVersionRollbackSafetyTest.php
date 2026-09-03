@@ -134,6 +134,40 @@ class PlanVersionRollbackSafetyTest extends TestCase
     }
 
     #[Test]
+    public function rolling_back_an_account_on_the_promotional_condition_is_refused(): void
+    {
+        // «promotional» is a value THIS lot added to the CHECK. Narrowing the
+        // constraint back with such a row present made MySQL refuse the ALTER
+        // itself, with a message that named the constraint and not the account
+        // — and that is what had CI red. The guard turns it into a refusal that
+        // says which accounts are in the way, before anything is dropped.
+        $organization = $this->organization();
+
+        // O instantâneo comercial primeiro, senão é a OUTRA guarda que responde
+        // — a adesão ao Base grava preço e período, e esta afirmação passaria
+        // por uma recusa que nada tem a ver com a condição.
+        $this->clearCommercialSnapshots();
+
+        OrganizationSubscription::withoutGlobalScope('organization')
+            ->where('organization_id', $organization->getKey())
+            ->update(['commercial_condition' => 'promotional']);
+
+        $message = $this->refusedRollback();
+
+        $this->assertStringContainsString('Refusing to roll back', $message);
+        $this->assertStringContainsString('promotional', $message);
+
+        $this->assertSame(
+            1,
+            OrganizationSubscription::withoutGlobalScope('organization')
+                ->where('commercial_condition', 'promotional')
+                ->count(),
+            'the condition survived the refusal',
+        );
+        $this->assertNothingWasDestroyed();
+    }
+
+    #[Test]
     public function rolling_back_a_recorded_commercial_condition_is_refused(): void
     {
         // The snapshot columns are immutable proof of what was agreed. Dropping

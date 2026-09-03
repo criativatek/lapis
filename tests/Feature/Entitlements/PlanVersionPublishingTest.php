@@ -125,6 +125,7 @@ class PlanVersionPublishingTest extends TestCase
         // only then is the seeder allowed to have an opinion.
         $organization = User::factory()->create()->personalOrganization()->fresh();
         app(ChangeOrganizationPlan::class)->to($organization, Plan::where('key', 'pro')->firstOrFail());
+        $this->normalisePromotionalFixtures();
 
         $this->rollBackPlanVersionLot();
         $this->artisan('migrate')->run();

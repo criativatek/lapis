@@ -25,6 +25,70 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.117.0] — 2026-09-03
+
+> **Nota de âmbito.** Metade destas correcções foi publicada na **0.116.0**,
+> cujo commit tinha outro assunto — a captura de ecrã do reporte — e as
+> arrastou consigo: o `.env.example`, o `down()` da triagem de suporte, o
+> `TestCase` e nove ficheiros de teste. A 0.116.0 não é reescrita, porque um
+> changelog regista o que aconteceu; esta entrada descreve o trabalho inteiro,
+> e o que resta dele está aqui.
+
+O CI estava vermelho havia dois dias e ninguém tinha visto: cinco runs
+seguidos, 36 testes a falhar, e **nenhum deles reproduzível em local**. A
+suite local corre SQLite em memória; o CI e a produção correm MySQL. Tudo o
+que segue esteve sempre partido — só que no motor onde ninguém olhava.
+
+### O que estava partido no produto, e não nos testes
+
+- **A prova de integridade não sobrevivia a uma leitura.**
+  `InterimAssessment::hashFor()` e `Report::hashFor()` faziam `json_encode` do
+  array e o hash disso. O MySQL guarda JSON num formato binário próprio e
+  devolve o objecto **com as chaves reordenadas**, portanto o hash recalculado
+  nunca voltava a bater: `is_intact` e `snapshot_intact` eram `false` para uma
+  fotografia intacta e para um relatório finalizado que ninguém tocou. O SQLite
+  devolve o texto tal e qual, e por isso a suite nunca viu nada. O padrão certo
+  já existia em `CalculationSnapshot` — está agora extraído para
+  `App\Support\Hashing\CanonicalPayload` e os três modelos usam-no.
+- **`migrate:rollback` rebentava a meio.** O `down()` da triagem de suporte
+  largava o índice de `assigned_to` antes da chave estrangeira que depende dele;
+  o MySQL recusa (erro 1553) e o SQLite não. A ordem passa a ser chave
+  estrangeira, índices, colunas — a única que serve os dois motores.
+- **A página de privacidade podia ficar sem responsável pelo tratamento.** As
+  seis `LAPIS_LEGAL_*` estavam no `.env.example` presentes e **vazias**, e uma
+  chave vazia não cai no default do `config`: `env()` devolve a string vazia.
+  Ficam comentadas. Quem copia o ficheiro — o CI, e qualquer instalação nova —
+  passa a receber os valores em vigor.
+
+### Alterado
+
+- **Rolar para trás uma conta na condição «promotional» é recusado, e diz
+  porquê.** O valor foi acrescentado ao CHECK pela migração do instantâneo
+  comercial, portanto estreitar a lista de volta fazia o MySQL recusar o
+  `ALTER` com uma mensagem que nomeia a constraint e não a conta. A recusa
+  junta-se à que já existia para o preço contratado: relabelar uma conta para
+  caber numa restrição antiga seria reescrever o que foi acordado.
+
+### Guardas
+
+- `PlanVersionRollbackSafetyTest`: **a recusa da condição «promotional»** —
+  vista vermelha duas vezes, primeiro como o erro 3819 que estava a falhar o
+  CI, depois com a guarda errada a responder porque a adesão ao Base grava
+  preço e período.
+- `TestCase::assertSameJsonPayload()`: compara payloads de colunas JSON sem
+  depender da ordem das chaves, mantendo o rigor de tipos que
+  `assertEqualsCanonicalizing` deitaria fora. Nove asserções passaram a usá-lo.
+- O teste da transacção do trabalho de casa deixou de criar um **trigger em
+  sintaxe SQLite** — que nunca correu no motor de produção, e cujo gémeo MySQL
+  seria pior, porque `CREATE TRIGGER` faz commit implícito e levaria a
+  transacção do próprio teste. Um gancho de modelo prova o mesmo nos dois.
+- `ActivateProTrialTest` deixou de listar as tabelas **do servidor inteiro**:
+  num servidor partilhado por vários projectos, `billing_profiles` aparecia
+  uma vez por base.
+- Testes que escreviam valores que o domínio não tem — `role = 'teacher'` em
+  `class_teachers`, o código de um nível («NA») numa coluna DECIMAL — passam a
+  escrever o que a produção escreve.
+
 ## [0.116.0] — 2026-09-03
 
 O primeiro reporte real feito pelo botão (SUP-2B5T3J) trouxe um defeito e duas

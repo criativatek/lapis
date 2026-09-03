@@ -326,7 +326,7 @@ class ClassReportSourceTest extends TestCase
 
         $this->assertSame('interim_snapshot', $before['origin']);
         $this->assertTrue($before['snapshot_intact']);
-        $this->assertSame($interim->snapshot['summary'], $before['summary']);
+        $this->assertSameJsonPayload($interim->snapshot['summary'], $before['summary']);
 
         // Now change the world underneath it: every score gone.
         $this->asTenant(fn () => StudentItemScore::query()->delete());
@@ -335,7 +335,7 @@ class ClassReportSourceTest extends TestCase
 
         // THE PHOTOGRAPH DID NOT MOVE (§30).
         $this->assertSame($before['summary'], $after['summary']);
-        $this->assertSame($interim->snapshot['summary'], $after['summary']);
+        $this->assertSameJsonPayload($interim->snapshot['summary'], $after['summary']);
     }
 
     #[Test]

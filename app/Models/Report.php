@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToOrganization;
+use App\Support\Hashing\CanonicalPayload;
 use Database\Factories\ReportFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -181,11 +182,15 @@ class Report extends Model
     }
 
     /**
+     * Sobre a forma canónica — ver a nota em InterimAssessment::hashFor() e
+     * App\Support\Hashing\CanonicalPayload. Um hash sobre a ordem das chaves
+     * não sobrevive a uma ida e volta por uma coluna JSON do MySQL.
+     *
      * @param  array<string, mixed>  $document
      */
     public static function hashFor(array $document): string
     {
-        return hash('sha256', json_encode($document, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '');
+        return CanonicalPayload::hash($document);
     }
 
     /**

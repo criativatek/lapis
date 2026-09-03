@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToOrganization;
+use App\Support\Hashing\CanonicalPayload;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
@@ -129,11 +130,16 @@ class InterimAssessment extends Model
     }
 
     /**
+     * Sobre a forma canónica, e não sobre o que o json_encode calhar produzir:
+     * o MySQL reordena as chaves de uma coluna JSON, e um hash ingénuo deixa de
+     * bater assim que a linha é relida — a fotografia intacta passava a
+     * declarar-se adulterada. Ver App\Support\Hashing\CanonicalPayload.
+     *
      * @param  array<string, mixed>  $snapshot
      */
     public static function hashFor(array $snapshot): string
     {
-        return hash('sha256', json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '');
+        return CanonicalPayload::hash($snapshot);
     }
 
     /**

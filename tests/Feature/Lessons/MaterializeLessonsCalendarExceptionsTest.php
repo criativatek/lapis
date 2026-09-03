@@ -134,8 +134,18 @@ class MaterializeLessonsCalendarExceptionsTest extends TestCase
     public function the_recurring_slot_is_left_completely_untouched_by_the_guard(): void
     {
         [$teacher, $organization, $year, $schoolClass] = $this->context();
-        $slot = $this->slot($organization, $schoolClass, 1);
-        $before = $this->byColumn($slot->getAttributes());
+        $this->slot($organization, $schoolClass, 1);
+
+        // A LINHA COMO A BASE A GUARDA, E NÃO COMO O PHP A ESCREVEU. Ler os
+        // atributos do modelo acabado de criar dá o que foi atribuído («09:30»,
+        // «2026-09-01»); o MySQL devolve depois o que as colunas TIME e DATE
+        // realmente contêm («09:30:00», «2026-09-01»). A diferença não é uma
+        // alteração à linha, que é o que este teste afirma — comparar dois
+        // valores lidos da base afirma-o em qualquer motor.
+        $before = $this->inTenant(
+            $organization,
+            fn (): array => $this->byColumn(RecurringLessonSlot::query()->sole()->getAttributes()),
+        );
         $this->exception($organization, $year, [
             'title' => 'Feriado municipal',
             'starts_on' => '2026-09-07',

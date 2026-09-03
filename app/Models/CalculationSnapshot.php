@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToOrganization;
+use App\Support\Hashing\CanonicalPayload;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
@@ -63,29 +64,7 @@ class CalculationSnapshot extends Model
      */
     public static function hashPayload(array $payload): string
     {
-        return hash('sha256', self::canonicalJson($payload));
-    }
-
-    /**
-     * @param  array<mixed>  $data
-     */
-    private static function canonicalJson(array $data): string
-    {
-        $sort = function (&$value) use (&$sort): void {
-            if (! is_array($value)) {
-                return;
-            }
-            if (! array_is_list($value)) {
-                ksort($value);
-            }
-            foreach ($value as &$item) {
-                $sort($item);
-            }
-        };
-
-        $sort($data);
-
-        return (string) json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        return CanonicalPayload::hash($payload);
     }
 
     /**

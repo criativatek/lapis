@@ -151,16 +151,33 @@ return new class extends Migration
             ->orWhereNotNull('commercial_term_ends_at')
             ->count();
 
-        if ($recorded === 0) {
-            return;
+        if ($recorded > 0) {
+            throw new RuntimeException(
+                "Refusing to roll back: {$recorded} subscription(s) carry a recorded commercial condition "
+                .'(price, currency, billing period or commercial term). Those columns are immutable proof of what '
+                .'was agreed, and dropping them destroys it with nothing able to reconstruct it. This migration is '
+                .'reversible only while every row is still NULL — the state it leaves behind when it first runs.'
+            );
         }
 
-        throw new RuntimeException(
-            "Refusing to roll back: {$recorded} subscription(s) carry a recorded commercial condition "
-            .'(price, currency, billing period or commercial term). Those columns are immutable proof of what '
-            .'was agreed, and dropping them destroys it with nothing able to reconstruct it. This migration is '
-            .'reversible only while every row is still NULL — the state it leaves behind when it first runs.'
-        );
+        // THE VALUE THIS MIGRATION ADDED IS ALSO EVIDENCE. `commercial_condition`
+        // itself predates this lot and survives the rollback, but «promotional»
+        // does not: it is one of the values this migration added to the CHECK.
+        // Narrowing the constraint back with such a row present made MySQL
+        // refuse the ALTER with a bare «check constraint is violated», far from
+        // the cause — the same error that has been failing CI. Say what it is,
+        // and refuse for a reason that can be acted on.
+        $promotional = DB::table('organization_subscriptions')
+            ->where('commercial_condition', 'promotional')
+            ->count();
+
+        if ($promotional > 0) {
+            throw new RuntimeException(
+                "Refusing to roll back: {$promotional} subscription(s) are on the «promotional» condition, a value "
+                .'this migration added. The world before it has no name for them, and relabelling an account to fit '
+                .'an older constraint would be rewriting what was agreed. Decide what those accounts are on first.'
+            );
+        }
     }
 
     /**

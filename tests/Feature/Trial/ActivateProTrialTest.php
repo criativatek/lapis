@@ -16,6 +16,7 @@ use App\Support\Trial\TrialException;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -169,7 +170,19 @@ class ActivateProTrialTest extends TestCase
         // no checkout por transferência. A afirmação ficou MAIS apertada e não
         // menos — é uma lista exacta, portanto um `billing_cards` que alguém
         // acrescente falha aqui, em vez de passar por conter a mesma palavra.
-        $tables = collect(Schema::getTables())->pluck('name')->map(fn (string $name): string => strtolower($name));
+        // A BASE DESTA LIGAÇÃO, E NÃO O SERVIDOR INTEIRO. Sem o argumento, o
+        // MySQL devolve as tabelas de todas as bases do servidor — no CI há
+        // uma só e a asserção parecia certa; num servidor partilhado, como o
+        // de desenvolvimento, `billing_profiles` aparecia uma vez por base.
+        // O SQLite não tem a noção: o nome da «base» é «:memory:» e nunca
+        // corresponde a schema nenhum, pelo que filtrar lá devolveria zero
+        // tabelas e a asserção passaria por estar vazia.
+        $connection = DB::connection();
+        $schema = $connection->getDriverName() === 'mysql' ? $connection->getDatabaseName() : null;
+
+        $tables = collect(Schema::getTables($schema))
+            ->pluck('name')
+            ->map(fn (string $name): string => strtolower($name));
 
         $this->assertSame(
             ['billing_profiles'],
