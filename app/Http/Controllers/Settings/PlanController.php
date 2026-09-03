@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Settings;
 
 use App\Actions\Commercial\RedeemVoucher;
 use App\Actions\Commercial\RequestBankTransferPayment;
+use App\Actions\Entitlements\RedeemCapabilityVoucher;
 use App\Actions\Organizations\ActivateProTrial;
 use App\Http\Controllers\Concerns\RefusesDuringImpersonation;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Settings\RedeemCapabilityVoucherRequest;
 use App\Models\BillingPeriod;
 use App\Models\CommercialCondition;
 use App\Models\Organization;
@@ -20,6 +22,7 @@ use App\Support\Commercial\ContractedTerms;
 use App\Support\Commercial\FounderAvailability;
 use App\Support\Commercial\Vouchers;
 use App\Support\Commercial\VoucherUnavailable;
+use App\Support\Entitlements\CapabilityVoucherUnavailable;
 use App\Support\Tenancy\CurrentOrganization;
 use App\Support\Trial\TrialEligibility;
 use App\Support\Trial\TrialException;
@@ -62,6 +65,7 @@ class PlanController extends Controller
         protected FounderAvailability $founder,
         protected Vouchers $vouchers,
         protected RedeemVoucher $voucherRedemptions,
+        protected RedeemCapabilityVoucher $capabilityVoucherRedemptions,
     ) {}
 
     public function edit(Request $request): Response
@@ -89,7 +93,23 @@ class PlanController extends Controller
             'currentPlanName' => $inForce?->plan?->name,
             'trial' => $state === 'trial_active' ? $this->trialPayload($inForce) : null,
             'usedTrialBefore' => $state === 'pro_active' ? $usedTrialBefore : null,
+            'canRedeemCapabilityCode' => $request->user()?->can('subscribe', $organization) === true,
         ]);
+    }
+
+    public function redeemCapabilityVoucher(RedeemCapabilityVoucherRequest $request): RedirectResponse
+    {
+        $this->refuseDuringImpersonation($request);
+        $organization = $this->currentOrganization->get();
+        Gate::authorize('subscribe', $organization);
+        try {
+            $grant = $this->capabilityVoucherRedemptions->handle((string) $request->validated('capability_code'), $organization, $this->user($request));
+        } catch (CapabilityVoucherUnavailable $exception) {
+            return back()->withErrors(['capability_code' => $exception->getMessage()]);
+        }
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Capacidades disponíveis até :date.', ['date' => $grant->expires_at->format('d/m/Y')])]);
+
+        return to_route('settings.plan.edit');
     }
 
     /**
@@ -246,6 +266,14 @@ class PlanController extends Controller
     protected function money(int $cents): string
     {
         return number_format($cents / 100, 2, ',', ' ').' €';
+    }
+
+    protected function user(Request $request): User
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        return $user;
     }
 
     /**

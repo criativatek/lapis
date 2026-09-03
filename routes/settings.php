@@ -38,6 +38,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('settings/plan/voucher', [PlanController::class, 'redeemVoucher'])
         ->middleware('throttle:10,1')
         ->name('settings.plan.redeem-voucher');
+    Route::post('settings/plan/capability-code', [PlanController::class, 'redeemCapabilityVoucher'])
+        ->middleware('throttle:10,1')
+        ->name('settings.plan.redeem-capability-voucher');
 
     /*
      * Checkout por transferência bancária. Sem parâmetro de plano na rota: só o

@@ -158,6 +158,33 @@ class VouchersMysqlGuaranteesTest extends TestCase
         $b->rollBack();
     }
 
+    #[Test]
+    public function the_capability_voucher_last_slot_is_serialised_by_its_row_lock(): void
+    {
+        $this->scratch()->table('capability_vouchers')->insert([
+            'ulid' => '01JD00000000000000000000C1', 'code' => 'CAP-ONE', 'normalized_code' => 'CAPONE', 'label' => 'Capacidade',
+            'duration_days' => 7, 'max_redemptions' => 1, 'created_by' => 1, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $a = $this->scratch();
+        $b = $this->scratchB();
+        $b->statement('SET SESSION innodb_lock_wait_timeout = 1');
+        $a->beginTransaction();
+        try {
+            $a->table('capability_vouchers')->where('normalized_code', 'CAPONE')->lockForUpdate()->first();
+            $b->beginTransaction();
+            try {
+                $b->table('capability_vouchers')->where('normalized_code', 'CAPONE')->lockForUpdate()->first();
+                $b->rollBack();
+                $this->fail('A segunda decisão passou pelo lock do último resgate.');
+            } catch (Throwable $exception) {
+                $b->rollBack();
+                $this->assertStringContainsString('Lock wait timeout', $exception->getMessage());
+            }
+        } finally {
+            $a->rollBack();
+        }
+    }
+
     // ------------------------------------------- 3. rollback conservador
 
     #[Test]
@@ -204,7 +231,13 @@ class VouchersMysqlGuaranteesTest extends TestCase
      */
     private function rollbackVouchers(): void
     {
-        for ($passo = 0; $passo < 6; $passo++) {
+        // Headroom, not a tight count: this test calls rollbackVouchers() TWICE
+        // in the same run (refusal, then success), so the cap has to cover BOTH
+        // passes' worth of migrations sitting after vouchers — not just how many
+        // exist today. A tight number here is exactly what silently broke the
+        // first time a single migration (temporary capability grants) landed
+        // after vouchers with zero margin to spare.
+        for ($passo = 0; $passo < 40; $passo++) {
             if (! $this->scratch()->getSchemaBuilder()->hasTable('vouchers')) {
                 return;
             }
@@ -267,6 +300,11 @@ class VouchersMysqlGuaranteesTest extends TestCase
         $scratch = $this->scratch();
 
         $scratch->statement('SET FOREIGN_KEY_CHECKS = 0');
+        foreach (['capability_voucher_redemptions', 'capability_grant_module', 'capability_grants', 'capability_voucher_module', 'capability_vouchers', 'capability_grant_preset_module', 'capability_grant_presets'] as $table) {
+            if ($scratch->getSchemaBuilder()->hasTable($table)) {
+                $scratch->table($table)->delete();
+            }
+        }
         // Partilhamos a base com o scratch da Central de Suporte. O que é dela
         // não é deste teste, e um pedido deixado para trás bloquearia o
         // rollback abaixo por uma razão alheia aos vouchers.

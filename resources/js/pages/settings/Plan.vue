@@ -46,6 +46,7 @@ defineProps<{
     currentPlanName: string | null;
     trial: Trial | null;
     usedTrialBefore: boolean | null;
+    canRedeemCapabilityCode: boolean;
 }>();
 
 const form = useForm({});
@@ -74,6 +75,11 @@ function redeemVoucher(): void {
         preserveScroll: true,
         onSuccess: () => voucherForm.reset('voucher_code'),
     });
+}
+
+const capabilityForm=useForm({capability_code:''});
+function redeemCapabilityCode():void{
+capabilityForm.post('/settings/plan/capability-code',{preserveScroll:true,onSuccess:()=>capabilityForm.reset()});
 }
 
 /** Consistent with how the rest of the app shows a date to a teacher (§AccountClosure.vue). */
@@ -285,5 +291,10 @@ function formatDate(iso: string): string {
                 </Button>
             </form>
         </div>
+        <section v-if="canRedeemCapabilityCode" class="space-y-3 rounded-lg border border-border p-4">
+            <div><h3 class="text-sm font-medium">Código de capacidades temporárias</h3><p class="text-sm text-muted-foreground">Introduza um código fornecido pela equipa Lapispro. O plano da organização não será alterado.</p></div>
+            <form class="flex flex-col gap-2 sm:flex-row" @submit.prevent="redeemCapabilityCode"><input v-model="capabilityForm.capability_code" required maxlength="64" autocomplete="off" placeholder="XXXX-XXXX-XXXX-XXXX" class="min-w-0 flex-1 rounded-md border border-border bg-background px-3 py-2 font-mono text-sm" /><Button :disabled="capabilityForm.processing">Resgatar código</Button></form>
+            <InputError :message="capabilityForm.errors.capability_code" />
+        </section>
     </div>
 </template>

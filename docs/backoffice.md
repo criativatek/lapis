@@ -344,3 +344,20 @@ classificação, suspensão/retoma da eliminação e reenvio de notificações.
   email, e é o único campo do hold que a anonimização apaga.
 
 Ver [ADR-0011](adr/0011-support-centre.md) e [data-lifecycle.md](data-lifecycle.md).
+# Capacidades temporárias
+
+`Admin > Capacidades` permite criar presets internos e emitir códigos que dão
+acesso temporário a capacidades já existentes no catálogo. Um código congela a
+lista de capacidades e a duração no momento da emissão; depois disso só pode ser
+desativado. A utilização apresentada é derivada dos resgates, nunca de um
+contador editável.
+
+Na ficha comercial de uma conta, o operador pode atribuir diretamente uma ou
+mais capacidades com duração e motivo obrigatório, consultar atribuições ativas
+e passadas e revogar uma atribuição. A organização também pode resgatar um código
+na sua página de Plano, pela mesma autorização usada para gerir a subscrição.
+
+Estes atos não mudam o plano, a versão contratada, a subscrição ou a condição
+comercial. Quando uma atribuição termina ou é revogada, o resolver volta a dar
+exatamente a resposta normal da `PlanVersion`. Um bloqueio administrativo
+explícito continua a vencer uma atribuição temporária. Ver ADR-0015.

@@ -2,6 +2,9 @@
 
 use App\Http\Controllers\Admin\AdminAccountController;
 use App\Http\Controllers\Admin\AdminAiController;
+use App\Http\Controllers\Admin\AdminCapabilityGrantController;
+use App\Http\Controllers\Admin\AdminCapabilityPresetController;
+use App\Http\Controllers\Admin\AdminCapabilityVoucherController;
 use App\Http\Controllers\Admin\AdminCommercialController;
 use App\Http\Controllers\Admin\AdminImpersonateController;
 use App\Http\Controllers\Admin\AdminSettingsController;
@@ -77,6 +80,13 @@ Route::middleware(['auth', 'verified', 'platform-admin'])
         Route::get('commercial/vouchers', [AdminVoucherController::class, 'index'])->name('commercial.vouchers.index');
         Route::post('commercial/vouchers', [AdminVoucherController::class, 'store'])->name('commercial.vouchers.store');
         Route::post('commercial/vouchers/{voucher}/disable', [AdminVoucherController::class, 'disable'])->name('commercial.vouchers.disable');
+        Route::get('capabilities', [AdminCapabilityVoucherController::class, 'index'])->name('capabilities.index');
+        Route::post('capabilities/presets', [AdminCapabilityPresetController::class, 'store'])->name('capabilities.presets.store');
+        Route::post('capabilities/presets/{preset}/toggle', [AdminCapabilityPresetController::class, 'toggle'])->name('capabilities.presets.toggle');
+        Route::post('capabilities/vouchers', [AdminCapabilityVoucherController::class, 'store'])->name('capabilities.vouchers.store');
+        Route::post('capabilities/vouchers/{capabilityVoucher}/disable', [AdminCapabilityVoucherController::class, 'disable'])->name('capabilities.vouchers.disable');
+        Route::post('accounts/{organization}/capability-grants', [AdminCapabilityGrantController::class, 'store'])->name('accounts.capability-grants.store');
+        Route::post('accounts/{organization}/capability-grants/{grant}/revoke', [AdminCapabilityGrantController::class, 'revoke'])->name('accounts.capability-grants.revoke');
         Route::post('commercial/payments/{payment}/confirm', [AdminCommercialController::class, 'confirmTransfer'])->name('commercial.payments.confirm');
         Route::post('commercial/payments/{payment}/refund', [AdminCommercialController::class, 'refundPayment'])->name('commercial.payments.refund');
         Route::post('commercial/payments/{payment}/void', [AdminCommercialController::class, 'voidPayment'])->name('commercial.payments.void');

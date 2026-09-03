@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Link, router, usePage } from '@inertiajs/vue3';
-import { ArrowLeft, Banknote, LifeBuoy, LogOut, Mail, ShieldCheck, Sparkles, UserPlus, Users } from '@lucide/vue';
+import { ArrowLeft, Banknote, KeyRound, LifeBuoy, LogOut, Mail, ShieldCheck, Sparkles, UserPlus, Users } from '@lucide/vue';
 import { computed } from 'vue';
 import { Toaster } from '@/components/ui/sonner';
 import { dashboard } from '@/routes';
@@ -13,6 +13,7 @@ const nav = [
     { label: 'Contas', href: '/admin', icon: Users, active: (path: string) => path === '/admin' || (path.startsWith('/admin/accounts') && path !== '/admin/accounts/create') },
     { label: 'Nova conta', href: '/admin/accounts/create', icon: UserPlus, active: (path: string) => path === '/admin/accounts/create' },
     { label: 'Comercial', href: '/admin/commercial', icon: Banknote, active: (path: string) => path.startsWith('/admin/commercial') },
+    { label: 'Capacidades', href: '/admin/capabilities', icon: KeyRound, active: (path: string) => path.startsWith('/admin/capabilities') },
     { label: 'Suporte', href: '/admin/support', icon: LifeBuoy, active: (path: string) => path.startsWith('/admin/support') },
     { label: 'Email (SMTP)', href: '/admin/settings', icon: Mail, active: (path: string) => path === '/admin/settings' },
     { label: 'Inteligência Artificial', href: '/admin/ai', icon: Sparkles, active: (path: string) => path.startsWith('/admin/ai') },

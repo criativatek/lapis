@@ -15,7 +15,9 @@ use App\Http\Requests\Admin\SetCommercialConditionRequest;
 use App\Mail\BankTransferConfirmedMail;
 use App\Models\AuditEvent;
 use App\Models\BillingProfile;
+use App\Models\CapabilityGrant;
 use App\Models\CommercialCondition;
+use App\Models\Module;
 use App\Models\Organization;
 use App\Models\OrganizationModuleOverride;
 use App\Models\OrganizationSubscription;
@@ -277,6 +279,23 @@ class AdminCommercialController extends Controller
                     'in_force' => $override->isInForce(),
                     'starts_at' => $override->starts_at?->toDateString(),
                     'ends_at' => $override->ends_at?->toDateString(),
+                ])->values(),
+            'capabilityModules' => Module::query()->orderBy('name')->get(['key', 'name']),
+            'capabilityGrants' => CapabilityGrant::query()
+                ->withoutGlobalScope('organization')
+                ->where('organization_id', $organization->getKey())
+                ->with('modules:key,name')
+                ->latest('starts_at')
+                ->get()
+                ->map(fn (CapabilityGrant $grant): array => [
+                    'ulid' => $grant->ulid,
+                    'source' => $grant->source->value,
+                    'reason' => $grant->reason,
+                    'startsAt' => $grant->starts_at->toIso8601String(),
+                    'expiresAt' => $grant->expires_at->toIso8601String(),
+                    'revokedAt' => $grant->revoked_at?->toIso8601String(),
+                    'active' => $grant->revoked_at === null && $grant->starts_at->lte(now()) && $grant->expires_at->gt(now()),
+                    'modules' => $grant->modules->map(fn (Module $module): array => ['key' => $module->key, 'name' => $module->name]),
                 ])->values(),
             'payments' => $payments->map(fn (SubscriptionPayment $payment): array => [
                 'ulid' => $payment->ulid,

@@ -25,6 +25,34 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.117.3] — 2026-09-03
+
+### Added
+
+- **Núcleo de atribuições temporárias de capacidades.** Presets, códigos,
+  atribuições e resgates vivem num subsistema separado dos vouchers comerciais;
+  os conjuntos de módulos ficam congelados e o plano/subscrição nunca muda.
+- **Duas origens, um único direito temporário.** A emissão/resgate de código e a
+  atribuição direta convergem em `capability_grants`, com expiração por data,
+  revogação imediata e auditoria.
+- **Packs multi-capability.** Um preset ou um código pode conter várias
+  capacidades reais do catálogo ao mesmo tempo; todas ficam disponíveis
+  enquanto o grant estiver em vigor, e todas regressam ao direito normal do
+  plano na mesma expiração/revogação.
+- **Backoffice e resgate pela organização.** O operador gere presets e códigos,
+  atribui/revoga capacidades na ficha da conta e consulta todo o histórico; o
+  titular da organização resgata códigos na página de Plano.
+- **Cobertura de ciclo de vida e concorrência.** Os testes prendem datas,
+  isolamento, sobreposição, múltiplas capacidades, precedência do bloqueio,
+  capacidade sob lock, autorização e autoria dos eventos.
+
+### Changed
+
+- **O resolver canónico reconhece atribuições em vigor.** Uma atribuição só
+  promove a `Allowed`; nunca bloqueia e nunca vence um override administrativo
+  explícito com `enabled=false`. Nenhum `PlanVersion` é lido, escrito ou
+  reinterpretado por esta funcionalidade.
+
 ## [0.117.2] — 2026-09-03
 
 Os estados dos elementos de avaliação ganham cor semântica — pedido no reporte

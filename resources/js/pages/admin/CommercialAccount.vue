@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import { Button } from '@/components/ui/button';
 
@@ -85,6 +85,8 @@ type Payment = {
     refundable: boolean;
     confirmable: boolean;
 };
+type CapabilityModule={key:string;name:string};
+type CapabilityGrant={ulid:string;source:'voucher'|'direct';reason:string|null;startsAt:string;expiresAt:string;revokedAt:string|null;active:boolean;modules:CapabilityModule[]};
 
 const props = defineProps<{
     account: {
@@ -115,6 +117,8 @@ const props = defineProps<{
     options: { conditions: Option[]; methods: Option[]; statuses: Option[] };
     condition_locked: boolean;
     founderSeat: FounderSeat | null;
+    capabilityModules: CapabilityModule[];
+    capabilityGrants: CapabilityGrant[];
 }>();
 
 /*
@@ -173,6 +177,16 @@ const paymentForm = useForm({
 });
 
 const paymentFormOpen = ref(false);
+
+const capabilityGrantForm=useForm({module_keys:[] as string[],duration_days:30,reason:''});
+function grantCapabilities():void{
+capabilityGrantForm.post(`/admin/accounts/${props.account.ulid}/capability-grants`,{preserveScroll:true,onSuccess:()=>capabilityGrantForm.reset()});
+}
+function revokeCapabilityGrant(grant:CapabilityGrant):void{
+if(confirm('Revogar esta atribuição temporária?')){
+router.post(`/admin/accounts/${props.account.ulid}/capability-grants/${grant.ulid}/revoke`,{}, {preserveScroll:true});
+}
+}
 
 function savePayment(): void {
     paymentForm.post(`/admin/commercial/${props.account.ulid}/payments`, {
@@ -607,6 +621,16 @@ const hasUnknownCondition = computed(
         </section>
 
         <!-- Pagamentos -->
+        <section class="space-y-4 rounded-lg border border-border p-4">
+            <div><h2 class="font-medium">Capacidades temporárias</h2><p class="text-sm text-muted-foreground">Atribua acesso sem alterar o plano ou a versão contratada.</p></div>
+            <form class="space-y-3" @submit.prevent="grantCapabilities">
+                <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3"><label v-for="module in capabilityModules" :key="module.key" class="flex gap-2 text-sm"><input v-model="capabilityGrantForm.module_keys" type="checkbox" :value="module.key" />{{ module.name }}</label></div>
+                <div class="grid gap-3 sm:grid-cols-2"><label class="text-sm">Duração (dias)<input v-model.number="capabilityGrantForm.duration_days" required min="1" type="number" class="mt-1 w-full rounded-md border border-border px-3 py-2" /></label><label class="text-sm">Motivo obrigatório<input v-model="capabilityGrantForm.reason" required maxlength="500" class="mt-1 w-full rounded-md border border-border px-3 py-2" /></label></div>
+                <Button :disabled="capabilityGrantForm.processing">Atribuir diretamente</Button>
+            </form>
+            <div class="space-y-2"><div v-for="grant in capabilityGrants" :key="grant.ulid" class="flex items-center justify-between gap-3 rounded-md bg-muted/30 p-3 text-sm"><div><p>{{ grant.modules.map((module)=>module.name).join(', ') }}</p><p class="text-xs text-muted-foreground">{{ grant.source === 'direct' ? 'Atribuição direta' : 'Código' }} · até {{ grant.expiresAt }}<span v-if="grant.reason"> · {{ grant.reason }}</span></p></div><Button v-if="grant.active" variant="outline" size="sm" @click="revokeCapabilityGrant(grant)">Revogar</Button><span v-else class="text-xs text-muted-foreground">{{ grant.revokedAt ? 'Revogada' : 'Terminada' }}</span></div><p v-if="capabilityGrants.length===0" class="text-sm text-muted-foreground">Sem atribuições.</p></div>
+        </section>
+
         <section aria-labelledby="payments-title" class="space-y-3">
             <div class="flex flex-wrap items-center justify-between gap-2">
                 <h2

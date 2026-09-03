@@ -71,6 +71,7 @@ type Props = {
         pendingUlid: string | null;
         pendingReference: string | null;
     } | null;
+    canRedeemCapabilityCode: boolean;
 };
 
 function mountPage(props: Partial<Props> = {}) {
@@ -82,6 +83,7 @@ function mountPage(props: Partial<Props> = {}) {
             trial: null,
             usedTrialBefore: null,
             subscribe: null,
+            canRedeemCapabilityCode: false,
             ...props,
         },
     });

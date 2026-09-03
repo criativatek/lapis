@@ -2,6 +2,7 @@
 
 namespace App\Support\Entitlements;
 
+use App\Models\CapabilityGrant;
 use App\Models\Organization;
 use App\Models\OrganizationModuleOverride;
 use App\Models\OrganizationSubscription;
@@ -301,6 +302,32 @@ class Entitlements
 
         foreach ($overrides as $override) {
             $states[$override->module->key] = $override->enabled ? AccessState::Allowed : AccessState::Locked;
+        }
+
+        // Temporary grants are the final additive layer. They can only upgrade
+        // to Allowed, and an explicit in-force disabled override remains a hard
+        // lock even here. Overlapping grants need no precedence: existence of
+        // one active row is sufficient.
+        $explicitlyLockedModuleIds = $overrides
+            ->filter(fn (OrganizationModuleOverride $override): bool => ! $override->enabled)
+            ->pluck('module_id')
+            ->all();
+
+        $grants = CapabilityGrant::query()
+            ->withoutGlobalScope('organization')
+            ->where('organization_id', $organization->getKey())
+            ->whereNull('revoked_at')
+            ->where('starts_at', '<=', Carbon::now())
+            ->where('expires_at', '>', Carbon::now())
+            ->with('modules')
+            ->get();
+
+        foreach ($grants as $grant) {
+            foreach ($grant->modules as $module) {
+                if (! in_array($module->getKey(), $explicitlyLockedModuleIds, true)) {
+                    $states[$module->key] = AccessState::Allowed;
+                }
+            }
         }
 
         return $states;
