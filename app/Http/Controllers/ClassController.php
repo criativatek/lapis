@@ -52,6 +52,7 @@ class ClassController extends Controller
                 'academic_year' => $class->academicYear->label,
                 'grade_level' => $class->grade_level,
                 'status_label' => $class->status->label(),
+                'status' => $class->status->value,
                 'students_count' => $class->enrollments_count,
             ]);
 

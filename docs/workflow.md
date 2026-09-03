@@ -142,3 +142,18 @@ Antes de fechar algo com CHECK/colunas geradas: confia na CI (MySQL) ou corre um
 
 - Incrementa `config/app.php` `version` (semver pré-1.0) **e** `CHANGELOG.md` a cada commit.
 - Guarda decisões técnicas, armadilhas e feedback do utilizador em memória (não código efémero).
+
+## Duas sessões, uma working tree — não
+
+A 2026-09-03 duas sessões de IA trabalharam no mesmo checkout e o dia inteiro
+foi a prová-lo: duas releases numeradas 0.112.0 (uma já em produção quando a
+segunda chegou ao `origin`), commits retidos horas para não fotografar edições
+alheias a meio, e um pacote de deploy que só não saiu de uma árvore suja
+porque o `lapis:build-package` recusa e obrigou a um worktree limpo.
+
+A regra: **cada sessão paralela trabalha no seu `git worktree`**
+(`git worktree add ../LAPIS-b main`), e o número de versão escolhe-se **depois
+do último `git fetch`** — nunca antes do trabalho. Quando um commit já está em
+produção, a reconciliação é **merge, nunca rebase**: o
+`lapis:release-check --expect-commit` compara contra o hash, e reescrever a
+história deixa produção a apontar para código que já não existe.

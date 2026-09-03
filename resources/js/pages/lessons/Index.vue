@@ -15,6 +15,7 @@ import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { statusToneClasses } from '@/lib/statusTone';
 import { capitalizeFirst } from '@/lib/text';
 
 type Lesson = {
@@ -116,15 +117,7 @@ function lessonTime(lesson: Lesson): string {
         : start;
 }
 
-function badgeVariant(
-    status: Lesson['status'],
-): 'secondary' | 'default' | 'outline' {
-    if (status === 'taught') {
-        return 'default';
-    }
 
-    return status === 'prepared' ? 'secondary' : 'outline';
-}
 </script>
 
 <template>
@@ -255,7 +248,8 @@ function badgeVariant(
                                 </p>
                             </div>
                             <div class="flex shrink-0 flex-col items-end gap-2">
-                                <Badge :variant="badgeVariant(lesson.status)">{{
+                                <!-- Tom pela paleta da casa (SUP-UEVAH4): dada verde, preparada azul. -->
+                                <Badge variant="secondary" :class="statusToneClasses(lesson.status)">{{
                                     lesson.status_label
                                 }}</Badge>
                                 <span

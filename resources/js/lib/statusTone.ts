@@ -28,6 +28,17 @@ const TONES: Record<string, QualitativeTone> = {
     published: 'green',
     cancelled: 'red',
     archived: 'neutral',
+
+    // Turmas (ClassStatus) — `preparation` também é das aulas, com a mesma semântica.
+    preparation: 'neutral',
+    active: 'green',
+    closed: 'neutral',
+
+    // Aulas (LessonStatus)
+    taught: 'green',
+
+    // Relatórios (ReportStatus)
+    finalized: 'green',
 };
 
 export function statusTone(status: string): QualitativeTone {

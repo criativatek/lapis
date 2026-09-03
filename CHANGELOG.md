@@ -25,6 +25,54 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.118.0] — 2026-09-04
+
+O lote autónomo das sugestões do dia anterior — o alarme falso de integridade,
+o circuito de suporte a fechar sozinho, e a cor a chegar aos ecrãs diários.
+
+### O alarme falso morre nas linhas antigas
+
+A 0.117.0 corrigiu o algoritmo de hash; esta re-hash as linhas escritas antes
+dele. Uma `interim_assessment` ou um `report` antigos guardavam o hash do
+`json_encode` ingénuo — no MySQL, que reordena as chaves de uma coluna JSON,
+declaravam-se «adulterados» para sempre, mesmo intactos. A migração declara o
+conteúdo guardado como nova base: o hash antigo não distinguia uma chave
+reordenada de adulteração real — falhava para as duas — e um alarme sempre
+aceso ensina a ignorar o verdadeiro. `calculation_snapshots` fica fora: o seu
+hashing sempre foi canónico. Três casos novos, com a mordidela provada
+(migração neutralizada → vermelho).
+
+### Adicionado
+
+- **«O suporte respondeu-lhe»** — faixa azul em todas as páginas autenticadas
+  quando um pedido do próprio utilizador está à espera dele. Sem coluna nova:
+  o estado `waiting_for_user` É o marcador — acende quando o operador
+  responde, apaga quando o professor responde. A contagem partilhada só soma
+  pedidos do próprio — fixado por teste, visto vermelho sem a partilha.
+- **O título derivado à vista no reporte** — quem escreve (ou dita) vê «Vai
+  entrar como: …» antes de enviar. Texto ditado não tem pontuação e o corte a
+  70 às cegas produzia títulos a meio de palavra.
+- **Cor semântica nas turmas e nas aulas** — o `statusTone` alastra: turma
+  activa verde, aula dada verde, preparada azul, preparação neutra. O
+  `badgeVariant` próprio das aulas sai; `/reports` já tinha cor e fica como
+  está.
+
+### Operação (sem código, feito em produção a 2026-09-04)
+
+- **O scheduler passou a correr como `lapis`** — o dono das pastas privadas
+  `0700`. `data-imports:prune` falhava de hora a hora desde 2026-08-30 por o
+  cron viver no `lapis-deploy`; as pré-condições da «saída 1» foram
+  confirmadas e o bloco do backup ficou onde as credenciais vivem.
+  `docs/deployment.md` reescrito nesse ponto — e deixa de afirmar uma versão
+  de produção que envelheceu 70 releases.
+- **Reportes 6 e 7 exportados** para o GitHub (issues #3 e #4).
+- **Revisão dirigida ao acesso técnico** (0.114.0): mass-assignment fechado,
+  gate duplo na rota, 403 no middleware, motivo em enum fechado, auditoria com
+  o causer certo — sem achados. Fica a decisão de produto: quais dos 5
+  platform-admins devem mesmo ser técnicos.
+- **`docs/workflow.md`**: duas sessões, uma working tree — nunca mais; a
+  regra do worktree por sessão e do número escolhido depois do último fetch.
+
 ## [0.117.3] — 2026-09-03
 
 ### Added

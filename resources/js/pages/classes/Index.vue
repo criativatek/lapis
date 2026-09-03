@@ -4,6 +4,7 @@ import { CalendarPlus, Pencil, Plus, Users } from '@lucide/vue';
 import Heading from '@/components/Heading.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { statusToneClasses } from '@/lib/statusTone';
 
 export type SchoolClass = {
     ulid: string;
@@ -12,6 +13,7 @@ export type SchoolClass = {
     academic_year: string;
     grade_level: string | null;
     status_label: string;
+    status: string;
     students_count: number;
 };
 
@@ -55,7 +57,7 @@ defineProps<{
                 <div class="flex items-start justify-between gap-2">
                     <span class="text-base font-semibold">{{ schoolClass.label }}</span>
                     <div class="flex items-center gap-2">
-                        <Badge variant="secondary">{{ schoolClass.status_label }}</Badge>
+                        <Badge variant="secondary" :class="statusToneClasses(schoolClass.status)">{{ schoolClass.status_label }}</Badge>
                         <Link
                             :href="`/classes/${schoolClass.ulid}/edit`"
                             title="Editar turma"

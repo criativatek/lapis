@@ -47,13 +47,11 @@ Duas condições têm de estar satisfeitas para um deploy correr, e **as duas j�
 falharam em produção**: a chave tem de estar em `authorized_keys2` (armadilha 6)
 e o `lapis-deploy` tem de ser **dono** dos ficheiros da aplicação (armadilha 8).
 
-**Versão em produção: 0.45.9** (commit `74e8ff2`) desde 2026-08-22, confirmado
-ao vivo via `php artisan lapis:release-check` / `php artisan about`. Antes
-disso, 0.37.0 desde 2026-08-20 (Relatórios, Acompanhamento do Aluno,
-Estratégias e Medidas, reorganização da navegação; três migrations aditivas, e
-duas dependências novas — `dompdf/dompdf` e `phpoffice/phpword` — que tornam o
-`composer install` do passo 5 obrigatório e não opcional); antes dessa, 0.36.0
-desde 2026-08-18 (Identidade da escola).
+**Este documento não regista a versão em produção — deixou de conseguir.**
+Registou-a até à 0.45.9 (2026-08-22) e envelheceu 70 releases sem ninguém o
+actualizar, a afirmar com confiança uma versão de há duas semanas. O registo
+verdadeiro é o servidor: `php artisan lapis:release-check` responde versão,
+commit e carimbo sem depender da memória de ninguém.
 **Confirmar sempre a versão real no servidor (`grep version config/app.php`)
 antes de assumir de onde parte o deploy**, já que o servidor não tem `.git` e
 nada indica de fora qual o commit que lá está — o `build.json` do pacote e o
@@ -387,8 +385,16 @@ entrada, e é o Laravel que decide o que está devido.
 > scheduler a correr de minuto a minuto. O mesmo vale para `LAPIS_KEEP_*` em
 > `scripts/backup-database.sh` e para `/home/lapis`.
 
-Instalada no **crontab do `lapis-deploy`** (`crontab -e` como esse utilizador —
-é quem é dono do código e pertence ao grupo `lapis`).
+Instalada no **crontab do `lapis`** desde 2026-09-04 — o utilizador do
+php-fpm, dono do que a aplicação escreve em `storage/app/private/*`. Foi a
+«saída 1» da secção «Que utilizador deve correr o scheduler» abaixo: as pastas
+privadas nascem `0700` do `lapis` (armadilha 10) e o cron no `lapis-deploy`
+falhou `data-imports:prune` de hora a hora entre 2026-08-30 e 2026-09-04 por
+não as conseguir listar. As pré-condições foram confirmadas antes de mudar:
+`sudo -u lapis php artisan` corre, o `scheduler.log` é gravável por ele, e o
+`storage:private-status` responde «utilizáveis» para todas as pastas. O bloco
+do **backup fica no `lapis-deploy`** — o `~/.my.cnf` com as credenciais é
+dele.
 
 > **A parte a seguir estava errada e custou 22 horas de falhas silenciosas.**
 > Esta frase dizia que o `lapis-deploy` «consegue apagar o que o php-fpm

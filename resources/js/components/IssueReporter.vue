@@ -84,6 +84,21 @@ const listening = ref<DictationSession | null>(null);
 const dictationError = ref<string | null>(null);
 const notice = computed(() => dictationNotice(dictation.value));
 
+/**
+ * Espelho do `StoreIssueReportRequest::subjectFrom()` — espaços colapsados,
+ * corte a 70 com reticência. O servidor continua a ser a autoridade; isto só
+ * mostra o resultado antes do envio.
+ */
+const derivedSubject = computed(() => {
+    const firstLine = form.description.replace(/\s+/gu, ' ').trim();
+
+    if (firstLine === '') {
+        return null;
+    }
+
+    return firstLine.length > 70 ? `${firstLine.slice(0, 70).trimEnd()}…` : firstLine;
+});
+
 type IssueForm = {
     description: string;
     technical_route: string | null;
@@ -346,6 +361,17 @@ function submit(): void {
                         </p>
 
                         <p v-if="dictationError" class="text-xs text-destructive">{{ dictationError }}</p>
+
+                        <!--
+                            O título que o servidor vai derivar, mostrado a quem
+                            escreve — texto ditado não tem pontuação e o corte a
+                            70 às cegas produzia títulos a meio de palavra sem
+                            ninguém dar por isso antes de enviar.
+                        -->
+                        <p v-if="derivedSubject" class="text-xs text-muted-foreground">
+                            Vai entrar na sua área de Suporte como:
+                            <span class="font-medium">«{{ derivedSubject }}»</span>
+                        </p>
 
                         <InputError :message="form.errors.description" />
                     </div>

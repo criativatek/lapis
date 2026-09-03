@@ -6,6 +6,8 @@ use App\Models\AcademicYear;
 use App\Models\SchoolClass;
 use App\Models\Subject;
 use App\Models\SupportCategory;
+use App\Models\SupportRequest;
+use App\Models\SupportRequestStatus;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Legal\LegalDocuments;
 use App\Support\Navigation\NavigationBuilder;
@@ -87,6 +89,18 @@ class HandleInertiaRequests extends Middleware
             // receber a lista. É a MESMA de `SupportController::create()`, e
             // preguiçosa: só é calculada quando alguém abre o formulário.
             'supportCategories' => fn (): array => SupportCategory::options(),
+            // Pedidos do próprio utilizador a que o suporte respondeu e que
+            // esperam por ele. O estado `waiting_for_user` É o marcador de «há
+            // resposta por ler» — vira ao responder o operador, desvira ao
+            // responder o professor — por isso não há coluna nova nenhuma.
+            // Contagem, nunca conteúdo; e `withoutGlobalScopes` porque o
+            // suporte vive fora da tenancy (ADR-0011) e um pedido é de quem o
+            // escreveu, não da organização onde estava.
+            'supportAwaitingReply' => fn (): int => $user === null ? 0 : SupportRequest::query()
+                ->withoutGlobalScopes()
+                ->where('user_id', $user->id)
+                ->where('status', SupportRequestStatus::WaitingForUser)
+                ->count(),
             'auth' => [
                 'user' => $user,
                 // The ONE thing the client is told about the backoffice: whether

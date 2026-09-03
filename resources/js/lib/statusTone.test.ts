@@ -21,6 +21,14 @@ describe('statusTone', () => {
         expect(statusTone('archived')).toBe('neutral');
     });
 
+    it('turmas e aulas: activo e dada verdes, preparação neutra', () => {
+        expect(statusTone('active')).toBe('green');
+        expect(statusTone('taught')).toBe('green');
+        expect(statusTone('finalized')).toBe('green');
+        expect(statusTone('preparation')).toBe('neutral');
+        expect(statusTone('closed')).toBe('neutral');
+    });
+
     it('um estado desconhecido fica neutro — nunca inventa cor', () => {
         expect(statusTone('estado_que_ainda_nao_existe')).toBe('neutral');
     });

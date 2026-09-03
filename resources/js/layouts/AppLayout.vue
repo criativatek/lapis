@@ -4,6 +4,7 @@ import { computed } from 'vue';
 import ClosureBanners from '@/components/ClosureBanners.vue';
 import IssueReporter from '@/components/IssueReporter.vue';
 import PrivacyNotice from '@/components/PrivacyNotice.vue';
+import SupportReplyBanner from '@/components/SupportReplyBanner.vue';
 import AppLayout from '@/layouts/app/AppSidebarLayout.vue';
 import type { BreadcrumbItem } from '@/types';
 
@@ -30,6 +31,7 @@ function stopImpersonating(): void {
     </div>
     <PrivacyNotice />
     <ClosureBanners />
+    <SupportReplyBanner />
     <AppLayout :breadcrumbs="breadcrumbs">
         <slot />
     </AppLayout>
