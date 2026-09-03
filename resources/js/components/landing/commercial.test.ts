@@ -190,6 +190,23 @@ describe('the commercial offer', () => {
         expect(withoutEquivalences).not.toMatch(/\bMensal\b/);
     });
 
+    it('makes the founder price primary on the Pro card while the condition is open', () => {
+        const proCard = pricing().findAll('article')[1];
+        const primaryPrice = proCard.find('.text-3xl');
+
+        expect(primaryPrice.text()).toContain('29,90 €');
+        expect(proCard.text()).toContain('Preço regular');
+        expect(proCard.text()).toContain('44,90 €');
+    });
+
+    it('restores the regular Pro price without a founder badge once the condition closes', () => {
+        const proCard = pricing(null, false).findAll('article')[1];
+        const primaryPrice = proCard.find('.text-3xl');
+
+        expect(primaryPrice.text()).toContain('44,90 €');
+        expect(proCard.text()).not.toContain('Membro Fundador');
+    });
+
     it('presents Fundador as the same Pro at a launch price', () => {
         const text = pricing().text();
 

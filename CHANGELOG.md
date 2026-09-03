@@ -25,6 +25,22 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.115.1] — 2026-09-03
+
+A apresentação dos planos passa a começar pela entrada gratuita na página
+inicial e torna mais clara a condição de lançamento do Pro enquanto ela está
+disponível. Não mudam planos, preços, rotas nem condições comerciais.
+
+### Changed
+
+- **Base gratuito em primeiro plano na landing pública.** O bloco de planos
+  deixa de mostrar 44,90 € e apresenta o Base gratuito no ano letivo 2026/27,
+  com ações separadas para criar uma conta gratuita e conhecer os planos.
+- **Preço Fundador como referência principal em `/planos`.** Enquanto a
+  campanha Membro Fundador estiver aberta, o cartão Pro apresenta 29,90 €/ano
+  como preço principal e 44,90 €/ano como preço regular de referência. Quando
+  a campanha fecha, mantém-se apenas o preço regular de 44,90 €/ano.
+
 ## [0.115.0] — 2026-09-03
 
 A Política de Privacidade nomeia o GitHub antes de a exportação de reportes

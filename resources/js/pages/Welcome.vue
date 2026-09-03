@@ -22,6 +22,7 @@ import PageHero from '@/components/marketing/PageHero.vue';
 import PhotoBand from '@/components/marketing/PhotoBand.vue';
 import ScreenFrame from '@/components/marketing/ScreenFrame.vue';
 import TileArt from '@/components/marketing/TileArt.vue';
+import { dashboard, register } from '@/routes';
 
 /**
  * The home page of the marketing site.
@@ -211,7 +212,7 @@ const measures = [
             lead="Média ponderada por domínio, proposta na escala da escola e o nível que o professor atribui. Vazio não é zero, «não aplicável» sai do denominador, quem chega tarde não é penalizado."
         >
             <ScreenFrame
-                src="/images/landing/grid.webp"
+                :src="'/images/landing/grid.webp'"
                 alt="Grelha de resultados de uma turma no Lapispro: média ponderada por domínio, proposta na escala e nível atribuído pelo professor."
                 :width="1600"
                 :height="854"
@@ -240,7 +241,7 @@ const measures = [
                     <!-- The bento's big tile: the first area shows the product. -->
                     <img
                         v-if="index === 0"
-                        src="/images/landing/grid.webp"
+                        :src="'/images/landing/grid.webp'"
                         alt=""
                         width="1600"
                         height="854"
@@ -282,9 +283,8 @@ const measures = [
                         />
                     </span>
                 </Link>
-                <Link
-                    href="/planos"
-                    class="group flex flex-col justify-between gap-6 rounded-3xl bg-amber-100 dots-pattern p-6 transition-[box-shadow,transform] duration-300 hover:card-soft-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-safe:hover:-translate-y-1 sm:col-span-2 sm:flex-row sm:items-center sm:p-7 lg:col-span-3"
+                <div
+                    class="flex flex-col justify-between gap-6 rounded-3xl bg-amber-100 dots-pattern p-6 transition-[box-shadow,transform] duration-300 hover:card-soft-hover motion-safe:hover:-translate-y-1 sm:col-span-2 sm:p-7 lg:col-span-3"
                 >
                     <div>
                         <p
@@ -295,19 +295,34 @@ const measures = [
                         <h3
                             class="mt-3 text-2xl font-semibold tracking-tight text-balance"
                         >
-                            Base gratuito. Pro por 44,90 € por ano.
+                            Comece gratuitamente no ano letivo 2026/27.
                         </h3>
+                        <p
+                            class="mt-3 max-w-2xl text-sm leading-relaxed text-amber-950/75 sm:text-base"
+                        >
+                            Organize turmas, avaliações, aulas e informação
+                            pedagógica sem compromisso.
+                        </p>
                     </div>
-                    <span
-                        class="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-amber-900 px-5 py-2.5 text-sm font-medium text-white"
-                    >
-                        Ver os planos
-                        <ArrowRight
-                            aria-hidden="true"
-                            class="size-4 transition-transform duration-300 group-hover:translate-x-0.5"
-                        />
-                    </span>
-                </Link>
+                    <div class="flex flex-wrap items-center gap-3">
+                        <Link
+                            :href="authenticated ? dashboard() : register()"
+                            class="group/cta inline-flex items-center gap-1.5 rounded-full bg-amber-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-amber-950 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                        >
+                            Criar conta gratuita
+                            <ArrowRight
+                                aria-hidden="true"
+                                class="size-4 transition-transform duration-300 group-hover/cta:translate-x-0.5"
+                            />
+                        </Link>
+                        <Link
+                            href="/planos"
+                            class="inline-flex items-center rounded-full border border-amber-900/30 px-5 py-2.5 text-sm font-medium text-amber-950 transition-colors hover:bg-amber-900/10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                        >
+                            Conhecer os planos
+                        </Link>
+                    </div>
+                </div>
             </div>
         </ColorBand>
 

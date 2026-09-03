@@ -8,8 +8,13 @@ import { LANDING_PRIMARY } from './chrome';
 import {
     FALLBACK_PLAN,
     FOUNDER,
-    FOUNDER_PRICE_PER_YEAR,
+    FOUNDER_DEADLINE,
+    FOUNDER_MONTHLY_EQUIVALENT,
+    FOUNDER_PRICE,
+    FOUNDER_SEATS,
     PLAN_COPY,
+    PRO_MONTHLY_EQUIVALENT,
+    PRO_PRICE_PER_YEAR,
 } from './commercial';
 import type { PlanCommercial } from './commercial';
 import LandingFounder from './LandingFounder.vue';
@@ -73,6 +78,22 @@ const copyFor = (plan: LandingPlan): PlanCommercial =>
     PLAN_COPY[plan.key] ?? FALLBACK_PLAN;
 
 const isPro = (plan: LandingPlan): boolean => plan.key === 'pro';
+
+function priceView(plan: LandingPlan): PlanCommercial {
+    const base = copyFor(plan);
+
+    if (!isPro(plan) || !props.founderOpen) {
+        return base;
+    }
+
+    return {
+        ...base,
+        priceLead: FOUNDER.badge,
+        price: FOUNDER_PRICE,
+        priceNote: FOUNDER_MONTHLY_EQUIVALENT,
+        priceFootnote: `Preço regular: ${PRO_PRICE_PER_YEAR} · ${PRO_MONTHLY_EQUIVALENT}`,
+    };
+}
 
 /** True when the card's action leaves the app, so it is an <a>, not a <Link>. */
 function isExternal(plan: LandingPlan): boolean {
@@ -164,32 +185,32 @@ function visitHref(plan: LandingPlan) {
                          when the figure needs context, the figure, the note. -->
                     <div class="mt-6 border-t border-border/70 pt-5">
                         <p
-                            v-if="copyFor(plan).priceLead"
+                            v-if="priceView(plan).priceLead"
                             class="text-[11px] font-semibold tracking-[0.1em] text-primary uppercase dark:text-(--brand-amber)"
                         >
-                            {{ copyFor(plan).priceLead }}
+                            {{ priceView(plan).priceLead }}
                         </p>
                         <p
                             class="mt-1.5 flex flex-wrap items-baseline gap-x-1.5 text-3xl font-semibold tracking-tight text-balance"
                         >
-                            {{ copyFor(plan).price }}
+                            {{ priceView(plan).price }}
                             <span
-                                v-if="copyFor(plan).priceUnit"
+                                v-if="priceView(plan).priceUnit"
                                 class="text-sm font-normal text-muted-foreground"
-                                >{{ copyFor(plan).priceUnit }}</span
+                                >{{ priceView(plan).priceUnit }}</span
                             >
                         </p>
                         <p
                             class="mt-1.5 text-[13px] leading-relaxed text-pretty text-muted-foreground"
                             :class="isPro(plan) ? 'italic' : undefined"
                         >
-                            {{ copyFor(plan).priceNote }}
+                            {{ priceView(plan).priceNote }}
                         </p>
                         <p
-                            v-if="copyFor(plan).priceFootnote"
+                            v-if="priceView(plan).priceFootnote"
                             class="mt-1 text-[13px] leading-relaxed text-pretty text-muted-foreground/80"
                         >
-                            {{ copyFor(plan).priceFootnote }}
+                            {{ priceView(plan).priceFootnote }}
                         </p>
                     </div>
 
@@ -230,8 +251,9 @@ function visitHref(plan: LandingPlan) {
                             {{ FOUNDER.badge }}
                         </span>
                         <span class="mt-0.5 block text-muted-foreground">
-                            {{ FOUNDER_PRICE_PER_YEAR }} para os primeiros 250
-                            professores. Mesmo plano, mesma aplicação.
+                            Para os primeiros {{ FOUNDER_SEATS }} professores,
+                            até {{ FOUNDER_DEADLINE }}. Mesmo plano, mesma
+                            aplicação.
                         </span>
                     </a>
 
