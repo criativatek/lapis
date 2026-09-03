@@ -25,6 +25,22 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.117.1] — 2026-09-03
+
+O ecrã de Alunos passa a ocupar a largura toda, como o Painel — pedido no
+reporte SUP-9S72UL, feito de dentro da aplicação.
+
+### Alterado
+
+- **`/students` perde o `max-w-5xl` centrado.** Num monitor largo era uma ilha
+  estreita desalinhada da barra de filtros do topo, que estica sempre; agora
+  título, filtros e tabela partilham a mesma régua e a tabela acaba onde a
+  barra acaba. Verificado a 1920 (tabela passa de 1024 para a largura útil) e
+  a 375 (zero overflow; a tabela rola no seu próprio scroller).
+
+O reporte foi respondido dentro da aplicação — o circuito completo da Central
+de Suporte, do botão à resposta, na mesma tarde.
+
 ## [0.117.0] — 2026-09-03
 
 > **Nota de âmbito.** Metade destas correcções foi publicada na **0.116.0**,

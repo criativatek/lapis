@@ -191,7 +191,12 @@ function followUpHref(enrollment: DirectoryEnrollment): string {
 <template>
     <Head title="Alunos" />
 
-    <div class="mx-auto w-full max-w-5xl space-y-6 p-4">
+    <!--
+        A toda a largura, como o Painel — pedido no SUP-9S72UL. O `max-w-5xl`
+        centrado fazia disto uma ilha num monitor largo, desalinhada da barra
+        de filtros do topo, que estica sempre.
+    -->
+    <div class="w-full space-y-6 p-4">
         <Heading title="Alunos" description="Os alunos das suas turmas." />
 
         <!-- A) NO TURMAS AT ALL. Not "no students": there is nowhere for a
