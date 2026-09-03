@@ -135,7 +135,12 @@ class SchoolReportTest extends TestCase
                     'scope' => ClassificationScope::Period,
                     'assessment_profile_version_id' => $version->id,
                     'status' => ClassificationStatus::Confirmed,
-                    'final_value' => (string) $level->code,
+                    // O NÚMERO DO NÍVEL, NÃO O CÓDIGO. `code` é texto («NA»,
+                    // «1»…) e `final_value` é DECIMAL — o SQLite engolia a
+                    // string, o MySQL recusa-a. É também o que a produção grava
+                    // (ConfirmClassification), e um nível qualitativo não tem
+                    // número nenhum: null, nunca zero (§10.4).
+                    'final_value' => $level->numeric_value === null ? null : (string) $level->numeric_value,
                     'final_scale_level_id' => $level->id,
                     'confirmed_by' => $this->owner->id,
                     'confirmed_at' => now(),

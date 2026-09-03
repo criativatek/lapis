@@ -86,7 +86,7 @@ class ApplyLessonSequenceTest extends TestCase
             $this->assertSame(LessonStatus::Prepared, $lessonTwo->status);
 
             $event = AuditEvent::query()->where('event', 'lesson_sequence.applied')->sole();
-            $this->assertSame([
+            $this->assertSameJsonPayload([
                 'class_id' => $schoolClass->id,
                 'items_applied' => 2,
                 'items_skipped' => 0,

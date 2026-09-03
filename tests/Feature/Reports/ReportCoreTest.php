@@ -327,7 +327,7 @@ class ReportCoreTest extends TestCase
         $class = $this->asTenant(fn () => SchoolClass::factory()->recycle($this->organization)->create());
         $this->asTenant(fn () => $class->teachers()->syncWithoutDetaching([
             $this->teacher->id => ['role' => 'owner'],
-            $colleague->id => ['role' => 'teacher'],
+            $colleague->id => ['role' => 'co_teacher'],
         ]));
 
         $this->asTenant(fn () => Report::factory()->recycle($this->organization)->create([

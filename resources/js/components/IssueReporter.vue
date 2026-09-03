@@ -27,10 +27,17 @@ import type { Screenshot } from '@/lib/screenshot';
  * conversa e no mesmo relógio de retenção. O que muda é de onde se abre e o que
  * o acompanha.
  *
- * A CAPTURA DE ECRÃ ENTRA DESMARCADA, e sai de novo com um clique. Uma captura
- * do Lapispro é, por construção, uma imagem dos dados sobre que o defeito é —
- * uma tabela de nomes de crianças contra classificações — e ninguém deve enviar
- * uma sem a ter visto. Por isso:
+ * A CAPTURA ACONTECE NO CLIQUE DE «REPORTAR PROBLEMA» — antes de existir
+ * diálogo. Foi decidido assim no reporte SUP-2B5T3J (2026-09-03), e resolve
+ * pela raiz o defeito que esse reporte trouxe: capturar com o diálogo aberto
+ * apanhava o véu dele (`data-slot="dialog-overlay"`, um irmão do conteúdo que o
+ * esconder de `[role="dialog"]` não tocava) e a imagem saía toda escurecida.
+ * No clique ainda não há véu nenhum. A captura automática usa a via SILENCIOSA
+ * (redesenho do DOM) — a via com autorização do browser fica para o «Repetir
+ * captura», onde o gesto é explícito.
+ *
+ * Capturar automaticamente NÃO é enviar automaticamente. A imagem fica no
+ * browser, à vista, e só segue certificada:
  *
  *   1. vê-se antes de seguir, e amplia-se a 1:1, porque uma miniatura dentro de
  *      um diálogo não se revê;
@@ -41,6 +48,12 @@ import type { Screenshot } from '@/lib/screenshot';
  *   4. quando a aplicação reconhece dados pessoais no texto da página, o aviso é
  *      concreto — «esta página mostra nomes» — e não uma advertência genérica.
  *      A aplicação desenhou aquela página: sabe o que lá está.
+ *
+ * SEM ASSUNTO NEM RESUMO. O mesmo reporte pediu-o: quem descreve um defeito já
+ * o está a resumir, e a rota, o componente e o contexto dizem o resto. O
+ * servidor deriva o resumo da primeira linha da descrição
+ * (`StoreIssueReportRequest::payload()`); a categoria nasce «other» e a triagem
+ * do backoffice reclassifica quando fizer diferença.
  *
  * A regra do ponto 3 é imposta no SERVIDOR (`OpenIssueReport`). Isto é como a
  * pessoa a exerce, não onde ela vive.
@@ -58,7 +71,6 @@ import type { Screenshot } from '@/lib/screenshot';
 
 const page = usePage();
 
-const categories = computed(() => (page.props.supportCategories ?? []) as { value: string; label: string }[]);
 const authenticated = computed(() => Boolean((page.props.auth as { user?: unknown } | undefined)?.user));
 
 const open = ref(false);
@@ -73,8 +85,6 @@ const dictationError = ref<string | null>(null);
 const notice = computed(() => dictationNotice(dictation.value));
 
 type IssueForm = {
-    category: string;
-    subject: string;
     description: string;
     technical_route: string | null;
     client_context: ClientContext | null;
@@ -85,8 +95,6 @@ type IssueForm = {
 };
 
 const form = useForm<IssueForm>({
-    category: '',
-    subject: '',
     description: '',
     technical_route: null,
     client_context: null,
@@ -182,15 +190,50 @@ function stopListening(): void {
     listening.value = null;
 }
 
+/**
+ * O clique em «Reportar problema»: captura primeiro, abre depois.
+ *
+ * Nesta ordem não há véu de diálogo para apanhar — o defeito do SUP-2B5T3J
+ * era exactamente capturar com ele à frente. Via silenciosa: um clique para
+ * reportar não é um clique para responder ao pedido de partilha de ecrã do
+ * browser. Se a captura falhar, o diálogo abre na mesma, sem imagem.
+ */
+async function openReporter(): Promise<void> {
+    if (capturing.value) {
+        return;
+    }
+
+    capturing.value = true;
+    discardScreenshot();
+
+    try {
+        const hide = Array.from(document.querySelectorAll<HTMLElement>('[data-issue-launcher]'));
+
+        screenshot.value = await capture(hide, { silent: true });
+        form.screenshot_warning = screenshot.value?.warning ?? null;
+    } finally {
+        capturing.value = false;
+        open.value = true;
+    }
+}
+
+/**
+ * «Repetir captura», já com o diálogo aberto — o gesto explícito, com a via
+ * completa (autorização e imagem verdadeira do ecrã incluídas).
+ */
 async function takeScreenshot(): Promise<void> {
     capturing.value = true;
     discardScreenshot();
 
     try {
-        // O diálogo e o botão escondem-se durante a captura: uma imagem com o
-        // próprio formulário lá dentro não mostra defeito nenhum.
+        // O diálogo, O SEU VÉU e o botão escondem-se durante a captura. O véu
+        // (`data-slot="dialog-overlay"`) é um irmão do conteúdo, não um filho:
+        // esconder só `[role="dialog"]` deixava-o na imagem e saía tudo
+        // escurecido a 50% — o defeito reportado no SUP-2B5T3J.
         const hide = Array.from(
-            document.querySelectorAll<HTMLElement>('[role="dialog"], [data-issue-launcher]'),
+            document.querySelectorAll<HTMLElement>(
+                '[role="dialog"], [data-slot="dialog-overlay"], [data-issue-launcher]',
+            ),
         );
 
         screenshot.value = await capture(hide);
@@ -247,9 +290,10 @@ function submit(): void {
             size="sm"
             data-issue-launcher
             class="fixed bottom-4 right-4 z-40 shadow-lg print:hidden"
-            @click="open = true"
+            :disabled="capturing"
+            @click="openReporter"
         >
-            Reportar problema
+            {{ capturing ? 'A capturar…' : 'Reportar problema' }}
         </Button>
 
         <Dialog v-model:open="open">
@@ -262,35 +306,10 @@ function submit(): void {
                 </DialogHeader>
 
                 <form class="max-h-[70vh] space-y-4 overflow-y-auto" @submit.prevent="submit">
-                    <div class="space-y-1.5">
-                        <label class="text-sm font-medium" for="issue-category">Assunto</label>
-                        <select
-                            id="issue-category"
-                            v-model="form.category"
-                            class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                            required
-                        >
-                            <option value="" disabled>Escolha um assunto</option>
-                            <option v-for="category in categories" :key="category.value" :value="category.value">
-                                {{ category.label }}
-                            </option>
-                        </select>
-                        <InputError :message="form.errors.category" />
-                    </div>
-
-                    <div class="space-y-1.5">
-                        <label class="text-sm font-medium" for="issue-subject">Resumo</label>
-                        <input
-                            id="issue-subject"
-                            v-model="form.subject"
-                            type="text"
-                            maxlength="200"
-                            class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                            required
-                        />
-                        <InputError :message="form.errors.subject" />
-                    </div>
-
+                    <!--
+                        Sem «Assunto» nem «Resumo» — pedido no SUP-2B5T3J. A
+                        descrição já é o resumo; o servidor deriva o resto.
+                    -->
                     <div class="space-y-1.5">
                         <div class="flex items-center justify-between gap-3">
                             <label class="text-sm font-medium" for="issue-description">O que aconteceu</label>
@@ -331,27 +350,32 @@ function submit(): void {
                         <InputError :message="form.errors.description" />
                     </div>
 
-                    <!-- Captura de ecrã: desmarcada por omissão, sempre. -->
+                    <!--
+                        A captura foi tirada no clique do botão e está aqui à
+                        vista. Só SEGUE se for certificada — capturar não é
+                        enviar, e a regra vive no servidor.
+                    -->
                     <div class="space-y-2 rounded-md border border-border p-3">
                         <div class="flex items-center justify-between gap-3">
                             <span class="text-sm font-medium">Captura de ecrã</span>
-                            <Button
-                                v-if="!screenshot"
-                                type="button"
-                                variant="secondary"
-                                size="sm"
-                                :disabled="capturing"
-                                @click="takeScreenshot"
-                            >
-                                {{ capturing ? 'A capturar…' : 'Juntar captura' }}
-                            </Button>
-                            <Button v-else type="button" variant="ghost" size="sm" @click="discardScreenshot">
-                                Remover
-                            </Button>
+                            <div class="flex gap-2">
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    size="sm"
+                                    :disabled="capturing"
+                                    @click="takeScreenshot"
+                                >
+                                    {{ capturing ? 'A capturar…' : screenshot ? 'Repetir captura' : 'Juntar captura' }}
+                                </Button>
+                                <Button v-if="screenshot" type="button" variant="ghost" size="sm" @click="discardScreenshot">
+                                    Remover
+                                </Button>
+                            </div>
                         </div>
 
                         <p v-if="!screenshot" class="text-xs text-muted-foreground">
-                            Opcional. Nada é capturado sem carregar aqui.
+                            Sem captura. Nada do seu ecrã segue com o reporte.
                         </p>
 
                         <template v-else>

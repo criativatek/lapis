@@ -6,6 +6,7 @@ use App\Models\SupportCategory;
 use App\Support\Support\ClientContext;
 use App\Support\Support\IssueConsent;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 /**
@@ -36,8 +37,11 @@ class StoreIssueReportRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'category' => ['required', Rule::enum(SupportCategory::class)],
-            'subject' => ['required', 'string', 'max:200'],
+            // Opcionais desde o SUP-2B5T3J: o widget deixou de os perguntar.
+            // Quem descreve um defeito já o está a resumir — ver `payload()`,
+            // onde os dois se derivam quando não vêm.
+            'category' => ['nullable', Rule::enum(SupportCategory::class)],
+            'subject' => ['nullable', 'string', 'max:200'],
             'description' => ['required', 'string', 'max:5000'],
             'technical_route' => ['nullable', 'string', 'max:200'],
 
@@ -72,15 +76,39 @@ class StoreIssueReportRequest extends FormRequest
         $context = $this->input('client_context');
         $warning = $this->input('screenshot_warning');
 
+        $category = trim((string) $this->string('category'));
+        $subject = trim((string) $this->string('subject'));
+        $description = (string) $this->string('description');
+
         return [
-            'category' => (string) $this->string('category'),
-            'subject' => (string) $this->string('subject'),
-            'description' => (string) $this->string('description'),
+            // Derivados quando o widget não os manda (SUP-2B5T3J): a categoria
+            // nasce «other» — a triagem do backoffice reclassifica quando fizer
+            // diferença — e o resumo é a primeira linha da descrição, encolhida.
+            // A derivação vive AQUI e não na acção: este é o único sítio que
+            // sabe a forma do pedido, e a acção continua a receber os campos
+            // que sempre declarou.
+            'category' => $category !== '' ? $category : SupportCategory::Other->value,
+            'subject' => $subject !== '' ? $subject : $this->subjectFrom($description),
+            'description' => $description,
             'technical_route' => is_string($route) ? $route : null,
             'client_context' => is_array($context) ? $context : null,
             'screenshot_certified' => $this->boolean('screenshot_certified'),
             'screenshot_warning' => is_string($warning) ? $warning : null,
         ];
+    }
+
+    /**
+     * O resumo derivado: a primeira linha do que a pessoa escreveu, encolhida.
+     *
+     * Espaços em série colapsam primeiro — texto ditado chega sem pontuação e
+     * com respirações — e o corte é em 70 caracteres, que é o que uma fila de
+     * backoffice mostra sem truncar ela própria.
+     */
+    protected function subjectFrom(string $description): string
+    {
+        $firstLine = (string) preg_replace('/\s+/u', ' ', trim($description));
+
+        return Str::limit($firstLine, 70, '…');
     }
 
     /** @return array<string, string> */

@@ -53,7 +53,7 @@ class ReportPolicyTest extends TestCase
             $this->class = SchoolClass::factory()->recycle($this->organization)->create();
             $this->class->teachers()->syncWithoutDetaching([
                 $this->author->id => ['role' => 'owner'],
-                $this->colleague->id => ['role' => 'teacher'],
+                $this->colleague->id => ['role' => 'co_teacher'],
             ]);
 
             $this->report = Report::factory()->recycle($this->organization)->create([

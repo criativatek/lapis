@@ -138,7 +138,21 @@ async function viaDomClone(): Promise<Blob | null> {
  *
  * @param hide elementos a esconder durante a captura — o widget, o diálogo.
  */
-export async function capture(hide: HTMLElement[] = []): Promise<Screenshot | null> {
+export type CaptureOptions = {
+    /**
+     * Só o redesenho do DOM, sem `getDisplayMedia`.
+     *
+     * A captura automática — a que acontece no clique de «Reportar problema»,
+     * sem mais nenhum gesto — não pode abrir o pedido de autorização do browser
+     * a cada reporte: quem clicou para reportar um defeito não clicou para
+     * responder a um diálogo de partilha de ecrã. A via com autorização fica
+     * para o «Repetir captura», onde o gesto é explícito e a troca (a imagem
+     * verdadeira do ecrã, com o que o browser desenha por cima) é pedida.
+     */
+    silent?: boolean;
+};
+
+export async function capture(hide: HTMLElement[] = [], options: CaptureOptions = {}): Promise<Screenshot | null> {
     const previous = hide.map((element) => element.style.visibility);
     hide.forEach((element) => (element.style.visibility = 'hidden'));
 
@@ -147,7 +161,9 @@ export async function capture(hide: HTMLElement[] = []): Promise<Screenshot | nu
     let blob: Blob | null = null;
 
     try {
-        blob = (await viaDisplayMedia()) ?? (await viaDomClone());
+        blob = options.silent
+            ? await viaDomClone()
+            : ((await viaDisplayMedia()) ?? (await viaDomClone()));
     } finally {
         hide.forEach((element, index) => (element.style.visibility = previous[index] ?? ''));
     }

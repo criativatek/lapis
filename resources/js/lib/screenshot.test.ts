@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest';
-import { warnAbout } from '@/lib/screenshot';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { capture, warnAbout } from '@/lib/screenshot';
+
+vi.mock('modern-screenshot', () => ({
+    domToBlob: vi.fn(async () => new Blob(['x'], { type: 'image/jpeg' })),
+}));
 
 /**
  * O aviso é o que separa uma certificação informada de uma às cegas. Se ele
@@ -42,5 +46,50 @@ describe('warnAbout', () => {
 
         expect(aviso).not.toContain('ana.martins');
         expect(aviso).not.toContain('@');
+    });
+});
+
+/**
+ * A via silenciosa existe por causa da captura automática: o clique em
+ * «Reportar problema» captura logo, e um clique para reportar NÃO é um clique
+ * para responder ao pedido de partilha de ecrã do browser. Se `silent` deixar
+ * de ser respeitado, cada reporte passa a abrir esse pedido — e ninguém
+ * reporta duas vezes.
+ */
+describe('capture — a via silenciosa', () => {
+    afterEach(() => {
+        delete (navigator as unknown as Record<string, unknown>).mediaDevices;
+        vi.restoreAllMocks();
+    });
+
+    function stubDisplayMedia(): ReturnType<typeof vi.fn> {
+        const getDisplayMedia = vi.fn().mockRejectedValue(new Error('recusado'));
+
+        Object.defineProperty(navigator, 'mediaDevices', {
+            configurable: true,
+            value: { getDisplayMedia },
+        });
+
+        // jsdom não tem createObjectURL; a pré-visualização não interessa aqui.
+        URL.createObjectURL = vi.fn(() => 'blob:teste');
+
+        return getDisplayMedia;
+    }
+
+    it('em silent nunca toca no getDisplayMedia', async () => {
+        const getDisplayMedia = stubDisplayMedia();
+
+        const result = await capture([], { silent: true });
+
+        expect(getDisplayMedia).not.toHaveBeenCalled();
+        expect(result).not.toBeNull();
+    });
+
+    it('sem silent tenta primeiro o ecrã verdadeiro', async () => {
+        const getDisplayMedia = stubDisplayMedia();
+
+        await capture([]);
+
+        expect(getDisplayMedia).toHaveBeenCalledTimes(1);
     });
 });

@@ -6,6 +6,7 @@ use App\Actions\Support\AnonymiseSupportRequest;
 use App\Models\SupportAttachment;
 use App\Models\SupportRequest;
 use App\Models\User;
+use App\Support\Support\IssueConsent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -37,6 +38,35 @@ class IssueConsentTest extends TestCase
             'description' => 'Fica em branco.',
             'technical_route' => '/classes/:id',
         ], $overrides);
+    }
+
+    /**
+     * Um reporte sem assunto nem resumo entra — e o servidor deriva os dois.
+     *
+     * Pedido no SUP-2B5T3J: o widget deixou de perguntar o que a descrição já
+     * diz. O resumo é a primeira linha da descrição encolhida a 70 caracteres
+     * — texto ditado chega sem pontuação, e os espaços em série colapsam — e
+     * a categoria nasce «other», que a triagem do backoffice reclassifica.
+     */
+    #[Test]
+    public function a_report_without_category_or_subject_gets_both_derived(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->post('/issues', [
+            'description' => "A captura   ficou\nescura quando cliquei no botão de reportar e depois "
+                .'o resto da página desapareceu por completo do ecrã',
+            'technical_route' => '/dashboard',
+            'consent_terms_version' => IssueConsent::currentVersion(),
+        ])->assertRedirect();
+
+        $request = SupportRequest::query()->sole();
+
+        $this->assertSame('other', $request->category->value);
+        // Espaços e quebras colapsados, corte a 70 mais a reticencia.
+        $this->assertLessThanOrEqual(71, mb_strlen($request->subject));
+        $this->assertStringStartsWith('A captura ficou escura', $request->subject);
+        $this->assertStringEndsWith('…', $request->subject);
     }
 
     #[Test]

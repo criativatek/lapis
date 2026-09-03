@@ -62,13 +62,16 @@ return new class extends Migration
         }
 
         Schema::table('support_requests', function (Blueprint $table): void {
-            // OS INDICES PRIMEIRO, E OS DOIS. Largar uma coluna que ainda tem um
-            // indice a apontar-lhe e fatal no SQLite — onde a suite corre — com
-            // um erro que fala do indice e nao da coluna, longe da causa.
+            // A CHAVE ESTRANGEIRA PRIMEIRO, DEPOIS OS INDICES, DEPOIS AS
+            // COLUNAS. Cada motor recusa uma ordem diferente e so esta serve os
+            // dois: o MySQL recusa largar um indice de que uma chave estrangeira
+            // ainda depende (erro 1553, e foi ele que partiu o CI), e o SQLite
+            // recusa largar uma coluna que ainda tenha um indice a apontar-lhe,
+            // com um erro que fala do indice e nao da coluna, longe da causa.
+            $table->dropForeign(['assigned_to']);
             $table->dropIndex(['status', 'severity']);
             $table->dropIndex(['assigned_to']);
-            $table->dropConstrainedForeignId('assigned_to');
-            $table->dropColumn(['severity', 'assigned_at']);
+            $table->dropColumn(['severity', 'assigned_to', 'assigned_at']);
         });
     }
 };

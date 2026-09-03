@@ -236,7 +236,7 @@ class LessonSummaryTest extends TestCase
             $this->assertSame($this->teacher->id, $summary->reviewed_by);
             $this->assertSame($lesson->id, $auditEvent->subject_id);
             $this->assertSame($this->teacher->id, $auditEvent->causer_id);
-            $this->assertSame([
+            $this->assertSameJsonPayload([
                 'lesson_status' => LessonStatus::Taught->value,
                 'summary_id' => $summary->id,
             ], $auditEvent->properties);

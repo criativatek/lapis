@@ -158,7 +158,7 @@ class InterimComparisonTest extends TestCase
 
         // And the photograph did not move on the way.
         $again = $this->asTenant(fn (): InterimAssessment => InterimAssessment::findOrFail($interim->id));
-        $this->assertSame($interim->snapshot, $again->snapshot);
+        $this->assertSameJsonPayload($interim->snapshot, $again->snapshot);
         $this->assertTrue($again->isIntact());
     }
 

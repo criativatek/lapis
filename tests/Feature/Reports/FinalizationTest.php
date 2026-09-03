@@ -171,7 +171,7 @@ class FinalizationTest extends TestCase
         // ---- and the report does not --------------------------------------
         $after = $this->asTenant(fn () => $report->fresh());
 
-        $this->assertSame($documentBefore, $after->document);
+        $this->assertSameJsonPayload($documentBefore, $after->document);
         $this->assertSame('Agrupamento de Escolas de Fevereiro', $after->document['identity']['name']);
         $this->assertTrue($after->isIntact());
 
@@ -295,7 +295,7 @@ class FinalizationTest extends TestCase
         // 5–6. Change the derived one; the original does not move.
         $this->asTenant(fn () => $second->update(['title' => 'Outro título completamente']));
 
-        $this->assertSame($originalDocument, $this->asTenant(fn () => $finalized->fresh()->document));
+        $this->assertSameJsonPayload($originalDocument, $this->asTenant(fn () => $finalized->fresh()->document));
         $this->assertTrue($this->asTenant(fn () => $finalized->fresh()->isIntact()));
     }
 

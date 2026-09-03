@@ -245,7 +245,7 @@ class InterimAssessmentTest extends TestCase
         $this->assertSame('Avaliação intercalar de novembro', $again->name);
         $this->assertSame('Corrigido o nome.', $again->note);
         // THE LINE THAT MATTERS: the content, its date and its hash did not move.
-        $this->assertSame($before, $again->snapshot);
+        $this->assertSameJsonPayload($before, $again->snapshot);
         $this->assertSame($interim->snapshot_hash, $again->snapshot_hash);
         $this->assertSame('2026-11-15', $again->reference_date->toDateString());
         $this->assertTrue($again->isIntact());
@@ -283,7 +283,7 @@ class InterimAssessmentTest extends TestCase
 
         $again = $this->asTenant(fn (): InterimAssessment => InterimAssessment::findOrFail($interim->id));
 
-        $this->assertSame($before, $again->snapshot, 'a fotografia não pode mexer-se');
+        $this->assertSameJsonPayload($before, $again->snapshot, 'a fotografia não pode mexer-se');
         $this->assertTrue($again->isIntact());
 
         // And the live reading HAS moved — otherwise this proves nothing.

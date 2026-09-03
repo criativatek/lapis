@@ -11,9 +11,9 @@ use App\Models\User;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\Test;
+use RuntimeException;
 use Tests\TestCase;
 
 /**
@@ -660,12 +660,20 @@ class EvidenceRecordTest extends TestCase
                 ->activeEnrollments()->orderBy('class_number')->limit(2)->pluck('id')->all();
         });
 
-        // SQLite's trigger aborts the second INSERT, after the first has run.
-        // The transaction must roll that first row back as well.
-        DB::statement(sprintf(
-            "CREATE TRIGGER fail_second_homework_insert BEFORE INSERT ON evidence_records WHEN NEW.enrollment_id = %d BEGIN SELECT RAISE(ABORT, 'forced batch failure'); END",
-            $enrollmentIds[1],
-        ));
+        // The second INSERT fails after the first has already run. The
+        // transaction must roll that first row back as well.
+        //
+        // NO DDL HERE, AND THAT IS THE POINT. The trigger this used to create
+        // was SQLite syntax, so it never ran on the engine production uses —
+        // and its MySQL twin would be worse, because CREATE TRIGGER commits
+        // implicitly there, taking the test's own transaction with it and
+        // leaking every seeded row into the next test. A model hook proves the
+        // same thing on both engines and touches no schema.
+        EvidenceRecord::creating(function (EvidenceRecord $record) use ($enrollmentIds): void {
+            if ((int) $record->enrollment_id === $enrollmentIds[1]) {
+                throw new RuntimeException('forced batch failure');
+            }
+        });
 
         $this->actingAs($teacher);
         $this->putHomeworkBatch($classUlid, '2026-10-20', [

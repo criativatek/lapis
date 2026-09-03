@@ -25,6 +25,43 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.116.0] — 2026-09-03
+
+O primeiro reporte real feito pelo botão (SUP-2B5T3J) trouxe um defeito e duas
+instruções — e as três fecham aqui.
+
+### O defeito: a captura saía escura
+
+A imagem chegava toda escurecida a 50%. Causa: ao capturar escondia-se
+`[role="dialog"]` e o botão — mas o véu do diálogo
+(`data-slot="dialog-overlay"`, `bg-black/50`) é um **irmão** do conteúdo, não
+um filho, e ficava na fotografia. Verificado na própria imagem do reporte:
+dashboard legível sob um véu uniforme.
+
+### Alterado
+
+- **A captura acontece no clique de «Reportar problema»**, antes de existir
+  diálogo — o que elimina o véu pela raiz e dá a imagem do ecrã como ele
+  estava no momento do defeito, não depois de duas navegações. Usa a **via
+  silenciosa** (redesenho do DOM): um clique para reportar não é um clique
+  para responder ao pedido de partilha de ecrã do browser.
+- **Capturar não é enviar.** Tudo o que a certificação era continua igual:
+  a imagem fica à vista, amplia-se a 1:1, só segue com a caixa marcada, e a
+  regra é imposta no servidor. «Repetir captura» mantém a via completa — e
+  passa a esconder também o véu.
+- **Sem «Assunto» nem «Resumo».** O servidor deriva: o resumo é a primeira
+  linha da descrição com os espaços colapsados — texto ditado chega sem
+  pontuação — encolhida a 70 caracteres; a categoria nasce «other» e a
+  triagem do backoffice reclassifica quando fizer diferença.
+
+### Guardas
+
+- Vitest: **em `silent` o `getDisplayMedia` nunca é tocado** — visto vermelho
+  contra a versão antiga, onde a opção não existia.
+- PHPUnit: **um reporte só com descrição entra**, com resumo derivado e
+  categoria «other» — visto vermelho contra a validação antiga, que exigia os
+  dois campos.
+
 ## [0.115.1] — 2026-09-03
 
 A apresentação dos planos passa a começar pela entrada gratuita na página

@@ -51,7 +51,7 @@ class MarkLessonAsTaughtTest extends TestCase
                     ->where('subject_id', $lesson->id)
                     ->sole();
                 $this->assertSame($this->teacher->id, $event->causer_id);
-                $this->assertSame([
+                $this->assertSameJsonPayload([
                     'from_status' => $status->value,
                     'to_status' => LessonStatus::Taught->value,
                 ], $event->properties);
