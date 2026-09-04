@@ -43,8 +43,28 @@ const selectors = computed<Selector[]>(() => [
     { key: 'period', icon: Layers, label: 'Período', value: scope.value.period, href: null, emptyLabel: '—' },
 ]);
 
-const chipClass =
-    'flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-muted-foreground md:px-2.5';
+/*
+ * Três estados, três aparências (SUP-UEVAH4: a barra era toda cinzenta e nada
+ * dizia o que estava escolhido, o que era clicável e o que ainda não existe):
+ *
+ *   - COM VALOR: tinta âmbar pálida da marca (`bg-accent`) + borda com um
+ *     toque de navy — é o contexto em vigor, lê-se sem ler;
+ *   - NEUTRO (sem valor, mas clicável): a aparência antiga;
+ *   - DISABLED (fases futuras): borda tracejada + baixa opacidade — distinto
+ *     de clicável, e o `title` continua a dizer porquê.
+ */
+const chipBase =
+    'flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-sm md:px-2.5';
+
+const chipNeutral = `${chipBase} border-border bg-background text-muted-foreground`;
+
+const chipSelected = `${chipBase} border-primary/25 bg-accent text-accent-foreground`;
+
+const chipDisabled = `${chipNeutral} border-dashed opacity-60`;
+
+function chipFor(hasValue: boolean): string {
+    return hasValue ? chipSelected : chipNeutral;
+}
 
 function selectAcademicYear(ulid: string, isCurrent: boolean): void {
     if (isCurrent) {
@@ -62,10 +82,10 @@ function selectAcademicYear(ulid: string, isCurrent: boolean): void {
                 <button
                     type="button"
                     title="Ano letivo"
-                    :class="[chipClass, 'shrink-0 transition-colors hover:border-primary/40 hover:text-foreground']"
+                    :class="[chipSelected, 'shrink-0 transition-colors hover:border-primary/40']"
                 >
                     <CalendarRange class="size-3.5 shrink-0 opacity-70" />
-                    <span class="hidden font-medium text-foreground/70 sm:inline">Ano letivo:</span>
+                    <span class="hidden font-medium sm:inline">Ano letivo:</span>
                     <span class="whitespace-nowrap">{{ academicYearChipText }}</span>
                     <ChevronDown class="size-3.5 shrink-0 opacity-70" aria-hidden="true" />
                 </button>
@@ -95,7 +115,7 @@ function selectAcademicYear(ulid: string, isCurrent: boolean): void {
             v-else
             href="/academic-years"
             title="Ano letivo"
-            :class="[chipClass, 'shrink-0 transition-colors hover:border-primary/40 hover:text-foreground']"
+            :class="[chipNeutral, 'shrink-0 transition-colors hover:border-primary/40 hover:text-foreground']"
         >
             <CalendarRange class="size-3.5 shrink-0 opacity-70" />
             <span class="hidden font-medium text-foreground/70 sm:inline">Ano letivo:</span>
@@ -107,10 +127,10 @@ function selectAcademicYear(ulid: string, isCurrent: boolean): void {
                 v-if="selector.href"
                 :href="selector.href"
                 :title="selector.label"
-                :class="[chipClass, 'min-w-0 flex-1 transition-colors hover:border-primary/40 hover:text-foreground md:flex-none md:shrink-0']"
+                :class="[chipFor(selector.value !== null), 'min-w-0 flex-1 transition-colors hover:border-primary/40 md:flex-none md:shrink-0']"
             >
                 <component :is="selector.icon" class="size-3.5 shrink-0 opacity-70" />
-                <span class="hidden font-medium text-foreground/70 sm:inline">{{ selector.label }}:</span>
+                <span class="hidden font-medium sm:inline">{{ selector.label }}:</span>
                 <span class="truncate whitespace-nowrap">{{ selector.value ?? selector.emptyLabel }}</span>
             </Link>
             <button
@@ -118,10 +138,10 @@ function selectAcademicYear(ulid: string, isCurrent: boolean): void {
                 type="button"
                 disabled
                 :title="`${selector.label} — disponível na próxima fase`"
-                :class="[chipClass, 'hidden shrink-0 disabled:cursor-not-allowed md:flex']"
+                :class="[chipDisabled, 'hidden shrink-0 disabled:cursor-not-allowed md:flex']"
             >
                 <component :is="selector.icon" class="size-3.5 shrink-0 opacity-70" />
-                <span class="hidden font-medium text-foreground/70 sm:inline">{{ selector.label }}:</span>
+                <span class="hidden font-medium sm:inline">{{ selector.label }}:</span>
                 <span class="whitespace-nowrap">{{ selector.value ?? selector.emptyLabel }}</span>
             </button>
         </template>

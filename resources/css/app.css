@@ -300,7 +300,9 @@
     --secondary: hsl(0 0% 92.1%);
     --secondary-foreground: hsl(0 0% 9%);
     --muted: hsl(0 0% 96.1%);
-    --muted-foreground: hsl(0 0% 45.1%);
+    /* 43% e não 45.1%: sobre --muted (96.1%) o valor antigo dava 4.35:1 —
+       abaixo de AA — e é este par que os theads de tabela usam. */
+    --muted-foreground: hsl(0 0% 43%);
     --accent: hsl(38 92% 95%);
     --accent-foreground: hsl(219 45% 19%);
     --destructive: hsl(0 84.2% 60.2%);
@@ -323,43 +325,59 @@
     --sidebar-accent-foreground: hsl(0 0% 98%);
     --sidebar-border: hsl(219 34% 24%);
     --sidebar-ring: hsl(38 88% 65%);
-    --sidebar: hsl(219 41% 14%);
 }
 
+/*
+ * O TEMA ESCURO É A MESMA MARCA, NÃO O PRESET DO STARTER KIT. Até 2026-09-04
+ * este bloco era o zinc genérico do shadcn: primary branco, sidebar cinzenta,
+ * gráficos de outra família — a identidade navy+âmbar do tema claro
+ * desaparecia exactamente no tema em que o produto mais é usado (SUP-UEVAH4,
+ * «é tudo muito neutro»). Regras deste bloco:
+ *
+ *   - fundos com cast navy (matiz 220-222), nunca cinza puro — o
+ *     `.impeccable.md` proíbe neutros sem temperatura;
+ *   - a acção é AZUL claro (não branco): um botão primary tem de se ver que é
+ *     um botão, não um rectângulo aceso;
+ *   - âmbar é a marca em doses pequenas: item activo da sidebar, accent;
+ *   - os gráficos são a família do claro, clareada — as mesmas cinco tintas
+ *     com mais luz, nunca uma paleta diferente por tema;
+ *   - cada par texto/fundo cumpre AA: `themeTokens.test.ts` calcula-o do
+ *     próprio HSL e parte o commit que o quebrar.
+ */
 .dark {
-    --background: hsl(0 0% 3.9%);
-    --foreground: hsl(0 0% 98%);
-    --card: hsl(0 0% 3.9%);
-    --card-foreground: hsl(0 0% 98%);
-    --popover: hsl(0 0% 3.9%);
-    --popover-foreground: hsl(0 0% 98%);
-    --primary: hsl(0 0% 98%);
-    --primary-foreground: hsl(0 0% 9%);
-    --secondary: hsl(0 0% 14.9%);
-    --secondary-foreground: hsl(0 0% 98%);
-    --muted: hsl(0 0% 16.08%);
-    --muted-foreground: hsl(0 0% 63.9%);
-    --accent: hsl(0 0% 14.9%);
-    --accent-foreground: hsl(0 0% 98%);
+    --background: hsl(222 20% 8%);
+    --foreground: hsl(214 25% 94%);
+    --card: hsl(222 18% 11%);
+    --card-foreground: hsl(214 25% 94%);
+    --popover: hsl(222 18% 11%);
+    --popover-foreground: hsl(214 25% 94%);
+    --primary: hsl(219 75% 66%);
+    --primary-foreground: hsl(222 45% 10%);
+    --secondary: hsl(220 14% 17%);
+    --secondary-foreground: hsl(214 25% 94%);
+    --muted: hsl(220 14% 15%);
+    --muted-foreground: hsl(220 10% 70%);
+    --accent: hsl(38 45% 15%);
+    --accent-foreground: hsl(38 90% 80%);
     --destructive: hsl(0 84% 60%);
     --destructive-foreground: hsl(0 0% 98%);
-    --border: hsl(0 0% 14.9%);
-    --input: hsl(0 0% 14.9%);
-    --ring: hsl(0 0% 83.1%);
-    --chart-1: hsl(220 70% 50%);
-    --chart-2: hsl(160 60% 45%);
-    --chart-3: hsl(30 80% 55%);
-    --chart-4: hsl(280 65% 60%);
-    --chart-5: hsl(340 75% 55%);
-    --sidebar-background: hsl(0 0% 7%);
-    --sidebar-foreground: hsl(0 0% 95.9%);
-    --sidebar-primary: hsl(360, 100%, 100%);
-    --sidebar-primary-foreground: hsl(0 0% 100%);
-    --sidebar-accent: hsl(0 0% 15.9%);
-    --sidebar-accent-foreground: hsl(240 4.8% 95.9%);
-    --sidebar-border: hsl(0 0% 15.9%);
-    --sidebar-ring: hsl(217.2 91.2% 59.8%);
-    --sidebar: hsl(240 5.9% 10%);
+    --border: hsl(220 14% 18%);
+    --input: hsl(220 14% 18%);
+    --ring: hsl(219 75% 66%);
+    --chart-1: hsl(219 65% 62%);
+    --chart-2: hsl(38 88% 60%);
+    --chart-3: hsl(197 40% 55%);
+    --chart-4: hsl(173 50% 50%);
+    --chart-5: hsl(27 80% 62%);
+    --brand-amber: hsl(38 88% 65%);
+    --sidebar-background: hsl(219 41% 10%);
+    --sidebar-foreground: hsl(214 32% 82%);
+    --sidebar-primary: hsl(38 88% 65%);
+    --sidebar-primary-foreground: hsl(219 45% 12%);
+    --sidebar-accent: hsl(219 38% 18%);
+    --sidebar-accent-foreground: hsl(214 30% 92%);
+    --sidebar-border: hsl(219 34% 18%);
+    --sidebar-ring: hsl(38 88% 65%);
 }
 
 @layer base {

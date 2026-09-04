@@ -25,6 +25,43 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.119.0] — 2026-09-04
+
+O tema escuro recupera a marca, e o chrome ganha identidade — fatias 1 e 2 do
+plano «mais cor» aprovado a partir do SUP-UEVAH4.
+
+### O que estava mal
+
+O tema claro tinha a marca (sidebar navy, acentos âmbar); **o escuro era o
+zinc genérico do starter kit** — primary branco, sidebar cinzenta com um
+`--sidebar-primary: hsl(360 100% 100%)` sem sentido, gráficos de uma família
+diferente da do claro. A identidade desaparecia exactamente no tema mais usado.
+
+### Alterado
+
+- **`.dark` reescrito na família do claro**: fundos com cast navy, acção em
+  azul claro (um botão volta a parecer um botão), âmbar adaptado no accent,
+  sidebar navy coerente com item activo âmbar, gráficos = as cinco tintas do
+  claro com mais luz. Chave morta `--sidebar` apagada dos dois blocos (a bridge
+  só lê `--sidebar-background`).
+- **Item activo da sidebar** ganha a marca nos dois temas — rótulo e ícone em
+  `--sidebar-primary` (âmbar) sobre navy-claro.
+- **ContextBar com três estados**: com valor → tinta âmbar pálida + borda com
+  navy (lê-se o contexto em vigor sem ler); neutro → aspecto antigo;
+  desactivado → tracejado + opacidade (distinto de clicável).
+
+### Guardas (`resources/js/lib/themeTokens.test.ts`, vistas vermelhas antes)
+
+- **Paridade**: o `.dark` define exactamente as chaves do `:root` (excepto
+  `--radius`). Um token novo sem gémeo escuro parte no commit.
+- **Contraste AA calculado do próprio HSL** para os oito pares de que o chrome
+  vive, nos dois temas. Apanhou logo um defeito pré-existente do CLARO:
+  `muted-foreground` sobre `muted` dava 4.35:1 — abaixo da promessa AA do
+  `.impeccable.md` — e é o par dos cabeçalhos de tabela. Escurecido para 43%.
+
+Verificado no browser nos dois temas. Restam as fatias 3–6 (componentes
+partilhados, dashboard, ecrãs diários, sonda final).
+
 ## [0.118.1] — 2026-09-04
 
 ### Corrigido
