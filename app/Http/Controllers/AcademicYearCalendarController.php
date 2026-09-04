@@ -12,6 +12,7 @@ use App\Support\Retention\ResolveSelectedAcademicYear;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
+use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -465,7 +466,9 @@ class AcademicYearCalendarController extends Controller implements HasMiddleware
             : $startsOn->startOfMonth();
     }
 
-    /** @return array{ulid: string, label: string, starts_on: string, ends_on: string} */
+    /**
+     * @return array{ulid: string, label: string, starts_on: string, ends_on: string, can_manage_academic_year: bool}
+     */
     private function academicYearPayload(AcademicYear $academicYear): array
     {
         return [
@@ -473,6 +476,14 @@ class AcademicYearCalendarController extends Controller implements HasMiddleware
             'label' => $academicYear->label,
             'starts_on' => $academicYear->starts_on->toDateString(),
             'ends_on' => $academicYear->ends_on->toDateString(),
+            // Se quem vê o calendário também pode gerir a estrutura do ano
+            // letivo — a mesma Gate que autoriza PUT/DELETE em
+            // AcademicCalendarExceptionController. É só apresentação: dá à
+            // página um caminho para «Estrutura do Ano Letivo» quando uma
+            // exceção (ex.: um falso «Feriado» vindo de uma importação antiga)
+            // precisa de correção; o controlo de acesso real continua a viver
+            // no controller das exceções, que volta a autorizar por si.
+            'can_manage_academic_year' => Gate::allows('update', $academicYear),
         ];
     }
 

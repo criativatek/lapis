@@ -25,6 +25,20 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.124.7] — 2026-09-05
+
+### Adicionado
+
+- **Uma exceção do calendário ganha um caminho de correção** (SUP-L5U4NC):
+  quem gere a estrutura do ano letivo vê agora, na faixa do topo, na célula do
+  dia e na agenda de ecrã estreito, um pequeno link para «Estrutura do Ano
+  Letivo», onde uma exceção se edita ou elimina. O relato original — «há
+  eventos anteriormente criados que aparecem como feriado e não são feriados»
+  — vem de importações antigas do calendário que classificavam tudo como
+  `holiday`, antes do classificador atual; essas linhas continuam na base de
+  dados tal como foram importadas, mas passam a ter, a partir do próprio
+  calendário, um caminho direto até onde já era possível corrigi-las.
+
 ## [0.124.6] — 2026-09-05
 
 ### Corrigido
