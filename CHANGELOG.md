@@ -25,6 +25,19 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.124.2] — 2026-09-04
+
+Pesquisa no escolhedor de aluno do Acompanhamento — pedido no SUP-HWVGQE
+(«se tiver muitas turmas, torna-se mais fácil»).
+
+- Filtro local instantâneo por qualquer parte do nome ou pelo número: os
+  nomes já estão em memória nesta página, e o servidor só sabe procurar
+  nomes completos (índice cego) — quem tem 28 alunos à frente não quer
+  escrever nomes completos.
+- Acentos ignorados na comparação; ex-alunos incluídos na pesquisa (a
+  história deles é exactamente o que este módulo existe para mostrar);
+  vazio honesto quando nada corresponde.
+
 ## [0.124.1] — 2026-09-04
 
 Lápis→tinta — a assinatura do DESIGN.md chega às classificações.

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
 import { Users } from '@lucide/vue';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 
@@ -26,8 +26,36 @@ const props = defineProps<{
  * student's year unreachable, which is exactly the history this module exists
  * to show (§26, §58).
  */
-const current = computed(() => props.students.filter((student) => student.is_current));
-const former = computed(() => props.students.filter((student) => !student.is_current));
+/**
+ * Pesquisa local (SUP-HWVGQE): os nomes já estão em memória nesta página,
+ * por isso o filtro é instantâneo e por qualquer parte do nome ou pelo
+ * número — o servidor só sabe procurar nomes completos (índice cego), e
+ * quem tem muitas turmas não quer escrever nomes completos.
+ */
+const search = ref('');
+
+function fold(value: string): string {
+    return value
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/gu, '')
+        .toLowerCase()
+        .trim();
+}
+
+function matches(student: StudentRow): boolean {
+    const needle = fold(search.value);
+
+    if (needle === '') {
+        return true;
+    }
+
+    return fold(student.name).includes(needle) || String(student.class_number ?? '').includes(needle);
+}
+
+const current = computed(() => props.students.filter((student) => student.is_current && matches(student)));
+const former = computed(() => props.students.filter((student) => !student.is_current && matches(student)));
+
+const nothingMatches = computed(() => search.value !== '' && current.value.length === 0 && former.value.length === 0);
 </script>
 
 <template>
@@ -46,7 +74,19 @@ const former = computed(() => props.students.filter((student) => !student.is_cur
         <EmptyState v-if="students.length === 0" title="Esta turma ainda não tem alunos inscritos." :icon="Users" />
 
         <template v-else>
-            <ul class="divide-y divide-border overflow-hidden rounded-lg border border-border">
+            <label class="grid gap-1 text-sm">
+                <span class="text-xs font-medium text-muted-foreground">Procurar aluno</span>
+                <input
+                    v-model="search"
+                    type="search"
+                    placeholder="Nome ou número…"
+                    class="h-9 w-full max-w-xs rounded-md border border-input bg-background px-3 text-sm"
+                />
+            </label>
+
+            <EmptyState v-if="nothingMatches" :title="`Nenhum aluno corresponde a «${search}».`" />
+
+            <ul v-if="current.length > 0" class="divide-y divide-border overflow-hidden rounded-lg border border-border">
                 <li v-for="student in current" :key="student.ulid">
                     <Link
                         :href="`/classes/${schoolClass.ulid}/evolucao/${student.ulid}`"
