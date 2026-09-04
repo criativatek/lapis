@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
 import { CalendarPlus, Pencil, Plus, Users } from '@lucide/vue';
-import Heading from '@/components/Heading.vue';
+import EmptyState from '@/components/EmptyState.vue';
+import PageHeader from '@/components/PageHeader.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { statusToneClasses } from '@/lib/statusTone';
@@ -26,24 +27,24 @@ defineProps<{
     <Head title="Turmas" />
 
     <div class="mx-auto w-full max-w-4xl space-y-6 p-4">
-        <div class="flex items-center justify-between">
-            <Heading title="Turmas" description="As turmas que leciona neste ano letivo." />
-            <div class="flex items-center gap-2">
+        <PageHeader title="Turmas" description="As turmas que leciona neste ano letivo.">
+            <template #actions>
                 <Button as-child variant="outline">
                     <Link href="/classes/schedule-setup"><CalendarPlus class="size-4" /> Configurar horários</Link>
                 </Button>
                 <Button as-child>
                     <Link href="/classes/create"><Plus class="size-4" /> Nova turma</Link>
                 </Button>
-            </div>
-        </div>
+            </template>
+        </PageHeader>
 
-        <div v-if="classes.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
-            <p class="text-sm text-muted-foreground">Ainda não tem turmas.</p>
-            <Button as-child class="mt-3">
-                <Link href="/classes/create"><Plus class="size-4" /> Criar a primeira turma</Link>
-            </Button>
-        </div>
+        <EmptyState v-if="classes.length === 0" title="Ainda não tem turmas." :icon="Users">
+            <template #action>
+                <Button as-child>
+                    <Link href="/classes/create"><Plus class="size-4" /> Criar a primeira turma</Link>
+                </Button>
+            </template>
+        </EmptyState>
 
         <div v-else class="grid gap-3 sm:grid-cols-2">
             <div

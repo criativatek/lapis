@@ -17,6 +17,13 @@
  * identity through the border rather than the fill.
  */
 
+/**
+ * CONVENÇÃO DE ADOPÇÃO (2026-09-04, plano «mais cor»): para superfícies NOVAS
+ * fora do Estatística usar apenas `amber` / `mint` / `sky` / `plain` — a
+ * paleta do `.impeccable.md` (âmbar marca, esmeralda dados, céu informação).
+ * `violet` e `rose` ficam pelos ecrãs de Estatística que já os usam; não se
+ * espalham nem se apagam — churn sem ganho.
+ */
 export type SurfaceTone = 'amber' | 'violet' | 'mint' | 'sky' | 'rose' | 'plain';
 
 /** Card ground + border, tinted. */

@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
 import { ClipboardList, Plus } from '@lucide/vue';
-import Heading from '@/components/Heading.vue';
+import EmptyState from '@/components/EmptyState.vue';
+import PageHeader from '@/components/PageHeader.vue';
+import TableShell from '@/components/TableShell.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { statusToneClasses } from '@/lib/statusTone';
@@ -28,34 +30,32 @@ defineProps<{
     <Head title="Elementos de Avaliação" />
 
     <div class="mx-auto w-full max-w-4xl space-y-6 p-4">
-        <div class="flex items-center justify-between">
-            <Heading title="Elementos de Avaliação" description="Testes, fichas, questões-aula e outras atividades de avaliação." />
-            <Button as-child>
-                <Link href="/instruments/create"><Plus class="size-4" /> Novo elemento de avaliação</Link>
-            </Button>
-        </div>
+        <PageHeader title="Elementos de Avaliação" description="Testes, fichas, questões-aula e outras atividades de avaliação.">
+            <template #actions>
+                <Button as-child>
+                    <Link href="/instruments/create"><Plus class="size-4" /> Novo elemento de avaliação</Link>
+                </Button>
+            </template>
+        </PageHeader>
 
-        <div v-if="instruments.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
-            <ClipboardList class="mx-auto mb-3 size-8 text-muted-foreground" />
-            <p class="text-sm text-muted-foreground">
-                Ainda não tem elementos de avaliação.
-            </p>
-            <Button as-child class="mt-3">
-                <Link href="/instruments/create"><Plus class="size-4" /> Criar o primeiro</Link>
-            </Button>
-        </div>
+        <EmptyState v-if="instruments.length === 0" title="Ainda não tem elementos de avaliação." :icon="ClipboardList">
+            <template #action>
+                <Button as-child>
+                    <Link href="/instruments/create"><Plus class="size-4" /> Criar o primeiro</Link>
+                </Button>
+            </template>
+        </EmptyState>
 
-        <div v-else class="overflow-hidden rounded-lg border border-border">
-            <table class="w-full text-sm">
-                <thead class="bg-muted/50 text-left text-muted-foreground">
-                    <tr>
+        <TableShell v-else>
+            <template #head>
+                <tr>
                         <th class="px-4 py-2.5 font-medium">Elemento</th>
                         <th class="px-4 py-2.5 font-medium">Turma</th>
                         <th class="px-4 py-2.5 font-medium">Data</th>
                         <th class="px-4 py-2.5 font-medium">Estado</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-border">
+                </tr>
+            </template>
+            <template #body>
                     <tr v-for="instrument in instruments" :key="instrument.ulid" class="hover:bg-muted/30">
                         <td class="px-4 py-3">
                             <Link :href="instrument.status === 'draft' ? `/instruments/${instrument.ulid}/edit` : `/instruments/${instrument.ulid}`" class="font-medium hover:underline">
@@ -74,8 +74,7 @@ defineProps<{
                             <Badge variant="secondary" :class="statusToneClasses(instrument.status)">{{ instrument.status_label }}</Badge>
                         </td>
                     </tr>
-                </tbody>
-            </table>
-        </div>
+            </template>
+        </TableShell>
     </div>
 </template>

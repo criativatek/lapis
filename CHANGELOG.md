@@ -25,6 +25,45 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.120.0] — 2026-09-04
+
+Os quatro padrões repetidos viram componentes, e o Painel ganha as tintas do
+site — fatias 3 a 5 do plano «mais cor».
+
+### Adicionado (components/, cada um com o seu teste ao lado)
+
+- **`StatCard`** — o cartão de estatística que o Painel copiava à mão. Assenta
+  nas superfícies tintadas de `lib/surfaces.ts` + `card-soft`: a tinta é
+  papel, nunca estado, e o número é `tabular-nums`.
+- **`EmptyState`** — «estados vazios são vazios, nunca zero» do
+  `.impeccable.md` tornado estrutural: título, porquê, e um slot de acção —
+  um vazio sem saída é um beco.
+- **`PageHeader`** — o Heading com sítio para as acções à direita. Coexiste
+  com o `Heading.vue` (84 usos intactos); migração oportunista.
+- **`TableShell`** — a moldura de tabela (canto, borda, `overflow-x-auto` do
+  mobile, thead com o par AA da 0.119.0); as linhas ficam nas páginas, via
+  slots.
+- `surfaces.ts` ganha a convenção: superfícies novas só amber/mint/sky/plain
+  (a paleta impeccable); violet/rose ficam pelos ecrãs de Estatística que já
+  os usam.
+
+### Alterado
+
+- **Painel**: os três cartões de resumo passam a `StatCard` com um tom cada —
+  céu = organização, âmbar = pendente, menta = pronto a seguir; tintas
+  pálidas, a cor forte da página continua a ser a acção azul. «As minhas
+  turmas» usa `PageHeader`; o cru `bg-amber-100` sem gémeo dark passa à
+  paleta com gémeos; os cartões de turma ganham `card-soft`.
+- **Alunos, Elementos, Turmas, Aulas**: tabelas → `TableShell`; vazios →
+  `EmptyState`; cabeçalhos com botões → `PageHeader`. Sem tintas nas
+  listagens — ficam calmas de propósito.
+
+### Verificado
+
+12 casos novos de componentes (mordidela provada por mutação no tom do
+StatCard) · 559 vitest · 4233 PHPUnit · browser nos dois temas · 375×812 com
+zero overflow e a tabela a rolar dentro da própria moldura.
+
 ## [0.119.0] — 2026-09-04
 
 O tema escuro recupera a marca, e o chrome ganha identidade — fatias 1 e 2 do

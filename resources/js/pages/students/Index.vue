@@ -2,8 +2,10 @@
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { ChevronDown, Footprints, GraduationCap, Plus, Search, Users } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
-import Heading from '@/components/Heading.vue';
+import EmptyState from '@/components/EmptyState.vue';
+import PageHeader from '@/components/PageHeader.vue';
 import StudentAvatar from '@/components/StudentAvatar.vue';
+import TableShell from '@/components/TableShell.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -197,20 +199,22 @@ function followUpHref(enrollment: DirectoryEnrollment): string {
         de filtros do topo, que estica sempre.
     -->
     <div class="w-full space-y-6 p-4">
-        <Heading title="Alunos" description="Os alunos das suas turmas." />
+        <PageHeader title="Alunos" description="Os alunos das suas turmas." />
 
         <!-- A) NO TURMAS AT ALL. Not "no students": there is nowhere for a
              student to be yet, and the answer is a turma, not a search. -->
-        <div v-if="classes.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
-            <Users class="mx-auto mb-3 size-8 text-muted-foreground" />
-            <p class="text-sm font-medium">Ainda não tem turmas.</p>
-            <p class="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-                Os alunos aparecem aqui assim que existir uma turma com inscrições.
-            </p>
-            <Button v-if="canOpenClasses" as-child class="mt-3">
-                <Link href="/classes"><Plus class="size-4" /> Ir para Turmas</Link>
-            </Button>
-        </div>
+        <EmptyState
+            v-if="classes.length === 0"
+            title="Ainda não tem turmas."
+            description="Os alunos aparecem aqui assim que existir uma turma com inscrições."
+            :icon="Users"
+        >
+            <template #action>
+                <Button v-if="canOpenClasses" as-child>
+                    <Link href="/classes"><Plus class="size-4" /> Ir para Turmas</Link>
+                </Button>
+            </template>
+        </EmptyState>
 
         <template v-else>
             <div class="flex flex-wrap items-end gap-3">
@@ -296,49 +300,50 @@ function followUpHref(enrollment: DirectoryEnrollment): string {
 
             <!-- C) FILTERS OR SEARCH FOUND NOBODY. Says so about the filters,
                  never about the account: there ARE students, just not these. -->
-            <div
+            <EmptyState
                 v-if="students.total === 0 && hasFilters"
-                class="rounded-lg border border-dashed border-border p-10 text-center"
+                title="Nenhum aluno corresponde a esta pesquisa."
+                description="Experimente limpar os filtros. Se procurou por nome, tem de ser o nome completo."
+                :icon="Search"
             >
-                <Search class="mx-auto mb-3 size-8 text-muted-foreground" />
-                <p class="text-sm font-medium">Nenhum aluno corresponde a esta pesquisa.</p>
-                <p class="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-                    Experimente limpar os filtros. Se procurou por nome, tem de ser o nome completo.
-                </p>
-                <Button variant="outline" size="sm" class="mt-3" @click="clearFilters">Limpar filtros</Button>
-            </div>
+                <template #action>
+                    <Button variant="outline" size="sm" @click="clearFilters">Limpar filtros</Button>
+                </template>
+            </EmptyState>
 
             <!-- B) TURMAS, BUT NOBODY IN THEM. The answer is the roll, and the
                  roll is imported or typed in the turma — never here. -->
-            <div v-else-if="students.total === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
-                <GraduationCap class="mx-auto mb-3 size-8 text-muted-foreground" />
-                <p class="text-sm font-medium">As suas turmas ainda não têm alunos.</p>
-                <p class="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-                    Os alunos entram pela turma — importando a Relação de Turma ou inscrevendo um a um.
-                </p>
-                <Button v-if="canOpenClasses" as-child class="mt-3">
-                    <Link href="/classes">Abrir turmas</Link>
-                </Button>
-            </div>
+            <EmptyState
+                v-else-if="students.total === 0"
+                title="As suas turmas ainda não têm alunos."
+                description="Os alunos entram pela turma — importando a Relação de Turma ou inscrevendo um a um."
+                :icon="GraduationCap"
+            >
+                <template #action>
+                    <Button v-if="canOpenClasses" as-child>
+                        <Link href="/classes">Abrir turmas</Link>
+                    </Button>
+                </template>
+            </EmptyState>
 
             <!-- The page filter emptied the visible rows, but the page is not
                  empty. A different sentence, because it is a different fact. -->
-            <div v-else-if="rows.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
-                <p class="text-sm font-medium">Nenhum aluno desta página corresponde a «{{ pageFilter }}».</p>
-                <Button variant="ghost" size="sm" class="mt-3" @click="pageFilter = ''">Limpar filtro</Button>
-            </div>
+            <EmptyState v-else-if="rows.length === 0" :title="`Nenhum aluno desta página corresponde a «${pageFilter}».`">
+                <template #action>
+                    <Button variant="ghost" size="sm" @click="pageFilter = ''">Limpar filtro</Button>
+                </template>
+            </EmptyState>
 
-            <section v-else class="overflow-x-auto rounded-lg border border-border">
-                <table class="w-full text-sm">
-                    <thead class="bg-muted/50 text-left text-muted-foreground">
-                        <tr>
+            <TableShell v-else>
+                <template #head>
+                    <tr>
                             <th class="px-4 py-2.5 font-medium">Aluno</th>
                             <th class="px-4 py-2.5 font-medium">Turma(s)</th>
                             <th class="px-4 py-2.5 font-medium">Estado</th>
                             <th class="px-4 py-2.5 text-right font-medium">Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-border">
+                    </tr>
+                </template>
+                <template #body>
                         <tr v-for="student in rows" :key="student.student_ulid" class="align-top">
                             <td class="px-4 py-3">
                                 <div class="flex items-center gap-2">
@@ -438,10 +443,9 @@ function followUpHref(enrollment: DirectoryEnrollment): string {
                                     </DropdownMenu>
                                 </div>
                             </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </section>
+                    </tr>
+                </template>
+            </TableShell>
 
             <div v-if="paginated" class="flex flex-wrap gap-1">
                 <template v-for="(link, index) in students.links" :key="index">

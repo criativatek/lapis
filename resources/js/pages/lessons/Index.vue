@@ -11,6 +11,7 @@ import {
     RefreshCw,
 } from '@lucide/vue';
 import { computed } from 'vue';
+import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
@@ -183,31 +184,23 @@ function lessonTime(lesson: Lesson): string {
             </Button>
         </nav>
 
-        <div
+        <EmptyState
             v-if="!academicYear"
-            class="rounded-xl border border-dashed p-6 text-center"
-        >
-            <CalendarDays class="mx-auto size-8 text-muted-foreground" />
-            <h2 class="mt-3 font-semibold">Seleciona um ano letivo</h2>
-            <p class="mt-1 text-sm text-muted-foreground">
-                A semana usa o ano letivo selecionado no topo da aplicação.
-            </p>
-        </div>
+            title="Seleciona um ano letivo"
+            description="A semana usa o ano letivo selecionado no topo da aplicação."
+            :icon="CalendarDays"
+        />
 
-        <div
+        <EmptyState
             v-else-if="days.length === 0"
-            class="rounded-xl border border-dashed p-6 text-center"
-        >
-            <BookOpen class="mx-auto size-8 text-muted-foreground" />
-            <h2 class="mt-3 font-semibold">Sem aulas nesta semana</h2>
-            <p class="mx-auto mt-1 max-w-lg text-sm text-muted-foreground">
-                {{
-                    configuredClassesCount > 0
-                        ? 'O horário recorrente das tuas turmas não tem aulas nesta semana. Abrir outra semana mostra as aulas dessa semana automaticamente.'
-                        : 'Configura primeiro o horário na página de cada turma.'
-                }}
-            </p>
-        </div>
+            title="Sem aulas nesta semana"
+            :description="
+                configuredClassesCount > 0
+                    ? 'O horário recorrente das tuas turmas não tem aulas nesta semana. Abrir outra semana mostra as aulas dessa semana automaticamente.'
+                    : 'Configura primeiro o horário na página de cada turma.'
+            "
+            :icon="BookOpen"
+        />
 
         <div v-else class="space-y-6">
             <section v-for="day in days" :key="day.date" class="space-y-2">

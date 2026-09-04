@@ -2,7 +2,12 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ArrowRight, BarChart3, CheckCircle2, Circle, ClipboardList, Send, Users, X } from '@lucide/vue';
 import { computed } from 'vue';
+import PageHeader from '@/components/PageHeader.vue';
+import StatCard from '@/components/StatCard.vue';
 import { Button } from '@/components/ui/button';
+import { qualitativeToneClasses } from '@/lib/qualitativeTone';
+import type { SurfaceTone } from '@/lib/surfaces';
+import { card } from '@/lib/surfaces';
 
 type ClassCard = {
     ulid: string;
@@ -55,10 +60,13 @@ function dismissFirstSteps(): void {
     router.post('/dashboard/onboarding-dismissal', {}, { preserveScroll: true });
 }
 
-const summary = computed(() => [
-    { label: 'Turmas', value: props.totals.classes, icon: Users },
-    { label: 'Por confirmar', value: props.totals.pending_confirmation, icon: ClipboardList },
-    { label: 'Por publicar', value: props.totals.pending_publication, icon: Send },
+// Um tom por cartão, e pálido de propósito (as tintas do site público dentro
+// da app — plano «mais cor»): céu = organização, âmbar = trabalho pendente,
+// menta = pronto a seguir. A cor forte da página continua a ser a acção azul.
+const summary = computed<{ label: string; value: number; icon: typeof Users; tone: SurfaceTone }[]>(() => [
+    { label: 'Turmas', value: props.totals.classes, icon: Users, tone: 'sky' },
+    { label: 'Por confirmar', value: props.totals.pending_confirmation, icon: ClipboardList, tone: 'amber' },
+    { label: 'Por publicar', value: props.totals.pending_publication, icon: Send, tone: 'mint' },
 ]);
 </script>
 
@@ -156,31 +164,36 @@ const summary = computed(() => [
 
         <template v-else>
             <div class="grid gap-4 sm:grid-cols-3">
-                <div v-for="item in summary" :key="item.label" class="flex items-center gap-4 rounded-xl border border-border p-4">
-                    <span class="flex size-11 items-center justify-center rounded-lg bg-accent text-accent-foreground">
-                        <component :is="item.icon" class="size-5" />
-                    </span>
-                    <div>
-                        <div class="text-2xl font-semibold tabular-nums">{{ item.value }}</div>
-                        <div class="text-sm text-muted-foreground">{{ item.label }}</div>
-                    </div>
-                </div>
+                <StatCard
+                    v-for="item in summary"
+                    :key="item.label"
+                    :label="item.label"
+                    :value="item.value"
+                    :icon="item.icon"
+                    :tone="item.tone"
+                />
             </div>
 
             <div>
-                <div class="mb-3 flex items-center justify-between">
-                    <h2 class="font-semibold">As minhas turmas</h2>
-                    <Link href="/classes" class="text-sm text-primary hover:underline">Ver todas</Link>
-                </div>
+                <PageHeader title="As minhas turmas" variant="small" class="mb-3">
+                    <template #actions>
+                        <Link href="/classes" class="text-sm text-primary hover:underline">Ver todas</Link>
+                    </template>
+                </PageHeader>
 
                 <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    <div v-for="schoolClass in classes" :key="schoolClass.ulid" class="flex flex-col rounded-xl border border-border p-4">
+                    <div v-for="schoolClass in classes" :key="schoolClass.ulid" :class="[card('plain'), 'card-soft flex flex-col p-4']">
                         <div class="flex items-start justify-between gap-2">
                             <div>
                                 <div class="font-semibold">{{ schoolClass.label }}</div>
                                 <div class="text-sm text-muted-foreground">{{ schoolClass.subject }} · {{ schoolClass.academic_year }}</div>
                             </div>
-                            <span v-if="!schoolClass.has_profile" class="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800" title="Sem perfil de avaliação">sem perfil</span>
+                            <!-- Tom da casa, com gémeo dark — o cru bg-amber-100 não tinha. -->
+                            <span
+                                v-if="!schoolClass.has_profile"
+                                :class="['rounded-full px-2 py-0.5 text-xs', qualitativeToneClasses.amber]"
+                                title="Sem perfil de avaliação"
+                            >sem perfil</span>
                         </div>
 
                         <div class="mt-4 flex flex-wrap gap-2 text-xs">
