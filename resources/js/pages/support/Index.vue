@@ -47,7 +47,7 @@ const statusClasses: Record<string, string> = {
 <template>
     <Head title="Suporte" />
 
-    <div class="space-y-6">
+    <div class="mx-auto w-full max-w-4xl space-y-6 p-4">
         <div class="flex flex-wrap items-end justify-between gap-3">
             <Heading
                 variant="small"

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppBanners from '@/components/AppBanners.vue';
 import AppContent from '@/components/AppContent.vue';
 import AppFooter from '@/components/AppFooter.vue';
 import AppShell from '@/components/AppShell.vue';
@@ -20,6 +21,7 @@ withDefaults(defineProps<Props>(), {
     <AppShell variant="sidebar">
         <AppSidebar />
         <AppContent variant="sidebar" class="overflow-x-hidden">
+            <AppBanners />
             <AppSidebarHeader :breadcrumbs="breadcrumbs" />
             <div class="flex flex-1 flex-col">
                 <slot />

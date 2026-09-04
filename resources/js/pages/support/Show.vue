@@ -84,7 +84,7 @@ function formatDateTime(iso: string | null): string {
 <template>
     <Head :title="`Pedido ${request.reference}`" />
 
-    <div class="max-w-3xl space-y-6">
+    <div class="mx-auto w-full max-w-3xl space-y-6 p-4">
         <Heading
             variant="small"
             :title="request.subject ?? request.reference"

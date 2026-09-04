@@ -25,6 +25,34 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.121.0] — 2026-09-04
+
+Três reportes do botão na mesma noite (SUP-8Y3Q5Y, SUP-2YH94S/SUP-ASRM6E,
+SUP-7BAAB7) — os três fechados aqui.
+
+### Corrigido
+
+- **As faixas do topo passam para dentro da coluna de conteúdo**
+  (`AppBanners.vue`, montado no `AppSidebarLayout`). A sidebar é
+  `fixed h-svh`: uma faixa montada fora do shell ficava com a ponta esquerda
+  debaixo dela e empurrava o shell para fora do ecrã — a «faixa azul por
+  baixo» do reporte era o próprio banner a transbordar. Dentro da coluna,
+  ocupa a largura certa, empurra o header como conteúdo normal, e o overflow
+  vertical é zero (medido). Vale para as quatro faixas: acesso técnico,
+  privacidade, encerramento e resposta do suporte.
+- **As três páginas do Suporte ganham contentor** (`mx-auto … p-4`) —
+  estavam coladas à borda desde sempre (o SUP-ASRM6E de ontem já o dizia na
+  0.117.1): título sem respiro, formulário full-bleed.
+
+### Alterado
+
+- **Avaliações (grelhas de correção) recebe a passagem de design**:
+  `PageHeader` com as acções no sítio, `TableShell`, `EmptyState`, e as
+  pílulas de estado com o tom da casa — «Em correção» âmbar, «Concluída»
+  verde, «Agendada» azul — em vez de três cinzentos iguais. É a primeira
+  página do backlog a adoptar; «tem de se rever tudo» continua verdade e o
+  backlog existe para isso.
+
 ## [0.120.1] — 2026-09-04
 
 O contexto de design (`.impeccable.md`) ganha a secção «Aplicação

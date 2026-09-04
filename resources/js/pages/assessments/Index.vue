@@ -2,8 +2,11 @@
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { PenLine } from '@lucide/vue';
 import { computed } from 'vue';
-import Heading from '@/components/Heading.vue';
+import EmptyState from '@/components/EmptyState.vue';
+import PageHeader from '@/components/PageHeader.vue';
+import TableShell from '@/components/TableShell.vue';
 import { Badge } from '@/components/ui/badge';
+import { statusToneClasses } from '@/lib/statusTone';
 
 type Progress = { applicable: number; completed: number; under_review: number; complete: boolean } | null;
 
@@ -95,8 +98,8 @@ function hasNoApplicableStudents(assessment: Assessment): boolean {
     <Head title="Avaliações" />
 
     <div class="mx-auto w-full max-w-5xl space-y-6 p-4">
-        <div class="flex flex-wrap items-start justify-between gap-3">
-            <Heading title="Avaliações" description="Os elementos de avaliação já criados, com o estado e o progresso da correção." />
+        <PageHeader title="Avaliações" description="Os elementos de avaliação já criados, com o estado e o progresso da correção.">
+            <template #actions>
             <select
                 v-if="classOptions.length"
                 value=""
@@ -119,7 +122,8 @@ function hasNoApplicableStudents(assessment: Assessment): boolean {
                 A importação de resultados de outras plataformas de aplicação de testes está disponível no
                 Lapispro&nbsp;Pro.
             </p>
-        </div>
+            </template>
+        </PageHeader>
 
         <div class="flex flex-wrap gap-2">
             <select
@@ -148,17 +152,15 @@ function hasNoApplicableStudents(assessment: Assessment): boolean {
             </select>
         </div>
 
-        <div v-if="assessments.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
-            <PenLine class="mx-auto mb-3 size-8 text-muted-foreground" />
-            <p class="text-sm text-muted-foreground">
-                {{ hasActiveFilters() ? 'Nenhuma avaliação corresponde aos filtros escolhidos.' : 'Ainda não tem avaliações — crie um elemento de avaliação a partir de uma turma.' }}
-            </p>
-        </div>
+        <EmptyState
+            v-if="assessments.length === 0"
+            :title="hasActiveFilters() ? 'Nenhuma avaliação corresponde aos filtros escolhidos.' : 'Ainda não tem avaliações — crie um elemento de avaliação a partir de uma turma.'"
+            :icon="PenLine"
+        />
 
-        <div v-else class="overflow-hidden rounded-lg border border-border">
-            <table class="w-full text-sm">
-                <thead class="bg-muted/50 text-left text-muted-foreground">
-                    <tr>
+        <TableShell v-else>
+            <template #head>
+                <tr>
                         <th class="px-4 py-2.5 font-medium">Data</th>
                         <th class="px-4 py-2.5 font-medium">Avaliação</th>
                         <th class="px-4 py-2.5 font-medium">Finalidade</th>
@@ -167,16 +169,16 @@ function hasNoApplicableStudents(assessment: Assessment): boolean {
                         <th class="px-4 py-2.5 font-medium">Estado</th>
                         <th class="px-4 py-2.5 font-medium">Progresso</th>
                         <th class="px-4 py-2.5 font-medium"></th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-border">
+                </tr>
+            </template>
+            <template #body>
                     <tr v-for="assessment in assessments" :key="assessment.ulid" class="hover:bg-muted/30">
                         <td class="px-4 py-3 text-muted-foreground">{{ assessment.applied_on }}</td>
                         <td class="px-4 py-3 font-medium">{{ assessment.title }}</td>
                         <td class="px-4 py-3 text-muted-foreground">{{ assessment.purpose_label }}</td>
                         <td class="px-4 py-3 text-muted-foreground">{{ assessment.class_label }}</td>
                         <td class="px-4 py-3 text-muted-foreground">{{ assessment.period }}</td>
-                        <td class="px-4 py-3"><Badge variant="secondary">{{ assessment.state_label }}</Badge></td>
+                        <td class="px-4 py-3"><Badge variant="secondary" :class="statusToneClasses(assessment.status)">{{ assessment.state_label }}</Badge></td>
                         <td class="px-4 py-3">
                             <span :class="hasNoApplicableStudents(assessment) ? 'text-xs text-muted-foreground' : undefined">{{ progressLabel(assessment) }}</span>
                             <span v-if="assessment.progress && assessment.progress.under_review > 0" class="ml-1.5 text-xs text-amber-700">
@@ -187,8 +189,7 @@ function hasNoApplicableStudents(assessment: Assessment): boolean {
                             <Link :href="assessment.status === 'draft' ? `/instruments/${assessment.ulid}/edit` : `/assessments/${assessment.ulid}`" class="text-sm text-primary hover:underline">{{ assessment.action_label }}</Link>
                         </td>
                     </tr>
-                </tbody>
-            </table>
-        </div>
+            </template>
+        </TableShell>
     </div>
 </template>

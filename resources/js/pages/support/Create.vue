@@ -61,7 +61,7 @@ function submit(): void {
 <template>
     <Head title="Novo pedido de suporte" />
 
-    <div class="max-w-2xl space-y-6">
+    <div class="mx-auto w-full max-w-2xl space-y-6 p-4">
         <Heading
             variant="small"
             title="Novo pedido"

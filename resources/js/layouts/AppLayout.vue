@@ -1,37 +1,17 @@
 <script setup lang="ts">
-import { router, usePage } from '@inertiajs/vue3';
-import { computed } from 'vue';
-import ClosureBanners from '@/components/ClosureBanners.vue';
 import IssueReporter from '@/components/IssueReporter.vue';
-import PrivacyNotice from '@/components/PrivacyNotice.vue';
-import SupportReplyBanner from '@/components/SupportReplyBanner.vue';
 import AppLayout from '@/layouts/app/AppSidebarLayout.vue';
 import type { BreadcrumbItem } from '@/types';
 
 const { breadcrumbs = [] } = defineProps<{
     breadcrumbs?: BreadcrumbItem[];
 }>();
-
-const impersonating = computed(() => usePage().props.impersonating as { name?: string } | null);
-
-function stopImpersonating(): void {
-    router.post('/impersonate/stop');
-}
 </script>
 
 <template>
-    <div
-        v-if="impersonating"
-        class="flex items-center justify-center gap-3 bg-amber-500 px-4 py-1.5 text-center text-sm font-medium text-amber-950"
-    >
-        <span>Acesso técnico ativo — a ver como <strong>{{ impersonating.name }}</strong></span>
-        <button type="button" class="rounded bg-amber-950/10 px-2 py-0.5 text-xs hover:bg-amber-950/20" @click="stopImpersonating">
-            Terminar acesso
-        </button>
-    </div>
-    <PrivacyNotice />
-    <ClosureBanners />
-    <SupportReplyBanner />
+    <!-- As faixas do topo vivem DENTRO do AppSidebarLayout (AppBanners) — a
+         sidebar é fixa e uma faixa montada aqui fora ficava-lhe por baixo
+         (SUP-8Y3Q5Y). -->
     <AppLayout :breadcrumbs="breadcrumbs">
         <slot />
     </AppLayout>
