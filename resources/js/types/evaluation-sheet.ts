@@ -81,3 +81,59 @@ export type EvaluationSheetPeriod = {
     kind_label: string;
     selected: boolean;
 };
+
+/**
+ * What the «Guardar esta pauta» form opens with. Both fields are editable —
+ * the title is only a suggestion built from the period's own configuration,
+ * and `starts_on`/`ends_on` are the boundaries the server will enforce anyway,
+ * shown so the teacher is not refused after the fact.
+ */
+export type EvaluationSheetSaveDefaults = {
+    period_ulid: string;
+    moment_label: string;
+    effective_at: string;
+    starts_on: string;
+    ends_on: string;
+};
+
+/**
+ * The frozen document — `CaptureEvaluationSheet`'s payload, read back verbatim.
+ *
+ * EVERYTHING NEEDED TO REDRAW THE SCREEN IS IN HERE. Nothing on the snapshot
+ * page joins anything live: not the class, not the period's current name, not
+ * today's domain colours. `period` in particular is the label as it read at the
+ * time, and renaming a period afterwards must never rewrite the past.
+ */
+export type EvaluationSheetSnapshot = {
+    version: number;
+    scope: string;
+    class: { label: string; subject: string; academic_year: string };
+    period: { label: string; kind_label: string };
+    moment: { label: string; effective_at: string };
+    author: { name: string };
+    domains: EvaluationSheetDomain[];
+    students: EvaluationSheetStudent[];
+    /** Sentences in pt-PT, never raw payload — read months later by a person. */
+    warnings: string[];
+};
+
+/**
+ * One row of history. There is no persisted "is latest": the list arrives
+ * ordered and the first row is the most recent one, marked in the UI only.
+ */
+export type EvaluationSheetHistoryEntry = {
+    ulid: string;
+    moment_label: string;
+    /** From the SNAPSHOT, never from the period as it is configured today. */
+    period_label: string | null;
+    period_kind_label: string | null;
+    scope: string;
+    scope_label: string;
+    effective_at: string | null;
+    exported_at: string;
+    author: string | null;
+    status_label: string;
+    has_file: boolean;
+    warning_count: number;
+    warnings: string[];
+};

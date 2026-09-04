@@ -24,6 +24,7 @@ use App\Http\Controllers\DataExportController;
 use App\Http\Controllers\DataImportController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\EvaluationSheetController;
+use App\Http\Controllers\EvaluationSheetHistoryController;
 use App\Http\Controllers\EvidenceController;
 use App\Http\Controllers\HelpAssistantController;
 use App\Http\Controllers\HelpController;
@@ -621,6 +622,17 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // único ecrã, sem seletor de "modo". Ocultar grupos é apresentação; os
         // dados enviados nunca mudam com o que o professor esconde (§ briefing).
         Route::get('avaliacao/pautas', [EvaluationSheetController::class, 'index'])->name('evaluation-sheets.index');
+
+        // Guardar uma pauta, e reler as que já foram guardadas.
+        //
+        // Declaradas ANTES do wildcard `pauta-avaliacao/{period?}` logo abaixo,
+        // que de outra forma engoliria «historico» e iria procurar um período
+        // com esse ulid — exatamente a armadilha que já obrigou
+        // `results/quadro-sintese` a subir acima do seu próprio wildcard.
+        Route::post('classes/{class}/pauta-avaliacao/{period}/guardar', [EvaluationSheetHistoryController::class, 'store'])->name('evaluation-sheets.store');
+        Route::get('classes/{class}/pauta-avaliacao/historico', [EvaluationSheetHistoryController::class, 'history'])->name('evaluation-sheets.history');
+        Route::get('classes/{class}/pauta-avaliacao/historico/{export}', [EvaluationSheetHistoryController::class, 'snapshot'])->name('evaluation-sheets.snapshot');
+
         Route::get('classes/{class}/pauta-avaliacao/{period?}', [EvaluationSheetController::class, 'show'])->name('evaluation-sheets.show');
 
         // The decision layer (§7): propose from the engine, then the teacher confirms.

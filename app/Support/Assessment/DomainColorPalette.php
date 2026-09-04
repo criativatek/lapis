@@ -2,6 +2,8 @@
 
 namespace App\Support\Assessment;
 
+use App\Models\Domain;
+
 /**
  * A deterministic, stable colour for a domain that has none of its own.
  *
@@ -44,5 +46,40 @@ class DomainColorPalette
         $index = $sequence % count(self::PALETTE);
 
         return self::PALETTE[$index];
+    }
+
+    /**
+     * Attaches the presentation colour to the read model's domain rows.
+     *
+     * THE ONE PLACE THIS HAPPENS. The live sheet on screen and the snapshot
+     * frozen from it must show the same colours, or the photograph stops being
+     * a photograph. Two call sites resolving colour independently would be two
+     * places to drift; this is one.
+     *
+     * `BuildEvaluationSheet` still carries no colour of its own — it is
+     * export-neutral by design, and colour is presentation (§7).
+     *
+     * @param  list<array<string, mixed>>  $domains
+     * @return list<array<string, mixed>>
+     */
+    public static function decorate(array $domains): array
+    {
+        if ($domains === []) {
+            return [];
+        }
+
+        // Fetched once, keyed by id, so a class with many domains costs one
+        // extra query rather than one per row.
+        $configured = Domain::query()
+            ->whereIn('id', array_column($domains, 'domain_id'))
+            ->pluck('color', 'id');
+
+        return array_map(
+            fn (array $domain): array => [
+                ...$domain,
+                'color' => self::for($configured[$domain['domain_id']] ?? null, (int) $domain['sequence']),
+            ],
+            $domains,
+        );
     }
 }

@@ -3,11 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\AcademicPeriod;
-use App\Models\Domain;
 use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Assessment\BuildEvaluationSheet;
+use App\Services\Assessment\CaptureEvaluationSheet;
 use App\Support\Assessment\DomainColorPalette;
+use Carbon\CarbonInterface;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
@@ -23,6 +24,7 @@ class EvaluationSheetController extends Controller
 {
     public function __construct(
         protected BuildEvaluationSheet $builder,
+        protected CaptureEvaluationSheet $capture,
     ) {}
 
     public function index(): Response
@@ -62,19 +64,10 @@ class EvaluationSheetController extends Controller
         if ($sheet !== null) {
             // BuildEvaluationSheet's domain rows carry no colour of their own —
             // it is an export-neutral read model and colour is presentation.
-            // Fetched once, keyed by id, so a class with many domains costs one
-            // extra query rather than one per row.
-            $configuredColors = Domain::query()
-                ->whereIn('id', array_column($sheet['domains'], 'domain_id'))
-                ->pluck('color', 'id');
-
-            $sheet['domains'] = array_map(
-                fn (array $domain): array => [
-                    ...$domain,
-                    'color' => DomainColorPalette::for($configuredColors[$domain['domain_id']] ?? null, $domain['sequence']),
-                ],
-                $sheet['domains'],
-            );
+            // Resolved through the same seam CaptureEvaluationSheet uses, so
+            // the kept photograph can never be painted differently from the
+            // screen it was taken of.
+            $sheet['domains'] = DomainColorPalette::decorate($sheet['domains']);
         }
 
         return Inertia::render('evaluation-sheets/Show', [
@@ -92,7 +85,44 @@ class EvaluationSheetController extends Controller
                 'selected' => $selected !== null && $academicPeriod->id === $selected->id,
             ]),
             'sheet' => $sheet,
+            // What the «Guardar esta pauta» form opens with. A SUGGESTION: both
+            // fields are editable, the title is built from the period's own
+            // configuration (never a hardcoded «semestre»), and the reference
+            // date defaults to today clamped into the period, because a date
+            // outside it would be refused the moment the teacher pressed save.
+            'saveDefaults' => $selected === null ? null : [
+                'period_ulid' => $selected->ulid,
+                'moment_label' => $this->capture->suggestedLabel($selected),
+                'effective_at' => $this->defaultEffectiveDate($selected)->toDateString(),
+                'starts_on' => $selected->starts_on->toDateString(),
+                'ends_on' => $selected->ends_on->toDateString(),
+            ],
         ]);
+    }
+
+    /**
+     * Today when today is inside the period, otherwise the nearest edge of it.
+     *
+     * A period already finished gets its last day; one that has not started yet
+     * gets its first — and that one is then refused on save, because a
+     * photograph of a moment that has not arrived is a photograph of nothing.
+     * The refusal says so in words rather than this screen guessing a date that
+     * belongs to a different period. Nothing is inferred from the period's NAME
+     * — only from the dates it actually carries (§6).
+     */
+    protected function defaultEffectiveDate(AcademicPeriod $period): CarbonInterface
+    {
+        $today = now()->startOfDay();
+
+        if ($today->lessThan($period->starts_on->copy()->startOfDay())) {
+            return $period->starts_on->copy()->startOfDay();
+        }
+
+        if ($today->greaterThan($period->ends_on->copy()->startOfDay())) {
+            return $period->ends_on->copy()->startOfDay();
+        }
+
+        return $today;
     }
 
     protected function user(): User

@@ -1,26 +1,32 @@
 <script setup lang="ts">
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { Table2 } from '@lucide/vue';
 import { computed, ref } from 'vue';
-import CoverageWarning from '@/components/CoverageWarning.vue';
 import EmptyState from '@/components/EmptyState.vue';
+import EvaluationSheetTable from '@/components/evaluation-sheets/EvaluationSheetTable.vue';
+import EvaluationSheetViewControls from '@/components/evaluation-sheets/EvaluationSheetViewControls.vue';
 import Heading from '@/components/Heading.vue';
-import { pct } from '@/lib/results';
-import type { EvaluationSheet, EvaluationSheetPeriod, EvaluationSheetStudent } from '@/types';
+import InputError from '@/components/InputError.vue';
+import type { EvaluationSheet, EvaluationSheetPeriod, EvaluationSheetSaveDefaults } from '@/types';
 
 /**
  * Pautas de Avaliação — UMA ÚNICA VISTA.
  *
  * Abre com tudo visível: quantitativo, apreciação qualitativa por domínio, e
- * classificação sugerida vs. decidida. Os três toggles abaixo SÓ ESCONDEM —
- * nunca recalculam nada nem alteram o payload recebido do servidor, que
- * permanece intacto em `props.sheet` do início ao fim da visita.
+ * classificação sugerida vs. decidida. Os toggles SÓ ESCONDEM — nunca
+ * recalculam nada nem alteram o payload recebido do servidor, que permanece
+ * intacto em `props.sheet` do início ao fim da visita.
+ *
+ * A grelha é o MESMO componente que a pauta guardada usa: é isso que garante
+ * que uma fotografia se lê com as mesmas colunas, cores e estrutura do ecrã de
+ * onde foi tirada.
  */
 
 const props = defineProps<{
     schoolClass: { ulid: string; label: string; subject: string; academic_year: string; has_profile: boolean };
     periods: EvaluationSheetPeriod[];
     sheet: EvaluationSheet | null;
+    saveDefaults?: EvaluationSheetSaveDefaults | null;
 }>();
 
 const selectedPeriod = computed<EvaluationSheetPeriod | null>(
@@ -40,48 +46,31 @@ const showQuantitative = ref(true);
 const showDomainDetail = ref(true);
 const showWarnings = ref(true);
 
-const domainColumns = computed(() => (props.sheet?.domains ?? []).map((domain) => ({ id: domain.domain_id, name: domain.name })));
+// ------------------------------------------------------------ guardar pauta
+//
+// O título e a data são SUGESTÕES editáveis. O título vem da configuração
+// temporal do próprio período («Semestre — 1.º Semestre»), nunca de uma
+// palavra escrita à mão no código; a data é validada no servidor contra o
+// `starts_on`/`ends_on` do período, e os limites são mostrados aqui para que o
+// professor não seja recusado só depois de carregar no botão.
 
-function studentDomain(student: EvaluationSheetStudent, domainId: number) {
-    return student.domains.find((domain) => domain.domain_id === domainId);
-}
+const showSaveForm = ref(false);
 
-/**
- * O «Nível atribuído»: a decisão do professor quando existe, senão a proposta
- * do Lapispro com um estilo mais leve — nunca a mesma força visual, para que
- * uma proposta nunca se leia como uma decisão já tomada (§6).
- */
-type AssignedLevel = { text: string; kind: 'decided' | 'proposed' | 'none' };
+const saveForm = useForm({
+    moment_label: props.saveDefaults?.moment_label ?? '',
+    effective_at: props.saveDefaults?.effective_at ?? '',
+});
 
-function assignedLevel(student: EvaluationSheetStudent): AssignedLevel {
-    const classification = student.classification;
+const canSave = computed(() => props.saveDefaults !== null && props.saveDefaults !== undefined && props.sheet !== null);
 
-    if (classification === null) {
-        return { text: '—', kind: 'none' };
+function submitSave(): void {
+    if (!props.saveDefaults) {
+        return;
     }
 
-    const finalText = classification.final_scale_level_label ?? classification.final_value;
-
-    if (finalText !== null) {
-        return { text: finalText, kind: 'decided' };
-    }
-
-    const proposedText = classification.proposed_scale_level_label ?? classification.proposed_value;
-
-    if (proposedText !== null) {
-        return { text: proposedText, kind: 'proposed' };
-    }
-
-    return { text: '—', kind: 'none' };
-}
-
-/** Fundo muito suave na cor do domínio — identidade visual, nunca desempenho. */
-function domainHeaderStyle(color: string): Record<string, string> {
-    return { backgroundColor: `${color}66` };
-}
-
-function domainCellStyle(color: string): Record<string, string> {
-    return { backgroundColor: `${color}26` };
+    saveForm.post(`/classes/${props.schoolClass.ulid}/pauta-avaliacao/${props.saveDefaults.period_ulid}/guardar`, {
+        preserveScroll: true,
+    });
 }
 </script>
 
@@ -119,23 +108,90 @@ function domainCellStyle(color: string): Record<string, string> {
             </div>
         </div>
 
+        <div class="flex flex-wrap items-center gap-3">
+            <button
+                v-if="canSave"
+                type="button"
+                class="rounded-md border border-primary bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90"
+                @click="showSaveForm = !showSaveForm"
+            >
+                Guardar esta pauta
+            </button>
+            <Link
+                :href="`/classes/${schoolClass.ulid}/pauta-avaliacao/historico`"
+                class="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
+            >
+                Histórico
+            </Link>
+        </div>
+
+        <form
+            v-if="canSave && showSaveForm"
+            class="space-y-3 rounded-lg border border-border bg-muted/10 px-4 py-3"
+            @submit.prevent="submitSave"
+        >
+            <p class="text-sm text-muted-foreground">
+                Guardar cria uma fotografia imutável desta pauta. O que estiver no ecrã fica registado tal como
+                está agora — alterações posteriores às notas ou às classificações não mexem no que foi guardado.
+            </p>
+
+            <div class="grid gap-3 sm:grid-cols-2">
+                <div class="space-y-1">
+                    <label for="moment-label" class="text-sm font-medium">Título do momento</label>
+                    <input
+                        id="moment-label"
+                        v-model="saveForm.moment_label"
+                        type="text"
+                        maxlength="200"
+                        required
+                        class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm"
+                    />
+                    <InputError :message="saveForm.errors.moment_label" />
+                </div>
+
+                <div class="space-y-1">
+                    <label for="effective-at" class="text-sm font-medium">Data de referência</label>
+                    <input
+                        id="effective-at"
+                        v-model="saveForm.effective_at"
+                        type="date"
+                        required
+                        :min="saveDefaults?.starts_on"
+                        :max="saveDefaults?.ends_on"
+                        class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm"
+                    />
+                    <p v-if="saveDefaults" class="text-xs text-muted-foreground">
+                        Entre {{ saveDefaults.starts_on }} e {{ saveDefaults.ends_on }}.
+                    </p>
+                    <InputError :message="saveForm.errors.effective_at" />
+                </div>
+            </div>
+
+            <div class="flex gap-2">
+                <button
+                    type="submit"
+                    :disabled="saveForm.processing"
+                    class="rounded-md border border-primary bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-60"
+                >
+                    {{ saveForm.processing ? 'A guardar…' : 'Guardar' }}
+                </button>
+                <button
+                    type="button"
+                    class="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
+                    @click="showSaveForm = false"
+                >
+                    Cancelar
+                </button>
+            </div>
+        </form>
+
         <!-- Controlos de visualização: só apresentação, nunca alteram os dados
              recebidos do servidor. -->
-        <div class="flex flex-wrap items-center gap-4 rounded-lg border border-border bg-muted/20 px-4 py-2 text-sm">
-            <span class="font-medium text-muted-foreground">Mostrar:</span>
-            <label class="flex items-center gap-1.5">
-                <input v-model="showQuantitative" type="checkbox" class="rounded border-border" />
-                Valores quantitativos
-            </label>
-            <label class="flex items-center gap-1.5">
-                <input v-model="showDomainDetail" type="checkbox" class="rounded border-border" />
-                Detalhe por domínio
-            </label>
-            <label class="flex items-center gap-1.5">
-                <input v-model="showWarnings" type="checkbox" class="rounded border-border" />
-                Indicadores de cobertura
-            </label>
-        </div>
+        <EvaluationSheetViewControls
+            v-model:show-quantitative="showQuantitative"
+            v-model:show-domain-detail="showDomainDetail"
+            v-model:show-warnings="showWarnings"
+        />
 
         <p v-if="!schoolClass.has_profile" class="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             Esta turma não tem perfil de avaliação associado, por isso não há pauta a mostrar.
@@ -147,174 +203,14 @@ function domainCellStyle(color: string): Record<string, string> {
             :icon="Table2"
         />
 
-        <div v-else class="max-h-[70vh] overflow-auto rounded-lg border border-border">
-            <!-- `min-w-full`, não `w-full`: com muitos domínios a tabela é mais
-                 larga do que o contentor e as colunas têm de manter a largura
-                 natural (senão o cabeçalho da coluna fixa é espremido e cortado).
-                 O contentor é que rola. -->
-            <table class="min-w-full border-collapse text-sm">
-                <thead>
-                    <!-- Fundos OPACOS em tudo o que é sticky. Um `bg-muted/50`
-                         deixa passar o que desliza por baixo: numa turma de 20-30
-                         alunos o cabeçalho fica ilegível sobre as linhas, e a
-                         coluna fixa mistura-se com a apreciação que passa sob ela. -->
-                    <tr class="sticky top-0 z-20 bg-muted text-left text-xs">
-                        <th rowspan="2" class="sticky left-0 z-30 border-b border-border bg-muted px-3 py-2 align-bottom font-medium shadow-[8px_0_8px_-6px_rgba(0,0,0,0.10)]">
-                            Aluno
-                        </th>
-                        <template v-if="showDomainDetail">
-                            <th
-                                v-for="domain in sheet.domains"
-                                :key="domain.domain_id"
-                                :colspan="showQuantitative ? 2 : 1"
-                                class="border-b border-l border-border px-3 py-1.5 text-center font-semibold"
-                                :style="domainHeaderStyle(domain.color)"
-                            >
-                                {{ domain.name }}
-                            </th>
-                        </template>
-                        <th
-                            :colspan="showQuantitative ? 2 : 1"
-                            class="border-b border-l-2 border-border bg-muted/70 px-3 py-1.5 text-center font-semibold"
-                        >
-                            Global
-                        </th>
-                        <!-- Fixa à direita pela mesma razão que «Aluno» é fixa à
-                             esquerda: é a coluna da DECISÃO. Numa turma com cinco
-                             domínios a tabela é mais larga do que o ecrã, e a
-                             coluna que não pode desaparecer no scroll é
-                             precisamente esta (§11 — legibilidade é requisito). -->
-                        <th
-                            rowspan="2"
-                            class="sticky right-0 z-30 border-b border-l-2 border-border bg-muted px-3 py-2 text-center align-bottom font-medium shadow-[-8px_0_8px_-6px_rgba(0,0,0,0.10)]"
-                        >
-                            <!-- Quebra deliberada em duas linhas: a coluna é
-                                 estreita e «Nível atribuído» com nowrap transbordava
-                                 da célula fixa, aparecendo cortado a meio da palavra. -->
-                            <span class="block">Nível</span>
-                            <span class="block">atribuído</span>
-                        </th>
-                    </tr>
-                    <tr class="sticky z-20 bg-muted text-left text-[11px] text-muted-foreground" style="top: 2.25rem">
-                        <template v-if="showDomainDetail">
-                            <template v-for="domain in sheet.domains" :key="`sub-${domain.domain_id}`">
-                                <th v-if="showQuantitative" class="border-b border-l border-border px-2 py-1 text-center font-normal" :style="domainCellStyle(domain.color)">
-                                    Quant.
-                                </th>
-                                <th class="border-b border-border px-2 py-1 text-center font-normal" :class="showQuantitative ? '' : 'border-l'" :style="domainCellStyle(domain.color)">
-                                    Apreciação
-                                </th>
-                            </template>
-                        </template>
-                        <th v-if="showQuantitative" class="border-b border-l-2 border-border bg-muted/40 px-2 py-1 text-center font-normal">
-                            Quant.
-                        </th>
-                        <th class="border-b border-border bg-muted/40 px-2 py-1 text-center font-normal" :class="showQuantitative ? 'border-l' : 'border-l-2'">
-                            Apreciação
-                        </th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr
-                        v-for="(student, index) in sheet.students"
-                        :key="student.enrollment_id"
-                        :class="index % 2 === 1 ? 'bg-muted/10' : ''"
-                        class="hover:bg-muted/20"
-                    >
-                        <!-- Sem a risca alternada nas duas colunas fixas: a risca é
-                             `bg-muted/10` e ganharia ao `bg-background`, deixando a
-                             célula translúcida — as linhas passariam por baixo dela.
-                             A risca continua a ler-se em todas as colunas que rolam. -->
-                        <td class="sticky left-0 z-10 border-b border-border bg-background px-3 py-2 whitespace-nowrap shadow-[8px_0_8px_-6px_rgba(0,0,0,0.10)]">
-                            <span class="text-muted-foreground">{{ student.class_number ?? '—' }}</span>
-                            <span class="ml-1.5 font-medium">{{ student.name }}</span>
-                        </td>
-
-                        <template v-if="showDomainDetail">
-                            <template v-for="domain in sheet.domains" :key="`cell-${student.enrollment_id}-${domain.domain_id}`">
-                                <td
-                                    v-if="showQuantitative"
-                                    class="border-b border-l border-border px-2 py-2 text-center tabular-nums"
-                                    :style="domainCellStyle(domain.color)"
-                                >
-                                    <span :class="{ 'text-muted-foreground': studentDomain(student, domain.domain_id)?.normalized_value == null }">
-                                        {{ pct(studentDomain(student, domain.domain_id)?.normalized_value ?? null) }}
-                                    </span>
-                                    <CoverageWarning
-                                        v-if="showWarnings && studentDomain(student, domain.domain_id)?.has_coverage_warning"
-                                        :coverage="studentDomain(student, domain.domain_id)!.coverage"
-                                        :has-value="(studentDomain(student, domain.domain_id)?.normalized_value ?? null) !== null"
-                                        :domains="domainColumns"
-                                    />
-                                </td>
-                                <td
-                                    class="border-b border-border px-2 py-2 text-center"
-                                    :class="showQuantitative ? '' : 'border-l'"
-                                    :style="domainCellStyle(domain.color)"
-                                >
-                                    <span :class="{ 'text-muted-foreground': !studentDomain(student, domain.domain_id)?.scale_level_label }">
-                                        {{ studentDomain(student, domain.domain_id)?.scale_level_label ?? '—' }}
-                                    </span>
-                                    <CoverageWarning
-                                        v-if="showWarnings && !showQuantitative && studentDomain(student, domain.domain_id)?.has_coverage_warning"
-                                        :coverage="studentDomain(student, domain.domain_id)!.coverage"
-                                        :has-value="(studentDomain(student, domain.domain_id)?.normalized_value ?? null) !== null"
-                                        :domains="domainColumns"
-                                    />
-                                </td>
-                            </template>
-                        </template>
-
-                        <td v-if="showQuantitative" class="border-b border-l-2 border-border bg-muted/20 px-2 py-2 text-center font-medium tabular-nums">
-                            <span :class="{ 'text-muted-foreground': student.overall.scale_value == null && student.overall.normalized_value == null }">
-                                {{ student.overall.scale_value ?? pct(student.overall.normalized_value) }}
-                            </span>
-                            <CoverageWarning
-                                v-if="showWarnings && student.overall.has_coverage_warning"
-                                :coverage="student.coverage"
-                                :has-value="student.overall.normalized_value !== null"
-                                :domains="domainColumns"
-                                scope="overall"
-                            />
-                        </td>
-                        <td
-                            class="border-b border-border bg-muted/20 px-2 py-2 text-center font-medium"
-                            :class="showQuantitative ? '' : 'border-l-2'"
-                        >
-                            <span :class="{ 'text-muted-foreground': !student.overall.scale_level_label }">
-                                {{ student.overall.scale_level_label ?? '—' }}
-                            </span>
-                            <CoverageWarning
-                                v-if="showWarnings && !showQuantitative && student.overall.has_coverage_warning"
-                                :coverage="student.coverage"
-                                :has-value="student.overall.normalized_value !== null"
-                                :domains="domainColumns"
-                                scope="overall"
-                            />
-                        </td>
-
-                        <td
-                            class="sticky right-0 z-10 border-b border-l-2 border-border bg-background px-3 py-2 text-center whitespace-nowrap shadow-[-8px_0_8px_-6px_rgba(0,0,0,0.10)]"
-                        >
-                            <span
-                                v-if="assignedLevel(student).kind === 'decided'"
-                                class="rounded bg-primary/10 px-2 py-0.5 font-bold text-primary"
-                            >
-                                {{ assignedLevel(student).text }}
-                            </span>
-                            <span
-                                v-else-if="assignedLevel(student).kind === 'proposed'"
-                                class="rounded px-2 py-0.5 text-muted-foreground italic"
-                                title="Proposta do Lapispro — ainda não decidida pelo professor."
-                            >
-                                {{ assignedLevel(student).text }}
-                            </span>
-                            <span v-else class="text-muted-foreground">—</span>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
+        <EvaluationSheetTable
+            v-else
+            :domains="sheet.domains"
+            :students="sheet.students"
+            :show-quantitative="showQuantitative"
+            :show-domain-detail="showDomainDetail"
+            :show-warnings="showWarnings"
+        />
 
         <p class="text-xs text-muted-foreground">
             "—" significa sem elementos, nunca zero. O ícone de aviso assinala cobertura parcial ou a ausência de

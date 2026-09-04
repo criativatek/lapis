@@ -1,13 +1,14 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
-import { defineComponent, h } from 'vue';
+import { defineComponent, h, reactive } from 'vue';
 import type { EvaluationSheet } from '@/types';
 import Show from './Show.vue';
 
 vi.mock('@inertiajs/vue3', () => ({
     Head: defineComponent({ setup: (_, { slots }) => () => h('div', slots.default?.()) }),
     Link: defineComponent({ inheritAttrs: false, setup: (_, { attrs, slots }) => () => h('a', attrs, slots.default?.()) }),
-    router: { get: vi.fn() },
+    router: { get: vi.fn(), post: vi.fn() },
+    useForm: (fields: Record<string, unknown>) => reactive({ ...fields, errors: {}, processing: false, post: vi.fn() }),
 }));
 
 /**
