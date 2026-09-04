@@ -1,11 +1,18 @@
 <script setup lang="ts">
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
-import { PenLine } from '@lucide/vue';
+import { ChevronDown, PenLine, Plus } from '@lucide/vue';
 import { computed } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import TableShell from '@/components/TableShell.vue';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { statusToneClasses } from '@/lib/statusTone';
 
 type Progress = { applicable: number; completed: number; under_review: number; complete: boolean } | null;
@@ -89,6 +96,38 @@ function progressLabel(assessment: Assessment): string {
     return `${progress.completed}/${progress.applicable}`;
 }
 
+/**
+ * «28/05/2027», e não o «2027-05-28» do transporte. O par `T00:00:00Z` +
+ * `timeZone: 'UTC'` é o idioma da casa para ler um Y-m-d sem o deixar
+ * escorregar um dia no fuso (Grid.vue, Calendário).
+ */
+const appliedOnFormatter = new Intl.DateTimeFormat('pt-PT', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    timeZone: 'UTC',
+});
+
+function appliedOnLabel(assessment: Assessment): string {
+    return appliedOnFormatter.format(new Date(`${assessment.applied_on}T00:00:00Z`));
+}
+
+/**
+ * A barra diz de relance o que a fracção obriga a ler: quanto falta corrigir.
+ * Verde quando fechou, âmbar enquanto há trabalho — os mesmos significados
+ * das pílulas ao lado. Sem alunos aplicáveis não há barra nenhuma: um vazio
+ * não é zero (§13.3).
+ */
+function progressPercent(assessment: Assessment): number | null {
+    const progress = assessment.progress;
+
+    if (progress === null || progress.applicable === 0) {
+        return null;
+    }
+
+    return Math.round((100 * progress.completed) / progress.applicable);
+}
+
 function hasNoApplicableStudents(assessment: Assessment): boolean {
     return assessment.progress === null || assessment.progress.applicable === 0;
 }
@@ -100,56 +139,73 @@ function hasNoApplicableStudents(assessment: Assessment): boolean {
     <div class="mx-auto w-full max-w-5xl space-y-6 p-4">
         <PageHeader title="Avaliações" description="Os elementos de avaliação já criados, com o estado e o progresso da correção.">
             <template #actions>
-            <select
-                v-if="classOptions.length"
-                value=""
-                class="h-9 rounded-md border border-primary bg-transparent px-3 text-sm text-primary"
-                @change="startNewAssessment(($event.target as HTMLSelectElement).value)"
-            >
-                <option value="" disabled>+ Nova avaliação — escolher turma</option>
-                <option v-for="classOption in classOptions" :key="classOption.ulid" :value="classOption.ulid">
-                    {{ classOption.label }}
-                </option>
-            </select>
-            <Link
-                v-if="canImportGrids"
-                href="/imports/correction/create"
-                class="flex h-9 items-center rounded-md border border-border px-3 text-sm hover:bg-muted/40"
-            >
-                Importar resultados
-            </Link>
-            <p v-else class="max-w-xs text-xs text-muted-foreground">
-                A importação de resultados de outras plataformas de aplicação de testes está disponível no
-                Lapispro&nbsp;Pro.
-            </p>
+                <Button v-if="canImportGrids" as-child variant="outline">
+                    <Link href="/imports/correction/create">Importar resultados</Link>
+                </Button>
+                <!-- A acção principal é um BOTÃO, não um select disfarçado
+                     (SUP-7BAAB7, segunda volta): a página tem uma cor forte e
+                     é esta. A escolha da turma abre por baixo. -->
+                <DropdownMenu v-if="classOptions.length">
+                    <DropdownMenuTrigger as-child>
+                        <Button>
+                            <Plus class="size-4" /> Nova avaliação
+                            <ChevronDown class="size-4 opacity-70" aria-hidden="true" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" class="min-w-56">
+                        <DropdownMenuItem
+                            v-for="classOption in classOptions"
+                            :key="classOption.ulid"
+                            class="cursor-pointer"
+                            @click="startNewAssessment(classOption.ulid)"
+                        >
+                            {{ classOption.label }}
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+                <p v-if="!canImportGrids" class="max-w-xs text-xs text-muted-foreground">
+                    A importação de resultados de outras plataformas de aplicação de testes está disponível no
+                    Lapispro&nbsp;Pro.
+                </p>
             </template>
         </PageHeader>
 
-        <div class="flex flex-wrap gap-2">
-            <select
-                :value="filters.status ?? ''"
-                class="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-                @change="applyFilter('status', ($event.target as HTMLSelectElement).value)"
-            >
-                <option value="">Todos os estados</option>
-                <option v-for="option in statusOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-            </select>
-            <select
-                :value="filters.purpose ?? ''"
-                class="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-                @change="applyFilter('purpose', ($event.target as HTMLSelectElement).value)"
-            >
-                <option value="">Todas as finalidades</option>
-                <option v-for="option in purposeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-            </select>
-            <select
-                :value="filters.period ?? ''"
-                class="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-                @change="applyFilter('period', ($event.target as HTMLSelectElement).value)"
-            >
-                <option value="">Todos os períodos</option>
-                <option v-for="option in periodOptions" :key="option.id" :value="option.id">{{ option.label }}</option>
-            </select>
+        <!-- Filtros com rótulo, na grelha da casa (Alunos usa a mesma): um
+             select solto não diz o que filtra até se abrir. -->
+        <div class="flex flex-wrap items-end gap-3">
+            <label class="grid gap-1 text-sm">
+                <span class="text-xs font-medium text-muted-foreground">Estado</span>
+                <select
+                    :value="filters.status ?? ''"
+                    class="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                    @change="applyFilter('status', ($event.target as HTMLSelectElement).value)"
+                >
+                    <option value="">Todos</option>
+                    <option v-for="option in statusOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                </select>
+            </label>
+            <label class="grid gap-1 text-sm">
+                <span class="text-xs font-medium text-muted-foreground">Finalidade</span>
+                <select
+                    :value="filters.purpose ?? ''"
+                    class="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                    @change="applyFilter('purpose', ($event.target as HTMLSelectElement).value)"
+                >
+                    <option value="">Todas</option>
+                    <option v-for="option in purposeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                </select>
+            </label>
+            <label class="grid gap-1 text-sm">
+                <span class="text-xs font-medium text-muted-foreground">Período</span>
+                <select
+                    :value="filters.period ?? ''"
+                    class="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                    @change="applyFilter('period', ($event.target as HTMLSelectElement).value)"
+                >
+                    <option value="">Todos</option>
+                    <option v-for="option in periodOptions" :key="option.id" :value="option.id">{{ option.label }}</option>
+                </select>
+            </label>
         </div>
 
         <EmptyState
@@ -173,20 +229,34 @@ function hasNoApplicableStudents(assessment: Assessment): boolean {
             </template>
             <template #body>
                     <tr v-for="assessment in assessments" :key="assessment.ulid" class="hover:bg-muted/30">
-                        <td class="px-4 py-3 text-muted-foreground">{{ assessment.applied_on }}</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-muted-foreground tabular-nums">{{ appliedOnLabel(assessment) }}</td>
                         <td class="px-4 py-3 font-medium">{{ assessment.title }}</td>
-                        <td class="px-4 py-3 text-muted-foreground">{{ assessment.purpose_label }}</td>
-                        <td class="px-4 py-3 text-muted-foreground">{{ assessment.class_label }}</td>
+                        <td class="px-4 py-3"><Badge variant="outline" class="font-normal text-muted-foreground">{{ assessment.purpose_label }}</Badge></td>
+                        <td class="px-4 py-3 whitespace-nowrap text-muted-foreground">{{ assessment.class_label }}</td>
                         <td class="px-4 py-3 text-muted-foreground">{{ assessment.period }}</td>
                         <td class="px-4 py-3"><Badge variant="secondary" :class="statusToneClasses(assessment.status)">{{ assessment.state_label }}</Badge></td>
                         <td class="px-4 py-3">
-                            <span :class="hasNoApplicableStudents(assessment) ? 'text-xs text-muted-foreground' : undefined">{{ progressLabel(assessment) }}</span>
-                            <span v-if="assessment.progress && assessment.progress.under_review > 0" class="ml-1.5 text-xs text-amber-700">
-                                · {{ assessment.progress.under_review }} em revisão
-                            </span>
+                            <!-- A barra diz de relance o que a fracção obriga a ler. -->
+                            <div class="flex items-center gap-2">
+                                <div
+                                    v-if="progressPercent(assessment) !== null"
+                                    class="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-muted"
+                                    aria-hidden="true"
+                                >
+                                    <div
+                                        class="h-full rounded-full"
+                                        :class="assessment.progress?.complete ? 'bg-emerald-500' : 'bg-amber-500'"
+                                        :style="{ width: `${progressPercent(assessment)}%` }"
+                                    ></div>
+                                </div>
+                                <span class="whitespace-nowrap tabular-nums" :class="hasNoApplicableStudents(assessment) ? 'text-xs text-muted-foreground' : undefined">{{ progressLabel(assessment) }}</span>
+                                <span v-if="assessment.progress && assessment.progress.under_review > 0" class="text-xs whitespace-nowrap text-amber-700 dark:text-amber-400">
+                                    · {{ assessment.progress.under_review }} em revisão
+                                </span>
+                            </div>
                         </td>
                         <td class="px-4 py-3 text-right">
-                            <Link :href="assessment.status === 'draft' ? `/instruments/${assessment.ulid}/edit` : `/assessments/${assessment.ulid}`" class="text-sm text-primary hover:underline">{{ assessment.action_label }}</Link>
+                            <Link :href="assessment.status === 'draft' ? `/instruments/${assessment.ulid}/edit` : `/assessments/${assessment.ulid}`" class="text-sm font-medium text-primary hover:underline">{{ assessment.action_label }}</Link>
                         </td>
                     </tr>
             </template>

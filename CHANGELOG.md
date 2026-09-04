@@ -25,6 +25,21 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.122.1] — 2026-09-04
+
+Segunda volta à página de Avaliações («pode fazer muito melhor» — e podia):
+
+- **A acção principal é um botão a sério** — «+ Nova avaliação» navy com o
+  menu de turmas por baixo, em vez de um `select` disfarçado de CTA.
+  «Importar resultados» passa a botão outline.
+- **Filtros com rótulo** (Estado · Finalidade · Período), na grelha que os
+  Alunos já usam — um select solto não diz o que filtra até se abrir.
+- **Datas em português** — «28/05/2027», `nowrap`, sem partir em duas linhas.
+- **Finalidade em chip** discreto (outline), não texto perdido.
+- **Barra de progresso** ao lado da fracção — verde quando a correção fechou,
+  âmbar enquanto há trabalho; sem alunos aplicáveis não há barra (um vazio
+  não é zero, §13.3).
+
 ## [0.122.0] — 2026-09-04
 
 A vaga grande do «rever tudo» (SUP-7BAAB7): os componentes de design chegam a
