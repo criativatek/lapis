@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\CapabilityVoucher;
 use App\Models\Plan;
 use App\Models\Voucher;
 use App\Models\VoucherBenefitType;
@@ -104,6 +105,8 @@ class AdminVoucherController extends Controller
             return back()->withErrors(['code' => __('Isto não tem a forma de um código: 4 a 32 letras e dígitos.')]);
         } elseif (Voucher::query()->code($code)->exists()) {
             return back()->withErrors(['code' => __('Já existe um voucher com este código.')]);
+        } elseif (CapabilityVoucher::query()->code($code)->exists()) {
+            return back()->withErrors(['code' => __('Este código já está a ser usado como código de capacidades temporárias.')]);
         }
 
         $type = VoucherBenefitType::from($validated['benefit_type']);

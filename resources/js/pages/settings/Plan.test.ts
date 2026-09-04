@@ -71,7 +71,13 @@ type Props = {
         pendingUlid: string | null;
         pendingReference: string | null;
     } | null;
-    canRedeemCapabilityCode: boolean;
+    canRedeemCode: boolean;
+    activeCapabilityBenefits: {
+        moduleKey: string;
+        label: string;
+        expiresAt: string;
+        origin: string | null;
+    }[];
 };
 
 function mountPage(props: Partial<Props> = {}) {
@@ -83,7 +89,8 @@ function mountPage(props: Partial<Props> = {}) {
             trial: null,
             usedTrialBefore: null,
             subscribe: null,
-            canRedeemCapabilityCode: false,
+            canRedeemCode: true,
+            activeCapabilityBenefits: [],
             ...props,
         },
     });
@@ -305,5 +312,121 @@ describe('subscrever o Pro', () => {
                 .exists(),
         ).toBe(true);
         expect(wrapper.text()).not.toContain('Subscrever o Pro');
+    });
+});
+
+/*
+ * O único campo "Tem um código?" — substitui os dois formulários separados
+ * que existiam antes (voucher comercial e código de capacidades). O servidor
+ * resolve por existência qual dos dois sistemas serve o código; a página só
+ * mostra um campo, um botão, e o erro genérico ou específico que vier.
+ */
+describe('campo único "Tem um código?"', () => {
+    /** O formulário do código único é sempre o segundo `useForm()` criado. */
+    function codeForm(): MockForm {
+        return mocks.forms[1];
+    }
+
+    it('não mostra o campo quando o servidor não permite resgatar', () => {
+        const wrapper = mountPage({ canRedeemCode: false });
+
+        expect(wrapper.text()).not.toContain('Tem um código?');
+    });
+
+    it('mostra o campo, submete para /settings/plan/code e limpa o campo com sucesso', () => {
+        const wrapper = mountPage({ canRedeemCode: true });
+
+        expect(wrapper.text()).toContain('Tem um código?');
+
+        const input = wrapper.find('input[aria-label="Código"]');
+        expect(input.exists()).toBe(true);
+
+        wrapper.find('form').trigger('submit.prevent');
+
+        expect(codeForm().post).toHaveBeenCalledWith(
+            '/settings/plan/code',
+            expect.objectContaining({ preserveScroll: true }),
+        );
+    });
+
+    it('mostra o erro genérico devolvido pelo servidor', async () => {
+        const wrapper = mountPage({ canRedeemCode: true });
+
+        codeForm().errors.code =
+            'Este código não é válido ou já não está disponível.';
+        await wrapper.vm.$nextTick();
+
+        expect(wrapper.text()).toContain(
+            'Este código não é válido ou já não está disponível.',
+        );
+    });
+});
+
+describe('benefícios ativos', () => {
+    it('mostra um estado vazio quando não há benefícios', () => {
+        const wrapper = mountPage({ activeCapabilityBenefits: [] });
+
+        expect(wrapper.text()).toContain('Benefícios ativos');
+        expect(wrapper.text()).toContain(
+            'Não há benefícios temporários ativos',
+        );
+    });
+
+    it('mostra uma entrada com o nome, a data e a origem', () => {
+        const wrapper = mountPage({
+            activeCapabilityBenefits: [
+                {
+                    moduleKey: 'calendar_import',
+                    label: 'Importação de calendário',
+                    expiresAt: '2026-10-01T12:00:00Z',
+                    origin: 'LPRO-CAPA-0001',
+                },
+            ],
+        });
+
+        expect(wrapper.text()).toContain('Importação de calendário');
+        expect(wrapper.text()).toContain('01/10/2026');
+        expect(wrapper.text()).toContain('LPRO-CAPA-0001');
+    });
+
+    it('mostra várias entradas, uma por capacidade', () => {
+        const wrapper = mountPage({
+            activeCapabilityBenefits: [
+                {
+                    moduleKey: 'calendar_import',
+                    label: 'Importação de calendário',
+                    expiresAt: '2026-10-01T12:00:00Z',
+                    origin: null,
+                },
+                {
+                    moduleKey: 'lessons',
+                    label: 'Aulas',
+                    expiresAt: '2026-11-01T12:00:00Z',
+                    origin: 'Atribuição direta',
+                },
+            ],
+        });
+
+        expect(wrapper.findAll('li').length).toBe(2);
+        expect(wrapper.text()).toContain('Aulas');
+        expect(wrapper.text()).toContain('Atribuição direta');
+    });
+
+    it('não escreve nada sobre mudança de plano', () => {
+        const wrapper = mountPage({
+            state: 'trial_expired',
+            currentPlanName: 'Base',
+            activeCapabilityBenefits: [
+                {
+                    moduleKey: 'calendar_import',
+                    label: 'Importação de calendário',
+                    expiresAt: '2026-10-01T12:00:00Z',
+                    origin: null,
+                },
+            ],
+        });
+
+        expect(wrapper.text()).not.toContain('Pro temporário');
+        expect(wrapper.text()).toContain('Base');
     });
 });

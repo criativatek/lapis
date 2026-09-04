@@ -25,6 +25,33 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.123.0] — 2026-09-04
+
+### Adicionado
+
+- **Um único campo "Tem um código?" na página Plano** — substitui os dois
+  formulários separados (voucher comercial e código de capacidades) por um
+  campo único que resolve por EXISTÊNCIA para que sistema um código pertence:
+  se existir em `capability_vouchers` (seja qual for o seu estado) usa
+  exclusivamente `RedeemCapabilityVoucher`; senão, se existir em `vouchers`,
+  segue o fluxo comercial `free_until` já existente (alvo sempre 'pro'); caso
+  contrário, mensagem genérica. Os dois sistemas internos continuam
+  intocados e separados — só a apresentação foi unificada — e as duas rotas
+  antigas (`settings.plan.redeem-voucher`, `settings.plan.redeem-capability-voucher`)
+  continuam a funcionar tal como antes. Nova rota
+  `POST settings/plan/code` (`settings.plan.redeem-code`,
+  `PlanController::redeemCode()`).
+- **"Benefícios ativos" na página Plano** — lista as capacidades temporárias
+  ativas da organização (voucher ou atribuição direta), uma linha por
+  capacidade mesmo quando dois grants sobrepostos a concedem em simultâneo
+  (fica a de expiração mais longa). Leitura pontual sobre `CapabilityGrant`,
+  nunca usada para decidir acesso — essa continua exclusivamente em
+  `Entitlements`.
+- **Prevenção cruzada na emissão manual de códigos** — `AdminVoucherController::store()`
+  e `GenerateCapabilityVoucher::handle()` recusam agora um código escrito à
+  mão que já exista na tabela do outro sistema, fechando na origem a
+  ambiguidade que o campo único acima tem de resolver por precedência.
+
 ## [0.122.1] — 2026-09-04
 
 Segunda volta à página de Avaliações («pode fazer muito melhor» — e podia):
