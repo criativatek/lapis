@@ -5,6 +5,7 @@ namespace App\Actions\Entitlements;
 use App\Models\CapabilityGrantPreset;
 use App\Models\CapabilityVoucher;
 use App\Models\User;
+use App\Models\Voucher;
 use App\Services\Audit\AuditLog;
 use App\Support\Entitlements\CapabilityVoucherCode;
 use Carbon\CarbonInterface;
@@ -37,9 +38,13 @@ class GenerateCapabilityVoucher
         if ($modules->isEmpty()) {
             throw ValidationException::withMessages(['module_keys' => __('Escolha pelo menos uma capacidade.')]);
         }
-        $displayCode = trim((string) $code) === '' ? CapabilityVoucherCode::generate() : trim((string) $code);
+        $manualCode = trim((string) $code) !== '';
+        $displayCode = $manualCode ? trim((string) $code) : CapabilityVoucherCode::generate();
         if (! CapabilityVoucherCode::isWellFormed($displayCode) || CapabilityVoucher::query()->code($displayCode)->exists()) {
             throw ValidationException::withMessages(['code' => __('O código é inválido ou já existe.')]);
+        }
+        if ($manualCode && Voucher::query()->code($displayCode)->exists()) {
+            throw ValidationException::withMessages(['code' => __('Este código já está a ser usado como voucher comercial.')]);
         }
 
         $voucher = DB::transaction(function () use ($operator, $label, $durationDays, $preset, $displayCode, $validFrom, $validUntil, $maxRedemptions, $restrictedOrganizationId, $notes, $modules): CapabilityVoucher {

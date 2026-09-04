@@ -6,6 +6,7 @@ use App\Models\Concerns\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Support\Carbon;
 use LogicException;
@@ -66,5 +67,18 @@ class CapabilityGrant extends Model
     public function modules(): BelongsToMany
     {
         return $this->belongsToMany(Module::class, 'capability_grant_module');
+    }
+
+    /**
+     * The capability voucher this grant came from, when `source` is
+     * `CapabilityGrantSource::Voucher` — null for a `Direct` grant. Read-only:
+     * a presentation lookup for "Benefícios ativos" (§settings/Plan), never
+     * consulted by any access-control decision (that stays in `Entitlements`).
+     *
+     * @return BelongsTo<CapabilityVoucher, $this>
+     */
+    public function capabilityVoucher(): BelongsTo
+    {
+        return $this->belongsTo(CapabilityVoucher::class);
     }
 }

@@ -39,6 +39,13 @@ type SubscribeOffer = {
     pendingReference: string | null;
 };
 
+type ActiveCapabilityBenefit = {
+    moduleKey: string;
+    label: string;
+    expiresAt: string;
+    origin: string | null;
+};
+
 defineProps<{
     state: PlanState;
     subscribe: SubscribeOffer | null;
@@ -46,7 +53,8 @@ defineProps<{
     currentPlanName: string | null;
     trial: Trial | null;
     usedTrialBefore: boolean | null;
-    canRedeemCapabilityCode: boolean;
+    canRedeemCode: boolean;
+    activeCapabilityBenefits: ActiveCapabilityBenefit[];
 }>();
 
 const form = useForm({});
@@ -62,24 +70,16 @@ function activateTrial(): void {
     form.post('/settings/plan/trial', { preserveScroll: true });
 }
 
-// Resgatar um voucher `free_until`. O plano-alvo segue EXPLÍCITO no pedido —
-// 'pro' é o alvo que esta página oferece, não uma decisão do código: o
-// servidor valida o alvo e confronta-o com a restrição do voucher.
-const voucherForm = useForm({
-    voucher_code: '',
-    plan_key: 'pro',
-});
+// O único campo "Tem um código?". O servidor resolve por existência para que
+// universo (comercial ou de capacidades) o código pertence — esta página não
+// sabe, nem precisa de saber, qual dos dois vai servir o pedido.
+const codeForm = useForm({ code: '' });
 
-function redeemVoucher(): void {
-    voucherForm.post('/settings/plan/voucher', {
+function redeemCode(): void {
+    codeForm.post('/settings/plan/code', {
         preserveScroll: true,
-        onSuccess: () => voucherForm.reset('voucher_code'),
+        onSuccess: () => codeForm.reset(),
     });
-}
-
-const capabilityForm=useForm({capability_code:''});
-function redeemCapabilityCode():void{
-capabilityForm.post('/settings/plan/capability-code',{preserveScroll:true,onSuccess:()=>capabilityForm.reset()});
 }
 
 /** Consistent with how the rest of the app shows a date to a teacher (§AccountClosure.vue). */
@@ -249,52 +249,79 @@ function formatDate(iso: string): string {
             </Button>
         </div>
 
-        <!-- Voucher de acesso gratuito até uma data. Só o tipo `free_until` se
-             resgata aqui — os códigos com preço aplicam-se no checkout, onde há
-             uma quantia para eles decidirem. O servidor valida, decide e diz o
-             caso concreto; esta página não adivinha nada. -->
-        <div class="space-y-3 rounded-lg border border-border p-4">
+        <!-- O único campo "Tem um código?". O servidor resolve por
+             existência para que universo (voucher comercial ou código de
+             capacidades) o código pertence e diz o caso concreto; esta
+             página não adivinha nada nem mostra dois formulários. -->
+        <div
+            v-if="canRedeemCode"
+            class="space-y-3 rounded-lg border border-border p-4"
+        >
             <div class="space-y-1">
-                <h3 class="text-sm font-medium">Tem um voucher?</h3>
+                <h3 class="text-sm font-medium">Tem um código?</h3>
                 <p class="text-sm text-muted-foreground">
-                    Se recebeu um código de acesso do Lapispro, resgate-o aqui.
-                    Um código de desconto aplica-se no passo de subscrição.
+                    Introduza um código promocional ou de acesso fornecido
+                    pela equipa Lapispro.
                 </p>
             </div>
 
             <form
                 class="flex flex-col gap-2 sm:flex-row sm:items-start"
-                @submit.prevent="redeemVoucher"
+                @submit.prevent="redeemCode"
             >
                 <div class="min-w-0 flex-1">
                     <input
-                        v-model="voucherForm.voucher_code"
+                        v-model="codeForm.code"
                         type="text"
                         autocomplete="off"
                         autocapitalize="characters"
                         spellcheck="false"
-                        placeholder="Escreva o código como o recebeu"
-                        class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                        aria-label="Código do voucher"
+                        maxlength="64"
+                        placeholder="XXXX-XXXX-XXXX-XXXX"
+                        class="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-sm"
+                        aria-label="Código"
                     />
-                    <InputError
-                        :message="voucherForm.errors.voucher_code"
-                        class="mt-1"
-                    />
+                    <InputError :message="codeForm.errors.code" class="mt-1" />
                 </div>
                 <Button
                     type="submit"
                     variant="outline"
-                    :disabled="voucherForm.processing"
+                    :disabled="codeForm.processing"
                 >
-                    Resgatar
+                    Resgatar código
                 </Button>
             </form>
         </div>
-        <section v-if="canRedeemCapabilityCode" class="space-y-3 rounded-lg border border-border p-4">
-            <div><h3 class="text-sm font-medium">Código de capacidades temporárias</h3><p class="text-sm text-muted-foreground">Introduza um código fornecido pela equipa Lapispro. O plano da organização não será alterado.</p></div>
-            <form class="flex flex-col gap-2 sm:flex-row" @submit.prevent="redeemCapabilityCode"><input v-model="capabilityForm.capability_code" required maxlength="64" autocomplete="off" placeholder="XXXX-XXXX-XXXX-XXXX" class="min-w-0 flex-1 rounded-md border border-border bg-background px-3 py-2 font-mono text-sm" /><Button :disabled="capabilityForm.processing">Resgatar código</Button></form>
-            <InputError :message="capabilityForm.errors.capability_code" />
-        </section>
+
+        <!-- Benefícios ativos: capacidades concedidas por um código de
+             capacidades ou diretamente por um administrador. Nunca sugere
+             que o plano mudou — o plano mostrado no resto da página não é
+             tocado por isto. Sempre presente, mesmo para quem não pode
+             resgatar um código (um benefício pode ter sido atribuído
+             diretamente). -->
+        <div class="space-y-3 rounded-lg border border-border p-4">
+            <h3 class="text-sm font-medium">Benefícios ativos</h3>
+            <p
+                v-if="activeCapabilityBenefits.length === 0"
+                class="text-sm text-muted-foreground"
+            >
+                Não há benefícios temporários ativos nesta organização.
+            </p>
+            <ul v-else class="space-y-2">
+                <li
+                    v-for="benefit in activeCapabilityBenefits"
+                    :key="benefit.moduleKey"
+                    class="text-sm text-muted-foreground"
+                >
+                    <span class="font-medium text-foreground">{{
+                        benefit.label
+                    }}</span>
+                    até {{ formatDate(benefit.expiresAt) }}
+                    <template v-if="benefit.origin">
+                        — {{ benefit.origin }}</template
+                    >
+                </li>
+            </ul>
+        </div>
     </div>
 </template>

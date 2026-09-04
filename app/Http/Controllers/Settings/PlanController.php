@@ -9,13 +9,19 @@ use App\Actions\Organizations\ActivateProTrial;
 use App\Http\Controllers\Concerns\RefusesDuringImpersonation;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\RedeemCapabilityVoucherRequest;
+use App\Http\Requests\Settings\RedeemUnifiedCodeRequest;
 use App\Models\BillingPeriod;
+use App\Models\CapabilityGrant;
+use App\Models\CapabilityGrantSource;
+use App\Models\CapabilityVoucher;
 use App\Models\CommercialCondition;
+use App\Models\Module;
 use App\Models\Organization;
 use App\Models\OrganizationSubscription;
 use App\Models\Plan;
 use App\Models\SubscriptionStatus;
 use App\Models\User;
+use App\Models\Voucher;
 use App\Models\VoucherBenefitType;
 use App\Services\Organizations\ChangeOrganizationPlan;
 use App\Support\Commercial\ContractedTerms;
@@ -29,6 +35,7 @@ use App\Support\Trial\TrialException;
 use App\Support\Trial\TrialPolicy;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
@@ -93,8 +100,74 @@ class PlanController extends Controller
             'currentPlanName' => $inForce?->plan?->name,
             'trial' => $state === 'trial_active' ? $this->trialPayload($inForce) : null,
             'usedTrialBefore' => $state === 'pro_active' ? $usedTrialBefore : null,
-            'canRedeemCapabilityCode' => $request->user()?->can('subscribe', $organization) === true,
+            'canRedeemCode' => $request->user()?->can('subscribe', $organization) === true,
+            'activeCapabilityBenefits' => $this->activeCapabilityBenefits($organization),
         ]);
+    }
+
+    /**
+     * "Benefícios ativos" — uma linha por CAPACIDADE, não por grant.
+     *
+     * A mesma condição de "ativo" que `Entitlements::resolve()` já usa para os
+     * grants temporários (não revogado, dentro da janela `starts_at`/`expires_at`)
+     * — lida aqui apenas para APRESENTAÇÃO, nunca para decidir acesso: a decisão
+     * continua exclusivamente em `Entitlements`.
+     *
+     * Quando duas linhas concedem a mesma capacidade em simultâneo (grants
+     * sobrepostos), fica só uma entrada — a da data de expiração mais longa —
+     * para não confundir o professor com duplicados.
+     *
+     * @return list<array{moduleKey: string, label: string, expiresAt: string, origin: string|null}>
+     */
+    protected function activeCapabilityBenefits(Organization $organization): array
+    {
+        $now = Carbon::now();
+
+        $grants = CapabilityGrant::query()
+            ->withoutGlobalScope('organization')
+            ->where('organization_id', $organization->getKey())
+            ->whereNull('revoked_at')
+            ->where('starts_at', '<=', $now)
+            ->where('expires_at', '>', $now)
+            ->with(['modules', 'capabilityVoucher'])
+            ->get();
+
+        /** @var array<string, array{module: Module, expiresAt: Carbon, grant: CapabilityGrant}> $winners */
+        $winners = [];
+
+        foreach ($grants as $grant) {
+            foreach ($grant->modules as $module) {
+                $current = $winners[$module->key] ?? null;
+
+                if ($current === null || $grant->expires_at->greaterThan($current['expiresAt'])) {
+                    $winners[$module->key] = ['module' => $module, 'expiresAt' => $grant->expires_at, 'grant' => $grant];
+                }
+            }
+        }
+
+        $benefits = array_map(function (array $winner): array {
+            /** @var Module $module */
+            $module = $winner['module'];
+            /** @var CapabilityGrant $grant */
+            $grant = $winner['grant'];
+
+            $origin = match (true) {
+                $grant->source === CapabilityGrantSource::Voucher && $grant->capabilityVoucher !== null => $grant->capabilityVoucher->code,
+                $grant->source === CapabilityGrantSource::Direct => (string) __('Atribuição direta'),
+                default => null,
+            };
+
+            return [
+                'moduleKey' => $module->key,
+                'label' => $module->name,
+                'expiresAt' => $winner['expiresAt']->toIso8601String(),
+                'origin' => $origin,
+            ];
+        }, array_values($winners));
+
+        usort($benefits, fn (array $a, array $b): int => $a['label'] <=> $b['label']);
+
+        return $benefits;
     }
 
     public function redeemCapabilityVoucher(RedeemCapabilityVoucherRequest $request): RedirectResponse
@@ -102,14 +175,66 @@ class PlanController extends Controller
         $this->refuseDuringImpersonation($request);
         $organization = $this->currentOrganization->get();
         Gate::authorize('subscribe', $organization);
+
         try {
             $grant = $this->capabilityVoucherRedemptions->handle((string) $request->validated('capability_code'), $organization, $this->user($request));
         } catch (CapabilityVoucherUnavailable $exception) {
             return back()->withErrors(['capability_code' => $exception->getMessage()]);
         }
+
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Capacidades disponíveis até :date.', ['date' => $grant->expires_at->format('d/m/Y')])]);
 
         return to_route('settings.plan.edit');
+    }
+
+    /**
+     * O único campo "Tem um código?" da página do Plano — resolve por
+     * EXISTÊNCIA, nunca por adivinhação: pertence ao universo capability
+     * (`capability_vouchers`) sempre que uma linha existir aí, seja qual for o
+     * seu estado, e só cai para o universo comercial (`vouchers`) quando não
+     * existir nenhuma. Um código que exista nas duas tabelas (não devia
+     * acontecer — ver as verificações cruzadas na emissão — mas pode ter sido
+     * emitido antes delas) resolve-se sempre para capability, nunca comercial.
+     *
+     * O plano-alvo é sempre 'pro', fixo no servidor: este formulário não tem
+     * campo de plano.
+     */
+    public function redeemCode(RedeemUnifiedCodeRequest $request): RedirectResponse
+    {
+        $this->refuseDuringImpersonation($request);
+        $organization = $this->currentOrganization->get();
+        Gate::authorize('subscribe', $organization);
+
+        $code = (string) $request->validated('code');
+
+        if (CapabilityVoucher::query()->code($code)->exists()) {
+            try {
+                $grant = $this->capabilityVoucherRedemptions->handle($code, $organization, $this->user($request));
+            } catch (CapabilityVoucherUnavailable $exception) {
+                return back()->withErrors(['code' => $exception->getMessage()]);
+            }
+
+            $moduleCount = $grant->modules()->count();
+
+            Inertia::flash('toast', [
+                'type' => 'success',
+                'message' => trans_choice(
+                    'Este código ativou acesso temporário a :count funcionalidade até :date.|Este código ativou acesso temporário a :count funcionalidades até :date.',
+                    $moduleCount,
+                    ['count' => $moduleCount, 'date' => $grant->expires_at->format('d/m/Y')],
+                ),
+            ]);
+
+            return to_route('settings.plan.edit');
+        }
+
+        if (Voucher::query()->code($code)->exists()) {
+            $target = Plan::where('key', 'pro')->firstOrFail();
+
+            return $this->redeemCommercialVoucher($code, $target, $organization, $request, 'code');
+        }
+
+        return back()->withErrors(['code' => __('Este código não é válido ou já não está disponível.')]);
     }
 
     /**
@@ -165,20 +290,32 @@ class PlanController extends Controller
 
         $target = Plan::where('key', $validated['plan_key'])->firstOrFail();
 
+        return $this->redeemCommercialVoucher($validated['voucher_code'], $target, $organization, $request, 'voucher_code');
+    }
+
+    /**
+     * O RESGATE E A MUDANÇA DE PLANO ACONTECEM NA MESMA TRANSAÇÃO, partilhada
+     * pelo endpoint antigo (`redeemVoucher`, alvo explícito no pedido) e pelo
+     * campo único (`redeemCode`, alvo sempre 'pro'). `$errorField` é o único
+     * ponto onde os dois divergem: cada chamador mostra o erro na chave do seu
+     * próprio formulário.
+     */
+    protected function redeemCommercialVoucher(string $rawCode, Plan $target, Organization $organization, Request $request, string $errorField): RedirectResponse
+    {
         if ($target->key === 'institutional') {
-            return back()->withErrors(['voucher_code' => __(
+            return back()->withErrors([$errorField => __(
                 'O plano Institucional ainda não está disponível para adesão — fale connosco.',
             )]);
         }
 
-        $resolution = $this->vouchers->resolve($validated['voucher_code'], $organization, $target);
+        $resolution = $this->vouchers->resolve($rawCode, $organization, $target);
 
         if (! $resolution->isValid() || $resolution->voucher === null) {
-            return back()->withErrors(['voucher_code' => $this->vouchers->messageFor($resolution->outcome)]);
+            return back()->withErrors([$errorField => $this->vouchers->messageFor($resolution->outcome)]);
         }
 
         if ($resolution->voucher->benefit_type !== VoucherBenefitType::FreeUntil) {
-            return back()->withErrors(['voucher_code' => __(
+            return back()->withErrors([$errorField => __(
                 'Este código define um preço e resgata-se no checkout, não aqui.',
             )]);
         }
@@ -205,7 +342,7 @@ class PlanController extends Controller
                 return $subscription;
             });
         } catch (VoucherUnavailable $exception) {
-            return back()->withErrors(['voucher_code' => $exception->getMessage()]);
+            return back()->withErrors([$errorField => $exception->getMessage()]);
         }
 
         Inertia::flash('toast', [

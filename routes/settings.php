@@ -42,6 +42,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->middleware('throttle:10,1')
         ->name('settings.plan.redeem-capability-voucher');
 
+    // O campo único "Tem um código?" (resources/js/pages/settings/Plan.vue) —
+    // resolve para o universo comercial ou de capacidades por EXISTÊNCIA do
+    // código, ver PlanController::redeemCode(). As duas rotas acima continuam
+    // a funcionar tal como antes; esta não as substitui.
+    Route::post('settings/plan/code', [PlanController::class, 'redeemCode'])
+        ->middleware('throttle:10,1')
+        ->name('settings.plan.redeem-code');
+
     /*
      * Checkout por transferência bancária. Sem parâmetro de plano na rota: só o
      * Pro tem preço, e deixar o plano vir do URL abriria a porta a subscrever o
