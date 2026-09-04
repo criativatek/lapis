@@ -242,6 +242,47 @@
     }
 }
 
+/*
+ * LÁPIS → TINTA (DESIGN.md, a assinatura da marca): o que o sistema propõe
+ * está escrito a lápis — cinza, itálico, sublinhado tracejado — e só a
+ * decisão do professor assenta a tinta. A grelha diz de longe o que ainda é
+ * do sistema e o que já é de quem decide (§3.3 tornada visível).
+ */
+@utility pencil-note {
+    color: var(--pencil);
+    font-style: italic;
+    text-decoration-line: underline;
+    text-decoration-style: dashed;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+    text-decoration-color: color-mix(in srgb, var(--pencil) 55%, transparent);
+}
+
+/*
+ * O gesto «tinta a fixar»: ~200ms de assentamento (blur e peso), com o
+ * easing único dos três gestos. Sem modal, sem confete.
+ */
+@keyframes ink-settle {
+    from {
+        filter: blur(0.6px);
+        opacity: 0.55;
+    }
+    to {
+        filter: blur(0);
+        opacity: 1;
+    }
+}
+
+@utility ink-settle {
+    animation: ink-settle 200ms var(--ease-relief);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ink-settle {
+        animation: none;
+    }
+}
+
 @utility card-soft {
     box-shadow:
         0 1px 2px rgba(15, 23, 42, 0.04),

@@ -25,6 +25,25 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.124.1] — 2026-09-04
+
+Lápis→tinta — a assinatura do DESIGN.md chega às classificações.
+
+### Alterado
+
+- **A coluna Proposta está sempre escrita a lápis**: cinza (`--pencil`),
+  itálico, sublinhado tracejado. É a letra do sistema e nunca se veste de
+  decisão — «o sistema propõe, o professor confirma» deixou de ser só a frase
+  da página e passou a ser o desenho dela.
+- **O Nível atribuído assenta a tinta** com o gesto «tinta a fixar»: ~200ms
+  de assentamento (`--ease-relief`), re-disparado quando a decisão nasce ou
+  muda; `prefers-reduced-motion` respeitado.
+- Utilitários novos em `app.css`: `pencil-note` e `ink-settle`.
+
+A guarda da marca (`BrandingTest`) apanhou um «LÁPIS» num comentário meu —
+o produto chama-se Lapispro desde a 0.79.0 — e obrigou-me à minúscula. Boa
+guarda.
+
 ## [0.124.0] — 2026-09-04
 
 O DESIGN.md começa a existir no ecrã — fatias 1 e 2: papel + voz humana +

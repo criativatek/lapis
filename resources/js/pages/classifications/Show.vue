@@ -365,9 +365,13 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                                     <span :class="{ 'text-muted-foreground': row.weighted_average === null }">{{ pct(row.weighted_average) }}</span>
                                 </td>
                                 <td class="px-3 py-2 text-right tabular-nums">
-                                    <span v-if="row.classification" :class="{ 'text-muted-foreground': row.classification.proposal.value === null }">
-                                        {{ proposalLabel(row.classification.proposal) }}
-                                    </span>
+                                    <!-- A proposta está SEMPRE escrita a lápis. É a
+                                         letra do sistema, e nunca se veste de decisão
+                                         (DESIGN.md, lápis→tinta). -->
+                                    <span
+                                        v-if="row.classification && row.classification.proposal.value !== null"
+                                        class="pencil-note"
+                                    >{{ proposalLabel(row.classification.proposal) }}</span>
                                     <span v-else class="text-muted-foreground">—</span>
                                 </td>
                                 <td class="px-3 py-2 text-right tabular-nums">
@@ -382,7 +386,13 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                                      different number about a different thing. -->
                                 <td class="px-3 py-2 text-right font-semibold tabular-nums">
                                     <template v-if="row.classification?.decision">
-                                        <span :title="decisionTitle(row.classification.decision)">
+                                        <!-- A TINTA: assenta com o gesto de ~200ms quando a
+                                             decisão nasce ou muda (key pelo texto). -->
+                                        <span
+                                            :key="decisionText(row.classification.decision)"
+                                            class="ink-settle"
+                                            :title="decisionTitle(row.classification.decision)"
+                                        >
                                             {{ decisionText(row.classification.decision) }}
                                         </span>
                                         <CircleAlert
