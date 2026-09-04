@@ -25,6 +25,17 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.124.4] — 2026-09-04
+
+### Alterado
+
+- **O relatório exportado ganhou papel timbrado a sério** (SUP-DTQLDG): o
+  bloco da escola fecha com uma régua fina, há mais luz entre o timbre e o
+  corpo (margem de topo 36 mm no PDF, 3 cm no Word), e o título do documento
+  passa a serifa (DejaVu Serif no PDF, Georgia no Word, Newsreader na
+  pré-visualização) — nas três superfícies, porque a pré-visualização é o
+  mesmo documento que o ficheiro.
+
 ## [0.124.3] — 2026-09-04
 
 ### Alterado

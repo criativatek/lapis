@@ -31,7 +31,10 @@ const logoFailed = ref(false);
     the report's own title reads as the report's title.
 -->
 <template>
-    <header class="flex items-start gap-3">
+    <!-- Papel timbrado: o bloco fecha com uma régua fina, como num documento
+         impresso — é a régua, mais do que o tamanho, que o faz ler-se como
+         cabeçalho e não como primeiro parágrafo (SUP-DTQLDG). -->
+    <header class="flex items-start gap-3 border-b border-border pb-5">
         <img
             v-if="identity.logo_url && !logoFailed"
             :src="identity.logo_url"
@@ -41,7 +44,7 @@ const logoFailed = ref(false);
         />
 
         <div class="min-w-0 flex-1">
-            <p class="text-sm font-semibold leading-snug break-words">{{ identity.name }}</p>
+            <p class="text-[15px] font-semibold leading-snug break-words">{{ identity.name }}</p>
             <p
                 v-for="line in identity.header_lines"
                 :key="line"

@@ -1204,9 +1204,11 @@ function derive() {
                     <ReportLetterhead :identity="identity" />
 
                     <!-- One hierarchy: the document's name, then what it is
-                         about. Neither repeats the other (§47). -->
-                    <div class="mt-8 border-b border-border pb-5">
-                        <h1 class="text-xl font-semibold leading-tight">{{ heading.title }}</h1>
+                         about. Neither repeats the other (§47). O título é em
+                         serifa — é um documento, não um ecrã — e respira mais
+                         desde o timbre (SUP-DTQLDG). -->
+                    <div class="mt-12 border-b border-border pb-5">
+                        <h1 class="font-serif text-[1.55rem] leading-tight">{{ heading.title }}</h1>
                         <p v-if="heading.subtitle" class="mt-1.5 text-sm text-muted-foreground">
                             {{ heading.subtitle }}
                         </p>

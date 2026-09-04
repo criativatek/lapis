@@ -25,10 +25,12 @@
     <meta charset="utf-8">
     <title>{{ $document['title'] }}</title>
     <style>
-        /* Room for a three-line letterhead above and one footer line below,
-           with enough clearance that neither can meet the text. */
+        /* Room for a four-line letterhead above and one footer line below,
+           with enough clearance that neither can meet the text. The top grew
+           from 30mm after SUP-DTQLDG: the timbre and the body need daylight
+           between them, on every page. */
         @page {
-            margin: 30mm 20mm 24mm 20mm;
+            margin: 36mm 20mm 24mm 20mm;
         }
 
         body {
@@ -42,10 +44,13 @@
            dompdf and are painted once per page. */
         #letterhead {
             position: fixed;
-            top: -20mm;
+            top: -26mm;
             left: 0;
             right: 0;
-            height: 16mm;
+            height: 20mm;
+            /* A régua fina fecha o timbre — papel timbrado, não um
+               parágrafo perdido no topo. */
+            border-bottom: 0.4pt solid #ccc;
         }
 
         #letterhead td {
@@ -75,8 +80,12 @@
             padding-top: 2.5mm;
         }
 
+        /* Em serifa: é um documento. DejaVu Serif embarca no dompdf tal
+           como a Sans, por isso rende igual em qualquer instalação. */
         h1 {
-            font-size: 15pt;
+            font-family: DejaVu Serif, serif;
+            font-size: 17pt;
+            font-weight: normal;
             line-height: 1.25;
             margin: 0 0 1.5mm 0;
         }
@@ -84,7 +93,7 @@
         .subtitle {
             font-size: 9pt;
             color: #555;
-            margin: 0 0 7mm 0;
+            margin: 0 0 9mm 0;
         }
 
         .draft {

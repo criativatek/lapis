@@ -51,9 +51,11 @@ class DocxRenderer
         // classificações atribuídas» alone at the foot of a page with its table
         // overleaf — the most common way a generated .docx reads as machine
         // output rather than as a document (§48).
+        // Serif, como no PDF e na pré-visualização: é um documento, não um
+        // ecrã. Georgia existe em qualquer Windows/Mac/LibreOffice.
         $word->addTitleStyle(
             1,
-            ['size' => 16, 'bold' => true],
+            ['size' => 18, 'bold' => false, 'name' => 'Georgia'],
             ['spaceAfter' => 120, 'keepNext' => true, 'keepLines' => true],
         );
         $word->addTitleStyle(
@@ -66,7 +68,9 @@ class DocxRenderer
             // 2.5 cm all round, in twips. The old 1.8 cm sides gave a 17 cm
             // measure — too long a line for 11 pt, and the reason the file read
             // as compressed beside its own PDF.
-            'marginTop' => 1418,
+            // 3 cm no topo (era 2.5): o timbre e o corpo precisam de luz
+            // entre eles — a queixa do SUP-DTQLDG era exactamente esta.
+            'marginTop' => 1701,
             'marginBottom' => 1418,
             'marginLeft' => 1418,
             'marginRight' => 1418,
@@ -107,21 +111,28 @@ class DocxRenderer
 
         // A two-column table rather than floats: Word's own layout primitive,
         // and the one that survives being opened in LibreOffice too.
+        // A régua fina por baixo das células fecha o timbre — papel
+        // timbrado, como no PDF e na pré-visualização (SUP-DTQLDG).
+        $rule = ['borderBottomSize' => 4, 'borderBottomColor' => 'CCCCCC'];
+
         $table = $header->addTable(['borderSize' => 0, 'cellMargin' => 0, 'width' => 100 * 50, 'unit' => 'pct']);
         $table->addRow();
 
         if ($logoPath !== null) {
-            $table->addCell(1000)->addImage($logoPath, ['height' => 36, 'alignment' => Jc::START]);
+            $table->addCell(1000, $rule)->addImage($logoPath, ['height' => 36, 'alignment' => Jc::START]);
         }
 
-        $cell = $table->addCell($logoPath === null ? 9600 : 8600);
+        $cell = $table->addCell($logoPath === null ? 9600 : 8600, $rule);
         // Smaller than the document's own title, and tight: a letterhead
         // identifies the school, it is not a section of the report (§50).
-        $cell->addText($identity['name'], ['bold' => true, 'size' => 9.5], ['spaceAfter' => 0]);
+        $cell->addText($identity['name'], ['bold' => true, 'size' => 10], ['spaceAfter' => 0]);
 
         foreach ($identity['header_lines'] as $line) {
             $cell->addText($line, ['size' => 7.5, 'color' => '666666'], ['spaceAfter' => 0]);
         }
+
+        // Ar entre a régua e onde o corpo começa a contar o espaço.
+        $cell->addText('', [], ['spaceAfter' => 60]);
 
         return $logoPath;
     }
