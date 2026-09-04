@@ -25,6 +25,13 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.120.1] — 2026-09-04
+
+O contexto de design (`.impeccable.md`) ganha a secção «Aplicação
+autenticada»: tokens com marca nos dois temas, as quatro peças partilhadas, a
+regra 60/30/10 e a convenção das superfícies — para a próxima mão (humana ou
+não) desenhar a partir do que existe em vez de redescobrir.
+
 ## [0.120.0] — 2026-09-04
 
 Os quatro padrões repetidos viram componentes, e o Painel ganha as tintas do
