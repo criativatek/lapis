@@ -185,6 +185,10 @@ class ReportExportTest extends TestCase
         $this->assertNotNull($footer, 'O documento tem de ter rodapé.');
 
         $this->assertStringContainsString($this->xmlSafe('Agrupamento de Escolas de Teste'), $header);
+        $document = (string) $zip->getFromName('word/document.xml');
+        $this->assertStringContainsString('<w:pgMar w:top="2268"', $document);
+        $this->assertStringContainsString('w:header="709"', $document);
+        $this->assertStringContainsString('<w:spacing w:after="60"', $header);
         $this->assertStringContainsString('PAGE', $footer);
         // Real tab stops, not the two characters «\t».
         $this->assertStringNotContainsString('\t', $footer);

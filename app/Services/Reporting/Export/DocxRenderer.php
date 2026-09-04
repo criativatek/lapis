@@ -68,9 +68,9 @@ class DocxRenderer
             // 2.5 cm all round, in twips. The old 1.8 cm sides gave a 17 cm
             // measure — too long a line for 11 pt, and the reason the file read
             // as compressed beside its own PDF.
-            // 3 cm no topo (era 2.5): o timbre e o corpo precisam de luz
-            // entre eles — a queixa do SUP-DTQLDG era exactamente esta.
-            'marginTop' => 1701,
+            // 4 cm at the top keeps the body at a stable position below the
+            // variable-height letterhead (SUP-TZX4VG).
+            'marginTop' => 2268,
             'marginBottom' => 1418,
             'marginLeft' => 1418,
             'marginRight' => 1418,

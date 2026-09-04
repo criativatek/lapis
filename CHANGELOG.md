@@ -25,6 +25,14 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.124.5] — 2026-09-04
+
+### Corrigido
+
+- **O cabeçalho dos relatórios em Word deixa de ficar colado ao corpo**
+  (SUP-TZX4VG): a margem superior passa a acomodar o timbre completo e mantém
+  o início do documento estável, com ou sem logótipo e linhas institucionais.
+
 ## [0.124.4] — 2026-09-04
 
 ### Alterado
