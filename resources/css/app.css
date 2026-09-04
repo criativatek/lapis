@@ -12,6 +12,9 @@
         Instrument Sans, ui-sans-serif, system-ui, sans-serif,
         'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
         'Noto Color Emoji';
+    /* A voz humana (DESIGN.md): Newsreader, e APENAS na saudação do dia,
+       nas horas do «Arrumado» e na frase de fecho. */
+    --font-serif: Newsreader, ui-serif, Georgia, 'Times New Roman', serif;
 
     --radius-lg: var(--radius);
     --radius-md: calc(var(--radius) - 2px);
@@ -288,8 +291,10 @@
 }
 
 :root {
-    --background: hsl(0 0% 100%);
-    --foreground: hsl(0 0% 3.9%);
+    /* PAPEL, não ecrã (DESIGN.md «Papel, Lápis, Tinta»): o fundo é quente
+       (#FAF8F2) e os cartões continuam brancos — objectos pousados no papel. */
+    --background: hsl(42 30% 97%);
+    --foreground: hsl(220 25% 12%);
     --card: hsl(0 0% 100%);
     --card-foreground: hsl(0 0% 3.9%);
     --popover: hsl(0 0% 100%);
@@ -299,16 +304,17 @@
     --primary-foreground: hsl(0 0% 98%);
     --secondary: hsl(0 0% 92.1%);
     --secondary-foreground: hsl(0 0% 9%);
-    --muted: hsl(0 0% 96.1%);
-    /* 43% e não 45.1%: sobre --muted (96.1%) o valor antigo dava 4.35:1 —
-       abaixo de AA — e é este par que os theads de tabela usam. */
-    --muted-foreground: hsl(0 0% 43%);
+    --muted: hsl(42 24% 94%);
+    /* 40% (era 43%): o muted aqueceu e clareou ligeiramente — o teste de
+       contraste exige ≥4.5 neste par (theads de tabela). */
+    --muted-foreground: hsl(220 8% 40%);
     --accent: hsl(38 92% 95%);
     --accent-foreground: hsl(219 45% 19%);
     --destructive: hsl(0 84.2% 60.2%);
     --destructive-foreground: hsl(0 0% 98%);
-    --border: hsl(0 0% 92.8%);
-    --input: hsl(0 0% 89.8%);
+    /* Fios de papel (#E8E4DA-família), não cinza de ecrã. */
+    --border: hsl(40 20% 88%);
+    --input: hsl(40 18% 85%);
     --ring: hsl(219 45% 19%);
     --chart-1: hsl(219 45% 30%);
     --chart-2: hsl(38 88% 55%);
@@ -325,6 +331,11 @@
     --sidebar-accent-foreground: hsl(0 0% 98%);
     --sidebar-border: hsl(219 34% 24%);
     --sidebar-ring: hsl(38 88% 65%);
+    /* Lápis: a cor das PROPOSTAS do sistema (itálico, tracejado) antes de o
+       professor as assentar a tinta. #767E90. */
+    --pencil: hsl(222 11% 51%);
+    /* O easing único dos três gestos (DESIGN.md §Movimento). */
+    --ease-relief: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /*
@@ -378,6 +389,9 @@
     --sidebar-accent-foreground: hsl(214 30% 92%);
     --sidebar-border: hsl(219 34% 18%);
     --sidebar-ring: hsl(38 88% 65%);
+    /* Lápis no escuro: #8B93A6. */
+    --pencil: hsl(220 12% 60%);
+    --ease-relief: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @layer base {

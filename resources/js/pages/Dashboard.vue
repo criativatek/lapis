@@ -1,12 +1,9 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
-import { ArrowRight, BarChart3, CheckCircle2, Circle, ClipboardList, Send, Users, X } from '@lucide/vue';
+import { ArrowRight, CheckCircle2, Circle, X } from '@lucide/vue';
 import { computed } from 'vue';
-import PageHeader from '@/components/PageHeader.vue';
-import StatCard from '@/components/StatCard.vue';
 import { Button } from '@/components/ui/button';
 import { qualitativeToneClasses } from '@/lib/qualitativeTone';
-import type { SurfaceTone } from '@/lib/surfaces';
 import { card } from '@/lib/surfaces';
 
 type ClassCard = {
@@ -60,14 +57,89 @@ function dismissFirstSteps(): void {
     router.post('/dashboard/onboarding-dismissal', {}, { preserveScroll: true });
 }
 
-// Um tom por cartão, e pálido de propósito (as tintas do site público dentro
-// da app — plano «mais cor»): céu = organização, âmbar = trabalho pendente,
-// menta = pronto a seguir. A cor forte da página continua a ser a acção azul.
-const summary = computed<{ label: string; value: number; icon: typeof Users; tone: SurfaceTone }[]>(() => [
-    { label: 'Turmas', value: props.totals.classes, icon: Users, tone: 'sky' },
-    { label: 'Por confirmar', value: props.totals.pending_confirmation, icon: ClipboardList, tone: 'amber' },
-    { label: 'Por publicar', value: props.totals.pending_publication, icon: Send, tone: 'mint' },
-]);
+/*
+ * A HOME DE FECHO (DESIGN.md, variante C2 aprovada): a página não mostra a
+ * ferramenta, mostra o dia — Agora → A seguir → Arrumado → «podes fechar».
+ * Prosa antes de números; âmbar só no FEITO; nenhuma estimativa inventada
+ * («nada inventado» — os minutos do mock ficaram no mock).
+ */
+const pendingOf = (schoolClass: ClassCard): number =>
+    schoolClass.pending_confirmation + schoolClass.pending_publication;
+
+/** A tarefa mais pesada é o «Agora»; o resto espera em fila. */
+const byWeight = computed(() => [...props.classes].sort((a, b) => pendingOf(b) - pendingOf(a)));
+
+const agora = computed(() => (byWeight.value.length > 0 && pendingOf(byWeight.value[0]) > 0 ? byWeight.value[0] : null));
+
+const aSeguir = computed(() => byWeight.value.slice(1).filter((schoolClass) => pendingOf(schoolClass) > 0));
+
+const arrumado = computed(() => props.classes.filter((schoolClass) => pendingOf(schoolClass) === 0));
+
+/** Tudo em dia — a única condição em que a frase de fecho aparece. */
+const allDone = computed(
+    () => props.classes.length > 0 && props.totals.pending_confirmation === 0 && props.totals.pending_publication === 0,
+);
+
+/** Saudação pela hora de Lisboa — a app vive em Europe/Lisbon. */
+const greeting = computed(() => {
+    const hour = Number(
+        new Intl.DateTimeFormat('pt-PT', { hour: 'numeric', hour12: false, timeZone: 'Europe/Lisbon' }).format(new Date()),
+    );
+
+    if (hour < 6) {
+        return 'Boa noite';
+    }
+
+    if (hour < 13) {
+        return 'Bom dia';
+    }
+
+    if (hour < 20) {
+        return 'Boa tarde';
+    }
+
+    return 'Boa noite';
+});
+
+/** O estado do dia em PROSA, só com factos que a base sabe. */
+const statusPhrase = computed(() => {
+    const confirm = props.totals.pending_confirmation;
+    const publish = props.totals.pending_publication;
+
+    if (props.classes.length === 0) {
+        return 'Ainda sem turmas neste ano letivo.';
+    }
+
+    if (confirm === 0 && publish === 0) {
+        return 'Tudo em dia.';
+    }
+
+    const parts: string[] = [];
+
+    if (confirm > 0) {
+        parts.push(`${confirm} ${confirm === 1 ? 'classificação por confirmar' : 'classificações por confirmar'}`);
+    }
+
+    if (publish > 0) {
+        parts.push(`${publish} por publicar`);
+    }
+
+    return `Falta ${parts.join(' e ')}.`;
+});
+
+function pendingLabel(schoolClass: ClassCard): string {
+    const parts: string[] = [];
+
+    if (schoolClass.pending_confirmation > 0) {
+        parts.push(`${schoolClass.pending_confirmation} por confirmar`);
+    }
+
+    if (schoolClass.pending_publication > 0) {
+        parts.push(`${schoolClass.pending_publication} por publicar`);
+    }
+
+    return parts.join(' · ');
+}
 </script>
 
 <template>
@@ -76,8 +148,10 @@ const summary = computed<{ label: string; value: number; icon: typeof Users; ton
     <div class="space-y-6 p-4">
         <div class="flex items-start justify-between gap-3">
             <div>
-                <h1 class="text-2xl font-semibold tracking-tight">Olá, {{ firstName }}</h1>
-                <p class="text-sm text-muted-foreground">Aqui está o que precisa da sua atenção.</p>
+                <!-- A VOZ HUMANA (DESIGN.md): saudação em serifa; o estado do
+                     dia em prosa, só com factos reais. -->
+                <h1 class="font-serif text-[1.75rem] leading-snug text-foreground">{{ greeting }}, {{ firstName }}.</h1>
+                <p class="mt-0.5 font-serif text-lg text-muted-foreground">{{ statusPhrase }}</p>
             </div>
             <Link href="/activity" class="text-sm text-muted-foreground hover:underline">Registo de atividade</Link>
         </div>
@@ -163,74 +237,68 @@ const summary = computed<{ label: string; value: number; icon: typeof Users; ton
         </div>
 
         <template v-else>
-            <div class="grid gap-4 sm:grid-cols-3">
-                <StatCard
-                    v-for="item in summary"
-                    :key="item.label"
-                    :label="item.label"
-                    :value="item.value"
-                    :icon="item.icon"
-                    :tone="item.tone"
-                />
-            </div>
+            <!-- AGORA — a tarefa mais pesada, uma só, com a acção à vista. -->
+            <section v-if="agora">
+                <h2 class="text-base font-semibold">Agora</h2>
+                <div class="mt-1 mb-3 h-0.5 w-12 rounded bg-(--brand-amber)" aria-hidden="true"></div>
+                <div :class="[card('plain'), 'card-soft p-5']">
+                    <div class="flex flex-wrap items-end justify-between gap-4">
+                        <div class="min-w-0">
+                            <p class="text-lg font-semibold">{{ agora.label }} — {{ agora.subject }}</p>
+                            <p class="mt-0.5 text-sm text-muted-foreground">{{ pendingLabel(agora) }}</p>
+                            <span v-if="!agora.has_profile" :class="['mt-2 inline-block rounded-full px-2 py-0.5 text-xs', qualitativeToneClasses.amber]">sem perfil de avaliação</span>
+                        </div>
+                        <Button as-child>
+                            <Link :href="`/classes/${agora.ulid}/classifications`">Continuar correção</Link>
+                        </Button>
+                    </div>
+                </div>
+            </section>
 
-            <div>
-                <PageHeader title="As minhas turmas" variant="small" class="mb-3">
-                    <template #actions>
-                        <Link href="/classes" class="text-sm text-primary hover:underline">Ver todas</Link>
-                    </template>
-                </PageHeader>
+            <!-- A SEGUIR — fila pautada, sem cartões: espera em silêncio. -->
+            <section v-if="aSeguir.length > 0">
+                <h2 class="text-base font-semibold">A seguir</h2>
+                <ul class="mt-2 divide-y divide-border border-y border-border">
+                    <li v-for="schoolClass in aSeguir" :key="schoolClass.ulid" class="flex flex-wrap items-center justify-between gap-3 py-3">
+                        <div class="min-w-0">
+                            <span class="font-semibold">{{ schoolClass.label }}</span>
+                            <span class="text-muted-foreground"> — {{ schoolClass.subject }}</span>
+                            <span class="ml-2 text-sm text-muted-foreground">{{ pendingLabel(schoolClass) }}</span>
+                        </div>
+                        <Link :href="`/classes/${schoolClass.ulid}/classifications`" class="shrink-0 text-sm font-medium text-primary hover:underline">Continuar</Link>
+                    </li>
+                </ul>
+            </section>
 
-                <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    <div v-for="schoolClass in classes" :key="schoolClass.ulid" :class="[card('plain'), 'card-soft flex flex-col p-4']">
-                        <div class="flex items-start justify-between gap-2">
-                            <div>
-                                <div class="font-semibold">{{ schoolClass.label }}</div>
-                                <div class="text-sm text-muted-foreground">{{ schoolClass.subject }} · {{ schoolClass.academic_year }}</div>
+            <!-- ARRUMADO — o âmbar é do FEITO. Sem horas inventadas: a base
+                 não sabe «guardado às» por turma, e nada se inventa. -->
+            <section v-if="arrumado.length > 0">
+                <h2 class="text-base font-semibold">Arrumado</h2>
+                <div class="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <div v-for="schoolClass in arrumado" :key="schoolClass.ulid" :class="[card('plain'), 'p-4']">
+                        <div class="flex items-start gap-2">
+                            <CheckCircle2 class="mt-0.5 size-4 shrink-0 text-(--brand-amber)" aria-hidden="true" />
+                            <div class="min-w-0">
+                                <p class="truncate font-semibold">{{ schoolClass.label }} — {{ schoolClass.subject }}</p>
+                                <p class="text-sm text-muted-foreground">sem pendências</p>
                             </div>
-                            <!-- Tom da casa, com gémeo dark — o cru bg-amber-100 não tinha. -->
-                            <span
-                                v-if="!schoolClass.has_profile"
-                                :class="['rounded-full px-2 py-0.5 text-xs', qualitativeToneClasses.amber]"
-                                title="Sem perfil de avaliação"
-                            >sem perfil</span>
                         </div>
-
-                        <div class="mt-4 flex flex-wrap gap-2 text-xs">
-                            <span
-                                v-if="schoolClass.pending_confirmation > 0"
-                                class="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-muted-foreground"
-                            >
-                                <ClipboardList class="size-3" /> {{ schoolClass.pending_confirmation }} por confirmar
-                            </span>
-                            <span
-                                v-if="schoolClass.pending_publication > 0"
-                                class="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-                            >
-                                <Send class="size-3" /> {{ schoolClass.pending_publication }} por publicar
-                            </span>
-                            <span
-                                v-if="schoolClass.pending_confirmation === 0 && schoolClass.pending_publication === 0"
-                                class="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-muted-foreground"
-                            >
-                                <CheckCircle2 class="size-3" /> sem pendências
-                            </span>
-                        </div>
-
-                        <div class="mt-4 flex gap-3 border-t border-border pt-3 text-sm">
-                            <Link :href="`/classes/${schoolClass.ulid}/classifications`" class="inline-flex items-center gap-1 text-primary hover:underline">
-                                <ClipboardList class="size-3.5" /> Classificações
-                            </Link>
-                            <!-- The class read as a whole. «Resultados» is no longer
-                                 a place a teacher goes to; «como está esta turma?»
-                                 is the question, and this is where it is answered. -->
-                            <Link :href="`/classes/${schoolClass.ulid}/results/estatistica`" class="inline-flex items-center gap-1 text-muted-foreground hover:underline">
-                                <BarChart3 class="size-3.5" /> Acompanhamento
-                            </Link>
+                        <div class="mt-3 flex gap-3 border-t border-border pt-2.5 text-sm">
+                            <Link :href="`/classes/${schoolClass.ulid}/classifications`" class="text-primary hover:underline">Classificações</Link>
+                            <Link :href="`/classes/${schoolClass.ulid}/results/estatistica`" class="text-muted-foreground hover:underline">Acompanhamento</Link>
                         </div>
                     </div>
                 </div>
+            </section>
+
+            <!-- O FECHO — a frase-assinatura, só quando é verdade. -->
+            <div v-if="allDone" class="border-t-2 border-emerald-700/60 pt-3 dark:border-emerald-400/50">
+                <p class="font-serif text-lg italic text-foreground">Tudo guardado — podes fechar.</p>
             </div>
+
+            <p class="text-sm text-muted-foreground">
+                <Link href="/classes" class="text-primary hover:underline">Ver todas as turmas</Link>
+            </p>
         </template>
     </div>
 </template>

@@ -26,6 +26,12 @@ export default defineConfig({
                 bunny('Instrument Sans', {
                     weights: [400, 500, 600],
                 }),
+                // A voz humana do DESIGN.md — só saudação, horas do
+                // «Arrumado» e frase de fecho. Dose pequena por regra.
+                bunny('Newsreader', {
+                    weights: [400, 500, 600],
+                    styles: ['normal', 'italic'],
+                }),
             ],
         }),
         inertia(),

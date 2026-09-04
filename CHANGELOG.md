@@ -25,6 +25,35 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.124.0] — 2026-09-04
+
+O DESIGN.md começa a existir no ecrã — fatias 1 e 2: papel + voz humana +
+home de fecho.
+
+### Alterado
+
+- **Papel em vez de ecrã** (tema claro): fundo `hsl(42 30% 97%)`, fios e
+  muted aquecidos; os cartões continuam brancos — objectos pousados no papel.
+  As guardas de contraste passaram à primeira (o par dos theads foi
+  reequilibrado para 40%).
+- **Newsreader instalada** pelo mesmo cano da Instrument Sans (plugin de
+  fontes do Vite, auto-hospedada) e exposta como `font-serif` — a voz humana,
+  em dose pequena.
+- **A home é a C2 aprovada**, com dados verdadeiros e nada inventado:
+  saudação pela hora de Lisboa em serifa; o estado do dia em prosa («Falta
+  confirmar N…» / «Tudo em dia.»); **Agora** = a turma mais pesada com o
+  botão «Continuar correção»; **A seguir** em fila pautada; **Arrumado** com
+  vistos âmbar (sem horas — a base não as sabe por turma, e não se inventa);
+  e o fecho «*Tudo guardado — podes fechar.*» apenas quando é verdade. Os
+  minutos estimados do mock ficaram no mock.
+- Tokens novos com gémeo escuro: `--pencil` (a cor das propostas, para a
+  fatia lápis→tinta) e `--ease-relief` (o easing único dos três gestos).
+- Primeiros passos e Preparação do ano intactos.
+
+### Por fazer (fatias seguintes do DESIGN.md)
+
+Grelha lápis→tinta · gesto «arrumar» · raio hierárquico global.
+
 ## [0.123.1] — 2026-09-04
 
 O sistema de design da app ganha fonte de verdade: **`DESIGN.md`** — saído de
