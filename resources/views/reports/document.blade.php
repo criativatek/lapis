@@ -191,16 +191,21 @@
             padding-right: 0;
         }
 
+        /* O bloco pede para não abrir página nova: uma assinatura sozinha
+           numa página em branco lê-se como acidente de composição num
+           documento oficial. O dompdf honra o avoid quando o bloco cabe no
+           fundo da página corrente — daí também o bloco ter emagrecido. */
         .signature {
-            margin-top: 14mm;
+            margin-top: 10mm;
             font-size: 9pt;
             page-break-inside: avoid;
+            page-break-before: avoid;
         }
 
         .signature .line {
             border-top: 0.4pt solid #555;
             width: 65mm;
-            margin-top: 12mm;
+            margin-top: 10mm;
             padding-top: 1.5mm;
         }
     </style>

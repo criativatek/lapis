@@ -25,6 +25,20 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.124.6] — 2026-09-05
+
+### Corrigido
+
+- **A assinatura já não abre página nova sozinha**: o bloco de fecho do PDF
+  emagreceu (14→10 mm por cima, 12→10 mm na linha) e pede `page-break-before:
+  avoid` — uma assinatura órfã numa página em branco lia-se como acidente de
+  composição. O relatório de demonstração voltou de 3 para 2 páginas.
+
+### Interno
+
+- `.gitignore` passa a cobrir `/.gstack/` e `/tmp/` — estado local do fluxo
+  de IA deixou de sujar o `git status`.
+
 ## [0.124.5] — 2026-09-04
 
 ### Corrigido

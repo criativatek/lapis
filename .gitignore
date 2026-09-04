@@ -54,3 +54,7 @@ yarn-error.log
 # in production by `lapis:release-check`. Committing it would pin a commit hash
 # that describes the state before itself, so it is always generated, never stored.
 /build.json
+
+# Local AI-workflow state (never committed)
+/.gstack/
+/tmp/
