@@ -3,8 +3,9 @@ import { Head, Link } from '@inertiajs/vue3';
 import { Check, Copy, Printer } from '@lucide/vue';
 import { ref } from 'vue';
 import Heading from '@/components/Heading.vue';
+import { statusToneClasses } from '@/lib/statusTone';
 
-type Row = { name: string; status_label: string | null; link: string };
+type Row = { name: string; status: string | null; status_label: string | null; link: string };
 
 const props = defineProps<{
     schoolClass: { ulid: string; label: string; subject: string };
@@ -146,7 +147,7 @@ function openPrintWindow(): void {
                 <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2">
                         <span class="font-medium">{{ row.name }}</span>
-                        <span class="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{{ row.status_label ?? 'Por responder' }}</span>
+                        <span class="rounded-full px-2 py-0.5 text-xs" :class="statusToneClasses(row.status ?? '')">{{ row.status_label ?? 'Por responder' }}</span>
                     </div>
                     <input
                         :value="row.link"

@@ -8,6 +8,7 @@ import InputError from '@/components/InputError.vue';
 import LessonScheduleEditor from '@/components/lessons/LessonScheduleEditor.vue';
 import type { RecurringLessonSlot } from '@/components/lessons/LessonScheduleEditor.vue';
 import StudentAvatar from '@/components/StudentAvatar.vue';
+import TableShell from '@/components/TableShell.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -20,6 +21,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { statusToneClasses } from '@/lib/statusTone';
 import { preparePhotoForUpload } from '@/lib/studentPhoto';
 
 type Student = {
@@ -358,7 +360,7 @@ function submitPhotos(): void {
                         <Pencil class="size-4" /> Editar turma
                     </Link>
                 </Button>
-                <Badge variant="secondary">{{
+                <Badge variant="secondary" :class="statusToneClasses(schoolClass.status)">{{
                     schoolClass.status_label
                 }}</Badge>
             </div>
@@ -570,8 +572,8 @@ function submitPhotos(): void {
             v-if="students.length"
             class="overflow-hidden rounded-lg border border-border"
         >
-            <table class="w-full text-sm">
-                <thead class="bg-muted/50 text-left text-muted-foreground">
+            <TableShell>
+                <template #head>
                     <tr>
                         <th class="px-4 py-2.5 font-medium">Nº</th>
                         <th class="px-4 py-2.5 font-medium">Nome</th>
@@ -581,8 +583,8 @@ function submitPhotos(): void {
                             Ações
                         </th>
                     </tr>
-                </thead>
-                <tbody class="divide-y divide-border">
+                </template>
+                <template #body>
                     <tr v-for="student in students" :key="student.ulid">
                         <td class="px-4 py-3 text-muted-foreground">
                             {{ student.class_number ?? '—' }}
@@ -643,8 +645,8 @@ function submitPhotos(): void {
                             </div>
                         </td>
                     </tr>
-                </tbody>
-            </table>
+                </template>
+            </TableShell>
         </section>
 
         <!-- NOT DELETED, JUST NOT HERE ANY MORE. Folded away, because a

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
 import { CalendarClock, FileUp, Plus } from '@lucide/vue';
+import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 
@@ -45,12 +46,13 @@ defineProps<{
                     </p>
                 </div>
 
-                <div v-if="classes.length === 0" class="rounded-lg border border-dashed border-border p-6 text-center">
-                    <p class="text-sm text-muted-foreground">Ainda não existem turmas para configurar.</p>
-                    <Button as-child class="mt-3">
-                        <Link href="/classes/create"><Plus class="size-4" /> Nova turma</Link>
-                    </Button>
-                </div>
+                <EmptyState v-if="classes.length === 0" title="Ainda não existem turmas para configurar.">
+                    <template #action>
+                        <Button as-child>
+                            <Link href="/classes/create"><Plus class="size-4" /> Nova turma</Link>
+                        </Button>
+                    </template>
+                </EmptyState>
 
                 <div v-else class="space-y-2">
                     <Link

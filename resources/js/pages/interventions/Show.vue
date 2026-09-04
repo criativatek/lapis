@@ -2,7 +2,9 @@
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { CalendarClock, CheckCircle2, FileText, Pencil, Trash2 } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
+import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
+import { statusToneClasses } from '@/lib/statusTone';
 
 type LegalMapping = {
     mode: 'direct' | 'contextual' | 'evaluation_only';
@@ -633,14 +635,6 @@ function framingLabel(intervention: Intervention): string {
     return [framing.level_label, framing.measure_label, framing.evaluation_adaptation_label].filter(Boolean).join(' — ');
 }
 
-const statusClasses: Record<string, string> = {
-    new: 'bg-muted text-muted-foreground',
-    in_progress: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
-    concluded: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
-    suspended: 'bg-muted text-muted-foreground',
-    cancelled: 'bg-muted text-muted-foreground line-through',
-};
-
 /** «Rever em 25 de setembro», the way a person says it (§82). */
 function reviewWhen(date: string): string {
     return new Date(date).toLocaleDateString('pt-PT', { day: 'numeric', month: 'long' });
@@ -1111,19 +1105,18 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
             <span class="ml-auto text-xs text-muted-foreground">Ver só estas</span>
         </button>
 
-        <div v-if="interventions.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
-            <p class="text-sm text-muted-foreground">Ainda não existem estratégias ou medidas registadas.</p>
-            <p class="mt-1 text-xs text-muted-foreground">
-                Use o formulário acima para registar a primeira.
-            </p>
-        </div>
+        <EmptyState
+            v-if="interventions.length === 0"
+            title="Ainda não existem estratégias ou medidas registadas."
+            description="Use o formulário acima para registar a primeira."
+        />
 
         <ul v-else class="space-y-2">
             <li v-for="intervention in interventions" :key="intervention.ulid" class="space-y-3 rounded-lg border border-border p-3">
                 <div class="flex items-start gap-3">
                     <div class="min-w-0 flex-1">
                         <div class="flex flex-wrap items-center gap-2">
-                            <span class="rounded-full px-2 py-0.5 text-xs" :class="statusClasses[intervention.status]">{{ intervention.status_label }}</span>
+                            <span class="rounded-full px-2 py-0.5 text-xs" :class="[statusToneClasses(intervention.status), intervention.status === 'cancelled' ? 'line-through' : '']">{{ intervention.status_label }}</span>
                             <Link
                                 v-if="intervention.target_enrollment_ulid"
                                 :href="`/classes/${schoolClass.ulid}/evolucao/${intervention.target_enrollment_ulid}`"

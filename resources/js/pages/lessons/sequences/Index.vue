@@ -2,6 +2,7 @@
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { ArrowDown, ArrowLeft, ArrowUp, ListOrdered, Pencil, Plus, Send, Trash2 } from '@lucide/vue';
 import { ref } from 'vue';
+import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
@@ -216,13 +217,12 @@ function submitApply(): void {
             </Button>
         </div>
 
-        <div v-if="sequences.length === 0" class="rounded-xl border border-dashed p-6 text-center">
-            <ListOrdered class="mx-auto size-8 text-muted-foreground" />
-            <h2 class="mt-3 font-semibold">Ainda não tens sequências</h2>
-            <p class="mx-auto mt-1 max-w-lg text-sm text-muted-foreground">
-                Cria uma sequência para reutilizar o mesmo plano de aulas em turmas diferentes da mesma disciplina.
-            </p>
-        </div>
+        <EmptyState
+            v-if="sequences.length === 0"
+            title="Ainda não tens sequências"
+            description="Cria uma sequência para reutilizar o mesmo plano de aulas em turmas diferentes da mesma disciplina."
+            :icon="ListOrdered"
+        />
 
         <ul v-else class="space-y-3">
             <li v-for="sequence in sequences" :key="sequence.ulid" class="rounded-xl border bg-card p-4">

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ref } from 'vue';
+import TableShell from '@/components/TableShell.vue';
 
 type Row = {
     ulid: string;
@@ -63,9 +64,8 @@ const statusClasses: Record<string, string> = {
             </div>
         </div>
 
-        <div class="overflow-x-auto rounded-lg border border-border">
-            <table class="w-full text-sm">
-                <thead class="bg-muted/50 text-left text-xs text-muted-foreground">
+        <TableShell head-class="text-xs">
+            <template #head>
                     <tr>
                         <th class="px-3 py-2 font-medium">Organização</th>
                         <th class="px-3 py-2 font-medium">Dono</th>
@@ -75,8 +75,8 @@ const statusClasses: Record<string, string> = {
                         <th class="px-3 py-2 font-medium">Email</th>
                         <th class="px-3 py-2 font-medium">Criada</th>
                     </tr>
-                </thead>
-                <tbody class="divide-y divide-border">
+            </template>
+            <template #body>
                     <tr v-for="org in organizations.data" :key="org.ulid" class="hover:bg-muted/20">
                         <td class="px-3 py-2">
                             <Link :href="`/admin/accounts/${org.ulid}`" class="font-medium text-primary hover:underline">{{ org.name }}</Link>
@@ -102,9 +102,8 @@ const statusClasses: Record<string, string> = {
                     <tr v-if="organizations.data.length === 0">
                         <td colspan="7" class="px-3 py-10 text-center text-sm text-muted-foreground">Sem contas.</td>
                     </tr>
-                </tbody>
-            </table>
-        </div>
+            </template>
+        </TableShell>
 
         <div v-if="organizations.links.length > 3" class="flex flex-wrap gap-1">
             <template v-for="(link, index) in organizations.links" :key="index">

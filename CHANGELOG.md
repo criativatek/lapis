@@ -25,6 +25,42 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.122.0] — 2026-09-04
+
+A vaga grande do «rever tudo» (SUP-7BAAB7): os componentes de design chegam a
+mais de trinta páginas de uma vez.
+
+### Alterado
+
+- **Tabelas**: mais 13 listagens passam a `TableShell` — as densas do
+  backoffice entram com o novo `head-class="text-xs"`. Ficam de fora, por
+  razões estruturais e de propósito, as grelhas complexas (grelha de
+  correção, pauta, resultados, migração de perfis, pré-visualizações de
+  importação com múltiplos tbody).
+- **Estados vazios**: 14 páginas adoptam `EmptyState`; dropzones,
+  placeholders de horário, painéis `<details>` e variantes com markup próprio
+  ficam como estão — não são vazios, e converter por converter era perder
+  conteúdo.
+- **Pílulas de estado com tom em toda a aplicação**: o mapa `statusTone`
+  cresce para 30+ estados (suporte, intervenções, inscrições,
+  classificações, importações, autoavaliações, anos letivos, comercial) e
+  liga-se em 14 páginas. Dois mapas locais de cor morrem
+  (`academic-years`, `intervenções`) e o das classificações passa a cumprir
+  a regra escrita da casa: **proposto é cinza, confirmado é azul** — «o
+  sistema propõe, o professor decide», também na cor. O comercial do
+  backoffice mantém o seu mapa próprio (trial âmbar a expirar, suspensa
+  vermelha) — semântica de negócio justificada, com gémeos dark.
+- `SelfAssessmentController` e o calendário passam a enviar o valor cru do
+  estado ao lado do rótulo.
+
+### Guardas
+
+- `statusTone.test.ts` fixa a regra proposto/confirmado e os tons de
+  suporte/importações; `TableShell` ganha caso para o `headClass`.
+
+Verificado: ci:check 4233 · vitest 561 · sonda no browser (tema escuro) —
+faixas na coluna, «Ativo» verde nos anos letivos, suporte com âmbar à espera.
+
 ## [0.121.0] — 2026-09-04
 
 Três reportes do botão na mesma noite (SUP-8Y3Q5Y, SUP-2YH94S/SUP-ASRM6E,

@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
+import { statusToneClasses } from '@/lib/statusTone';
 import { capitalizeFirst } from '@/lib/text';
 
 type Lesson = {
@@ -200,7 +201,7 @@ onBeforeUnmount(() => {
         <div class="space-y-3">
             <div class="flex flex-wrap items-start justify-between gap-3">
                 <Heading :title="lesson.school_class.label" :description="lesson.school_class.subject" />
-                <Badge variant="secondary">{{ lesson.status_label }}</Badge>
+                <Badge variant="secondary" :class="statusToneClasses(lesson.status)">{{ lesson.status_label }}</Badge>
             </div>
 
             <dl class="grid gap-3 rounded-xl border bg-card p-4 text-sm sm:grid-cols-2">

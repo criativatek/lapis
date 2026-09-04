@@ -156,6 +156,7 @@ class SelfAssessmentController extends Controller
                 return [
                     'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
                     'status_label' => $selfAssessment?->status->label(),
+                    'status' => $selfAssessment?->status->value,
                     'link' => URL::temporarySignedRoute('self-assessments.public.edit', $expiresAt, [
                         'classUlid' => $class->ulid,
                         'periodUlid' => $selected->ulid,

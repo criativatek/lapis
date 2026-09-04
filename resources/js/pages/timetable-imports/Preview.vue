@@ -2,6 +2,7 @@
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { ArrowLeft, TriangleAlert } from '@lucide/vue';
 import { computed } from 'vue';
+import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
@@ -307,13 +308,10 @@ function submit(): void {
                 </div>
             </section>
 
-            <p
+            <EmptyState
                 v-if="form.groups.length === 0"
-                class="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground"
-            >
-                Nenhum bloco do ficheiro foi associado a uma turma tua deste ano
-                letivo.
-            </p>
+                title="Nenhum bloco do ficheiro foi associado a uma turma tua deste ano letivo."
+            />
 
             <section
                 v-if="unassociated.length > 0"

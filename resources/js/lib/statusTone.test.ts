@@ -29,6 +29,22 @@ describe('statusTone', () => {
         expect(statusTone('closed')).toBe('neutral');
     });
 
+    it('a regra da casa nas classificações: proposto é cinza, confirmado é azul', () => {
+        // «O sistema propõe (badge cinza), o professor atribui (badge azul)» —
+        // .impeccable.md. Pintar o proposto seria o sistema a vestir-se de
+        // decisão.
+        expect(statusTone('proposed')).toBe('neutral');
+        expect(statusTone('confirmed')).toBe('blue');
+        expect(statusTone('published')).toBe('green');
+    });
+
+    it('suporte e importações: em curso âmbar, resolvido verde, falhado vermelho', () => {
+        expect(statusTone('waiting_for_user')).toBe('amber');
+        expect(statusTone('resolved')).toBe('green');
+        expect(statusTone('failed')).toBe('red');
+        expect(statusTone('imported')).toBe('green');
+    });
+
     it('um estado desconhecido fica neutro — nunca inventa cor', () => {
         expect(statusTone('estado_que_ainda_nao_existe')).toBe('neutral');
     });

@@ -2,8 +2,10 @@
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { CircleAlert, Lock, PencilLine, RefreshCw, Send } from '@lucide/vue';
 import { computed, ref } from 'vue';
+import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import StudentAvatar from '@/components/StudentAvatar.vue';
+import { statusToneClasses } from '@/lib/statusTone';
 
 type Proposal = {
     value: string | null;
@@ -321,9 +323,7 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                 {{ errorFor }}
             </p>
 
-            <div v-if="rows.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
-                <p class="text-sm text-muted-foreground">Sem alunos neste período.</p>
-            </div>
+            <EmptyState v-if="rows.length === 0" title="Sem alunos neste período." />
 
             <div v-else class="overflow-x-auto rounded-lg border border-border">
                 <table class="w-full text-sm">
@@ -357,10 +357,7 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                                     <span
                                         v-if="row.classification"
                                         class="rounded-full px-2 py-0.5 text-xs"
-                                        :class="{
-                                            'bg-muted text-muted-foreground': row.classification.status === 'proposed',
-                                            'bg-emerald-100 text-emerald-800': row.classification.status === 'confirmed' || row.classification.status === 'published',
-                                        }"
+                                        :class="statusToneClasses(row.classification.status)"
                                     >{{ row.classification.status_label }}</span>
                                     <span v-else class="text-xs text-muted-foreground">Sem proposta</span>
                                 </td>

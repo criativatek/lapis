@@ -2,6 +2,7 @@
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { CheckCircle2, CircleAlert, Save, WifiOff } from '@lucide/vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import StudentAvatar from '@/components/StudentAvatar.vue';
@@ -1089,9 +1090,7 @@ function revertCancellation(): void {
             </Button>
         </div>
 
-        <div v-if="students.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
-            <p class="text-sm text-muted-foreground">Esta turma ainda não tem alunos inscritos.</p>
-        </div>
+        <EmptyState v-if="students.length === 0" title="Esta turma ainda não tem alunos inscritos." />
 
         <div v-else class="overflow-x-auto rounded-lg border border-border">
             <table class="w-full border-collapse text-sm">

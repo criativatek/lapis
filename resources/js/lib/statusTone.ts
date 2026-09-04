@@ -39,6 +39,44 @@ const TONES: Record<string, QualitativeTone> = {
 
     // Relatórios (ReportStatus)
     finalized: 'green',
+
+    // Suporte (SupportRequestStatus)
+    open: 'blue',
+    in_progress: 'amber',
+    waiting_for_user: 'amber',
+    resolved: 'green',
+
+    // Intervenções (InterventionStatus) — 'cancelled' já mapeado acima
+    new: 'blue',
+    concluded: 'green',
+    suspended: 'neutral',
+
+    // Inscrições (EnrollmentStatus) — 'active' já mapeado acima
+    transferred_out: 'neutral',
+    left: 'neutral',
+
+    // Classificações (ClassificationStatus) — A REGRA DA CASA, à letra:
+    // «o sistema propõe (badge cinza), o professor atribui (badge azul)».
+    // 'published' partilha o verde de cima.
+    proposed: 'neutral',
+    confirmed: 'blue',
+    superseded: 'neutral',
+
+    // Importações (Data/Roster/CorrectionImportStatus)
+    uploaded: 'blue',
+    validated: 'blue',
+    imported: 'green',
+    failed: 'red',
+
+    // Autoavaliações (SelfAssessmentStatus)
+    submitted: 'blue',
+    reviewed: 'green',
+
+    // Comercial (PaymentStatus/SubscriptionStatus) — backoffice
+    pending: 'amber',
+    paid: 'green',
+    refunded: 'neutral',
+    trial: 'blue',
 };
 
 export function statusTone(status: string): QualitativeTone {

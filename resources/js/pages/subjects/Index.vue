@@ -3,8 +3,10 @@ import { Head, useForm } from '@inertiajs/vue3';
 import { BookPlus, Pencil, Trash2 } from '@lucide/vue';
 import { ref } from 'vue';
 import AcademicStructureTabs from '@/components/AcademicStructureTabs.vue';
+import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
+import TableShell from '@/components/TableShell.vue';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -82,21 +84,18 @@ function destroy(subject: Subject): void {
             </Button>
         </div>
 
-        <div v-if="subjects.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
-            <p class="text-sm text-muted-foreground">Ainda não há disciplinas.</p>
-        </div>
+        <EmptyState v-if="subjects.length === 0" title="Ainda não há disciplinas." />
 
-        <div v-else class="overflow-hidden rounded-lg border border-border">
-            <table class="w-full text-sm">
-                <thead class="bg-muted/50 text-left text-muted-foreground">
-                    <tr>
-                        <th class="px-4 py-2.5 font-medium">Disciplina</th>
-                        <th class="px-4 py-2.5 font-medium">Código</th>
-                        <th v-if="canManage" class="px-4 py-2.5 text-right font-medium">Ações</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-border">
-                    <tr v-for="subject in subjects" :key="subject.ulid">
+        <TableShell v-else>
+            <template #head>
+                <tr>
+                    <th class="px-4 py-2.5 font-medium">Disciplina</th>
+                    <th class="px-4 py-2.5 font-medium">Código</th>
+                    <th v-if="canManage" class="px-4 py-2.5 text-right font-medium">Ações</th>
+                </tr>
+            </template>
+            <template #body>
+                <tr v-for="subject in subjects" :key="subject.ulid">
                         <td class="px-4 py-3 font-medium">{{ subject.name }}</td>
                         <td class="px-4 py-3 text-muted-foreground">{{ subject.code }}</td>
                         <td v-if="canManage" class="px-4 py-3">
@@ -110,9 +109,8 @@ function destroy(subject: Subject): void {
                             </div>
                         </td>
                     </tr>
-                </tbody>
-            </table>
-        </div>
+            </template>
+        </TableShell>
 
         <Dialog v-model:open="open">
             <DialogContent>

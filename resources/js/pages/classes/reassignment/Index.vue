@@ -2,6 +2,7 @@
 import { useForm } from '@inertiajs/vue3';
 import { ref } from 'vue';
 import Heading from '@/components/Heading.vue';
+import TableShell from '@/components/TableShell.vue';
 import { Button } from '@/components/ui/button';
 
 type ClassNeedingReassignment = {
@@ -41,9 +42,8 @@ function assign(schoolClass: ClassNeedingReassignment): void {
 
         <p v-if="props.classes.length === 0" class="text-sm text-muted-foreground">Sem turmas por reatribuir.</p>
 
-        <div v-else class="overflow-x-auto rounded-lg border border-border">
-            <table class="w-full text-sm">
-                <thead class="bg-muted/50 text-left text-xs text-muted-foreground">
+        <TableShell v-else head-class="text-xs">
+            <template #head>
                     <tr>
                         <th class="px-3 py-2 font-medium">Turma</th>
                         <th class="px-3 py-2 font-medium">Disciplina</th>
@@ -51,8 +51,8 @@ function assign(schoolClass: ClassNeedingReassignment): void {
                         <th class="px-3 py-2 font-medium">Novo professor</th>
                         <th class="px-3 py-2 text-right font-medium">Ação</th>
                     </tr>
-                </thead>
-                <tbody class="divide-y divide-border">
+            </template>
+            <template #body>
                     <tr v-for="schoolClass in props.classes" :key="schoolClass.ulid">
                         <td class="px-3 py-2 font-medium">{{ schoolClass.label }}</td>
                         <td class="px-3 py-2 text-muted-foreground">{{ schoolClass.subject ?? '—' }}</td>
@@ -78,8 +78,7 @@ function assign(schoolClass: ClassNeedingReassignment): void {
                             </Button>
                         </td>
                     </tr>
-                </tbody>
-            </table>
-        </div>
+            </template>
+        </TableShell>
     </div>
 </template>

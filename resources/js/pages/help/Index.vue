@@ -3,6 +3,7 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import { Search as SearchIcon } from '@lucide/vue';
 import { ref } from 'vue';
 import HelpAssistantPanel from '@/components/ai/HelpAssistantPanel.vue';
+import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import { search, show } from '@/routes/help';
 
@@ -71,9 +72,7 @@ function doSearch(): void {
              to. Never a floating bubble, and nowhere but here. -->
         <HelpAssistantPanel :ai="ai" :answer="helpAnswer" :error="helpAnswerError" />
 
-        <div v-if="categories.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
-            <p class="text-sm text-muted-foreground">Ainda não há artigos de ajuda.</p>
-        </div>
+        <EmptyState v-if="categories.length === 0" title="Ainda não há artigos de ajuda." />
 
         <div v-else class="space-y-8">
             <section v-for="group in categories" :key="group.category" class="space-y-3">

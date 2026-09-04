@@ -5,6 +5,7 @@ import ContextualHelp from '@/components/ContextualHelp.vue';
 import FileInput from '@/components/FileInput.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
+import TableShell from '@/components/TableShell.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -190,21 +191,20 @@ const limitError = computed(() => (form.errors as Record<string, string>).limit)
         <ContextualHelp :articles="helpArticles" />
 
         <div class="space-y-6">
-            <div class="overflow-x-auto rounded-lg border border-border">
-                <table class="w-full text-sm">
-                    <thead class="bg-muted/50 text-left text-muted-foreground">
-                        <tr>
-                            <th class="px-3 py-2.5 font-medium">Incluir</th>
-                            <th class="px-3 py-2.5 font-medium">Foto</th>
-                            <th class="px-3 py-2.5 font-medium">Nome</th>
-                            <th class="px-3 py-2.5 font-medium">Nº</th>
-                            <th class="px-3 py-2.5 font-medium">Data nasc.</th>
-                            <th class="px-3 py-2.5 font-medium">Nota</th>
-                            <th class="px-3 py-2.5 font-medium">Avisos</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-border">
-                        <tr v-for="(row, index) in form.rows" :key="index">
+            <TableShell>
+                <template #head>
+                    <tr>
+                        <th class="px-3 py-2.5 font-medium">Incluir</th>
+                        <th class="px-3 py-2.5 font-medium">Foto</th>
+                        <th class="px-3 py-2.5 font-medium">Nome</th>
+                        <th class="px-3 py-2.5 font-medium">Nº</th>
+                        <th class="px-3 py-2.5 font-medium">Data nasc.</th>
+                        <th class="px-3 py-2.5 font-medium">Nota</th>
+                        <th class="px-3 py-2.5 font-medium">Avisos</th>
+                    </tr>
+                </template>
+                <template #body>
+                    <tr v-for="(row, index) in form.rows" :key="index">
                             <td class="px-3 py-2.5">
                                 <input v-model="row.include" type="checkbox" />
                             </td>
@@ -345,9 +345,8 @@ const limitError = computed(() => (form.errors as Record<string, string>).limit)
                                 </Badge>
                             </td>
                         </tr>
-                    </tbody>
-                </table>
-            </div>
+                </template>
+            </TableShell>
 
             <div class="space-y-3 rounded-lg border border-dashed border-border p-4">
                 <h2 class="text-sm font-semibold">Adicionar fotos</h2>

@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
+import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import StudentAvatar from '@/components/StudentAvatar.vue';
+import TableShell from '@/components/TableShell.vue';
 import { Badge } from '@/components/ui/badge';
 import { percentFor, qualitativeLabelFor } from '@/lib/instrumentQualitativeRating';
 
@@ -142,22 +144,19 @@ const stateBadgeClass: Record<string, string> = {
             </div>
         </div>
 
-        <div v-if="students.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
-            <p class="text-sm text-muted-foreground">Nenhum aluno aplicável a esta avaliação.</p>
-        </div>
+        <EmptyState v-if="students.length === 0" title="Nenhum aluno aplicável a esta avaliação." />
 
-        <div v-else class="overflow-hidden rounded-lg border border-border">
-            <table class="w-full text-sm">
-                <thead class="bg-muted/50 text-left text-muted-foreground">
-                    <tr>
-                        <th class="px-4 py-2.5 font-medium">Aluno</th>
-                        <th class="px-4 py-2.5 font-medium">Estado</th>
-                        <th class="px-4 py-2.5 font-medium">Resultado</th>
-                        <th class="px-4 py-2.5 font-medium"></th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-border">
-                    <tr v-for="student in students" :key="student.enrollment_id" class="hover:bg-muted/30">
+        <TableShell v-else>
+            <template #head>
+                <tr>
+                    <th class="px-4 py-2.5 font-medium">Aluno</th>
+                    <th class="px-4 py-2.5 font-medium">Estado</th>
+                    <th class="px-4 py-2.5 font-medium">Resultado</th>
+                    <th class="px-4 py-2.5 font-medium"></th>
+                </tr>
+            </template>
+            <template #body>
+                <tr v-for="student in students" :key="student.enrollment_id" class="hover:bg-muted/30">
                         <td class="px-4 py-3">
                             <div class="flex items-center gap-1.5">
                                 <span class="text-muted-foreground">{{ student.class_number ?? '—' }}</span>
@@ -175,9 +174,8 @@ const stateBadgeClass: Record<string, string> = {
                             <Link :href="`/instruments/${instrument.ulid}?from=assessments`" class="text-sm text-primary hover:underline">{{ student.action_label }}</Link>
                         </td>
                     </tr>
-                </tbody>
-            </table>
-        </div>
+            </template>
+        </TableShell>
 
         <div v-if="nonApplicableStudents.length" class="space-y-2">
             <p class="text-xs text-muted-foreground">Não aplicável a esta avaliação — não entram no progresso nem contam como falta</p>

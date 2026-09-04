@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
+import EmptyState from '@/components/EmptyState.vue';
 import { Button } from '@/components/ui/button';
 
 /**
@@ -347,12 +348,7 @@ const hasUnknownCondition = computed(
                 Situação atual
             </h2>
 
-            <div
-                v-if="current === null"
-                class="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground"
-            >
-                Esta conta não tem nenhuma subscrição registada.
-            </div>
+            <EmptyState v-if="current === null" title="Esta conta não tem nenhuma subscrição registada." />
 
             <div v-else class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <div class="rounded-lg border border-border p-4">
@@ -1264,12 +1260,7 @@ const hasUnknownCondition = computed(
                     </p>
                 </li>
             </ol>
-            <p
-                v-else
-                class="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground"
-            >
-                Ainda não há alterações comerciais registadas para esta conta.
-            </p>
+            <EmptyState v-else title="Ainda não há alterações comerciais registadas para esta conta." />
         </section>
     </div>
 </template>

@@ -2,9 +2,12 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { CalendarPlus, Pencil, Trash2 } from '@lucide/vue';
 import AcademicStructureTabs from '@/components/AcademicStructureTabs.vue';
+import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
+import TableShell from '@/components/TableShell.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { statusToneClasses } from '@/lib/statusTone';
 
 type AcademicYear = {
     ulid: string;
@@ -21,13 +24,6 @@ defineProps<{
     academicYears: AcademicYear[];
     canManage: boolean;
 }>();
-
-const statusVariant: Record<string, 'default' | 'secondary' | 'outline'> = {
-    active: 'default',
-    draft: 'secondary',
-    closed: 'outline',
-    archived: 'outline',
-};
 
 function destroy(year: AcademicYear): void {
     if (confirm(`Eliminar o ano letivo ${year.label}? Esta ação não pode ser anulada.`)) {
@@ -51,30 +47,28 @@ function destroy(year: AcademicYear): void {
             </Button>
         </div>
 
-        <div v-if="academicYears.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
-            <p class="text-sm text-muted-foreground">
-                Ainda não tem anos letivos. Crie o primeiro para começar a configurar turmas e avaliações.
-            </p>
-        </div>
+        <EmptyState
+            v-if="academicYears.length === 0"
+            title="Ainda não tem anos letivos. Crie o primeiro para começar a configurar turmas e avaliações."
+        />
 
-        <div v-else class="overflow-hidden rounded-lg border border-border">
-            <table class="w-full text-sm">
-                <thead class="bg-muted/50 text-left text-muted-foreground">
-                    <tr>
-                        <th class="px-4 py-2.5 font-medium">Ano</th>
-                        <th class="px-4 py-2.5 font-medium">Período</th>
-                        <th class="px-4 py-2.5 font-medium">Estado</th>
-                        <th class="px-4 py-2.5 text-right font-medium">Ações</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-border">
-                    <tr v-for="year in academicYears" :key="year.ulid">
+        <TableShell v-else>
+            <template #head>
+                <tr>
+                    <th class="px-4 py-2.5 font-medium">Ano</th>
+                    <th class="px-4 py-2.5 font-medium">Período</th>
+                    <th class="px-4 py-2.5 font-medium">Estado</th>
+                    <th class="px-4 py-2.5 text-right font-medium">Ações</th>
+                </tr>
+            </template>
+            <template #body>
+                <tr v-for="year in academicYears" :key="year.ulid">
                         <td class="px-4 py-3 font-medium">{{ year.label }}</td>
                         <td class="px-4 py-3 text-muted-foreground">
                             {{ year.starts_on }} — {{ year.ends_on }} · {{ year.periods_count }} períodos
                         </td>
                         <td class="px-4 py-3">
-                            <Badge :variant="statusVariant[year.status] ?? 'secondary'">{{ year.status_label }}</Badge>
+                            <Badge variant="secondary" :class="statusToneClasses(year.status)">{{ year.status_label }}</Badge>
                         </td>
                         <td class="px-4 py-3">
                             <div class="flex items-center justify-end gap-1">
@@ -93,8 +87,7 @@ function destroy(year: AcademicYear): void {
                             </div>
                         </td>
                     </tr>
-                </tbody>
-            </table>
-        </div>
+            </template>
+        </TableShell>
     </div>
 </template>

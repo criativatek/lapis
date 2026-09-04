@@ -2,6 +2,7 @@
 import { Head, Link } from '@inertiajs/vue3';
 import { CircleAlert, Lock } from '@lucide/vue';
 import { computed } from 'vue';
+import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
 import { pct, TREND_SHAPE, trendArrow, trendClasses, trendPoints, trendTitle } from '@/lib/results';
@@ -194,9 +195,7 @@ function proposalText(proposal: Proposal | undefined): string {
             Esta turma não tem perfil de avaliação associado, por isso não há resultados a sintetizar.
         </p>
 
-        <div v-else-if="students.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
-            <p class="text-sm text-muted-foreground">Sem alunos nesta turma.</p>
-        </div>
+        <EmptyState v-else-if="students.length === 0" title="Sem alunos nesta turma." />
 
         <!-- Wide on purpose: a year of a class does not fit a viewport, and
              shrinking it to fit would be hiding it (§4). The student stays put

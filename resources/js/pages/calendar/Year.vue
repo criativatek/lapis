@@ -8,6 +8,7 @@ import {
     LayoutGrid,
 } from '@lucide/vue';
 import { computed } from 'vue';
+import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { capitalizeFirst } from '@/lib/text';
@@ -215,24 +216,18 @@ const description = computed(() => {
             aparecem, aqui como no resto do calendário: essa é a pergunta do
             «Horário do Professor».
         -->
-        <section
+        <EmptyState
             v-if="!academicYear"
-            class="rounded-xl border border-dashed p-8 text-center"
-            aria-labelledby="calendar-year-no-year-heading"
+            title="Ainda não há um ano letivo para mostrar"
+            description="O calendário mostra a estrutura do ano letivo selecionado. Cria um ano letivo e os seus períodos em «Estrutura do Ano Letivo» e ele aparece aqui."
+            :icon="CalendarDays"
         >
-            <CalendarDays class="mx-auto size-8 text-muted-foreground" />
-            <h2 id="calendar-year-no-year-heading" class="mt-3 font-semibold">
-                Ainda não há um ano letivo para mostrar
-            </h2>
-            <p class="mx-auto mt-1 max-w-xl text-sm text-muted-foreground">
-                O calendário mostra a estrutura do ano letivo selecionado. Cria
-                um ano letivo e os seus períodos em «Estrutura do Ano Letivo» e
-                ele aparece aqui.
-            </p>
-            <Button as-child variant="outline" class="mt-4">
-                <Link href="/academic-years">Estrutura do Ano Letivo</Link>
-            </Button>
-        </section>
+            <template #action>
+                <Button as-child variant="outline">
+                    <Link href="/academic-years">Estrutura do Ano Letivo</Link>
+                </Button>
+            </template>
+        </EmptyState>
 
         <template v-else>
             <!--

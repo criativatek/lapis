@@ -2,6 +2,7 @@
 import { Head, Link } from '@inertiajs/vue3';
 import { Users } from '@lucide/vue';
 import { computed } from 'vue';
+import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 
 type StudentRow = {
@@ -42,10 +43,7 @@ const former = computed(() => props.students.filter((student) => !student.is_cur
             Esta turma ainda não tem perfil de avaliação, pelo que não existem resultados apurados.
         </p>
 
-        <div v-if="students.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
-            <Users class="mx-auto mb-3 size-8 text-muted-foreground" />
-            <p class="text-sm text-muted-foreground">Esta turma ainda não tem alunos inscritos.</p>
-        </div>
+        <EmptyState v-if="students.length === 0" title="Esta turma ainda não tem alunos inscritos." :icon="Users" />
 
         <template v-else>
             <ul class="divide-y divide-border overflow-hidden rounded-lg border border-border">

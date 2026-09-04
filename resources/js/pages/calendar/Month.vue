@@ -18,6 +18,7 @@ import {
 } from '@lucide/vue';
 import type { Component } from 'vue';
 import { computed, ref, watch } from 'vue';
+import EmptyState from '@/components/EmptyState.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -738,24 +739,18 @@ function destroyEvent(event: CalendarEvent): void {
             únicas que nascem aqui. As aulas não aparecem, de propósito: essa
             pergunta é a do «Horário do Professor», e já tem a sua página.
         -->
-        <section
+        <EmptyState
             v-if="!academicYear || !month || !navigation"
-            class="rounded-xl border border-dashed p-8 text-center"
-            aria-labelledby="calendar-no-year-heading"
+            title="Ainda não há um ano letivo para mostrar"
+            description="O calendário mostra a estrutura do ano letivo selecionado. Cria um ano letivo e os seus períodos em «Estrutura do Ano Letivo» e ele aparece aqui."
+            :icon="CalendarDays"
         >
-            <CalendarDays class="mx-auto size-8 text-muted-foreground" />
-            <h2 id="calendar-no-year-heading" class="mt-3 font-semibold">
-                Ainda não há um ano letivo para mostrar
-            </h2>
-            <p class="mx-auto mt-1 max-w-xl text-sm text-muted-foreground">
-                O calendário mostra a estrutura do ano letivo selecionado. Cria
-                um ano letivo e os seus períodos em «Estrutura do Ano Letivo» e
-                ele aparece aqui.
-            </p>
-            <Button as-child variant="outline" class="mt-4">
-                <Link href="/academic-years">Estrutura do Ano Letivo</Link>
-            </Button>
-        </section>
+            <template #action>
+                <Button as-child variant="outline">
+                    <Link href="/academic-years">Estrutura do Ano Letivo</Link>
+                </Button>
+            </template>
+        </EmptyState>
 
         <template v-else>
             <!--
@@ -1100,12 +1095,7 @@ function destroyEvent(event: CalendarEvent): void {
 
             <!-- A mesma informação em ecrã estreito, lida como agenda. -->
             <section class="space-y-3 sm:hidden" aria-label="Agenda do mês">
-                <p
-                    v-if="agenda.length === 0"
-                    class="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground"
-                >
-                    Não há nada marcado em {{ monthLabel }}.
-                </p>
+                <EmptyState v-if="agenda.length === 0" :title="`Não há nada marcado em ${monthLabel}.`" />
 
                 <section
                     v-for="day in agenda"

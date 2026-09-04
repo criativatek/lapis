@@ -2,6 +2,7 @@
 import { Head, Link } from '@inertiajs/vue3';
 import { CalendarClock, CalendarX2, FileUp, Plus } from '@lucide/vue';
 import { computed } from 'vue';
+import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { capitalizeFirst } from '@/lib/text';
@@ -185,21 +186,12 @@ function validity(slot: TimetableSlot): string | null {
             que mostra, um horário é a regra e não as suas ocorrências: aqui só
             se lê o que já existe.
         -->
-        <section
+        <EmptyState
             v-if="slots.length === 0"
-            class="rounded-xl border border-dashed p-8 text-center"
-            aria-labelledby="timetable-empty-heading"
-        >
-            <CalendarX2 class="mx-auto size-8 text-muted-foreground" />
-            <h2 id="timetable-empty-heading" class="mt-3 font-semibold">
-                Ainda não tens horário configurado
-            </h2>
-            <p class="mx-auto mt-1 max-w-xl text-sm text-muted-foreground">
-                Assim que as aulas recorrentes das tuas turmas estiverem
-                definidas, a tua semana aparece aqui. Podes importar o PDF do
-                horário da escola ou definir os blocos à mão, turma a turma.
-            </p>
-        </section>
+            title="Ainda não tens horário configurado"
+            description="Assim que as aulas recorrentes das tuas turmas estiverem definidas, a tua semana aparece aqui. Podes importar o PDF do horário da escola ou definir os blocos à mão, turma a turma."
+            :icon="CalendarX2"
+        />
 
         <!--
             A MESMA SEMANA, DUAS LEITURAS, como a grelha do mês já faz: em ecrã
@@ -416,19 +408,15 @@ function validity(slot: TimetableSlot): string | null {
                         </p>
                     </div>
 
-                    <div
-                        v-if="classes.length === 0"
-                        class="rounded-lg border border-dashed border-border p-6 text-center"
-                    >
-                        <p class="text-sm text-muted-foreground">
-                            Ainda não existem turmas para configurar.
-                        </p>
-                        <Button as-child class="mt-3">
-                            <Link href="/classes/create"
-                                ><Plus class="size-4" /> Nova turma</Link
-                            >
-                        </Button>
-                    </div>
+                    <EmptyState v-if="classes.length === 0" title="Ainda não existem turmas para configurar.">
+                        <template #action>
+                            <Button as-child>
+                                <Link href="/classes/create"
+                                    ><Plus class="size-4" /> Nova turma</Link
+                                >
+                            </Button>
+                        </template>
+                    </EmptyState>
 
                     <div v-else class="space-y-2">
                         <Link

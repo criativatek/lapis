@@ -3,6 +3,7 @@ import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { ChevronRight } from '@lucide/vue';
 import { computed } from 'vue';
 import Heading from '@/components/Heading.vue';
+import { statusToneClasses } from '@/lib/statusTone';
 
 type Row = {
     enrollment_ulid: string;
@@ -84,7 +85,7 @@ function open(row: Row): void {
                         <span
                             v-if="row.status"
                             class="rounded-full px-2 py-0.5 text-xs"
-                            :class="row.status === 'reviewed' ? 'bg-emerald-100 text-emerald-800' : 'bg-muted text-muted-foreground'"
+                            :class="statusToneClasses(row.status ?? '')"
                         >{{ row.status_label }}</span>
                         <span v-else class="text-xs text-muted-foreground">Por registar</span>
                         <ChevronRight class="size-4 text-muted-foreground" />

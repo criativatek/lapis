@@ -3,6 +3,7 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import { ClipboardList } from '@lucide/vue';
 import { ref } from 'vue';
 import ContextualHelp from '@/components/ContextualHelp.vue';
+import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -92,15 +93,17 @@ function continueToClass(): void {
             description="Escolha a turma para a qual quer criar o elemento de avaliação."
         />
 
-        <div v-if="!classes || classes.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
-            <ClipboardList class="mx-auto mb-3 size-8 text-muted-foreground" />
-            <p class="text-sm text-muted-foreground">
-                Precisa de ter pelo menos uma turma sua para criar um elemento de avaliação.
-            </p>
-            <Button as-child class="mt-3">
-                <Link href="/classes/create">Criar turma</Link>
-            </Button>
-        </div>
+        <EmptyState
+            v-if="!classes || classes.length === 0"
+            title="Precisa de ter pelo menos uma turma sua para criar um elemento de avaliação."
+            :icon="ClipboardList"
+        >
+            <template #action>
+                <Button as-child>
+                    <Link href="/classes/create">Criar turma</Link>
+                </Button>
+            </template>
+        </EmptyState>
 
         <form v-else class="space-y-4" @submit.prevent="continueToClass">
             <div class="grid gap-2">

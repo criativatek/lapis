@@ -3,6 +3,7 @@ import { router, useForm } from '@inertiajs/vue3';
 import { CalendarOff, Pencil, Plus, Sparkles, Trash2 } from '@lucide/vue';
 import type { ComponentPublicInstance } from 'vue';
 import { computed, nextTick, ref } from 'vue';
+import EmptyState from '@/components/EmptyState.vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -542,12 +543,7 @@ function confirmSuggestions(): void {
             </div>
         </div>
 
-        <p
-            v-if="rows.length === 0"
-            class="rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground"
-        >
-            Ainda não há feriados nem interrupções neste ano letivo.
-        </p>
+        <EmptyState v-if="rows.length === 0" title="Ainda não há feriados nem interrupções neste ano letivo." />
 
         <div
             v-for="row in rows"
@@ -818,13 +814,10 @@ function confirmSuggestions(): void {
                     {{ suggestionsMessage }}
                 </p>
 
-                <p
+                <EmptyState
                     v-else-if="suggestions.length === 0"
-                    class="rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground"
-                >
-                    Nenhum feriado nacional cai dentro das datas deste ano
-                    letivo.
-                </p>
+                    title="Nenhum feriado nacional cai dentro das datas deste ano letivo."
+                />
 
                 <ul v-else class="divide-y divide-border">
                     <li

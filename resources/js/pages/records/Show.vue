@@ -2,6 +2,7 @@
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { Pencil, Trash2 } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
+import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import HomeworkGrid from './HomeworkGrid.vue';
 
@@ -491,9 +492,7 @@ function applyFilters(): void {
 
         <p v-if="recordSummary" class="text-xs text-muted-foreground">{{ recordSummary }}</p>
 
-        <div v-if="!hasRecords" class="rounded-lg border border-dashed border-border p-10 text-center">
-            <p class="text-sm text-muted-foreground">Ainda não há registos nesta turma.</p>
-        </div>
+        <EmptyState v-if="!hasRecords" title="Ainda não há registos nesta turma." />
 
         <ul v-else class="space-y-2">
             <li v-for="record in records" :key="record.ulid" class="flex items-start gap-3 rounded-lg border border-border p-3">

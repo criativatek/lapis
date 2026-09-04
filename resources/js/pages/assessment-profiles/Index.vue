@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { CheckCircle2, Copy, Pencil, Plus, Trash2 } from '@lucide/vue';
+import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
+import TableShell from '@/components/TableShell.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { statusToneClasses } from '@/lib/statusTone';
 
 type Profile = {
     ulid: string;
@@ -44,33 +47,34 @@ function destroy(profile: Profile): void {
             </Button>
         </div>
 
-        <div v-if="profiles.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
-            <p class="text-sm text-muted-foreground">
-                Ainda não tem perfis de avaliação. Crie o primeiro para definir domínios e ponderações.
-            </p>
-            <Button v-if="canManage" as-child class="mt-3">
-                <Link href="/assessment-profiles/create"><Plus class="size-4" /> Criar o primeiro perfil</Link>
-            </Button>
-        </div>
+        <EmptyState
+            v-if="profiles.length === 0"
+            title="Ainda não tem perfis de avaliação. Crie o primeiro para definir domínios e ponderações."
+        >
+            <template v-if="canManage" #action>
+                <Button as-child>
+                    <Link href="/assessment-profiles/create"><Plus class="size-4" /> Criar o primeiro perfil</Link>
+                </Button>
+            </template>
+        </EmptyState>
 
-        <div v-else class="overflow-hidden rounded-lg border border-border">
-            <table class="w-full text-sm">
-                <thead class="bg-muted/50 text-left text-muted-foreground">
-                    <tr>
-                        <th class="px-4 py-2.5 font-medium">Perfil</th>
-                        <th class="px-4 py-2.5 font-medium">Contexto</th>
-                        <th class="px-4 py-2.5 font-medium">Estado</th>
-                        <th class="px-4 py-2.5 text-right font-medium">Ações</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-border">
-                    <tr v-for="profile in profiles" :key="profile.ulid">
+        <TableShell v-else>
+            <template #head>
+                <tr>
+                    <th class="px-4 py-2.5 font-medium">Perfil</th>
+                    <th class="px-4 py-2.5 font-medium">Contexto</th>
+                    <th class="px-4 py-2.5 font-medium">Estado</th>
+                    <th class="px-4 py-2.5 text-right font-medium">Ações</th>
+                </tr>
+            </template>
+            <template #body>
+                <tr v-for="profile in profiles" :key="profile.ulid">
                         <td class="px-4 py-3 font-medium">{{ profile.name }}</td>
                         <td class="px-4 py-3 text-muted-foreground">
                             {{ profile.subject }} · {{ profile.academic_year }}<template v-if="profile.grade_levels_label"> · {{ profile.grade_levels_label }}</template>
                         </td>
                         <td class="px-4 py-3">
-                            <Badge :variant="profile.is_active ? 'default' : 'secondary'">{{ profile.status_label }}</Badge>
+                            <Badge variant="secondary" :class="statusToneClasses(profile.is_active ? 'active' : 'archived')">{{ profile.status_label }}</Badge>
                         </td>
                         <td class="px-4 py-3">
                             <div class="flex items-center justify-end gap-1">
@@ -101,8 +105,7 @@ function destroy(profile: Profile): void {
                             </div>
                         </td>
                     </tr>
-                </tbody>
-            </table>
-        </div>
+            </template>
+        </TableShell>
     </div>
 </template>

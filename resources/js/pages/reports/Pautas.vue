@@ -2,6 +2,7 @@
 import { Head, Link, usePage } from '@inertiajs/vue3';
 import { ChevronRight, FileText, Plus } from '@lucide/vue';
 import { computed } from 'vue';
+import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 
@@ -25,13 +26,13 @@ const canCreateClass = computed(() => usePage().props.modules.includes('classes'
             description="A folha das classificações decididas, por turma — imprimível e exportável."
         />
 
-        <div v-if="classes.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
-            <FileText class="mx-auto mb-3 size-8 text-muted-foreground" />
-            <p class="text-sm text-muted-foreground">Ainda não tem turmas.</p>
-            <Button v-if="canCreateClass" as-child class="mt-3">
-                <Link href="/classes/create"><Plus class="size-4" /> Criar a primeira turma</Link>
-            </Button>
-        </div>
+        <EmptyState v-if="classes.length === 0" title="Ainda não tem turmas." :icon="FileText">
+            <template v-if="canCreateClass" #action>
+                <Button as-child>
+                    <Link href="/classes/create"><Plus class="size-4" /> Criar a primeira turma</Link>
+                </Button>
+            </template>
+        </EmptyState>
 
         <ul v-else class="divide-y divide-border overflow-hidden rounded-lg border border-border">
             <li v-for="schoolClass in classes" :key="schoolClass.ulid">

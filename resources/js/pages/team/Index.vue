@@ -3,6 +3,7 @@ import { useForm } from '@inertiajs/vue3';
 import { ArrowLeftRight, Mail, UserMinus, X } from '@lucide/vue';
 import { ref } from 'vue';
 import Heading from '@/components/Heading.vue';
+import TableShell from '@/components/TableShell.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -111,9 +112,8 @@ function submitTransferOwnership(member: Member): void {
         <section class="space-y-3 rounded-lg border border-border p-4">
             <h2 class="text-sm font-medium">Membros ({{ props.members.length }})</h2>
 
-            <div class="overflow-x-auto rounded-lg border border-border">
-                <table class="w-full text-sm">
-                    <thead class="bg-muted/50 text-left text-xs text-muted-foreground">
+            <TableShell head-class="text-xs">
+                <template #head>
                         <tr>
                             <th class="px-3 py-2 font-medium">Nome</th>
                             <th class="px-3 py-2 font-medium">Email</th>
@@ -121,8 +121,8 @@ function submitTransferOwnership(member: Member): void {
                             <th class="px-3 py-2 font-medium">Estado</th>
                             <th class="px-3 py-2 text-right font-medium">Ações</th>
                         </tr>
-                    </thead>
-                    <tbody class="divide-y divide-border">
+                </template>
+                <template #body>
                         <tr v-for="member in props.members" :key="member.email">
                             <td class="px-3 py-2 font-medium">{{ member.name }}</td>
                             <td class="px-3 py-2 text-muted-foreground">{{ member.email }}</td>
@@ -182,9 +182,8 @@ function submitTransferOwnership(member: Member): void {
                                 </div>
                             </td>
                         </tr>
-                    </tbody>
-                </table>
-            </div>
+                </template>
+            </TableShell>
         </section>
 
         <!-- Convidar -->
@@ -208,9 +207,8 @@ function submitTransferOwnership(member: Member): void {
 
             <p v-if="props.invitations.length === 0" class="text-sm text-muted-foreground">Sem convites por responder.</p>
 
-            <div v-else class="overflow-x-auto rounded-lg border border-border">
-                <table class="w-full text-sm">
-                    <thead class="bg-muted/50 text-left text-xs text-muted-foreground">
+            <TableShell v-else head-class="text-xs">
+                <template #head>
                         <tr>
                             <th class="px-3 py-2 font-medium">Email</th>
                             <th class="px-3 py-2 font-medium">Convidado em</th>
@@ -218,8 +216,8 @@ function submitTransferOwnership(member: Member): void {
                             <th class="px-3 py-2 font-medium">Estado</th>
                             <th class="px-3 py-2 text-right font-medium">Ações</th>
                         </tr>
-                    </thead>
-                    <tbody class="divide-y divide-border">
+                </template>
+                <template #body>
                         <tr v-for="invitation in props.invitations" :key="invitation.ulid">
                             <td class="px-3 py-2 font-medium">{{ invitation.email }}</td>
                             <td class="px-3 py-2 text-muted-foreground tabular-nums">{{ invitation.created_at }}</td>
@@ -234,9 +232,8 @@ function submitTransferOwnership(member: Member): void {
                                 </Button>
                             </td>
                         </tr>
-                    </tbody>
-                </table>
-            </div>
+                </template>
+            </TableShell>
             <p class="text-xs text-muted-foreground">
                 Convidar de novo o mesmo email renova o convite existente — o link anterior deixa de funcionar.
             </p>

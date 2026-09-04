@@ -2,6 +2,7 @@
 import { Head } from '@inertiajs/vue3';
 import { CheckCircle2, FileDown, GitBranch, PencilLine, Send, ShieldCheck, SlidersHorizontal } from '@lucide/vue';
 import { computed } from 'vue';
+import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 
 type Event = {
@@ -49,10 +50,7 @@ function when(iso: string): string {
     <div class="mx-auto w-full max-w-3xl space-y-6 p-4">
         <Heading title="Registo de atividade" :description="description" />
 
-        <div v-if="events.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
-            <ShieldCheck class="mx-auto mb-3 size-8 text-muted-foreground" />
-            <p class="text-sm text-muted-foreground">Ainda não há eventos registados.</p>
-        </div>
+        <EmptyState v-if="events.length === 0" title="Ainda não há eventos registados." :icon="ShieldCheck" />
 
         <ul v-else class="space-y-2">
             <li v-for="event in events" :key="event.ulid" class="flex items-start gap-3 rounded-lg border border-border p-3">

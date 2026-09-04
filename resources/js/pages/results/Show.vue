@@ -5,6 +5,7 @@ import { computed, ref } from 'vue';
 import AiReadingPanel from '@/components/ai/AiReadingPanel.vue';
 import type { AiReadingSection } from '@/components/ai/AiReadingPanel.vue';
 import CoverageWarning from '@/components/CoverageWarning.vue';
+import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import StudentAvatar from '@/components/StudentAvatar.vue';
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
@@ -364,9 +365,7 @@ function post(row: Row, data: { final_scale_level_id: number | null; final_value
             Esta turma não tem perfil de avaliação associado, por isso não há classificações a calcular.
         </p>
 
-        <div v-else-if="rows.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
-            <p class="text-sm text-muted-foreground">Sem alunos ou sem resultados neste período.</p>
-        </div>
+        <EmptyState v-else-if="rows.length === 0" title="Sem alunos ou sem resultados neste período." />
 
         <div v-else class="overflow-x-auto rounded-lg border border-border">
             <table class="w-full text-sm">

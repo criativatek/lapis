@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
+import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import { formatChangelogItem } from '@/lib/changelogFormat';
 
@@ -17,9 +18,7 @@ defineProps<{
     <div class="mx-auto w-full max-w-3xl space-y-6 p-4">
         <Heading title="Novidades" description="Histórico de alterações e funcionalidades do Lapispro." />
 
-        <div v-if="entries.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
-            <p class="text-sm text-muted-foreground">Ainda não há registo de alterações.</p>
-        </div>
+        <EmptyState v-if="entries.length === 0" title="Ainda não há registo de alterações." />
 
         <div v-else class="space-y-8">
             <article v-for="entry in entries" :key="entry.version" class="space-y-3">

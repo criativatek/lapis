@@ -15,6 +15,7 @@ import {
     DropdownMenuLabel,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { statusToneClasses } from '@/lib/statusTone';
 
 /** One enrolment of this student, in a turma THIS teacher teaches. */
 export type DirectoryEnrollment = {
@@ -372,7 +373,7 @@ function followUpHref(enrollment: DirectoryEnrollment): string {
                             </td>
 
                             <td class="px-4 py-3">
-                                <Badge :variant="stateOf(student).current ? 'secondary' : 'outline'">
+                                <Badge variant="secondary" :class="statusToneClasses(stateOf(student).current ? 'active' : 'left')">
                                     {{ stateOf(student).label }}
                                 </Badge>
                             </td>

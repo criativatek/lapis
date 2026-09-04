@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ChevronRight, FileSpreadsheet, FileText, LayoutTemplate, Plus } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
+import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 
@@ -154,16 +155,16 @@ function formatDate(value: string): string {
             <Button v-if="hasFilters" variant="ghost" size="sm" @click="clearFilters">Limpar</Button>
         </div>
 
-        <div v-if="reports.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
-            <FileText class="mx-auto mb-3 size-8 text-muted-foreground" />
-            <p class="text-sm font-medium">
-                {{ hasFilters ? 'Nenhum relatório corresponde a estes filtros.' : 'Ainda não criou nenhum relatório.' }}
-            </p>
-            <p v-if="!hasFilters" class="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-                Um relatório parte dos dados que já tem — resultados, classificações atribuídas, registos — e
-                escreve-os em frases que pode rever e editar antes de exportar.
-            </p>
-        </div>
+        <EmptyState
+            v-if="reports.length === 0"
+            :title="hasFilters ? 'Nenhum relatório corresponde a estes filtros.' : 'Ainda não criou nenhum relatório.'"
+            :description="
+                !hasFilters
+                    ? 'Um relatório parte dos dados que já tem — resultados, classificações atribuídas, registos — e escreve-os em frases que pode rever e editar antes de exportar.'
+                    : undefined
+            "
+            :icon="FileText"
+        />
 
         <ul v-else class="divide-y divide-border overflow-hidden rounded-lg border border-border">
             <li v-for="report in reports" :key="report.ulid">

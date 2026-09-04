@@ -3,6 +3,7 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import { Search as SearchIcon } from '@lucide/vue';
 import { ref } from 'vue';
 import HelpAssistantPanel from '@/components/ai/HelpAssistantPanel.vue';
+import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import { search, show } from '@/routes/help';
 
@@ -60,9 +61,7 @@ function doSearch(): void {
             {{ results.length }} resultado{{ results.length === 1 ? '' : 's' }} para «{{ query }}»
         </p>
 
-        <div v-if="query && results.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center">
-            <p class="text-sm text-muted-foreground">Sem resultados para «{{ query }}».</p>
-        </div>
+        <EmptyState v-if="query && results.length === 0" :title="`Sem resultados para «${query}».`" />
 
         <ul v-else-if="results.length > 0" class="divide-y divide-border rounded-lg border border-border">
             <li v-for="article in results" :key="article.id">
