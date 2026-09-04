@@ -14,9 +14,12 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Keeping a Pauta de Avaliação, and opening it again later.
@@ -152,6 +155,55 @@ class EvaluationSheetHistoryController extends Controller
     }
 
     /**
+     * The file a record points at, handed over — and only ever this way.
+     *
+     * THE BYTES LIVE ON A PRIVATE DISK AND HAVE NO URL OF THEIR OWN. The folder
+     * they sit in is a random ULID that is deliberately NOT the record's, so
+     * nothing a browser has seen can be turned into a path. This route is the
+     * only door, and it is locked four times over: the class must be one this
+     * teacher may view, the record must belong to THAT class (a ulid is not a
+     * key to a colleague's turma), the record must claim a file, and the file
+     * must really be there.
+     *
+     * The name comes from the PAYLOAD, so a downloaded grid is named after what
+     * the record said at the time — renaming a period afterwards does not
+     * rewrite it.
+     */
+    public function download(SchoolClass $class, EvaluationSheetExport $export): StreamedResponse
+    {
+        Gate::authorize('view', $class);
+
+        abort_unless((int) $export->class_id === (int) $class->id, 404);
+        abort_if($export->file_path === null, 404);
+
+        $disk = Storage::disk($export->file_disk);
+
+        abort_unless($disk->exists($export->file_path), 404);
+
+        return $disk->download($export->file_path, $this->downloadName($export));
+    }
+
+    /** «INOVAR_7A_Portugues_1Semestre.xls», from the frozen document itself. */
+    protected function downloadName(EvaluationSheetExport $export): string
+    {
+        /** @var array<string, mixed> $payload */
+        $payload = $export->payload;
+        /** @var array{label?: string, subject?: string} $schoolClass */
+        $schoolClass = $payload['class'] ?? [];
+        /** @var array{label?: string} $period */
+        $period = $payload['period'] ?? [];
+
+        $parts = array_map(
+            fn (string $part): string => Str::of($part)->ascii()->replaceMatches('/[^A-Za-z0-9]+/', '')->value(),
+            [(string) ($schoolClass['label'] ?? ''), (string) ($schoolClass['subject'] ?? ''), (string) ($period['label'] ?? '')],
+        );
+
+        $stem = implode('_', array_filter($parts));
+
+        return 'INOVAR_'.($stem === '' ? 'pauta' : $stem).'.'.($export->original_extension ?? 'xls');
+    }
+
+    /**
      * One row of history, said the way the snapshot says it.
      *
      * The temporal labels come from the PAYLOAD and never from the live
@@ -185,6 +237,9 @@ class EvaluationSheetHistoryController extends Controller
             'exported_at' => $export->exported_at->toIso8601String(),
             'author' => $author['name'] ?? $export->exporter?->name,
             'status_label' => $export->statusLabel(),
+            // WHAT produced the record — «snapshot» when somebody simply kept
+            // the pauta, «inovar» when a grid was generated from it.
+            'adapter' => $export->adapter,
             'has_file' => $export->file_path !== null,
             'warning_count' => (int) $export->warning_count,
             'warnings' => array_values($warnings),

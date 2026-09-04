@@ -133,7 +133,83 @@ export type EvaluationSheetHistoryEntry = {
     exported_at: string;
     author: string | null;
     status_label: string;
+    /** What produced the record: 'snapshot' when it was merely kept, 'inovar' when a grid was generated. */
+    adapter: string;
     has_file: boolean;
     warning_count: number;
     warnings: string[];
+};
+
+/**
+ * A column of the uploaded grid that is NOT a domain — somewhere the level
+ * could go.
+ *
+ * `header` is normally null: neither real INOVAR grid names the column that
+ * carries the level, which is exactly why the teacher chooses it rather than
+ * the system guessing «the one after the domains». The samples are the first
+ * values found on the students' own rows, so the column can be recognised.
+ */
+export type InovarLevelCandidate = {
+    column: string;
+    header: string | null;
+    samples: string[];
+};
+
+/** One mention that will be written into one cell of the grid. */
+export type InovarExportCell = {
+    column: string;
+    domain: string | null;
+    band: string | null;
+    code: string | null;
+    writable: boolean;
+    partial: boolean;
+};
+
+/**
+ * One line of the grid, as the FILE sees it: which student it matched, what
+ * goes into it, and the level if the teacher includes one.
+ *
+ * `level` is the teacher's DECISION or null. Never a proposal, never a zero —
+ * null leaves the cell exactly as the grid had it.
+ */
+export type InovarExportRow = {
+    row: number;
+    process_number: string | null;
+    name: string;
+    matched: boolean;
+    issues: string[];
+    domains: InovarExportCell[];
+    level: string | null;
+};
+
+/** Everything the preparation screen shows, straight from the file on disk. */
+export type InovarExportPreparation = {
+    students: InovarExportRow[];
+    domains: {
+        inovar_column: string;
+        inovar_header: string;
+        lapis_domain: string | null;
+        mapped: boolean;
+        issues: string[];
+    }[];
+    summary: {
+        matched_students: number;
+        unmatched_students: number;
+        mapped_domains: number;
+        unmapped_domains: number;
+        ready_cells: number;
+        warnings: string[];
+        blocking_errors: string[];
+    };
+    source: { label: string; reference_label: string | null };
+    level: {
+        candidates: InovarLevelCandidate[];
+        /** On for a moment that closes the period, off for one taken along the way. */
+        default_include: boolean;
+        /** Only when the FILE names the column. Null means the teacher chooses. */
+        suggested_column: string | null;
+        unavailable_reason: string | null;
+    };
+    moment_label: string;
+    effective_at: string;
 };

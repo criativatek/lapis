@@ -27,6 +27,8 @@ const props = defineProps<{
     periods: EvaluationSheetPeriod[];
     sheet: EvaluationSheet | null;
     saveDefaults?: EvaluationSheetSaveDefaults | null;
+    /** Apresentação apenas: a rota está atrás de `module:inovar_export` no servidor. */
+    canExportToInovar?: boolean;
 }>();
 
 const selectedPeriod = computed<EvaluationSheetPeriod | null>(
@@ -117,6 +119,17 @@ function submitSave(): void {
             >
                 Guardar esta pauta
             </button>
+            <!-- NÃO EXPORTA JÁ. Abre a etapa de preparação: carregar a grelha,
+                 ver o que vai ser escrito, e só depois confirmar. Uma grelha
+                 subtilmente errada seria enviada à escola sem ninguém dar por
+                 isso — a revisão é o ponto. -->
+            <Link
+                v-if="canExportToInovar && selectedPeriod"
+                :href="`/classes/${schoolClass.ulid}/pauta-avaliacao/inovar/${selectedPeriod.ulid}`"
+                class="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
+            >
+                Preparar exportação para o Inovar
+            </Link>
             <Link
                 :href="`/classes/${schoolClass.ulid}/pauta-avaliacao/historico`"
                 class="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"

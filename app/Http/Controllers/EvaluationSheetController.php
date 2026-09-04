@@ -8,7 +8,7 @@ use App\Models\User;
 use App\Services\Assessment\BuildEvaluationSheet;
 use App\Services\Assessment\CaptureEvaluationSheet;
 use App\Support\Assessment\DomainColorPalette;
-use Carbon\CarbonInterface;
+use App\Support\Entitlements\Entitlements;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
@@ -93,36 +93,16 @@ class EvaluationSheetController extends Controller
             'saveDefaults' => $selected === null ? null : [
                 'period_ulid' => $selected->ulid,
                 'moment_label' => $this->capture->suggestedLabel($selected),
-                'effective_at' => $this->defaultEffectiveDate($selected)->toDateString(),
+                'effective_at' => $this->capture->defaultEffectiveDate($selected)->toDateString(),
                 'starts_on' => $selected->starts_on->toDateString(),
                 'ends_on' => $selected->ends_on->toDateString(),
             ],
+            // PRESENTATION ONLY. Hiding the action is not access control — the
+            // route itself sits behind `module:inovar_export` and refuses on
+            // the server. This just spares a teacher a door that opens onto a
+            // 403 (§8.2).
+            'canExportToInovar' => app(Entitlements::class)->allows('inovar_export'),
         ]);
-    }
-
-    /**
-     * Today when today is inside the period, otherwise the nearest edge of it.
-     *
-     * A period already finished gets its last day; one that has not started yet
-     * gets its first — and that one is then refused on save, because a
-     * photograph of a moment that has not arrived is a photograph of nothing.
-     * The refusal says so in words rather than this screen guessing a date that
-     * belongs to a different period. Nothing is inferred from the period's NAME
-     * — only from the dates it actually carries (§6).
-     */
-    protected function defaultEffectiveDate(AcademicPeriod $period): CarbonInterface
-    {
-        $today = now()->startOfDay();
-
-        if ($today->lessThan($period->starts_on->copy()->startOfDay())) {
-            return $period->starts_on->copy()->startOfDay();
-        }
-
-        if ($today->greaterThan($period->ends_on->copy()->startOfDay())) {
-            return $period->ends_on->copy()->startOfDay();
-        }
-
-        return $today;
     }
 
     protected function user(): User

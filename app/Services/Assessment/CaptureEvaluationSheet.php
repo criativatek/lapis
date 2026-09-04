@@ -2,6 +2,7 @@
 
 namespace App\Services\Assessment;
 
+use App\Domain\Export\GeneratedExportFile;
 use App\Models\AcademicPeriod;
 use App\Models\ClassificationScope;
 use App\Models\EvaluationSheetExport;
@@ -10,6 +11,7 @@ use App\Models\User;
 use App\Support\Assessment\DomainColorPalette;
 use App\Support\Assessment\EvaluationSheetException;
 use App\Support\Hashing\CanonicalPayload;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 
 /**
@@ -39,6 +41,23 @@ class CaptureEvaluationSheet
         protected BuildEvaluationSheet $builder,
     ) {}
 
+    /**
+     * ONE PLACE TAKES THE PHOTOGRAPH, whatever the occasion.
+     *
+     * Pressing «Guardar esta pauta» and exporting a grid to INOVAR are the same
+     * act seen twice: both freeze what was on screen at a moment, and both have
+     * to go on saying it afterwards. So the export does not build a second
+     * payload — it calls this, and adds three things:
+     *
+     *  - `$adapter` — WHAT produced the record («snapshot», «inovar»);
+     *  - `$extraWarnings` — what was incomplete ABOUT THE EXPORT itself, in the
+     *    same sentences the rest of the payload speaks, so `warning_count` goes
+     *    on being exactly `count($payload['warnings'])` and history has nothing
+     *    to reconcile;
+     *  - `$file` — where the produced file lives and the checksum of its bytes.
+     *
+     * @param  list<string>  $extraWarnings
+     */
     public function capture(
         SchoolClass $class,
         AcademicPeriod $period,
@@ -46,6 +65,9 @@ class CaptureEvaluationSheet
         string $momentLabel,
         Carbon $effectiveAt,
         User $author,
+        string $adapter = 'snapshot',
+        array $extraWarnings = [],
+        ?GeneratedExportFile $file = null,
     ): EvaluationSheetExport {
         $this->guardTheDate($class, $period, $effectiveAt);
 
@@ -54,7 +76,14 @@ class CaptureEvaluationSheet
         $sheet = $this->builder->for($class, $period, $scope);
         $domains = DomainColorPalette::decorate($sheet['domains']);
         $students = $sheet['students'];
-        $warnings = $this->warnings($domains, $students);
+
+        // The sheet's own incompleteness first, then whatever the occasion
+        // added. Deduplicated because the two can land on the same sentence and
+        // a teacher reading the same line twice learns nothing the second time.
+        $warnings = array_values(array_unique([
+            ...$this->warnings($domains, $students),
+            ...$extraWarnings,
+        ]));
 
         $payload = [
             'version' => self::CURRENT_VERSION,
@@ -84,15 +113,21 @@ class CaptureEvaluationSheet
             'class_id' => $class->id,
             'academic_period_id' => $period->id,
             'scope' => $scope,
-            // Not «inovar»: nothing was exported anywhere. The adapter names
-            // what produced the record, and here it is the act of keeping it.
-            'adapter' => 'snapshot',
+            // WHAT produced the record. «snapshot» when nothing was exported
+            // anywhere — the default, and the act of simply keeping it.
+            'adapter' => $adapter,
             'moment_label' => $momentLabel,
             'effective_at' => $effectiveAt->toDateString(),
             'payload' => $payload,
             'payload_hash' => CanonicalPayload::hash($payload),
             'warning_count' => count($warnings),
             'exported_with_warnings' => $warnings !== [],
+            // The column is NOT NULL with a default; a record without a file
+            // still names the disk it would have used.
+            'file_disk' => $file->disk ?? 'local',
+            'file_path' => $file?->path,
+            'file_checksum' => $file?->checksum,
+            'original_extension' => $file?->extension,
             'exported_by' => $author->id,
             'exported_at' => now(),
         ]);
@@ -119,6 +154,35 @@ class CaptureEvaluationSheet
         $given = $given === null ? '' : trim(preg_replace('/\s+/u', ' ', $given) ?? '');
 
         return $given !== '' ? $given : $this->suggestedLabel($period);
+    }
+
+    /**
+     * Today when today is inside the period, otherwise the nearest edge of it.
+     *
+     * A period already finished gets its last day — which is the ordinary case
+     * for a grid that closes it, and the reason this is not simply «today». One
+     * that has not started yet gets its first, and that one is then refused on
+     * save, because a photograph of a moment that has not arrived is a
+     * photograph of nothing; the refusal says so in words rather than a screen
+     * guessing a date belonging to another period.
+     *
+     * Nothing is inferred from the period's NAME — only from the dates it
+     * actually carries (§6). It lives here, beside the guard that enforces the
+     * same boundaries, so the suggestion and the refusal can never drift apart.
+     */
+    public function defaultEffectiveDate(AcademicPeriod $period): CarbonInterface
+    {
+        $today = now()->startOfDay();
+
+        if ($today->lessThan($period->starts_on->copy()->startOfDay())) {
+            return $period->starts_on->copy()->startOfDay();
+        }
+
+        if ($today->greaterThan($period->ends_on->copy()->startOfDay())) {
+            return $period->ends_on->copy()->startOfDay();
+        }
+
+        return $today;
     }
 
     /**

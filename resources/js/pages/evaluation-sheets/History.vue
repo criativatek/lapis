@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
-import { History as HistoryIcon } from '@lucide/vue';
+import { Download, History as HistoryIcon } from '@lucide/vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import type { EvaluationSheetHistoryEntry } from '@/types';
@@ -139,6 +139,21 @@ function statusClasses(entry: EvaluationSheetHistoryEntry): string {
                         <span v-if="entry.warning_count > 0" class="text-[11px] text-amber-800">
                             {{ entry.warning_count }} {{ entry.warning_count === 1 ? 'aviso' : 'avisos' }}
                         </span>
+                        <!-- UMA NAVEGAÇÃO NORMAL, não uma visita Inertia: um
+                             ficheiro não volta por uma visita Inertia — o
+                             cliente exige uma resposta Inertia e deita fora
+                             tudo o resto, e o botão pareceria não fazer nada.
+                             O ficheiro vive em disco privado e esta rota é a
+                             única porta: autoriza a turma e confirma que o
+                             registo é dela. -->
+                        <a
+                            v-if="entry.has_file"
+                            :href="`/classes/${schoolClass.ulid}/pauta-avaliacao/historico/${entry.ulid}/ficheiro`"
+                            class="mt-1 inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-muted/40"
+                        >
+                            <Download class="size-3.5" />
+                            Descarregar
+                        </a>
                     </div>
                 </div>
             </li>

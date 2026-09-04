@@ -25,6 +25,7 @@ use App\Http\Controllers\DataImportController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\EvaluationSheetController;
 use App\Http\Controllers\EvaluationSheetHistoryController;
+use App\Http\Controllers\EvaluationSheetInovarExportController;
 use App\Http\Controllers\EvidenceController;
 use App\Http\Controllers\HelpAssistantController;
 use App\Http\Controllers\HelpController;
@@ -631,7 +632,27 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // `results/quadro-sintese` a subir acima do seu próprio wildcard.
         Route::post('classes/{class}/pauta-avaliacao/{period}/guardar', [EvaluationSheetHistoryController::class, 'store'])->name('evaluation-sheets.store');
         Route::get('classes/{class}/pauta-avaliacao/historico', [EvaluationSheetHistoryController::class, 'history'])->name('evaluation-sheets.history');
+        // O ficheiro de um registo. Declarada ANTES de `historico/{export}` por
+        // higiene, e deliberadamente FORA de `module:inovar_export`: um registo
+        // já criado continua a ser da escola, e um plano que muda não pode
+        // trancar a porta do que já foi exportado. A autorização real está no
+        // controlador — turma visível, registo desta turma, ficheiro existente.
+        Route::get('classes/{class}/pauta-avaliacao/historico/{export}/ficheiro', [EvaluationSheetHistoryController::class, 'download'])->name('evaluation-sheets.download');
         Route::get('classes/{class}/pauta-avaliacao/historico/{export}', [EvaluationSheetHistoryController::class, 'snapshot'])->name('evaluation-sheets.snapshot');
+
+        // «Preparar exportação para o Inovar», a partir da própria Pauta.
+        //
+        // A capability é a que já existe — nenhuma nova (§ briefing). O fluxo
+        // antigo `exports.inovar.*` continua exatamente onde estava e não é
+        // tocado por nada disto.
+        Route::middleware('module:inovar_export')->group(function () {
+            Route::get('classes/{class}/pauta-avaliacao/inovar/{period}', [EvaluationSheetInovarExportController::class, 'create'])->name('evaluation-sheets.inovar.create');
+            Route::post('classes/{class}/pauta-avaliacao/inovar/{period}', [EvaluationSheetInovarExportController::class, 'store'])->name('evaluation-sheets.inovar.store');
+            // Confirmar TERMINA NUM REDIRECT, não num ficheiro: ao contrário do
+            // fluxo antigo, aqui o ficheiro fica, e o que o professor precisa
+            // de receber é o registo no histórico.
+            Route::post('classes/{class}/pauta-avaliacao/inovar/{period}/{token}', [EvaluationSheetInovarExportController::class, 'confirm'])->name('evaluation-sheets.inovar.confirm');
+        });
 
         Route::get('classes/{class}/pauta-avaliacao/{period?}', [EvaluationSheetController::class, 'show'])->name('evaluation-sheets.show');
 

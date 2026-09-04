@@ -3,6 +3,7 @@
 namespace App\Services\Export;
 
 use App\Domain\Export\InovarTemplate;
+use App\Domain\Export\InovarTemplateColumn;
 use App\Domain\Export\InovarTemplateStudent;
 use App\Support\Export\InovarTemplateException;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
@@ -47,6 +48,9 @@ class InovarTemplateReader
     /** Nothing sane has more; a runaway scan means the file is not what it claims. */
     protected const MAXIMUM_SCANNED_ROWS = 2000;
 
+    /** Enough of a column's contents for a teacher to recognise it, and no more. */
+    protected const SAMPLED_VALUES = 3;
+
     public function read(string $path): InovarTemplate
     {
         $spreadsheet = $this->load($path);
@@ -67,11 +71,14 @@ class InovarTemplateReader
                 );
             }
 
+            $students = $this->students($sheet, $headerRow);
+
             return new InovarTemplate(
                 sheet: $sheet->getTitle(),
                 headerRow: $headerRow,
-                students: $this->students($sheet, $headerRow),
+                students: $students,
                 domainColumns: $domainColumns,
+                candidateColumns: $this->candidateColumns($sheet, $headerRow, $domainColumns, $students),
             );
         } finally {
             $spreadsheet->disconnectWorksheets();
@@ -135,6 +142,71 @@ class InovarTemplateReader
         }
 
         return $columns;
+    }
+
+    /**
+     * The columns that are NOT domains — the only places a level could be
+     * written, reported so a person can choose one.
+     *
+     * NOTHING IS INFERRED HERE, and that is the entire point. Neither real grid
+     * audited before this was written names a column for the level: the `.xlsx`
+     * has no such column at all, and in the `.xls` the one carrying 2/3/4/5 has
+     * no header. Taking «the column after the last domain» would be inventing a
+     * mapping, and a grid filled in the wrong column is worse than an empty one
+     * because the school uploads it either way.
+     *
+     * A COLUMN HAS TO SHOW ITSELF TO BE OFFERED: either it names itself in the
+     * header row, or it already carries values on the students' own rows. A
+     * column that does neither is not a place — it is the blank space past the
+     * end of the grid, which a stray style can extend by several columns, and
+     * offering that would be the same guess wearing a different hat.
+     *
+     * `header` is normally null, because a column with a header is a domain
+     * column by the rule above. It is read and carried anyway: the day INOVAR
+     * does name that column, it is a name and not a guess, and the preparation
+     * screen can pre-select it.
+     *
+     * @param  array<string, string>  $domainColumns
+     * @param  list<InovarTemplateStudent>  $students
+     * @return list<InovarTemplateColumn>
+     */
+    protected function candidateColumns(Worksheet $sheet, int $headerRow, array $domainColumns, array $students): array
+    {
+        $first = Coordinate::columnIndexFromString(self::FIRST_DOMAIN_COLUMN);
+        $last = Coordinate::columnIndexFromString($sheet->getHighestDataColumn());
+
+        $candidates = [];
+
+        for ($index = $first; $index <= $last; $index++) {
+            $letter = Coordinate::stringFromColumnIndex($index);
+
+            if (isset($domainColumns[$letter])) {
+                continue;
+            }
+
+            $header = $this->cell($sheet, $letter, $headerRow);
+            $samples = [];
+
+            foreach ($students as $student) {
+                if (count($samples) >= self::SAMPLED_VALUES) {
+                    break;
+                }
+
+                $value = $this->cell($sheet, $letter, $student->row);
+
+                if ($value !== null) {
+                    $samples[] = $value;
+                }
+            }
+
+            if ($header === null && $samples === []) {
+                continue;
+            }
+
+            $candidates[] = new InovarTemplateColumn($letter, $header, $samples);
+        }
+
+        return $candidates;
     }
 
     /**
