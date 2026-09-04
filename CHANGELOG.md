@@ -25,6 +25,26 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.122.2] — 2026-09-04
+
+O sistema de design da app ganha fonte de verdade: **`DESIGN.md`** — saído de
+uma consulta com três vozes (Claude + Codex + subagente independente),
+pesquisa competitiva (Additio, iDoceo) e um mockup aprovado visualmente.
+
+- Direcção «**Papel, Lápis, Tinta**» ao serviço do memorável escolhido:
+  «alguém tratou disto por mim» — alívio como emoção-assinatura.
+- Regras novas com dentes: âmbar é cuidado/feito (nunca CTA, nunca aviso);
+  proposta a lápis → decisão a tinta; o vermelho nunca toca numa nota; sem
+  clipes nem rasgados («não é preciso infantilizar»); Newsreader em dose
+  pequena; home de fecho editorial como norte.
+- `CLAUDE.md` passa a apontar: DESIGN.md manda na app, `.impeccable.md` no
+  site público.
+- Artefactos (3+1 mockups, board, aprovação) em
+  `~/.gstack/projects/criativatek-lapis/designs/design-system-20260904/`.
+
+Implementação do sistema fica para fatias próprias — este commit é só a
+fonte de verdade.
+
 ## [0.122.1] — 2026-09-04
 
 Segunda volta à página de Avaliações («pode fazer muito melhor» — e podia):

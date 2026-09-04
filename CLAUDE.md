@@ -88,7 +88,7 @@ O fluxo assistido por IA é **portável** e vive no repo — não na config glob
 - **Codex como implementer por defeito**: para tarefas de implementação, delega automaticamente ao `codex-rescue` (via Agent), sem esperar por pedido explícito nem por ficar preso duas vezes. Usa o `implementer` (Sonnet, `.claude/agents/implementer.md`) só como fallback — quando o codex-rescue não estiver disponível, falhar, ou a tarefa for demasiado pequena/trivial (ex.: um edit de uma linha). Continua também a ser usado para segunda implementação em paralelo, diagnóstico independente e revisão cruzada, via `codex` CLI ou subagente `codex:codex-rescue`. Caveat: sandbox Windows instável a escrever → se falhar, lê o diagnóstico e aplica o fix no Claude.
 - **Loop por slice** e disciplina por-commit (`composer ci:check` verde · versão em `config/app.php` + `CHANGELOG.md` · memória) — ver [docs/workflow.md](docs/workflow.md). Estado e roadmap em [docs/status.md](docs/status.md).
 
-## Design context (site público) — ler [.impeccable.md](.impeccable.md) antes de tocar em UI
+## Design — [DESIGN.md](DESIGN.md) manda na APP autenticada; [.impeccable.md](.impeccable.md) no site público. Ler antes de tocar em UI
 
 Marca **Sério · Próximo · Claro**; direcção «humano + cor», bento/soft UI, base branca, azul `blue-600` para agir, navy para a faixa forte. Três regras inegociáveis:
 - **Nada inventado** — sem estatísticas, logótipos, testemunhos ou funcionalidades que não existem.
