@@ -25,6 +25,17 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.118.1] — 2026-09-04
+
+### Corrigido
+
+- **`GenerateCapabilityVoucher` repete agora a guarda `is_platform_admin`** —
+  como já faziam `GrantCapabilitiesDirectly` e `DisableCapabilityVoucher`. A
+  rota HTTP já estava atrás do middleware `platform-admin`; isto não era uma
+  vulnerabilidade web conhecida, mas a Action, chamada diretamente (job,
+  comando, teste), não repetia a guarda que as suas irmãs já tinham —
+  inconsistência de defesa em profundidade entre Actions do mesmo módulo.
+
 ## [0.118.0] — 2026-09-04
 
 O lote autónomo das sugestões do dia anterior — o alarme falso de integridade,

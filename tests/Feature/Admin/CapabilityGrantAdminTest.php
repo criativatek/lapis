@@ -35,6 +35,15 @@ class CapabilityGrantAdminTest extends TestCase
     }
 
     #[Test]
+    public function only_platform_admins_reach_voucher_issuance(): void
+    {
+        $owner = User::factory()->create();
+        $payload = ['label' => 'Formação', 'duration_days' => 10, 'module_keys' => ['calendar_import']];
+        $this->actingAs($owner)->post('/admin/capabilities/vouchers', $payload)->assertForbidden();
+        $this->assertSame(0, CapabilityVoucher::query()->count());
+    }
+
+    #[Test]
     public function direct_grant_requires_and_stores_reason_and_can_be_revoked_idempotently(): void
     {
         $admin = $this->admin();

@@ -27,6 +27,9 @@ class GenerateCapabilityVoucher
      */
     public function handle(User $operator, string $label, int $durationDays, ?array $moduleKeys = null, ?CapabilityGrantPreset $preset = null, ?string $code = null, ?CarbonInterface $validFrom = null, ?CarbonInterface $validUntil = null, ?int $maxRedemptions = null, ?int $restrictedOrganizationId = null, ?string $notes = null): CapabilityVoucher
     {
+        if (! $operator->is_platform_admin) {
+            abort(403);
+        }
         if ($durationDays < 1 || ($maxRedemptions !== null && $maxRedemptions < 1) || ($validFrom !== null && $validUntil !== null && $validUntil->lt($validFrom))) {
             throw ValidationException::withMessages(['duration_days' => __('A duração e a janela do código não são válidas.')]);
         }

@@ -11,6 +11,7 @@ use App\Support\Entitlements\CapabilityVoucherUnavailable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use PHPUnit\Framework\Attributes\Test;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
 class CapabilityVoucherLifecycleTest extends TestCase
@@ -48,6 +49,19 @@ class CapabilityVoucherLifecycleTest extends TestCase
         $this->assertDatabaseHas('capability_voucher_redemptions', ['capability_voucher_id' => $voucher->getKey(), 'organization_id' => $this->organization->getKey()]);
         $this->assertDatabaseHas('audit_events', ['event' => 'capability.voucher_issued', 'causer_id' => $this->operator->getKey()]);
         $this->assertDatabaseHas('audit_events', ['event' => 'capability.voucher_redeemed', 'causer_id' => $this->owner->getKey()]);
+    }
+
+    #[Test]
+    public function the_action_refuses_a_direct_call_from_a_non_platform_admin(): void
+    {
+        $nonAdmin = User::factory()->create();
+        try {
+            app(GenerateCapabilityVoucher::class)->handle(operator: $nonAdmin, label: 'Formação', durationDays: 7, moduleKeys: ['calendar_import']);
+            $this->fail('Expected a 403 refusal.');
+        } catch (HttpException $exception) {
+            $this->assertSame(403, $exception->getStatusCode());
+        }
+        $this->assertSame(0, CapabilityVoucher::query()->count());
     }
 
     #[Test]
