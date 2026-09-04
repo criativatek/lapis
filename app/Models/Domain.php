@@ -25,9 +25,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $name
  * @property string $code
  * @property int $sequence
+ * @property string|null $color
  * @property bool $is_active
  */
-#[Fillable(['subject_id', 'parent_domain_id', 'name', 'code', 'sequence', 'is_active'])]
+#[Fillable(['subject_id', 'parent_domain_id', 'name', 'code', 'sequence', 'color', 'is_active'])]
 class Domain extends Model
 {
     /** @use HasFactory<DomainFactory> */

@@ -19,6 +19,7 @@ import {
     Settings,
     Share2,
     SlidersHorizontal,
+    Table2,
     TrendingUp,
     UserCheck,
     Users,
@@ -62,6 +63,7 @@ const icons: Record<string, LucideIcon> = {
     Settings,
     Share2,
     CircleHelp,
+    Table2,
 };
 
 export function navIcon(name: string): LucideIcon {

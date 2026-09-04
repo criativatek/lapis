@@ -23,6 +23,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DataExportController;
 use App\Http\Controllers\DataImportController;
 use App\Http\Controllers\EnrollmentController;
+use App\Http\Controllers\EvaluationSheetController;
 use App\Http\Controllers\EvidenceController;
 use App\Http\Controllers\HelpAssistantController;
 use App\Http\Controllers\HelpController;
@@ -614,6 +615,13 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::post('classes/{class}/results/analise-ia/{period?}', [ResultsController::class, 'analyse'])
             ->name('results.analyse');
         Route::get('classes/{class}/results/{period?}', [ResultsController::class, 'show'])->name('results.show');
+
+        // Pautas de Avaliação — one view, not three: quantitativo, apreciação
+        // qualitativa por domínio e classificação (sugerida vs. decidida) num
+        // único ecrã, sem seletor de "modo". Ocultar grupos é apresentação; os
+        // dados enviados nunca mudam com o que o professor esconde (§ briefing).
+        Route::get('avaliacao/pautas', [EvaluationSheetController::class, 'index'])->name('evaluation-sheets.index');
+        Route::get('classes/{class}/pauta-avaliacao/{period?}', [EvaluationSheetController::class, 'show'])->name('evaluation-sheets.show');
 
         // The decision layer (§7): propose from the engine, then the teacher confirms.
         Route::get('classes/{class}/classifications/{period?}', [ClassificationController::class, 'show'])->name('classifications.show');

@@ -352,7 +352,10 @@ class ShellNavigationTest extends TestCase
         // plans; the entry is not new, only reachable.
         $this->assertSame([
             'dashboard', 'classes', 'students', 'instruments', 'assessments',
-            'self-assessments', 'class-analysis', 'student-progress',
+            // «Pautas de Avaliação» reutiliza o módulo `results`, já presente em
+            // BASE_MODULES desde `classifications.*`/`avaliacoes-intercalares`
+            // — nenhuma entitlement nova, apenas mais uma porta para a mesma.
+            'self-assessments', 'evaluation-sheets', 'class-analysis', 'student-progress',
             'interventions', 'records', 'reports', 'calendar', 'academic-structure', 'assessment-profiles', 'settings',
             // Centro de Ajuda (§Onboarding & Help): module => null, so every
             // plan reaches it — never gated by Base/Pro/Institucional.

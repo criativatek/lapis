@@ -89,6 +89,10 @@ return [
                 // rename (§17).
                 ['key' => 'assessments', 'label' => 'Grelhas de correção', 'icon' => 'PenLine', 'module' => 'assessments', 'phase' => 2, 'route' => 'assessments.index', 'built' => true, 'description' => 'Registar avaliações dos alunos.', 'match' => ['/classifications']],
                 ['key' => 'self-assessments', 'label' => 'Autoavaliações', 'icon' => 'UserCheck', 'module' => 'self_assessments', 'phase' => 3, 'route' => 'self-assessments.index', 'built' => true, 'description' => 'Gerir as autoavaliações.'],
+                // Reutiliza o módulo `results` — é onde já vivem `classifications.*`
+                // e `avaliacoes-intercalares`, e é o mesmo módulo que gate
+                // «Análise da Turma» no grupo Acompanhamento.
+                ['key' => 'evaluation-sheets', 'label' => 'Pautas de Avaliação', 'icon' => 'Table2', 'module' => 'results', 'phase' => 3, 'route' => 'evaluation-sheets.index', 'built' => true, 'description' => 'Consultar, guardar e rever a situação avaliativa da turma.'],
             ],
         ],
 
