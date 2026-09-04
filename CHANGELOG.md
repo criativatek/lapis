@@ -25,6 +25,20 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.124.3] — 2026-09-04
+
+### Alterado
+
+- **O gesto «arrumar» fecha a correção** (DESIGN.md §Movimento): ao concluir
+  a correção de um elemento, em vez de um toast genérico aparece junto ao
+  estado uma linha em serifa itálica — «Arrumado — guardado às HH:MM.» —
+  com a hora real de `completed_at` (Europe/Lisbon) e a animação `ink-settle`.
+  Só aparece no momento do gesto; ao voltar à página fica o estado normal.
+- **Raio hierárquico** (DESIGN.md §Layout): os raios de canto passam a dizer a
+  profundidade — controlo 6px · cartão 10px · modal/painel 14px — por uma só
+  alavanca no bridge do Tailwind (`--radius-sm/md/lg/xl` em `app.css`), sem
+  tocar componente a componente. Pills continuam redondas.
+
 ## [0.124.2] — 2026-09-04
 
 Pesquisa no escolhedor de aluno do Acompanhamento — pedido no SUP-HWVGQE

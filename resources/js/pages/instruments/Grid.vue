@@ -901,10 +901,31 @@ const saveHint = computed(() => {
     return dirtyCount.value === 1 ? 'Guardar 1 alteração.' : `Guardar ${dirtyCount.value} alterações.`;
 });
 
+/**
+ * O gesto «arrumar» (DESIGN.md §Movimento): fechar a correção não dispara
+ * um toast — escreve-se, em serifa itálica, «Arrumado — guardado às H:MM»
+ * ao lado do estado, a assentar com o easing único. É a página a ficar
+ * visívelmente mais leve, não uma notificação por cima dela.
+ */
+const justCompleted = ref(false);
+
+const completedAtLabel = computed(() => {
+    if (props.instrument.completed_at === null) {
+        return null;
+    }
+
+    return new Intl.DateTimeFormat('pt-PT', {
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZone: 'Europe/Lisbon',
+    }).format(new Date(props.instrument.completed_at));
+});
+
 function completeCorrection(): void {
     router.post(`/instruments/${props.instrument.ulid}/complete`, {}, {
         preserveScroll: true,
         onStart: () => (workflowBusy.value = true),
+        onSuccess: () => (justCompleted.value = true),
         onFinish: () => {
             workflowBusy.value = false;
             completeDialogOpen.value = false;
@@ -955,6 +976,10 @@ function revertCancellation(): void {
             </div>
             <div class="flex items-center gap-3">
                 <Badge variant="secondary" :class="statusToneClasses(instrument.status)">{{ instrument.status_label }}</Badge>
+                <p
+                    v-if="justCompleted && completedAtLabel"
+                    class="ink-settle font-serif text-sm italic text-muted-foreground"
+                >Arrumado — guardado às {{ completedAtLabel }}.</p>
                 <template v-if="!isCancelled">
                     <!--
                       A real anchor, not an Inertia Link: this returns a file,

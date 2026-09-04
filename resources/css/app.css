@@ -16,9 +16,17 @@
        nas horas do «Arrumado» e na frase de fecho. */
     --font-serif: Newsreader, ui-serif, Georgia, 'Times New Roman', serif;
 
-    --radius-lg: var(--radius);
-    --radius-md: calc(var(--radius) - 2px);
-    --radius-sm: calc(var(--radius) - 4px);
+    /*
+     * RAIO HIERÁRQUICO (DESIGN.md §Layout): controlo 6 · cartão 10 ·
+     * painel 14. Nada de arredondamento bolha universal — o raio diz o que a
+     * coisa é: rounded-md veste controlos, rounded-lg cartões, rounded-xl
+     * painéis/molduras. O 2xl (16) fica para as superfícies grandes e macias
+     * (StatCard, EmptyState).
+     */
+    --radius-sm: 0.25rem;
+    --radius-md: 0.375rem;
+    --radius-lg: 0.625rem;
+    --radius-xl: 0.875rem;
 
     --color-background: var(--background);
     --color-foreground: var(--foreground);
