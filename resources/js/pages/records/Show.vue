@@ -76,6 +76,8 @@ const KIND_META: Record<string, KindMeta> = {
     contact: { descriptionLabel: 'Descrição', descriptionHint: 'Registe apenas a informação essencial.', descriptionPlaceholder: 'Ex.: Contacto com o encarregado de educação sobre a participação do aluno.' },
     activity: { descriptionLabel: 'Descrição da atividade', descriptionHint: 'Registe apenas a informação essencial.', descriptionPlaceholder: 'Ex.: Visionamento da peça Leandro, Rei da Helíria.' },
     note: { descriptionLabel: 'Descrição', descriptionHint: 'Registe apenas a informação essencial.', descriptionPlaceholder: 'Ex.: Nota relevante para acompanhamento posterior.' },
+    lateness: { descriptionLabel: 'Descrição', descriptionHint: 'Registe apenas a informação essencial.', descriptionPlaceholder: 'Ex.: Chegou atrasado ao início da aula.' },
+    missing_material: { descriptionLabel: 'Descrição', descriptionHint: 'Registe apenas a informação essencial.', descriptionPlaceholder: 'Ex.: Não trouxe o manual nem o caderno.' },
 };
 
 function metaFor(kind: string): KindMeta {

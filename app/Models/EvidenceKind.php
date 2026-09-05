@@ -18,6 +18,8 @@ enum EvidenceKind: string
     case Contact = 'contact';
     case Activity = 'activity';
     case Note = 'note';
+    case Lateness = 'lateness';
+    case MissingMaterial = 'missing_material';
 
     public function label(): string
     {
@@ -32,6 +34,8 @@ enum EvidenceKind: string
             self::Contact => __('Contacto'),
             self::Activity => __('Atividade'),
             self::Note => __('Observação'),
+            self::Lateness => __('Atraso'),
+            self::MissingMaterial => __('Falta de material'),
         };
     }
 
@@ -45,7 +49,7 @@ enum EvidenceKind: string
     {
         return match ($this) {
             self::Homework, self::Participation, self::Progress, self::Difficulty => EvidenceInternalGroup::Learning,
-            self::Incident, self::PositiveBehaviour => EvidenceInternalGroup::BehaviorAttitudes,
+            self::Incident, self::PositiveBehaviour, self::Lateness, self::MissingMaterial => EvidenceInternalGroup::BehaviorAttitudes,
             self::Support, self::Contact, self::Activity, self::Note => EvidenceInternalGroup::FollowUp,
         };
     }

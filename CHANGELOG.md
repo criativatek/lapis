@@ -25,6 +25,32 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.125.0] — 2026-09-05
+
+### Adicionado
+
+- **«Atraso» e «Falta de material» nos registos de turma** (SUP-RQZPAJ,
+  SUP-ZPUQV5, SUP-5LNLBF): dois novos tipos de registo (`EvidenceKind`), ambos
+  em «Comportamento e atitudes», ao lado de «Ocorrência disciplinar» e
+  «Comportamento meritório» — nunca entram no cálculo da classificação (§14.3).
+- **Aviso de acumulação**: quando um aluno atinge um múltiplo de 3 registos de
+  «Atraso» ou de «Falta de material» na turma (3.º, 6.º, 9.º…), o professor
+  recebe um aviso ao gravar, com o nome do aluno e a contagem, sugerindo um
+  registo de comportamento no Inovar (grau 2) para alertar/informar o
+  encarregado de educação. A contagem é por aluno (enrollment) na turma, sobre
+  todos os registos desse tipo desde que a turma existe — nunca sobre um
+  registo lançado à turma toda (`enrollment_id` nulo), que não conta para
+  ninguém em particular. Vários alunos a atingir o limiar no mesmo lançamento
+  produzem um aviso por aluno, agregado numa única mensagem (o mecanismo de
+  toast só aguenta uma). A lógica vive em
+  `App\Services\Evidence\DetectEvidenceAccumulationWarnings`, chamada tanto por
+  `store()` como por `update()` — um registo pode ser corrigido para «Atraso»
+  ou «Falta de material» depois de criado, e essa correção deve poder disparar
+  o aviso tal como uma criação nova.
+- **Correção sobre o pedido original** (SUP-ZPUQV5 corrige o SUP-RQZPAJ): o
+  texto do aviso nunca sugere marcar falta de presença — sugere sempre um
+  registo de comportamento no Inovar (grau 2).
+
 ## [0.124.7] — 2026-09-05
 
 ### Adicionado

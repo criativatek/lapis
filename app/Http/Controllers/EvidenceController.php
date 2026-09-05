@@ -12,6 +12,7 @@ use App\Models\HomeworkStatus;
 use App\Models\ParticipationLevel;
 use App\Models\SchoolClass;
 use App\Models\User;
+use App\Services\Evidence\DetectEvidenceAccumulationWarnings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -135,7 +136,7 @@ class EvidenceController extends Controller
      * their own independent row, identical except for `enrollment_id`, each
      * editable and deletable on its own from then on.
      */
-    public function store(Request $request, SchoolClass $class): RedirectResponse
+    public function store(Request $request, SchoolClass $class, DetectEvidenceAccumulationWarnings $detectAccumulationWarnings): RedirectResponse
     {
         Gate::authorize('update', $class);
 
@@ -173,7 +174,13 @@ class EvidenceController extends Controller
             ? __('Registo adicionado.')
             : __(':count registos adicionados.', ['count' => count($targets)]);
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => $message]);
+        $accumulationWarnings = $detectAccumulationWarnings->forSavedRecords($class, EvidenceKind::from($validated['kind']), $targets);
+
+        if ($accumulationWarnings !== []) {
+            $message .= ' '.implode(' ', $accumulationWarnings);
+        }
+
+        Inertia::flash('toast', ['type' => $accumulationWarnings === [] ? 'success' : 'warning', 'message' => $message]);
 
         return back();
     }
@@ -314,7 +321,7 @@ class EvidenceController extends Controller
         return back();
     }
 
-    public function update(Request $request, EvidenceRecord $record): RedirectResponse
+    public function update(Request $request, EvidenceRecord $record, DetectEvidenceAccumulationWarnings $detectAccumulationWarnings): RedirectResponse
     {
         $class = $record->schoolClass;
         Gate::authorize('update', $class);
@@ -338,7 +345,20 @@ class EvidenceController extends Controller
             'description' => $validated['description'] ?? '',
         ]);
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('Registo atualizado.')]);
+        $message = __('Registo atualizado.');
+
+        // An edit can change which kind a record is — e.g. correcting it into
+        // "Atraso" — so the count it now belongs to may only just have
+        // crossed the threshold. A kind that was already alerting and stays
+        // alerting is covered too: the count is read back from the database,
+        // not carried over from before the edit.
+        $accumulationWarnings = $detectAccumulationWarnings->forSavedRecords($class, $record->kind, [$record->enrollment_id]);
+
+        if ($accumulationWarnings !== []) {
+            $message .= ' '.implode(' ', $accumulationWarnings);
+        }
+
+        Inertia::flash('toast', ['type' => $accumulationWarnings === [] ? 'success' : 'warning', 'message' => $message]);
 
         return back();
     }
