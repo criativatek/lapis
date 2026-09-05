@@ -330,6 +330,28 @@ class EvaluationSheetSnapshotExportTest extends TestCase
     }
 
     #[Test]
+    public function the_excel_is_built_without_a_temporary_file(): void
+    {
+        // REGRESSÃO, apanhada a validar no browser. `tempnam()` emite um aviso
+        // («file created in the system's temporary directory») quando a pasta
+        // pedida não serve, e em `local` o Laravel converte avisos em exceções:
+        // o download rebentava com 500 sem nada de errado com a pauta. Os
+        // testes não apanhavam porque nesse ambiente o aviso não é promovido.
+        //
+        // Escrever para um buffer de saída não tem pasta temporária nenhuma
+        // para dar errado — e não deixa ficheiros por apagar se algo falhar.
+        $source = (string) file_get_contents(
+            app_path('Services/Assessment/Export/EvaluationSheetXlsxWriter.php'),
+        );
+
+        // A chamada, não a menção: o comentário acima nomeia `tempnam()` de
+        // propósito, a explicar porque é que ele não está aqui.
+        $this->assertStringNotContainsString('tempnam(sys_get_temp_dir(', $source);
+        $this->assertStringNotContainsString('sys_get_temp_dir(', $source);
+        $this->assertStringContainsString("save('php://output')", $source);
+    }
+
+    #[Test]
     public function a_sheet_kept_before_the_self_assessment_existed_still_exports(): void
     {
         $teacher = $this->seedDemo();
