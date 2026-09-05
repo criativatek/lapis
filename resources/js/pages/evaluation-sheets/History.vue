@@ -152,8 +152,33 @@ function statusClasses(entry: EvaluationSheetHistoryEntry): string {
                             class="mt-1 inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-muted/40"
                         >
                             <Download class="size-3.5" />
-                            Descarregar
+                            Grelha do Inovar
                         </a>
+
+                        <!-- ESTE MOMENTO, EM FICHEIRO. Gerado a partir do que
+                             ficou guardado e de mais nada: alterar a pauta atual
+                             depois disto não muda uma célula do que sai daqui.
+                             Coisa diferente da grelha do Inovar acima — esta é
+                             para arquivar e para ler. -->
+                        <div class="mt-1 flex items-center gap-1">
+                            <span class="text-[11px] text-muted-foreground">Exportar:</span>
+                            <a
+                                :href="`/classes/${schoolClass.ulid}/pauta-avaliacao/historico/${entry.ulid}/csv`"
+                                class="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-muted/40"
+                                :aria-label="`Exportar ${entry.moment_label} em CSV`"
+                            >
+                                <Download class="size-3.5" />
+                                CSV
+                            </a>
+                            <a
+                                :href="`/classes/${schoolClass.ulid}/pauta-avaliacao/historico/${entry.ulid}/xlsx`"
+                                class="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-muted/40"
+                                :aria-label="`Exportar ${entry.moment_label} em Excel`"
+                            >
+                                <Download class="size-3.5" />
+                                Excel
+                            </a>
+                        </div>
                     </div>
                 </div>
             </li>

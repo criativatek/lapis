@@ -291,6 +291,17 @@ function submitSave(): void {
             >
                 <Download class="size-4" /> Exportar CSV
             </a>
+            <!-- O MESMO ESTADO, EM EXCEL. Ficheiro do Lapispro — com título,
+                 contexto e as cores dos domínios — e não a grelha do Inovar.
+                 Exporta a pauta de HOJE; o histórico exporta o momento que ficou
+                 guardado, e as duas origens nunca se cruzam. -->
+            <a
+                v-if="sheet && selectedPeriod"
+                :href="`/classes/${schoolClass.ulid}/pauta-avaliacao/xlsx/${selectedPeriod.ulid}`"
+                class="inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
+            >
+                <Download class="size-4" /> Exportar Excel
+            </a>
             <button
                 v-if="sheet"
                 type="button"
