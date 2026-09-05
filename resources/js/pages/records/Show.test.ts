@@ -159,3 +159,84 @@ describe('records Show — aperfeiçoar redação', () => {
         expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('O aluno interrompeu a aula.');
     });
 });
+
+/**
+ * Compor um registo e confirmá-lo são DUAS FASES (SUP-B7K823).
+ *
+ * O formulário está sempre aberto, e enquanto o único botão se chamou
+ * «Adicionar registo» o ecrã dizia o que o professor queria fazer em vez de
+ * dizer o que aquele botão fazia — quem lia carregava à espera de abrir um
+ * registo novo e submetia um formulário vazio. O cartão passa a nomear a fase,
+ * e o botão a nomear o que confirma.
+ */
+describe('records Show — compor e confirmar são fases distintas', () => {
+    function recordRow(overrides: Record<string, unknown> = {}) {
+        return {
+            ulid: 'record-1',
+            kind: 'incident',
+            kind_label: 'Ocorrência disciplinar',
+            enrollment_id: 1,
+            domain_id: null,
+            disciplinary_severity: 'minor',
+            disciplinary_severity_label: 'Ligeira',
+            homework_status: null,
+            participation_level: null,
+            activity_evaluation: null,
+            activity_include_in_report: null,
+            detail_label: null,
+            description: 'Chegou atrasado.',
+            student: 'Maria Silva',
+            domain: null,
+            occurred_at: '2026-09-05T00:00:00+01:00',
+            ...overrides,
+        };
+    }
+
+    it('names the phase on the card, so the form is not just fields', () => {
+        const wrapper = mountShow();
+
+        expect(wrapper.text()).toContain('Novo registo');
+    });
+
+    it('the button says what it does, never what the teacher wants to do', () => {
+        const wrapper = mountShow();
+
+        const submit = wrapper.find('button[type="submit"]');
+        expect(submit.text()).toBe('Guardar registo');
+
+        // O rótulo antigo era o do gesto de começar, e é o que se confundia
+        // com abrir um registo novo. Não pode voltar por descuido.
+        expect(wrapper.text()).not.toContain('Adicionar registo');
+    });
+
+    it('offers a way to drop what was composed, and only once there is something to drop', async () => {
+        const wrapper = mountShow();
+
+        const clear = wrapper.findAll('button').find((button) => button.text() === 'Limpar');
+        expect(clear).toBeDefined();
+        expect(clear!.attributes('disabled')).toBeDefined();
+
+        await wrapper.find('textarea').setValue('Chegou atrasado ao início da aula.');
+
+        expect(clear!.attributes('disabled')).toBeUndefined();
+    });
+
+    it('editing names its own phase and keeps its own pair of buttons', async () => {
+        const wrapper = mountShow({ records: [recordRow()] });
+
+        // O botão de editar é um ícone, e diz-se pelo `title`.
+        const editButton = wrapper.find('button[title="Editar"]');
+        expect(editButton.exists()).toBe(true);
+        await editButton.trigger('click');
+
+        expect(wrapper.text()).toContain('A editar registo');
+        expect(wrapper.text()).not.toContain('Novo registo');
+
+        expect(wrapper.find('button[type="submit"]').text()).toBe('Guardar alterações');
+
+        // «Cancelar» sai da edição; «Limpar» pertence só à criação.
+        const labels = wrapper.findAll('button').map((button) => button.text());
+        expect(labels).toContain('Cancelar');
+        expect(labels).not.toContain('Limpar');
+    });
+});

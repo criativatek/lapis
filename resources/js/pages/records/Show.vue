@@ -223,6 +223,34 @@ function cancelEdit(): void {
     incidentRewriteErrorMessage.value = null;
 }
 
+/**
+ * COMPOR UM REGISTO E CONFIRMÁ-LO SÃO DUAS FASES, E O ECRÃ TEM DE AS DISTINGUIR.
+ *
+ * O formulário está sempre aberto, e o botão dizia «Adicionar registo» — que é
+ * o nome do que o professor QUER fazer, não do que o botão FAZ. Quem lia
+ * «Adicionar registo» carregava à espera de abrir um registo novo, e submetia
+ * um formulário vazio (SUP-B7K823). O cartão passa a dizer em que fase se
+ * está, e o botão passa a dizer o que confirma — «Guardar registo», a par do
+ * «Guardar alterações» que a edição já usava.
+ */
+const formTitle = computed(() => (editingUlid.value ? 'A editar registo' : 'Novo registo'));
+
+/**
+ * Há alguma coisa escrita para deitar fora? A descrição e os alunos escolhidos
+ * são o que o professor compôs; o tipo e a data nascem preenchidos e não
+ * contam como trabalho seu.
+ */
+const createFormHasContent = computed(() => form.description.trim() !== '' || form.enrollment_ids.length > 0);
+
+/** Limpar o que se compôs sem sair do modo de criação. */
+function clearCreateForm(): void {
+    form.reset();
+    form.clearErrors();
+    createTargetMode.value = 'whole_class';
+    incidentRewriteSuggestion.value = null;
+    incidentRewriteErrorMessage.value = null;
+}
+
 function submit(): void {
     if (editingUlid.value) {
         form.put(`/records/${editingUlid.value}`, {
@@ -401,6 +429,10 @@ watch(
         <p class="text-xs text-muted-foreground">Os registos não alteram automaticamente a classificação do aluno.</p>
 
         <form class="space-y-3 rounded-lg border border-border p-4" @submit.prevent="submit">
+            <!-- Em que fase se está. Sem isto o cartão é só campos, e o botão
+            no fundo tinha de carregar sozinho a diferença entre compor e
+            confirmar — que era exactamente o que falhava (SUP-B7K823). -->
+            <h2 class="text-sm font-semibold">{{ formTitle }}</h2>
             <div class="grid gap-3" :class="isHomeworkGrid ? 'sm:grid-cols-2' : 'sm:grid-cols-3'">
                 <label class="text-sm">
                     <span class="mb-1 block text-xs text-muted-foreground">Tipo</span>
@@ -635,6 +667,9 @@ watch(
                 </div>
             </div>
 
+            <!-- Cada modo com o seu par: sair sem gravar à esquerda, confirmar
+            à direita. O verbo é o mesmo nos dois — «Guardar» —, porque o gesto
+            é o mesmo; o que muda é o que se guarda. -->
             <div v-if="!isHomeworkGrid" class="flex items-center justify-end gap-2">
                 <button
                     v-if="editingUlid"
@@ -645,11 +680,20 @@ watch(
                     Cancelar
                 </button>
                 <button
+                    v-else
+                    type="button"
+                    class="rounded-md px-3 py-2 text-sm text-muted-foreground hover:underline disabled:opacity-50 disabled:hover:no-underline"
+                    :disabled="!createFormHasContent"
+                    @click="clearCreateForm"
+                >
+                    Limpar
+                </button>
+                <button
                     type="submit"
                     class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
                     :disabled="form.processing || (!editingUlid && !canSubmitCreate)"
                 >
-                    {{ editingUlid ? 'Guardar alterações' : 'Adicionar registo' }}
+                    {{ editingUlid ? 'Guardar alterações' : 'Guardar registo' }}
                 </button>
             </div>
         </form>

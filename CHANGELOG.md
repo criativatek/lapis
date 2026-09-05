@@ -25,6 +25,25 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.130.2] — 2026-09-05
+
+### Corrigido
+
+- **Nos Registos, compor e confirmar deixaram de ser o mesmo botão.** O
+  formulário está sempre aberto, e o único botão chamava-se «Adicionar
+  registo» — o nome do que o professor queria fazer, não do que o botão fazia.
+  Quem o lia carregava à espera de abrir um registo novo e submetia um
+  formulário vazio, e o que aparecia era um erro de validação. Reportado em
+  produção (SUP-B7K823).
+- O cartão passa a **nomear a fase** — «Novo registo», ou «A editar registo»
+  quando se está a alterar um já existente —, e o botão passa a dizer o que
+  confirma: «Guardar registo», a par do «Guardar alterações» que a edição já
+  usava e do «Guardar trabalho de casa» da grelha de TPC. O verbo do ecrã é um
+  só.
+- A criação ganha um **«Limpar»** ao lado, para deitar fora o que se compôs sem
+  gravar — o par que a edição já tinha em «Cancelar». Fica desativado enquanto
+  não houver nada escrito, para não prometer uma ação que não faria nada.
+
 ## [0.130.1] — 2026-09-05
 
 ### Corrigido
