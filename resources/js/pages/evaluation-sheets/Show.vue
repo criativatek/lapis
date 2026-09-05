@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { Download, ListChecks, Printer, Table2 } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
+import EvaluationSheetDecisionDialog from '@/components/evaluation-sheets/EvaluationSheetDecisionDialog.vue';
 import EvaluationSheetReadinessPanel from '@/components/evaluation-sheets/EvaluationSheetReadinessPanel.vue';
 import EvaluationSheetTable from '@/components/evaluation-sheets/EvaluationSheetTable.vue';
 import EvaluationSheetViewControls from '@/components/evaluation-sheets/EvaluationSheetViewControls.vue';
@@ -10,9 +11,11 @@ import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import type {
     EvaluationSheet,
+    EvaluationSheetDecisionScale,
     EvaluationSheetPeriod,
     EvaluationSheetReadiness,
     EvaluationSheetSaveDefaults,
+    EvaluationSheetStudent,
 } from '@/types';
 
 /**
@@ -26,12 +29,27 @@ import type {
  * A grelha é o MESMO componente que a pauta guardada usa: é isso que garante
  * que uma fotografia se lê com as mesmas colunas, cores e estrutura do ecrã de
  * onde foi tirada.
+ *
+ * E É AQUI QUE SE DECIDE. A informação toda já está reunida neste ecrã; mandar
+ * o professor a outro sítio para atribuir o nível seria mandá-lo decidir longe
+ * do que acabou de ver. O que este ecrã NÃO faz é guardar: a decisão viaja para
+ * `classifications.decide`, o mesmo caminho canónico que Classificações e
+ * Resultados usam — um serviço, uma validação, um rasto (§3.3).
  */
 
 const props = defineProps<{
-    schoolClass: { ulid: string; label: string; subject: string; academic_year: string; has_profile: boolean };
+    schoolClass: {
+        ulid: string;
+        label: string;
+        subject: string;
+        academic_year: string;
+        has_profile: boolean;
+        scale_name?: string | null;
+    };
     periods: EvaluationSheetPeriod[];
     sheet: EvaluationSheet | null;
+    /** A escala em que a decisão é tomada — a mesma que Resultados recebe. */
+    decision: EvaluationSheetDecisionScale;
     saveDefaults?: EvaluationSheetSaveDefaults | null;
     /** Apresentação apenas: a rota está atrás de `module:inovar_export` no servidor. */
     canExportToInovar?: boolean;
@@ -39,9 +57,64 @@ const props = defineProps<{
     readiness?: EvaluationSheetReadiness | null;
 }>();
 
+const page = usePage();
+
 const selectedPeriod = computed<EvaluationSheetPeriod | null>(
     () => props.periods.find((period) => period.selected) ?? null,
 );
+
+// ---------------------------------------------------------------- a decisão
+//
+// O ecrã abre o painel e envia; NÃO decide e NÃO guarda. Quem escreve é o
+// endpoint canónico das classificações, com a sua autorização, a sua validação,
+// o seu bloqueio de linha e o seu rasto de auditoria — exatamente o mesmo que
+// se a decisão tivesse sido tomada no ecrã de Classificações (§34).
+
+const editing = ref<EvaluationSheetStudent | null>(null);
+const saving = ref(false);
+
+const decisionError = computed<string | null>(
+    () => ((page.props.errors as Record<string, string> | undefined)?.final_value ?? null),
+);
+
+const canDecideHere = computed(() => props.schoolClass.has_profile && selectedPeriod.value !== null);
+
+function openDecision(student: EvaluationSheetStudent): void {
+    if (!canDecideHere.value) {
+        return;
+    }
+
+    editing.value = student;
+}
+
+function closeDecision(): void {
+    editing.value = null;
+}
+
+function postDecision(data: { final_scale_level_id: number | null; final_value: string | null }): void {
+    const student = editing.value;
+    const period = selectedPeriod.value;
+
+    if (student === null || period === null || !student.enrollment_ulid) {
+        return;
+    }
+
+    // Endereçada pelo ALUNO e pelo PERÍODO, nunca pela linha que a guarda: um
+    // período sem propostas geradas não tem linha nenhuma, e a classificação do
+    // professor não pode ficar à espera de uma.
+    router.post(
+        `/classes/${props.schoolClass.ulid}/classifications/${period.ulid}/${student.enrollment_ulid}/decide`,
+        data,
+        {
+            preserveScroll: true,
+            onStart: () => (saving.value = true),
+            onFinish: () => (saving.value = false),
+            // Só em caso de sucesso: uma escrita recusada tem de deixar o painel
+            // aberto com a mensagem, nunca uma célula a fingir que guardou.
+            onSuccess: () => closeDecision(),
+        },
+    );
+}
 
 function selectPeriod(ulid: string): void {
     router.get(`/classes/${props.schoolClass.ulid}/pauta-avaliacao/${ulid}`, {}, { preserveScroll: true });
@@ -327,15 +400,33 @@ function submitSave(): void {
                 :show-quantitative="showQuantitative"
                 :show-domain-detail="showDomainDetail"
                 :show-warnings="showWarnings"
+                :decidable="canDecideHere"
+                @decide="openDecision"
             />
 
             <p class="text-xs text-muted-foreground print:text-black">
                 "—" significa sem elementos, nunca zero. O ícone de aviso assinala cobertura parcial ou a ausência de
                 elementos avaliados — passe o rato ou o foco por cima para ver o detalhe. Um nível em itálico é a
                 <strong>proposta</strong> do Lapispro, ainda não decidida; um nível a negrito é a
-                <strong>decisão</strong> do professor.
+                <strong>decisão</strong> do professor. A decisão é sempre sua e pode ser alterada a qualquer
+                momento — guardar, exportar ou ter histórico não a fecham.
             </p>
         </div>
+
+        <!-- Fora da folha impressa e fora da grelha: um diálogo é trabalho, não
+             parte da pauta. Abre pela ação da coluna final e escreve pelo
+             caminho canónico. -->
+        <EvaluationSheetDecisionDialog
+            v-if="sheet"
+            :student="editing"
+            :decision="decision"
+            :domains="sheet.domains"
+            :saving="saving"
+            :error="decisionError"
+            @close="closeDecision"
+            @save="postDecision"
+            @use-proposal="postDecision({ final_scale_level_id: null, final_value: null })"
+        />
     </div>
 </template>
 
@@ -359,6 +450,18 @@ function submitSave(): void {
        não se carregam numa folha impressa. */
     .print-hide {
         display: none !important;
+    }
+    /* «Atribuir» é uma ação, e uma folha não se clica: o que fica por decidir
+       lê-se pela ausência de valor, não por um botão impresso. O valor
+       DECIDIDO é que não pode desaparecer — é também um botão no ecrã, e por
+       isso perde aqui a aparência de botão em vez de ser escondido. */
+    .pauta-print .sheet-decision-cta {
+        display: none !important;
+    }
+    .pauta-print button {
+        border: 0 !important;
+        background: transparent !important;
+        padding: 0 !important;
     }
     /* No ecrã a grelha rola dentro de si própria e tem duas colunas fixas. No
        papel não há scroll: sem isto sairia apenas a primeira dobra da tabela, e
