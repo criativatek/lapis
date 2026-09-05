@@ -24,6 +24,7 @@ use App\Http\Controllers\DataExportController;
 use App\Http\Controllers\DataImportController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\EvaluationSheetController;
+use App\Http\Controllers\EvaluationSheetCsvExportController;
 use App\Http\Controllers\EvaluationSheetHistoryController;
 use App\Http\Controllers\EvaluationSheetInovarExportController;
 use App\Http\Controllers\EvidenceController;
@@ -57,7 +58,6 @@ use App\Http\Controllers\Reports\ReportExportController;
 use App\Http\Controllers\Reports\ReportRewriteController;
 use App\Http\Controllers\Reports\ReportSectionController;
 use App\Http\Controllers\Reports\ReportTemplateController;
-use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\ResultsController;
 use App\Http\Controllers\RosterImportController;
 use App\Http\Controllers\ScaleController;
@@ -640,6 +640,15 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::get('classes/{class}/pauta-avaliacao/historico/{export}/ficheiro', [EvaluationSheetHistoryController::class, 'download'])->name('evaluation-sheets.download');
         Route::get('classes/{class}/pauta-avaliacao/historico/{export}', [EvaluationSheetHistoryController::class, 'snapshot'])->name('evaluation-sheets.snapshot');
 
+        // O CSV da pauta do período que está a ser visto. Declarado ANTES do
+        // wildcard `pauta-avaliacao/{period?}` pela mesma razão que «historico»
+        // o é — «csv» não é um ulid de período e não pode ser lido como um.
+        //
+        // NÃO é «Preparar exportação para o Inovar» (§6): aquela produz a
+        // grelha da escola a partir de uma pauta guardada e deixa registo no
+        // histórico; esta é uma leitura de dados, aqui e agora, sem snapshot.
+        Route::get('classes/{class}/pauta-avaliacao/csv/{period?}', EvaluationSheetCsvExportController::class)->name('evaluation-sheets.csv');
+
         // «Preparar exportação para o Inovar», a partir da própria Pauta.
         //
         // A capability é a que já existe — nenhuma nova (§ briefing). O fluxo
@@ -669,11 +678,30 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
             ->name('classifications.decide');
     });
 
-    // Relatórios (§53). Two artifacts under one module, deliberately named
-    // apart: `reports.*` is the report DOCUMENT — sections, an author, a draft
-    // that gets finalized and exported — and `pautas.*` is the classification
-    // sheet, a table of decided grades. Sharing the `reports.show` name between
-    // them would have made every link ambiguous.
+    // As URLs da pauta de classificações antiga (`pautas.*`), que a Pauta de
+    // Avaliação absorveu. Continuam a responder — um bookmark de um professor
+    // não deixa de ser válido só porque o ecrã mudou de sítio (§8, §9).
+    //
+    // DELIBERADAMENTE FORA de `module:reports` e de `module:results`. Um
+    // redirect não mostra nada e não decide nada: quem aplica o seu próprio
+    // gate é o DESTINO, que vive dentro de `module:results` e recusa lá se for
+    // caso disso. Se estas ficassem debaixo de `module:reports`, uma escola
+    // sem o módulo de relatórios veria um 403 no caminho para um ecrã que tem
+    // todo o direito de abrir — e o bookmark aterraria no sítio errado por uma
+    // razão que já não é a sua. Continuam, isso sim, dentro do grupo
+    // autenticado e com tenant resolvido: nada disto é público.
+    //
+    // O `{class}` é preservado no destino — `Route::redirect()` substitui os
+    // parâmetros do URL de origem no de destino, por isso a turma que estava
+    // no bookmark é a turma que se abre.
+    Route::redirect('reports/pautas', '/avaliacao/pautas');
+    Route::redirect('classes/{class}/report', '/classes/{class}/pauta-avaliacao');
+    Route::redirect('classes/{class}/report/export', '/classes/{class}/pauta-avaliacao/csv');
+
+    // Relatórios (§53). O relatório DOCUMENTO — secções, um autor, um rascunho
+    // que se finaliza e se exporta. A pauta, que já viveu neste módulo como
+    // `pautas.*`, é hoje a Pauta de Avaliação e vive em Avaliação
+    // (`evaluation-sheets.*`, dentro de `module:results`).
     Route::middleware('module:reports')->group(function () {
         Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
 
@@ -690,13 +718,6 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::get('reports/modelos/{template}', [ReportTemplateController::class, 'edit'])->name('reports.templates.edit');
         Route::put('reports/modelos/{template}', [ReportTemplateController::class, 'update'])->name('reports.templates.update');
         Route::post('reports/modelos/{template}/duplicar', [ReportTemplateController::class, 'duplicate'])->name('reports.templates.duplicate');
-
-        // The pauta.
-        Route::get('reports/pautas', [ReportsController::class, 'index'])->name('pautas.index');
-        Route::get('classes/{class}/report', [ReportsController::class, 'show'])->name('pautas.show');
-        Route::get('classes/{class}/report/export', [ReportsController::class, 'export'])->name('pautas.export');
-        Route::put('classes/{class}/report/evidence-setting', [ReportsController::class, 'updateEvidenceSetting'])->name('pautas.evidence-setting.update');
-        Route::put('classes/{class}/report/students/{enrollment}/evidence-setting', [ReportsController::class, 'updateStudentEvidenceSetting'])->name('pautas.student-evidence-setting.update');
 
         // The report document itself. Last, so the wildcard cannot shadow the
         // literal segments above.

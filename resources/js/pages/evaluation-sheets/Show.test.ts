@@ -160,3 +160,63 @@ describe('evaluation-sheets/Show — a única vista', () => {
         expect(wrapper.find('th').text()).not.toBe('Oralidade');
     });
 });
+
+/**
+ * Imprimir e exportar — a mesma pauta, duas regras OPOSTAS e deliberadas.
+ *
+ * O papel é WYSIWYG: sai o que está no ecrã, incluindo o que o professor
+ * escolheu esconder. O CSV é um ficheiro de dados: leva sempre tudo, e por isso
+ * o seu link nunca muda com os toggles — nem sequer chega a falar deles.
+ */
+describe('evaluation-sheets/Show — imprimir e exportar', () => {
+    it('offers a CSV download whose address never changes with the toggles', async () => {
+        const wrapper = mount(Show, { props: baseProps() });
+
+        const link = wrapper.findAll('a').find((anchor) => anchor.text().includes('Exportar CSV'));
+        expect(link).toBeDefined();
+
+        const before = link!.attributes('href');
+        expect(before).toBe('/classes/class-1/pauta-avaliacao/csv/period-1');
+
+        // Desligar tudo o que se pode desligar não retira uma única coluna ao
+        // ficheiro, porque o pedido é o mesmo pedido.
+        for (const checkbox of wrapper.findAll('input[type="checkbox"]')) {
+            await checkbox.setValue(false);
+        }
+
+        const after = wrapper.findAll('a').find((anchor) => anchor.text().includes('Exportar CSV'));
+        expect(after!.attributes('href')).toBe(before);
+    });
+
+    it('prints from this very screen, and keeps the controls off the paper', () => {
+        const wrapper = mount(Show, { props: baseProps() });
+
+        const printButton = wrapper.findAll('button').find((button) => button.text().includes('Imprimir'));
+        expect(printButton).toBeDefined();
+
+        // Tudo o que é interativo está marcado para não sair impresso.
+        const controls = wrapper.findAll('.print-hide');
+        expect(controls.length).toBeGreaterThanOrEqual(3);
+
+        // O botão de imprimir é ele próprio um controlo, e por isso está dentro
+        // de um bloco que não vai ao papel.
+        expect(printButton!.element.closest('.print-hide')).not.toBeNull();
+
+        // E a grelha NÃO está: é precisamente o que se imprime.
+        expect(wrapper.find('table').element.closest('.print-hide')).toBeNull();
+        expect(wrapper.find('table').element.closest('.pauta-print')).not.toBeNull();
+    });
+
+    it('the printed header names the class, the subject and the period in its own terminology', () => {
+        const wrapper = mount(Show, { props: baseProps() });
+
+        const header = wrapper.find('.pauta-print .print\\:block');
+        expect(header.exists()).toBe(true);
+        expect(header.text()).toContain('7.º A');
+        expect(header.text()).toContain('Português');
+        // «Semestre», vindo do período — nunca uma palavra fixa no código.
+        expect(header.text()).toContain('Semestre');
+        expect(header.text()).toContain('1.º Semestre');
+        expect(header.text()).toContain('Impresso em');
+    });
+});

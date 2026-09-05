@@ -98,6 +98,20 @@ class Enrollment extends Model
      * report. NULL means "no per-student override" — falls back to the
      * class's own default (SchoolClass::$include_evidence_in_report), never
      * a hidden false.
+     *
+     * SEM CHAMADOR, E DE PROPÓSITO. O único ecrã que alguma vez escreveu estas
+     * duas colunas foi a pauta de classificações antiga, absorvida pela Pauta
+     * de Avaliação; o toggle «Incluir dados que constam nos Registos do
+     * professor» saiu com ela, porque nunca chegou a ser lido por nada — nem
+     * pelo pipeline dos relatórios-documento, que é o sítio onde faria sentido.
+     * Era uma preferência que o professor podia mudar sem que mudasse nada.
+     *
+     * O MÉTODO E AS COLUNAS FICAM. `enrollments.include_evidence_in_report` e
+     * `classes.include_evidence_in_report` guardam escolhas reais de
+     * professores reais, e não se apagam dados de ninguém por arrumação. No dia
+     * em que os Registos entrarem de facto nos relatórios, a regra — override
+     * do aluno, senão o valor da turma, nunca um `false` escondido — já está
+     * escrita aqui e as escolhas antigas continuam lá para ser respeitadas.
      */
     public function includesEvidenceInReport(): bool
     {

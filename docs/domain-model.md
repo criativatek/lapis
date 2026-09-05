@@ -1192,7 +1192,18 @@ Perfil v1 `active` com resultados. O professor quer mudar o peso de um domínio:
 O ecrã «Evolução por domínio» continua a funcionar através da fronteira de versões, porque `student_domain_results.domain_id` aponta para a identidade **estável** (§2.4).
 
 ### A5 — Relatório Base
-Leitura de `student_overall_results` + `student_domain_results` (ambos `scope`), `self_assessments` + respostas, e `evidence_records` da turma (2026-08-01: filtrados por `classes.include_evidence_in_report`, com exceção por aluno em `enrollments.include_evidence_in_report` — já não por `include_in_report` por registo, ver §10.2). Determinístico: nenhuma tabela de IA é tocada — a ausência de FK para `ai_*` neste caminho é a garantia estrutural. Os estados do relatório (`draft`→`reviewed`→`approved`→`exported`) vivem em `reports`, fora deste agregado; nenhum relatório é aprovado sem ação explícita do professor.
+Leitura de `student_overall_results` + `student_domain_results` (ambos `scope`), `self_assessments` + respostas, e `evidence_records` da turma (2026-08-01: filtrados por `classes.include_evidence_in_report`, com exceção por aluno em `enrollments.include_evidence_in_report` — já não por `include_in_report` por registo, ver §10.2).
+
+> **2026-10-02 — o filtro descrito acima nunca chegou a existir em código.** As
+> duas colunas são escritas e lidas por ninguém: `Enrollment::includesEvidenceInReport()`
+> não tem chamador, e nenhuma das fontes dos relatórios-documento
+> (`ClassReportSource`, `StudentReportSource`, `RecordsReportSource`) as
+> consulta. Até à absorção da pauta antiga pela Pauta de Avaliação, o único
+> ecrã que lhes tocava era o da própria pauta — que as escrevia sem que nada
+> as lesse. As colunas **ficaram** na base de dados, com os valores que
+> tivessem: apagá-las seria deitar fora uma decisão do professor por arrumação,
+> e o dia em que os Registos entrarem mesmo nos relatórios encontra-as prontas.
+> O que se corrige aqui é o documento, não o esquema. Determinístico: nenhuma tabela de IA é tocada — a ausência de FK para `ai_*` neste caminho é a garantia estrutural. Os estados do relatório (`draft`→`reviewed`→`approved`→`exported`) vivem em `reports`, fora deste agregado; nenhum relatório é aprovado sem ação explícita do professor.
 
 ### A6 — IA sem identificação
 O modelo é a defesa: a fronteira de IA recebe `students.pseudonym_code` e `domains.name`. **`student_identities` é uma tabela separada** que o caminho de IA nunca carrega — `display_name` está cifrado (`VARBINARY`) e nem sequer é legível sem a chave da aplicação. O modelo não impede sozinho um envio indevido (isso é a pipeline de §19.3 + testes), mas garante que nada de identificativo está *acidentalmente* ao alcance: nenhuma tabela do agregado de avaliação contém o nome do aluno.

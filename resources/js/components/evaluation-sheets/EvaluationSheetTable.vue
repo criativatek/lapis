@@ -71,7 +71,12 @@ function domainCellStyle(color: string): Record<string, string> {
 </script>
 
 <template>
-    <div class="max-h-[70vh] overflow-auto rounded-lg border border-border">
+    <!-- `evaluation-sheet-grid` é um GANCHO DE IMPRESSÃO, não estilo. No papel
+         não há scroll nem colunas fixas: o ecrã que imprime precisa de um nome
+         estável para desligar o `max-h`/`overflow` e o `sticky` desta grelha,
+         e um seletor pelas classes utilitárias partir-se-ia na primeira vez que
+         alguém mudasse o `70vh`. -->
+    <div class="evaluation-sheet-grid max-h-[70vh] overflow-auto rounded-lg border border-border">
         <!-- `min-w-full`, não `w-full`: com muitos domínios a tabela é mais
              larga do que o contentor e as colunas têm de manter a largura
              natural (senão o cabeçalho da coluna fixa é espremido e cortado).

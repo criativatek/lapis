@@ -5,9 +5,12 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Per-record "include in report" never had a reader — ReportsController has
- * never looked at it. Replaced by a class-level default plus per-student
- * overrides (see the following migration) instead of a per-note decision.
+ * Per-record "include in report" never had a reader — the pauta screen of the
+ * day (`ReportsController`, since absorbed by the Pauta de Avaliação and
+ * removed) never looked at it. Replaced by a class-level default plus
+ * per-student overrides (see the following migration) instead of a per-note
+ * decision. Those two columns have no reader either, and stay for the reason
+ * written on Enrollment::includesEvidenceInReport().
  */
 return new class extends Migration
 {

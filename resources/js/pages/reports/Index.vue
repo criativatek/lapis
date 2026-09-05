@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
-import { ChevronRight, FileSpreadsheet, FileText, LayoutTemplate, Plus } from '@lucide/vue';
+import { ChevronRight, FileText, LayoutTemplate, Plus } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
@@ -103,24 +103,11 @@ function formatDate(value: string): string {
             <ChevronRight class="size-4 shrink-0 text-muted-foreground" />
         </Link>
 
-        <!-- The pauta lives in this module too, but it is a different artifact:
-             a table of decided grades, not a document with sections. Linked, not
-             mixed into the list. -->
-        <Link
-            href="/reports/pautas"
-            class="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 hover:bg-muted/30"
-        >
-            <span class="flex items-center gap-3">
-                <FileSpreadsheet class="size-5 shrink-0 text-muted-foreground" />
-                <span>
-                    <span class="block font-medium">Pautas de classificações</span>
-                    <span class="block text-sm text-muted-foreground">
-                        A folha das classificações decididas, por turma.
-                    </span>
-                </span>
-            </span>
-            <ChevronRight class="size-4 shrink-0 text-muted-foreground" />
-        </Link>
+        <!-- A pauta já NÃO vive aqui. Foi absorvida pela Pauta de Avaliação, no
+             menu Avaliação, que mostra a mesma coisa e mais: por domínio, com o
+             quantitativo, a apreciação e a distinção entre proposta e decisão.
+             Um segundo cartão daqui para lá seria uma segunda porta para o
+             mesmo sítio — e a navegação canónica só tem uma. -->
 
         <div class="flex flex-wrap items-end gap-3">
             <label class="grid gap-1 text-sm">

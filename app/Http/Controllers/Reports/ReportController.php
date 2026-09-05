@@ -55,9 +55,11 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * Relatórios — the module's own home (§53, §54, §60).
  *
  * A report here is an object with a life: created, edited, finalized, exported,
- * reused. The pauta — the sheet of decided grades — lives beside it under
- * `pautas.*` and is a different artifact: a table of classifications, not a
- * document with sections and an author.
+ * reused. The pauta — the sheet of decided grades — is a different artifact
+ * altogether: a table of classifications, not a document with sections and an
+ * author. It used to sit inside this module as `pautas.*`; it now lives in
+ * Avaliação as the Pauta de Avaliação (`evaluation-sheets.*`), which says the
+ * same thing and more. Nothing here reads it, and nothing here writes it.
  *
  * THE FLOW IS ONE PAGE WITH STEPS, NOT A WIZARD (§60). Choosing a type, a
  * context and the sections happens on a single screen; everything after that is

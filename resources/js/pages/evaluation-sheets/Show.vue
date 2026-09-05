@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { Table2 } from '@lucide/vue';
+import { Download, Printer, Table2 } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import EvaluationSheetTable from '@/components/evaluation-sheets/EvaluationSheetTable.vue';
@@ -48,6 +48,25 @@ const showQuantitative = ref(true);
 const showDomainDetail = ref(true);
 const showWarnings = ref(true);
 
+// ---------------------------------------------------------------- impressão
+//
+// NO PRÓPRIO ECRÃ, sem página paralela (§5): o que se imprime é este ecrã,
+// através de `@media print`, e não uma segunda vista que teria de ser mantida
+// a par desta para dizer a mesma coisa.
+//
+// WYSIWYG, E DELIBERADAMENTE: sai o que ESTÁ NO ECRÃ. Se o professor ocultou o
+// detalhe por domínio para levar uma folha mais simples para o conselho de
+// turma, é essa folha que sai da impressora. É o OPOSTO da regra do CSV — lá o
+// ficheiro leva sempre tudo, porque é um ficheiro de dados e omitir colunas em
+// silêncio seria uma armadilha; aqui é uma folha para ler, e uma folha que
+// ignorasse o que o professor escolheu ver seria a ferramenta a discordar dele.
+
+const printedOn = new Date().toLocaleDateString('pt-PT');
+
+function print(): void {
+    window.print();
+}
+
 // ------------------------------------------------------------ guardar pauta
 //
 // O título e a data são SUGESTÕES editáveis. O título vem da configuração
@@ -80,7 +99,7 @@ function submitSave(): void {
     <Head :title="`Pauta de Avaliação — ${schoolClass.label}`" />
 
     <div class="space-y-4 p-4">
-        <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="print-hide flex flex-wrap items-center justify-between gap-3">
             <div>
                 <Heading
                     :title="`Pauta de Avaliação — ${schoolClass.label}`"
@@ -110,7 +129,7 @@ function submitSave(): void {
             </div>
         </div>
 
-        <div class="flex flex-wrap items-center gap-3">
+        <div class="print-hide flex flex-wrap items-center gap-3">
             <button
                 v-if="canSave"
                 type="button"
@@ -130,6 +149,27 @@ function submitSave(): void {
             >
                 Preparar exportação para o Inovar
             </Link>
+            <!-- UM FICHEIRO DE DADOS, não a folha impressa nem a grelha do
+                 Inovar. Leva SEMPRE tudo — todos os domínios, o quantitativo, as
+                 apreciações, o global e o nível atribuído — independentemente
+                 dos toggles «Mostrar:» aqui em baixo, que são só apresentação e
+                 nem sequer chegam ao servidor. Um `<a>`, não um `<Link>`: uma
+                 resposta de ficheiro não volta por uma visita Inertia. -->
+            <a
+                v-if="sheet && selectedPeriod"
+                :href="`/classes/${schoolClass.ulid}/pauta-avaliacao/csv/${selectedPeriod.ulid}`"
+                class="inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
+            >
+                <Download class="size-4" /> Exportar CSV
+            </a>
+            <button
+                v-if="sheet"
+                type="button"
+                class="inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
+                @click="print"
+            >
+                <Printer class="size-4" /> Imprimir
+            </button>
             <Link
                 :href="`/classes/${schoolClass.ulid}/pauta-avaliacao/historico`"
                 class="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
@@ -140,7 +180,7 @@ function submitSave(): void {
 
         <form
             v-if="canSave && showSaveForm"
-            class="space-y-3 rounded-lg border border-border bg-muted/10 px-4 py-3"
+            class="print-hide space-y-3 rounded-lg border border-border bg-muted/10 px-4 py-3"
             @submit.prevent="submitSave"
         >
             <p class="text-sm text-muted-foreground">
@@ -199,37 +239,117 @@ function submitSave(): void {
         </form>
 
         <!-- Controlos de visualização: só apresentação, nunca alteram os dados
-             recebidos do servidor. -->
+             recebidos do servidor. Fora do papel — o que eles decidem já está
+             decidido no que sai impresso. -->
         <EvaluationSheetViewControls
             v-model:show-quantitative="showQuantitative"
             v-model:show-domain-detail="showDomainDetail"
             v-model:show-warnings="showWarnings"
+            class="print-hide"
         />
 
-        <p v-if="!schoolClass.has_profile" class="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            Esta turma não tem perfil de avaliação associado, por isso não há pauta a mostrar.
-        </p>
+        <!-- O que vai para o papel, e só isto. -->
+        <div class="pauta-print space-y-3">
+            <!-- O cabeçalho que a folha impressa precisa e o ecrã já mostra
+                 noutro sítio: turma, disciplina, o período com a sua
+                 terminologia própria («Semestre», «Período»…) — nunca uma
+                 palavra fixa no código — e a data em que foi impressa. -->
+            <div class="hidden print:block">
+                <h1 class="text-lg font-semibold">Pauta de Avaliação — {{ schoolClass.label }}</h1>
+                <p class="text-sm">{{ schoolClass.subject }} · {{ schoolClass.academic_year }}</p>
+                <p v-if="selectedPeriod" class="text-sm">
+                    {{ selectedPeriod.kind_label }}: {{ selectedPeriod.label }}
+                </p>
+                <p class="text-xs">Impresso em {{ printedOn }}</p>
+            </div>
 
-        <EmptyState
-            v-else-if="sheet === null || sheet.students.length === 0"
-            title="Sem alunos ou sem resultados neste período."
-            :icon="Table2"
-        />
+            <p v-if="!schoolClass.has_profile" class="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                Esta turma não tem perfil de avaliação associado, por isso não há pauta a mostrar.
+            </p>
 
-        <EvaluationSheetTable
-            v-else
-            :domains="sheet.domains"
-            :students="sheet.students"
-            :show-quantitative="showQuantitative"
-            :show-domain-detail="showDomainDetail"
-            :show-warnings="showWarnings"
-        />
+            <EmptyState
+                v-else-if="sheet === null || sheet.students.length === 0"
+                title="Sem alunos ou sem resultados neste período."
+                :icon="Table2"
+            />
 
-        <p class="text-xs text-muted-foreground">
-            "—" significa sem elementos, nunca zero. O ícone de aviso assinala cobertura parcial ou a ausência de
-            elementos avaliados — passe o rato ou o foco por cima para ver o detalhe. Um nível em itálico é a
-            <strong>proposta</strong> do Lapispro, ainda não decidida; um nível a negrito é a
-            <strong>decisão</strong> do professor.
-        </p>
+            <EvaluationSheetTable
+                v-else
+                :domains="sheet.domains"
+                :students="sheet.students"
+                :show-quantitative="showQuantitative"
+                :show-domain-detail="showDomainDetail"
+                :show-warnings="showWarnings"
+            />
+
+            <p class="text-xs text-muted-foreground print:text-black">
+                "—" significa sem elementos, nunca zero. O ícone de aviso assinala cobertura parcial ou a ausência de
+                elementos avaliados — passe o rato ou o foco por cima para ver o detalhe. Um nível em itálico é a
+                <strong>proposta</strong> do Lapispro, ainda não decidida; um nível a negrito é a
+                <strong>decisão</strong> do professor.
+            </p>
+        </div>
     </div>
 </template>
+
+<style>
+/* Imprimir SÓ a pauta, a partir deste mesmo ecrã — sem página paralela (§5).
+   O truque da visibilidade não depende do markup do layout da aplicação, que
+   não é deste ecrã e pode mudar sem aviso. */
+@media print {
+    body * {
+        visibility: hidden;
+    }
+    .pauta-print,
+    .pauta-print * {
+        visibility: visible;
+    }
+    .pauta-print {
+        position: absolute;
+        inset: 0;
+    }
+    /* Nada de controlos no papel: toggles, botões, seletor de período e links
+       não se carregam numa folha impressa. */
+    .print-hide {
+        display: none !important;
+    }
+    /* No ecrã a grelha rola dentro de si própria e tem duas colunas fixas. No
+       papel não há scroll: sem isto sairia apenas a primeira dobra da tabela, e
+       as colunas «Aluno» e «Nível atribuído» ficariam por cima do resto em vez
+       de ao lado. `print-color-adjust` mantém as cores dos domínios, que são
+       identidade da pauta e não decoração. */
+    .pauta-print .evaluation-sheet-grid {
+        max-height: none !important;
+        overflow: visible !important;
+        border: 0 !important;
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+    }
+    .pauta-print .evaluation-sheet-grid th,
+    .pauta-print .evaluation-sheet-grid td {
+        position: static !important;
+        box-shadow: none !important;
+    }
+    /* O PAPEL NÃO ROLA, E O QUE NÃO CABE PERDE-SE. No ecrã a tabela é mais
+       larga do que o contentor de propósito e quem lê arrasta-a de lado; numa
+       folha, essa mesma largura corta a última coluna — que é justamente o
+       «Nível atribuído», a decisão do professor. Landscape porque uma pauta com
+       vários domínios é larga por natureza, e `width: 100%` com quebra de linha
+       permitida para as colunas se ajustarem à folha em vez de saírem dela. */
+    @page {
+        size: A4 landscape;
+        margin: 10mm;
+    }
+    .pauta-print .evaluation-sheet-grid table {
+        width: 100% !important;
+        min-width: 0 !important;
+        table-layout: auto;
+        font-size: 9pt;
+    }
+    .pauta-print .evaluation-sheet-grid th,
+    .pauta-print .evaluation-sheet-grid td {
+        white-space: normal !important;
+        padding: 2pt 3pt !important;
+    }
+}
+</style>
