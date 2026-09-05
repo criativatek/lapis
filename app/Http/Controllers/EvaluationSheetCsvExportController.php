@@ -6,22 +6,34 @@ use App\Models\AcademicPeriod;
 use App\Models\ClassificationScope;
 use App\Models\SchoolClass;
 use App\Services\Assessment\BuildEvaluationSheet;
+use App\Services\Assessment\Export\EvaluationSheetCsvWriter;
+use App\Services\Assessment\Export\EvaluationSheetDocument;
+use App\Services\Assessment\Export\EvaluationSheetXlsxWriter;
 use App\Services\Audit\AuditLog;
+use App\Support\Assessment\DomainColorPalette;
 use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Support\Facades\Gate;
 
 /**
- * A Pauta de Avaliação do período que está a ser visto, em CSV.
+ * A Pauta de Avaliação do período que está a ser visto, em CSV ou em Excel.
  *
  * UM FICHEIRO DE DADOS, NÃO UMA FOTOGRAFIA DO ECRÃ. Esta é a diferença
  * deliberada face à impressão, que vive no próprio ecrã e sai exatamente como
  * o professor a deixou (WYSIWYG): aqui EXPORTA-SE SEMPRE TUDO — todos os
- * domínios, o quantitativo, as apreciações, o global e o nível atribuído —
- * independentemente dos toggles «Mostrar:». Esses toggles são apresentação e
- * vivem só no browser; um ficheiro de dados que omitisse colunas em silêncio
- * conforme o que estava no ecrã seria uma armadilha, porque quem o abre uma
- * semana depois não tem como saber o que faltava. O servidor nem sequer
- * conhece os toggles, e é por isso que não os pode obedecer por acidente.
+ * domínios, o quantitativo, as apreciações, o global, a autoavaliação quando
+ * existe, a proposta e a decisão — independentemente dos toggles «Mostrar:».
+ * Esses toggles são apresentação e vivem só no browser; um ficheiro de dados
+ * que omitisse colunas em silêncio conforme o que estava no ecrã seria uma
+ * armadilha, porque quem o abre uma semana depois não tem como saber o que
+ * faltava. O servidor nem sequer conhece os toggles, e é por isso que não os
+ * pode obedecer por acidente.
+ *
+ * O ESTADO DE AGORA, E DITO COMO TAL. O ficheiro do HISTÓRICO é outro
+ * controlador (`EvaluationSheetSnapshotExportController`) e lê um payload
+ * congelado; este lê a pauta viva. As colunas são as mesmas de propósito — um
+ * professor que junte os dois está a comparar dois momentos e colunas
+ * desalinhadas tornariam isso adivinhação — mas as duas origens nunca se
+ * cruzam.
  *
  * NÃO É A «Preparar exportação para o Inovar» (§6). Aquela produz a grelha da
  * escola a partir de uma pauta guardada, deixa registo no histórico e um
@@ -37,10 +49,32 @@ class EvaluationSheetCsvExportController extends Controller
 {
     public function __construct(
         protected BuildEvaluationSheet $builder,
+        protected EvaluationSheetCsvWriter $csv,
+        protected EvaluationSheetXlsxWriter $xlsx,
         protected AuditLog $audit,
     ) {}
 
-    public function __invoke(SchoolClass $class, ?string $period = null): HttpResponse
+    public function csv(SchoolClass $class, ?string $period = null): HttpResponse
+    {
+        $document = $this->documentFor($class, $period, 'csv');
+
+        return response($this->csv->write($document), 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="'.$this->legacyName($document).'.csv"',
+        ]);
+    }
+
+    public function xlsx(SchoolClass $class, ?string $period = null): HttpResponse
+    {
+        $document = $this->documentFor($class, $period, 'xlsx');
+
+        return response($this->xlsx->write($document), 200, [
+            'Content-Type' => $this->xlsx->contentType(),
+            'Content-Disposition' => 'attachment; filename="'.$document->fileStem().'.xlsx"',
+        ]);
+    }
+
+    protected function documentFor(SchoolClass $class, ?string $period, string $format): EvaluationSheetDocument
     {
         Gate::authorize('view', $class);
 
@@ -60,10 +94,10 @@ class EvaluationSheetCsvExportController extends Controller
 
         $sheet = $this->builder->for($class, $selected, ClassificationScope::Period);
 
-        /** @var list<array<string, mixed>> $domains */
-        $domains = $sheet['domains'];
-        /** @var list<array<string, mixed>> $students */
-        $students = $sheet['students'];
+        // A MESMA COR QUE O ECRÃ MOSTRA, pela mesma costura — o Excel pinta os
+        // domínios com ela, e uma segunda paleta daria um ficheiro que não se
+        // parece com a pauta de onde saiu.
+        $sheet['domains'] = DomainColorPalette::decorate($sheet['domains']);
 
         // Auditoria (§22.5): uma exportação em massa de classificações deixa
         // rasto. SEM DADOS PESSOAIS — contagens e identificadores, como o resto
@@ -71,186 +105,32 @@ class EvaluationSheetCsvExportController extends Controller
         $this->audit->record(
             'report.exported',
             $class,
-            summary: "Pauta de Avaliação de {$class->label} exportada em CSV.",
+            summary: "Pauta de Avaliação de {$class->label} exportada em ".strtoupper($format).'.',
             properties: [
-                'format' => 'csv',
+                'format' => $format,
                 'source' => 'evaluation_sheet',
                 'academic_period_ulid' => $selected->ulid,
                 'scope' => ClassificationScope::Period->value,
-                'student_count' => count($students),
-                'domain_count' => count($domains),
+                'student_count' => count($sheet['students']),
+                'domain_count' => count($sheet['domains']),
             ],
         );
 
-        $handle = fopen('php://temp', 'r+');
-
-        if ($handle === false) {
-            throw new \RuntimeException('Não foi possível gerar o ficheiro CSV.');
-        }
-
-        fputcsv($handle, $this->header($domains));
-
-        foreach ($students as $student) {
-            fputcsv($handle, $this->row($student, $domains));
-        }
-
-        rewind($handle);
-        $csv = (string) stream_get_contents($handle);
-        fclose($handle);
-
-        $filename = 'pauta-avaliacao_'
-            .str($class->label)->slug()
-            .'_'.str((string) $selected->label)->slug()
-            .'.csv';
-
-        // BOM UTF-8, como o CSV da pauta antiga já fazia, para o Excel abrir os
-        // acentos portugueses bem em vez de os partir em mojibake.
-        return response("\xEF\xBB\xBF".$csv, 200, [
-            'Content-Type' => 'text/csv; charset=UTF-8',
-            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
-        ]);
+        return EvaluationSheetDocument::fromLiveSheet($class, $selected, $sheet, ClassificationScope::Period);
     }
 
     /**
-     * @param  list<array<string, mixed>>  $domains
-     * @return list<string>
-     */
-    protected function header(array $domains): array
-    {
-        $header = ['Nº', 'Aluno'];
-
-        foreach ($domains as $domain) {
-            $name = (string) $domain['name'];
-            $header[] = "{$name} — Percentagem";
-            $header[] = "{$name} — Nível";
-        }
-
-        // O global vem em TRÊS colunas, não nas duas do ecrã. Na grelha a
-        // coluna «Quant.» mostra o valor na escala quando existe e a
-        // percentagem quando não existe — uma coluna, duas unidades. Num
-        // ficheiro isso é ambíguo: quem lê «5» não sabe se são 5% ou um 5 numa
-        // escala de 1 a 5. Aqui cada unidade tem a sua coluna, e uma delas
-        // fica vazia. Exportar mais nunca é o problema; exportar ambíguo é.
-        $header[] = 'Global — Percentagem';
-        $header[] = 'Global — Valor na escala';
-        $header[] = 'Global — Nível';
-
-        // O ecrã distingue a decisão da proposta pela tipografia (negrito vs.
-        // itálico). Num CSV não há tipografia, e uma proposta que se lesse como
-        // uma nota seria exatamente o erro que §3.3 proíbe — por isso a origem
-        // viaja numa coluna própria, escrita por extenso.
-        $header[] = 'Nível atribuído';
-        $header[] = 'Origem do nível';
-
-        // O que o toggle «Indicadores de cobertura» assinala no ecrã, dito em
-        // texto: onde é que o valor assenta em elementos parciais ou ausentes.
-        $header[] = 'Avisos de cobertura';
-
-        return $header;
-    }
-
-    /**
-     * @param  array<string, mixed>  $student
-     * @param  list<array<string, mixed>>  $domains
-     * @return list<string>
-     */
-    protected function row(array $student, array $domains): array
-    {
-        /** @var array<int, array<string, mixed>> $studentDomains */
-        $studentDomains = $student['domains'];
-        $byDomainId = [];
-
-        foreach ($studentDomains as $studentDomain) {
-            $byDomainId[(int) $studentDomain['domain_id']] = $studentDomain;
-        }
-
-        $row = [
-            $student['class_number'] === null ? '' : (string) $student['class_number'],
-            (string) $student['name'],
-        ];
-
-        $warnings = [];
-
-        foreach ($domains as $domain) {
-            $domainId = (int) $domain['domain_id'];
-            $studentDomain = $byDomainId[$domainId] ?? null;
-
-            $row[] = $this->percentage($studentDomain === null ? null : $studentDomain['normalized_value']);
-            $row[] = $studentDomain === null ? '' : (string) ($studentDomain['scale_level_code'] ?? $studentDomain['scale_level_label'] ?? '');
-
-            if ($studentDomain !== null && $studentDomain['has_coverage_warning'] === true) {
-                $warnings[] = (string) $domain['name'];
-            }
-        }
-
-        /** @var array<string, mixed> $overall */
-        $overall = $student['overall'];
-
-        $row[] = $this->percentage($overall['normalized_value']);
-        $row[] = (string) ($overall['scale_value'] ?? '');
-        $row[] = (string) ($overall['scale_level_code'] ?? $overall['scale_level_label'] ?? '');
-
-        if ($overall['has_coverage_warning'] === true) {
-            array_unshift($warnings, 'Global');
-        }
-
-        /** @var array<string, mixed>|null $classification */
-        $classification = $student['classification'];
-        [$level, $origin] = $this->assignedLevel($classification);
-
-        $row[] = $level;
-        $row[] = $origin;
-        $row[] = $warnings === [] ? '' : implode('; ', $warnings);
-
-        return $row;
-    }
-
-    /**
-     * O nível que o ecrã mostra na coluna fixa da direita, e DE ONDE VEM.
+     * O nome que o CSV da pauta viva sempre teve.
      *
-     * A decisão do professor quando existe; a proposta do Lapispro quando ainda
-     * não foi decidida — nunca as duas confundidas, e nunca uma proposta
-     * apresentada como se fosse uma nota (§3.3).
-     *
-     * @param  array<string, mixed>|null  $classification
-     * @return array{string, string}
+     * Deliberadamente NÃO o `fileStem()` do documento: já há ficheiros
+     * descarregados com este nome, e mudá-lo agora não melhorava nada que
+     * compensasse partir o hábito de quem os arruma. O Excel, que é novo, usa
+     * o nome novo.
      */
-    protected function assignedLevel(?array $classification): array
+    protected function legacyName(EvaluationSheetDocument $document): string
     {
-        if ($classification === null) {
-            return ['', ''];
-        }
-
-        $final = $classification['final_scale_level_code'] ?? $classification['final_scale_level_label'] ?? $classification['final_value'];
-
-        if ($final !== null) {
-            return [(string) $final, 'Decisão do professor'];
-        }
-
-        $proposed = $classification['proposed_scale_level_code'] ?? $classification['proposed_scale_level_label'] ?? $classification['proposed_value'];
-
-        if ($proposed !== null) {
-            return [(string) $proposed, 'Proposta do Lapispro (não decidida)'];
-        }
-
-        return ['', ''];
-    }
-
-    /**
-     * A percentagem do motor com uma casa decimal, VAZIA quando não há valor.
-     *
-     * Nunca «0»: sem elementos não é zero (§13.3), e uma célula vazia é a única
-     * escrita que não convida uma folha de cálculo a somar a ausência.
-     *
-     * Ponto decimal, não vírgula, e o mesmo delimitador do CSV antigo: o
-     * ficheiro continua a abrir da mesma maneira que a pauta que substitui.
-     */
-    protected function percentage(mixed $value): string
-    {
-        if ($value === null || ! is_numeric($value)) {
-            return '';
-        }
-
-        return number_format((float) $value, 1, '.', '');
+        return 'pauta-avaliacao_'
+            .str($document->classLabel)->slug()
+            .'_'.str($document->periodLabel)->slug();
     }
 }
