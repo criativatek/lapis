@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
-import { ArrowRight, CheckCircle2, Circle, X } from '@lucide/vue';
+import { ArrowRight, CalendarDays, CheckCircle2, Circle, FileText, NotebookPen, PenLine, X } from '@lucide/vue';
 import { computed } from 'vue';
 import { Button } from '@/components/ui/button';
 import { qualitativeToneClasses } from '@/lib/qualitativeTone';
@@ -74,6 +74,15 @@ const agora = computed(() => (byWeight.value.length > 0 && pendingOf(byWeight.va
 const aSeguir = computed(() => byWeight.value.slice(1).filter((schoolClass) => pendingOf(schoolClass) > 0));
 
 const arrumado = computed(() => props.classes.filter((schoolClass) => pendingOf(schoolClass) === 0));
+
+// Só uma turma pendente: o cartão «Agora» fica sozinho e o resto do ecrã
+// esvazia-se. Dá-lhe corpo com ligações reais da própria turma — nenhum
+// número novo, só navegação que os cartões «Arrumado» já oferecem.
+const agoraSozinho = computed(() => agora.value !== null && aSeguir.value.length === 0);
+
+// «Atalhos»: só em contas pequenas (poucas turmas), onde a home cheia (Agora +
+// A seguir + Arrumado) nunca ocupa o ecrã. Navegação pura — sem estatística.
+const showAtalhos = computed(() => props.classes.length > 0 && props.classes.length <= 2);
 
 /** Tudo em dia — a única condição em que a frase de fecho aparece. */
 const allDone = computed(
@@ -252,6 +261,13 @@ function pendingLabel(schoolClass: ClassCard): string {
                             <Link :href="`/classes/${agora.ulid}/classifications`">Continuar correção</Link>
                         </Button>
                     </div>
+
+                    <!-- Turma sozinha no ecrã: ligações rápidas, mesmas que os
+                         cartões «Arrumado» oferecem — navegação, não números novos. -->
+                    <div v-if="agoraSozinho" class="mt-4 flex flex-wrap gap-4 border-t border-border pt-3 text-sm">
+                        <Link :href="`/classes/${agora.ulid}/classifications`" class="text-primary hover:underline">Classificações</Link>
+                        <Link :href="`/classes/${agora.ulid}/results/estatistica`" class="text-muted-foreground hover:underline">Acompanhamento</Link>
+                    </div>
                 </div>
             </section>
 
@@ -288,6 +304,30 @@ function pendingLabel(schoolClass: ClassCard): string {
                             <Link :href="`/classes/${schoolClass.ulid}/results/estatistica`" class="text-muted-foreground hover:underline">Acompanhamento</Link>
                         </div>
                     </div>
+                </div>
+            </section>
+
+            <!-- ATALHOS — só em contas pequenas, onde a home cheia (Agora / A
+                 seguir / Arrumado) não chega a ocupar o ecrã. Navegação pura. -->
+            <section v-if="showAtalhos">
+                <h2 class="text-base font-semibold">Atalhos</h2>
+                <div class="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <Link href="/assessments" :class="[card('plain'), 'flex items-center gap-3 p-4 hover:bg-muted/50']">
+                        <PenLine class="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                        <span class="font-medium">Grelhas de correção</span>
+                    </Link>
+                    <Link href="/reports" :class="[card('plain'), 'flex items-center gap-3 p-4 hover:bg-muted/50']">
+                        <FileText class="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                        <span class="font-medium">Relatórios</span>
+                    </Link>
+                    <Link href="/records" :class="[card('plain'), 'flex items-center gap-3 p-4 hover:bg-muted/50']">
+                        <NotebookPen class="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                        <span class="font-medium">Registos</span>
+                    </Link>
+                    <Link href="/calendar" :class="[card('plain'), 'flex items-center gap-3 p-4 hover:bg-muted/50']">
+                        <CalendarDays class="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                        <span class="font-medium">Calendário</span>
+                    </Link>
                 </div>
             </section>
 

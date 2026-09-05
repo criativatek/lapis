@@ -101,11 +101,16 @@ class InstrumentGridRowStateTest extends TestCase
         // The box widened from w-16 to w-20 separately (a typed value like
         // "10,25" was clipping) — that's a width change, not a height one.
         $this->assertStringContainsString('h-7 w-20 rounded border', $grid, 'a caixa da nota tem de ser compacta');
-        $this->assertStringContainsString('h-7 cursor-pointer rounded border', $grid, 'o seletor por item tem de ser compacto');
+        $this->assertStringContainsString('relative inline-flex h-7 items-center rounded-md border', $grid, 'o seletor por item tem de ser compacto');
         $this->assertStringNotContainsString('h-8 w-20 rounded border', $grid);
 
         // And the cells stopped padding the rows out.
         $this->assertStringContainsString('px-1 py-0.5 text-center', $grid);
+
+        // O rascunho recuperável nunca se oferece numa correção fechada: sem
+        // botões de guardar, recuperar escreveria números que nunca existiram
+        // por baixo de «em modo de consulta».
+        $this->assertStringContainsString('v-if="recoverableDraft && !isReadOnly"', $grid);
         $this->assertStringNotContainsString('px-1 py-1 text-center', $grid);
 
         // The header keeps its own breathing room: it carries the item code,

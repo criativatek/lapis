@@ -54,7 +54,7 @@
 - **Abordagem:** balanced. Uma regra acima de todas: **âmbar é cuidado/feito,
   nunca CTA e nunca aviso.**
 - **Claro (papel):** fundo `#FAF8F2` (papel, nunca branco puro) · cartão
-  `#FFFFFF` · tinta/texto e ACÇÃO `#1B2A46` (navy, o actual `--primary`) ·
+  `#FFFFFF` · tinta/texto e ACÇÃO `hsl(221 78% 50%)` (azul de agir — o `--primary` claro desde 0.125.0; era navy #1B2A46) ·
   secundário `#5C6577` · fios `#E8E4DA` · hover-linha `#F5F1E8` ·
   lápis-proposta `#767E90` · **âmbar** `#F4BB57` + lavagem `#FBEED3` ·
   esmeralda guardado/dados `#0E7A5F` + `#E3F1EA` · erro de sistema `#B0392F`.

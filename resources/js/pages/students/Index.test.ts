@@ -270,7 +270,7 @@ describe('students/Index — filtro desta página', () => {
     it('filtra por parte do nome sem ir ao servidor', async () => {
         const wrapper = mountIndex({ students: paginator(two) });
 
-        await wrapper.find('input[aria-label="Filtrar os alunos apresentados"]').setValue('bea');
+        await wrapper.find('input[aria-describedby="afinar-nesta-lista-ajuda"]').setValue('bea');
 
         expect(wrapper.text()).toContain('Beatriz Costa');
         expect(wrapper.text()).not.toContain('Ana Silva');
@@ -282,14 +282,15 @@ describe('students/Index — filtro desta página', () => {
             students: paginator([student({ name: 'Inês Gonçalves' })]),
         });
 
-        await wrapper.find('input[aria-label="Filtrar os alunos apresentados"]').setValue('ines');
+        await wrapper.find('input[aria-describedby="afinar-nesta-lista-ajuda"]').setValue('ines');
 
         expect(wrapper.text()).toContain('Inês Gonçalves');
     });
 
-    it('só se anuncia como filtro DESTA PÁGINA quando existe paginação', async () => {
+    it('distingue, no texto de ajuda, afinar esta pesquisa de afinar esta página', async () => {
         const single = mountIndex({ students: paginator(two) });
-        expect(single.text()).not.toContain('Filtra os alunos apresentados nesta página.');
+        expect(single.text()).toContain('Afina só os alunos já carregados por esta pesquisa, não a conta toda.');
+        expect(single.text()).not.toContain('Afina só os alunos já carregados nesta página, não a conta toda.');
 
         const paged = mountIndex({
             students: paginator(two, {
@@ -303,13 +304,13 @@ describe('students/Index — filtro desta página', () => {
             }),
         });
 
-        expect(paged.text()).toContain('Filtra os alunos apresentados nesta página.');
+        expect(paged.text()).toContain('Afina só os alunos já carregados nesta página, não a conta toda.');
     });
 
     it('distingue «nada nesta página» de «não há alunos»', async () => {
         const wrapper = mountIndex({ students: paginator(two) });
 
-        await wrapper.find('input[aria-label="Filtrar os alunos apresentados"]').setValue('zzz');
+        await wrapper.find('input[aria-describedby="afinar-nesta-lista-ajuda"]').setValue('zzz');
 
         expect(wrapper.text()).toContain('Nenhum aluno desta página corresponde');
         expect(wrapper.text()).not.toContain('As suas turmas ainda não têm alunos.');

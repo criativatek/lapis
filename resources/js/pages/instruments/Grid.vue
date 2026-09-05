@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
-import { CheckCircle2, CircleAlert, Save, WifiOff } from '@lucide/vue';
+import { CheckCircle2, ChevronDown, CircleAlert, Save, WifiOff } from '@lucide/vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
@@ -953,9 +953,20 @@ function revertCancellation(): void {
     <Head :title="instrument.title" />
 
     <div class="space-y-4 p-4">
-        <div class="flex flex-wrap items-start justify-between gap-3">
-            <div>
-                <Heading :title="instrument.title" :description="`${instrument.class_label} · ${instrument.period} · ${appliedOnLabel}`" />
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0 space-y-1">
+                <div class="flex flex-wrap items-start gap-3">
+                    <Heading :title="instrument.title" :description="`${instrument.class_label} · ${instrument.period} · ${appliedOnLabel}`" />
+                    <Badge class="mt-1" variant="secondary" :class="statusToneClasses(instrument.status)">{{ instrument.status_label }}</Badge>
+                </div>
+                <!-- A closed correction is consulted, not edited. -->
+                <p v-if="instrument.is_completed && !isCancelled" class="text-sm text-muted-foreground">
+                    Correção concluída — em modo de consulta.
+                </p>
+                <p
+                    v-if="justCompleted && completedAtLabel"
+                    class="ink-settle font-serif text-sm italic text-muted-foreground"
+                >Arrumado — guardado às {{ completedAtLabel }}.</p>
                 <Link
                     v-if="cameFromAssessments"
                     :href="`/assessments/${instrument.ulid}`"
@@ -974,13 +985,8 @@ function revertCancellation(): void {
                     ← Voltar à turma
                 </Link>
             </div>
-            <div class="flex items-center gap-3">
-                <Badge variant="secondary" :class="statusToneClasses(instrument.status)">{{ instrument.status_label }}</Badge>
-                <p
-                    v-if="justCompleted && completedAtLabel"
-                    class="ink-settle font-serif text-sm italic text-muted-foreground"
-                >Arrumado — guardado às {{ completedAtLabel }}.</p>
-                <template v-if="!isCancelled">
+            <div v-if="!isCancelled" class="flex flex-wrap items-center justify-end gap-3">
+                <div class="flex flex-wrap items-center justify-end gap-3">
                     <!--
                       A real anchor, not an Inertia Link: this returns a file,
                       and a client-side navigation would try to render it.
@@ -995,15 +1001,13 @@ function revertCancellation(): void {
                     <Link :href="`/instruments/${instrument.ulid}/edit`" class="text-sm text-muted-foreground hover:underline">
                         Editar elemento de avaliação
                     </Link>
+                </div>
+                <div class="flex flex-wrap items-center justify-end gap-3 border-l border-border pl-3">
                     <Button v-if="!instrument.is_completed" type="button" variant="outline" size="sm" @click="openCancelDialog">
                         Anular elemento de avaliação
                     </Button>
 
-                    <!-- A closed correction is consulted, not edited. -->
                     <template v-if="instrument.is_completed">
-                        <span class="text-sm text-muted-foreground">
-                            Correção concluída — em modo de consulta.
-                        </span>
                         <Button type="button" variant="outline" size="sm" @click="reopenDialogOpen = true">
                             Reabrir correção
                         </Button>
@@ -1036,13 +1040,13 @@ function revertCancellation(): void {
                             <CheckCircle2 class="size-4" /> Concluir correção
                         </Button>
                     </template>
-                </template>
+                </div>
             </div>
         </div>
 
         <section class="space-y-2" aria-label="Proteção das alterações locais">
             <div
-                v-if="recoverableDraft"
+                v-if="recoverableDraft && !isReadOnly"
                 class="flex flex-wrap items-center justify-between gap-3 rounded-md border border-sky-300 bg-sky-50 px-4 py-3 text-sm text-sky-950"
                 role="status"
             >
@@ -1226,36 +1230,48 @@ function revertCancellation(): void {
                                     :min="minimumFor(item)"
                                     :max="item.points_possible"
                                     :value="cell(student.enrollment_id, item.id).state === 'assessed' ? cell(student.enrollment_id, item.id).points : ''"
-                                    :disabled="isReadOnly || (cell(student.enrollment_id, item.id).state !== 'assessed' && cell(student.enrollment_id, item.id).state !== 'pending')"
+                                    :readonly="isReadOnly"
+                                    :disabled="!isReadOnly && cell(student.enrollment_id, item.id).state !== 'assessed' && cell(student.enrollment_id, item.id).state !== 'pending'"
                                     :class="[
-                                        'h-7 w-20 rounded border bg-transparent pl-1.5 pr-5 text-right tabular-nums disabled:opacity-40',
-                                        isOverMax(student, item) ? 'border-destructive text-destructive' : 'border-input',
+                                        'h-7 w-20 rounded border bg-transparent pl-1.5 pr-5 text-right font-normal tabular-nums',
+                                        isReadOnly
+                                            ? 'cursor-default border-transparent opacity-100'
+                                            : isOverMax(student, item)
+                                              ? 'border-destructive text-destructive disabled:opacity-40'
+                                              : 'border-input disabled:opacity-40',
                                     ]"
                                     :title="isOverMax(student, item) ? `Excede a cotação máxima (${item.points_possible} pts).` : undefined"
                                     @input="onPointsInput(student, item, ($event.target as HTMLInputElement).value)"
                                     @keydown="onKeydown($event, rowIndex, columnIndex)"
                                 />
-                                <select
-                                    :value="cell(student.enrollment_id, item.id).state"
-                                    :disabled="isReadOnly"
+                                <div
                                     :class="[
-                                        'h-7 cursor-pointer rounded border bg-transparent text-xs',
+                                        'relative inline-flex h-7 items-center rounded-md border bg-transparent text-xs focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2',
                                         // Wider and dashed only while undecided: the word has to
                                         // fit, and a cell nobody has ruled on should not look settled.
                                         isPendingCell(student, item) && !isReadOnly
                                             ? 'w-24 border-dashed border-amber-400 text-amber-800'
-                                            : 'w-14 border-input',
+                                            : 'w-14 border-input text-muted-foreground',
+                                        isReadOnly ? 'cursor-default border-transparent' : 'cursor-pointer',
                                     ]"
-                                    :aria-label="`Estado de ${student.name}${items.length > 1 ? ' em ' + item.code : ''}`"
-                                    :title="states.find((s) => s.value === cell(student.enrollment_id, item.id).state)?.label"
-                                    @change="onStateChange(student, item, ($event.target as HTMLSelectElement).value)"
                                 >
-                                    <option value="pending">{{ shortLabels.pending }}</option>
-                                    <option value="assessed">✓</option>
-                                    <option v-for="state in nonAssessedStates.filter((s) => s.value !== 'pending')" :key="state.value" :value="state.value">
-                                        {{ shortLabels[state.value] ?? state.label }}
-                                    </option>
-                                </select>
+                                    <span class="pointer-events-none flex-1 truncate pl-2 pr-5" aria-hidden="true">
+                                        {{ shortLabels[cell(student.enrollment_id, item.id).state] ?? states.find((state) => state.value === cell(student.enrollment_id, item.id).state)?.label }}
+                                    </span>
+                                    <select
+                                        :value="cell(student.enrollment_id, item.id).state"
+                                        :disabled="isReadOnly"
+                                        class="absolute inset-0 h-full w-full cursor-pointer appearance-none rounded-md opacity-0 disabled:cursor-default"
+                                        :aria-label="`Estado de ${student.name}${items.length > 1 ? ' em ' + item.code : ''}`"
+                                        :title="states.find((state) => state.value === cell(student.enrollment_id, item.id).state)?.label"
+                                        @change="onStateChange(student, item, ($event.target as HTMLSelectElement).value)"
+                                    >
+                                        <option v-for="state in states" :key="state.value" :value="state.value">
+                                            {{ state.value === 'assessed' ? `✓ ${state.label}` : state.label }}
+                                        </option>
+                                    </select>
+                                    <ChevronDown class="pointer-events-none absolute right-1 size-3.5" aria-hidden="true" />
+                                </div>
                             </div>
                         </td>
 

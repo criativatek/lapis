@@ -71,7 +71,7 @@ const chips = [
                 <p
                     class="mt-6 text-xl font-semibold tracking-tight text-balance sm:text-2xl"
                 >
-                    O professor decide. O Lapispro simplifica o caminho.
+                    O professor decide. O&nbsp;Lapispro simplifica o caminho.
                 </p>
                 <div
                     class="mt-8 flex flex-wrap items-center gap-3"

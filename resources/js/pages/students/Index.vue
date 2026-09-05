@@ -87,6 +87,10 @@ const yearUlid = ref(props.filters.year ?? '');
 const status = ref(props.filters.status ?? '');
 
 function reload(): void {
+    // A server reload rebuilds the page's rows; a local refinement kept from
+    // the previous page would silently cut the fresh list.
+    pageFilter.value = '';
+
     router.get(
         '/students',
         {
@@ -240,45 +244,58 @@ function followUpHref(enrollment: DirectoryEnrollment): string {
 
                 <label class="grid gap-1 text-sm">
                     <span class="text-xs font-medium text-muted-foreground">Turma</span>
-                    <select v-model="classUlid" class="h-9 rounded-md border border-border bg-background px-2 text-sm">
-                        <option value="">Todas</option>
-                        <option v-for="option in classes" :key="option.ulid" :value="option.ulid">
-                            {{ option.label }} · {{ option.subject }}
-                        </option>
-                    </select>
+                    <div class="relative">
+                        <select v-model="classUlid" class="h-9 w-full appearance-none rounded-md border border-border bg-transparent px-3 pr-8 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50">
+                            <option value="">Todas</option>
+                            <option v-for="option in classes" :key="option.ulid" :value="option.ulid">
+                                {{ option.label }} · {{ option.subject }}
+                            </option>
+                        </select>
+                        <ChevronDown class="pointer-events-none absolute top-1/2 right-2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                    </div>
                 </label>
 
                 <label class="grid gap-1 text-sm">
                     <span class="text-xs font-medium text-muted-foreground">Ano letivo</span>
-                    <select v-model="yearUlid" class="h-9 rounded-md border border-border bg-background px-2 text-sm">
-                        <option value="">Todos</option>
-                        <option v-for="option in academicYears" :key="option.ulid" :value="option.ulid">
-                            {{ option.label }}
-                        </option>
-                    </select>
+                    <div class="relative">
+                        <select v-model="yearUlid" class="h-9 w-full appearance-none rounded-md border border-border bg-transparent px-3 pr-8 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50">
+                            <option value="">Todos</option>
+                            <option v-for="option in academicYears" :key="option.ulid" :value="option.ulid">
+                                {{ option.label }}
+                            </option>
+                        </select>
+                        <ChevronDown class="pointer-events-none absolute top-1/2 right-2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                    </div>
                 </label>
 
                 <label class="grid gap-1 text-sm">
                     <span class="text-xs font-medium text-muted-foreground">Estado</span>
-                    <select v-model="status" class="h-9 rounded-md border border-border bg-background px-2 text-sm">
-                        <option value="">Todos</option>
-                        <option v-for="option in statuses" :key="option.value" :value="option.value">
-                            {{ option.label }}
-                        </option>
-                    </select>
+                    <div class="relative">
+                        <select v-model="status" class="h-9 w-full appearance-none rounded-md border border-border bg-transparent px-3 pr-8 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50">
+                            <option value="">Todos</option>
+                            <option v-for="option in statuses" :key="option.value" :value="option.value">
+                                {{ option.label }}
+                            </option>
+                        </select>
+                        <ChevronDown class="pointer-events-none absolute top-1/2 right-2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                    </div>
                 </label>
 
                 <Button v-if="hasFilters" variant="ghost" size="sm" @click="clearFilters">Limpar</Button>
             </div>
 
             <p class="text-xs text-muted-foreground">
-                A pesquisa encontra o <strong>nome completo</strong> ou o início do pseudónimo. Os nomes são
-                guardados cifrados, por isso o servidor não procura por partes de um nome.
+                «Procurar» vai ao servidor e encontra o <strong>nome completo</strong> ou o início do pseudónimo — os
+                nomes são guardados cifrados, por isso o servidor não procura por partes de um nome. Para isso, use
+                «Afinar nesta lista» junto à contagem, que trabalha só sobre os alunos já carregados.
             </p>
 
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <p class="text-sm text-muted-foreground">
                     <template v-if="students.total === 0">Sem alunos</template>
+                    <template v-else-if="pageFilter !== ''">
+                        {{ rows.length }} de {{ students.data.length }} nesta lista ({{ students.total }} no total)
+                    </template>
                     <template v-else-if="paginated">
                         {{ students.from }}–{{ students.to }} de {{ students.total }} alunos
                     </template>
@@ -286,15 +303,16 @@ function followUpHref(enrollment: DirectoryEnrollment): string {
                 </p>
 
                 <label v-if="students.data.length > 0" class="grid gap-1 text-sm">
+                    <span class="text-xs font-medium text-muted-foreground">Afinar nesta lista (parte do nome)</span>
                     <input
                         v-model="pageFilter"
                         type="search"
-                        :placeholder="paginated ? 'Filtrar esta página…' : 'Filtrar por parte do nome…'"
+                        placeholder="Parte do nome…"
                         class="h-8 w-56 rounded-md border border-border bg-background px-3 text-sm"
-                        aria-label="Filtrar os alunos apresentados"
+                        aria-describedby="afinar-nesta-lista-ajuda"
                     />
-                    <span v-if="paginated" class="text-xs text-muted-foreground">
-                        Filtra os alunos apresentados nesta página.
+                    <span id="afinar-nesta-lista-ajuda" class="text-xs text-muted-foreground">
+                        {{ paginated ? 'Afina só os alunos já carregados nesta página, não a conta toda.' : 'Afina só os alunos já carregados por esta pesquisa, não a conta toda.' }}
                     </span>
                 </label>
             </div>

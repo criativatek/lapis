@@ -11,6 +11,7 @@ import {
     Scale,
     Users,
 } from '@lucide/vue';
+import { LANDING_PRIMARY } from '@/components/landing/chrome';
 import LandingAi from '@/components/landing/LandingAi.vue';
 import LandingFinalCta from '@/components/landing/LandingFinalCta.vue';
 import LandingHowItWorks from '@/components/landing/LandingHowItWorks.vue';
@@ -307,7 +308,8 @@ const measures = [
                     <div class="flex flex-wrap items-center gap-3">
                         <Link
                             :href="authenticated ? dashboard() : register()"
-                            class="group/cta inline-flex items-center gap-1.5 rounded-full bg-amber-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-amber-950 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                            class="group/cta inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                            :class="LANDING_PRIMARY"
                         >
                             Criar conta gratuita
                             <ArrowRight

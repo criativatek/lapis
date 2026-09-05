@@ -77,7 +77,7 @@ const current = computed(() => new URL(page.url, 'http://x').pathname);
         ]"
     >
         <div
-            class="mx-auto flex w-full max-w-6xl items-center gap-3 px-6 py-3.5 sm:px-8"
+            class="mx-auto flex w-full max-w-6xl items-center gap-2 px-4 py-3.5 sm:gap-3 sm:px-8"
         >
             <Link
                 href="/"
@@ -160,7 +160,7 @@ const current = computed(() => new URL(page.url, 'http://x').pathname);
                         <Button
                             variant="ghost"
                             size="icon"
-                            class="size-11 lg:hidden"
+                            class="size-10 sm:size-11 lg:hidden"
                             :class="[CHROME_LINK, CHROME_GHOST_HOVER]"
                             aria-label="Abrir menu"
                         >

@@ -134,10 +134,10 @@ function hasNoApplicableStudents(assessment: Assessment): boolean {
 </script>
 
 <template>
-    <Head title="Avaliações" />
+    <Head title="Grelhas de correção" />
 
     <div class="mx-auto w-full max-w-5xl space-y-6 p-4">
-        <PageHeader title="Avaliações" description="Os elementos de avaliação já criados, com o estado e o progresso da correção.">
+        <PageHeader title="Grelhas de correção" description="As grelhas já criadas, com o estado e o progresso da correção.">
             <template #actions>
                 <Button v-if="canImportGrids" as-child variant="outline">
                     <Link href="/imports/correction/create">Importar resultados</Link>
@@ -175,36 +175,45 @@ function hasNoApplicableStudents(assessment: Assessment): boolean {
         <div class="flex flex-wrap items-end gap-3">
             <label class="grid gap-1 text-sm">
                 <span class="text-xs font-medium text-muted-foreground">Estado</span>
-                <select
-                    :value="filters.status ?? ''"
-                    class="h-9 rounded-md border border-input bg-background px-2 text-sm"
-                    @change="applyFilter('status', ($event.target as HTMLSelectElement).value)"
-                >
-                    <option value="">Todos</option>
-                    <option v-for="option in statusOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-                </select>
+                <div class="relative">
+                    <select
+                        :value="filters.status ?? ''"
+                        class="h-9 w-full appearance-none rounded-md border border-input bg-transparent px-3 pr-8 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                        @change="applyFilter('status', ($event.target as HTMLSelectElement).value)"
+                    >
+                        <option value="">Todos</option>
+                        <option v-for="option in statusOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                    </select>
+                    <ChevronDown class="pointer-events-none absolute top-1/2 right-2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                </div>
             </label>
             <label class="grid gap-1 text-sm">
                 <span class="text-xs font-medium text-muted-foreground">Finalidade</span>
-                <select
-                    :value="filters.purpose ?? ''"
-                    class="h-9 rounded-md border border-input bg-background px-2 text-sm"
-                    @change="applyFilter('purpose', ($event.target as HTMLSelectElement).value)"
-                >
-                    <option value="">Todas</option>
-                    <option v-for="option in purposeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-                </select>
+                <div class="relative">
+                    <select
+                        :value="filters.purpose ?? ''"
+                        class="h-9 w-full appearance-none rounded-md border border-input bg-transparent px-3 pr-8 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                        @change="applyFilter('purpose', ($event.target as HTMLSelectElement).value)"
+                    >
+                        <option value="">Todas</option>
+                        <option v-for="option in purposeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                    </select>
+                    <ChevronDown class="pointer-events-none absolute top-1/2 right-2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                </div>
             </label>
             <label class="grid gap-1 text-sm">
                 <span class="text-xs font-medium text-muted-foreground">Período</span>
-                <select
-                    :value="filters.period ?? ''"
-                    class="h-9 rounded-md border border-input bg-background px-2 text-sm"
-                    @change="applyFilter('period', ($event.target as HTMLSelectElement).value)"
-                >
-                    <option value="">Todos</option>
-                    <option v-for="option in periodOptions" :key="option.id" :value="option.id">{{ option.label }}</option>
-                </select>
+                <div class="relative">
+                    <select
+                        :value="filters.period ?? ''"
+                        class="h-9 w-full appearance-none rounded-md border border-input bg-transparent px-3 pr-8 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                        @change="applyFilter('period', ($event.target as HTMLSelectElement).value)"
+                    >
+                        <option value="">Todos</option>
+                        <option v-for="option in periodOptions" :key="option.id" :value="option.id">{{ option.label }}</option>
+                    </select>
+                    <ChevronDown class="pointer-events-none absolute top-1/2 right-2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                </div>
             </label>
         </div>
 

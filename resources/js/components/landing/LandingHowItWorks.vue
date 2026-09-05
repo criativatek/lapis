@@ -28,7 +28,7 @@ const steps: readonly Step[] = [
     },
     {
         icon: Scale,
-        title: 'O Lapispro propõe, o professor decide',
+        title: 'Proposta do Lapispro, decisão sua',
         body: 'Média ponderada, proposta na escala, e o rasto do que entrou.',
     },
 ];

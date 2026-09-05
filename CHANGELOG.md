@@ -25,6 +25,36 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.127.0] — 2026-09-05
+
+### Alterado
+
+- **Azul de agir no tema claro**: o botão primário da app clara deixou o navy
+  quase-preto herdado do starter e passou ao azul da casa (`hsl(221 78% 50%)`,
+  ~5:1 sobre branco) — o mesmo azul com que o site público e o tema escuro já
+  agiam. `--ring` acompanha; guardas de paridade e contraste continuam verdes.
+- **A grelha de correção explica-se**: o seletor de estado de cada célula
+  deixou o «√» nativo do browser — agora é estilizado, com chevron, e o
+  dropdown diz os estados por extenso («✓ Avaliado», «Ausência justificada»,
+  «Dispensado»…). Zona de título arrumada (estado junto ao título, ações
+  agrupadas à direita, «em modo de consulta» como subtítulo) e, em consulta,
+  as notas deixam de parecer editáveis.
+- **Filtros com o estilo da casa** nas páginas Grelhas de correção e Alunos —
+  os selects nativos «Todos ▼» ganharam o traço dos inputs (borda, foco,
+  chevron). Em Alunos, as duas pesquisas explicam-se: «Procurar» (no servidor,
+  nome completo ou início do pseudónimo) e «Afinar nesta lista» (parte do
+  nome, sobre os resultados já carregados).
+- **O menu e a página dizem o mesmo nome**: a página do item «Grelhas de
+  correção» intitulava-se «Avaliações»; passou a «Grelhas de correção».
+- **A home com poucas turmas deixou de ficar vazia**: o cartão «Agora» ganhou
+  ligações rápidas da turma (Classificações · Acompanhamento) e, com uma ou
+  duas turmas, aparece uma secção «Atalhos» com navegação real (Grelhas de
+  correção, Relatórios, Registos, Calendário). Nada inventado — só navegação.
+- **Site público**: o CTA da faixa amarela passou de castanho ao azul de agir;
+  o cabeçalho móvel já não transborda a 375 px (contentor e alvos ajustados
+  em ecrãs pequenos); «O Lapispro» já não parte com «O» órfão; o passo 4
+  («Proposta do Lapispro, decisão sua») cabe numa linha como os restantes.
+
 ## [0.124.6] — 2026-09-05
 
 ### Corrigido

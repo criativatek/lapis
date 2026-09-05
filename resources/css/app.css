@@ -349,7 +349,10 @@
     --popover: hsl(0 0% 100%);
     --popover-foreground: hsl(0 0% 3.9%);
     /* Lapispro brand: navy primary, amber accent. */
-    --primary: hsl(219 45% 19%);
+    /* AZUL DE AGIR (diagnóstico 2026-09-05): o primary claro era navy
+       quase-preto herdado do starter — o site público age a azul e o dark
+       também; só o claro ficava sem cor. 50% dá ~5:1 sobre branco (AA). */
+    --primary: hsl(221 78% 50%);
     --primary-foreground: hsl(0 0% 98%);
     --secondary: hsl(0 0% 92.1%);
     --secondary-foreground: hsl(0 0% 9%);
@@ -364,7 +367,7 @@
     /* Fios de papel (#E8E4DA-família), não cinza de ecrã. */
     --border: hsl(40 20% 88%);
     --input: hsl(40 18% 85%);
-    --ring: hsl(219 45% 19%);
+    --ring: hsl(221 78% 50%);
     --chart-1: hsl(219 45% 30%);
     --chart-2: hsl(38 88% 55%);
     --chart-3: hsl(197 37% 24%);
