@@ -74,6 +74,58 @@ export type EvaluationSheet = {
     students: EvaluationSheetStudent[];
 };
 
+/**
+ * «Preparar fecho» — the readiness reading over the sheet, mirroring
+ * `EvaluationSheetReadiness::for()` exactly. THREE STATES AND NEVER MORE:
+ * `ok`, `attention`, `neutral` («não aplicável»/informativo). There is no
+ * "error" on purpose — a pending decision is the teacher's to make, not a
+ * fault to fix, and nothing in this payload blocks anything (§3.3).
+ */
+export type EvaluationSheetReadinessState = 'ok' | 'attention' | 'neutral';
+
+/** Where a line's «Ver» goes. The server names the destination, never the URL. */
+export type EvaluationSheetReadinessAction =
+    | 'classifications'
+    | 'results'
+    | 'self-assessments'
+    | 'self-assessment'
+    | 'inovar'
+    | null;
+
+export type EvaluationSheetReadinessItem = {
+    key: string;
+    state: EvaluationSheetReadinessState;
+    label: string;
+    detail: string | null;
+    action: EvaluationSheetReadinessAction;
+};
+
+export type EvaluationSheetReadinessPending = {
+    state: EvaluationSheetReadinessState;
+    label: string;
+    action: EvaluationSheetReadinessAction;
+};
+
+export type EvaluationSheetReadinessStudent = {
+    enrollment_ulid: string | null;
+    class_number: number | null;
+    name: string;
+    pending: EvaluationSheetReadinessPending[];
+};
+
+export type EvaluationSheetReadiness = {
+    /** The moment named by its OWN configuration — never a hardcoded word. */
+    moment: { period_label: string; kind_label: string; is_closing: boolean };
+    summary: {
+        students_total: number;
+        students_with_notes: number;
+        students_ready: number;
+        attention_count: number;
+    };
+    items: EvaluationSheetReadinessItem[];
+    students: EvaluationSheetReadinessStudent[];
+};
+
 /** A period in the selector — labels are always dynamic, never hardcoded. */
 export type EvaluationSheetPeriod = {
     ulid: string;

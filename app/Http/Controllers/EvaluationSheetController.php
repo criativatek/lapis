@@ -7,6 +7,7 @@ use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Assessment\BuildEvaluationSheet;
 use App\Services\Assessment\CaptureEvaluationSheet;
+use App\Services\Assessment\EvaluationSheetReadiness;
 use App\Support\Assessment\DomainColorPalette;
 use App\Support\Entitlements\Entitlements;
 use Illuminate\Http\Request;
@@ -25,6 +26,7 @@ class EvaluationSheetController extends Controller
     public function __construct(
         protected BuildEvaluationSheet $builder,
         protected CaptureEvaluationSheet $capture,
+        protected EvaluationSheetReadiness $readiness,
     ) {}
 
     public function index(): Response
@@ -59,6 +61,19 @@ class EvaluationSheetController extends Controller
 
         $sheet = $selected !== null
             ? $this->builder->for($class, $selected)
+            : null;
+
+        $canExportToInovar = app(Entitlements::class)->allows('inovar_export');
+
+        // «Preparar fecho» — computed over the very same read model the screen
+        // shows, BEFORE presentation decorates it. Nothing is recalculated: the
+        // checklist is a reading of the sheet, plus a handful of flat lookups.
+        // Null while there is nothing to prepare (no period, or nobody on the
+        // sheet), which is exactly when the page shows its empty state instead.
+        // A non-null sheet already implies a selected period — it is only ever
+        // built from one.
+        $readiness = $sheet !== null && $sheet['students'] !== []
+            ? $this->readiness->for($class, $selected, $sheet, $canExportToInovar)
             : null;
 
         if ($sheet !== null) {
@@ -101,7 +116,8 @@ class EvaluationSheetController extends Controller
             // route itself sits behind `module:inovar_export` and refuses on
             // the server. This just spares a teacher a door that opens onto a
             // 403 (§8.2).
-            'canExportToInovar' => app(Entitlements::class)->allows('inovar_export'),
+            'canExportToInovar' => $canExportToInovar,
+            'readiness' => $readiness,
         ]);
     }
 

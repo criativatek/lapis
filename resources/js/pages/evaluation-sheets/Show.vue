@@ -1,13 +1,19 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { Download, Printer, Table2 } from '@lucide/vue';
+import { Download, ListChecks, Printer, Table2 } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
+import EvaluationSheetReadinessPanel from '@/components/evaluation-sheets/EvaluationSheetReadinessPanel.vue';
 import EvaluationSheetTable from '@/components/evaluation-sheets/EvaluationSheetTable.vue';
 import EvaluationSheetViewControls from '@/components/evaluation-sheets/EvaluationSheetViewControls.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
-import type { EvaluationSheet, EvaluationSheetPeriod, EvaluationSheetSaveDefaults } from '@/types';
+import type {
+    EvaluationSheet,
+    EvaluationSheetPeriod,
+    EvaluationSheetReadiness,
+    EvaluationSheetSaveDefaults,
+} from '@/types';
 
 /**
  * Pautas de Avaliação — UMA ÚNICA VISTA.
@@ -29,6 +35,8 @@ const props = defineProps<{
     saveDefaults?: EvaluationSheetSaveDefaults | null;
     /** Apresentação apenas: a rota está atrás de `module:inovar_export` no servidor. */
     canExportToInovar?: boolean;
+    /** «Preparar fecho» — a leitura de preparação sobre esta mesma pauta. Null sem pauta ou sem alunos. */
+    readiness?: EvaluationSheetReadiness | null;
 }>();
 
 const selectedPeriod = computed<EvaluationSheetPeriod | null>(
@@ -47,6 +55,15 @@ function selectPeriod(ulid: string): void {
 const showQuantitative = ref(true);
 const showDomainDetail = ref(true);
 const showWarnings = ref(true);
+
+// ------------------------------------------------------------ preparar fecho
+//
+// Uma CAMADA DE LEITURA sobre a pauta, nunca uma segunda pauta: o painel
+// apenas mostra o que o servidor já leu (`props.readiness`), e abrir ou
+// fechar não pede nada ao servidor nem altera coisa alguma. Fechado por
+// omissão — a pauta continua a ser o ecrã principal.
+
+const showReadiness = ref(false);
 
 // ---------------------------------------------------------------- impressão
 //
@@ -137,6 +154,26 @@ function submitSave(): void {
                 @click="showSaveForm = !showSaveForm"
             >
                 Guardar esta pauta
+            </button>
+            <!-- «Preparar fecho» ABRE UMA LEITURA, não uma ação: o que está
+                 completo, o que merece um olhar, o que não se aplica. Nada
+                 aqui fecha, bloqueia ou decide — avisar, nunca impedir. -->
+            <button
+                v-if="readiness"
+                type="button"
+                class="inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
+                :aria-expanded="showReadiness"
+                aria-controls="preparacao-do-fecho"
+                @click="showReadiness = !showReadiness"
+            >
+                <ListChecks class="size-4" />
+                Preparar fecho
+                <span
+                    v-if="readiness.summary.attention_count > 0"
+                    class="rounded-full bg-amber-100 px-1.5 text-xs font-medium text-amber-800"
+                >
+                    {{ readiness.summary.attention_count }}
+                </span>
             </button>
             <!-- NÃO EXPORTA JÁ. Abre a etapa de preparação: carregar a grelha,
                  ver o que vai ser escrito, e só depois confirmar. Uma grelha
@@ -237,6 +274,16 @@ function submitSave(): void {
                 </button>
             </div>
         </form>
+
+        <!-- Fora do papel, como todos os controlos: a preparação é leitura de
+             trabalho, não parte da pauta impressa. -->
+        <EvaluationSheetReadinessPanel
+            v-if="readiness && showReadiness && selectedPeriod"
+            :readiness="readiness"
+            :class-ulid="schoolClass.ulid"
+            :period-ulid="selectedPeriod.ulid"
+            class="print-hide"
+        />
 
         <!-- Controlos de visualização: só apresentação, nunca alteram os dados
              recebidos do servidor. Fora do papel — o que eles decidem já está

@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, reactive } from 'vue';
-import type { EvaluationSheet } from '@/types';
+import type { EvaluationSheet, EvaluationSheetReadiness } from '@/types';
 import Show from './Show.vue';
 
 vi.mock('@inertiajs/vue3', () => ({
@@ -158,6 +158,63 @@ describe('evaluation-sheets/Show — a única vista', () => {
 
         expect(JSON.stringify(wrapper.props('sheet'))).toBe(before);
         expect(wrapper.find('th').text()).not.toBe('Oralidade');
+    });
+});
+
+/**
+ * «Preparar fecho» — o botão abre uma LEITURA já recebida do servidor.
+ *
+ * Abrir e fechar o painel não pede nada ao servidor e não toca na pauta;
+ * sem payload de preparação (sem pauta, sem alunos) o botão nem aparece.
+ */
+describe('evaluation-sheets/Show — preparar fecho', () => {
+    function readiness(): EvaluationSheetReadiness {
+        return {
+            moment: { period_label: '1.º Semestre', kind_label: 'Semestre', is_closing: true },
+            summary: { students_total: 2, students_with_notes: 1, students_ready: 1, attention_count: 2 },
+            items: [
+                { key: 'decisions', state: 'attention', label: '1 de 2 níveis atribuídos', detail: null, action: 'classifications' },
+            ],
+            students: [
+                {
+                    enrollment_ulid: 'enr-diogo',
+                    class_number: 2,
+                    name: 'Diogo Ferreira',
+                    pending: [{ state: 'attention', label: 'Nível ainda não atribuído', action: 'classifications' }],
+                },
+            ],
+        };
+    }
+
+    it('shows the button with the attention count, and only opens the panel on demand', async () => {
+        const wrapper = mount(Show, { props: { ...baseProps(), readiness: readiness() } });
+
+        const button = wrapper.findAll('button').find((candidate) => candidate.text().includes('Preparar fecho'));
+        expect(button).toBeDefined();
+        expect(button!.text()).toContain('2');
+        expect(wrapper.text()).not.toContain('Preparação — Semestre: 1.º Semestre');
+
+        await button!.trigger('click');
+
+        expect(wrapper.text()).toContain('Preparação — Semestre: 1.º Semestre');
+        expect(wrapper.text()).toContain('Nível ainda não atribuído');
+    });
+
+    it('offers no button at all when there is nothing to prepare', () => {
+        const wrapper = mount(Show, { props: { ...baseProps(), readiness: null } });
+
+        expect(wrapper.findAll('button').some((candidate) => candidate.text().includes('Preparar fecho'))).toBe(false);
+    });
+
+    it('keeps the panel off the printed sheet', async () => {
+        const wrapper = mount(Show, { props: { ...baseProps(), readiness: readiness() } });
+
+        const button = wrapper.findAll('button').find((candidate) => candidate.text().includes('Preparar fecho'));
+        await button!.trigger('click');
+
+        const panel = wrapper.find('section[aria-label="Preparação do fecho do momento"]');
+        expect(panel.exists()).toBe(true);
+        expect(panel.classes()).toContain('print-hide');
     });
 });
 

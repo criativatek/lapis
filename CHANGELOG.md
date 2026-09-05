@@ -25,6 +25,34 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.130.0] — 2026-09-05
+
+### Adicionado
+
+- **«Preparar fecho»**, dentro da Pauta de Avaliação. Um botão abre uma leitura
+  de preparação sobre a própria pauta: o que está completo, o que merece um
+  olhar, o que não se aplica — decisões tomadas vs. propostas por decidir,
+  lacunas de cobertura e domínios sem resultados (os sinais que o motor já
+  levanta, nunca recalculados), elementos em revisão que retêm a publicação,
+  autoavaliações submetidas quando a turma as usa nesse momento, e a última
+  exportação Inovar como informação, nunca como obrigação. Cada pendência tem
+  um «Ver»/«Resolver» que leva ao ecrã onde se trata.
+- A lista por aluno nomeia só quem tem pontos a verificar; quem está completo
+  não ocupa linha. Três estados no máximo — sem pendências, ponto a verificar,
+  informativo/não aplicável — ditos por texto e ícone, nunca só pela cor.
+- O momento fala a terminologia do próprio período («Semestre», «Período»,
+  «Módulo») e sabe se ainda decorre: a distinção entre momento a decorrer e
+  momento que fecha vem das datas e do estado do período — a mesma regra que a
+  exportação Inovar já aplicava — e, enquanto o período corre, uma decisão por
+  tomar é apenas informativa, nunca um alerta.
+
+### Notas
+
+- **Nada bloqueia o fecho.** O painel informa e alerta; a decisão é sempre do
+  professor (§3.3). Não há novo ecrã principal, nova pauta nem novo histórico:
+  é uma camada de leitura sobre o que já existe, calculada sobre o estado atual
+  da pauta e sem tocar nos snapshots imutáveis.
+
 ## [0.129.0] — 2026-09-05
 
 ### Adicionado
