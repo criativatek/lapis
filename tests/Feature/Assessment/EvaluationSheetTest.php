@@ -125,16 +125,22 @@ class EvaluationSheetTest extends TestCase
         $this->assertSame(3, $carolina['class_number']);
         $this->assertSame('5.000', $carolina['overall']['scale_value']);
         $this->assertSame('Muito Bom', $carolina['overall']['scale_level_label']);
+        // O código do nível viaja a par da menção — é o código que a pauta
+        // mostra, e a menção segue para o `title` da célula (SUP-2C774B).
+        $this->assertSame('5', $carolina['overall']['scale_level_code']);
         $this->assertSame('confirmed', $carolina['classification']['status']);
         $this->assertSame('91.000', $carolina['classification']['proposed_value']);
         $this->assertSame('Muito Bom', $carolina['classification']['proposed_scale_level_label']);
+        $this->assertSame('5', $carolina['classification']['proposed_scale_level_code']);
         $this->assertSame('4.000', $carolina['classification']['final_value']);
         $this->assertSame('Bom', $carolina['classification']['final_scale_level_label']);
+        $this->assertSame('4', $carolina['classification']['final_scale_level_code']);
 
         $reading = collect((array) $carolina['domains'])->firstWhere('name', 'Leitura');
         $this->assertSame('93.125000', $reading['normalized_value']);
         $this->assertSame('25.0000', $reading['weight_percent_applied']);
         $this->assertSame('Muito Bom', $reading['scale_level_label']);
+        $this->assertSame('5', $reading['scale_level_code']);
 
         $diogo = collect($sheet['students'])->firstWhere('name', 'Diogo Ferreira');
         $this->assertNull($diogo['classification']);

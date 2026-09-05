@@ -12,7 +12,23 @@ use App\Models\Scale;
 use App\Models\SchoolClass;
 use Illuminate\Support\Collection;
 
-/** Builds the export-neutral evaluation-sheet read model from canonical results. */
+/**
+ * Builds the export-neutral evaluation-sheet read model from canonical results.
+ *
+ * EVERY LEVEL TRAVELS AS BOTH `code` AND `label`, AND THAT IS NOT REDUNDANCY.
+ * A level on «Escala 1 a 5» is the pair `3` / «Suficiente», and a pauta names
+ * the decision by its CODE — the number is what a pauta of 2.º/3.º ciclo
+ * carries, and a qualitative mention in that column names something the
+ * document does not say (SUP-2C774B). The label follows so the screen can put
+ * it in the cell's title, the same way Classificações already does.
+ *
+ * THE LABEL IS ALSO WHAT KEEPS OLD HISTORY READABLE. A snapshot is opened by
+ * the very same table component as the live sheet, and the snapshots already
+ * captured carry `scale_level_label` and no code. Dropping the label here
+ * would blank a column in every pauta kept before this change — history has to
+ * go on saying what was on screen the day it was kept, so the reader falls
+ * back to the label whenever a payload has no code.
+ */
 class BuildEvaluationSheet
 {
     public function __construct(
@@ -150,6 +166,7 @@ class BuildEvaluationSheet
             'normalized_value' => $outcome->normalizedValue,
             'scale_value' => $scaleValue,
             'scale_level_id' => $outcome->scaleLevelId,
+            'scale_level_code' => $level?->code,
             'scale_level_label' => $level?->label,
             'result_state' => $outcome->resultState,
             'has_coverage_warning' => $outcome->coverageWarning,
@@ -179,6 +196,7 @@ class BuildEvaluationSheet
                     'normalized_value' => null,
                     'weight_percent_applied' => (string) $profileDomain->weight_percent,
                     'scale_level_id' => null,
+                    'scale_level_code' => null,
                     'scale_level_label' => null,
                     'has_coverage_warning' => true,
                     'coverage' => $coverage[$profileDomain->domain_id] ?? CoverageExplanation::none(),
@@ -194,6 +212,7 @@ class BuildEvaluationSheet
                 'normalized_value' => $domainOutcome->normalizedValue,
                 'weight_percent_applied' => $domainOutcome->weightPercent,
                 'scale_level_id' => $level?->id,
+                'scale_level_code' => $level?->code,
                 'scale_level_label' => $level?->label,
                 'has_coverage_warning' => $domainOutcome->coverageWarning,
                 'coverage' => $coverage[$profileDomain->domain_id] ?? CoverageExplanation::none(),
@@ -214,9 +233,11 @@ class BuildEvaluationSheet
             'status' => $classification->status->value,
             'proposed_value' => $classification->proposed_value,
             'proposed_scale_level_id' => $classification->proposed_scale_level_id,
+            'proposed_scale_level_code' => $classification->proposedScaleLevel?->code,
             'proposed_scale_level_label' => $classification->proposedScaleLevel?->label,
             'final_value' => $classification->final_value,
             'final_scale_level_id' => $classification->final_scale_level_id,
+            'final_scale_level_code' => $classification->finalScaleLevel?->code,
             'final_scale_level_label' => $classification->finalScaleLevel?->label,
             'override_reason' => $classification->override_reason,
         ];

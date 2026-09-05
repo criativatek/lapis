@@ -247,29 +247,38 @@ class ReportsTest extends TestCase
         $this->assertStringContainsString('Nº,Aluno', $body);
         $this->assertStringContainsString('Carolina Nunes', $body);
 
-        // Todos os domínios do perfil, com quantitativo E apreciação.
+        // Todos os domínios do perfil, com quantitativo E nível. A coluna
+        // chama-se «Nível» porque é o código do nível que leva — nomeá-la
+        // «Apreciação» com um «5» lá dentro seria descrever outra coisa.
         foreach (['Oralidade', 'Leitura', 'Escrita', 'Gramática', 'Educação Literária'] as $domain) {
             $this->assertStringContainsString("{$domain} — Percentagem", $body);
-            $this->assertStringContainsString("{$domain} — Apreciação", $body);
+            $this->assertStringContainsString("{$domain} — Nível", $body);
         }
 
         $this->assertStringContainsString('Global — Percentagem', $body);
-        $this->assertStringContainsString('Global — Apreciação', $body);
+        $this->assertStringContainsString('Global — Nível', $body);
         $this->assertStringContainsString('Nível atribuído', $body);
 
         // A decisão do professor está lá, e diz-se DECISÃO. Num CSV não há
         // negrito nem itálico: a origem do nível tem de vir escrita, ou uma
         // proposta acabaria por se ler como uma nota.
-        $decidedLabel = $this->asTenant($teacher, function (): string {
+        //
+        // E o que lá está é o CÓDIGO do nível, não a menção qualitativa: numa
+        // pauta o nível é o número (SUP-2C774B). A menção não vai ao ficheiro.
+        [$decidedCode, $decidedLabel] = $this->asTenant($teacher, function (): array {
             $classification = Classification::query()
                 ->whereNotNull('final_scale_level_id')
                 ->with('finalScaleLevel')
                 ->firstOrFail();
 
-            return (string) $classification->finalScaleLevel?->label;
+            return [
+                (string) $classification->finalScaleLevel?->code,
+                (string) $classification->finalScaleLevel?->label,
+            ];
         });
 
-        $this->assertStringContainsString($decidedLabel, $body);
+        $this->assertStringContainsString($decidedCode, $body);
+        $this->assertStringNotContainsString($decidedLabel, $body);
         $this->assertStringContainsString('Decisão do professor', $body);
     }
 

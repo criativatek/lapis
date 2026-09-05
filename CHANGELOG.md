@@ -25,6 +25,27 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.130.1] — 2026-09-05
+
+### Corrigido
+
+- **Na Pauta de Avaliação o nível passa a ser o número, não a menção
+  qualitativa.** Um nível da «Escala 1 a 5» é o par `3` / «Suficiente», e a
+  pauta mostrava a menção — mas o documento que um conselho de turma assina
+  carrega o número. Passa a mostrar o código do nível nas células de domínio,
+  na coluna global e na do nível atribuído; a menção segue no `title` da
+  célula, como o ecrã de Classificações já fazia. Reportado em produção
+  (SUP-2C774B).
+- O CSV da pauta acompanha o ecrã — as colunas por domínio e a global levam o
+  código, e deixam de se chamar «Apreciação» para se chamarem «Nível»: uma
+  coluna com «5» lá dentro não descrevia uma apreciação.
+- **As pautas guardadas antes desta versão continuam a ler-se como no dia em
+  que foram guardadas.** O histórico e a pauta viva partilham o mesmo
+  componente, e uma fotografia antiga não traz código nenhum: nesse caso o
+  leitor recorre à menção que lá está, em vez de mostrar uma coluna vazia.
+- A exportação Inovar não muda: continua a levar o `inovar_code` que o Inovar
+  exige, que nunca foi nem o código nem a menção.
+
 ## [0.130.0] — 2026-09-05
 
 ### Adicionado

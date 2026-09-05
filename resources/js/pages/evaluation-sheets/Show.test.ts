@@ -36,6 +36,7 @@ function baseSheet(): EvaluationSheet {
                     normalized_value: '91.000000',
                     scale_value: '5.000',
                     scale_level_id: 5,
+                    scale_level_code: '5',
                     scale_level_label: 'Muito Bom',
                     result_state: 'ok',
                     has_coverage_warning: false,
@@ -48,6 +49,7 @@ function baseSheet(): EvaluationSheet {
                         normalized_value: '90.000000',
                         weight_percent_applied: '25.0000',
                         scale_level_id: 5,
+                        scale_level_code: '5',
                         scale_level_label: 'Muito Bom',
                         has_coverage_warning: false,
                         coverage: { absences: [], no_elements: false, excluded_domain_ids: [] },
@@ -59,6 +61,7 @@ function baseSheet(): EvaluationSheet {
                         normalized_value: '93.125000',
                         weight_percent_applied: '25.0000',
                         scale_level_id: 5,
+                        scale_level_code: '5',
                         scale_level_label: 'Muito Bom',
                         has_coverage_warning: false,
                         coverage: { absences: [], no_elements: false, excluded_domain_ids: [] },
@@ -68,9 +71,11 @@ function baseSheet(): EvaluationSheet {
                     status: 'confirmed',
                     proposed_value: '91.000',
                     proposed_scale_level_id: 5,
+                    proposed_scale_level_code: '5',
                     proposed_scale_level_label: 'Muito Bom',
                     final_value: '4.000',
                     final_scale_level_id: 4,
+                    final_scale_level_code: '4',
                     final_scale_level_label: 'Bom',
                     override_reason: null,
                 },
@@ -84,6 +89,7 @@ function baseSheet(): EvaluationSheet {
                     normalized_value: null,
                     scale_value: null,
                     scale_level_id: null,
+                    scale_level_code: null,
                     scale_level_label: null,
                     result_state: 'no_value',
                     has_coverage_warning: true,
@@ -124,13 +130,47 @@ describe('evaluation-sheets/Show — a única vista', () => {
     it('shows the decided level in bold and never the proposal once a decision exists', () => {
         const wrapper = mount(Show, { props: baseProps() });
 
-        // Carolina's final decision ("Bom") is what shows, not the proposal
-        // ("Muito Bom") — a decision is never overwritten by the proposal.
+        // Carolina's final decision (code "4") is what shows, not the proposal
+        // (code "5") — a decision is never overwritten by the proposal.
         const rows = wrapper.findAll('tbody tr');
         const carolinaRow = rows.find((row) => row.text().includes('Carolina Nunes'));
 
         expect(carolinaRow).toBeDefined();
-        expect(carolinaRow!.text()).toContain('Bom');
+        expect(carolinaRow!.find('.font-bold').text()).toBe('4');
+    });
+
+    it('names the level by its code and never by the qualitative mention', () => {
+        const wrapper = mount(Show, { props: baseProps() });
+
+        const carolinaRow = wrapper.findAll('tbody tr').find((row) => row.text().includes('Carolina Nunes'));
+
+        // Numa pauta o nível é o número. A menção não aparece em célula
+        // nenhuma da linha — nem no global, nem nos domínios, nem na decisão.
+        expect(carolinaRow!.text()).not.toContain('Muito Bom');
+
+        // Mas não se perde: fica no `title`, ao alcance de quem passa o rato.
+        expect(carolinaRow!.find('.font-bold').attributes('title')).toBe('4 — Bom');
+    });
+
+    it('still reads a snapshot kept before the code existed, by falling back to its mention', () => {
+        // Uma pauta guardada antes desta correção traz `scale_level_label` e
+        // código nenhum. O histórico tem de continuar a dizer o que estava no
+        // ecrã no dia em que foi guardado — não um travessão vazio.
+        const props = baseProps();
+        const student = props.sheet!.students[0];
+
+        delete student.overall.scale_level_code;
+        delete student.classification!.final_scale_level_code;
+        delete student.classification!.proposed_scale_level_code;
+        student.domains.forEach((domain) => {
+            delete domain.scale_level_code;
+        });
+
+        const wrapper = mount(Show, { props });
+        const carolinaRow = wrapper.findAll('tbody tr').find((row) => row.text().includes('Carolina Nunes'));
+
+        expect(carolinaRow!.find('.font-bold').text()).toBe('Bom');
+        expect(carolinaRow!.text()).toContain('Muito Bom');
     });
 
     it('hiding the quantitative toggle changes only what is rendered, never the props the component received', async () => {

@@ -32,11 +32,43 @@ function studentDomain(student: EvaluationSheetStudent, domainId: number) {
 }
 
 /**
+ * O QUE APARECE NA CÉLULA É O CÓDIGO DO NÍVEL, NÃO A MENÇÃO QUALITATIVA.
+ * Numa pauta o nível é o número que o documento carrega — «3», não
+ * «Suficiente» (SUP-2C774B). A menção continua a viajar, e vai para o `title`,
+ * como o ecrã de Classificações já faz.
+ *
+ * O RECURSO AO RÓTULO É O QUE MANTÉM O HISTÓRICO LEGÍVEL: uma pauta guardada
+ * antes desta correção não traz código nenhum, e tem de continuar a mostrar o
+ * que estava no ecrã no dia em que foi guardada.
+ */
+function levelText(code: string | null | undefined, label: string | null): string | null {
+    return code ?? label;
+}
+
+function levelTitle(code: string | null | undefined, label: string | null): string | undefined {
+    if (code == null || label == null) {
+        return undefined;
+    }
+
+    return `${code} — ${label}`;
+}
+
+/**
+ * A proposta diz sempre o que é antes de dizer o que vale: a frase que a separa
+ * de uma decisão vem primeiro, e a menção do nível só se junta quando existe.
+ */
+function proposalTitle(levelTitleText: string | undefined): string {
+    const explanation = 'Proposta do Lapispro — ainda não decidida pelo professor.';
+
+    return levelTitleText === undefined ? explanation : `${explanation} (${levelTitleText})`;
+}
+
+/**
  * O «Nível atribuído»: a decisão do professor quando existe, senão a proposta
  * do Lapispro com um estilo mais leve — nunca a mesma força visual, para que
  * uma proposta nunca se leia como uma decisão já tomada (§6).
  */
-type AssignedLevel = { text: string; kind: 'decided' | 'proposed' | 'none' };
+type AssignedLevel = { text: string; kind: 'decided' | 'proposed' | 'none'; title?: string };
 
 function assignedLevel(student: EvaluationSheetStudent): AssignedLevel {
     const classification = student.classification;
@@ -45,20 +77,31 @@ function assignedLevel(student: EvaluationSheetStudent): AssignedLevel {
         return { text: '—', kind: 'none' };
     }
 
-    const finalText = classification.final_scale_level_label ?? classification.final_value;
+    // Numa escala de intervalo não há nível nenhum a nomear: o valor escrito é
+    // a resposta inteira, e é ele que passa no `??`.
+    const finalText = levelText(classification.final_scale_level_code, classification.final_scale_level_label) ?? classification.final_value;
 
     if (finalText !== null) {
-        return { text: finalText, kind: 'decided' };
+        return {
+            text: finalText,
+            kind: 'decided',
+            title: levelTitle(classification.final_scale_level_code, classification.final_scale_level_label),
+        };
     }
 
-    const proposedText = classification.proposed_scale_level_label ?? classification.proposed_value;
+    const proposedText = levelText(classification.proposed_scale_level_code, classification.proposed_scale_level_label) ?? classification.proposed_value;
 
     if (proposedText !== null) {
-        return { text: proposedText, kind: 'proposed' };
+        return {
+            text: proposedText,
+            kind: 'proposed',
+            title: levelTitle(classification.proposed_scale_level_code, classification.proposed_scale_level_label),
+        };
     }
 
     return { text: '—', kind: 'none' };
 }
+
 
 /** Fundo muito suave na cor do domínio — identidade visual, nunca desempenho. */
 function domainHeaderStyle(color: string): Record<string, string> {
@@ -181,8 +224,11 @@ function domainCellStyle(color: string): Record<string, string> {
                                 :class="showQuantitative ? '' : 'border-l'"
                                 :style="domainCellStyle(domain.color)"
                             >
-                                <span :class="{ 'text-muted-foreground': !studentDomain(student, domain.domain_id)?.scale_level_label }">
-                                    {{ studentDomain(student, domain.domain_id)?.scale_level_label ?? '—' }}
+                                <span
+                                        :class="{ 'text-muted-foreground': !levelText(studentDomain(student, domain.domain_id)?.scale_level_code, studentDomain(student, domain.domain_id)?.scale_level_label ?? null) }"
+                                        :title="levelTitle(studentDomain(student, domain.domain_id)?.scale_level_code, studentDomain(student, domain.domain_id)?.scale_level_label ?? null)"
+                                    >
+                                        {{ levelText(studentDomain(student, domain.domain_id)?.scale_level_code, studentDomain(student, domain.domain_id)?.scale_level_label ?? null) ?? '—' }}
                                 </span>
                                 <CoverageWarning
                                     v-if="showWarnings && !showQuantitative && studentDomain(student, domain.domain_id)?.has_coverage_warning"
@@ -210,8 +256,11 @@ function domainCellStyle(color: string): Record<string, string> {
                         class="border-b border-border bg-muted/20 px-2 py-2 text-center font-medium"
                         :class="showQuantitative ? '' : 'border-l-2'"
                     >
-                        <span :class="{ 'text-muted-foreground': !student.overall.scale_level_label }">
-                            {{ student.overall.scale_level_label ?? '—' }}
+                        <span
+                                :class="{ 'text-muted-foreground': !levelText(student.overall.scale_level_code, student.overall.scale_level_label) }"
+                                :title="levelTitle(student.overall.scale_level_code, student.overall.scale_level_label)"
+                            >
+                                {{ levelText(student.overall.scale_level_code, student.overall.scale_level_label) ?? '—' }}
                         </span>
                         <CoverageWarning
                             v-if="showWarnings && !showQuantitative && student.overall.has_coverage_warning"
@@ -228,13 +277,14 @@ function domainCellStyle(color: string): Record<string, string> {
                         <span
                             v-if="assignedLevel(student).kind === 'decided'"
                             class="rounded bg-primary/10 px-2 py-0.5 font-bold text-primary"
+                            :title="assignedLevel(student).title"
                         >
                             {{ assignedLevel(student).text }}
                         </span>
                         <span
                             v-else-if="assignedLevel(student).kind === 'proposed'"
                             class="rounded px-2 py-0.5 text-muted-foreground italic"
-                            title="Proposta do Lapispro — ainda não decidida pelo professor."
+                            :title="proposalTitle(assignedLevel(student).title)"
                         >
                             {{ assignedLevel(student).text }}
                         </span>

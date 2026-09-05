@@ -122,7 +122,7 @@ class EvaluationSheetCsvExportController extends Controller
         foreach ($domains as $domain) {
             $name = (string) $domain['name'];
             $header[] = "{$name} — Percentagem";
-            $header[] = "{$name} — Apreciação";
+            $header[] = "{$name} — Nível";
         }
 
         // O global vem em TRÊS colunas, não nas duas do ecrã. Na grelha a
@@ -133,7 +133,7 @@ class EvaluationSheetCsvExportController extends Controller
         // fica vazia. Exportar mais nunca é o problema; exportar ambíguo é.
         $header[] = 'Global — Percentagem';
         $header[] = 'Global — Valor na escala';
-        $header[] = 'Global — Apreciação';
+        $header[] = 'Global — Nível';
 
         // O ecrã distingue a decisão da proposta pela tipografia (negrito vs.
         // itálico). Num CSV não há tipografia, e uma proposta que se lesse como
@@ -176,7 +176,7 @@ class EvaluationSheetCsvExportController extends Controller
             $studentDomain = $byDomainId[$domainId] ?? null;
 
             $row[] = $this->percentage($studentDomain === null ? null : $studentDomain['normalized_value']);
-            $row[] = $studentDomain === null ? '' : (string) ($studentDomain['scale_level_label'] ?? '');
+            $row[] = $studentDomain === null ? '' : (string) ($studentDomain['scale_level_code'] ?? $studentDomain['scale_level_label'] ?? '');
 
             if ($studentDomain !== null && $studentDomain['has_coverage_warning'] === true) {
                 $warnings[] = (string) $domain['name'];
@@ -188,7 +188,7 @@ class EvaluationSheetCsvExportController extends Controller
 
         $row[] = $this->percentage($overall['normalized_value']);
         $row[] = (string) ($overall['scale_value'] ?? '');
-        $row[] = (string) ($overall['scale_level_label'] ?? '');
+        $row[] = (string) ($overall['scale_level_code'] ?? $overall['scale_level_label'] ?? '');
 
         if ($overall['has_coverage_warning'] === true) {
             array_unshift($warnings, 'Global');
@@ -221,13 +221,13 @@ class EvaluationSheetCsvExportController extends Controller
             return ['', ''];
         }
 
-        $final = $classification['final_scale_level_label'] ?? $classification['final_value'];
+        $final = $classification['final_scale_level_code'] ?? $classification['final_scale_level_label'] ?? $classification['final_value'];
 
         if ($final !== null) {
             return [(string) $final, 'Decisão do professor'];
         }
 
-        $proposed = $classification['proposed_scale_level_label'] ?? $classification['proposed_value'];
+        $proposed = $classification['proposed_scale_level_code'] ?? $classification['proposed_scale_level_label'] ?? $classification['proposed_value'];
 
         if ($proposed !== null) {
             return [(string) $proposed, 'Proposta do Lapispro (não decidida)'];

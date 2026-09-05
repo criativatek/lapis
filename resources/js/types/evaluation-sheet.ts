@@ -24,6 +24,8 @@ export type EvaluationSheetOverall = {
     normalized_value: string | null;
     scale_value: string | null;
     scale_level_id: number | null;
+    /** Ausente nos snapshots guardados antes da 0.130.1 — o leitor recorre ao rótulo. */
+    scale_level_code?: string | null;
     scale_level_label: string | null;
     result_state: string;
     has_coverage_warning: boolean;
@@ -36,6 +38,8 @@ export type EvaluationSheetStudentDomain = {
     normalized_value: string | null;
     weight_percent_applied: string;
     scale_level_id: number | null;
+    /** Ausente nos snapshots guardados antes da 0.130.1 — o leitor recorre ao rótulo. */
+    scale_level_code?: string | null;
     scale_level_label: string | null;
     has_coverage_warning: boolean;
     coverage: Coverage;
@@ -49,9 +53,13 @@ export type EvaluationSheetClassification = {
     status: string;
     proposed_value: string | null;
     proposed_scale_level_id: number | null;
+    /** Ausente nos snapshots guardados antes da 0.130.1. */
+    proposed_scale_level_code?: string | null;
     proposed_scale_level_label: string | null;
     final_value: string | null;
     final_scale_level_id: number | null;
+    /** Ausente nos snapshots guardados antes da 0.130.1. */
+    final_scale_level_code?: string | null;
     final_scale_level_label: string | null;
     override_reason: string | null;
 } | null;
