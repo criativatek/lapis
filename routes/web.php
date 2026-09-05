@@ -27,6 +27,7 @@ use App\Http\Controllers\EvaluationSheetController;
 use App\Http\Controllers\EvaluationSheetCsvExportController;
 use App\Http\Controllers\EvaluationSheetHistoryController;
 use App\Http\Controllers\EvaluationSheetInovarExportController;
+use App\Http\Controllers\EvaluationSheetSnapshotExportController;
 use App\Http\Controllers\EvidenceController;
 use App\Http\Controllers\HelpAssistantController;
 use App\Http\Controllers\HelpController;
@@ -638,16 +639,27 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // trancar a porta do que já foi exportado. A autorização real está no
         // controlador — turma visível, registo desta turma, ficheiro existente.
         Route::get('classes/{class}/pauta-avaliacao/historico/{export}/ficheiro', [EvaluationSheetHistoryController::class, 'download'])->name('evaluation-sheets.download');
+        // UM MOMENTO GUARDADO, em CSV e em Excel — ficheiros do Lapispro, para
+        // arquivo e leitura humana, e nunca a grelha do Inovar. Gerados só a
+        // partir do payload congelado; o controlador que os serve não recebe o
+        // construtor da pauta e por isso não tem como chegar ao presente (§16).
+        //
+        // FORA de `module:inovar_export` pela mesma razão que o download acima:
+        // um momento já guardado continua a ser da escola.
+        Route::get('classes/{class}/pauta-avaliacao/historico/{export}/csv', [EvaluationSheetSnapshotExportController::class, 'csv'])->name('evaluation-sheets.snapshot.csv');
+        Route::get('classes/{class}/pauta-avaliacao/historico/{export}/xlsx', [EvaluationSheetSnapshotExportController::class, 'xlsx'])->name('evaluation-sheets.snapshot.xlsx');
         Route::get('classes/{class}/pauta-avaliacao/historico/{export}', [EvaluationSheetHistoryController::class, 'snapshot'])->name('evaluation-sheets.snapshot');
 
-        // O CSV da pauta do período que está a ser visto. Declarado ANTES do
-        // wildcard `pauta-avaliacao/{period?}` pela mesma razão que «historico»
-        // o é — «csv» não é um ulid de período e não pode ser lido como um.
+        // O CSV e o Excel da pauta do período que está a ser visto. Declarados
+        // ANTES do wildcard `pauta-avaliacao/{period?}` pela mesma razão que
+        // «historico» o é — «csv» não é um ulid de período e não pode ser lido
+        // como um.
         //
         // NÃO é «Preparar exportação para o Inovar» (§6): aquela produz a
         // grelha da escola a partir de uma pauta guardada e deixa registo no
         // histórico; esta é uma leitura de dados, aqui e agora, sem snapshot.
-        Route::get('classes/{class}/pauta-avaliacao/csv/{period?}', EvaluationSheetCsvExportController::class)->name('evaluation-sheets.csv');
+        Route::get('classes/{class}/pauta-avaliacao/csv/{period?}', [EvaluationSheetCsvExportController::class, 'csv'])->name('evaluation-sheets.csv');
+        Route::get('classes/{class}/pauta-avaliacao/xlsx/{period?}', [EvaluationSheetCsvExportController::class, 'xlsx'])->name('evaluation-sheets.xlsx');
 
         // «Preparar exportação para o Inovar», a partir da própria Pauta.
         //
