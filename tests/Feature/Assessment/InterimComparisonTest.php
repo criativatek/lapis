@@ -24,7 +24,9 @@ use App\Services\Assessment\OpenClassification;
 use App\Services\Assessment\RecordScores;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
+use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\Test;
@@ -47,13 +49,48 @@ class InterimComparisonTest extends TestCase
 
     protected User $teacher;
 
+    /**
+     * Mesmo cenário de demonstração em todos os 48 testes; ver
+     * ClassStatisticsTest::$demoSeeded para o porquê de semear uma vez só.
+     */
+    protected static bool $demoSeeded = false;
+
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->teacher = User::factory()->create(['email' => 'ana.martins@lapis.test']);
-        $this->seed(DemoDataSeeder::class);
         $this->travelTo(Carbon::parse('2027-06-30 12:00:00'));
+    }
+
+    /**
+     * ponytail: reimplementa o `refreshTestDatabase` do RefreshDatabase para
+     * poder semear ANTES de a transacção do teste abrir — ver
+     * ClassStatisticsTest::refreshTestDatabase para o detalhe.
+     */
+    protected function refreshTestDatabase(): void
+    {
+        if (! static::$demoSeeded) {
+            $this->migrateDatabases();
+            $this->app[Kernel::class]->setArtisan(null);
+            $this->updateLocalCacheOfInMemoryDatabases();
+            RefreshDatabaseState::$migrated = true;
+
+            $this->teacher = User::factory()->create(['email' => 'ana.martins@lapis.test']);
+            $this->seed(DemoDataSeeder::class);
+            static::$demoSeeded = true;
+        } else {
+            $this->teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+        }
+
+        $this->beginDatabaseTransaction();
+    }
+
+    public static function tearDownAfterClass(): void
+    {
+        static::$demoSeeded = false;
+        RefreshDatabaseState::$migrated = false;
+
+        parent::tearDownAfterClass();
     }
 
     /**

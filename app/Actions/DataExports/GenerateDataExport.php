@@ -109,7 +109,6 @@ class GenerateDataExport
         $this->audit->record(
             'data_export.requested',
             $organization,
-            causer: $user,
             summary: "{$user->name} pediu uma exportação dos seus dados.",
         );
 
@@ -138,7 +137,6 @@ class GenerateDataExport
             $this->audit->record(
                 'data_export.generated',
                 $organization,
-                causer: $user,
                 summary: "Exportação de dados de {$user->name} gerada.",
             );
         } catch (Throwable $exception) {

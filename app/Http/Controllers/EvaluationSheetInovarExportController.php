@@ -99,7 +99,7 @@ class EvaluationSheetInovarExportController extends Controller
         ], [], ['template' => 'grelha do INOVAR']);
 
         $token = $this->uploads->newToken();
-        $this->uploads->store($token, (string) file_get_contents($data['template']->getRealPath()));
+        $this->uploads->store($token, $class->id, (string) file_get_contents($data['template']->getRealPath()));
 
         try {
             $template = $this->reader->read($this->uploads->absolutePath($token));
@@ -143,6 +143,11 @@ class EvaluationSheetInovarExportController extends Controller
         if (! $this->uploads->exists($token)) {
             return back()->withErrors(['template' => 'A grelha carregada já não está disponível. Carregue-a novamente.']);
         }
+
+        // Exists, but was it issued FOR THIS CLASS? See
+        // InovarTemplateStorage::belongsToClass — a leaked token that still
+        // resolves to a real file must 404 here, never be read further.
+        abort_unless($this->uploads->belongsToClass($token, $class->id), 404);
 
         try {
             $templatePath = $this->uploads->absolutePath($token);

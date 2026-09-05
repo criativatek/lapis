@@ -7,6 +7,7 @@ use App\Models\ProfileVersionStatus;
 use App\Models\User;
 use App\Services\Audit\AuditLog;
 use App\Support\Assessment\ProfileActivationException;
+use App\Support\Assessment\SupportedCalculationRules;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -34,6 +35,7 @@ class ActivateProfileVersion
     {
         $this->guardIsDraft($version);
         $this->guardWeights($version);
+        $this->guardSupportedRules($version);
 
         return DB::transaction(function () use ($version, $actor): AssessmentProfileVersion {
             $this->supersedeCurrentActive($version);
@@ -65,6 +67,29 @@ class ActivateProfileVersion
 
             return $version->refresh();
         });
+    }
+
+    /**
+     * SÓ ativa o que o motor sabe cumprir.
+     *
+     * A lista vive em SupportedCalculationRules porque a importação de backup
+     * precisa da mesma pergunta: uma versão pode chegar já ativa de outra
+     * instalação sem passar por aqui.
+     *
+     * Falhar aqui é barato — o professor vê a mensagem antes de haver notas.
+     * Falhar no cálculo é caro e invisível.
+     */
+    protected function guardSupportedRules(AssessmentProfileVersion $version): void
+    {
+        $unsupported = SupportedCalculationRules::firstUnsupported($version->attributesToArray());
+
+        if ($unsupported !== null) {
+            throw ProfileActivationException::unsupportedRule(
+                $unsupported['field'],
+                $unsupported['value'],
+                $unsupported['supported'],
+            );
+        }
     }
 
     protected function guardIsDraft(AssessmentProfileVersion $version): void

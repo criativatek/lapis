@@ -73,7 +73,7 @@ class InovarExportController extends Controller
         ]);
 
         $token = $this->storage->newToken();
-        $this->storage->store($token, (string) file_get_contents($data['template']->getRealPath()));
+        $this->storage->store($token, $class->id, (string) file_get_contents($data['template']->getRealPath()));
 
         try {
             $template = $this->reader->read($this->storage->absolutePath($token));
@@ -118,6 +118,12 @@ class InovarExportController extends Controller
         if (! $this->storage->exists($token)) {
             return back()->withErrors(['template' => __('A grelha carregada já não está disponível. Carregue-a novamente.')]);
         }
+
+        // Exists, but was it issued FOR THIS CLASS? A token alone never
+        // proves that (§ see InovarTemplateStorage::belongsToClass) — a
+        // stranger's leaked token that happens to still be on disk must 404
+        // here, never fall through to reading and downloading their grid.
+        abort_unless($this->storage->belongsToClass($token, $class->id), 404);
 
         try {
             $templatePath = $this->storage->absolutePath($token);

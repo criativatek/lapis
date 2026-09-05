@@ -3,11 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Actions\DataExports\GenerateDataExport;
+use App\Http\Controllers\Concerns\RefusesDuringImpersonation;
 use App\Models\DataExport;
 use App\Models\User;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
@@ -39,6 +41,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class DataExportController extends Controller
 {
+    use RefusesDuringImpersonation;
+
     public function __construct(
         protected CurrentOrganization $currentOrganization,
         protected GenerateDataExport $generateDataExport,
@@ -74,8 +78,10 @@ class DataExportController extends Controller
         ]);
     }
 
-    public function store(): RedirectResponse
+    public function store(Request $request): RedirectResponse
     {
+        $this->refuseDuringImpersonation($request);
+
         $organization = $this->currentOrganization->get();
         $user = $this->user();
 

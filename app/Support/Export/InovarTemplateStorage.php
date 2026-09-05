@@ -27,9 +27,17 @@ class InovarTemplateStorage
         return (string) Str::uuid();
     }
 
-    public function store(string $token, string $contents): string
+    /**
+     * $classId is stamped beside the upload the moment it lands, so any
+     * later reader can prove the token was issued FOR this class — a token
+     * on its own identifies a file, never who it belongs to, and a token
+     * seen elsewhere (a shared screen, a support report, browser history)
+     * must not double as a key to somebody else's grid.
+     */
+    public function store(string $token, int $classId, string $contents): string
     {
         Storage::disk('local')->put($this->relativePath($token), $contents);
+        Storage::disk('local')->put($this->classMarkerPath($token), (string) $classId);
 
         return $this->relativePath($token);
     }
@@ -37,6 +45,14 @@ class InovarTemplateStorage
     public function exists(string $token): bool
     {
         return Storage::disk('local')->exists($this->relativePath($token));
+    }
+
+    /** Whether $token was issued for $classId — checked before ever reading it back. */
+    public function belongsToClass(string $token, int $classId): bool
+    {
+        $stored = Storage::disk('local')->get($this->classMarkerPath($token));
+
+        return $stored !== null && (int) $stored === $classId;
     }
 
     /** The absolute path, for a reader that needs a real file on disk. */
@@ -53,6 +69,11 @@ class InovarTemplateStorage
     protected function relativePath(string $token): string
     {
         return self::ROOT.'/'.$this->safe($token).'/'.self::FILENAME;
+    }
+
+    protected function classMarkerPath(string $token): string
+    {
+        return self::ROOT.'/'.$this->safe($token).'/class_id';
     }
 
     /**

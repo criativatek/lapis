@@ -314,6 +314,38 @@ class CalculationEngineTest extends TestCase
         $this->assertSame('81', $outcome->proposedValue);
     }
 
+    /**
+     * A EXPLICAÇÃO RELATA O QUE ACONTECEU, NÃO O QUE ESTAVA CONFIGURADO.
+     *
+     * O motor tem um só ponto de arredondamento — a proposta final — e a
+     * explicação vai congelada para o snapshot, que é o registo histórico que
+     * responde ao professor «porque é que deu isto». Repetir aí a coluna de
+     * configuração faria o registo afirmar uma fase que nunca correu.
+     */
+    #[Test]
+    public function the_explanation_names_the_rounding_stage_that_actually_ran(): void
+    {
+        $outcome = $this->engine->calculate(
+            [$this->score('200', ResultState::Assessed, '161', [['domain_id' => 1, 'allocation_percent' => '100']])],
+            [1 => '100'],
+            new CalculationRule(
+                absenceMode: 'exclude_all_warn',
+                roundingMode: 'half_up',
+                roundingScale: 0,
+                // Uma regra que o motor não cumpre. A ativação recusa-a
+                // (ActivateProfileVersionTest), mas se alguma chegar aqui por
+                // outro caminho, a explicação continua a não mentir.
+                roundingStage: 'each_domain',
+            ),
+        );
+
+        $this->assertSame(
+            'final_only',
+            $outcome->explanation['rounding']['stage'],
+            'A explicação tem de nomear a fase aplicada, não a configurada.',
+        );
+    }
+
     #[Test]
     public function half_even_rounding_is_supported(): void
     {

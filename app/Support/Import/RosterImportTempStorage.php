@@ -16,9 +16,21 @@ class RosterImportTempStorage
 {
     protected const ROOT = 'roster-imports';
 
-    public function newToken(): string
+    /**
+     * Um token nasce SEMPRE ligado à turma para que foi emitido.
+     *
+     * A turma é argumento e não um `markClass()` à parte de propósito: quem
+     * lê a pasta mais tarde tem de poder provar de quem ela é, e uma marca que
+     * depende de o chamador se lembrar acaba esquecida — foi assim que dois
+     * testes criaram tokens órfãos sem ninguém dar por isso.
+     */
+    public function newToken(int $classId): string
     {
-        return (string) Str::uuid();
+        $token = (string) Str::uuid();
+
+        $this->markClass($token, $classId);
+
+        return $token;
     }
 
     public function storePhoto(string $token, int $index, string $bytes, string $extension): string
@@ -27,6 +39,24 @@ class RosterImportTempStorage
         Storage::disk('local')->put($relativePath, $bytes);
 
         return $relativePath;
+    }
+
+    /**
+     * Stamps $token with the class it was created for, so a later reader
+     * (previewPhoto) can prove the token was actually issued for THIS class
+     * before serving anything from it — a token alone identifies a folder,
+     * never who it belongs to.
+     */
+    public function markClass(string $token, int $classId): void
+    {
+        Storage::disk('local')->put(self::ROOT."/{$token}/class_id", (string) $classId);
+    }
+
+    public function belongsToClass(string $token, int $classId): bool
+    {
+        $stored = Storage::disk('local')->get(self::ROOT."/{$token}/class_id");
+
+        return $stored !== null && (int) $stored === $classId;
     }
 
     public function readPhoto(string $relativePath): ?string

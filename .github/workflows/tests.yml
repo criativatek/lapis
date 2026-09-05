@@ -38,6 +38,12 @@ jobs:
       DB_DATABASE: lapis_testing
       DB_USERNAME: root
       DB_PASSWORD: ''
+      # As três garantias contra MySQL de raiz — CHECK constraints e locks reais
+      # que o SQLite em memória não sabe dar. O job já traz um MySQL 9.7 a
+      # escutar em 3306; falta só ligar o opt-in de cada suite.
+      FOUNDER_MYSQL_SCRATCH: '1'
+      SUPPORT_MYSQL_SCRATCH: '1'
+      VOUCHER_MYSQL_SCRATCH: '1'
 
     steps:
       - name: Checkout code

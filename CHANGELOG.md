@@ -25,6 +25,69 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.131.0] — 2026-09-06
+
+Correções que saíram de um diagnóstico profundo à aplicação (seis eixos de
+análise em paralelo). Nada disto estava a falhar à vista — é tudo do género
+que só se descobre no dia em que corre mal.
+
+### Segurança
+
+- **Uma exportação de dados de alunos feita durante uma impersonação deixou de
+  ficar registada em nome do professor.** O carimbo de autor da auditoria
+  volta a ser resolvido pelo próprio serviço (que sabe distinguir o
+  administrador do professor impersonado e marca `acting_as_user_id`), e a
+  exportação passa a ser recusada durante impersonação, como já acontecia em
+  seis outros pontos da aplicação.
+- **Os ficheiros temporários passaram a saber a que turma pertencem.** Um
+  token de importação de pauta ou de fotografias identificava uma pasta, não o
+  seu dono: quem tivesse o token de outro professor — visto num ecrã
+  partilhado, no histórico ou numa captura enviada num reporte — descarregava
+  a grelha dele com nomes e números de processo, ou as fotografias dos alunos
+  dele. O token passa a nascer ligado à turma (é argumento obrigatório, não
+  uma marca que alguém se possa esquecer de pôr) e é verificado antes de
+  qualquer leitura.
+- **A tabela com os dados pessoais dos alunos ganhou isolamento estrutural.**
+  Nome cifrado, data de nascimento, número e fotografia dependiam de cada
+  consulta se lembrar de filtrar pela escola; passam a ter o mesmo âmbito
+  automático do resto da aplicação.
+
+### Avaliação
+
+- **A aplicação deixou de aceitar regras de cálculo que não cumpre.** As
+  colunas do perfil permitiam quatro modos de resultado acumulado, mas o motor
+  só implementa um — os outros eram gravados, exportados e ignorados em
+  silêncio. Ativar (ou importar) uma versão com uma regra não implementada é
+  agora recusado, com o nome da regra na mensagem. Implementá-las é uma
+  decisão pedagógica e não se inventa; ver ADR-0004, revisto.
+- **A explicação de um resultado deixou de poder mentir.** A fase de
+  arredondamento gravada no histórico era a configurada, não a aplicada — um
+  registo que dizia «arredondado em cada domínio» quando o motor arredondou
+  uma vez no fim. Passa a nomear sempre o que aconteceu.
+- Arredondar por defeito e por excesso trocavam de sentido em números
+  negativos (`floor(-2,5)` dava −2). Não tocava em notas, mas é o utilitário
+  partilhado das estatísticas.
+
+### Integridade e desempenho
+
+- As duas colunas que ligam versões de perfil entre si ganharam chave
+  estrangeira — eram as únicas do esquema inteiro sem ela, precisamente no
+  histórico que o produto promete manter.
+- A página de confirmações deixou de fazer uma consulta por aluno.
+
+### Acessibilidade
+
+- Os erros de validação passam a ser anunciados por leitores de ecrã, em todos
+  os formulários de uma vez.
+
+### Testes
+
+- **Quinze testes que existiam para provar o que o SQLite não prova nunca
+  tinham corrido** — ficavam presos atrás de variáveis que o CI não definia.
+  Passam a correr contra o MySQL real a cada integração.
+- O seeder de demonstração corria uma vez por cada teste nos dois ficheiros
+  mais pesados da suite; passa a correr uma vez por classe.
+
 ## [0.130.2] — 2026-09-05
 
 ### Corrigido

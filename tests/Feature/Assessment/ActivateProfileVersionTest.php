@@ -101,6 +101,65 @@ class ActivateProfileVersionTest extends TestCase
         });
     }
 
+    /**
+     * A APLICAÇÃO SÓ ATIVA O QUE SABE CUMPRIR.
+     *
+     * O motor implementa uma única combinação de regras: resultado do período
+     * por média ponderada dos domínios, acumulado sobre todos os elementos
+     * válidos do ano, e arredondamento uma só vez na proposta final. As
+     * colunas aceitam outros valores porque a decisão pedagógica de os
+     * implementar ainda não foi tomada (§1: as regras não se inventam).
+     *
+     * Até lá, uma versão com uma regra que o motor ignora **não ativa** — o
+     * contrário seria calcular por uma regra e dizer ao professor que se
+     * calculou por outra, que é pior do que recusar.
+     */
+    #[Test]
+    public function it_refuses_to_activate_a_rule_the_engine_does_not_implement(): void
+    {
+        $unsupported = [
+            'accumulated_mode' => 'last_period_only',
+            'period_result_mode' => 'simple_domain_average',
+            'rounding_stage' => 'each_domain',
+        ];
+
+        foreach ($unsupported as $column => $value) {
+            $this->inTenant(function () use ($column, $value): void {
+                $version = $this->draftWithWeights([50, 50]);
+                $version->forceFill([$column => $value])->save();
+
+                try {
+                    $this->activate($version->refresh());
+                    $this->fail("Ativou com {$column} = {$value}, uma regra que o motor não cumpre.");
+                } catch (ProfileActivationException $exception) {
+                    $this->assertStringContainsString($value, $exception->getMessage());
+                    $this->assertSame(
+                        ProfileVersionStatus::Draft,
+                        $version->refresh()->status,
+                        'A versão recusada tem de ficar em rascunho.',
+                    );
+                }
+            });
+        }
+    }
+
+    #[Test]
+    public function it_activates_the_rules_the_engine_does_implement(): void
+    {
+        $this->inTenant(function (): void {
+            $version = $this->draftWithWeights([50, 50]);
+            $version->forceFill([
+                'accumulated_mode' => 'all_valid_year_elements',
+                'period_result_mode' => 'weighted_domain_average',
+                'rounding_stage' => 'final_only',
+            ])->save();
+
+            $activated = $this->activate($version->refresh());
+
+            $this->assertSame(ProfileVersionStatus::Active, $activated->status);
+        });
+    }
+
     #[Test]
     public function it_refuses_to_activate_when_weights_do_not_total_100(): void
     {

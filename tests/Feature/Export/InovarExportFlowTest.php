@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Export;
 
+use App\Models\AcademicPeriod;
+use App\Models\AcademicYear;
 use App\Models\AuditEvent;
 use App\Models\Domain;
 use App\Models\OrganizationSubscription;
@@ -173,6 +175,50 @@ class InovarExportFlowTest extends TestCase
 
         $this->assertGreaterThan(0, $written);
         @unlink($path);
+    }
+
+    /**
+     * The token in the `/exports/inovar/{period}/{token}` route identifies an
+     * uploaded grid, but nothing today ties it to the class it was uploaded
+     * for. A teacher in ANOTHER organization who reaches this route with a
+     * leaked token (a shared screen, a support report, browser history) is
+     * authorized on their OWN class by Gate::authorize('update', $class) —
+     * and then generate() happily reads and downloads a stranger's grid.
+     */
+    #[Test]
+    public function a_teacher_in_another_organization_with_a_leaked_token_gets_not_found(): void
+    {
+        $grid = $this->grid();
+        $page = $this->upload($grid['path'])->viewData('page');
+        $token = $page['props']['token'];
+        $this->assertNotNull($token);
+
+        $stranger = User::factory()->create();
+        $strangerOrganization = $stranger->personalOrganization();
+
+        OrganizationSubscription::withoutGlobalScope('organization')
+            ->where('organization_id', $strangerOrganization->id)->delete();
+
+        OrganizationSubscription::withoutGlobalScope('organization')->create([
+            'organization_id' => $strangerOrganization->id,
+            'plan_id' => Plan::where('key', 'pro')->firstOrFail()->id,
+            'status' => SubscriptionStatus::Active,
+            'starts_at' => Carbon::parse('2026-01-01 00:00:00'),
+        ]);
+        app(Entitlements::class)->flush();
+
+        [$strangerClass, $strangerPeriod] = app(CurrentOrganization::class)->runFor($strangerOrganization, function () use ($strangerOrganization, $stranger): array {
+            $year = AcademicYear::factory()->recycle($strangerOrganization)->create(['starts_on' => '2026-09-14', 'ends_on' => '2027-06-30']);
+            $class = SchoolClass::factory()->recycle($strangerOrganization)->for($year)->create();
+            $class->teachers()->attach($stranger, ['role' => 'owner']);
+            $period = AcademicPeriod::factory()->recycle($strangerOrganization)->for($year)->create(['sequence' => 1]);
+
+            return [$class, $period];
+        });
+
+        $this->actingAs($stranger)->withSession(['organization_id' => $strangerOrganization->id])
+            ->get("/classes/{$strangerClass->ulid}/exports/inovar/{$strangerPeriod->ulid}/{$token}")
+            ->assertNotFound();
     }
 
     #[Test]

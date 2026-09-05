@@ -78,19 +78,18 @@ class RosterImportController extends Controller
         // later phase (attachPhotos() below), reusing the token created
         // here. Every row therefore starts with photo_index/photo_extension
         // null.
-        $token = $this->tempStorage->newToken();
+        $token = $this->tempStorage->newToken($class->id);
 
         $enrolledAs = function (string $name) use ($class): ?int {
             $index = BlindIndex::of($name);
 
-            // StudentIdentity has no BelongsToOrganization scope (by design —
-            // see its own doc comment), so this query is otherwise unscoped
-            // across organizations. It stays tenant-safe because the
-            // whereHas narrows it to enrollments in this exact, already
-            // tenant-verified SchoolClass row (class_id is a globally unique
-            // primary key, never reused across organizations) — never rely
-            // on that alone; the explicit organization_id filter below is
-            // deliberate defense-in-depth, not redundant belt-and-braces.
+            // StudentIdentity now carries the same BelongsToOrganization scope
+            // as everything else (ADR-0002), so the explicit organization_id
+            // filter below is deliberate belt-and-braces rather than the only
+            // thing standing between this and another school's students —
+            // kept anyway so this query reads as safe on its own terms,
+            // alongside the whereHas narrowing to this already
+            // tenant-verified SchoolClass row.
             $identity = StudentIdentity::where('display_name_index', $index)
                 ->where('organization_id', $this->currentOrganization->id())
                 ->whereHas('student.enrollments', fn ($query) => $query->where('class_id', $class->id))
@@ -214,6 +213,7 @@ class RosterImportController extends Controller
     public function previewPhoto(SchoolClass $class, string $token, int $index): Response
     {
         Gate::authorize('update', $class);
+        abort_unless($this->tempStorage->belongsToClass($token, $class->id), 404);
 
         $extension = $this->guessExtension($token, $index);
 
@@ -305,6 +305,15 @@ class RosterImportController extends Controller
                 $photoExtension = $row['photo_extension'] ?? null;
 
                 if ($photoIndex !== null && $photoExtension !== null) {
+                    // A permissão sobre a turma não chega para LER a pasta do
+                    // token: ele nomeia um sítio no disco, não diz de quem é.
+                    // Sem esta ligação, um token de outro professor trazia as
+                    // fotografias dos alunos dele para esta turma. A guarda
+                    // vive aqui, e não no topo do método, porque confirmar SEM
+                    // fotografias nunca toca na pasta — e nesse caso o token
+                    // não é mais do que um número por usar.
+                    abort_unless($this->tempStorage->belongsToClass($token, $class->id), 404);
+
                     $photoTempPath = $this->tempStorage->path($token)."/{$photoIndex}.{$photoExtension}";
                     $photoPath = $this->movePhotoToPermanentStorage($photoTempPath);
                 }

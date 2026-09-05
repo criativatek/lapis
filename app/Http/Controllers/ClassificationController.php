@@ -56,6 +56,7 @@ class ClassificationController extends Controller
 
         $live = $selected !== null
             ? Classification::query()
+                ->with('finalScaleLevel')
                 ->where('academic_period_id', $selected->id)
                 ->where('scope', $scope)
                 ->whereNot('status', ClassificationStatus::Superseded)

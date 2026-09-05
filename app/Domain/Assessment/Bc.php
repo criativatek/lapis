@@ -122,7 +122,18 @@ final class Bc
         $floor = bcadd($scaled, '0', 0);                            // truncate toward zero
         $fraction = bcsub($scaled, $floor, self::SCALE);            // 0 <= fraction < 1
 
-        $roundUp = match ($mode) {
+        // ceil/floor are direction-bound (toward +infinity / -infinity), not
+        // magnitude-bound — on a negative value they swap: ceil moves toward
+        // zero (round the magnitude down) and floor moves away from zero
+        // (round the magnitude up). half_up/half_down/half_even stay
+        // magnitude-symmetric, so they are untouched by sign.
+        $effectiveMode = match (true) {
+            $negative && $mode === 'ceil' => 'floor',
+            $negative && $mode === 'floor' => 'ceil',
+            default => $mode,
+        };
+
+        $roundUp = match ($effectiveMode) {
             'ceil' => ! self::isZero($fraction),
             'half_up' => bccomp($fraction, '0.5', self::SCALE) >= 0,
             'half_down' => bccomp($fraction, '0.5', self::SCALE) > 0,

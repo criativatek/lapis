@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToOrganization;
 use App\Support\Privacy\BlindIndex;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
@@ -14,8 +15,13 @@ use Illuminate\Support\Carbon;
  * APP_KEY, not bespoke crypto). display_name_index is a blind index for exact
  * search without decrypting.
  *
- * organization_id is duplicated here by design, so the tenant Policy works
- * without a join to students.
+ * Scoped with BelongsToOrganization like every other tenant-owned model
+ * (ADR-0002) — an audit found this the only such table without it, isolation
+ * left entirely to callers remembering the filter. Reached from callers that
+ * do NOT run inside the resolved tenant — a console command closing a
+ * *different* organization's account — use `withoutGlobalScope('organization')`
+ * explicitly and filter by the target organization instead; see
+ * AnonymiseClosedAccount for the two places that do.
  *
  * @property int $id
  * @property int $student_id
@@ -29,6 +35,8 @@ use Illuminate\Support\Carbon;
 #[Fillable(['student_id', 'organization_id', 'display_name', 'school_number', 'birth_date', 'photo_path'])]
 class StudentIdentity extends Model
 {
+    use BelongsToOrganization;
+
     public static function booted(): void
     {
         // Keep the blind index in step with the name automatically, so no caller

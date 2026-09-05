@@ -56,6 +56,21 @@ class RosterImportTest extends TestCase
         return SchoolClass::withoutGlobalScope('organization')->firstOrFail();
     }
 
+    /**
+     * A class belonging to a DIFFERENT teacher, in a DIFFERENT organization —
+     * for tests proving a token from one class cannot be reused against another.
+     */
+    protected function createClassFor(User $user): SchoolClass
+    {
+        $context = app(CurrentOrganization::class)->runFor($user->personalOrganization(), fn (): array => [
+            'year' => AcademicYear::factory()->recycle($user->personalOrganization())->create(['starts_on' => '2026-09-14', 'ends_on' => '2027-06-30'])->id,
+            'subject' => Subject::factory()->recycle($user->personalOrganization())->create()->id,
+        ]);
+        $this->actingAs($user)->post('/classes', ['label' => '5.º B', 'academic_year_id' => $context['year'], 'subject_id' => $context['subject']]);
+
+        return SchoolClass::withoutGlobalScope('organization')->where('label', '5.º B')->firstOrFail();
+    }
+
     #[Test]
     public function a_students_photo_streams_for_the_teacher_who_teaches_them(): void
     {
@@ -286,6 +301,38 @@ class RosterImportTest extends TestCase
     }
 
     #[Test]
+    public function a_stranger_with_a_leaked_token_cannot_preview_another_teachers_photo(): void
+    {
+        $class = $this->createClass();
+        $uploaded = $this->uploadRosterOnly($class);
+        $token = $uploaded['token'];
+
+        $photos = UploadedFile::fake()->createWithContent(
+            'photos.docx',
+            file_get_contents(DocxFixtureBuilder::build([
+                ['name' => 'Maria Teste', 'imageBytes' => DocxFixtureBuilder::tinyJpeg()],
+            ])),
+        );
+
+        $this->actingAs($this->user)->post(
+            "/classes/{$class->ulid}/roster-imports/{$token}/photos",
+            ['photos' => $photos, 'rows' => $uploaded['rows']],
+        )->assertOk();
+
+        // A teacher in a DIFFERENT organization, authorized on their OWN
+        // class — but who somehow got hold of $token (a shared screen, a
+        // support report, browser history). The token identifies a file, not
+        // a class, so nothing today stops them from using it against a class
+        // they are legitimately allowed to update.
+        $stranger = User::factory()->create();
+        $strangerClass = $this->createClassFor($stranger);
+
+        $this->actingAs($stranger)
+            ->get("/classes/{$strangerClass->ulid}/roster-imports/{$token}/photos/0")
+            ->assertNotFound();
+    }
+
+    #[Test]
     public function a_corrupted_photos_file_at_attach_photos_is_rejected_with_a_clear_error_instead_of_crashing(): void
     {
         $class = $this->createClass();
@@ -395,7 +442,7 @@ class RosterImportTest extends TestCase
     {
         $class = $this->createClass();
         $storage = app(RosterImportTempStorage::class);
-        $token = $storage->newToken();
+        $token = $storage->newToken($class->id);
         $tempPath = $storage->storePhoto($token, 0, 'fake-photo-bytes', 'jpg');
 
         $this->actingAs($this->user)->post("/classes/{$class->ulid}/roster-imports/{$token}/confirm", [
@@ -426,7 +473,7 @@ class RosterImportTest extends TestCase
     {
         $class = $this->createClass();
         $storage = app(RosterImportTempStorage::class);
-        $token = $storage->newToken();
+        $token = $storage->newToken($class->id);
         $storage->storePhoto($token, 0, 'fake-photo-bytes', 'jpg');
 
         // A real failure inside enrollNew(), raised where a database error
@@ -525,10 +572,11 @@ class RosterImportTest extends TestCase
         $class = $this->createClass();
         $storage = app(RosterImportTempStorage::class);
 
-        $otherToken = $storage->newToken();
+        // O token alheio pertence mesmo a OUTRA turma — é o que o faz alheio.
+        $otherToken = $storage->newToken($this->createClass()->id);
         $storage->storePhoto($otherToken, 0, 'someone-elses-photo-bytes', 'jpg');
 
-        $thisToken = $storage->newToken();
+        $thisToken = $storage->newToken($class->id);
 
         $response = $this->actingAs($this->user)->post("/classes/{$class->ulid}/roster-imports/{$thisToken}/confirm", [
             'rows' => [[
@@ -635,7 +683,7 @@ class RosterImportTest extends TestCase
     {
         $class = $this->createClass();
         $storage = app(RosterImportTempStorage::class);
-        $token = $storage->newToken();
+        $token = $storage->newToken($class->id);
 
         // No real-world input can currently make enrollNew() throw here: every
         // field the loop passes it is already constrained by confirm()'s own

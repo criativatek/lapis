@@ -235,7 +235,6 @@ class AssessmentProfileController extends Controller
         $audit->record(
             'configuration_package.reused',
             subject: $assessmentProfile,
-            causer: $request->user(),
             summary: __('Perfil de avaliação reutilizado.'),
             properties: ['profile_name' => $assessmentProfile->name, 'target_academic_year' => $target->label, ...$result],
         );

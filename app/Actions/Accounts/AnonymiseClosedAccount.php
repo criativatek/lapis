@@ -108,16 +108,19 @@ class AnonymiseClosedAccount
 
         DB::transaction(function () use ($user, $personal, &$removed): void {
             if ($personal !== null) {
-                // EXPLICITLY SCOPED, and it has to be. StudentIdentity does NOT
-                // use BelongsToOrganization — it carries an `organization_id`
-                // column but no global scope, because it is always reached
-                // through the student it belongs to. So `runFor()` around
-                // `StudentIdentity::query()->delete()` scopes nothing at all and
-                // empties the table for every organization on the platform.
-                // That is not a hypothetical: the isolation test in
-                // ExecuteAccountClosuresTest caught exactly this, one closure
-                // taking a stranger's students with it.
-                $removed['student_identities'] = StudentIdentity::query()
+                // EXPLICITLY SCOPED, and it has to be. This command closes
+                // accounts across every organization on the platform, not just
+                // the one resolved as "current" — often none is resolved at
+                // all, since ExecuteAccountClosures is a console command. The
+                // global scope on StudentIdentity would otherwise throw
+                // (no tenant resolved) or, worse, silently filter by the wrong
+                // organization if one happened to be. withoutGlobalScope makes
+                // that explicit instead of accidental, and the manual
+                // `where('organization_id', ...)` below is what actually keeps
+                // this targeted at $personal and nobody else — the isolation
+                // test in ExecuteAccountClosuresTest caught exactly this, one
+                // closure taking a stranger's students with it.
+                $removed['student_identities'] = StudentIdentity::withoutGlobalScope('organization')
                     ->where('organization_id', $personal->getKey())
                     ->delete();
 
@@ -176,12 +179,14 @@ class AnonymiseClosedAccount
      * The photo files of a personal organization's students.
      *
      * Scoped by `organization_id` in the query itself, for the same reason the
-     * delete above is: this model has no tenant scope of its own, so nothing
-     * else would narrow it.
+     * delete above is: no tenant is necessarily resolved here (console
+     * command, arbitrary target organization), so `withoutGlobalScope` plus an
+     * explicit filter is what keeps this targeted rather than throwing or
+     * drifting to whatever tenant happens to be resolved.
      */
     protected function deleteStudentPhotos(Organization $personal): int
     {
-        $paths = StudentIdentity::query()
+        $paths = StudentIdentity::withoutGlobalScope('organization')
             ->where('organization_id', $personal->getKey())
             ->whereNotNull('photo_path')
             ->pluck('photo_path')

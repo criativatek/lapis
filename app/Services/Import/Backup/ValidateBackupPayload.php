@@ -25,6 +25,7 @@ use App\Models\ReportType;
 use App\Models\ResultState;
 use App\Models\SelfAssessmentFilledBy;
 use App\Models\SelfAssessmentStatus;
+use App\Support\Assessment\SupportedCalculationRules;
 use App\Support\Import\Backup\BackupSchemaCompatibility;
 use App\Support\Import\Backup\BackupValidationException;
 use App\Support\Import\Backup\SecretScanner;
@@ -226,9 +227,12 @@ class ValidateBackupPayload
      * return — every call site here passes a literal key with no
      * placeholders that could resolve to anything but a string.
      */
-    private function t(string $key): string
+    /**
+     * @param  array<string, string>  $replace
+     */
+    private function t(string $key, array $replace = []): string
     {
-        return (string) __($key);
+        return (string) __($key, $replace);
     }
 
     /**
@@ -739,6 +743,27 @@ class ValidateBackupPayload
             || ! is_string($row['rounding_stage'] ?? null) || $row['rounding_stage'] === ''
         ) {
             $rowIssues[] = ['domain' => 'assessment_profile_versions', 'ulid' => is_string($ulid) ? $ulid : null, 'reason' => $this->t('Campos obrigatórios em falta ou inválidos.')];
+
+            return null;
+        }
+
+        // UMA VERSÃO IMPORTADA NÃO PASSA PELA ATIVAÇÃO: o ficheiro traz o
+        // `status` já escrito, por isso a guarda do ActivateProfileVersion não
+        // a vê. Sem esta rejeição, um backup de outra instalação traria um
+        // perfil ativo com uma regra que este motor não cumpre — e as notas
+        // sairiam calculadas por outra regra, em silêncio.
+        $unsupported = SupportedCalculationRules::firstUnsupported($row);
+
+        if ($unsupported !== null) {
+            $rowIssues[] = [
+                'domain' => 'assessment_profile_versions',
+                'ulid' => is_string($ulid) ? $ulid : null,
+                'reason' => $this->t('A regra «:field = :value» não está implementada no cálculo desta versão da aplicação (só «:supported»), por isso esta versão de perfil não pode ser importada.', [
+                    'field' => $unsupported['field'],
+                    'value' => $unsupported['value'],
+                    'supported' => $unsupported['supported'],
+                ]),
+            ];
 
             return null;
         }

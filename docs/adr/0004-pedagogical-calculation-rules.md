@@ -28,6 +28,36 @@ These are versioned with the profile (frozen on activation) and editable per ver
 
 These are defaults, not hard-codes (§4.3): a version can carry different values, and the columns are `CHECK`-constrained to their allowed sets.
 
+**Revision — 2026-09-06 (Q3, Q4 and `period_result_mode`): the columns accept what the engine does not compute, so activation now refuses it.**
+
+The sentence above was true of the schema and false of the engine, and an audit
+found the gap. `CalculationEngine` implements exactly one combination — period
+result by weighted domain average, accumulated over all valid year elements,
+rounded once at the final proposal. The other `CHECK`-allowed values were read
+from the column, carried into `CalculationRule`, and then ignored:
+`accumulated_mode` and `period_result_mode` had no reader in the calculation at
+all, and `rounding_stage` reached the engine only to be **written into the
+explanation** that freezes into `calculation_snapshots` — so a snapshot could
+state a rounding stage that never ran.
+
+Nothing wrong reached production (all ten profile versions carried the
+implemented values, and no snapshot existed), and implementing the missing
+modes was not an option here: choosing how `last_period_only` or
+`simple_domain_average` should behave is a pedagogical decision, and §1 says
+those are not invented. So:
+
+- `ActivateProfileVersion::guardSupportedRules()` refuses to activate a version
+  whose rule the engine does not implement, naming the field and the value. A
+  `NULL` column is not a different rule — it is unset, and takes the approved
+  default above.
+- The engine's explanation reports the rounding stage it **applied**
+  (`CalculationEngine::ROUNDING_STAGE_APPLIED`), never the configured column.
+  The historical record cannot claim a rule that did not run.
+
+The columns stay, with their `CHECK` sets intact: the day a mode is approved,
+implementing it means removing one line from `SUPPORTED_RULES`. Until then the
+product refuses loudly instead of computing quietly by another rule.
+
 **Still open (not blocking):** Q5 — the Intuitivo import format. A real anonymized export file is needed before writing the parser; the spec says CSV/XLSX, a mockup shows `.xml`.
 
 ### Student identity — Laravel encryption + blind index

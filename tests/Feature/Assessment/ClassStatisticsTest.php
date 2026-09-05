@@ -20,7 +20,9 @@ use App\Services\StudentEnrollmentService;
 use App\Support\Assessment\AssessmentCutoff;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
+use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\Test;
@@ -55,12 +57,52 @@ class ClassStatisticsTest extends TestCase
      */
     private ?array $enrollmentIds = null;
 
-    protected function setUp(): void
-    {
-        parent::setUp();
+    /**
+     * O cenário de demonstração é o mesmo em todos os 120 testes desta classe
+     * — só muda o que cada um apaga ou altera a seguir, e isso a transacção
+     * por teste do RefreshDatabase já desfaz sozinha. Semeá-lo 120 vezes
+     * custava ~30% do tempo desta classe; uma vez chega.
+     */
+    protected static bool $demoSeeded = false;
 
-        $this->teacher = User::factory()->create(['email' => 'ana.martins@lapis.test']);
-        $this->seed(DemoDataSeeder::class);
+    /**
+     * ponytail: reimplementa o `refreshTestDatabase` do RefreshDatabase para
+     * poder semear ANTES de a transacção do teste abrir — exactamente onde as
+     * migrações já só correm uma vez (`RefreshDatabaseState::$migrated`). A
+     * partir da segunda vez só lê a professora já semeada; não a recria.
+     *
+     * A migração é forçada com uma bandeira PRÓPRIA desta classe, não com a
+     * partilhada `RefreshDatabaseState::$migrated` — que pode já vir «true»
+     * com dados de OUTRA classe lá dentro, na mesma sqlite `:memory:`
+     * partilhada por todo o processo. Sem isto o cenário de demonstração
+     * criado aqui (e-mail fixo da professora incluído) colidia com o de
+     * `InterimComparisonTest`. `tearDownAfterClass` devolve a bandeira
+     * partilhada a «false» para a classe seguinte herdar uma base limpa.
+     */
+    protected function refreshTestDatabase(): void
+    {
+        if (! static::$demoSeeded) {
+            $this->migrateDatabases();
+            $this->app[Kernel::class]->setArtisan(null);
+            $this->updateLocalCacheOfInMemoryDatabases();
+            RefreshDatabaseState::$migrated = true;
+
+            $this->teacher = User::factory()->create(['email' => 'ana.martins@lapis.test']);
+            $this->seed(DemoDataSeeder::class);
+            static::$demoSeeded = true;
+        } else {
+            $this->teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+        }
+
+        $this->beginDatabaseTransaction();
+    }
+
+    public static function tearDownAfterClass(): void
+    {
+        static::$demoSeeded = false;
+        RefreshDatabaseState::$migrated = false;
+
+        parent::tearDownAfterClass();
     }
 
     /**

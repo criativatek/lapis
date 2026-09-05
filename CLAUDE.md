@@ -95,19 +95,20 @@ Marca **Sério · Próximo · Claro**; direcção «humano + cor», bento/soft U
 - **Sem rostos identificáveis** nas fotos; nunca crianças. Capturas reais do produto antes de mocks.
 - **Uma cor forte por página**; WCAG 2.2 AA; páginas públicas só em tema claro.
 
-## Open questions blocking Fase 1
+## Regras de cálculo — decididas, e o que resta
 
-`docs/domain-model.md` §13 lists these in full. They are **pedagogical rules and must not be invented** (§1):
+As quatro primeiras questões pedagógicas (bandas de escala, ausências,
+arredondamento, «resultado acumulado») **foram decididas** no
+[ADR-0004](docs/adr/0004-pedagogical-calculation-rules.md) — lê-o antes de
+mexer no cálculo; `docs/domain-model.md` §13 tem o contexto original.
 
-1. **Scale bands** — applies to `Scale.kind = level`, where a result is placed by
-   the bands configured on `ScaleLevel`: resolved for the system «Escala 1 a 5»;
-   any new level scale without explicitly approved bands remains open and must
-   not infer thresholds. **`kind = numeric` does not use bands at all** — an
-   approved product rule places the result on the scale's own interval,
-   `min + (normalized/100) × (max − min)`, rounded by the profile version's rule
-   (`ScaleProposalResolver`). That is configuration, not inference. `kind = percentage`
-   is already expressed on its own scale and only gets rounded.
-2. **Absences** — count as zero, exclude, or configurable? §13.3 says "configurável e não assumida".
-3. **Rounding** — rule and stage.
-4. **"Resultado acumulado"** — "todas as aprendizagens do ano letivo" admits three readings with materially different numbers.
-5. **Intuitivo import** — need a real anonymized export file before writing the parser.
+- **Uma só combinação de regras está implementada**: resultado do período por
+  média ponderada dos domínios, acumulado sobre todos os elementos válidos do
+  ano, arredondamento uma vez na proposta final. As colunas aceitam outros
+  valores (o `CHECK` permite-os), mas `ActivateProfileVersion` **recusa ativar**
+  uma versão com uma regra que o motor não cumpre, e a explicação do resultado
+  nomeia sempre a fase aplicada. Implementar um modo novo é uma decisão
+  pedagógica — **não se inventa** (§1).
+- **Em aberto:** o formato de importação do Intuitivo (Q5) — falta um ficheiro
+  real anonimizado antes de escrever o parser; a especificação diz CSV/XLSX e
+  um mockup mostra `.xml`.

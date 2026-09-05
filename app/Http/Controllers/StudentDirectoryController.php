@@ -41,12 +41,10 @@ use Inertia\Response;
  * Professor» already use, so the three cannot disagree about whose classes
  * these are.
  *
- * THE LISTING STARTS AT `Student`, NEVER AT `StudentIdentity`. Student carries
- * the organization global scope; StudentIdentity deliberately does not — its
- * organization_id is duplicated for its own Policy's sake, and the scope was
- * never added. A directory rooted in the identity table would have been one
- * forgotten `where` away from listing another school's children, so every query
- * here that touches it says `organization_id` out loud.
+ * THE LISTING STARTS AT `Student`, NEVER AT `StudentIdentity`. Both now carry
+ * the organization global scope, but this file predates it and every query
+ * that touches the identity still says `organization_id` out loud as a second
+ * lock on a door that is already shut — belt-and-braces, not load-bearing.
  */
 class StudentDirectoryController extends Controller
 {
@@ -213,10 +211,9 @@ class StudentDirectoryController extends Controller
      * is what covers «só me lembro de metade do nome», and it says so on screen.
      *
      * `organization_id` IS STATED HERE, on purpose. `identity` is reached from a
-     * Student that is already organization-scoped, so this is a second lock on a
-     * door that is shut — but StudentIdentity carries no global scope of its
-     * own, and every query in this file that touches it has to read as safe on
-     * its own terms.
+     * Student that is already organization-scoped, and StudentIdentity now
+     * carries the same global scope — this is deliberate belt-and-braces so
+     * every query in this file still reads as safe on its own terms.
      *
      * @param  Builder<Student>  $query
      */

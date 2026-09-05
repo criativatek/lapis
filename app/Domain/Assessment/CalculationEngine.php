@@ -16,6 +16,12 @@ use App\Models\ResultState;
 class CalculationEngine
 {
     /**
+     * O motor arredonda uma única vez, na proposta final (§9 regra 2).
+     * Enquanto for assim, é isto que a explicação pode afirmar.
+     */
+    public const ROUNDING_STAGE_APPLIED = 'final_only';
+
+    /**
      * Stamped into every snapshot (§13.6): a value frozen by v1.0 stays explainable
      * by v1.0's rules even after the engine evolves. Bump on any change to the
      * arithmetic or rule application here.
@@ -223,7 +229,14 @@ class CalculationEngine
                 'dropped_domains' => $droppedDomains,
                 'weight_total_applied' => Bc::truncate($weightSum, 4),
                 'normalized_value' => $normalized,
-                'rounding' => ['mode' => $rule->roundingMode, 'scale' => $rule->roundingScale, 'stage' => $rule->roundingStage],
+                // A fase relatada é a APLICADA, não a configurada: este motor
+                // arredonda uma só vez, na proposta (§9 regra 2), e a explicação
+                // vai congelada para o snapshot — é o registo que responde ao
+                // professor «porque é que deu isto». Repetir aqui a coluna de
+                // configuração fazia o histórico afirmar uma fase que nunca
+                // correu. A ActivateProfileVersion recusa ativar perfis com
+                // outra fase, para que as duas coisas nunca divirjam.
+                'rounding' => ['mode' => $rule->roundingMode, 'scale' => $rule->roundingScale, 'stage' => self::ROUNDING_STAGE_APPLIED],
                 'proposed_value' => $proposed,
                 'coverage_warning' => $coverageWarning,
                 'scale_level' => $scaleLevelId,
