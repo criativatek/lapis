@@ -8,7 +8,9 @@ use App\Models\User;
 use App\Services\Assessment\BuildEvaluationSheet;
 use App\Services\Assessment\CaptureEvaluationSheet;
 use App\Services\Assessment\EvaluationSheetReadiness;
+use App\Support\Assessment\DecisionScale;
 use App\Support\Assessment\DomainColorPalette;
+use App\Support\Assessment\SheetAddressing;
 use App\Support\Entitlements\Entitlements;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -19,7 +21,15 @@ use Inertia\Response;
  * Pautas de Avaliação — one view, not three. Quantitativo, apreciação
  * qualitativa por domínio e classificação (sugerida vs. decidida) chegam todos
  * ao mesmo tempo; o professor só pode OCULTAR grupos no ecrã, nunca alterar o
- * que o servidor calculou ou decidiu.
+ * que o servidor calculou.
+ *
+ * E É AQUI QUE O PROFESSOR DECIDE. A pauta é o ecrã onde toda a informação
+ * avaliativa já está reunida, e obrigar a sair dela para atribuir um nível era
+ * mandar decidir noutro sítio a partir do que se viu neste. A decisão continua
+ * a ser escrita pelo MESMO caminho canónico — `classifications.decide`, o mesmo
+ * serviço, a mesma validação, o mesmo bloqueio de linha e o mesmo rasto de
+ * auditoria que o ecrã de Classificações usa. Esta página não guarda
+ * classificações: aponta para quem as guarda (§3.3).
  */
 class EvaluationSheetController extends Controller
 {
@@ -83,7 +93,17 @@ class EvaluationSheetController extends Controller
             // the kept photograph can never be painted differently from the
             // screen it was taken of.
             $sheet['domains'] = DomainColorPalette::decorate($sheet['domains']);
+
+            // The address each decision is written to. Deliberately outside the
+            // read model, so a kept pauta never carries identifiers it has no
+            // use for — see SheetAddressing.
+            $sheet['students'] = SheetAddressing::decorate($sheet['students'], $class);
         }
+
+        // What the teacher is being asked for, said in the terms of the scale
+        // itself — the same payload Resultados and Classificações already read,
+        // so three screens cannot offer three different decisions (§3).
+        $scale = $class->profileVersion?->scale()->with('levels')->first();
 
         return Inertia::render('evaluation-sheets/Show', [
             'schoolClass' => [
@@ -92,7 +112,9 @@ class EvaluationSheetController extends Controller
                 'subject' => $class->subject->name,
                 'academic_year' => $class->academicYear->label,
                 'has_profile' => $class->assessment_profile_version_id !== null,
+                'scale_name' => $scale?->name,
             ],
+            'decision' => DecisionScale::for($scale)->toPayload(),
             'periods' => $periods->map(fn (AcademicPeriod $academicPeriod) => [
                 'ulid' => $academicPeriod->ulid,
                 'label' => $academicPeriod->label,

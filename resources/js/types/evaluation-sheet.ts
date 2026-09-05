@@ -72,6 +72,31 @@ export type EvaluationSheetStudent = {
     domains: EvaluationSheetStudentDomain[];
     classification: EvaluationSheetClassification;
     coverage: Coverage;
+    /**
+     * Where this student's decision is written to, and whether it may still be
+     * written. LIVE SHEET ONLY — a snapshot carries neither, because neither is
+     * a statement about the past (see `SheetAddressing` on the server).
+     */
+    enrollment_ulid?: string | null;
+    can_decide?: boolean;
+    can_use_proposal?: boolean;
+};
+
+/**
+ * What the teacher is being ASKED FOR on this class's scale — mirrors
+ * `DecisionScale::toPayload()`. The same payload Resultados and Classificações
+ * receive, so the three screens cannot offer three different decisions.
+ *
+ * `levels` is the closed list on a scale made of bands, and empty on an
+ * interval scale, where `min_value`/`max_value` are the definition instead.
+ */
+export type EvaluationSheetDecisionScale = {
+    /** «Nível atribuído» on a scale of bands, «Classificação atribuída» on an interval. */
+    label: string;
+    classifies_by_level: boolean;
+    levels: { id: number; code: string; label: string }[];
+    min_value: string | null;
+    max_value: string | null;
 };
 
 export type EvaluationSheet = {
