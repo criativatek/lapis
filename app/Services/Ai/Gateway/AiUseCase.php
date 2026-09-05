@@ -56,6 +56,19 @@ enum AiUseCase: string
     case ReportSectionRewrite = 'report_section_rewrite';
 
     /**
+     * Saying a teacher's own draft of a disciplinary occurrence description
+     * better, before the record is ever saved (SUP-U8FMAE).
+     *
+     * SAME CAPABILITY AS `ReportSectionRewrite`, DELIBERATELY. Product decided
+     * this is the same commercial feature — «Aperfeiçoar redação» — applied to
+     * a second kind of teacher-authored prose. No new capability and no change
+     * to plan composition (CLAUDE.md §31): a school that already holds
+     * `ai_reports` gets this for free, and one that does not is offered the
+     * same upgrade it is already offered on Relatórios.
+     */
+    case EvidenceDescriptionRewrite = 'evidence_description_rewrite';
+
+    /**
      * The backoffice proving a credential works.
      *
      * NOT A TENANT'S TRAFFIC. It is recorded with no organization, it counts
@@ -111,7 +124,8 @@ enum AiUseCase: string
 
             self::PedagogicalStrategySuggestion => AiCapability::Strategies,
 
-            self::ReportSectionRewrite => AiCapability::Reports,
+            self::ReportSectionRewrite,
+            self::EvidenceDescriptionRewrite => AiCapability::Reports,
 
             self::AdminConnectionTest,
             self::AdminCapabilityProbe => null,
@@ -165,7 +179,8 @@ enum AiUseCase: string
             self::AssessmentAnalysis => 'Análise dos resultados do período',
             self::FollowupSynthesis => 'Síntese de acompanhamento do aluno',
             self::PedagogicalStrategySuggestion => 'Sugestão de estratégias',
-            self::ReportSectionRewrite => 'Aperfeiçoamento de redação',
+            self::ReportSectionRewrite => 'Aperfeiçoamento de redação (relatórios)',
+            self::EvidenceDescriptionRewrite => 'Aperfeiçoamento de redação (registos)',
             self::AdminConnectionTest => 'Teste de ligação (plataforma)',
             self::AdminCapabilityProbe => 'Teste de capacidade (plataforma)',
         };

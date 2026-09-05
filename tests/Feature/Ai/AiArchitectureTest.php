@@ -271,6 +271,7 @@ class AiArchitectureTest extends TestCase
             'app/Services/Progress/Ai/StudentFollowupSynthesist.php',
             'app/Services/Interventions/Ai/InterventionStrategySuggester.php',
             'app/Services/Reporting/Writing/ReportWritingAssistant.php',
+            'app/Services/Evidence/Ai/IncidentDescriptionAssistant.php',
         ];
 
         foreach ($services as $relative) {

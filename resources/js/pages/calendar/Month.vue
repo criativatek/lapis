@@ -12,6 +12,7 @@ import {
     FileUp,
     LayoutGrid,
     MapPin,
+    Pencil,
     Sparkles,
     Trash2,
     Users,
@@ -67,6 +68,14 @@ const props = defineProps<{
         label: string;
         starts_on: string;
         ends_on: string;
+        /**
+         * Se quem vê este calendário também pode gerir a estrutura do ano
+         * letivo (feriados e interrupções incluídos) — a mesma Gate que
+         * autoriza a edição das exceções em «Estrutura do Ano Letivo». Só
+         * quando verdadeiro é que uma exceção mostrada aqui ganha um caminho
+         * de correção; caso contrário fica texto simples, como sempre foi.
+         */
+        can_manage_academic_year: boolean;
     } | null;
     month: { value: string; starts_on: string; ends_on: string } | null;
     days: CalendarDay[];
@@ -367,6 +376,20 @@ function dayTint(day: CalendarDay): string {
 }
 
 // ----------------------------------- os dias em que não há aula, DESTE mês
+
+/**
+ * PARA ONDE VAI QUEM PRECISA DE CORRIGIR UMA EXCEÇÃO — a mesma página de
+ * edição do ano letivo onde o ExceptionsManager já vive, e nenhuma rota nova:
+ * é «Estrutura do Ano Letivo» que sabe editar e apagar exceções, este
+ * calendário continua a ser só uma leitura. `null` quando não há ano letivo
+ * selecionado ou quando quem vê não tem a Gate `update` sobre ele — nesse caso
+ * a exceção mostrada fica texto simples, como sempre foi.
+ */
+const academicYearEditHref = computed(() =>
+    props.academicYear?.can_manage_academic_year
+        ? `/academic-years/${props.academicYear.ulid}/edit`
+        : null,
+);
 
 /**
  * AS EXCEÇÕES DO MÊS QUE SE ESTÁ A VER, e não as da grelha — exatamente o mesmo
@@ -866,12 +889,25 @@ function destroyEvent(event: CalendarEvent): void {
                         class="h-4 w-px shrink-0 bg-foreground/20"
                         aria-hidden="true"
                     />
-                    <span :data-exception-band="exception.ulid">
+                    <span
+                        :data-exception-band="exception.ulid"
+                        class="inline-flex items-center gap-1"
+                    >
                         <span class="font-medium">{{ exception.title }}</span>
                         <span class="opacity-80">
                             · {{ exception.type_label }} ·
                             {{ exceptionRange(exception) }}</span
                         >
+                        <Link
+                            v-if="academicYearEditHref"
+                            :href="academicYearEditHref"
+                            class="ml-0.5 rounded-md p-0.5 opacity-70 outline-none transition-opacity hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring"
+                            title="Gerir exceções do ano letivo"
+                            data-exception-manage-link
+                        >
+                            <Pencil class="size-3" aria-hidden="true" />
+                            <span class="sr-only">Gerir exceções do ano letivo</span>
+                        </Link>
                     </span>
                 </template>
             </section>
@@ -984,7 +1020,7 @@ function destroyEvent(event: CalendarEvent): void {
                                 class="mt-px size-3 shrink-0"
                                 aria-hidden="true"
                             />
-                            <span class="min-w-0">
+                            <span class="min-w-0 flex-1">
                                 <span
                                     class="block truncate text-[0.6rem] font-semibold tracking-wide"
                                     >{{ day.exception.type_short_label }}</span
@@ -993,6 +1029,17 @@ function destroyEvent(event: CalendarEvent): void {
                                     day.exception.title
                                 }}</span>
                             </span>
+                            <Link
+                                v-if="academicYearEditHref"
+                                :href="academicYearEditHref"
+                                class="-mt-px shrink-0 rounded-md p-0.5 opacity-70 outline-none transition-opacity hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring"
+                                title="Gerir exceções do ano letivo"
+                                data-exception-manage-link
+                                @click.stop
+                            >
+                                <Pencil class="size-3" aria-hidden="true" />
+                                <span class="sr-only">Gerir exceções do ano letivo</span>
+                            </Link>
                         </p>
 
                         <ul class="mt-1 space-y-1">
@@ -1128,6 +1175,16 @@ function destroyEvent(event: CalendarEvent): void {
                             <CalendarOff class="size-3" aria-hidden="true" />
                             {{ day.exception.type_label }} ·
                             {{ day.exception.title }}
+                            <Link
+                                v-if="academicYearEditHref"
+                                :href="academicYearEditHref"
+                                class="ml-0.5 rounded-md p-0.5 opacity-70 outline-none transition-opacity hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring"
+                                title="Gerir exceções do ano letivo"
+                                data-exception-manage-link
+                            >
+                                <Pencil class="size-3" aria-hidden="true" />
+                                <span class="sr-only">Gerir exceções do ano letivo</span>
+                            </Link>
                         </span>
                     </h3>
                     <ul class="divide-y rounded-xl border bg-card">

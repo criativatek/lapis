@@ -109,6 +109,19 @@ class EvidenceRecordTest extends TestCase
         ]);
     }
 
+    /**
+     * Asserts on the flashed toast (Inertia::flash stores it under the
+     * 'inertia.flash_data' session key, not a bare 'toast' key).
+     *
+     * @param  \Closure(array{type: string, message: string}): bool  $callback
+     */
+    private function assertToast(TestResponse $response, \Closure $callback): TestResponse
+    {
+        $response->assertSessionHas('inertia.flash_data', fn ($flash) => $callback($flash['toast']));
+
+        return $response;
+    }
+
     #[Test]
     public function a_teacher_records_an_entry_for_a_student(): void
     {
@@ -443,6 +456,174 @@ class EvidenceRecordTest extends TestCase
         app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function (): void {
             $this->assertNull(EvidenceRecord::firstOrFail()->domain_id);
         });
+    }
+
+    #[Test]
+    public function the_first_two_lateness_records_carry_no_accumulation_warning(): void
+    {
+        [$classUlid, $enrollmentId] = $this->seedClass();
+        $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+        $this->actingAs($teacher);
+
+        for ($i = 0; $i < 2; $i++) {
+            $response = $this->postRecord($classUlid, [
+                'kind' => 'lateness',
+                'description' => 'Chegou atrasado.',
+                'occurred_at' => '2026-10-20',
+                'enrollment_ids' => [(int) $enrollmentId],
+            ]);
+            $response->assertRedirect();
+            $this->assertToast($response, fn ($toast) => $toast['type'] === 'success');
+        }
+    }
+
+    #[Test]
+    public function the_third_lateness_record_triggers_the_accumulation_warning_and_the_sixth_repeats_it(): void
+    {
+        [$classUlid, $enrollmentId] = $this->seedClass();
+        $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+        $this->actingAs($teacher);
+
+        $post = fn () => $this->postRecord($classUlid, [
+            'kind' => 'lateness',
+            'description' => 'Chegou atrasado.',
+            'occurred_at' => '2026-10-20',
+            'enrollment_ids' => [(int) $enrollmentId],
+        ]);
+
+        // 1st and 2nd: no warning yet.
+        $this->assertToast($post(), fn ($toast) => $toast['type'] === 'success');
+        $this->assertToast($post(), fn ($toast) => $toast['type'] === 'success');
+
+        // 3rd: crosses the first multiple of 3.
+        $this->assertToast($post(), fn ($toast) => $toast['type'] === 'warning'
+            && str_contains($toast['message'], 'acumulou 3 atrasos')
+            && str_contains($toast['message'], 'Inovar (grau 2)')
+            && str_contains($toast['message'], 'alertar o encarregado de educação')
+            && ! str_contains($toast['message'], 'falta de presença'));
+
+        // 4th and 5th: back to no warning.
+        $this->assertToast($post(), fn ($toast) => $toast['type'] === 'success');
+        $this->assertToast($post(), fn ($toast) => $toast['type'] === 'success');
+
+        // 6th: the next multiple of 3.
+        $this->assertToast($post(), fn ($toast) => $toast['type'] === 'warning'
+            && str_contains($toast['message'], 'acumulou 6 atrasos'));
+    }
+
+    #[Test]
+    public function the_third_missing_material_record_triggers_its_own_warning_text(): void
+    {
+        [$classUlid, $enrollmentId] = $this->seedClass();
+        $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+        $this->actingAs($teacher);
+
+        $post = fn () => $this->postRecord($classUlid, [
+            'kind' => 'missing_material',
+            'description' => 'Não trouxe o material.',
+            'occurred_at' => '2026-10-20',
+            'enrollment_ids' => [(int) $enrollmentId],
+        ]);
+
+        $this->assertToast($post(), fn ($toast) => $toast['type'] === 'success');
+        $this->assertToast($post(), fn ($toast) => $toast['type'] === 'success');
+        $this->assertToast($post(), fn ($toast) => $toast['type'] === 'warning'
+            && str_contains($toast['message'], 'acumulou 3 faltas de material')
+            && str_contains($toast['message'], 'Inovar (grau 2)')
+            && str_contains($toast['message'], 'consequências na avaliação'));
+    }
+
+    #[Test]
+    public function a_whole_class_lateness_record_never_counts_towards_any_student(): void
+    {
+        [$classUlid] = $this->seedClass();
+        $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+        $this->actingAs($teacher);
+
+        for ($i = 0; $i < 3; $i++) {
+            $this->assertToast($this->postRecord($classUlid, [
+                'kind' => 'lateness',
+                'description' => 'Atraso da turma toda.',
+                'occurred_at' => '2026-10-20',
+            ]), fn ($toast) => $toast['type'] === 'success');
+        }
+    }
+
+    #[Test]
+    public function two_students_reaching_three_in_the_same_submission_each_get_a_warning(): void
+    {
+        [$classUlid] = $this->seedClass();
+        $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+        $this->actingAs($teacher);
+
+        $enrollmentIds = app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () use ($classUlid) {
+            $class = SchoolClass::where('ulid', $classUlid)->firstOrFail();
+
+            return $class->enrollments()->orderBy('class_number')->limit(2)->pluck('id')->all();
+        });
+
+        // Two prior records each, so this submission is the 3rd for both.
+        foreach ($enrollmentIds as $enrollmentId) {
+            for ($i = 0; $i < 2; $i++) {
+                $this->postRecord($classUlid, [
+                    'kind' => 'lateness',
+                    'description' => 'Chegou atrasado.',
+                    'occurred_at' => '2026-10-20',
+                    'enrollment_ids' => [(int) $enrollmentId],
+                ])->assertRedirect();
+            }
+        }
+
+        $response = $this->postRecord($classUlid, [
+            'kind' => 'lateness',
+            'description' => 'Chegou atrasado.',
+            'occurred_at' => '2026-10-21',
+            'enrollment_ids' => $enrollmentIds,
+        ]);
+
+        $this->assertToast($response, function ($toast) {
+            return $toast['type'] === 'warning'
+                && substr_count($toast['message'], 'acumulou 3 atrasos') === 2;
+        });
+    }
+
+    #[Test]
+    public function editing_a_record_into_lateness_can_itself_trigger_the_warning(): void
+    {
+        [$classUlid, $enrollmentId] = $this->seedClass();
+        $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
+        $this->actingAs($teacher);
+
+        for ($i = 0; $i < 2; $i++) {
+            $this->postRecord($classUlid, [
+                'kind' => 'lateness',
+                'description' => 'Chegou atrasado.',
+                'occurred_at' => '2026-10-20',
+                'enrollment_ids' => [(int) $enrollmentId],
+            ])->assertRedirect();
+        }
+
+        $this->postRecord($classUlid, [
+            'kind' => 'note',
+            'description' => 'Observação qualquer, ainda não é atraso.',
+            'occurred_at' => '2026-10-22',
+            'enrollment_ids' => [(int) $enrollmentId],
+        ])->assertRedirect();
+
+        $ulid = app(CurrentOrganization::class)->runFor(
+            $teacher->personalOrganization(),
+            fn () => EvidenceRecord::where('kind', 'note')->firstOrFail()->ulid,
+        );
+
+        $response = $this->putRecord($ulid, [
+            'kind' => 'lateness',
+            'description' => 'Afinal também chegou atrasado.',
+            'occurred_at' => '2026-10-22',
+            'enrollment_id' => (int) $enrollmentId,
+        ]);
+
+        $this->assertToast($response, fn ($toast) => $toast['type'] === 'warning'
+            && str_contains($toast['message'], 'acumulou 3 atrasos'));
     }
 
     #[Test]

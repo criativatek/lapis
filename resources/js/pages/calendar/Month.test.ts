@@ -200,6 +200,7 @@ function mountPage(overrides: Partial<InstanceType<typeof Month>['$props']> = {}
                 label: '2026/2027',
                 starts_on: '2026-09-01',
                 ends_on: '2027-07-31',
+                can_manage_academic_year: false,
             },
             month: {
                 value: '2026-10',
@@ -1912,5 +1913,76 @@ describe('calendar/Month', () => {
         expect(cell.find('[data-overflow]').exists()).toBe(false);
         // Nem há botão nenhum a abrir um painel a partir dela.
         expect(cell.find('[data-exception-start]').exists()).toBe(false);
+    });
+
+    // ---------------- o caminho de correção de uma exceção (SUP-L5U4NC)
+
+    /**
+     * QUEM PODE GERIR A ESTRUTURA DO ANO LETIVO (`can_manage_academic_year`)
+     * vê, nos três sítios em que uma exceção aparece, um caminho para a
+     * corrigir — a MESMA página de edição do ano letivo onde o
+     * ExceptionsManager já vive, e nenhuma rota inventada.
+     */
+    it('offers a management link to a day\'s exception, in all three places, when the viewer can manage the year', () => {
+        const feriado = exception({ starts_on: '2026-10-15', ends_on: '2026-10-15' });
+
+        const wrapper = mountPage({
+            academicYear: {
+                ulid: 'year-a',
+                label: '2026/2027',
+                starts_on: '2026-09-01',
+                ends_on: '2027-07-31',
+                can_manage_academic_year: true,
+            },
+            exceptions: [feriado],
+            days: octoberDays((date) =>
+                date === '2026-10-15'
+                    ? { exception: feriado, assessments: [assessment()] }
+                    : {},
+            ),
+        });
+
+        const expectedHref = '/academic-years/year-a/edit';
+
+        // A faixa por cima da grelha.
+        const band = wrapper.find('[data-exception-band="exception-a"]');
+        const bandLink = band.find('[data-exception-manage-link]');
+        expect(bandLink.exists()).toBe(true);
+        expect(bandLink.attributes('href')).toBe(expectedHref);
+        expect(bandLink.attributes('title')).toBe('Gerir exceções do ano letivo');
+
+        // A célula do dia na grelha.
+        const cellLink = wrapper
+            .find('[data-date="2026-10-15"]')
+            .find('[data-exception-manage-link]');
+        expect(cellLink.exists()).toBe(true);
+        expect(cellLink.attributes('href')).toBe(expectedHref);
+
+        // A agenda de ecrã estreito.
+        const agendaLink = wrapper
+            .find('[data-agenda-exception="exception-a"]')
+            .find('[data-exception-manage-link]');
+        expect(agendaLink.exists()).toBe(true);
+        expect(agendaLink.attributes('href')).toBe(expectedHref);
+    });
+
+    /**
+     * E QUANDO NÃO PODE, NADA MUDA: a exceção continua a ser texto simples,
+     * sem nenhum caminho de gestão nos três sítios — o comportamento de
+     * sempre, para quem não tem a Gate `update` sobre o ano letivo.
+     */
+    it('offers no management link at all when the viewer cannot manage the academic year', () => {
+        const feriado = exception({ starts_on: '2026-10-15', ends_on: '2026-10-15' });
+
+        const wrapper = mountPage({
+            exceptions: [feriado],
+            days: octoberDays((date) =>
+                date === '2026-10-15'
+                    ? { exception: feriado, assessments: [assessment()] }
+                    : {},
+            ),
+        });
+
+        expect(wrapper.findAll('[data-exception-manage-link]')).toHaveLength(0);
     });
 });

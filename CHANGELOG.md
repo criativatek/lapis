@@ -55,6 +55,74 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   em ecrãs pequenos); «O Lapispro» já não parte com «O» órfão; o passo 4
   («Proposta do Lapispro, decisão sua») cabe numa linha como os restantes.
 
+## [0.126.0] — 2026-09-05
+
+### Adicionado
+
+- **«Aperfeiçoar redação» na ocorrência disciplinar dos Registos** (SUP-U8FMAE):
+  ao escrever a descrição de uma ocorrência disciplinar, o professor pode agora
+  pedir à IA para reelaborar/corrigir o rascunho — exatamente como já acontece
+  nas secções dos Relatórios. O botão só aparece para o tipo «Ocorrência
+  disciplinar» e só quando o servidor confirma que a IA está disponível;
+  escolher, aceitar ou ignorar a sugestão é sempre do professor — **o sistema
+  propõe, nunca decide nem grava sozinho** (§3.3). Nenhum texto é gravado por
+  este pedido: a sugestão chega por flash e só entra no formulário (ainda por
+  submeter) se o professor carregar em «Usar sugestão».
+- **Mesma capability dos Relatórios, sem alteração aos planos**: usa
+  `ai_reports` (Pro e Institucional) através de um novo caso do enum
+  `AiUseCase` (`EvidenceDescriptionRewrite`) — nenhuma capability nova,
+  nenhuma mudança na composição comercial dos planos (CLAUDE.md §31).
+- **As mesmas barreiras de privacidade dos Relatórios, na área dos Registos**:
+  antes de qualquer envio, os nomes dos alunos da turma são substituídos por
+  «Aluno A», «Aluno B» (e repostos na sugestão), e cada número, data ou hora do
+  rascunho sai como marcador, nunca como algarismo — reaparecem inalterados na
+  sugestão. Uma nova guarda (`App\Services\Evidence\Ai\IncidentRewriteGuard`,
+  no molde da guarda equivalente dos Relatórios, sem a importar por estarem em
+  áreas diferentes do produto) recusa qualquer resposta que altere um número,
+  invente uma causa, um diagnóstico, uma medida disciplinar ou uma
+  caracterização do aluno que não estivesse já escrita — uma sugestão recusada
+  preserva sempre o texto original.
+
+## [0.125.0] — 2026-09-05
+
+### Adicionado
+
+- **«Atraso» e «Falta de material» nos registos de turma** (SUP-RQZPAJ,
+  SUP-ZPUQV5, SUP-5LNLBF): dois novos tipos de registo (`EvidenceKind`), ambos
+  em «Comportamento e atitudes», ao lado de «Ocorrência disciplinar» e
+  «Comportamento meritório» — nunca entram no cálculo da classificação (§14.3).
+- **Aviso de acumulação**: quando um aluno atinge um múltiplo de 3 registos de
+  «Atraso» ou de «Falta de material» na turma (3.º, 6.º, 9.º…), o professor
+  recebe um aviso ao gravar, com o nome do aluno e a contagem, sugerindo um
+  registo de comportamento no Inovar (grau 2) para alertar/informar o
+  encarregado de educação. A contagem é por aluno (enrollment) na turma, sobre
+  todos os registos desse tipo desde que a turma existe — nunca sobre um
+  registo lançado à turma toda (`enrollment_id` nulo), que não conta para
+  ninguém em particular. Vários alunos a atingir o limiar no mesmo lançamento
+  produzem um aviso por aluno, agregado numa única mensagem (o mecanismo de
+  toast só aguenta uma). A lógica vive em
+  `App\Services\Evidence\DetectEvidenceAccumulationWarnings`, chamada tanto por
+  `store()` como por `update()` — um registo pode ser corrigido para «Atraso»
+  ou «Falta de material» depois de criado, e essa correção deve poder disparar
+  o aviso tal como uma criação nova.
+- **Correção sobre o pedido original** (SUP-ZPUQV5 corrige o SUP-RQZPAJ): o
+  texto do aviso nunca sugere marcar falta de presença — sugere sempre um
+  registo de comportamento no Inovar (grau 2).
+
+## [0.124.7] — 2026-09-05
+
+### Adicionado
+
+- **Uma exceção do calendário ganha um caminho de correção** (SUP-L5U4NC):
+  quem gere a estrutura do ano letivo vê agora, na faixa do topo, na célula do
+  dia e na agenda de ecrã estreito, um pequeno link para «Estrutura do Ano
+  Letivo», onde uma exceção se edita ou elimina. O relato original — «há
+  eventos anteriormente criados que aparecem como feriado e não são feriados»
+  — vem de importações antigas do calendário que classificavam tudo como
+  `holiday`, antes do classificador atual; essas linhas continuam na base de
+  dados tal como foram importadas, mas passam a ter, a partir do próprio
+  calendário, um caminho direto até onde já era possível corrigi-las.
+
 ## [0.124.6] — 2026-09-05
 
 ### Corrigido

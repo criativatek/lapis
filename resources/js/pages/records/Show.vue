@@ -1,10 +1,20 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { Pencil, Trash2 } from '@lucide/vue';
+import { Check, Pencil, RefreshCw, Sparkles, Trash2, X } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
+import { Spinner } from '@/components/ui/spinner';
 import HomeworkGrid from './HomeworkGrid.vue';
+
+type IncidentRewriteSuggestion = {
+    current: string;
+    text: string | null;
+    provider: string;
+    model: string;
+    pseudonymised: boolean;
+    message: string | null;
+};
 
 type EvidenceRecordRow = {
     ulid: string;
@@ -38,6 +48,10 @@ const props = defineProps<{
     periods: { id: number; label: string }[];
     filters: { enrollment_id: number | null; kind: string | null; period_id: number | null };
     records: EvidenceRecordRow[];
+    /** «Aperfeiçoar redação» on the ocorrência disciplinar (SUP-U8FMAE). */
+    ai: { available: boolean; reason: string | null };
+    incidentRewrite?: IncidentRewriteSuggestion | null;
+    incidentRewriteError?: { message: string } | null;
 }>();
 
 // Fixed lists for the type-specific fields — mirror the backend enums
@@ -76,6 +90,8 @@ const KIND_META: Record<string, KindMeta> = {
     contact: { descriptionLabel: 'Descrição', descriptionHint: 'Registe apenas a informação essencial.', descriptionPlaceholder: 'Ex.: Contacto com o encarregado de educação sobre a participação do aluno.' },
     activity: { descriptionLabel: 'Descrição da atividade', descriptionHint: 'Registe apenas a informação essencial.', descriptionPlaceholder: 'Ex.: Visionamento da peça Leandro, Rei da Helíria.' },
     note: { descriptionLabel: 'Descrição', descriptionHint: 'Registe apenas a informação essencial.', descriptionPlaceholder: 'Ex.: Nota relevante para acompanhamento posterior.' },
+    lateness: { descriptionLabel: 'Descrição', descriptionHint: 'Registe apenas a informação essencial.', descriptionPlaceholder: 'Ex.: Chegou atrasado ao início da aula.' },
+    missing_material: { descriptionLabel: 'Descrição', descriptionHint: 'Registe apenas a informação essencial.', descriptionPlaceholder: 'Ex.: Não trouxe o manual nem o caderno.' },
 };
 
 function metaFor(kind: string): KindMeta {
@@ -182,6 +198,8 @@ const isHomeworkGrid = computed(() => editingUlid.value === null && form.kind ==
 
 function edit(record: EvidenceRecordRow): void {
     editingUlid.value = record.ulid;
+    incidentRewriteSuggestion.value = null;
+    incidentRewriteErrorMessage.value = null;
     form.clearErrors();
     form.kind = record.kind;
     form.description = record.description;
@@ -200,6 +218,8 @@ function cancelEdit(): void {
     form.reset();
     form.clearErrors();
     createTargetMode.value = 'whole_class';
+    incidentRewriteSuggestion.value = null;
+    incidentRewriteErrorMessage.value = null;
 }
 
 function submit(): void {
@@ -209,6 +229,8 @@ function submit(): void {
             onSuccess: () => {
                 editingUlid.value = null;
                 form.reset();
+                incidentRewriteSuggestion.value = null;
+                incidentRewriteErrorMessage.value = null;
             },
         });
 
@@ -235,6 +257,8 @@ function submit(): void {
                 'activity_evaluation',
             );
             createTargetMode.value = 'whole_class';
+            incidentRewriteSuggestion.value = null;
+            incidentRewriteErrorMessage.value = null;
         },
     });
 }
@@ -288,6 +312,80 @@ function applyFilters(): void {
         { preserveState: true, preserveScroll: true, replace: true },
     );
 }
+
+// ------------------------------------------------------- aperfeiçoar redação
+//
+// Only on the disciplinary occurrence description (§ pedido SUP-U8FMAE), and
+// only while it is still a draft: there is no `EvidenceRecord` yet for the
+// endpoint to touch, so a suggestion here can only ever replace text inside
+// this still-open form — never write anything by itself (§3.3 do CLAUDE.md).
+
+const incidentRewriteSuggestion = ref<IncidentRewriteSuggestion | null>(props.incidentRewrite ?? null);
+const incidentRewriteErrorMessage = ref<string | null>(props.incidentRewriteError?.message ?? null);
+const isRewritingIncident = ref(false);
+
+watch(
+    () => props.incidentRewrite,
+    (value) => {
+        incidentRewriteSuggestion.value = value ?? null;
+    },
+);
+
+watch(
+    () => props.incidentRewriteError,
+    (value) => {
+        incidentRewriteErrorMessage.value = value?.message ?? null;
+    },
+);
+
+const canRewriteIncidentDescription = computed(
+    () => form.kind === 'incident' && form.description.trim() !== '',
+);
+
+const incidentAiUnavailableText: Record<string, string> = {
+    plan: 'O apoio à redação faz parte dos planos Pro e Institucional.',
+    provider: 'O apoio à redação não está configurado nesta instalação.',
+};
+
+function requestIncidentRewrite(): void {
+    incidentRewriteSuggestion.value = null;
+    incidentRewriteErrorMessage.value = null;
+    isRewritingIncident.value = true;
+
+    router.post(
+        `/classes/${props.schoolClass.ulid}/records/aperfeicoar-descricao`,
+        { kind: form.kind, description: form.description },
+        {
+            preserveScroll: true,
+            preserveState: true,
+            onFinish: () => {
+                isRewritingIncident.value = false;
+            },
+        },
+    );
+}
+
+function acceptIncidentSuggestion(text: string): void {
+    form.description = text;
+    incidentRewriteSuggestion.value = null;
+}
+
+function dismissIncidentSuggestion(): void {
+    incidentRewriteSuggestion.value = null;
+}
+
+// A suggestion about one kind's draft has nothing to say about another —
+// switching the type away from "incident" drops it rather than leaving it to
+// be pasted somewhere it never applied.
+watch(
+    () => form.kind,
+    (kind) => {
+        if (kind !== 'incident') {
+            incidentRewriteSuggestion.value = null;
+            incidentRewriteErrorMessage.value = null;
+        }
+    },
+);
 </script>
 
 <template>
@@ -444,6 +542,97 @@ function applyFilters(): void {
                 <p class="mt-1 text-xs text-muted-foreground">{{ metaFor(form.kind).descriptionHint }}</p>
             </label>
             <p v-if="!isHomeworkGrid && form.errors.description" class="text-xs text-red-600">{{ form.errors.description }}</p>
+
+            <!-- «Aperfeiçoar redação» — só na ocorrência disciplinar, e só quando o
+            servidor diz que a IA está disponível (CLAUDE.md §8.2: o endpoint volta
+            a perguntar tudo). Nunca escreve nada sozinho: substitui o texto do
+            formulário apenas quando o professor carrega em «Usar sugestão». -->
+            <div v-if="form.kind === 'incident'" class="space-y-2">
+                <div v-if="ai.available">
+                    <button
+                        type="button"
+                        class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-muted-foreground hover:bg-muted/40 disabled:opacity-50"
+                        :disabled="!canRewriteIncidentDescription || isRewritingIncident"
+                        @click="requestIncidentRewrite"
+                    >
+                        <Spinner v-if="isRewritingIncident" class="size-3.5" />
+                        <Sparkles v-else class="size-3.5" />
+                        Aperfeiçoar redação
+                    </button>
+                    <p class="px-2 text-xs text-muted-foreground">
+                        O texto é reescrito. Os nomes de alunos da turma são substituídos antes do envio e repostos
+                        na sugestão; números, datas e horas não são enviados.
+                    </p>
+                </div>
+                <p v-else class="text-xs text-muted-foreground">
+                    {{ incidentAiUnavailableText[ai.reason ?? ''] ?? '' }}
+                </p>
+
+                <p v-if="incidentRewriteErrorMessage" class="text-xs text-red-600">{{ incidentRewriteErrorMessage }}</p>
+
+                <div v-if="incidentRewriteSuggestion" class="space-y-3 rounded-lg border border-primary/40 bg-primary/5 p-3">
+                    <div class="flex flex-wrap items-baseline justify-between gap-2">
+                        <p class="text-sm font-medium">Sugestão de redação</p>
+                        <p class="text-xs text-muted-foreground">
+                            {{ incidentRewriteSuggestion.provider }} · {{ incidentRewriteSuggestion.model }}
+                            <span v-if="incidentRewriteSuggestion.pseudonymised"> · nomes substituídos no envio</span>
+                        </p>
+                    </div>
+
+                    <p v-if="incidentRewriteSuggestion.message" class="text-sm text-muted-foreground">
+                        {{ incidentRewriteSuggestion.message }}
+                    </p>
+
+                    <div v-if="incidentRewriteSuggestion.text" class="grid gap-3 sm:grid-cols-2">
+                        <div class="space-y-1">
+                            <p class="text-xs font-medium text-muted-foreground uppercase">Texto atual</p>
+                            <p class="rounded-md border border-border bg-background p-3 text-sm leading-relaxed whitespace-pre-line">
+                                {{ incidentRewriteSuggestion.current }}
+                            </p>
+                        </div>
+                        <div class="space-y-1">
+                            <p class="text-xs font-medium text-muted-foreground uppercase">Sugestão</p>
+                            <p class="rounded-md border border-primary/40 bg-background p-3 text-sm leading-relaxed whitespace-pre-line">
+                                {{ incidentRewriteSuggestion.text }}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-wrap gap-2">
+                        <button
+                            v-if="incidentRewriteSuggestion.text"
+                            type="button"
+                            class="inline-flex h-8 items-center gap-1 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-90"
+                            :disabled="isRewritingIncident"
+                            @click="acceptIncidentSuggestion(incidentRewriteSuggestion.text)"
+                        >
+                            <Check class="size-3.5" />
+                            Usar sugestão
+                        </button>
+                        <button
+                            type="button"
+                            class="inline-flex h-8 items-center gap-1 rounded-md px-3 text-sm text-muted-foreground hover:bg-muted/40"
+                            :disabled="isRewritingIncident"
+                            @click="requestIncidentRewrite"
+                        >
+                            <RefreshCw class="size-3.5" />
+                            Voltar a tentar
+                        </button>
+                        <button
+                            type="button"
+                            class="inline-flex h-8 items-center gap-1 rounded-md px-3 text-sm text-muted-foreground hover:bg-muted/40"
+                            @click="dismissIncidentSuggestion"
+                        >
+                            <X class="size-3.5" />
+                            Manter atual
+                        </button>
+                    </div>
+
+                    <p class="text-xs text-muted-foreground">
+                        Nada foi alterado. A sugestão só é aplicada se carregar em «Usar sugestão».
+                    </p>
+                </div>
+            </div>
 
             <div v-if="!isHomeworkGrid" class="flex items-center justify-end gap-2">
                 <button

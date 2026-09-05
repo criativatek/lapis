@@ -34,10 +34,10 @@ class EvidenceKindGroupTest extends TestCase
     }
 
     #[Test]
-    public function the_behavior_attitudes_group_holds_exactly_incident_and_positive_behaviour(): void
+    public function the_behavior_attitudes_group_holds_incident_positive_behaviour_lateness_and_missing_material(): void
     {
         $this->assertSame(
-            [EvidenceKind::Incident, EvidenceKind::PositiveBehaviour],
+            [EvidenceKind::Incident, EvidenceKind::PositiveBehaviour, EvidenceKind::Lateness, EvidenceKind::MissingMaterial],
             $this->kindsInGroup(EvidenceInternalGroup::BehaviorAttitudes),
         );
     }

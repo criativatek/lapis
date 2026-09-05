@@ -712,6 +712,52 @@ class AcademicYearCalendarTest extends TestCase
                 ->etc());
     }
 
+    // -------------------- o caminho de correção de uma exceção (SUP-L5U4NC)
+
+    /**
+     * QUEM É O DONO DA ORGANIZAÇÃO PODE GERIR A ESTRUTURA DO ANO — a mesma
+     * Gate que autoriza PUT/DELETE em AcademicCalendarExceptionController — e
+     * por isso o calendário oferece-lhe o ulid do ano e um caminho de correção
+     * para uma exceção que, por exemplo, tenha entrado errada numa importação
+     * antiga.
+     */
+    #[Test]
+    public function the_owner_of_the_organization_can_manage_the_academic_year_from_the_calendar(): void
+    {
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar?month=2026-10')->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('academicYear.ulid', $this->academicYear->ulid)
+                ->where('academicYear.can_manage_academic_year', true)
+                ->etc());
+
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/calendar/ano')->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('academicYear.can_manage_academic_year', true)
+                ->etc());
+    }
+
+    /**
+     * UM PROFESSOR SEM SER O DONO DA ORGANIZAÇÃO NÃO PODE — vê o mesmo
+     * calendário, mas `can_manage_academic_year` vem a false, e a página não
+     * lhe oferece caminho nenhum para «Estrutura do Ano Letivo». O controlo de
+     * acesso real continua a viver em AcademicCalendarExceptionController, que
+     * volta a recusar por si se este professor tentar de qualquer forma.
+     */
+    #[Test]
+    public function a_teacher_who_does_not_own_the_organization_cannot_manage_it_from_the_calendar(): void
+    {
+        $colleague = User::factory()->create();
+        $this->organization->members()->attach($colleague, ['joined_at' => now()]);
+
+        $this->actingAs($colleague)->withSession($this->tenantSession())
+            ->get('/calendar?month=2026-10')->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('academicYear.can_manage_academic_year', false)
+                ->etc());
+    }
+
     #[Test]
     public function a_malformed_month_is_rejected_rather_than_quietly_reinterpreted(): void
     {
