@@ -129,6 +129,25 @@ const showQuantitative = ref(true);
 const showDomainDetail = ref(true);
 const showWarnings = ref(true);
 
+/**
+ * A AUTOAVALIAÇÃO ABRE VISÍVEL quando existe.
+ *
+ * A pauta abre com toda a informação relevante, e o que o aluno disse de si
+ * próprio é informação relevante para quem vai decidir. Quem não a quiser
+ * desliga-a — como desliga tudo o resto. Onde não existe não há coluna nem
+ * interruptor: um controlo para esconder o que não há não é uma opção (§11).
+ */
+const selfAssessmentAvailable = computed(
+    () =>
+        props.sheet?.students.some(
+            (student) =>
+                (student.self_assessment ?? null) !== null ||
+                student.domains.some((domain) => (domain.self_assessment ?? null) !== null),
+        ) ?? false,
+);
+
+const showSelfAssessment = ref(true);
+
 // ------------------------------------------------------------ preparar fecho
 //
 // Uma CAMADA DE LEITURA sobre a pauta, nunca uma segunda pauta: o painel
@@ -365,6 +384,8 @@ function submitSave(): void {
             v-model:show-quantitative="showQuantitative"
             v-model:show-domain-detail="showDomainDetail"
             v-model:show-warnings="showWarnings"
+            v-model:show-self-assessment="showSelfAssessment"
+            :self-assessment-available="selfAssessmentAvailable"
             class="print-hide"
         />
 
@@ -400,6 +421,7 @@ function submitSave(): void {
                 :show-quantitative="showQuantitative"
                 :show-domain-detail="showDomainDetail"
                 :show-warnings="showWarnings"
+                :show-self-assessment="showSelfAssessment && selfAssessmentAvailable"
                 :decidable="canDecideHere"
                 @decide="openDecision"
             />

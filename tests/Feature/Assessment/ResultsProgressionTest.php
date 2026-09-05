@@ -326,17 +326,28 @@ class ResultsProgressionTest extends TestCase
     {
         // Identified structurally and never by its wording, and never computed
         // from the per-domain answers (§2, §11 of the decision).
-        $source = (string) file_get_contents(app_path('Services/Assessment/BuildResultsProgression.php'));
+        //
+        // A LEITURA VIVE NUM ÚNICO SÍTIO. Resultados, Quadro Síntese e Pauta de
+        // Avaliação mostram a mesma autoavaliação lado a lado com o resultado
+        // calculado; uma segunda cópia da regra seria uma segunda maneira de a
+        // aplicação afirmar o que o aluno disse de si próprio.
+        $source = (string) file_get_contents(app_path('Services/Assessment/SelfAssessmentReading.php'));
 
         // By its stated ROLE — not by its wording, which somebody will rephrase
         // for a younger class, and not by its position, which changes the moment
         // a question is inserted and would silently reassign what every stored
         // answer meant.
-        $this->assertStringContainsString('$question?->role !== SelfAssessmentQuestionRole::Global', $source);
+        $this->assertStringContainsString('role !== SelfAssessmentQuestionRole::Global', $source);
         $this->assertStringNotContainsString('sequence ===', $source, 'nem pela posição');
         $this->assertStringContainsString('$question->domain_id !== $domainId', $source);
         $this->assertStringNotContainsString('prompt', $source, 'a pergunta nunca é encontrada pelo texto');
         $this->assertStringNotContainsString('avg(', $source);
+
+        // E quem mostra delega, em vez de reimplementar.
+        $progression = (string) file_get_contents(app_path('Services/Assessment/BuildResultsProgression.php'));
+        $this->assertStringContainsString('$this->selfAssessments->global($selfAssessment)', $progression);
+        $this->assertStringContainsString('$this->selfAssessments->forDomain($selfAssessment, $domainId)', $progression);
+        $this->assertStringNotContainsString('SelfAssessmentQuestionRole', $progression);
     }
 
     // ----------------------------------------------------------------- helpers

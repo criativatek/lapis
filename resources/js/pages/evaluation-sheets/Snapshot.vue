@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import EvaluationSheetTable from '@/components/evaluation-sheets/EvaluationSheetTable.vue';
 import EvaluationSheetViewControls from '@/components/evaluation-sheets/EvaluationSheetViewControls.vue';
 import Heading from '@/components/Heading.vue';
@@ -19,7 +19,7 @@ import type { EvaluationSheetHistoryEntry, EvaluationSheetSnapshot } from '@/typ
  * colunas e mais nada.
  */
 
-defineProps<{
+const props = defineProps<{
     schoolClass: { ulid: string; label: string; subject: string };
     entry: EvaluationSheetHistoryEntry;
     snapshot: EvaluationSheetSnapshot | null;
@@ -29,6 +29,24 @@ defineProps<{
 const showQuantitative = ref(true);
 const showDomainDetail = ref(true);
 const showWarnings = ref(true);
+
+/**
+ * A autoavaliação, se ESTA fotografia a trouxe.
+ *
+ * Uma pauta guardada antes de a autoavaliação passar a viajar no payload não a
+ * tem — e não a inventa: a coluna simplesmente não existe nessa página, como
+ * não existia no ecrã de onde a fotografia foi tirada.
+ */
+const selfAssessmentAvailable = computed(
+    () =>
+        props.snapshot?.students.some(
+            (student) =>
+                (student.self_assessment ?? null) !== null ||
+                student.domains.some((domain) => (domain.self_assessment ?? null) !== null),
+        ) ?? false,
+);
+
+const showSelfAssessment = ref(true);
 
 const dateFormatter = new Intl.DateTimeFormat('pt-PT', { day: '2-digit', month: '2-digit', year: 'numeric' });
 const dateTimeFormatter = new Intl.DateTimeFormat('pt-PT', {
@@ -111,6 +129,8 @@ function formatDateTime(value: string): string {
                 v-model:show-quantitative="showQuantitative"
                 v-model:show-domain-detail="showDomainDetail"
                 v-model:show-warnings="showWarnings"
+                v-model:show-self-assessment="showSelfAssessment"
+                :self-assessment-available="selfAssessmentAvailable"
             />
 
             <EvaluationSheetTable
@@ -119,6 +139,7 @@ function formatDateTime(value: string): string {
                 :show-quantitative="showQuantitative"
                 :show-domain-detail="showDomainDetail"
                 :show-warnings="showWarnings"
+                :show-self-assessment="showSelfAssessment && selfAssessmentAvailable"
             />
 
             <p class="text-xs text-muted-foreground">

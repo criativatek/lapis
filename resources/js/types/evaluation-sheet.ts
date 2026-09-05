@@ -31,6 +31,22 @@ export type EvaluationSheetOverall = {
     has_coverage_warning: boolean;
 };
 
+/**
+ * O que o aluno disse de si próprio — sobre um domínio ou sobre o período.
+ *
+ * O NÚMERO É O JUÍZO: `code` é o que se mostra, `label` é a menção que o
+ * acompanha. `sequence`/`is_negative` existem para dar cor sem ler o rótulo.
+ *
+ * Nunca entra no cálculo: é informação comparada com a nota, jamais somada a
+ * ela (§15).
+ */
+export type EvaluationSheetSelfAssessment = {
+    code: string;
+    label: string;
+    sequence: number;
+    is_negative: boolean;
+};
+
 export type EvaluationSheetStudentDomain = {
     domain_id: number;
     name: string;
@@ -43,6 +59,8 @@ export type EvaluationSheetStudentDomain = {
     scale_level_label: string | null;
     has_coverage_warning: boolean;
     coverage: Coverage;
+    /** Ausente nos snapshots guardados antes desta funcionalidade — ausência, nunca zero. */
+    self_assessment?: EvaluationSheetSelfAssessment | null;
 };
 
 /**
@@ -72,6 +90,12 @@ export type EvaluationSheetStudent = {
     domains: EvaluationSheetStudentDomain[];
     classification: EvaluationSheetClassification;
     coverage: Coverage;
+    /**
+     * O juízo GLOBAL do aluno sobre si próprio — a resposta à pergunta global e
+     * nunca a média do que disse por domínio. Ausente nos snapshots guardados
+     * antes desta funcionalidade.
+     */
+    self_assessment?: EvaluationSheetSelfAssessment | null;
     /**
      * Where this student's decision is written to, and whether it may still be
      * written. LIVE SHEET ONLY — a snapshot carries neither, because neither is
