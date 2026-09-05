@@ -25,6 +25,34 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.126.0] — 2026-09-05
+
+### Adicionado
+
+- **«Aperfeiçoar redação» na ocorrência disciplinar dos Registos** (SUP-U8FMAE):
+  ao escrever a descrição de uma ocorrência disciplinar, o professor pode agora
+  pedir à IA para reelaborar/corrigir o rascunho — exatamente como já acontece
+  nas secções dos Relatórios. O botão só aparece para o tipo «Ocorrência
+  disciplinar» e só quando o servidor confirma que a IA está disponível;
+  escolher, aceitar ou ignorar a sugestão é sempre do professor — **o sistema
+  propõe, nunca decide nem grava sozinho** (§3.3). Nenhum texto é gravado por
+  este pedido: a sugestão chega por flash e só entra no formulário (ainda por
+  submeter) se o professor carregar em «Usar sugestão».
+- **Mesma capability dos Relatórios, sem alteração aos planos**: usa
+  `ai_reports` (Pro e Institucional) através de um novo caso do enum
+  `AiUseCase` (`EvidenceDescriptionRewrite`) — nenhuma capability nova,
+  nenhuma mudança na composição comercial dos planos (CLAUDE.md §31).
+- **As mesmas barreiras de privacidade dos Relatórios, na área dos Registos**:
+  antes de qualquer envio, os nomes dos alunos da turma são substituídos por
+  «Aluno A», «Aluno B» (e repostos na sugestão), e cada número, data ou hora do
+  rascunho sai como marcador, nunca como algarismo — reaparecem inalterados na
+  sugestão. Uma nova guarda (`App\Services\Evidence\Ai\IncidentRewriteGuard`,
+  no molde da guarda equivalente dos Relatórios, sem a importar por estarem em
+  áreas diferentes do produto) recusa qualquer resposta que altere um número,
+  invente uma causa, um diagnóstico, uma medida disciplinar ou uma
+  caracterização do aluno que não estivesse já escrita — uma sugestão recusada
+  preserva sempre o texto original.
+
 ## [0.125.0] — 2026-09-05
 
 ### Adicionado

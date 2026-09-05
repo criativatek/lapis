@@ -12,6 +12,7 @@ use App\Models\HomeworkStatus;
 use App\Models\ParticipationLevel;
 use App\Models\SchoolClass;
 use App\Models\User;
+use App\Services\Evidence\Ai\IncidentDescriptionAssistant;
 use App\Services\Evidence\DetectEvidenceAccumulationWarnings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -49,7 +50,7 @@ class EvidenceController extends Controller
         return Inertia::render('records/Index', ['classes' => $classes]);
     }
 
-    public function show(Request $request, SchoolClass $class): Response
+    public function show(Request $request, SchoolClass $class, IncidentDescriptionAssistant $assistant): Response
     {
         Gate::authorize('view', $class);
 
@@ -110,6 +111,14 @@ class EvidenceController extends Controller
                 'period_id' => $periodFilter,
             ],
             'records' => $records,
+            // «Aperfeiçoar redação» on the ocorrência disciplinar (SUP-U8FMAE).
+            // Read on the server before the button is drawn — hiding a control
+            // is presentation, not the answer (CLAUDE.md §8.2); the endpoint
+            // asks the same question again.
+            'ai' => [
+                'available' => $assistant->isAvailable(),
+                'reason' => $assistant->unavailableReason(),
+            ],
         ]);
     }
 

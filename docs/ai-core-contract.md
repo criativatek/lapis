@@ -251,6 +251,7 @@ capabilities que nunca controlou.
 | `FollowupSynthesis` | `ai_followup` |
 | `PedagogicalStrategySuggestion` | `ai_strategies` |
 | `ReportSectionRewrite` | `ai_reports` |
+| `EvidenceDescriptionRewrite` | `ai_reports` |
 | `AdminConnectionTest` | nenhuma (só `platform-admin`) |
 | `AdminCapabilityProbe` | nenhuma (só `platform-admin`) |
 

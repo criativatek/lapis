@@ -48,6 +48,7 @@ use App\Http\Controllers\OrganizationMembershipController;
 use App\Http\Controllers\PrivacyNoticeController;
 use App\Http\Controllers\PublicSelfAssessmentController;
 use App\Http\Controllers\PublicSupportController;
+use App\Http\Controllers\Records\IncidentDescriptionRewriteController;
 use App\Http\Controllers\Reports\ReportController;
 use App\Http\Controllers\Reports\ReportExportController;
 use App\Http\Controllers\Reports\ReportRewriteController;
@@ -745,6 +746,14 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::post('classes/{class}/records', [EvidenceController::class, 'store'])->name('records.store');
         Route::put('records/{record}', [EvidenceController::class, 'update'])->name('records.update');
         Route::delete('records/{record}', [EvidenceController::class, 'destroy'])->name('records.destroy');
+
+        // «Aperfeiçoar redação» on the disciplinary occurrence description
+        // (SUP-U8FMAE). Same capability as Relatórios (`ai_reports`) — the
+        // gateway itself applies the rate limit and quota per user AND per
+        // organization, so no route throttle belongs here either (ai-core
+        // contract §6).
+        Route::post('classes/{class}/records/aperfeicoar-descricao', [IncidentDescriptionRewriteController::class, 'store'])
+            ->name('records.incident.rewrite');
     });
 
     // Self-assessment (§15). Compared with the calculated grade, never summed in.
