@@ -7,12 +7,14 @@ use App\Models\Classification;
 use App\Models\ClassificationScope;
 use App\Models\ClassificationStatus;
 use App\Models\Enrollment;
+use App\Models\EvaluationSheetExport;
 use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Assessment\ProposeClassifications;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -397,17 +399,18 @@ class EvaluationSheetDecisionTest extends TestCase
         $enrollmentUlid = $this->enrollmentUlid($teacher, 'Carolina Nunes');
         $this->decide($teacher, $classUlid, $periodUlid, $enrollmentUlid, $this->levelId($teacher, '3'))->assertRedirect();
 
-        $effectiveAt = $this->asTenant($teacher, function (): string {
-            $class = SchoolClass::where('label', '7.º A')->firstOrFail();
-
-            return $class->academicYear->periods()->where('sequence', 1)->firstOrFail()->starts_on->toDateString();
-        });
+        // Dentro do 1.º Semestre do cenário demo (14/09/2026 a 29/01/2027): a
+        // data de referência tem de ser uma data que o período contenha, e uma
+        // fotografia de um momento que ainda não chegou é recusada.
+        $this->travelTo(Carbon::parse('2026-12-15 10:00:00'));
 
         $this->actingAs($teacher)->post("/classes/{$classUlid}/pauta-avaliacao/{$periodUlid}/guardar", [
             'moment_label' => 'Momento intercalar',
-            'effective_at' => $effectiveAt,
+            'effective_at' => '2026-12-15',
             'scope' => ClassificationScope::Period->value,
-        ])->assertRedirect();
+        ])->assertSessionHasNoErrors()->assertRedirect();
+
+        $this->asTenant($teacher, fn () => $this->assertSame(1, EvaluationSheetExport::query()->count()));
 
         // GUARDAR UM MOMENTO NÃO É UM FECHO PEDAGÓGICO. A pauta atual continua
         // a ser do professor.

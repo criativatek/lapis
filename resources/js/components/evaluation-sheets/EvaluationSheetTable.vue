@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 import CoverageWarning from '@/components/CoverageWarning.vue';
 import { pct } from '@/lib/results';
-import type { EvaluationSheetDomain, EvaluationSheetStudent } from '@/types';
+import type { EvaluationSheetDomain, EvaluationSheetSelfAssessment, EvaluationSheetStudent } from '@/types';
 
 /**
  * A grelha da Pauta de Avaliação — UM ÚNICO componente.
@@ -29,10 +29,15 @@ const props = withDefaults(
         showQuantitative: boolean;
         showDomainDetail: boolean;
         showWarnings: boolean;
+        /**
+         * A autoavaliação, quando a pauta a tem. O ecrã decide se a mostra; a
+         * grelha nunca a inventa nem a soma a coisa alguma (§15).
+         */
+        showSelfAssessment?: boolean;
         /** Só na pauta viva. A guardada mostra os mesmos valores, sem ações. */
         decidable?: boolean;
     }>(),
-    { decidable: false },
+    { showSelfAssessment: false, decidable: false },
 );
 
 const emit = defineEmits<{ decide: [student: EvaluationSheetStudent] }>();
@@ -144,6 +149,24 @@ function actionLabel(student: EvaluationSheetStudent): string {
         : `Atribuir classificação a ${student.name}`;
 }
 
+/**
+ * A autoavaliação, dita por inteiro.
+ *
+ * O CÓDIGO É O QUE SE MOSTRA e a menção acompanha-o no `title`, exatamente como
+ * um nível — é o mesmo tipo de juízo, escrito pelo aluno em vez do professor. A
+ * frase começa por dizer DE QUEM É, porque um «4» solto numa linha ao lado do
+ * nível atribuído seria lido como uma segunda nota.
+ */
+function selfAssessmentTitle(level: EvaluationSheetSelfAssessment | null | undefined, subject?: string): string | undefined {
+    if (!level) {
+        return undefined;
+    }
+
+    const what = subject === undefined ? 'Autoavaliação do aluno' : `Autoavaliação do aluno — ${subject}`;
+
+    return `${what}: ${level.code} — ${level.label}`;
+}
+
 /** Fundo muito suave na cor do domínio — identidade visual, nunca desempenho. */
 function domainHeaderStyle(color: string): Record<string, string> {
     return { backgroundColor: `${color}66` };
@@ -191,6 +214,18 @@ function domainCellStyle(color: string): Record<string, string> {
                         class="border-b border-l-2 border-border bg-muted/70 px-3 py-1.5 text-center font-semibold"
                     >
                         Global
+                    </th>
+                    <!-- O QUE O ALUNO DISSE DE SI, entre o que a evidência diz e
+                         o que o professor decide — é exatamente aí que ela serve
+                         para alguma coisa. Uma síntese curta: o juízo global. O
+                         detalhe por domínio vive nas células dos domínios, não
+                         numa segunda tabela deitada de lado (§12). -->
+                    <th
+                        v-if="showSelfAssessment"
+                        rowspan="2"
+                        class="border-b border-l-2 border-border bg-muted px-3 py-2 text-center align-bottom font-medium"
+                    >
+                        Autoavaliação
                     </th>
                     <!-- Fixa à direita pela mesma razão que «Aluno» é fixa à
                          esquerda: é a coluna da DECISÃO. Numa turma com cinco
@@ -271,6 +306,17 @@ function domainCellStyle(color: string): Record<string, string> {
                                     >
                                         {{ levelText(studentDomain(student, domain.domain_id)?.scale_level_code, studentDomain(student, domain.domain_id)?.scale_level_label ?? null) ?? '—' }}
                                 </span>
+                                <!-- O que o aluno disse SOBRE ESTE DOMÍNIO, em
+                                     expoente e a meia-voz, com o «A» a dizer de
+                                     quem é a voz — a mesma escrita do Quadro
+                                     Síntese, para não haver duas convenções para
+                                     a mesma coisa. -->
+                                <sup
+                                    v-if="showSelfAssessment && studentDomain(student, domain.domain_id)?.self_assessment"
+                                    class="ml-0.5 rounded bg-background/70 px-1 text-[10px] font-normal text-muted-foreground"
+                                    :title="selfAssessmentTitle(studentDomain(student, domain.domain_id)?.self_assessment, domain.name)"
+                                    :aria-label="selfAssessmentTitle(studentDomain(student, domain.domain_id)?.self_assessment, domain.name)"
+                                >A{{ studentDomain(student, domain.domain_id)?.self_assessment?.code }}</sup>
                                 <CoverageWarning
                                     v-if="showWarnings && !showQuantitative && studentDomain(student, domain.domain_id)?.has_coverage_warning"
                                     :coverage="studentDomain(student, domain.domain_id)!.coverage"
@@ -310,6 +356,27 @@ function domainCellStyle(color: string): Record<string, string> {
                             :domains="domainColumns"
                             scope="overall"
                         />
+                    </td>
+
+                    <!-- A perceção do aluno. INFORMAÇÃO DE APOIO: não determina
+                         a classificação, e por isso não tem o peso visual de uma
+                         — nem o «—» dela é um zero, é uma pergunta sem resposta. -->
+                    <td
+                        v-if="showSelfAssessment"
+                        class="border-b border-l-2 border-border px-2 py-2 text-center"
+                    >
+                        <span
+                            v-if="student.self_assessment"
+                            class="rounded bg-muted px-1.5 py-0.5 text-xs"
+                            :title="selfAssessmentTitle(student.self_assessment)"
+                        >
+                            {{ student.self_assessment.code }}
+                        </span>
+                        <span
+                            v-else
+                            class="text-muted-foreground"
+                            title="O aluno não respondeu à autoavaliação global deste momento."
+                        >—</span>
                     </td>
 
                     <td
