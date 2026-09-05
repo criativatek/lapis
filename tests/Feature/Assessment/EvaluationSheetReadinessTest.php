@@ -3,6 +3,7 @@
 namespace Tests\Feature\Assessment;
 
 use App\Models\AcademicPeriod;
+use App\Models\AcademicYear;
 use App\Models\Classification;
 use App\Models\ClassificationScope;
 use App\Models\Domain;
@@ -10,19 +11,24 @@ use App\Models\Enrollment;
 use App\Models\EvaluationSheetExport;
 use App\Models\InstrumentType;
 use App\Models\ResultState;
+use App\Models\Scale;
 use App\Models\SchoolClass;
 use App\Models\SelfAssessment;
 use App\Models\SelfAssessmentFilledBy;
 use App\Models\SelfAssessmentStatus;
 use App\Models\StudentItemScore;
+use App\Models\Subject;
 use App\Models\User;
+use App\Services\Assessment\ActivateProfileVersion;
 use App\Services\Assessment\BuildEvaluationSheet;
 use App\Services\Assessment\ConfirmClassification;
 use App\Services\Assessment\EvaluationSheetReadiness;
 use App\Services\Assessment\InstrumentBuilder;
+use App\Services\Assessment\ProfileBuilder;
 use App\Services\Assessment\ProposeClassifications;
 use App\Services\Assessment\RecordScores;
 use App\Services\Assessment\SelfAssessmentTemplateProvider;
+use App\Services\StudentEnrollmentService;
 use App\Support\Hashing\CanonicalPayload;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
@@ -230,6 +236,60 @@ class EvaluationSheetReadinessTest extends TestCase
         $this->assertNotContains('Proposta do Lapispro ainda não decidida', $this->pendingLabelsFor($readiness, 'Carolina Nunes'));
         $this->assertContains('Proposta do Lapispro ainda não decidida', $this->pendingLabelsFor($readiness, 'Ana Marques'));
         $this->assertContains('Nível ainda não atribuído', $this->pendingLabelsFor($readiness, 'Diogo Ferreira'));
+    }
+
+    #[Test]
+    public function on_an_interval_scale_the_checklist_says_classificação_and_never_nível(): void
+    {
+        // The word for the decision belongs to the SCALE, not to this screen
+        // (DecisionScale, shared with Resultados and Classificações): bands are
+        // a «nível», an interval is a «classificação». A checklist that said
+        // «nível» to a school grading 0–20 would be naming something that does
+        // not exist there.
+        $this->travelTo('2027-01-30');
+
+        [$schoolClass, $academicPeriod] = $this->asTenant(function (): array {
+            $year = AcademicYear::query()->firstOrFail();
+            $subject = Subject::query()->firstOrFail();
+
+            $profile = app(ProfileBuilder::class)->create(
+                [
+                    'academic_year_id' => $year->id,
+                    'subject_id' => $subject->id,
+                    'name' => 'Perfil de intervalo — 0 a 20',
+                    'description' => 'Escala numérica, sem níveis.',
+                ],
+                Scale::withoutGlobalScope('scaleVisibility')->where('name', 'Escala 0 a 20')->firstOrFail()->id,
+                [['name' => 'Compreensão', 'weight' => 100]],
+                ['7.º'],
+            );
+            $version = app(ActivateProfileVersion::class)->activate($profile->draftVersion(), $this->teacher);
+
+            $class = SchoolClass::create([
+                'academic_year_id' => $year->id,
+                'subject_id' => $subject->id,
+                'label' => '7.º Z',
+                'grade_level' => '7.º',
+                'status' => 'active',
+                'assessment_profile_version_id' => $version->id,
+            ]);
+            app(StudentEnrollmentService::class)->enrollNew($class, [
+                'name' => 'Rita Bastos',
+                'class_number' => 1,
+                'enrolled_on' => '2026-09-14',
+            ]);
+
+            return [$class, $year->periods()->where('sequence', 1)->firstOrFail()];
+        });
+
+        $readiness = $this->readiness($schoolClass, $academicPeriod);
+        $decisions = $this->item($readiness, 'decisions');
+
+        $this->assertSame('0 de 1 classificações decididas', $decisions['label']);
+        $this->assertContains(
+            'Classificação ainda não decidida',
+            $this->pendingLabelsFor($readiness, 'Rita Bastos'),
+        );
     }
 
     #[Test]
