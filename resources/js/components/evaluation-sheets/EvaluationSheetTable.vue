@@ -15,15 +15,27 @@ import type { EvaluationSheetDomain, EvaluationSheetStudent } from '@/types';
  * NÃO CALCULA NADA. Recebe domínios e alunos já resolvidos pelo servidor —
  * vivos num caso, congelados no outro — e limita-se a mostrá-los. Os três
  * toggles SÓ ESCONDEM: nenhum deles toca nas props recebidas.
+ *
+ * E NÃO DECIDE NADA. `decidable` liga a AÇÃO de atribuir, não a decisão em si:
+ * a grelha emite quem o professor quer classificar e é o ecrã que abre o painel
+ * e escreve. Desligado é o que a pauta guardada usa — uma fotografia não tem
+ * botões, porque não há nada no passado por decidir.
  */
 
-const props = defineProps<{
-    domains: EvaluationSheetDomain[];
-    students: EvaluationSheetStudent[];
-    showQuantitative: boolean;
-    showDomainDetail: boolean;
-    showWarnings: boolean;
-}>();
+const props = withDefaults(
+    defineProps<{
+        domains: EvaluationSheetDomain[];
+        students: EvaluationSheetStudent[];
+        showQuantitative: boolean;
+        showDomainDetail: boolean;
+        showWarnings: boolean;
+        /** Só na pauta viva. A guardada mostra os mesmos valores, sem ações. */
+        decidable?: boolean;
+    }>(),
+    { decidable: false },
+);
+
+const emit = defineEmits<{ decide: [student: EvaluationSheetStudent] }>();
 
 const domainColumns = computed(() => props.domains.map((domain) => ({ id: domain.domain_id, name: domain.name })));
 
@@ -102,6 +114,35 @@ function assignedLevel(student: EvaluationSheetStudent): AssignedLevel {
     return { text: '—', kind: 'none' };
 }
 
+/**
+ * Se a coluna final oferece uma ação a este aluno.
+ *
+ * A resposta é do SERVIDOR (`can_decide`) — quem sabe se uma classificação
+ * ainda pode ser escrita é o estado da linha, não o ecrã. Sem essa resposta
+ * (uma pauta guardada, uma linha sem morada) não há ação nenhuma a oferecer.
+ */
+function isDecidable(student: EvaluationSheetStudent): boolean {
+    return props.decidable && student.can_decide === true && (student.enrollment_ulid ?? null) !== null;
+}
+
+/** Publicada: o valor fica, e deixa de haver o que alterar aqui. */
+function isPublished(student: EvaluationSheetStudent): boolean {
+    return student.classification?.status === 'published';
+}
+
+/**
+ * O nome da ação, dito por inteiro para quem não vê a coluna.
+ *
+ * «Alterar» sozinho, lido por um leitor de ecrã numa tabela de trinta linhas,
+ * não diz de quem — e a decisão errada seria escrita no aluno errado.
+ */
+function actionLabel(student: EvaluationSheetStudent): string {
+    const level = assignedLevel(student);
+
+    return level.kind === 'decided'
+        ? `Alterar a classificação de ${student.name} — atualmente ${level.text}`
+        : `Atribuir classificação a ${student.name}`;
+}
 
 /** Fundo muito suave na cor do domínio — identidade visual, nunca desempenho. */
 function domainHeaderStyle(color: string): Record<string, string> {
@@ -274,10 +315,51 @@ function domainCellStyle(color: string): Record<string, string> {
                     <td
                         class="sticky right-0 z-10 border-b border-l-2 border-border bg-background px-3 py-2 text-center whitespace-nowrap shadow-[-8px_0_8px_-6px_rgba(0,0,0,0.10)]"
                     >
-                        <span
-                            v-if="assignedLevel(student).kind === 'decided'"
-                            class="rounded bg-primary/10 px-2 py-0.5 font-bold text-primary"
+                        <!-- DECIDIDA E AINDA ABERTA: o valor É o botão. Clicar
+                             abre a mesma decisão para a rever — «Alterar», nunca
+                             «editar a proposta», que é outra coisa e não se faz. -->
+                        <button
+                            v-if="isDecidable(student) && assignedLevel(student).kind === 'decided'"
+                            type="button"
+                            class="rounded bg-primary/10 px-2 py-0.5 font-bold text-primary hover:ring-1 hover:ring-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
                             :title="assignedLevel(student).title"
+                            :aria-label="actionLabel(student)"
+                            :aria-haspopup="'dialog'"
+                            @click="emit('decide', student)"
+                        >
+                            {{ assignedLevel(student).text }}
+                        </button>
+
+                        <!-- POR DECIDIR: a proposta continua à vista, em itálico
+                             e sem força, e ao lado a ação que falta. Uma
+                             proposta nunca é apresentada como se fosse uma nota. -->
+                        <span v-else-if="isDecidable(student)" class="inline-flex items-center gap-1.5">
+                            <span
+                                v-if="assignedLevel(student).kind === 'proposed'"
+                                class="text-muted-foreground italic"
+                                :title="proposalTitle(assignedLevel(student).title)"
+                            >
+                                {{ assignedLevel(student).text }}
+                            </span>
+                            <button
+                                type="button"
+                                class="sheet-decision-cta rounded border border-dashed border-border px-2 py-0.5 text-xs hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+                                :aria-label="actionLabel(student)"
+                                :aria-haspopup="'dialog'"
+                                @click="emit('decide', student)"
+                            >
+                                Atribuir
+                            </button>
+                        </span>
+
+                        <!-- Sem ação: uma pauta guardada, ou uma classificação
+                             já publicada. O valor lê-se na mesma. -->
+                        <span
+                            v-else-if="assignedLevel(student).kind === 'decided'"
+                            class="rounded bg-primary/10 px-2 py-0.5 font-bold text-primary"
+                            :title="isPublished(student) && decidable
+                                ? `${assignedLevel(student).title ?? assignedLevel(student).text}. Já publicada.`
+                                : assignedLevel(student).title"
                         >
                             {{ assignedLevel(student).text }}
                         </span>

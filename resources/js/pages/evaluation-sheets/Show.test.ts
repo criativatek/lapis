@@ -1,14 +1,17 @@
 import { mount } from '@vue/test-utils';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, reactive } from 'vue';
-import type { EvaluationSheet, EvaluationSheetReadiness } from '@/types';
+import type { EvaluationSheet, EvaluationSheetDecisionScale, EvaluationSheetReadiness } from '@/types';
 import Show from './Show.vue';
+
+const routerPost = vi.fn();
 
 vi.mock('@inertiajs/vue3', () => ({
     Head: defineComponent({ setup: (_, { slots }) => () => h('div', slots.default?.()) }),
     Link: defineComponent({ inheritAttrs: false, setup: (_, { attrs, slots }) => () => h('a', attrs, slots.default?.()) }),
-    router: { get: vi.fn(), post: vi.fn() },
+    router: { get: vi.fn(), post: (...args: unknown[]) => routerPost(...args) },
     useForm: (fields: Record<string, unknown>) => reactive({ ...fields, errors: {}, processing: false, post: vi.fn() }),
+    usePage: () => ({ props: { errors: {} } }),
 }));
 
 /**
@@ -102,12 +105,48 @@ function baseSheet(): EvaluationSheet {
     };
 }
 
+/** A escala em que a decisão é tomada — «Escala 1 a 5», como o perfil-sistema. */
+function baseDecision(): EvaluationSheetDecisionScale {
+    return {
+        label: 'Nível atribuído',
+        classifies_by_level: true,
+        levels: [
+            { id: 1, code: '1', label: 'Muito Insuficiente' },
+            { id: 2, code: '2', label: 'Insuficiente' },
+            { id: 3, code: '3', label: 'Suficiente' },
+            { id: 4, code: '4', label: 'Bom' },
+            { id: 5, code: '5', label: 'Muito Bom' },
+        ],
+        min_value: '1',
+        max_value: '5',
+    };
+}
+
 function baseProps() {
     return {
         schoolClass: { ulid: 'class-1', label: '7.º A', subject: 'Português', academic_year: '2026/2027', has_profile: true },
         periods: [{ ulid: 'period-1', label: '1.º Semestre', kind_label: 'Semestre', selected: true }],
         sheet: baseSheet(),
+        decision: baseDecision(),
     };
+}
+
+/**
+ * A mesma pauta, agora endereçável: o servidor disse onde cada decisão se
+ * escreve e se ainda pode ser escrita. É isso — e só isso — que liga as ações.
+ */
+function decidableProps() {
+    const props = baseProps();
+    const sheet = props.sheet;
+
+    sheet.students[0].enrollment_ulid = 'enrollment-carolina';
+    sheet.students[0].can_decide = true;
+    sheet.students[0].can_use_proposal = false;
+    sheet.students[1].enrollment_ulid = 'enrollment-diogo';
+    sheet.students[1].can_decide = true;
+    sheet.students[1].can_use_proposal = false;
+
+    return props;
 }
 
 describe('evaluation-sheets/Show — a única vista', () => {
@@ -315,5 +354,100 @@ describe('evaluation-sheets/Show — imprimir e exportar', () => {
         expect(header.text()).toContain('Semestre');
         expect(header.text()).toContain('1.º Semestre');
         expect(header.text()).toContain('Impresso em');
+    });
+});
+
+/**
+ * A DECISÃO, A PARTIR DA PRÓPRIA PAUTA.
+ *
+ * A pauta é onde a informação toda já está: é onde o professor atribui. O que
+ * estes testes fixam é a separação que não pode cair — a PROPOSTA continua a ser
+ * proposta, a DECISÃO é do professor, e o ecrã nunca escreve nada por sua conta:
+ * envia para o caminho canónico e espera.
+ */
+describe('evaluation-sheets/Show — atribuir e alterar', () => {
+    // O painel é um portal: vive no `body`, fora da árvore do wrapper. Sem
+    // limpar, o diálogo de um teste continuaria a responder às perguntas do
+    // seguinte — e um `select` do teste anterior daria a resposta errada.
+    beforeEach(() => {
+        routerPost.mockReset();
+        document.body.innerHTML = '';
+    });
+
+    it('offers «Atribuir» where nothing was decided and «Alterar» where something was', () => {
+        const wrapper = mount(Show, { props: decidableProps() });
+        const rows = wrapper.findAll('tbody tr');
+
+        const diogo = rows.find((row) => row.text().includes('Diogo Ferreira'))!;
+        const atribuir = diogo.findAll('button').find((button) => button.text() === 'Atribuir');
+        expect(atribuir).toBeDefined();
+        expect(atribuir!.attributes('aria-label')).toBe('Atribuir classificação a Diogo Ferreira');
+
+        // Carolina já tem 4 decidido: o próprio valor é a ação de alterar, e o
+        // nome da ação diz de quem é e o que lá está.
+        const carolina = rows.find((row) => row.text().includes('Carolina Nunes'))!;
+        const alterar = carolina.findAll('button').find((button) => button.attributes('aria-label')?.startsWith('Alterar'));
+        expect(alterar).toBeDefined();
+        expect(alterar!.attributes('aria-label')).toBe('Alterar a classificação de Carolina Nunes — atualmente 4');
+        expect(alterar!.text()).toBe('4');
+    });
+
+    it('offers no action at all on a sheet the server did not address', () => {
+        // Sem `enrollment_ulid`/`can_decide` não há para onde escrever — que é
+        // exatamente o caso de uma pauta guardada.
+        const wrapper = mount(Show, { props: baseProps() });
+
+        expect(wrapper.findAll('button').filter((button) => button.text() === 'Atribuir')).toHaveLength(0);
+        expect(
+            wrapper.findAll('button').filter((button) => button.attributes('aria-label')?.startsWith('Alterar')),
+        ).toHaveLength(0);
+    });
+
+    it('writes the decision through the canonical classifications endpoint, and nowhere else', async () => {
+        const wrapper = mount(Show, { props: decidableProps() });
+        const rows = wrapper.findAll('tbody tr');
+        const diogo = rows.find((row) => row.text().includes('Diogo Ferreira'))!;
+
+        await diogo.findAll('button').find((button) => button.text() === 'Atribuir')!.trigger('click');
+
+        // O painel abriu com a proposta à vista e nada preenchido: uma proposta
+        // pré-selecionada seria o sistema a decidir por omissão.
+        const select = document.querySelector('select') as HTMLSelectElement | null;
+        expect(select).not.toBeNull();
+
+        select!.value = '3';
+        select!.dispatchEvent(new Event('change'));
+        await wrapper.vm.$nextTick();
+
+        const save = [...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Guardar decisão'));
+        expect(save).toBeDefined();
+        save!.click();
+        await wrapper.vm.$nextTick();
+
+        expect(routerPost).toHaveBeenCalledTimes(1);
+        expect(routerPost.mock.calls[0][0]).toBe('/classes/class-1/classifications/period-1/enrollment-diogo/decide');
+        expect(routerPost.mock.calls[0][1]).toEqual({ final_scale_level_id: 3, final_value: null });
+    });
+
+    it('opens the panel on the decision that stands, never on the proposal', async () => {
+        const wrapper = mount(Show, { props: decidableProps() });
+        const rows = wrapper.findAll('tbody tr');
+        const carolina = rows.find((row) => row.text().includes('Carolina Nunes'))!;
+
+        await carolina
+            .findAll('button')
+            .find((button) => button.attributes('aria-label')?.startsWith('Alterar'))!
+            .trigger('click');
+
+        // Carolina foi decidida em 4 e a proposta era 5. O seletor abre em 4.
+        const select = document.querySelector('select') as HTMLSelectElement | null;
+        expect(select).not.toBeNull();
+        expect(select!.value).toBe('4');
+
+        const panel = document.querySelector('[role="dialog"]');
+        expect(panel).not.toBeNull();
+        expect(panel!.textContent).toContain('Proposta do Lapispro');
+        // A proposta continua a dizer-se pelo código, com a menção à ilharga.
+        expect(panel!.textContent).toContain('5 — Muito Bom');
     });
 });
