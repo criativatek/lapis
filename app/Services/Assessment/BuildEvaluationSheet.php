@@ -10,6 +10,7 @@ use App\Models\Enrollment;
 use App\Models\ProfileVersionDomain;
 use App\Models\Scale;
 use App\Models\SchoolClass;
+use App\Models\SelfAssessment;
 use Illuminate\Support\Collection;
 
 /**
@@ -28,6 +29,14 @@ use Illuminate\Support\Collection;
  * would blank a column in every pauta kept before this change — history has to
  * go on saying what was on screen the day it was kept, so the reader falls
  * back to the label whenever a payload has no code.
+ *
+ * A AUTOAVALIAÇÃO VIAJA COM O RESTO, E POR ISSO FICA NO QUE FOR GUARDADO. O que
+ * o aluno disse de si próprio faz parte do estado avaliativo daquele momento —
+ * é ao lado dele que a decisão do professor se lê — e uma fotografia que o
+ * deixasse de fora não deixaria reconstruir o que o professor tinha à frente. É
+ * informação de apoio e NUNCA entra no cálculo (§15): não pesa, não soma, não
+ * arredonda coisa alguma. Uma pauta guardada antes disto não a traz, e continua
+ * a abrir — o leitor trata a ausência como ausência, nunca como um zero.
  */
 class BuildEvaluationSheet
 {
@@ -35,6 +44,7 @@ class BuildEvaluationSheet
         protected ClassResultsCalculator $calculator,
         protected CoverageExplanation $coverage,
         protected ScaleProposalResolver $proposals,
+        protected SelfAssessmentReading $selfAssessments,
     ) {}
 
     /**
@@ -55,20 +65,36 @@ class BuildEvaluationSheet
         $roundingScale = $profileVersion === null ? 0 : $profileVersion->rounding_scale;
         $classifications = $this->classifications($results, $academicPeriod, $resolvedScope);
 
+        // Uma consulta para a turma inteira, não uma por aluno (§24). A
+        // autoavaliação é sempre a DESTE período — mesmo num âmbito acumulado,
+        // porque o que o aluno disse de si num período não é o que disse
+        // noutro, e juntá-los seria inventar uma frase que ninguém escreveu.
+        $selfAssessments = $this->selfAssessments->forClassPeriod($schoolClass, $academicPeriod);
+
         $students = [];
         foreach ($results as $result) {
             $enrollment = $result['enrollment'];
             $outcome = $result['outcome'];
             $enrollmentId = (int) $enrollment->getKey();
+            $selfAssessment = $selfAssessments->get($enrollmentId);
 
             $students[] = [
                 'enrollment_id' => $enrollmentId,
                 'class_number' => $enrollment->class_number,
                 'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
                 'overall' => $this->overall($outcome, $scale, $roundingMode, $roundingScale),
-                'domains' => $this->domains($outcome, $profileDomains, $scale, $coverage[$enrollmentId]['domains'] ?? []),
+                'domains' => $this->domains(
+                    $outcome,
+                    $profileDomains,
+                    $scale,
+                    $coverage[$enrollmentId]['domains'] ?? [],
+                    $selfAssessment,
+                ),
                 'classification' => $this->classification($classifications[$enrollmentId] ?? null),
                 'coverage' => $coverage[$enrollmentId]['overall'] ?? CoverageExplanation::none(),
+                // O juízo global do próprio aluno. Null quando não respondeu à
+                // pergunta global — nunca a média do que disse por domínio.
+                'self_assessment' => $this->selfAssessments->global($selfAssessment),
             ];
         }
 
@@ -178,12 +204,18 @@ class BuildEvaluationSheet
      * @param  array<int, array<string, mixed>>  $coverage
      * @return list<array<string, mixed>>
      */
-    protected function domains(CalculationOutcome $outcome, Collection $profileDomains, ?Scale $scale, array $coverage): array
-    {
+    protected function domains(
+        CalculationOutcome $outcome,
+        Collection $profileDomains,
+        ?Scale $scale,
+        array $coverage,
+        ?SelfAssessment $selfAssessment = null,
+    ): array {
         $outcomes = collect($outcome->domains)->keyBy('domainId');
 
-        return array_values($profileDomains->map(function (ProfileVersionDomain $profileDomain) use ($outcomes, $scale, $coverage): array {
+        return array_values($profileDomains->map(function (ProfileVersionDomain $profileDomain) use ($outcomes, $scale, $coverage, $selfAssessment): array {
             $domainOutcome = $outcomes->get($profileDomain->domain_id);
+            $said = $this->selfAssessments->forDomain($selfAssessment, (int) $profileDomain->domain_id);
 
             if ($domainOutcome === null) {
                 // The engine never produced an outcome for this domain (e.g. no
@@ -200,6 +232,9 @@ class BuildEvaluationSheet
                     'scale_level_label' => null,
                     'has_coverage_warning' => true,
                     'coverage' => $coverage[$profileDomain->domain_id] ?? CoverageExplanation::none(),
+                    // O aluno pode ter-se pronunciado sobre um domínio que ainda
+                    // não tem elementos. Continua a ser o que ele disse.
+                    'self_assessment' => $said,
                 ];
             }
 
@@ -216,6 +251,7 @@ class BuildEvaluationSheet
                 'scale_level_label' => $level?->label,
                 'has_coverage_warning' => $domainOutcome->coverageWarning,
                 'coverage' => $coverage[$profileDomain->domain_id] ?? CoverageExplanation::none(),
+                'self_assessment' => $said,
             ];
         })->values()->all());
     }

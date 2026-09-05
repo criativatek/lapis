@@ -131,6 +131,18 @@ function baseProps() {
     };
 }
 
+/** A mesma pauta, com o que os alunos disseram de si próprios. */
+function selfAssessedProps() {
+    const props = decidableProps();
+    const sheet = props.sheet;
+
+    sheet.students[0].self_assessment = { code: '3', label: 'Suficiente', sequence: 3, is_negative: false };
+    sheet.students[0].domains[0].self_assessment = { code: '2', label: 'Insuficiente', sequence: 2, is_negative: true };
+    // Diogo não respondeu — ausência, nunca zero.
+
+    return props;
+}
+
 /**
  * A mesma pauta, agora endereçável: o servidor disse onde cada decisão se
  * escreve e se ainda pode ser escrita. É isso — e só isso — que liga as ações.
@@ -449,5 +461,85 @@ describe('evaluation-sheets/Show — atribuir e alterar', () => {
         expect(panel!.textContent).toContain('Proposta do Lapispro');
         // A proposta continua a dizer-se pelo código, com a menção à ilharga.
         expect(panel!.textContent).toContain('5 — Muito Bom');
+    });
+});
+
+/**
+ * A AUTOAVALIAÇÃO NA PAUTA.
+ *
+ * Aparece porque é com ela ao lado que a decisão se toma; esconde-se porque a
+ * pauta continua a ser do professor; e não existe de todo onde ninguém se
+ * pronunciou, porque uma coluna vazia não informa ninguém.
+ */
+describe('evaluation-sheets/Show — autoavaliação', () => {
+    beforeEach(() => {
+        document.body.innerHTML = '';
+    });
+
+    it('shows the self-assessment by default when there is one', () => {
+        const wrapper = mount(Show, { props: selfAssessedProps() });
+
+        const headers = wrapper.findAll('thead th').map((header) => header.text());
+        expect(headers.some((header) => header.replace(/\s/g, '').includes('Autoavaliação'))).toBe(true);
+
+        const carolina = wrapper.findAll('tbody tr').find((row) => row.text().includes('Carolina Nunes'))!;
+        // A síntese é curta: o código do juízo global, com a menção no título.
+        const cell = carolina
+            .findAll('span')
+            .find((span) => span.attributes('title') === 'Autoavaliação do aluno: 3 — Suficiente');
+        expect(cell).toBeDefined();
+        expect(cell!.text()).toBe('3');
+
+        // E o que ela disse sobre um domínio, em expoente, dentro do domínio.
+        const perDomain = carolina
+            .findAll('sup')
+            .find((sup) => sup.attributes('title')?.startsWith('Autoavaliação do aluno — Oralidade'));
+        expect(perDomain).toBeDefined();
+        expect(perDomain!.text()).toBe('A2');
+    });
+
+    it('has neither column nor toggle where nobody self-assessed', () => {
+        const wrapper = mount(Show, { props: decidableProps() });
+
+        const headers = wrapper.findAll('thead th').map((header) => header.text().replace(/\s/g, ''));
+        expect(headers.some((header) => header.includes('Autoavaliação'))).toBe(false);
+
+        const labels = wrapper.findAll('label').map((label) => label.text());
+        expect(labels.some((label) => label.includes('Autoavaliação'))).toBe(false);
+    });
+
+    it('hides the column on request, without touching a single value', async () => {
+        const props = selfAssessedProps();
+        const before = JSON.stringify(props.sheet);
+        const wrapper = mount(Show, { props });
+
+        const toggle = wrapper
+            .findAll('label')
+            .find((label) => label.text().includes('Autoavaliação'))!
+            .find('input');
+
+        await toggle.setValue(false);
+
+        const headers = wrapper.findAll('thead th').map((header) => header.text().replace(/\s/g, ''));
+        expect(headers.some((header) => header.includes('Autoavaliação'))).toBe(false);
+
+        // ESCONDER É ESCONDER. O payload recebido do servidor fica intacto — o
+        // toggle não recalcula nada e nem sequer chega ao servidor.
+        expect(JSON.stringify(props.sheet)).toBe(before);
+    });
+
+    it('puts what the student said inside the decision panel, labelled as theirs', async () => {
+        const wrapper = mount(Show, { props: selfAssessedProps() });
+        const carolina = wrapper.findAll('tbody tr').find((row) => row.text().includes('Carolina Nunes'))!;
+
+        await carolina
+            .findAll('button')
+            .find((button) => button.attributes('aria-label')?.startsWith('Alterar'))!
+            .trigger('click');
+
+        const panel = document.querySelector('[role="dialog"]')!;
+        expect(panel.textContent).toContain('Autoavaliação');
+        // E dito como apoio, nunca como uma segunda nota.
+        expect(panel.textContent).toContain('nunca determina a classificação');
     });
 });

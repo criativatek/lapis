@@ -10,9 +10,24 @@
  * fotografia possa ser lida das mesmas maneiras.
  */
 
+withDefaults(
+    defineProps<{
+        /**
+         * Se esta pauta tem alguma autoavaliação.
+         *
+         * SEM AUTOAVALIAÇÃO NÃO HÁ INTERRUPTOR. Um controlo que só pode
+         * esconder o que não existe não é uma opção, é ruído — e a coluna vazia
+         * que ele governaria seria pior ainda (§11).
+         */
+        selfAssessmentAvailable?: boolean;
+    }>(),
+    { selfAssessmentAvailable: false },
+);
+
 const showQuantitative = defineModel<boolean>('showQuantitative', { required: true });
 const showDomainDetail = defineModel<boolean>('showDomainDetail', { required: true });
 const showWarnings = defineModel<boolean>('showWarnings', { required: true });
+const showSelfAssessment = defineModel<boolean>('showSelfAssessment', { required: true });
 </script>
 
 <template>
@@ -25,6 +40,10 @@ const showWarnings = defineModel<boolean>('showWarnings', { required: true });
         <label class="flex items-center gap-1.5">
             <input v-model="showDomainDetail" type="checkbox" class="rounded border-border" />
             Detalhe por domínio
+        </label>
+        <label v-if="selfAssessmentAvailable" class="flex items-center gap-1.5">
+            <input v-model="showSelfAssessment" type="checkbox" class="rounded border-border" />
+            Autoavaliação
         </label>
         <label class="flex items-center gap-1.5">
             <input v-model="showWarnings" type="checkbox" class="rounded border-border" />

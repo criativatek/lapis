@@ -13,6 +13,7 @@ import { pct } from '@/lib/results';
 import type {
     EvaluationSheetDecisionScale,
     EvaluationSheetDomain,
+    EvaluationSheetSelfAssessment,
     EvaluationSheetStudent,
 } from '@/types';
 
@@ -114,6 +115,22 @@ const assigned = computed(() => {
     );
 });
 
+/**
+ * A autoavaliação dita por inteiro — de quem é, o código e a menção.
+ *
+ * Um «4» solto ao lado do nível atribuído seria lido como uma segunda nota; a
+ * frase começa por dizer que é o ALUNO a falar de si próprio.
+ */
+function selfAssessmentTitle(level: EvaluationSheetSelfAssessment | null | undefined, subject?: string): string | undefined {
+    if (!level) {
+        return undefined;
+    }
+
+    const what = subject === undefined ? 'Autoavaliação do aluno' : `Autoavaliação do aluno — ${subject}`;
+
+    return `${what}: ${level.code} — ${level.label}`;
+}
+
 /** O global do aluno: o valor na escala quando existe, senão a percentagem. */
 const overall = computed(() => {
     const student = props.student;
@@ -141,8 +158,16 @@ const domainRows = computed(() =>
                     ? `${row.scale_level_code} — ${row.scale_level_label}`
                     : undefined,
             warning: row?.has_coverage_warning === true,
+            said: row?.self_assessment ?? null,
         };
     }),
+);
+
+/** Se este aluno se pronunciou de todo — globalmente ou sobre algum domínio. */
+const hasSelfAssessment = computed(
+    () =>
+        (props.student?.self_assessment ?? null) !== null ||
+        (props.student?.domains.some((domain) => (domain.self_assessment ?? null) !== null) ?? false),
 );
 
 /** Vazio não é uma decisão: guardar exige que alguma coisa tenha sido escolhida. */
@@ -199,7 +224,18 @@ function onOpenChange(open: boolean): void {
             <div class="rounded-md border border-border">
                 <div class="flex items-center justify-between border-b border-border px-3 py-1.5 text-xs">
                     <span class="font-medium">Global</span>
-                    <span class="tabular-nums">{{ overall }}</span>
+                    <span class="flex items-center gap-3">
+                        <!-- A perceção do aluno ao lado da evidência, que é o
+                             ponto de a mostrar aqui: comparar. Rotulada, para
+                             que nunca se leia como mais um resultado. -->
+                        <span v-if="hasSelfAssessment" class="text-muted-foreground">
+                            Autoavaliação:
+                            <span class="font-medium" :title="selfAssessmentTitle(student.self_assessment)">
+                                {{ student.self_assessment?.code ?? '—' }}
+                            </span>
+                        </span>
+                        <span class="tabular-nums">{{ overall }}</span>
+                    </span>
                 </div>
                 <ul class="divide-y divide-border">
                     <li
@@ -219,11 +255,21 @@ function onOpenChange(open: boolean): void {
                             <span v-if="row.warning" class="shrink-0 text-amber-600" title="Cobertura parcial ou elementos em falta.">⚠</span>
                         </span>
                         <span class="flex shrink-0 items-center gap-3 tabular-nums">
+                            <span
+                                v-if="hasSelfAssessment"
+                                class="min-w-6 text-right text-muted-foreground"
+                                :title="selfAssessmentTitle(row.said, row.name)"
+                                :aria-label="selfAssessmentTitle(row.said, row.name)"
+                            >{{ row.said ? `A${row.said.code}` : '' }}</span>
                             <span class="text-muted-foreground">{{ row.quantitative }}</span>
                             <span class="min-w-6 text-right font-medium" :title="row.levelTitle">{{ row.level ?? '—' }}</span>
                         </span>
                     </li>
                 </ul>
+                <p v-if="hasSelfAssessment" class="border-t border-border px-3 py-1.5 text-[11px] text-muted-foreground">
+                    «A» é o que o aluno disse de si próprio. É informação de apoio — nunca determina a
+                    classificação.
+                </p>
             </div>
 
             <!-- ONDE A DECISÃO É TOMADA. Um seletor fechado na escala de níveis,

@@ -14,7 +14,6 @@ use App\Models\Enrollment;
 use App\Models\Scale;
 use App\Models\SchoolClass;
 use App\Models\SelfAssessment;
-use App\Models\SelfAssessmentQuestionRole;
 use App\Models\SelfAssessmentStatus;
 use App\Support\Assessment\AssessmentCutoff;
 use Illuminate\Support\Collection;
@@ -53,6 +52,7 @@ class BuildResultsProgression
     public function __construct(
         protected ClassResultsCalculator $calculator,
         protected ScaleProposalResolver $proposals,
+        protected SelfAssessmentReading $selfAssessments,
     ) {}
 
     /**
@@ -336,42 +336,15 @@ class BuildResultsProgression
     /**
      * The student's own overall judgement — an ANSWER, never a calculation.
      *
-     * The global question is the one belonging to no domain. It is identified
-     * structurally, never by reading its wording, and it is never derived from
-     * the per-domain answers: a student who rated four domains and skipped the
-     * overall question has not made an overall judgement, and averaging the
-     * four on their behalf would put words in their mouth (§11).
+     * READ THROUGH THE ONE READER (`SelfAssessmentReading`), which Pautas de
+     * Avaliação also uses. Two copies of this is how two screens end up
+     * disagreeing about what the same student said about themselves.
      *
      * @return array<string, mixed>|null
      */
     protected function globalSelfAssessment(?SelfAssessment $selfAssessment): ?array
     {
-        if ($selfAssessment === null) {
-            return null;
-        }
-
-        foreach ($selfAssessment->responses as $response) {
-            $question = $response->question;
-
-            // Identified by its stated ROLE. Not by its wording, which somebody
-            // will rephrase, and not by its position, which changes the moment a
-            // question is inserted — and would then silently reassign what every
-            // answer already given meant.
-            if ($question?->role !== SelfAssessmentQuestionRole::Global) {
-                continue;
-            }
-
-            return $response->scaleLevel === null ? null : [
-                // The number IS the judgement — a 4, a 16. The qualitative
-                // mention comes along beside it and never in its place.
-                'code' => $response->scaleLevel->code,
-                'label' => $response->scaleLevel->label,
-                'sequence' => $response->scaleLevel->sequence,
-                'is_negative' => (bool) $response->scaleLevel->is_negative,
-            ];
-        }
-
-        return null;
+        return $this->selfAssessments->global($selfAssessment);
     }
 
     /**
@@ -379,30 +352,7 @@ class BuildResultsProgression
      */
     protected function levelOf(?SelfAssessment $selfAssessment, int $domainId): ?array
     {
-        if ($selfAssessment === null) {
-            return null;
-        }
-
-        foreach ($selfAssessment->responses as $response) {
-            $question = $response->question;
-
-            if ($question === null || $question->answer_kind !== 'scale') {
-                continue;
-            }
-
-            if ($question->domain_id !== $domainId || $response->scaleLevel === null) {
-                continue;
-            }
-
-            return [
-                'code' => $response->scaleLevel->code,
-                'label' => $response->scaleLevel->label,
-                'sequence' => $response->scaleLevel->sequence,
-                'is_negative' => (bool) $response->scaleLevel->is_negative,
-            ];
-        }
-
-        return null;
+        return $this->selfAssessments->forDomain($selfAssessment, $domainId);
     }
 
     /**
