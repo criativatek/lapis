@@ -112,7 +112,7 @@ function submit(): void {
             <Link
                 href="/assessments"
                 class="text-sm text-muted-foreground hover:underline"
-                >← Voltar a Avaliações</Link
+                >← Voltar a Grelhas de correção</Link
             >
         </div>
 

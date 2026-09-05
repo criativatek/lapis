@@ -1002,7 +1002,7 @@ const typeName = computed(
                 <Link
                     href="/assessments"
                     class="text-muted-foreground hover:underline"
-                    >← Voltar a Avaliações</Link
+                    >← Voltar a Grelhas de correção</Link
                 >
                 <!--
                   An explicit way back to step 1. Without it the only route is

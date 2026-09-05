@@ -132,7 +132,7 @@ describe('instruments/Grid — o cabeçalho', () => {
 
         const link = backLink(mount(Grid, { props: props() }));
 
-        expect(link?.text()).toContain('← Voltar a Avaliações');
+        expect(link?.text()).toContain('← Voltar a Grelhas de correção');
         expect(link?.attributes('href')).toBe('/assessments/instrument-a');
     });
 
@@ -144,7 +144,7 @@ describe('instruments/Grid — o cabeçalho', () => {
         arriveAt('?from=assessments&month=2026-09');
 
         expect(backLink(mount(Grid, { props: props() }))?.text()).toContain(
-            '← Voltar a Avaliações',
+            '← Voltar a Grelhas de correção',
         );
     });
 
@@ -213,5 +213,33 @@ describe('instruments/Grid — o cabeçalho', () => {
 
         expect(wrapper.text()).toContain('Esta avaliação está datada de 13/09/2026');
         expect(wrapper.text()).not.toContain('2026-09-13');
+    });
+});
+
+/**
+ * Uma correção concluída é consultada, não editada: os campos ficam
+ * `readonly`/`disabled` e o cabeçalho di-lo por extenso — nunca por cor
+ * sozinha (§WCAG).
+ */
+describe('instruments/Grid — correção concluída', () => {
+    it('mostra a grelha em modo de consulta: pontos readonly, estado disabled, aviso presente', () => {
+        const wrapper = mount(Grid, {
+            props: props({ is_completed: true, can_complete: false, pending_count: 0 }),
+        });
+
+        const pointsInput = wrapper.find('input[type="number"]');
+        expect(pointsInput.attributes('readonly')).toBeDefined();
+
+        const stateSelect = wrapper
+            .findAll('select')
+            .find((select) => select.attributes('aria-label')?.startsWith('Estado de'));
+        expect(stateSelect?.attributes('disabled')).toBeDefined();
+
+        expect(wrapper.text()).toContain('Correção concluída — em modo de consulta.');
+
+        // Recuperação de rascunho: omitido — plantar um rascunho aqui exige
+        // escrever directamente no localStorage com a chave que useGridDraft
+        // deriva (organização/utilizador/instrumento/fingerprint), o que este
+        // ficheiro não faz em nenhum teste existente.
     });
 });

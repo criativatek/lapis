@@ -21,6 +21,7 @@ import type { AiReadingSection } from '@/components/ai/AiReadingPanel.vue';
 import AiTextPrivacyNotice from '@/components/ai/AiTextPrivacyNotice.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
+import NativeSelect from '@/components/ui/NativeSelect.vue';
 import { useAiTextPrivacyGuard } from '@/composables/useAiTextPrivacyGuard';
 import {
     categoryAxis,
@@ -1718,16 +1719,16 @@ const PURPOSE_LABEL: Record<string, string> = {
                     <div class="grid gap-3 sm:grid-cols-2">
                         <label class="text-xs">
                             <span class="mb-1 block text-muted-foreground">Finalidade</span>
-                            <select v-model="selectedPurpose" class="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm">
+                            <NativeSelect v-model="selectedPurpose">
                                 <option v-for="option in aiPurposeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-                            </select>
+                            </NativeSelect>
                         </label>
                         <label class="text-xs">
                             <span class="mb-1 block text-muted-foreground">Domínio</span>
-                            <select v-model="selectedDomainId" class="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm">
+                            <NativeSelect v-model="selectedDomainId">
                                 <option :value="null" disabled>Escolher…</option>
                                 <option v-for="domain in domains.rows" :key="domain.domain_id" :value="domain.domain_id">{{ domain.name }}</option>
-                            </select>
+                            </NativeSelect>
                         </label>
                     </div>
                     <label class="block text-xs">

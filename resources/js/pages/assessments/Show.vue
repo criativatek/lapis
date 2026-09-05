@@ -105,7 +105,7 @@ const stateBadgeClass: Record<string, string> = {
         <div>
             <p class="text-sm text-muted-foreground">Avaliação</p>
             <Heading :title="instrument.title" />
-            <Link href="/assessments" class="text-sm text-muted-foreground hover:underline">← Todas as avaliações</Link>
+            <Link href="/assessments" class="text-sm text-muted-foreground hover:underline">← Todas as grelhas</Link>
         </div>
 
         <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">

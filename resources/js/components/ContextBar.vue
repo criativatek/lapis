@@ -76,7 +76,7 @@ function selectAcademicYear(ulid: string, isCurrent: boolean): void {
 </script>
 
 <template>
-    <div class="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden md:overflow-x-auto">
+    <div class="scrollbar-none flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden md:overflow-x-auto">
         <DropdownMenu v-if="hasAcademicYears">
             <DropdownMenuTrigger as-child>
                 <button

@@ -5,6 +5,7 @@ import { computed, ref, watch } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
+import NativeSelect from '@/components/ui/NativeSelect.vue';
 
 type Option = { value: string; label: string };
 
@@ -124,32 +125,32 @@ function formatDate(value: string): string {
         <div class="flex flex-wrap items-end gap-3">
             <label class="grid gap-1 text-sm">
                 <span class="text-xs font-medium text-muted-foreground">Tipo</span>
-                <select v-model="type" class="h-9 rounded-md border border-border bg-background px-2 text-sm">
+                <NativeSelect v-model="type">
                     <option value="">Todos</option>
                     <option v-for="option in availableTypes" :key="option.value" :value="option.value">
                         {{ option.label }}
                     </option>
-                </select>
+                </NativeSelect>
             </label>
 
             <label class="grid gap-1 text-sm">
                 <span class="text-xs font-medium text-muted-foreground">Estado</span>
-                <select v-model="status" class="h-9 rounded-md border border-border bg-background px-2 text-sm">
+                <NativeSelect v-model="status">
                     <option value="">Todos</option>
                     <option v-for="option in statuses" :key="option.value" :value="option.value">
                         {{ option.label }}
                     </option>
-                </select>
+                </NativeSelect>
             </label>
 
             <label class="grid gap-1 text-sm">
                 <span class="text-xs font-medium text-muted-foreground">Turma</span>
-                <select v-model="classId" class="h-9 rounded-md border border-border bg-background px-2 text-sm">
+                <NativeSelect v-model="classId">
                     <option value="">Todas</option>
                     <option v-for="schoolClass in classes" :key="schoolClass.id" :value="String(schoolClass.id)">
                         {{ schoolClass.label }} · {{ schoolClass.subject }}
                     </option>
-                </select>
+                </NativeSelect>
             </label>
 
             <Button v-if="hasFilters" variant="ghost" size="sm" @click="clearFilters">Limpar</Button>

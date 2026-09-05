@@ -148,7 +148,7 @@ function hasNoApplicableStudents(assessment: Assessment): boolean {
                 <DropdownMenu v-if="classOptions.length">
                     <DropdownMenuTrigger as-child>
                         <Button>
-                            <Plus class="size-4" /> Nova avaliação
+                            <Plus class="size-4" /> Nova grelha
                             <ChevronDown class="size-4 opacity-70" aria-hidden="true" />
                         </Button>
                     </DropdownMenuTrigger>
@@ -219,7 +219,7 @@ function hasNoApplicableStudents(assessment: Assessment): boolean {
 
         <EmptyState
             v-if="assessments.length === 0"
-            :title="hasActiveFilters() ? 'Nenhuma avaliação corresponde aos filtros escolhidos.' : 'Ainda não tem avaliações — crie um elemento de avaliação a partir de uma turma.'"
+            :title="hasActiveFilters() ? 'Nenhuma grelha corresponde aos filtros escolhidos.' : 'Ainda não tem grelhas de correção — crie um elemento de avaliação a partir de uma turma.'"
             :icon="PenLine"
         />
 
@@ -227,7 +227,7 @@ function hasNoApplicableStudents(assessment: Assessment): boolean {
             <template #head>
                 <tr>
                         <th class="px-4 py-2.5 font-medium">Data</th>
-                        <th class="px-4 py-2.5 font-medium">Avaliação</th>
+                        <th class="px-4 py-2.5 font-medium">Grelha</th>
                         <th class="px-4 py-2.5 font-medium">Finalidade</th>
                         <th class="px-4 py-2.5 font-medium">Turma</th>
                         <th class="px-4 py-2.5 font-medium">Período</th>

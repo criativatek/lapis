@@ -256,6 +256,15 @@
  * decisão do professor assenta a tinta. A grelha diz de longe o que ainda é
  * do sistema e o que já é de quem decide (§3.3 tornada visível).
  */
+/* Barras de chips (ContextBar): o scroll fica, a barra do Windows não.
+   O conteúdo continua alcançável por roda, gesto e teclado. */
+@utility scrollbar-none {
+    scrollbar-width: none;
+    &::-webkit-scrollbar {
+        display: none;
+    }
+}
+
 @utility pencil-note {
     color: var(--pencil);
     font-style: italic;

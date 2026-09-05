@@ -972,7 +972,7 @@ function revertCancellation(): void {
                     :href="`/assessments/${instrument.ulid}`"
                     class="text-sm text-muted-foreground hover:underline"
                 >
-                    ← Voltar a Avaliações
+                    ← Voltar a Grelhas de correção
                 </Link>
                 <Link
                     v-else-if="cameFromCalendar"

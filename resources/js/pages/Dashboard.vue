@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { ArrowRight, CalendarDays, CheckCircle2, Circle, FileText, NotebookPen, PenLine, X } from '@lucide/vue';
 import { computed } from 'vue';
 import { Button } from '@/components/ui/button';
@@ -47,6 +47,22 @@ const props = defineProps<{
 // First name only — a warmer greeting than the full registered name.
 const firstName = computed(() => props.teacherName.split(' ')[0]);
 
+const page = usePage();
+
+/**
+ * A module the organization may at least CONSULT — `modules` alone would hide
+ * these links from a suspended organization, whose whole point is that the data
+ * stays readable. Presentation only; each destination re-checks on the server.
+ */
+function canRead(module: string): boolean {
+    return page.props.modules.includes(module) || page.props.readOnlyModules.includes(module);
+}
+
+const canOpenAssessments = computed(() => canRead('assessments'));
+const canOpenReports = computed(() => canRead('reports'));
+const canOpenRecords = computed(() => canRead('records'));
+const canOpenCalendar = computed(() => canRead('calendar'));
+
 // Never a modal, never blocking: an old, fully-adopted account already shows
 // nothing (all_done), the same way readiness() shows nothing once configured.
 const showFirstSteps = computed(() => !props.firstSteps.dismissed && !props.firstSteps.all_done);
@@ -82,7 +98,12 @@ const agoraSozinho = computed(() => agora.value !== null && aSeguir.value.length
 
 // «Atalhos»: só em contas pequenas (poucas turmas), onde a home cheia (Agora +
 // A seguir + Arrumado) nunca ocupa o ecrã. Navegação pura — sem estatística.
-const showAtalhos = computed(() => props.classes.length > 0 && props.classes.length <= 2);
+const showAtalhos = computed(
+    () =>
+        props.classes.length > 0 &&
+        props.classes.length <= 2 &&
+        (canOpenAssessments.value || canOpenReports.value || canOpenRecords.value || canOpenCalendar.value),
+);
 
 /** Tudo em dia — a única condição em que a frase de fecho aparece. */
 const allDone = computed(
@@ -312,19 +333,23 @@ function pendingLabel(schoolClass: ClassCard): string {
             <section v-if="showAtalhos">
                 <h2 class="text-base font-semibold">Atalhos</h2>
                 <div class="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    <Link href="/assessments" :class="[card('plain'), 'flex items-center gap-3 p-4 hover:bg-muted/50']">
+                    <Link
+                        v-if="canOpenAssessments"
+                        href="/assessments"
+                        :class="[card('plain'), 'flex items-center gap-3 p-4 hover:bg-muted/50']"
+                    >
                         <PenLine class="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
                         <span class="font-medium">Grelhas de correção</span>
                     </Link>
-                    <Link href="/reports" :class="[card('plain'), 'flex items-center gap-3 p-4 hover:bg-muted/50']">
+                    <Link v-if="canOpenReports" href="/reports" :class="[card('plain'), 'flex items-center gap-3 p-4 hover:bg-muted/50']">
                         <FileText class="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
                         <span class="font-medium">Relatórios</span>
                     </Link>
-                    <Link href="/records" :class="[card('plain'), 'flex items-center gap-3 p-4 hover:bg-muted/50']">
+                    <Link v-if="canOpenRecords" href="/records" :class="[card('plain'), 'flex items-center gap-3 p-4 hover:bg-muted/50']">
                         <NotebookPen class="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
                         <span class="font-medium">Registos</span>
                     </Link>
-                    <Link href="/calendar" :class="[card('plain'), 'flex items-center gap-3 p-4 hover:bg-muted/50']">
+                    <Link v-if="canOpenCalendar" href="/calendar" :class="[card('plain'), 'flex items-center gap-3 p-4 hover:bg-muted/50']">
                         <CalendarDays class="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
                         <span class="font-medium">Calendário</span>
                     </Link>

@@ -4,6 +4,7 @@ import { Check, Pencil, RefreshCw, Sparkles, Trash2, X } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
+import NativeSelect from '@/components/ui/NativeSelect.vue';
 import { Spinner } from '@/components/ui/spinner';
 import HomeworkGrid from './HomeworkGrid.vue';
 
@@ -656,26 +657,26 @@ watch(
         <div class="flex flex-wrap items-center gap-3 text-sm">
             <label class="flex items-center gap-2">
                 <span class="text-xs text-muted-foreground">Aluno</span>
-                <select v-model="filterEnrollmentId" class="rounded-md border border-border bg-background px-2 py-1" @change="applyFilters">
+                <NativeSelect v-model="filterEnrollmentId" @change="applyFilters">
                     <option :value="null">Todos</option>
                     <option v-for="enrollment in enrollments" :key="enrollment.id" :value="enrollment.id">{{ enrollment.name }}</option>
-                </select>
+                </NativeSelect>
             </label>
             <label class="flex items-center gap-2">
                 <span class="text-xs text-muted-foreground">Tipo</span>
-                <select v-model="filterKind" class="rounded-md border border-border bg-background px-2 py-1" @change="applyFilters">
+                <NativeSelect v-model="filterKind" @change="applyFilters">
                     <option :value="null">Todos</option>
                     <optgroup v-for="group in kindGroups" :key="group.label" :label="group.label">
                         <option v-for="kind in group.kinds" :key="kind.value" :value="kind.value">{{ kind.label }}</option>
                     </optgroup>
-                </select>
+                </NativeSelect>
             </label>
             <label class="flex items-center gap-2">
                 <span class="text-xs text-muted-foreground">Período</span>
-                <select v-model="filterPeriodId" class="rounded-md border border-border bg-background px-2 py-1" @change="applyFilters">
+                <NativeSelect v-model="filterPeriodId" @change="applyFilters">
                     <option :value="null">Todos</option>
                     <option v-for="period in periods" :key="period.id" :value="period.id">{{ period.label }}</option>
-                </select>
+                </NativeSelect>
             </label>
         </div>
 

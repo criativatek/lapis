@@ -25,6 +25,27 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.128.0] — 2026-09-05
+
+### Alterado
+
+- **O vocabulário fechou-se em «Grelhas de correção»**: botão «Nova grelha»,
+  coluna «Grelha», vazios e todos os «← Voltar» (grelha, detalhe, importação)
+  dizem agora o nome do menu. «Elemento de avaliação», «perfil de avaliação» e
+  «autoavaliação» ficam — são o conceito pedagógico, não a página.
+- **`NativeSelect`**: componente único para selects nativos com a casca da
+  casa (chevron, foco, borda) — adoptado nos filtros de Relatórios, Registos
+  e Acompanhamento do aluno; os selects dentro de diálogos e de células com
+  lógica própria ficam para a vaga seguinte, de propósito.
+- **Atalhos da home respeitam os módulos**: cada cartão só aparece se a
+  organização puder ler o módulo respectivo (padrão `canRead` da casa); sem
+  nenhum legível, a secção não renderiza.
+- **A barra de contexto deixou de mostrar a scrollbar do Windows** quando os
+  chips não cabem — o deslocamento continua (roda, gesto, teclado), a barra
+  cinzenta é que já não risca o topo da app.
+- A grelha em modo de consulta ganhou um teste de montagem (notas `readonly`,
+  estados `disabled`, aviso presente) — a guarda que faltava à fatia anterior.
+
 ## [0.127.0] — 2026-09-05
 
 ### Alterado
