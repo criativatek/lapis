@@ -25,6 +25,71 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.129.0] — 2026-09-05
+
+### Adicionado
+
+- **Pautas de Avaliação**, em Avaliação. Uma pauta e não três: abre com tudo o
+  que existe — o quantitativo, a apreciação qualitativa por domínio, e a
+  classificação sugerida a par da que o professor decidiu. O professor pode
+  ocultar grupos de informação, e ocultar é só ver menos: os dados que o
+  servidor manda não mudam com o que está escondido.
+- A terminologia é a que a escola configurou. A pauta diz «Semestre», «Período»
+  ou o que estiver no ano letivo porque lê a configuração temporal — nenhuma
+  dessas palavras está escrita no código. Os domínios são os do perfil da
+  turma, quaisquer que sejam.
+- Cada domínio tem uma cor pastel própria e estável. É identidade visual e
+  nunca desempenho: o nome do domínio está sempre visível, e a cor nunca se lê
+  como «bom» ou «mau». `domains.color` permite substituí-la.
+- **Guardar uma pauta** cria uma fotografia imutável, com hash: os valores, as
+  apreciações, as classificações, e também as próprias etiquetas temporais e as
+  cores. Renomear «1.º Semestre» em fevereiro não reescreve o que a pauta de
+  dezembro dizia, e corrigir uma nota depois não mexe no que ficou guardado.
+- **Histórico** das pautas guardadas, com autor, data do momento e data em que
+  foi guardada. Várias pautas do mesmo momento coexistem — nenhuma substitui
+  outra, e «mais recente» é uma posição na lista e não uma coluna que possa
+  ficar a mentir. Um documento que não bata certo com o seu hash não é
+  mostrado.
+- **Preparar exportação para o Inovar**, a partir da pauta: uma etapa de
+  revisão antes de escrever seja o que for, com a correspondência dos alunos
+  pelo n.º de processo, o que vai para cada célula, e os avisos. Dados
+  pedagógicos em falta avisam e não bloqueiam; só bloqueia o que impede
+  tecnicamente produzir um ficheiro válido. O ficheiro gerado fica em disco
+  privado e descarrega-se do histórico.
+- **Incluir o nível/classificação atribuída** na exportação, à escolha —
+  desligado num momento intercalar, ligado quando o período já fechou, lido das
+  datas do próprio período. O nível escrito é sempre a decisão do professor e
+  nunca a sugestão; sem decisão, a célula fica como estava. A coluna de destino
+  é escolhida pelo professor de entre as que a grelha mostra ter: nenhuma das
+  grelhas reais a nomeia, e adivinhá-la seria escrever no sítio errado.
+- **Exportar CSV** e **imprimir**, a partir da própria pauta. O CSV leva sempre
+  tudo, com uma coluna a dizer se o nível é decisão ou proposta — no ecrã isso
+  distingue-se pela tipografia, e num ficheiro não há tipografia. A impressão
+  leva o que está no ecrã.
+
+### Alterado
+
+- **«Pautas de classificações» foi absorvida pelas Pautas de Avaliação** e saiu
+  de Relatórios. O que fazia está hoje em dois sítios melhores: o detalhe do
+  período na nova pauta, e a leitura do ano inteiro no Quadro Síntese, que já
+  mostrava por período a proposta e a decisão. As três URLs antigas continuam a
+  responder, por redirect — um bookmark não deixa de valer só porque o ecrã
+  mudou de sítio.
+
+### Interno
+
+- O exportador do INOVAR é reutilizado tal como estava: o leitor da grelha, o
+  preenchimento, os códigos e a pré-validação são os mesmos que o fluxo antigo
+  usa, e esse fluxo continua a funcionar. A grelha que o professor carrega
+  nunca é alterada — fórmulas, estilos e células mescladas voltam intactas.
+- Corrigido pelo caminho: a extensão do ficheiro exportado era lida do caminho
+  do upload, que é sempre `template.xls`, e por isso uma grelha `.xlsx` saía
+  com nome `.xls` — o que o INOVAR recusa importar. Passa a ser perguntada ao
+  próprio ficheiro.
+- `docs/domain-model.md` descrevia um filtro dos registos do professor nos
+  relatórios que nunca existiu em código. As colunas mantêm-se e os dados
+  também; o que se corrigiu foi o documento.
+
 ## [0.128.0] — 2026-09-05
 
 ### Alterado
