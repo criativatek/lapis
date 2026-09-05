@@ -462,23 +462,34 @@ class EvaluationSheetXlsxWriter
         $sheet->getStyle([$column, $row])->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
     }
 
+    /**
+     * Os bytes do ficheiro, SEM PASSAR PELO DISCO.
+     *
+     * O caminho óbvio — `tempnam()`, escrever, ler, apagar — parece inofensivo e
+     * não é. Nesta aplicação `tempnam()` emite um aviso («file created in the
+     * system's temporary directory») sempre que a pasta pedida não serve, e em
+     * `local` o Laravel converte avisos em exceções: o download morria com 500
+     * sem que nada estivesse mal com a pauta. Apanhado a validar no browser.
+     *
+     * Escrever para `php://output` dentro de um buffer não tem pasta temporária
+     * nenhuma para dar errado, não deixa lixo por apagar se algo falhar a meio,
+     * e é um passo em vez de quatro. O buffer é fechado no `finally` para que
+     * uma exceção do escritor não deixe a saída da página capturada.
+     */
     protected function render(Spreadsheet $spreadsheet): string
     {
-        $tempPath = tempnam(sys_get_temp_dir(), 'lapis_pauta_xlsx_');
-
-        if ($tempPath === false) {
+        if (! ob_start()) {
             throw new RuntimeException('Não foi possível preparar o ficheiro Excel da pauta.');
         }
 
         try {
-            (new Xlsx($spreadsheet))->save($tempPath);
-            $contents = file_get_contents($tempPath);
-
-            return $contents === false ? '' : $contents;
+            (new Xlsx($spreadsheet))->save('php://output');
         } finally {
-            @unlink($tempPath);
+            $contents = ob_get_clean();
             $spreadsheet->disconnectWorksheets();
         }
+
+        return $contents === false ? '' : $contents;
     }
 
     /** O tipo MIME real de um `.xlsx`, para o browser não lhe chamar outra coisa. */

@@ -237,9 +237,14 @@ function domainCellStyle(color: string): Record<string, string> {
                         class="sticky right-0 z-30 border-b border-l-2 border-border bg-muted px-3 py-2 text-center align-bottom font-medium shadow-[-8px_0_8px_-6px_rgba(0,0,0,0.10)]"
                     >
                         <!-- Quebra deliberada em duas linhas: a coluna é
-                             estreita e «Nível atribuído» com nowrap transbordava
-                             da célula fixa, aparecendo cortado a meio da palavra. -->
-                        <span class="block">Nível</span>
+                             estreita e num ecrã de telemóvel «atribuído» ficava
+                             cortado. O ESPAÇO DENTRO DO PRIMEIRO SPAN não é
+                             descuido — sem ele o texto acessível da célula
+                             lê-se «Nívelatribuído», uma palavra que não existe,
+                             e é isso que um leitor de ecrã anuncia. Visualmente
+                             não muda nada: um espaço no fim de uma linha
+                             colapsa. -->
+                        <span class="block">Nível </span>
                         <span class="block">atribuído</span>
                     </th>
                 </tr>

@@ -15,6 +15,7 @@ use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -328,6 +329,45 @@ class EvaluationSheetDecisionTest extends TestCase
         }
 
         $this->fail('«Preparar fecho» não traz a linha das decisões.');
+    }
+
+    // ---------------------------------------------------------- desempenho
+
+    #[Test]
+    public function the_sheet_costs_the_same_number_of_queries_whatever_the_class_size(): void
+    {
+        $teacher = $this->seedDemo();
+        [$classUlid] = $this->context($teacher);
+        $this->propose($teacher);
+
+        $small = $this->queriesToOpen($teacher, $classUlid);
+
+        // A turma cresce para trinta e tal. Se alguma coisa nesta página fosse
+        // por aluno — a morada da decisão, a autoavaliação, a classificação —
+        // o número subiria com ela.
+        $this->asTenant($teacher, function (): void {
+            $class = SchoolClass::where('label', '7.º A')->firstOrFail();
+
+            for ($number = 0; $number < 25; $number++) {
+                Enrollment::factory()->recycle($class->organization)->create(['class_id' => $class->id]);
+            }
+        });
+
+        // NÃO CRESCE. Consultas planas — os resultados, as classificações, as
+        // autoavaliações, as moradas — pedidas uma vez para a turma inteira.
+        // Uma delas que passasse a ser por aluno somaria vinte e cinco aqui.
+        $this->assertLessThanOrEqual($small, $this->queriesToOpen($teacher, $classUlid));
+    }
+
+    private function queriesToOpen(User $teacher, string $classUlid): int
+    {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $this->actingAs($teacher)->get("/classes/{$classUlid}/pauta-avaliacao")->assertOk();
+        $count = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        return $count;
     }
 
     // --------------------------------------------------------- autorização
