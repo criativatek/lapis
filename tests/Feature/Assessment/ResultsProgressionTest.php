@@ -322,6 +322,41 @@ class ResultsProgressionTest extends TestCase
     }
 
     #[Test]
+    public function the_label_that_survives_in_scale_bands_is_a_colour_payload_and_not_a_level(): void
+    {
+        // AUDITADO, E DELIBERADAMENTE NÃO ALTERADO. `ResultsController` ainda
+        // envia `level->label` em dois sítios, e à primeira vista isso contradiz
+        // a regra da pauta («o nível é o número», SUP-2C774B). Não contradiz:
+        // aqueles dois sítios são o payload `scaleBands`, que existe para o
+        // resolvedor de COR e nada mais.
+        //
+        // A prova é que o resolvedor não sabe ler um rótulo: `qualitativeToneFor`
+        // decide pela estrutura da banda — `is_negative` e `sequence` — porque um
+        // mapeador que lesse «Bom» perderia a cor no dia em que alguém traduzisse
+        // ou renomeasse a escala. Trocar aquele `label` por `code` não mudaria um
+        // pixel, e trocá-lo às cegas é que seria mexer sem razão.
+        $resolver = (string) file_get_contents(resource_path('js/lib/qualitativeTone.ts'));
+
+        $this->assertStringContainsString(
+            "export type ToneableScaleBand = {\n    sequence: number;\n    is_negative: boolean;\n};",
+            $resolver,
+        );
+        // Não lê rótulo nenhum — nem sequer tem por onde.
+        $this->assertStringNotContainsString('.label', $resolver);
+
+        // E onde um nível é MOSTRADO, em ambos os ecrãs de Resultados, é o
+        // código que aparece — a convenção já é a mesma da pauta.
+        foreach (['js/pages/results/Show.vue', 'js/pages/results/Summary.vue'] as $screen) {
+            $source = (string) file_get_contents(resource_path($screen));
+
+            $this->assertMatchesRegularExpression('/classification\??\.final\??\.code/', $source, $screen);
+            $this->assertMatchesRegularExpression('/self_assessment\??\.code/', $source, $screen);
+            // E a menção nunca é interpolada sozinha numa célula de nível.
+            $this->assertStringNotContainsString('{{ row.classification.final.label }}', $source);
+        }
+    }
+
+    #[Test]
     public function the_global_self_assessment_is_the_question_belonging_to_no_domain(): void
     {
         // Identified structurally and never by its wording, and never computed
