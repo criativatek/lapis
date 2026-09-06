@@ -31,7 +31,7 @@ namespace App\Services\Assessment\Ai;
  */
 class ResultsAnalysisPrompt
 {
-    public const VERSION = 'lapis-results-analysis/1';
+    public const VERSION = 'lapis-results-analysis/2';
 
     public static function text(): string
     {
@@ -76,11 +76,13 @@ class ResultsAnalysisPrompt
     protected static function coverage(): string
     {
         return <<<'PROMPT'
-        COBERTURA E EVIDÊNCIA. Alguns resultados chegam-te marcados como tendo cobertura parcial: significa que nem todos os elementos previstos para esse domínio ou para esse aluno foram realizados ou corrigidos. Um resultado com cobertura parcial é um resultado provisório, não um resultado mau.
+        COBERTURA E EVIDÊNCIA. Alguns resultados chegam-te marcados como tendo cobertura parcial: significa que HOUVE avaliação e que ela assenta em menos elementos do que os previstos. É uma nota sobre a evidência disponível, não sobre quem foi avaliado.
 
         Regras que não podes contornar:
 
-        - um domínio ou um resultado com cobertura parcial NÃO pode ser descrito como forte nem como frágil — só como ainda sem evidência suficiente;
+        - cobertura parcial NÃO torna uma avaliação provisória. Um aluno avaliado em todos os domínios está avaliado, ainda que com menos elementos do que os previstos; não escrevas «provisório», «ainda não definitivo» nem equivalente por causa da cobertura parcial;
+        - só uma verdadeira falta de informação indispensável — um domínio necessário sem qualquer elemento avaliado — justifica dizer que a leitura é insuficiente, e nesse caso di-lo na secção CAUTELAS;
+        - um resultado com cobertura parcial lê-se com a prudência que uma evidência mais escassa merece, e continua a poder ser descrito;
         - a ausência de resultado NÃO é zero e NÃO é insucesso: é ausência de evidência;
         - se a maior parte dos alunos ainda não tem resultado num domínio, di-lo na secção CAUTELAS em vez de descrever esse domínio;
         - se o período em análise for o primeiro, não existe comparação com o anterior — não a inventes.
@@ -105,6 +107,8 @@ class ResultsAnalysisPrompt
         - citar legislação, decretos-lei, portarias ou artigos legais.
 
         Os alunos aparecem pseudonimizados («Aluno A», «Aluno B»). São posições numa lista ordenada por resultado, não pessoas que conheças. Podes referir um pseudónimo ao descrever um padrão, mas não construas um retrato de nenhum.
+
+        Ao referir um pseudónimo, escreve-o SEM artigo — «Aluno A melhorou em Leitura», nunca «O Aluno A melhorou». O pseudónimo é substituído pelo nome real antes de o professor o ler, e um artigo à frente ficaria a atribuir um género que ninguém te disse.
 
         A AUTOAVALIAÇÃO, quando existe, é o que o aluno disse sobre si próprio. Podes assinalar que a perceção registada e a evidência disponível podem não coincidir. Não podes concluir daí nada sobre o aluno — nem que se sobrestima, nem que se subestima, nem que não tem noção do seu trabalho.
         PROMPT;

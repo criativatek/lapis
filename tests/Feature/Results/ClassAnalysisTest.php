@@ -534,4 +534,78 @@ class ClassAnalysisTest extends TestCase
                 ->count(),
         );
     }
+
+    // ─────────────────────────── os nomes, de volta e sem género inventado
+
+    #[Test]
+    public function the_answer_reaches_the_teacher_with_real_names_and_never_with_pseudonyms(): void
+    {
+        // A FRASE EXATA QUE UM MODELO ESCREVE, e a que o produto não conseguia
+        // desfazer: o prefixo uma vez, no plural, e as letras soltas (§39).
+        $this->engine()->willReturn(<<<'TEXT'
+        SINTESE: A turma acompanha, com exceção dos alunos A e B.
+        PADROES: - O Aluno A destacou-se em Leitura.
+        ATENCAO: - Recomenda-se acompanhamento ao aluno B.
+        SUGESTOES: - Pode ser útil rever a evidência do Aluno A.
+        TEXT);
+
+        $this->actingAs($this->teacher)
+            ->from($this->statisticsUrl())
+            ->post($this->url())
+            ->assertRedirect($this->statisticsUrl());
+
+        /** @var array<string, mixed> $analysis */
+        $analysis = session('aiAnalysis');
+        $text = json_encode($analysis, JSON_UNESCAPED_UNICODE);
+
+        // NENHUM PSEUDÓNIMO CHEGA AO ECRÃ, em nenhuma das formas.
+        $this->assertDoesNotMatchRegularExpression('/\balunos?\s+[A-Z]\b/iu', (string) $text);
+
+        // E o que chega são nomes reais desta turma, primeiro e último (§40).
+        $this->assertMatchesRegularExpression('/\p{Lu}\p{L}+ \p{Lu}\p{L}+/u', (string) $text);
+    }
+
+    #[Test]
+    public function no_real_name_is_ever_sent_to_the_engine(): void
+    {
+        $engine = $this->analysing();
+
+        $this->actingAs($this->teacher)
+            ->from($this->statisticsUrl())
+            ->post($this->url())
+            ->assertRedirect($this->statisticsUrl());
+
+        $sent = (string) $engine->lastRequest()?->content;
+
+        // A outra metade da mesma regra, e a mais importante das duas: os nomes
+        // voltam porque nunca saíram (§39, §73).
+        foreach (['Carolina', 'Nunes', 'Diogo', 'Ferreira', 'Salgado', 'Andrade'] as $fragment) {
+            $this->assertStringNotContainsString($fragment, $sent);
+        }
+
+        $this->assertStringContainsString('Aluno A', $sent);
+    }
+
+    #[Test]
+    public function an_article_before_a_pseudonym_never_becomes_an_article_before_a_name(): void
+    {
+        $this->engine()->willReturn(<<<'TEXT'
+        SINTESE: O Aluno A manteve o nível.
+        PADROES: - A distribuição é estreita.
+        ATENCAO: - Nada a assinalar.
+        SUGESTOES: - Nada a sugerir.
+        TEXT);
+
+        $this->actingAs($this->teacher)
+            ->from($this->statisticsUrl())
+            ->post($this->url())
+            ->assertRedirect($this->statisticsUrl());
+
+        /** @var array<string, mixed> $analysis */
+        $analysis = session('aiAnalysis');
+
+        // «O Aluno A» não pode virar «O Marta Tomás»: o artigo sai com o
+        // pseudónimo, e ninguém infere género nenhum a partir de um nome (§42).
+        $this->assertDoesNotMatchRegularExpression('/\bO \p{Lu}/u', (string) $analysis['summary']);
+    }
 }

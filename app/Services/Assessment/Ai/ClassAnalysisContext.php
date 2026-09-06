@@ -61,10 +61,14 @@ final class ClassAnalysisContext
         // below passes through it, so a name reaching the context by any route
         // — a student row, a domain a teacher named after somebody — is
         // replaced at the moment it goes in.
+        // OS NOMES VOLTAM CURTOS — primeiro e último (§40). Uma análise que
+        // enumere seis alunos pelo nome completo é ilegível, e primeiro e último
+        // nome é como uma pessoa chama outra numa reunião de conselho de turma.
+        // Nada disto muda o que SAI daqui: o que viaja continua a ser «Aluno A».
         $context = AiContext::about(Pseudonyms::of(array_values(array_filter(
             array_column($students, 'name'),
             fn (?string $name): bool => $name !== null && trim($name) !== '',
-        ))));
+        )))->restoringShortNames());
 
         /** @var array<string, mixed> $summary */
         $summary = is_array($statistics['summary'] ?? null) ? $statistics['summary'] : [];

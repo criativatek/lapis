@@ -53,6 +53,25 @@ final readonly class Pseudonyms
     private const MINIMUM_TOKEN_LENGTH = 4;
 
     /**
+     * AS PALAVRAS QUE SEGURAM O GÉNERO, e o que fica no lugar delas (§42).
+     *
+     * Vazio significa «desaparece»: «o aluno A melhorou» é «Álvaro Simões
+     * melhorou». As contrações voltam à preposição sozinha, que é neutra — e
+     * nenhuma delas exige saber o género de quem quer que seja, que é
+     * precisamente o ponto.
+     *
+     * @var array<string, string>
+     */
+    private const CONNECTORS = [
+        'o' => '', 'a' => '', 'os' => '', 'as' => '',
+        'um' => '', 'uma' => '', 'uns' => '', 'umas' => '',
+        'do' => 'de', 'da' => 'de', 'dos' => 'de', 'das' => 'de',
+        'ao' => 'a', 'à' => 'a', 'aos' => 'a', 'às' => 'a',
+        'no' => 'em', 'na' => 'em', 'nos' => 'em', 'nas' => 'em',
+        'pelo' => 'por', 'pela' => 'por', 'pelos' => 'por', 'pelas' => 'por',
+    ];
+
+    /**
      * PRIVATE, LIKE `SanitisedPayload`'s, AND FOR THE SAME REASON. A map handed
      * in from outside is a map nobody built by the rules above — it could be
      * empty when it should not be, or map a name to itself. `of()` and `none()`
@@ -60,8 +79,14 @@ final readonly class Pseudonyms
      * loud rather than by passing an empty array that might be an oversight.
      *
      * @param  array<string, string>  $byName  the real name => «Aluno A»
+     * @param  string  $prefix  the word the pseudonyms are built on — «Aluno»
+     * @param  array<string, string>  $restoreAs  «Aluno A» => the name to put back
      */
-    private function __construct(public array $byName) {}
+    private function __construct(
+        public array $byName,
+        private string $prefix = 'Aluno',
+        private array $restoreAs = [],
+    ) {}
 
     /** Nothing to substitute. */
     public static function none(): self
@@ -107,7 +132,72 @@ final readonly class Pseudonyms
         // entry for «Maria».
         uksort($map, fn (string $left, string $right): int => mb_strlen($right) <=> mb_strlen($left));
 
-        return new self($map);
+        return new self($map, $prefix, self::fullestNames($map));
+    }
+
+    /**
+     * A MESMA SUBSTITUIÇÃO, MAS A DEVOLVER «Álvaro Simões» EM VEZ DE «Álvaro
+     * Simões Ribeiro da Costa» (§40).
+     *
+     * QUEM PEDE ISTO É QUEM ESCREVE PARA SER LIDO. Uma análise de turma que
+     * enumere seis alunos pelo nome completo é ilegível; primeiro e último nome
+     * é como uma pessoa chama outra numa reunião de conselho de turma, e é a
+     * forma que o professor reconhece.
+     *
+     * QUEM NÃO PEDE ISTO É QUEM REESCREVE O QUE O PROFESSOR JÁ TINHA ESCRITO.
+     * Numa ocorrência disciplinar ou num relatório, o texto de partida é dele;
+     * encurtar-lhe os nomes seria editar-lhe a prosa a pretexto de a devolver.
+     *
+     * A CORRESPONDÊNCIA NÃO MUDA — o que muda é só o que se põe de volta. O mapa
+     * continua a conhecer o nome completo e todos os seus elementos, e por isso
+     * continua a apanhá-los todos à saída.
+     */
+    public function restoringShortNames(): self
+    {
+        $short = [];
+
+        foreach ($this->restoreAs as $pseudonym => $name) {
+            $short[$pseudonym] = self::shorten($name);
+        }
+
+        return new self($this->byName, $this->prefix, $short);
+    }
+
+    /**
+     * «Álvaro Simões Ribeiro da Costa» → «Álvaro Simões».
+     *
+     * O PRIMEIRO E O ÚLTIMO, e não o primeiro e o segundo: é o apelido que
+     * distingue dois «Álvaro» na mesma turma, e é ele que uma pauta escreve.
+     * Um nome de um só elemento fica como está — não há o que encurtar.
+     */
+    protected static function shorten(string $name): string
+    {
+        $parts = array_values(array_filter(preg_split('/\s+/u', trim($name)) ?: []));
+
+        if (count($parts) <= 1) {
+            return trim($name);
+        }
+
+        return $parts[0].' '.$parts[count($parts) - 1];
+    }
+
+    /**
+     * pseudonym => the fullest name that maps to it.
+     *
+     * @param  array<string, string>  $byName
+     * @return array<string, string>
+     */
+    protected static function fullestNames(array $byName): array
+    {
+        $names = [];
+
+        foreach ($byName as $name => $pseudonym) {
+            if (! array_key_exists($pseudonym, $names) || mb_strlen($name) > mb_strlen($names[$pseudonym])) {
+                $names[$pseudonym] = $name;
+            }
+        }
+
+        return $names;
     }
 
     public function isEmpty(): bool
@@ -126,18 +216,155 @@ final readonly class Pseudonyms
     }
 
     /**
-     * Put the names back.
+     * PÔR OS NOMES DE VOLTA — e não deixar nenhum pseudónimo chegar ao professor.
      *
-     * The fullest name that maps to a pseudonym wins, so a rewrite that kept
-     * «Aluno A» restores the whole name rather than a fragment of it.
+     * O QUE ESTAVA ERRADO, E PORQUE ERA GRAVE. A substituição era um
+     * `str_replace('Aluno E', …)`, e um modelo não escreve «Aluno E e Aluno F»:
+     * escreve «com exceção dos alunos E e F». O prefixo aparece uma vez, no
+     * plural, e as letras ficam soltas — nenhuma das duas formas casava com a
+     * procura, e o professor via na análise da sua turma uma frase sobre
+     * «alunos E e F» que não identifica ninguém e não serve para nada (§39).
+     *
+     * O QUE ESTA VERSÃO RECONHECE, e cada caso tem o seu teste:
+     *
+     *   Aluno A          →  Álvaro Simões
+     *   aluno A          →  Álvaro Simões
+     *   alunos A e B     →  Álvaro Simões e Marta Tomás
+     *   Alunos A, B e C  →  Álvaro Simões, Marta Tomás e João Dias
+     *
+     * E A PARTE QUE NÃO É ÓBVIA: O ARTIGO SAI COM O PSEUDÓNIMO (§42). «o aluno
+     * E» é masculino porque «aluno» é masculino, não porque a pessoa o seja;
+     * trocar só o pseudónimo produziria «o Marta Tomás», que é exatamente a
+     * frase que o produto não pode escrever. Não se infere género nenhum — o
+     * artigo simplesmente desaparece, e as contrações que o levam dentro voltam
+     * à preposição que são: «dos alunos E e F» → «de Álvaro Simões e Marta
+     * Tomás», «ao aluno A» → «a Álvaro Simões».
+     *
+     * UMA LETRA SOLTA NUNCA É TOCADA. A procura exige o prefixo à frente, e por
+     * isso um «E» no meio de uma frase — ou a conjunção «e» — continua a ser o
+     * que era (§41). E uma lista com uma letra que este mapa não conhece fica
+     * inteira como estava: substituir metade seria pior do que não substituir.
      */
     public function rehydrate(string $text): string
     {
-        foreach ($this->fullNames() as $pseudonym => $name) {
+        $text = (string) preg_replace_callback(
+            $this->listPattern(),
+            fn (array $matches): string => $this->restoreList($matches),
+            $text,
+        );
+
+        // A REDE DE SEGURANÇA, para tudo o que a procura acima não previu: um
+        // pseudónimo escrito de uma forma que ninguém antecipou continua a ser
+        // trocado pelo nome, porque o que não pode acontecer de maneira nenhuma
+        // é chegar «Aluno E» ao ecrã.
+        foreach ($this->restoreAs as $pseudonym => $name) {
             $text = str_replace($pseudonym, $name, $text);
         }
 
         return $text;
+    }
+
+    /**
+     * «[o|dos|ao|…] Aluno[s] A[, B][ e C]», com o prefixo insensível a
+     * maiúsculas e as letras NÃO.
+     *
+     * AS LETRAS TÊM DE SER MAIÚSCULAS, e isso não é uma preferência. Um
+     * pseudónimo é sempre «Aluno E» com E maiúsculo; aceitar minúsculas faria
+     * «o aluno e o professor» ser lido como o pseudónimo «Aluno E» seguido de
+     * «o professor», e a frase ficaria destruída.
+     */
+    protected function listPattern(): string
+    {
+        $connectors = implode('|', array_map(
+            fn (string $connector): string => preg_quote($connector, '/'),
+            // Mais longos primeiro: «dos» tem de ser tentado antes de «do».
+            $this->connectorsByLength(),
+        ));
+
+        return '/(?:(?<![\p{L}\p{N}])(?<connector>(?i:'.$connectors.'))\s+)?'
+            .'(?<![\p{L}\p{N}])(?i:'.preg_quote($this->prefix, '/').')s?\s+'
+            .'(?<letters>[A-Z](?:(?:\s*,\s*|\s+e\s+)[A-Z])*)'
+            .'(?![\p{L}\p{N}])/u';
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function connectorsByLength(): array
+    {
+        $connectors = array_keys(self::CONNECTORS);
+
+        usort($connectors, fn (string $left, string $right): int => mb_strlen($right) <=> mb_strlen($left));
+
+        return $connectors;
+    }
+
+    /**
+     * Uma correspondência inteira, trocada pelos nomes que ela nomeia.
+     *
+     * @param  array<int|string, string>  $matches
+     */
+    protected function restoreList(array $matches): string
+    {
+        $letters = preg_split('/\s*,\s*|\s+e\s+/u', $matches['letters']) ?: [];
+        $names = [];
+
+        foreach ($letters as $letter) {
+            $name = $this->restoreAs[$this->prefix.' '.$letter] ?? null;
+
+            // UMA LETRA DESCONHECIDA DEIXA A FRASE INTEIRA COMO ESTAVA. Trocar
+            // metade de uma enumeração produziria uma frase que mistura nomes e
+            // pseudónimos, que é pior do que a frase original.
+            if ($name === null) {
+                return $matches[0];
+            }
+
+            $names[] = $name;
+        }
+
+        return $this->connectorFor($matches['connector'] ?? '').$this->enumerate($names);
+    }
+
+    /**
+     * O que fica no lugar do artigo — nada, ou a preposição que a contração
+     * escondia. A maiúscula do original é preservada quando sobra palavra para a
+     * levar: «Dos alunos A e B» abre uma frase, e «de» com minúscula no início
+     * de uma frase seria um erro novo em vez do que se veio corrigir.
+     */
+    protected function connectorFor(string $connector): string
+    {
+        if ($connector === '') {
+            return '';
+        }
+
+        $replacement = self::CONNECTORS[mb_strtolower($connector)] ?? '';
+
+        if ($replacement === '') {
+            return '';
+        }
+
+        if (mb_strtoupper(mb_substr($connector, 0, 1)) === mb_substr($connector, 0, 1)) {
+            $replacement = mb_strtoupper(mb_substr($replacement, 0, 1)).mb_substr($replacement, 1);
+        }
+
+        return $replacement.' ';
+    }
+
+    /**
+     * «A», «A e B», «A, B e C» — a enumeração como se escreve em português, e
+     * não uma lista separada por vírgulas até ao fim.
+     *
+     * @param  list<string>  $names
+     */
+    protected function enumerate(array $names): string
+    {
+        if (count($names) === 1) {
+            return $names[0];
+        }
+
+        $last = array_pop($names);
+
+        return implode(', ', $names).' e '.$last;
     }
 
     /**
@@ -162,23 +389,5 @@ final readonly class Pseudonyms
     protected function pattern(string $name): string
     {
         return '/(?<![\p{L}\p{N}])'.preg_quote($name, '/').'(?![\p{L}\p{N}])/u';
-    }
-
-    /**
-     * pseudonym => the fullest name that maps to it.
-     *
-     * @return array<string, string>
-     */
-    protected function fullNames(): array
-    {
-        $names = [];
-
-        foreach ($this->byName as $name => $pseudonym) {
-            if (! array_key_exists($pseudonym, $names) || mb_strlen($name) > mb_strlen($names[$pseudonym])) {
-                $names[$pseudonym] = $name;
-            }
-        }
-
-        return $names;
     }
 }

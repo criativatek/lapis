@@ -77,7 +77,11 @@ final class FollowupContext
     ): AiContext {
         $studentName = self::studentName($progress);
 
-        $context = AiContext::about(Pseudonyms::of($studentName === null ? [] : [$studentName]));
+        // OS NOMES VOLTAM CURTOS — primeiro e último (§40). Uma análise que
+        // enumere seis alunos pelo nome completo é ilegível, e primeiro e último
+        // nome é como uma pessoa chama outra numa reunião de conselho de turma.
+        // Nada disto muda o que SAI daqui: o que viaja continua a ser «Aluno A».
+        $context = AiContext::about(Pseudonyms::of($studentName === null ? [] : [$studentName])->restoringShortNames());
 
         /** @var array<string, mixed> $headline */
         $headline = is_array($progress['headline'] ?? null) ? $progress['headline'] : [];

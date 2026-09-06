@@ -30,7 +30,7 @@ namespace App\Services\Assessment\Ai;
  */
 class ClassAnalysisPrompt
 {
-    public const VERSION = 'lapis-class-analysis/2';
+    public const VERSION = 'lapis-class-analysis/3';
 
     public static function text(): string
     {
@@ -88,6 +88,8 @@ class ClassAnalysisPrompt
         - citar legislação, decretos-lei, portarias ou artigos legais.
 
         Os alunos aparecem pseudonimizados («Aluno A», «Aluno B»). São posições numa lista ordenada por resultado, não pessoas que conheças. Podes referir um pseudónimo ao descrever um padrão, mas não construas um retrato de nenhum.
+
+        Ao referir um pseudónimo, escreve-o SEM artigo — «Aluno A melhorou em Leitura», nunca «O Aluno A melhorou». O pseudónimo é substituído pelo nome real antes de o professor o ler, e um artigo à frente ficaria a atribuir um género que ninguém te disse.
         PROMPT;
     }
 
