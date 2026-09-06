@@ -331,6 +331,45 @@ class ReportExportTest extends TestCase
 
     // ------------------------------------------------------------- helpers
 
+    // ------------------------------------------------- os acentos e o texto
+
+    #[Test]
+    public function the_word_file_keeps_the_accents_and_is_still_editable_text(): void
+    {
+        $docx = $this->asTenant(fn (): string => app(DocxRenderer::class)->render($this->structure($this->draft())));
+        $xml = $this->docxDocumentXml($docx);
+
+        // O PORTUGUÊS INTEIRO, e não uma aproximação sem acentos — a primeira
+        // coisa que um ficheiro mal escrito perde (§75).
+        $this->assertStringContainsString($this->xmlSafe('Relatório de turma'), $xml);
+        $this->assertStringContainsString($this->xmlSafe('Identificação e caracterização da turma'), $xml);
+        $this->assertStringContainsString('<w:t', $xml, 'O texto tem de ser texto, não uma imagem dele.');
+        $this->assertStringNotContainsString('<w:drawing>', $xml);
+
+        // E é um pacote Word, não HTML com outra extensão: um .docx renomeado
+        // abriria como um documento corrompido no Word.
+        $zip = $this->open($docx);
+        $this->assertNotFalse($zip->locateName('word/document.xml'));
+        $this->assertNotFalse($zip->locateName('[Content_Types].xml'));
+        $zip->close();
+
+        $this->assertStringNotContainsString('<html', strtolower(substr($docx, 0, 512)));
+    }
+
+    #[Test]
+    public function the_pdf_carries_selectable_text_and_not_a_picture_of_it(): void
+    {
+        $pdf = $this->asTenant(fn (): string => app(PdfRenderer::class)->render($this->structure($this->draft())));
+
+        $this->assertStringStartsWith('%PDF-', $pdf);
+
+        // UM PDF DE TEXTO REFERENCIA FONTES. Um PDF que fosse uma fotografia
+        // da página não teria fonte nenhuma — teria uma imagem, e é essa a
+        // diferença entre um documento que se pesquisa e um que não (§47, §75).
+        $this->assertStringContainsString('/Font', $pdf);
+        $this->assertStringNotContainsString('/Subtype /Image', $pdf);
+    }
+
     private function open(string $bytes): ZipArchive
     {
         $path = tempnam(sys_get_temp_dir(), 'lapis-test-docx-');

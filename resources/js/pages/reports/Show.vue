@@ -8,13 +8,14 @@ import {
     FileDown,
     Lock,
     Pencil,
+    Printer,
     RefreshCw,
     RotateCcw,
     Save,
     Trash2,
     X,
 } from '@lucide/vue';
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import AiTextPrivacyNotice from '@/components/ai/AiTextPrivacyNotice.vue';
 import Heading from '@/components/Heading.vue';
 import type { ChosenDifficulty } from '@/components/reports/DifficultyPicker.vue';
@@ -593,6 +594,27 @@ function finalize() {
 function derive() {
     router.post(`/reports/${props.report.ulid}/derivar`, {});
 }
+
+/**
+ * IMPRIMIR A PRÉ-VISUALIZAÇÃO, e não uma composição só para o papel (§45).
+ *
+ * O que sai é o documento que o professor tem à frente — o mesmo timbre, o
+ * mesmo título, as mesmas secções, o mesmo fecho e a mesma assinatura que o PDF
+ * e o Word levam. Uma segunda vista escrita só para a impressora seria uma
+ * TERCEIRA composição a manter em dia com as outras duas, e a primeira a
+ * divergir na primeira correção feita só de um lado.
+ *
+ * Passa para a pré-visualização antes de imprimir: num rascunho o ecrã pode
+ * estar em modo de edição, e imprimir campos de formulário não é imprimir um
+ * relatório.
+ */
+function print(): void {
+    mode.value = 'preview';
+
+    // Depois de o Vue ter desenhado a pré-visualização — sem isto, um rascunho
+    // em edição chegaria à impressora com o formulário ainda no ecrã.
+    void nextTick(() => window.print());
+}
 </script>
 
 <template>
@@ -622,6 +644,15 @@ function derive() {
                 <!-- Plain links, not Inertia visits: a binary response cannot
                      come back through one. -->
                 <div v-if="can.export" class="flex items-center gap-1">
+                    <!-- IMPRIMIR SAI DESTE ECRÃ, e não de uma página paralela.
+                         O que se imprime é a pré-visualização — o documento que
+                         o professor tem à frente —, e uma segunda vista só para
+                         o papel seria uma terceira composição a manter em dia
+                         com a do PDF e a do Word (§45). -->
+                    <Button variant="outline" size="sm" @click="print">
+                        <Printer class="size-3.5" />
+                        Imprimir
+                    </Button>
                     <Button variant="outline" size="sm" as-child>
                         <a :href="`/reports/${report.ulid}/pdf`">
                             <FileDown class="size-3.5" />
@@ -1213,7 +1244,10 @@ function derive() {
             here composes text.
         -->
         <template v-else>
-            <div class="overflow-hidden rounded-lg border border-border bg-card">
+            <!-- `report-print` é um GANCHO DE IMPRESSÃO, não estilo. O seletor
+                 pelas classes utilitárias partir-se-ia na primeira vez que
+                 alguém mudasse o `max-w-[46rem]`. -->
+            <div class="report-print overflow-hidden rounded-lg border border-border bg-card">
                 <div class="mx-auto max-w-[46rem] px-8 py-10 sm:px-12">
                     <ReportLetterhead :identity="identity" />
 
@@ -1289,3 +1323,52 @@ function derive() {
         </template>
     </div>
 </template>
+
+<style>
+/* IMPRIMIR SÓ O RELATÓRIO, a partir deste mesmo ecrã — sem página paralela
+   (§45). O truque da visibilidade não depende do markup do layout da aplicação,
+   que não é deste ecrã e pode mudar sem aviso; é o mesmo que a Pauta de
+   Avaliação já usa, pela mesma razão. */
+@media print {
+    body * {
+        visibility: hidden;
+    }
+    .report-print,
+    .report-print * {
+        visibility: visible;
+    }
+    .report-print {
+        position: absolute;
+        inset: 0;
+        /* No papel não há cartão: nem borda, nem cantos, nem fundo. O que fica
+           é o documento. */
+        border: 0 !important;
+        border-radius: 0 !important;
+        background: transparent !important;
+    }
+    /* A4, com as margens do próprio papel — o documento já tem as suas. */
+    @page {
+        size: A4 portrait;
+        margin: 18mm 16mm;
+    }
+    .report-print > div {
+        max-width: none !important;
+        padding: 0 !important;
+    }
+    /* Uma secção não se parte a meio de um título, e um título não fica
+       sozinho no fim de uma página. */
+    .report-print h1,
+    .report-print h2 {
+        break-after: avoid;
+        page-break-after: avoid;
+    }
+    .report-print section {
+        break-inside: auto;
+    }
+    /* Preto sobre branco: um cinzento de ecrã imprime-se ilegível. */
+    .report-print,
+    .report-print * {
+        color: #000 !important;
+    }
+}
+</style>

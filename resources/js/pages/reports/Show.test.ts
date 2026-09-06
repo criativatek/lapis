@@ -302,3 +302,45 @@ describe('reports/Show — the preview sentinel', () => {
         }
     });
 });
+
+/**
+ * IMPRIMIR, AO LADO DO PDF E DO WORD (§45).
+ *
+ * O que sai da impressora é a PRÉ-VISUALIZAÇÃO — o mesmo documento que o
+ * professor tem à frente, com o mesmo timbre, as mesmas secções e o mesmo
+ * fecho. Uma composição escrita só para o papel seria uma terceira coisa a
+ * manter em dia com o PDF e com o .docx, e a primeira a divergir.
+ */
+describe('reports/Show — imprimir', () => {
+    function exportable() {
+        return {
+            ...baseProps(),
+            can: { update: false, finalize: false, delete: false, export: true, derive: false },
+        };
+    }
+
+    it('oferece Imprimir junto do PDF e do Word', () => {
+        const wrapper = mount(Show, { props: exportable() });
+        wrappers.push(wrapper);
+
+        const text = wrapper.text();
+
+        expect(text).toContain('Imprimir');
+        expect(text).toContain('PDF');
+        expect(text).toContain('Word');
+    });
+
+    it('não oferece Imprimir a quem não pode exportar', () => {
+        // A mesma porta que o PDF e o Word: esconder a ação não é o que guarda
+        // nada — a rota decide no servidor —, é só não abrir uma porta que dá
+        // para um 403.
+        expect(render().text()).not.toContain('Imprimir');
+    });
+
+    it('marca a pré-visualização com o gancho que a folha de impressão usa', () => {
+        // `report-print` é um gancho estável. Um seletor pelas classes
+        // utilitárias partir-se-ia na primeira vez que alguém mexesse na
+        // largura da coluna.
+        expect(render().find('.report-print').exists()).toBe(true);
+    });
+});
