@@ -10,6 +10,7 @@ use App\Models\SchoolClass;
 use App\Services\Assessment\BuildResultsProgression;
 use App\Services\Assessment\ClassResultsCalculator;
 use App\Services\Assessment\CoverageExplanation;
+use App\Services\Assessment\DomainAppreciationDecisions;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
@@ -24,6 +25,12 @@ use Illuminate\Support\Str;
  * The teacher sees this before anything is filled in, which is the point: a
  * grid that came back subtly wrong would be uploaded, and nobody would find out
  * until the marks were.
+ *
+ * QUEM É CADA LINHA já não se decide aqui. `InovarStudentMatcher` responde a
+ * essa pergunta por confiança — identificador, nome, ou nem um nem outro — e
+ * este construtor limita-se a usar a resposta. A separação não é arrumação: o
+ * que decide de quem é uma nota é a coisa mais perigosa deste fluxo, e tem de
+ * ser legível e testável sozinha.
  */
 class InovarExportPreviewBuilder
 {
@@ -32,9 +39,12 @@ class InovarExportPreviewBuilder
         protected InovarCodeResolver $codes,
         protected ClassResultsCalculator $calculator,
         protected CoverageExplanation $coverage,
+        protected InovarStudentMatcher $matcher,
+        protected DomainAppreciationDecisions $decisions,
     ) {}
 
     /**
+     * @param  array<int, int>  $resolutions  linha da grelha → matrícula que o professor escolheu
      * @return array<string, mixed>
      */
     public function build(
@@ -42,27 +52,36 @@ class InovarExportPreviewBuilder
         AcademicPeriod $period,
         InovarTemplate $template,
         ?InovarExportSource $source = null,
+        array $resolutions = [],
     ): array {
         // The period as it stands, unless a kept moment was handed over. The
         // grid, the matching, the filling and the fidelity checks are identical
         // either way — only where the mentions come from differs (§9, §10).
         $source ??= new CurrentPeriodResultsSource(
-            $class, $period, $this->progression, $this->calculator, $this->coverage, $this->codes,
+            $class, $period, $this->progression, $this->calculator, $this->coverage, $this->codes, $this->decisions,
         );
 
         $enrollments = $this->enrollments($class);
 
         $domains = $this->domainRows($class, $template);
-        $students = $this->studentRows($enrollments, $template);
+        // QUEM É CADA LINHA é decidido por um serviço próprio, por confiança e
+        // não por uma única chave — ver InovarStudentMatcher. O construtor
+        // deixa de saber como se reconhece uma pessoa; sabe apenas o que fazer
+        // com o que lhe respondem.
+        $students = $this->matcher->match($template, $enrollments, $resolutions);
         $values = $this->valueRows($source, $students, $domains);
 
-        $blocking = $this->blockingErrors($students, $domains, $source, $this->withoutProcessNumber($enrollments));
-        $warnings = $this->warnings($students, $values);
+        $blocking = $this->blockingErrors($students, $domains, $source);
+        $warnings = $this->warnings($students, $values, $enrollments);
 
         return [
             'students' => $students,
             'domains' => $domains,
             'values' => $values,
+            // Os candidatos que o professor pode escolher, para as linhas que
+            // lhe são devolvidas por decidir. Uma lista só, para a página
+            // inteira: as linhas apontam para ela por id.
+            'candidates' => $this->candidates($enrollments),
             'source' => [
                 'label' => $source->label(),
                 'reference_label' => $source->referenceLabel(),
@@ -70,6 +89,7 @@ class InovarExportPreviewBuilder
             'summary' => [
                 'matched_students' => count(array_filter($students, fn (array $row): bool => $row['matched'])),
                 'unmatched_students' => count(array_filter($students, fn (array $row): bool => ! $row['matched'])),
+                'students_needing_teacher' => count(array_filter($students, fn (array $row): bool => $row['needs_teacher'])),
                 'mapped_domains' => count(array_filter($domains, fn (array $row): bool => $row['mapped'])),
                 'unmapped_domains' => count(array_filter($domains, fn (array $row): bool => ! $row['mapped'])),
                 'ready_cells' => count(array_filter($values, fn (array $row): bool => $row['writable'])),
@@ -78,6 +98,26 @@ class InovarExportPreviewBuilder
                 'blocking_errors' => $blocking,
             ],
         ];
+    }
+
+    /**
+     * Os alunos desta turma, como uma lista para escolher.
+     *
+     * O N.º de processo viaja porque é o que distingue dois homónimos numa
+     * lista de escolha — e porque, quando o Lapispro não tem nenhum, dizê-lo é
+     * a informação de que o professor precisa para perceber a linha.
+     *
+     * @param  Collection<int, Enrollment>  $enrollments
+     * @return list<array<string, mixed>>
+     */
+    protected function candidates(Collection $enrollments): array
+    {
+        return array_values($enrollments->map(fn (Enrollment $enrollment): array => [
+            'enrollment_id' => (int) $enrollment->getKey(),
+            'class_number' => $enrollment->class_number,
+            'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
+            'process_number' => $enrollment->student->processNumber(),
+        ])->all());
     }
 
     /**
@@ -121,97 +161,11 @@ class InovarExportPreviewBuilder
         return $rows;
     }
 
-    /**
-     * The grid's lines matched to this class's students, by N.º DE PROCESSO and
-     * by nothing else.
-     *
-     * Never the name: two students share one often enough, and a mark written
-     * against the wrong person is not a mistake anybody catches by reading. The
-     * name travels only so the teacher recognises the line.
-     *
-     * @param  Collection<int, Enrollment>  $enrollments
-     * @return list<array<string, mixed>>
-     */
-    protected function studentRows(Collection $enrollments, InovarTemplate $template): array
-    {
-        $byProcessNumber = [];
-
-        foreach ($enrollments as $enrollment) {
-            $number = $enrollment->student->processNumber();
-
-            if ($number === null || trim($number) === '') {
-                continue;
-            }
-
-            $byProcessNumber[$this->normalizeNumber($number)][] = $enrollment;
-        }
-
-        $seenInTemplate = [];
-        $rows = [];
-
-        foreach ($template->students as $line) {
-            $key = $line->processNumber === null ? null : $this->normalizeNumber($line->processNumber);
-            $issues = [];
-
-            if ($key === null) {
-                $issues[] = 'Esta linha da grelha não tem N.º de processo.';
-            } elseif (isset($seenInTemplate[$key])) {
-                $issues[] = "O N.º de processo {$line->processNumber} aparece mais do que uma vez nesta grelha.";
-            }
-
-            $candidates = $key === null ? [] : ($byProcessNumber[$key] ?? []);
-
-            if ($key !== null && count($candidates) > 1) {
-                $issues[] = "Há mais do que um aluno desta turma com o N.º de processo {$line->processNumber}.";
-            }
-
-            if ($key !== null && $candidates === []) {
-                $issues[] = 'Não há nesta turma nenhum aluno com este N.º de processo.';
-            }
-
-            if ($key !== null) {
-                $seenInTemplate[$key] = true;
-            }
-
-            $matched = $issues === [] && count($candidates) === 1;
-
-            $rows[] = [
-                'row' => $line->row,
-                'process_number' => $line->processNumber,
-                'display_name' => $line->name,
-                'enrollment_id' => $matched ? $candidates[0]->id : null,
-                'matched' => $matched,
-                'issues' => $issues,
-            ];
-        }
-
-        return $rows;
-    }
-
-    /**
-     * The students of this class the export cannot address at all.
-     *
-     * A N.º de processo is needed the day somebody exports to INOVAR, and not
-     * before — a class typed in by hand has none, and everything else about it
-     * works. So this is reported here, where it matters, and nowhere else.
-     *
-     * @param  Collection<int, Enrollment>  $enrollments
-     * @return list<string>
-     */
-    protected function withoutProcessNumber(Collection $enrollments): array
-    {
-        $names = [];
-
-        foreach ($enrollments as $enrollment) {
-            $number = $enrollment->student->processNumber();
-
-            if ($number === null || trim($number) === '') {
-                $names[] = optional($enrollment->student->identity)->display_name ?? '(sem identidade)';
-            }
-        }
-
-        return $names;
-    }
+    // Quem é cada linha da grelha mudou de casa: vive em InovarStudentMatcher,
+    // que responde por confiança em vez de por uma única chave. O N.º de
+    // processo deixou de ser requisito — passou a ser um sinal forte entre
+    // outros —, e por isso também desapareceu daqui a lista de alunos «sem N.º
+    // de processo»: já não é uma coisa que impeça uma exportação (§29).
 
     /**
      * One row per (matched student × mapped domain): the band, its INOVAR code,
@@ -250,6 +204,10 @@ class InovarExportPreviewBuilder
                     'domain' => $domain['lapis_domain'],
                     'qualitative_band' => $cell['band_label'] ?? null,
                     'inovar_code' => $code,
+                    // Se aquela menção é a DECISÃO do professor sobre o domínio
+                    // ou a leitura do Lapispro. Não muda o que é escrito — muda
+                    // o que o ecrã de preparação diz sobre a célula.
+                    'decided_by_teacher' => (bool) ($cell['decided_by_teacher'] ?? false),
                     'coverage_warning' => (bool) ($cell['coverage_warning'] ?? false),
                     // The elements the engine itself named as the reason: their
                     // instrument, its date and the state that was RECORDED
@@ -272,22 +230,40 @@ class InovarExportPreviewBuilder
     // answer that question. The builder no longer knows which it is talking to.
 
     /**
+     * O QUE IMPEDE A EXPORTAÇÃO DE AVANÇAR — e apenas isso.
+     *
+     * TRÊS COISAS, e nenhuma delas é «falta informação». Uma coluna que não
+     * corresponde a domínio nenhum, uma escala sem correspondência INOVAR, e um
+     * ficheiro com o mesmo N.º de processo repetido: erros que nenhuma decisão
+     * do professor resolve, e que fariam escrever no sítio errado.
+     *
+     * UMA LINHA POR IDENTIFICAR NÃO ESTÁ AQUI, e é uma mudança deliberada. Uma
+     * correspondência provável ou ambígua é uma PERGUNTA ao professor, e a
+     * exportação espera pela resposta dela noutro sítio (`needsTeacher`) —
+     * chamar-lhe erro seria dizer que alguém se enganou quando ninguém se
+     * enganou. E uma linha sem correspondência nenhuma não impede nada: fica em
+     * branco, que é o resultado correto para um aluno que não é desta turma.
+     *
+     * O N.º DE PROCESSO DEIXOU DE SER REQUISITO. Uma turma escrita à mão não
+     * tem nenhum, e bloquear a exportação inteira por causa disso era exigir
+     * uma informação que a escola já tem no ficheiro que acabou de carregar
+     * (§29).
+     *
      * @param  list<array<string, mixed>>  $students
      * @param  list<array<string, mixed>>  $domains
-     * @param  list<string>  $withoutNumber
      * @return list<string>
      */
-    protected function blockingErrors(array $students, array $domains, InovarExportSource $source, array $withoutNumber): array
+    protected function blockingErrors(array $students, array $domains, InovarExportSource $source): array
     {
         $errors = [];
 
-        if ($withoutNumber !== []) {
-            $errors[] = 'Existem alunos sem N.º de processo. Complete esta informação para poder exportar para o INOVAR.';
-        }
-
         foreach ($students as $student) {
-            foreach ($student['issues'] as $issue) {
-                $errors[] = $issue;
+            if (($student['blocking'] ?? false) !== true) {
+                continue;
+            }
+
+            foreach ($student['reasons'] as $reason) {
+                $errors[] = $reason;
             }
         }
 
@@ -311,11 +287,41 @@ class InovarExportPreviewBuilder
     /**
      * @param  list<array<string, mixed>>  $students
      * @param  list<array<string, mixed>>  $values
+     * @param  Collection<int, Enrollment>  $enrollments
      * @return list<string>
      */
-    protected function warnings(array $students, array $values): array
+    protected function warnings(array $students, array $values, Collection $enrollments): array
     {
         $warnings = [];
+
+        // A PERGUNTA POR RESPONDER, dita primeiro: é a única coisa aqui que
+        // ainda espera pelo professor, e a que decide se a exportação avança.
+        $pending = count(array_filter($students, fn (array $row): bool => $row['needs_teacher']));
+
+        if ($pending > 0) {
+            $warnings[] = $pending === 1
+                ? '1 linha da grelha ainda não tem o aluno confirmado.'
+                : "{$pending} linhas da grelha ainda não têm o aluno confirmado.";
+        }
+
+        // Alunos DESTA TURMA que nenhuma linha da grelha reclamou. Não é um
+        // erro — a grelha da escola pode ser de outra disciplina ou estar
+        // incompleta —, mas é a informação que um professor quer ver antes de
+        // exportar, porque significa que esse aluno não leva nota nenhuma.
+        $claimed = array_filter(array_column($students, 'enrollment_id'), fn (?int $id): bool => $id !== null);
+        $missing = [];
+
+        foreach ($enrollments as $enrollment) {
+            if (! in_array((int) $enrollment->getKey(), $claimed, true)) {
+                $missing[] = optional($enrollment->student->identity)->display_name ?? '(sem identidade)';
+            }
+        }
+
+        if ($missing !== []) {
+            $warnings[] = count($missing) === 1
+                ? "{$missing[0]} não tem linha nesta grelha e por isso não leva nenhuma menção."
+                : count($missing).' alunos não têm linha nesta grelha e por isso não levam menção nenhuma: '.implode(', ', $missing).'.';
+        }
 
         $partial = count(array_filter($values, fn (array $row): bool => $row['writable'] && $row['coverage_warning']));
 
@@ -385,14 +391,5 @@ class InovarExportPreviewBuilder
     protected function normalize(string $value): string
     {
         return Str::of($value)->squish()->lower()->value();
-    }
-
-    /**
-     * Trimmed, and nothing else. A leading zero is part of somebody's
-     * identifier, not formatting to be tidied away.
-     */
-    protected function normalizeNumber(string $value): string
-    {
-        return trim($value);
     }
 }

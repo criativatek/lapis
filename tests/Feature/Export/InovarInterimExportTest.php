@@ -277,7 +277,7 @@ class InovarInterimExportTest extends TestCase
     }
 
     #[Test]
-    public function a_missing_process_number_blocks_only_the_export(): void
+    public function a_missing_process_number_no_longer_blocks_the_export(): void
     {
         $interim = $this->capture();
 
@@ -304,8 +304,15 @@ class InovarInterimExportTest extends TestCase
             );
         });
 
-        $this->assertNotEmpty($preview['summary']['blocking_errors']);
-        $this->assertStringContainsString('N.º de processo', $preview['summary']['blocking_errors'][0]);
+        // O N.º de processo deixou de ser requisito: é um sinal forte quando
+        // existe dos dois lados, e a sua ausência de um deles não penaliza —
+        // o nome do aluno responde à mesma pergunta (§29).
+        $this->assertSame([], $preview['summary']['blocking_errors']);
+
+        // E o aluno a quem o número foi retirado continua correspondido, agora
+        // pelo primeiro e último nome.
+        $this->assertGreaterThan(0, $preview['summary']['matched_students']);
+        $this->assertSame(0, $preview['summary']['students_needing_teacher']);
     }
 
     // ------------------------------------------------ 3. os entitlements

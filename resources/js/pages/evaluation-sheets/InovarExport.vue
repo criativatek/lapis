@@ -1,10 +1,16 @@
 <script setup lang="ts">
-import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
-import { CircleAlert, CircleCheck, CircleX, Upload } from '@lucide/vue';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
+import { CircleAlert, CircleCheck, CircleHelp, CircleX, Upload } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
-import type { InovarExportPreparation, SheetMomentKind } from '@/types';
+import type {
+    InovarExportPreparation,
+    InovarExportRow,
+    InovarMatchCandidate,
+    InovarMatchConfidence,
+    SheetMomentKind,
+} from '@/types';
 
 /**
  * Preparar a exportação para o INOVAR — a etapa que existe para que ninguém
@@ -49,6 +55,11 @@ const pageErrors = computed(() => (page.props.errors ?? {}) as Record<string, st
 
 function base(): string {
     return `/classes/${props.schoolClass.ulid}/pauta-avaliacao/inovar/${props.period.ulid}`;
+}
+
+/** O momento de onde o professor veio viaja em cada volta ao servidor. */
+function momentQuery(): string {
+    return props.period.moment === 'interim' ? '?momento=interim' : '';
 }
 
 // ------------------------------------------------------------------ upload
@@ -110,6 +121,72 @@ watch(
     { immediate: true },
 );
 
+// ------------------------------------------------------ correspondências
+//
+// DE QUEM É CADA LINHA é a pergunta mais perigosa deste ecrã, e por isso é a
+// única em que o Lapispro pede ajuda em vez de decidir. Quatro estados, ditos
+// por palavras e não por cor (§35): correspondido, provável (confirmar),
+// ambíguo (escolher), sem correspondência.
+//
+// A ESCOLHA VOLTA AO SERVIDOR. Podia ser resolvida aqui e o ecrã ficaria mais
+// rápido e mentiria: as menções de uma linha só existem depois de se saber de
+// quem ela é, e confirmar sem ver o que passa a ser escrito não é a revisão que
+// este ecrã existe para dar.
+
+const resolutions = ref<Record<number, number>>({});
+
+/** O que o professor escolheu para esta linha, ou o que o Lapispro sugere. */
+function choiceFor(student: InovarExportRow): number | null {
+    return resolutions.value[student.row] ?? student.enrollment_id ?? null;
+}
+
+function choose(student: InovarExportRow, enrollmentId: number | null): void {
+    if (enrollmentId === null) {
+        delete resolutions.value[student.row];
+    } else {
+        resolutions.value[student.row] = enrollmentId;
+    }
+}
+
+const resolving = ref(false);
+
+function submitResolutions(): void {
+    if (props.token === null) {
+        return;
+    }
+
+    router.post(
+        `${base()}/${props.token}/correspondencias${momentQuery()}`,
+        { resolutions: resolutions.value },
+        {
+            preserveScroll: true,
+            onStart: () => (resolving.value = true),
+            onFinish: () => (resolving.value = false),
+        },
+    );
+}
+
+/** Os candidatos desta linha, resolvidos a partir dos ids que ela traz. */
+function candidatesFor(student: InovarExportRow): InovarMatchCandidate[] {
+    const all = props.preparation?.candidates ?? [];
+    const offered = all.filter((candidate) => student.candidates.includes(candidate.enrollment_id));
+
+    // Uma linha ambígua traz os seus candidatos; uma linha que o professor está
+    // a rever de raiz pode escolher entre a turma inteira.
+    return offered.length > 0 ? offered : all;
+}
+
+const linesNeedingTeacher = computed(() =>
+    (props.preparation?.students ?? []).filter((student) => student.needs_teacher),
+);
+
+const CONFIDENCE_TONE: Record<InovarMatchConfidence, string> = {
+    strong: 'text-emerald-700 dark:text-emerald-400',
+    probable: 'text-amber-700 dark:text-amber-400',
+    ambiguous: 'text-amber-700 dark:text-amber-400',
+    none: 'text-muted-foreground',
+};
+
 /** Quantos alunos correspondidos ainda não têm classificação decidida. */
 const withoutDecision = computed(() =>
     (props.preparation?.students ?? []).filter((student) => student.matched && student.level === null),
@@ -124,7 +201,12 @@ function submitConfirmation(): void {
         return;
     }
 
-    confirmation.post(`${base()}/${props.token}`);
+    // As escolhas viajam com a confirmação e são reavaliadas no servidor: o
+    // ficheiro é sempre relido, e uma escolha fora dos candidatos daquela linha
+    // é descartada em vez de obedecida.
+    confirmation
+        .transform((data) => ({ ...data, resolutions: resolutions.value }))
+        .post(`${base()}/${props.token}`);
 }
 
 function sampleLine(samples: string[]): string {
@@ -203,7 +285,11 @@ function sampleLine(samples: string[]): string {
                 <ul class="space-y-1 text-sm">
                     <li class="flex items-center gap-2">
                         <CircleCheck class="size-4 text-emerald-600" />
-                        {{ preparation.summary.matched_students }} alunos correspondidos pelo N.º de processo
+                        {{ preparation.summary.matched_students }} alunos correspondidos automaticamente
+                    </li>
+                    <li v-if="preparation.summary.students_needing_teacher > 0" class="flex items-center gap-2">
+                        <CircleHelp class="size-4 text-amber-600" />
+                        {{ preparation.summary.students_needing_teacher }} linhas à espera de si
                     </li>
                     <li class="flex items-center gap-2">
                         <CircleCheck class="size-4 text-emerald-600" />
@@ -236,6 +322,7 @@ function sampleLine(samples: string[]): string {
                                 <th scope="col" class="py-2 pr-3 font-medium">Linha</th>
                                 <th scope="col" class="py-2 pr-3 font-medium">N.º processo</th>
                                 <th scope="col" class="py-2 pr-3 font-medium">Aluno na grelha</th>
+                                <th scope="col" class="py-2 pr-3 font-medium">Correspondência</th>
                                 <th scope="col" class="py-2 pr-3 font-medium">Apreciações a escrever</th>
                                 <th v-if="confirmation.include_level" scope="col" class="py-2 font-medium">Nível</th>
                             </tr>
@@ -244,10 +331,46 @@ function sampleLine(samples: string[]): string {
                             <tr v-for="student in preparation.students" :key="student.row" class="border-b border-border/60 align-top">
                                 <td class="py-2 pr-3 tabular-nums text-muted-foreground">{{ student.row }}</td>
                                 <td class="py-2 pr-3 tabular-nums">{{ student.process_number ?? '—' }}</td>
+                                <td class="py-2 pr-3">{{ student.name }}</td>
+
+                                <!-- O ESTADO POR PALAVRAS, e a razão a seguir.
+                                     Nunca só uma cor: quem não a distingue tem
+                                     de poder ler a mesma coisa (§35). -->
                                 <td class="py-2 pr-3">
-                                    {{ student.name }}
-                                    <p v-if="!student.matched" class="text-xs text-red-600">{{ student.issues.join(' ') }}</p>
+                                    <p :class="CONFIDENCE_TONE[student.confidence]" class="font-medium">
+                                        {{ student.confidence_label }}
+                                    </p>
+                                    <p v-if="student.issues.length" class="text-xs text-muted-foreground">
+                                        {{ student.issues.join(' ') }}
+                                    </p>
+
+                                    <!-- Uma correspondência PROVÁVEL: o Lapispro
+                                         diz quem acha que é, e espera. -->
+                                    <div v-if="student.needs_teacher" class="mt-1.5 space-y-1.5">
+                                        <label class="block text-xs">
+                                            <span class="block text-muted-foreground">Aluno do Lapispro</span>
+                                            <select
+                                                class="mt-0.5 w-full rounded-md border border-border bg-background px-2 py-1 text-sm"
+                                                :value="choiceFor(student) ?? ''"
+                                                @change="choose(student, ($event.target as HTMLSelectElement).value === '' ? null : Number(($event.target as HTMLSelectElement).value))"
+                                            >
+                                                <option value="">— deixar esta linha em branco —</option>
+                                                <option
+                                                    v-for="candidate in candidatesFor(student)"
+                                                    :key="candidate.enrollment_id"
+                                                    :value="candidate.enrollment_id"
+                                                >
+                                                    {{ candidate.name }}<template v-if="candidate.process_number"> · {{ candidate.process_number }}</template>
+                                                </option>
+                                            </select>
+                                        </label>
+                                    </div>
+
+                                    <p v-else-if="student.chosen_by_teacher" class="text-xs text-muted-foreground">
+                                        Confirmado por si: {{ student.lapis_name }}
+                                    </p>
                                 </td>
+
                                 <td class="py-2 pr-3">
                                     <span v-if="!student.matched" class="text-muted-foreground">—</span>
                                     <ul v-else class="space-y-0.5">
@@ -257,6 +380,7 @@ function sampleLine(samples: string[]): string {
                                             <template v-if="cell.writable">
                                                 <strong>{{ cell.code }}</strong>
                                                 <span class="text-muted-foreground"> ({{ cell.band }})</span>
+                                                <span v-if="cell.decided" class="text-muted-foreground"> · decisão sua</span>
                                                 <span v-if="cell.partial" class="text-amber-700 dark:text-amber-400"> ⚠ parcial</span>
                                             </template>
                                             <span v-else class="text-muted-foreground">fica por preencher</span>
@@ -272,9 +396,36 @@ function sampleLine(samples: string[]): string {
                     </table>
                 </div>
 
+                <!-- A RESPOSTA VOLTA AO SERVIDOR antes de se exportar, para o
+                     professor VER o que passa a ser escrito naquela linha. Um
+                     «confirmado» que não mostrasse as menções seria uma
+                     confirmação às cegas — exatamente o que este ecrã existe
+                     para evitar. -->
+                <div
+                    v-if="linesNeedingTeacher.length"
+                    class="flex flex-wrap items-center gap-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm dark:border-amber-900 dark:bg-amber-950/30"
+                >
+                    <CircleHelp class="size-4 shrink-0 text-amber-600" />
+                    <span class="text-amber-900 dark:text-amber-200">
+                        {{ linesNeedingTeacher.length === 1
+                            ? 'Uma linha espera pela sua confirmação.'
+                            : `${linesNeedingTeacher.length} linhas esperam pela sua confirmação.` }}
+                        Escolha o aluno e volte a rever antes de exportar.
+                    </span>
+                    <button
+                        type="button"
+                        :disabled="resolving"
+                        class="rounded-md border border-primary bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-60"
+                        @click="submitResolutions"
+                    >
+                        {{ resolving ? 'A rever…' : 'Aplicar e rever' }}
+                    </button>
+                </div>
+
                 <p class="text-xs text-muted-foreground">
                     Uma célula sem menção fica exatamente como estava na grelha — nunca é preenchida com Fraco nem com
-                    zero. As cores da Pauta não aparecem aqui de propósito: o Excel não as leva.
+                    zero. Uma linha sem correspondência também não é preenchida: a grelha da escola pode trazer alunos
+                    que não são desta turma. As cores da Pauta não aparecem aqui de propósito: o Excel não as leva.
                 </p>
             </section>
 
@@ -357,7 +508,7 @@ function sampleLine(samples: string[]): string {
 
                 <div class="flex flex-wrap items-center gap-2">
                     <Link
-                        :href="`/classes/${schoolClass.ulid}/pauta-avaliacao/${period.ulid}`"
+                        :href="`/classes/${schoolClass.ulid}/pauta-avaliacao/${period.ulid}${period.moment === 'interim' ? '?momento=interim' : ''}`"
                         class="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted/40"
                     >
                         Voltar e completar
@@ -365,7 +516,7 @@ function sampleLine(samples: string[]): string {
                     <button
                         type="button"
                         class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                        :disabled="blocked || needsColumn || confirmation.processing"
+                        :disabled="blocked || needsColumn || linesNeedingTeacher.length > 0 || confirmation.processing"
                         @click="submitConfirmation"
                     >
                         {{ confirmation.processing ? 'A gerar…' : 'Exportar na mesma' }}
@@ -374,6 +525,15 @@ function sampleLine(samples: string[]): string {
 
                 <p v-if="blocked" class="text-sm text-red-700 dark:text-red-400">
                     Resolva primeiro os pontos a vermelho: sem eles o ficheiro sairia errado.
+                </p>
+
+                <!-- Não é um erro do ficheiro: é uma pergunta por responder
+                     sobre DE QUEM é uma nota, e nenhuma nota se escreve com
+                     essa pergunta em aberto (§28). -->
+                <p v-else-if="linesNeedingTeacher.length" class="text-sm text-amber-700 dark:text-amber-400">
+                    Confirme primeiro
+                    {{ linesNeedingTeacher.length === 1 ? 'a linha que espera por si' : 'as linhas que esperam por si' }}
+                    no passo 2: sem saber de quem é cada linha, uma menção pode ir parar ao aluno errado.
                 </p>
             </section>
         </template>

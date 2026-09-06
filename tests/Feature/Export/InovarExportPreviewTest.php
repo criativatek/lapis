@@ -73,6 +73,30 @@ class InovarExportPreviewTest extends TestCase
     }
 
     /**
+     * Os nomes reais da turma, com N.os de processo INVENTADOS PELA ESCOLA —
+     * números que o Lapispro não conhece.
+     *
+     * É o caso mais comum de todos: a grelha vem da secretaria e traz a
+     * numeração dela; a turma foi escrita à mão e não tem número nenhum.
+     *
+     * @return array<string, string> N.º de processo → nome
+     */
+    private function schoolNumbersOnly(): array
+    {
+        return $this->asTenant(function (): array {
+            $roll = [];
+            $next = 700_000;
+
+            foreach (SchoolClass::where('label', '7.º A')->firstOrFail()
+                ->enrollments()->with('student.identity')->orderBy('class_number')->get() as $enrollment) {
+                $roll[(string) $next++] = (string) $enrollment->student->identity->display_name;
+            }
+
+            return $roll;
+        });
+    }
+
+    /**
      * A grid naming this class's own domains and its own students.
      *
      * @param  array<string, mixed>  $options
@@ -158,16 +182,22 @@ class InovarExportPreviewTest extends TestCase
     // ------------------------------------------------ 2. o que bloqueia
 
     #[Test]
-    public function a_class_whose_students_have_no_process_number_is_told_exactly_that(): void
+    public function a_class_whose_students_have_no_process_number_is_no_longer_blocked(): void
     {
-        // The demo class starts with none, which is what a hand-typed class
-        // always looks like.
-        $preview = $this->preview($this->gridFor([]));
+        // A demonstração começa sem nenhum, que é o aspeto de qualquer turma
+        // escrita à mão; a grelha traz a numeração da secretaria, que o
+        // Lapispro nunca viu. O N.º de processo do ficheiro é informação da
+        // escola, não um requisito nosso: o nome basta para saber de quem se
+        // trata, e exigir o número era pedir uma informação que já vinha no
+        // ficheiro que acabou de ser carregado (§29).
+        $preview = $this->preview($this->gridFor([], ['students' => $this->schoolNumbersOnly()]));
 
-        $this->assertContains(
-            'Existem alunos sem N.º de processo. Complete esta informação para poder exportar para o INOVAR.',
-            $preview['summary']['blocking_errors'],
-        );
+        $this->assertSame([], $preview['summary']['blocking_errors']);
+
+        // E não é correspondência por sorte: os alunos ficam correspondidos
+        // pelo primeiro e último nome, sem nada a confirmar.
+        $this->assertGreaterThan(0, $preview['summary']['matched_students']);
+        $this->assertSame(0, $preview['summary']['students_needing_teacher']);
     }
 
     #[Test]
@@ -208,7 +238,7 @@ class InovarExportPreviewTest extends TestCase
     }
 
     #[Test]
-    public function a_line_of_the_grid_that_is_not_in_this_class_is_reported(): void
+    public function a_line_of_the_grid_that_is_not_in_this_class_is_reported_without_blocking(): void
     {
         $this->giveProcessNumbers();
 
@@ -217,10 +247,20 @@ class InovarExportPreviewTest extends TestCase
             'students' => ['999999' => 'Alguém De Outra Turma', '999998' => 'Outro Qualquer'],
         ]));
 
-        $this->assertStringContainsString(
-            'Não há nesta turma nenhum aluno com este N.º de processo',
-            implode(' ', $preview['summary']['blocking_errors']),
-        );
+        // NÃO BLOQUEIA, e é uma decisão de produto: a grelha da escola pode
+        // legitimamente trazer alunos que não são desta turma, e essas linhas
+        // ficam exatamente como estavam — nunca um zero, nunca um F (§23).
+        $this->assertSame([], $preview['summary']['blocking_errors']);
+
+        foreach ($preview['students'] as $student) {
+            $this->assertSame('none', $student['confidence']);
+            $this->assertFalse($student['matched']);
+            $this->assertFalse($student['needs_teacher']);
+            $this->assertStringContainsString(
+                'Nenhum aluno desta turma corresponde a este nome.',
+                implode(' ', $student['reasons']),
+            );
+        }
     }
 
     #[Test]

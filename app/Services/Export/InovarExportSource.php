@@ -33,11 +33,19 @@ interface InovarExportSource
      * Per enrolment and domain: the mention, its INOVAR code, and why the
      * result was partial if it was.
      *
+     * `decided_by_teacher` diz se aquela célula é a DECISÃO do professor sobre o
+     * domínio ou a leitura do Lapispro. É apresentação e nunca cálculo: o campo
+     * escrito no ficheiro é o mesmo `inovar_code` em qualquer dos casos. Uma
+     * fonte que não saiba responder omite-o — uma fotografia guardada não
+     * distingue as duas coisas porque, no dia em que foi tirada, o que estava no
+     * ecrã já era uma coisa só.
+     *
      * @return array<int, array<int, array{
      *     band_label: string|null,
      *     inovar_code: string|null,
      *     coverage_warning: bool,
      *     coverage_elements: list<array<string, mixed>>,
+     *     decided_by_teacher?: bool,
      * }>>
      */
     public function cells(): array;

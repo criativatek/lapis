@@ -122,6 +122,55 @@ class EvaluationSheetInovarExportController extends Controller
     }
 
     /**
+     * O professor respondeu a uma linha por identificar. Mostrar de novo o que
+     * seria escrito, agora com essa resposta.
+     *
+     * UMA VOLTA AO SERVIDOR, DE PROPÓSITO. A escolha podia ser resolvida no
+     * browser, e o ecrã ficaria mais rápido e mentiria: as menções de uma linha
+     * só existem depois de se saber de quem ela é, e um ecrã que dissesse
+     * «confirmado» sem mostrar o que passa a ser escrito não seria a revisão
+     * que este fluxo existe para dar. A grelha é relida do ficheiro, como
+     * sempre; o que a resposta acrescenta é uma identidade, e é verificada
+     * contra os candidatos daquela linha.
+     */
+    public function resolve(Request $request, SchoolClass $class, AcademicPeriod $period, string $token): Response|RedirectResponse
+    {
+        Gate::authorize('update', $class);
+        $this->guardPeriod($class, $period);
+
+        $data = $request->validate([
+            'resolutions' => ['nullable', 'array', 'max:500'],
+            'resolutions.*' => ['nullable', 'integer'],
+        ], [], ['resolutions' => 'correspondências confirmadas']);
+
+        if (! $this->uploads->exists($token)) {
+            return back()->withErrors(['template' => 'A grelha carregada já não está disponível. Carregue-a novamente.']);
+        }
+
+        abort_unless($this->uploads->belongsToClass($token, $class->id), 404);
+
+        try {
+            $template = $this->reader->read($this->uploads->absolutePath($token));
+        } catch (InovarTemplateException $exception) {
+            return back()->withErrors(['template' => $exception->getMessage()]);
+        }
+
+        $moment = $this->moment($request);
+
+        return Inertia::render('evaluation-sheets/InovarExport', [
+            ...$this->context($class, $period, $moment),
+            'token' => $token,
+            'preparation' => $this->preparation(
+                $class,
+                $period,
+                $template,
+                $moment,
+                $this->resolutions($data['resolutions'] ?? null),
+            ),
+        ]);
+    }
+
+    /**
      * The teacher read the review and said yes.
      *
      * A POST that ends in a redirect, not a download: unlike the old flow, the
@@ -142,9 +191,17 @@ class EvaluationSheetInovarExportController extends Controller
             // indicação, o final — que é o que uma grelha do Inovar quase
             // sempre é, e o que todas as anteriores foram.
             'moment' => ['nullable', 'string', 'in:interim,final'],
+            // AS ESCOLHAS DO PROFESSOR sobre quem é cada linha por identificar.
+            // Não são instruções: cada uma é verificada contra os candidatos
+            // que o FICHEIRO e a turma admitem para aquela linha, exatamente
+            // como a coluna do nível é. Um id inventado pelo browser não
+            // escreve em ninguém.
+            'resolutions' => ['nullable', 'array', 'max:500'],
+            'resolutions.*' => ['nullable', 'integer'],
         ], [], [
             'level_column' => 'coluna do nível',
             'moment_label' => 'título do momento',
+            'resolutions' => 'correspondências confirmadas',
         ]);
 
         if (! $this->uploads->exists($token)) {
@@ -163,12 +220,40 @@ class EvaluationSheetInovarExportController extends Controller
             return back()->withErrors(['template' => $exception->getMessage()]);
         }
 
-        // REBUILT FROM THE FILE, never from what the browser sent back. The
-        // review is what the teacher saw; it is not a payload they get to edit.
-        $preview = $this->previewBuilder->build($class, $period, $template);
+        // REBUILT FROM THE FILE, never from what the browser sent back. O que
+        // vem do browser são apenas as ESCOLHAS do professor — que linha é que
+        // aluno —, e cada uma delas é reavaliada contra os candidatos que esta
+        // grelha e esta turma admitem: uma escolha fora dessa lista é
+        // simplesmente ignorada, e a linha volta a pedir resposta.
+        $preview = $this->previewBuilder->build(
+            $class,
+            $period,
+            $template,
+            resolutions: $this->resolutions($data['resolutions'] ?? null),
+        );
 
         if ($preview['summary']['blocking_errors'] !== []) {
             return back()->withErrors(['template' => $preview['summary']['blocking_errors'][0]]);
+        }
+
+        // UMA LINHA POR IDENTIFICAR NÃO AVANÇA. Uma correspondência provável ou
+        // ambígua é uma pergunta em aberto sobre DE QUEM é uma nota, e escrever
+        // com ela em aberto é exatamente o risco que este ecrã existe para
+        // evitar (§28). Não é um erro do ficheiro: é uma resposta em falta, e
+        // diz-se assim.
+        $pending = array_values(array_filter(
+            $preview['students'],
+            fn (array $student): bool => $student['needs_teacher'],
+        ));
+
+        if ($pending !== []) {
+            $lines = implode(', ', array_map(fn (array $student): string => (string) $student['row'], $pending));
+
+            return back()->withErrors([
+                'template' => count($pending) === 1
+                    ? "A linha {$lines} da grelha ainda não tem o aluno confirmado. Confirme-a antes de exportar."
+                    : "As linhas {$lines} da grelha ainda não têm o aluno confirmado. Confirme-as antes de exportar.",
+            ]);
         }
 
         $includeLevel = (bool) $data['include_level'];
@@ -326,6 +411,7 @@ class EvaluationSheetInovarExportController extends Controller
      * domain colours — Excel does not carry them and this screen is about the
      * spreadsheet, not about the pauta.
      *
+     * @param  array<int, int>  $resolutions  linha da grelha → matrícula escolhida pelo professor
      * @return array<string, mixed>
      */
     protected function preparation(
@@ -333,8 +419,9 @@ class EvaluationSheetInovarExportController extends Controller
         AcademicPeriod $period,
         InovarTemplate $template,
         SheetMomentKind $moment = SheetMomentKind::Final,
+        array $resolutions = [],
     ): array {
-        $preview = $this->previewBuilder->build($class, $period, $template);
+        $preview = $this->previewBuilder->build($class, $period, $template, resolutions: $resolutions);
         $decided = $this->decidedLevels($period, $preview['students']);
 
         $candidates = array_map(fn (InovarTemplateColumn $column): array => [
@@ -353,6 +440,7 @@ class EvaluationSheetInovarExportController extends Controller
                 'code' => $value['inovar_code'],
                 'writable' => $value['writable'],
                 'partial' => $value['coverage_warning'],
+                'decided' => $value['decided_by_teacher'],
             ];
         }
 
@@ -366,7 +454,19 @@ class EvaluationSheetInovarExportController extends Controller
                 'process_number' => $student['process_number'],
                 'name' => $student['display_name'],
                 'matched' => $student['matched'],
-                'issues' => $student['issues'],
+                // O ESTADO DA CORRESPONDÊNCIA, por palavras e não por cor: qual
+                // é, porquê, e — quando o Lapispro tem uma pessoa em mente — quem
+                // (§35).
+                'confidence' => $student['confidence'],
+                'confidence_label' => $student['confidence_label'],
+                'needs_teacher' => $student['needs_teacher'],
+                'chosen_by_teacher' => $student['chosen_by_teacher'],
+                'lapis_name' => $student['lapis_name'],
+                'lapis_process_number' => $student['lapis_process_number'],
+                'enrollment_id' => $student['enrollment_id'],
+                // Entre quem o professor pode escolher, quando lhe é pedido.
+                'candidates' => $student['candidates'],
+                'issues' => $student['reasons'],
                 'domains' => $byRow[(int) $student['row']] ?? [],
                 // The DECISION or nothing. Never `proposed_*` (§3.3).
                 'level' => $level,
@@ -378,6 +478,8 @@ class EvaluationSheetInovarExportController extends Controller
             'domains' => $preview['domains'],
             'summary' => $preview['summary'],
             'source' => $preview['source'],
+            // Os alunos da turma, para as listas de escolha das linhas ambíguas.
+            'candidates' => $preview['candidates'],
             'level' => [
                 'candidates' => $candidates,
                 // O nível pertence a uma grelha que FECHA um momento, e não a
@@ -495,6 +597,37 @@ class EvaluationSheetInovarExportController extends Controller
         return $given !== ''
             ? $this->capture->labelFor($given, $period, $moment)
             : 'Exportação INOVAR — '.$this->capture->suggestedLabel($period, $moment);
+    }
+
+    /**
+     * As escolhas do professor, reduzidas a números.
+     *
+     * Só a forma é normalizada aqui — linha inteira, matrícula inteira. QUEM
+     * PODE SER ESCOLHIDO não se decide neste ficheiro: é o `InovarStudentMatcher`
+     * que confronta cada escolha com os candidatos daquela linha, e uma que não
+     * esteja lá é descartada em silêncio, deixando a linha por confirmar. É a
+     * diferença entre aceitar uma resposta e obedecer a uma ordem.
+     *
+     * @param  array<array-key, mixed>|null  $given
+     * @return array<int, int>
+     */
+    protected function resolutions(?array $given): array
+    {
+        if ($given === null) {
+            return [];
+        }
+
+        $resolutions = [];
+
+        foreach ($given as $row => $enrollmentId) {
+            if ($enrollmentId === null || ! is_numeric($row) || ! is_numeric($enrollmentId)) {
+                continue;
+            }
+
+            $resolutions[(int) $row] = (int) $enrollmentId;
+        }
+
+        return $resolutions;
     }
 
     /**

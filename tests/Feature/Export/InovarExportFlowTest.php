@@ -404,8 +404,13 @@ class InovarExportFlowTest extends TestCase
     #[Test]
     public function generation_is_refused_while_anything_blocks_it(): void
     {
-        // No process numbers anywhere: the class was typed in by hand.
-        $path = (new InovarGridFixture)->build();
+        // Uma coluna que não corresponde a domínio nenhum do perfil: é isto
+        // que continua a bloquear, porque escrever nela seria escrever as notas
+        // de um domínio noutro. (Um N.º de processo em falta já não bloqueia
+        // nada — passou a ser um sinal entre outros, §29.)
+        $path = (new InovarGridFixture)->build([
+            'domains' => ['D' => 'Leitura', 'E' => 'Cidadania e Desenvolvimento'],
+        ]);
 
         $page = $this->upload($path)->viewData('page');
         $token = $page['props']['token'];

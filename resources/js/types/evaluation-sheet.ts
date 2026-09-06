@@ -323,6 +323,24 @@ export type InovarExportCell = {
     code: string | null;
     writable: boolean;
     partial: boolean;
+    /** Se aquela menção é a decisão do professor sobre o domínio (§31). */
+    decided: boolean;
+};
+
+/**
+ * QUANTA CERTEZA HÁ de que uma linha da grelha é um aluno desta turma.
+ *
+ * As duas primeiras escrevem-se; as duas últimas perguntam-se. Ver
+ * `App\Domain\Export\InovarMatchConfidence` no servidor, que é quem decide.
+ */
+export type InovarMatchConfidence = 'strong' | 'probable' | 'ambiguous' | 'none';
+
+/** Um aluno da turma, oferecido como escolha para uma linha por identificar. */
+export type InovarMatchCandidate = {
+    enrollment_id: number;
+    class_number: number | null;
+    name: string;
+    process_number: string | null;
 };
 
 /**
@@ -336,7 +354,21 @@ export type InovarExportRow = {
     row: number;
     process_number: string | null;
     name: string;
+    /** Só quando o Lapispro escreve sem perguntar — ver `confidence`. */
     matched: boolean;
+    /** Quanta certeza há, e o que dizer sobre ela. */
+    confidence: InovarMatchConfidence;
+    confidence_label: string;
+    /** Se a exportação espera por uma resposta do professor sobre esta linha. */
+    needs_teacher: boolean;
+    chosen_by_teacher: boolean;
+    /** O aluno do Lapispro em jogo, para o professor comparar com a grelha. */
+    lapis_name: string | null;
+    lapis_process_number: string | null;
+    enrollment_id: number | null;
+    /** Entre quem esta linha pode ser escolhida. Ids, não pessoas. */
+    candidates: number[];
+    /** A razão, em palavras curtas — nunca só uma cor (§35). */
     issues: string[];
     domains: InovarExportCell[];
     level: string | null;
@@ -355,12 +387,16 @@ export type InovarExportPreparation = {
     summary: {
         matched_students: number;
         unmatched_students: number;
+        /** Quantas linhas ainda esperam por uma resposta do professor. */
+        students_needing_teacher: number;
         mapped_domains: number;
         unmapped_domains: number;
         ready_cells: number;
         warnings: string[];
         blocking_errors: string[];
     };
+    /** Os alunos da turma, para as listas de escolha. */
+    candidates: InovarMatchCandidate[];
     source: { label: string; reference_label: string | null };
     level: {
         candidates: InovarLevelCandidate[];

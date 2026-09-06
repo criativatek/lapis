@@ -625,11 +625,12 @@ class EvaluationSheetInovarExportTest extends TestCase
     // ==================================================== D · correspondência
 
     #[Test]
-    public function a_line_that_matches_nobody_is_reported_and_blocks_the_file(): void
+    public function a_line_that_matches_nobody_is_reported_and_left_exactly_as_it_was(): void
     {
         $grid = $this->grid();
 
-        // Uma linha com um n.º de processo que não é de ninguém desta turma.
+        // Uma linha cujo n.º de processo E cujo nome não são de ninguém desta
+        // turma.
         $students = array_flip($grid['numbers']);
         $students['999999'] = 'Alguém De Outra Turma';
 
@@ -640,11 +641,14 @@ class EvaluationSheetInovarExportTest extends TestCase
 
         $stranger = collect($preparation['students'])->firstWhere('process_number', '999999');
         $this->assertFalse($stranger['matched']);
-        $this->assertContains('Não há nesta turma nenhum aluno com este N.º de processo.', $stranger['issues']);
+        $this->assertSame('none', $stranger['confidence']);
+        $this->assertContains('Nenhum aluno desta turma corresponde a este nome.', $stranger['issues']);
 
-        // Tecnicamente impossível (§8): não sai ficheiro nenhum.
-        $this->confirm($this->token($upload))->assertSessionHasErrors('template');
-        $this->assertSame(0, $this->asTenant(fn (): int => EvaluationSheetExport::query()->count()));
+        // NÃO BLOQUEIA. A grelha da escola pode trazer alunos que não são desta
+        // turma, e uma linha dessas fica exatamente como estava — nunca um
+        // zero, nunca um F (§23). O que fica é o registo de que ela ficou vazia.
+        $this->confirm($this->token($upload))->assertRedirect();
+        $this->assertSame(1, $this->asTenant(fn (): int => EvaluationSheetExport::query()->count()));
     }
 
     #[Test]
@@ -873,5 +877,291 @@ class EvaluationSheetInovarExportTest extends TestCase
         $this->actingAs($this->teacher)
             ->get("/classes/{$this->schoolClass()->ulid}/exports/inovar/{$this->period()->ulid}")
             ->assertOk();
+    }
+
+    // ============================================= E · a decisão por domínio
+
+    /**
+     * A apreciação que o professor decidiu para UM domínio de UM aluno.
+     *
+     * Escrita pelo caminho canónico — o mesmo endpoint que a Pauta usa —, para
+     * que este teste não possa passar por causa de um atalho que o produto não
+     * tem.
+     */
+    private function decideDomain(string $studentName, string $domainName, string $levelCode): void
+    {
+        [$enrollmentUlid, $domainUlid, $levelId] = $this->asTenant(function () use ($studentName, $domainName, $levelCode): array {
+            $class = $this->schoolClass();
+
+            $enrollment = $class->enrollments()->with('student.identity')->get()
+                ->first(fn ($row): bool => $row->student->identity->display_name === $studentName);
+
+            return [
+                $enrollment->ulid,
+                Domain::where('name', $domainName)->firstOrFail()->ulid,
+                (int) $class->profileVersion->scale->levels()->where('code', $levelCode)->firstOrFail()->id,
+            ];
+        });
+
+        $this->actingAs($this->teacher)->post(
+            "/classes/{$this->schoolClass()->ulid}/pauta-avaliacao/{$this->period()->ulid}/dominios/{$enrollmentUlid}/{$domainUlid}",
+            ['scale_level_id' => $levelId],
+        )->assertRedirect();
+    }
+
+    /** A menção que o Lapispro propõe para um domínio, tal como a pauta a mostra. */
+    private function proposedCodeFor(string $studentName, string $domainName): ?string
+    {
+        $props = $this->actingAs($this->teacher)
+            ->get("/classes/{$this->schoolClass()->ulid}/pauta-avaliacao")
+            ->viewData('page')['props'];
+
+        foreach ($props['sheet']['students'] as $student) {
+            if ($student['name'] !== $studentName) {
+                continue;
+            }
+
+            foreach ($student['domains'] as $domain) {
+                if ($domain['name'] === $domainName) {
+                    return $domain['scale_level_code'];
+                }
+            }
+        }
+
+        $this->fail("Não há célula de «{$domainName}» para {$studentName}.");
+    }
+
+    /**
+     * A célula de um domínio de um aluno, na revisão da exportação.
+     *
+     * @param  array<string, mixed>  $preparation
+     * @return array<string, mixed>
+     */
+    private function exportedCell(array $preparation, string $studentName, string $domainName): array
+    {
+        $row = collect($preparation['students'])->firstWhere('name', $studentName);
+
+        $this->assertNotNull($row, "Não há linha para {$studentName} na grelha.");
+
+        $cell = collect($row['domains'])->firstWhere('domain', $domainName);
+
+        $this->assertNotNull($cell, "«{$domainName}» não é uma das colunas desta grelha.");
+
+        return [...$cell, 'row' => $row['row']];
+    }
+
+    #[Test]
+    public function the_teachers_domain_decision_is_what_reaches_the_school_and_never_the_proposal(): void
+    {
+        $grid = $this->grid();
+
+        // «Ana Marques» tem uma proposta em «Escrita». O professor decide outra
+        // coisa — e é a decisão dele que a escola recebe (§31).
+        $proposed = $this->proposedCodeFor('Ana Marques', 'Escrita');
+        $this->assertNotNull($proposed, 'Este cenário precisa de uma proposta para haver o que sobrepor.');
+        $this->assertNotSame('3', $proposed);
+
+        $this->decideDomain('Ana Marques', 'Escrita', '3');
+
+        $preparation = $this->preparation($this->upload($grid['path']));
+        $cell = $this->exportedCell($preparation, 'Ana Marques', 'Escrita');
+
+        // O CÓDIGO INOVAR DA MENÇÃO DECIDIDA — «S», e nunca «3» nem
+        // «Suficiente» (§30, §42).
+        $this->assertSame('S', $cell['code']);
+        $this->assertSame('Suficiente', $cell['band']);
+        $this->assertTrue($cell['decided']);
+
+        $this->confirm($this->token($this->upload($grid['path'])))->assertRedirect();
+
+        $sheet = $this->storedSheet($this->latestExport());
+        $column = array_search('Escrita', $grid['domains'], true);
+        $coordinate = $column.$cell['row'];
+
+        $this->assertSame('S', $sheet->getCell($coordinate)->getValue());
+
+        @unlink($grid['path']);
+    }
+
+    #[Test]
+    public function a_domain_without_a_decision_keeps_writing_the_canonical_value(): void
+    {
+        $grid = $this->grid();
+
+        // Uma decisão num domínio não toca em nenhum outro: «Gramática»
+        // continua a escrever o que o Lapispro apurou (§32).
+        $before = $this->exportedCell($this->preparation($this->upload($grid['path'])), 'Ana Marques', 'Gramática');
+
+        $this->decideDomain('Ana Marques', 'Escrita', '1');
+
+        $after = $this->exportedCell($this->preparation($this->upload($grid['path'])), 'Ana Marques', 'Gramática');
+
+        $this->assertSame($before['code'], $after['code']);
+        $this->assertFalse($after['decided']);
+
+        @unlink($grid['path']);
+    }
+
+    #[Test]
+    public function every_band_of_the_scale_writes_its_own_inovar_code_and_never_its_own_number(): void
+    {
+        $grid = $this->grid();
+
+        // A escala do sistema «Escala 1 a 5»: 1→F, 2→I, 3→S, 4→B, 5→MB. É a
+        // correspondência DECLARADA na banda, e nunca o número dela nem o
+        // rótulo (§30).
+        $expected = ['1' => 'F', '2' => 'I', '3' => 'S', '4' => 'B', '5' => 'MB'];
+
+        foreach ($expected as $code => $inovarCode) {
+            $this->decideDomain('Ana Marques', 'Escrita', $code);
+
+            $cell = $this->exportedCell($this->preparation($this->upload($grid['path'])), 'Ana Marques', 'Escrita');
+
+            $this->assertSame($inovarCode, $cell['code'], "a menção {$code} escreve {$inovarCode}");
+            $this->assertNotSame($code, $cell['code']);
+        }
+
+        @unlink($grid['path']);
+    }
+
+    // ========================================== F · confirmar quem é cada linha
+
+    /**
+     * Renomeia um aluno da turma — a maneira mais curta de fabricar uma
+     * correspondência que precisa de uma pessoa.
+     */
+    private function rename(string $from, string $to): void
+    {
+        $this->asTenant(function () use ($from, $to): void {
+            foreach ($this->schoolClass()->enrollments()->with('student.identity')->get() as $enrollment) {
+                if ($enrollment->student->identity->display_name === $from) {
+                    $enrollment->student->identity->update(['display_name' => $to]);
+
+                    return;
+                }
+            }
+
+            $this->fail("Não há «{$from}» na turma.");
+        });
+    }
+
+    private function enrollmentIdOf(string $name): int
+    {
+        return $this->asTenant(function () use ($name): int {
+            foreach ($this->schoolClass()->enrollments()->with('student.identity')->get() as $enrollment) {
+                if ($enrollment->student->identity->display_name === $name) {
+                    return (int) $enrollment->getKey();
+                }
+            }
+
+            $this->fail("Não há «{$name}» na turma.");
+        });
+    }
+
+    #[Test]
+    public function the_export_waits_for_the_teacher_while_a_line_is_still_unidentified(): void
+    {
+        $grid = $this->grid();
+
+        // Dois alunos com o mesmo primeiro e último nome: a linha da grelha
+        // podia ser qualquer um deles, e o Lapispro não escolhe (§27).
+        $this->rename('Ana Marques', 'Rita Costa');
+        $this->rename('Bruno Teixeira', 'Rita Alexandra Costa');
+
+        $path = (new InovarGridFixture)->build([
+            'domains' => $grid['domains'],
+            'students' => ['7050' => 'Rita Costa'],
+        ]);
+
+        $upload = $this->upload($path);
+        $preparation = $this->preparation($upload);
+
+        $line = $preparation['students'][0];
+        $this->assertSame('ambiguous', $line['confidence']);
+        $this->assertTrue($line['needs_teacher']);
+        $this->assertNull($line['enrollment_id']);
+        $this->assertCount(2, $line['candidates']);
+
+        // Não é um erro do ficheiro — é uma pergunta por responder. E enquanto
+        // ela estiver em aberto, não sai grelha nenhuma (§28).
+        $this->assertSame([], $preparation['summary']['blocking_errors']);
+        $this->confirm($this->token($upload))->assertSessionHasErrors('template');
+        $this->assertSame(0, $this->asTenant(fn (): int => EvaluationSheetExport::query()->count()));
+
+        @unlink($path);
+        @unlink($grid['path']);
+    }
+
+    #[Test]
+    public function the_teacher_answers_the_line_sees_what_changes_and_only_then_exports(): void
+    {
+        $grid = $this->grid();
+
+        $this->rename('Ana Marques', 'Rita Costa');
+        $this->rename('Bruno Teixeira', 'Rita Alexandra Costa');
+
+        $path = (new InovarGridFixture)->build([
+            'domains' => $grid['domains'],
+            'students' => ['7050' => 'Rita Costa'],
+        ]);
+
+        $upload = $this->upload($path);
+        $token = $this->token($upload);
+        $chosen = $this->enrollmentIdOf('Rita Alexandra Costa');
+
+        // A RESPOSTA VOLTA AO SERVIDOR e devolve a revisão outra vez — com as
+        // menções daquela linha, que só existem depois de se saber de quem ela é.
+        $resolved = $this->actingAs($this->teacher)->post("{$this->base()}/{$token}/correspondencias", [
+            'resolutions' => [4 => $chosen],
+        ]);
+
+        $preparation = $this->preparation($resolved);
+        $line = $preparation['students'][0];
+
+        $this->assertSame('strong', $line['confidence']);
+        $this->assertTrue($line['matched']);
+        $this->assertTrue($line['chosen_by_teacher']);
+        $this->assertSame($chosen, $line['enrollment_id']);
+        $this->assertNotSame([], $line['domains']);
+
+        // E só agora sai o ficheiro — com a escolha a viajar de novo, porque a
+        // grelha é sempre relida e a decisão nunca fica implícita.
+        $this->confirm($this->token($resolved), ['resolutions' => [4 => $chosen]])->assertRedirect();
+        $this->assertSame(1, $this->asTenant(fn (): int => EvaluationSheetExport::query()->count()));
+
+        @unlink($path);
+        @unlink($grid['path']);
+    }
+
+    #[Test]
+    public function a_choice_the_browser_invented_is_discarded_instead_of_obeyed(): void
+    {
+        $grid = $this->grid();
+
+        $this->rename('Ana Marques', 'Rita Costa');
+        $this->rename('Bruno Teixeira', 'Rita Alexandra Costa');
+
+        $path = (new InovarGridFixture)->build([
+            'domains' => $grid['domains'],
+            'students' => ['7050' => 'Rita Costa'],
+        ]);
+
+        $upload = $this->upload($path);
+        $elsewhere = $this->enrollmentIdOf('Carolina Nunes');
+
+        $resolved = $this->actingAs($this->teacher)->post("{$this->base()}/{$this->token($upload)}/correspondencias", [
+            'resolutions' => [4 => $elsewhere],
+        ]);
+
+        $line = $this->preparation($resolved)['students'][0];
+
+        // «Carolina Nunes» não era candidata àquela linha. A escolha é
+        // descartada e a linha volta a pedir resposta — o browser não escreve
+        // em quem quiser.
+        $this->assertSame('ambiguous', $line['confidence']);
+        $this->assertNull($line['enrollment_id']);
+
+        @unlink($path);
+        @unlink($grid['path']);
     }
 }

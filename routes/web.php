@@ -679,6 +679,10 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
             // Confirmar TERMINA NUM REDIRECT, não num ficheiro: ao contrário do
             // fluxo antigo, aqui o ficheiro fica, e o que o professor precisa
             // de receber é o registo no histórico.
+            // Responder a uma linha por identificar, e voltar a ver o que
+            // passaria a ser escrito. Declarada ANTES de `{token}` porque
+            // «correspondencias» não é um token e não pode ser lido como um.
+            Route::post('classes/{class}/pauta-avaliacao/inovar/{period}/{token}/correspondencias', [EvaluationSheetInovarExportController::class, 'resolve'])->name('evaluation-sheets.inovar.resolve');
             Route::post('classes/{class}/pauta-avaliacao/inovar/{period}/{token}', [EvaluationSheetInovarExportController::class, 'confirm'])->name('evaluation-sheets.inovar.confirm');
         });
 
