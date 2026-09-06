@@ -18,6 +18,7 @@ import type {
     EvaluationSheetReadiness,
     EvaluationSheetSaveDefaults,
     EvaluationSheetStudent,
+    SheetMomentKind,
 } from '@/types';
 
 /**
@@ -48,7 +49,14 @@ const props = defineProps<{
         has_profile: boolean;
         scale_name?: string | null;
     };
+    /**
+     * OS MOMENTOS ESTRUTURAIS DO ANO, na ordem em que se vivem: para cada
+     * unidade temporal, o intercalar e depois o final. Só estes — uma
+     * fotografia guardada é um registo, não um separador (§20).
+     */
     periods: EvaluationSheetPeriod[];
+    /** Qual dos dois momentos está selecionado. */
+    moment?: SheetMomentKind;
     sheet: EvaluationSheet | null;
     /** A escala em que a decisão é tomada — a mesma que Resultados recebe. */
     decision: EvaluationSheetDecisionScale;
@@ -174,8 +182,29 @@ function postDomainDecision(scaleLevelId: number | null): void {
     );
 }
 
-function selectPeriod(ulid: string): void {
-    router.get(`/classes/${props.schoolClass.ulid}/pauta-avaliacao/${ulid}`, {}, { preserveScroll: true });
+// ------------------------------------------------- os momentos estruturais
+//
+// O topo navega entre MOMENTOS, não entre períodos: para cada unidade temporal
+// configurada, o intercalar e o final, por essa ordem. Os rótulos vêm todos do
+// servidor, derivados da configuração real do ano — nada aqui sabe o que é um
+// semestre (§19).
+//
+// O momento final continua a ser o que uma ligação sem `?momento=` abre, que é
+// o que mantém todos os endereços antigos a apontar para onde apontavam.
+
+const selectedMoment = computed<SheetMomentKind>(() => selectedPeriod.value?.moment ?? props.moment ?? 'final');
+
+/** `?momento=` só quando não é o momento por omissão: um endereço limpo. */
+function momentQuery(moment: SheetMomentKind): string {
+    return moment === 'final' ? '' : `?momento=${moment}`;
+}
+
+function selectMoment(period: EvaluationSheetPeriod): void {
+    router.get(
+        `/classes/${props.schoolClass.ulid}/pauta-avaliacao/${period.ulid}${momentQuery(period.moment)}`,
+        {},
+        { preserveScroll: true },
+    );
 }
 
 // ------------------------------------------------------------- apresentação
@@ -247,6 +276,10 @@ const showSaveForm = ref(false);
 const saveForm = useForm({
     moment_label: props.saveDefaults?.moment_label ?? '',
     effective_at: props.saveDefaults?.effective_at ?? '',
+    // QUAL DOS DOIS MOMENTOS se está a guardar. Viaja separado do título porque
+    // o título é editável e pode acabar a dizer qualquer coisa; a identidade
+    // pedagógica do momento não muda por alguém a reescrever (§21).
+    moment: props.moment ?? 'final',
 });
 
 const canSave = computed(() => props.saveDefaults !== null && props.saveDefaults !== undefined && props.sheet !== null);
@@ -272,7 +305,7 @@ function submitSave(): void {
                     :title="`Pauta de Avaliação — ${schoolClass.label}`"
                     :description="
                         selectedPeriod
-                            ? `${schoolClass.subject} · ${selectedPeriod.kind_label} selecionado: ${selectedPeriod.label}`
+                            ? `${schoolClass.subject} · ${selectedPeriod.moment_label}`
                             : schoolClass.subject
                     "
                 />
@@ -281,19 +314,40 @@ function submitSave(): void {
                 </Link>
             </div>
 
-            <div v-if="periods.length" class="flex flex-wrap gap-1">
+            <!-- OS MOMENTOS ESTRUTURAIS DO ANO, na ordem em que se vivem: o
+                 intercalar de cada unidade temporal imediatamente ANTES do
+                 respetivo final. É o servidor que os ordena e nomeia, a partir
+                 da configuração real — nada aqui sabe o que é um semestre
+                 (§19). E são só estes: outras pautas guardadas, exportações
+                 repetidas ou títulos personalizados vivem no Histórico, não
+                 num separador cada (§20).
+
+                 Um separador intercalar fica visualmente mais leve do que o
+                 final: são momentos de peso pedagógico diferente, e a barra
+                 diz isso sem uma legenda. -->
+            <nav
+                v-if="periods.length"
+                class="flex flex-wrap gap-1"
+                aria-label="Momentos de avaliação"
+            >
                 <button
                     v-for="period in periods"
-                    :key="period.ulid"
+                    :key="`${period.ulid}-${period.moment}`"
                     type="button"
                     class="rounded-md border px-3 py-1.5 text-sm"
-                    :class="period.selected ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:bg-muted/40'"
-                    :title="period.kind_label"
-                    @click="selectPeriod(period.ulid)"
+                    :class="[
+                        period.selected
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'border-border hover:bg-muted/40',
+                        !period.selected && period.moment === 'interim' ? 'border-dashed text-muted-foreground' : '',
+                    ]"
+                    :title="period.moment_label"
+                    :aria-current="period.selected ? 'page' : undefined"
+                    @click="selectMoment(period)"
                 >
                     {{ period.label }}
                 </button>
-            </div>
+            </nav>
         </div>
 
         <div class="print-hide flex flex-wrap items-center gap-3">
@@ -331,7 +385,7 @@ function submitSave(): void {
                  isso — a revisão é o ponto. -->
             <Link
                 v-if="canExportToInovar && selectedPeriod"
-                :href="`/classes/${schoolClass.ulid}/pauta-avaliacao/inovar/${selectedPeriod.ulid}`"
+                :href="`/classes/${schoolClass.ulid}/pauta-avaliacao/inovar/${selectedPeriod.ulid}${momentQuery(selectedMoment)}`"
                 class="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
             >
                 Preparar exportação para o Inovar
@@ -467,8 +521,12 @@ function submitSave(): void {
             <div class="hidden print:block">
                 <h1 class="text-lg font-semibold">Pauta de Avaliação — {{ schoolClass.label }}</h1>
                 <p class="text-sm">{{ schoolClass.subject }} · {{ schoolClass.academic_year }}</p>
+                <!-- QUE MOMENTO é este, por inteiro. Numa folha impressa não há
+                     separador selecionado a que recorrer, e «1.º Semestre» num
+                     papel tirado a meio do semestre seria a folha a dizer que
+                     fechava o que não fechou. -->
                 <p v-if="selectedPeriod" class="text-sm">
-                    {{ selectedPeriod.kind_label }}: {{ selectedPeriod.label }}
+                    {{ selectedPeriod.moment_label }}
                 </p>
                 <p class="text-xs">Impresso em {{ printedOn }}</p>
             </div>

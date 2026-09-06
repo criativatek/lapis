@@ -125,7 +125,27 @@ function baseDecision(): EvaluationSheetDecisionScale {
 function baseProps() {
     return {
         schoolClass: { ulid: 'class-1', label: '7.º A', subject: 'Português', academic_year: '2026/2027', has_profile: true },
-        periods: [{ ulid: 'period-1', label: '1.º Semestre', kind_label: 'Semestre', selected: true }],
+        // Os dois momentos estruturais de uma unidade temporal, na ordem em que
+        // se vivem — o intercalar imediatamente ANTES do respetivo final.
+        periods: [
+            {
+                ulid: 'period-1',
+                moment: 'interim' as const,
+                label: 'Intercalar 1.º Semestre',
+                kind_label: 'Semestre',
+                moment_label: 'Momento intercalar do 1.º Semestre',
+                selected: false,
+            },
+            {
+                ulid: 'period-1',
+                moment: 'final' as const,
+                label: '1.º Semestre',
+                kind_label: 'Semestre',
+                moment_label: 'Semestre — 1.º Semestre',
+                selected: true,
+            },
+        ],
+        moment: 'final' as const,
         sheet: baseSheet(),
         decision: baseDecision(),
     };

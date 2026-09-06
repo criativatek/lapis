@@ -6,6 +6,7 @@ use App\Models\AcademicPeriod;
 use App\Models\ClassificationScope;
 use App\Models\EvaluationSheetExport;
 use App\Models\SchoolClass;
+use App\Models\SheetMomentKind;
 use App\Models\User;
 use App\Services\Assessment\CaptureEvaluationSheet;
 use App\Support\Assessment\EvaluationSheetException;
@@ -50,21 +51,27 @@ class EvaluationSheetHistoryController extends Controller
             'moment_label' => ['required', 'string', 'max:200'],
             'effective_at' => ['required', 'date_format:Y-m-d'],
             'scope' => ['nullable', 'string', 'in:period,accumulated'],
+            // QUAL DOS DOIS MOMENTOS ESTRUTURAIS está a ser guardado. Ausente
+            // significa o final — o momento por omissão, e aquilo que toda a
+            // pauta guardada até aqui foi.
+            'moment' => ['nullable', 'string', 'in:interim,final'],
         ], [], [
             'moment_label' => 'título do momento',
             'effective_at' => 'data de referência',
         ]);
 
         $scope = ClassificationScope::from($validated['scope'] ?? ClassificationScope::Period->value);
+        $moment = SheetMomentKind::fromRequest($validated['moment'] ?? null);
 
         try {
             $this->capture->capture(
                 $class,
                 $period,
                 $scope,
-                $this->capture->labelFor($validated['moment_label'], $period),
+                $this->capture->labelFor($validated['moment_label'], $period, $moment),
                 Carbon::parse($validated['effective_at']),
                 $this->user($request),
+                moment: $moment,
             );
         } catch (EvaluationSheetException $exception) {
             // The reason names the real boundary — the fix is always a
@@ -220,6 +227,8 @@ class EvaluationSheetHistoryController extends Controller
         $period = $payload['period'] ?? [];
         /** @var array{name?: string} $author */
         $author = $payload['author'] ?? [];
+        /** @var array{kind?: string} $moment */
+        $moment = $payload['moment'] ?? [];
         // Not typed as a list: this comes back out of a JSON column, and what
         // the column holds is only as well-shaped as whatever wrote it. The
         // array_values() below is the normalisation, not a formality.
@@ -231,6 +240,10 @@ class EvaluationSheetHistoryController extends Controller
             'moment_label' => $export->moment_label,
             'period_label' => $period['label'] ?? null,
             'period_kind_label' => $period['kind_label'] ?? null,
+            // Qual dos dois momentos estruturais, quando a fotografia o diz.
+            // As guardadas antes desta distinção não o dizem, e não lhes é
+            // atribuído nenhum: null é «não foi registado», nunca «final».
+            'moment_kind' => $moment['kind'] ?? null,
             'scope' => $export->scope->value,
             'scope_label' => $export->scope->label(),
             'effective_at' => $export->effective_at?->toDateString(),

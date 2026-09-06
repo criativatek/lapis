@@ -192,7 +192,13 @@ export type EvaluationSheetReadinessStudent = {
 
 export type EvaluationSheetReadiness = {
     /** The moment named by its OWN configuration — never a hardcoded word. */
-    moment: { period_label: string; kind_label: string; is_closing: boolean };
+    moment: {
+        period_label: string;
+        kind_label: string;
+        is_closing: boolean;
+        kind?: SheetMomentKind;
+        label?: string;
+    };
     summary: {
         students_total: number;
         students_with_notes: number;
@@ -203,11 +209,28 @@ export type EvaluationSheetReadiness = {
     students: EvaluationSheetReadinessStudent[];
 };
 
-/** A period in the selector — labels are always dynamic, never hardcoded. */
+/**
+ * Um dos DOIS MOMENTOS ESTRUTURAIS de uma unidade temporal: o intercalar, a
+ * meio, e o final, que a fecha. Não é uma segunda noção de «avaliação
+ * intercalar» — é qual dos dois momentos a pauta está a preparar.
+ */
+export type SheetMomentKind = 'interim' | 'final';
+
+/**
+ * Um momento no topo da pauta. UM POR (unidade temporal × momento) — e apenas
+ * os estruturais: uma fotografia guardada não é um separador, vive no
+ * Histórico (§20).
+ *
+ * `ulid` é o do PERÍODO; o par (`ulid`, `moment`) é que identifica o separador.
+ * Os rótulos derivam sempre da configuração real do ano letivo.
+ */
 export type EvaluationSheetPeriod = {
     ulid: string;
+    moment: SheetMomentKind;
     label: string;
     kind_label: string;
+    /** A frase inteira: «Momento intercalar do 1.º Semestre». */
+    moment_label: string;
     selected: boolean;
 };
 
@@ -238,7 +261,13 @@ export type EvaluationSheetSnapshot = {
     scope: string;
     class: { label: string; subject: string; academic_year: string };
     period: { label: string; kind_label: string };
-    moment: { label: string; effective_at: string };
+    /**
+     * `kind` só existe nas fotografias tiradas depois de os dois momentos
+     * estruturais passarem a distinguir-se. Ausente é «não foi registado» —
+     * nunca «final»: uma fotografia não ganha, anos depois, uma afirmação que
+     * ninguém fez sobre ela.
+     */
+    moment: { label: string; effective_at: string; kind?: SheetMomentKind };
     author: { name: string };
     domains: EvaluationSheetDomain[];
     students: EvaluationSheetStudent[];
@@ -261,6 +290,8 @@ export type EvaluationSheetHistoryEntry = {
     effective_at: string | null;
     exported_at: string;
     author: string | null;
+    /** Qual dos dois momentos estruturais. Null nas guardadas antes disso. */
+    moment_kind?: SheetMomentKind | null;
     status_label: string;
     /** What produced the record: 'snapshot' when it was merely kept, 'inovar' when a grid was generated. */
     adapter: string;
@@ -339,6 +370,8 @@ export type InovarExportPreparation = {
         suggested_column: string | null;
         unavailable_reason: string | null;
     };
+    /** Qual dos dois momentos estruturais esta grelha vai congelar. */
+    moment?: SheetMomentKind;
     moment_label: string;
     effective_at: string;
 };

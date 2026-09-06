@@ -4,7 +4,7 @@ import { CircleAlert, CircleCheck, CircleX, Upload } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
-import type { InovarExportPreparation } from '@/types';
+import type { InovarExportPreparation, SheetMomentKind } from '@/types';
 
 /**
  * Preparar a exportação para o INOVAR — a etapa que existe para que ninguém
@@ -29,7 +29,15 @@ import type { InovarExportPreparation } from '@/types';
 
 const props = defineProps<{
     schoolClass: { ulid: string; label: string; subject: string };
-    period: { ulid: string; label: string; kind_label: string; ends_on: string };
+    period: {
+        ulid: string;
+        label: string;
+        kind_label: string;
+        ends_on: string;
+        /** Qual dos dois momentos estruturais a Pauta estava a preparar. */
+        moment?: SheetMomentKind;
+        moment_label?: string;
+    };
     token: string | null;
     preparation: InovarExportPreparation | null;
 }>();
@@ -77,6 +85,9 @@ const confirmation = useForm({
     include_level: false,
     level_column: '' as string,
     moment_label: '',
+    // Devolvido intacto ao servidor: a grelha congela o momento de onde o
+    // professor veio, e não um momento inferido do dia em que carregou no botão.
+    moment: (props.period.moment ?? 'final') as SheetMomentKind,
 });
 
 /**
@@ -94,6 +105,7 @@ watch(
         confirmation.include_level = preparation.level.default_include && preparation.level.candidates.length > 0;
         confirmation.level_column = preparation.level.suggested_column ?? '';
         confirmation.moment_label = preparation.moment_label;
+        confirmation.moment = preparation.moment ?? props.period.moment ?? 'final';
     },
     { immediate: true },
 );
@@ -127,9 +139,14 @@ function sampleLine(samples: string[]): string {
         <div>
             <Heading
                 title="Preparar exportação para o INOVAR"
-                :description="`${schoolClass.label} · ${schoolClass.subject} · ${period.kind_label}: ${period.label}`"
+                :description="`${schoolClass.label} · ${schoolClass.subject} · ${period.moment_label ?? period.label}`"
             />
-            <Link :href="`/classes/${schoolClass.ulid}/pauta-avaliacao/${period.ulid}`" class="text-sm text-muted-foreground hover:underline">
+            <!-- Volta ao MOMENTO de onde veio, e não ao separador por omissão:
+                 quem estava a preparar um intercalar não quis o fecho. -->
+            <Link
+                :href="`/classes/${schoolClass.ulid}/pauta-avaliacao/${period.ulid}${period.moment === 'interim' ? '?momento=interim' : ''}`"
+                class="text-sm text-muted-foreground hover:underline"
+            >
                 ← Voltar à pauta
             </Link>
         </div>
@@ -275,8 +292,9 @@ function sampleLine(samples: string[]): string {
                         <span>
                             Incluir nível/classificação atribuída
                             <span class="block text-xs text-muted-foreground">
-                                Vem ligado quando o {{ period.kind_label.toLowerCase() }} já chegou ao fim
-                                ({{ period.ends_on }}) e desligado num momento intercalar. Pode inverter sempre.
+                                Vem ligado quando este é o momento que fecha o
+                                {{ period.kind_label.toLowerCase() }} e ele já chegou ao fim
+                                ({{ period.ends_on }}); desligado num momento intercalar. Pode inverter sempre.
                             </span>
                         </span>
                     </label>

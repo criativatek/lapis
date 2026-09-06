@@ -10,10 +10,10 @@ use App\Models\ResultState;
 use App\Models\SchoolClass;
 use App\Models\SelfAssessment;
 use App\Models\SelfAssessmentStatus;
+use App\Models\SheetMomentKind;
 use App\Models\StudentItemScore;
 use App\Support\Assessment\CoverageWording;
 use App\Support\Assessment\DecisionScale;
-use App\Support\Export\InovarLevelOption;
 use Illuminate\Support\Collection;
 
 /**
@@ -33,12 +33,13 @@ use Illuminate\Support\Collection;
  * pauta has (no profile, no period) already stop the sheet itself from being
  * built, upstream of this service.
  *
- * WHETHER THE MOMENT CLOSES THE PERIOD is read from the period's own dates
- * and status through InovarLevelOption::includedByDefault — the one approved
- * rule the product already applies to the same question, and never from the
- * period's name (§6). While the period still runs, a missing decision is
- * listed as neutral: the brief for this screen forbids assuming a level is
- * expected mid-period, and the objective fact is only «not decided yet».
+ * WHETHER THE MOMENT CLOSES THE PERIOD is answered by `SheetMomentKind`, which
+ * combines two facts and never the period's NAME (§6): an interim moment closes
+ * nothing by definition, and a final one closes once the period reached its own
+ * `ends_on` or somebody closed it — the same approved rule the product already
+ * applies through `InovarLevelOption`. While the period still runs, a missing
+ * decision is listed as neutral: the brief for this screen forbids assuming a
+ * level is expected mid-period, and the objective fact is only «not decided yet».
  */
 class EvaluationSheetReadiness
 {
@@ -61,6 +62,7 @@ class EvaluationSheetReadiness
         AcademicPeriod $period,
         array $sheet,
         bool $canPrepareInovarExport,
+        SheetMomentKind $moment = SheetMomentKind::Final,
     ): array {
         $students = $sheet['students'];
         $enrollmentIds = array_map(fn (array $student): int => (int) $student['enrollment_id'], $students);
@@ -74,10 +76,14 @@ class EvaluationSheetReadiness
         // answering about the wrong elements is worse than not answering.
         $scope = ClassificationScope::from($sheet['scope']);
 
-        // The moment's shape, from configuration alone. Closed/archived, or a
-        // period that has reached its own ends_on, is a closing moment; a
-        // period still running is an interim one and expects less.
-        $isClosing = InovarLevelOption::includedByDefault($period, now());
+        // The moment's shape, from configuration and from WHICH OF THE TWO
+        // STRUCTURAL MOMENTS the teacher is on. An interim moment never closes
+        // anything — that is its definition, not a reading of dates. A final
+        // one closes once the period has reached its own ends_on, or once
+        // somebody closed or archived it: while it still runs, the closing tab
+        // exists so the closing can be PREPARED, not so every undecided
+        // classification is treated as a fault (§7).
+        $isClosing = $moment->closes($period, now());
 
         // The word for the decision on THIS class's scale — «nível» on bands,
         // «classificação» on an interval — through the same seam every other
@@ -284,6 +290,10 @@ class EvaluationSheetReadiness
                 'period_label' => (string) $period->label,
                 'kind_label' => $period->kind->label(),
                 'is_closing' => $isClosing,
+                // Qual dos dois momentos estruturais, para o painel poder dizer
+                // o que está a preparar sem o inferir do título.
+                'kind' => $moment->value,
+                'label' => $moment->momentLabel($period),
             ],
             'summary' => [
                 'students_total' => count($students),

@@ -8,6 +8,7 @@ use App\Domain\Export\InovarTemplateColumn;
 use App\Models\AcademicPeriod;
 use App\Models\ClassificationScope;
 use App\Models\SchoolClass;
+use App\Models\SheetMomentKind;
 use App\Models\User;
 use App\Services\Assessment\CaptureEvaluationSheet;
 use App\Services\Audit\AuditLog;
@@ -72,13 +73,13 @@ class EvaluationSheetInovarExportController extends Controller
         protected AuditLog $audit,
     ) {}
 
-    public function create(SchoolClass $class, AcademicPeriod $period): Response
+    public function create(Request $request, SchoolClass $class, AcademicPeriod $period): Response
     {
         Gate::authorize('view', $class);
         $this->guardPeriod($class, $period);
 
         return Inertia::render('evaluation-sheets/InovarExport', [
-            ...$this->context($class, $period),
+            ...$this->context($class, $period, $this->moment($request)),
             'token' => null,
             'preparation' => null,
         ]);
@@ -111,10 +112,12 @@ class EvaluationSheetInovarExportController extends Controller
             return back()->withErrors(['template' => $exception->getMessage()]);
         }
 
+        $moment = $this->moment($request);
+
         return Inertia::render('evaluation-sheets/InovarExport', [
-            ...$this->context($class, $period),
+            ...$this->context($class, $period, $moment),
             'token' => $token,
-            'preparation' => $this->preparation($class, $period, $template),
+            'preparation' => $this->preparation($class, $period, $template, $moment),
         ]);
     }
 
@@ -135,6 +138,10 @@ class EvaluationSheetInovarExportController extends Controller
             'include_level' => ['required', 'boolean'],
             'level_column' => ['nullable', 'string', 'max:3'],
             'moment_label' => ['nullable', 'string', 'max:200'],
+            // Qual dos dois momentos estruturais esta grelha congela. Sem
+            // indicação, o final — que é o que uma grelha do Inovar quase
+            // sempre é, e o que todas as anteriores foram.
+            'moment' => ['nullable', 'string', 'in:interim,final'],
         ], [], [
             'level_column' => 'coluna do nível',
             'moment_label' => 'título do momento',
@@ -198,6 +205,7 @@ class EvaluationSheetInovarExportController extends Controller
                 'include_level' => $levelColumn !== null,
                 'level_column' => $levelColumn,
                 'moment_label' => $data['moment_label'] ?? null,
+                'moment' => SheetMomentKind::fromRequest($data['moment'] ?? null),
                 'cell_count' => count($cells),
                 'level_cell_count' => count($levelCells),
             ]);
@@ -257,12 +265,15 @@ class EvaluationSheetInovarExportController extends Controller
         /** @var array<int, string> $decided */
         $decided = $context['decided'];
 
+        /** @var SheetMomentKind $moment */
+        $moment = $context['moment'] ?? SheetMomentKind::Final;
+
         try {
             $export = $this->capture->capture(
                 $class,
                 $period,
                 self::SCOPE,
-                $this->momentLabel($period, $context['moment_label'] === null ? null : (string) $context['moment_label']),
+                $this->momentLabel($period, $context['moment_label'] === null ? null : (string) $context['moment_label'], $moment),
                 Carbon::parse($this->capture->defaultEffectiveDate($period)->toDateString()),
                 $this->user(),
                 adapter: 'inovar',
@@ -276,6 +287,7 @@ class EvaluationSheetInovarExportController extends Controller
                     checksum: hash('sha256', $contents),
                     extension: $extension,
                 ),
+                moment: $moment,
             );
         } catch (EvaluationSheetException $exception) {
             $this->files->delete($path);
@@ -316,8 +328,12 @@ class EvaluationSheetInovarExportController extends Controller
      *
      * @return array<string, mixed>
      */
-    protected function preparation(SchoolClass $class, AcademicPeriod $period, InovarTemplate $template): array
-    {
+    protected function preparation(
+        SchoolClass $class,
+        AcademicPeriod $period,
+        InovarTemplate $template,
+        SheetMomentKind $moment = SheetMomentKind::Final,
+    ): array {
         $preview = $this->previewBuilder->build($class, $period, $template);
         $decided = $this->decidedLevels($period, $preview['students']);
 
@@ -364,7 +380,11 @@ class EvaluationSheetInovarExportController extends Controller
             'source' => $preview['source'],
             'level' => [
                 'candidates' => $candidates,
-                'default_include' => InovarLevelOption::includedByDefault($period, now()),
+                // O nível pertence a uma grelha que FECHA um momento, e não a
+                // uma tirada a meio do caminho. Um momento intercalar diz isso
+                // por si; um momento final continua a perguntá-lo às datas do
+                // período, pela mesma regra aprovada de sempre.
+                'default_include' => $moment->closes($period, now()),
                 // Null unless the FILE names the column. Nothing is inferred
                 // from position — see InovarTemplateColumn.
                 'suggested_column' => InovarLevelOption::suggestedColumn($template->candidateColumns),
@@ -372,7 +392,8 @@ class EvaluationSheetInovarExportController extends Controller
                     ? 'Este template não tem nenhuma coluna livre para o nível. Não é um erro — é a ausência de um sítio onde escrevê-lo.'
                     : null,
             ],
-            'moment_label' => $this->momentLabel($period, null),
+            'moment' => $moment->value,
+            'moment_label' => $this->momentLabel($period, null, $moment),
             'effective_at' => $this->capture->defaultEffectiveDate($period)->toDateString(),
         ];
     }
@@ -467,13 +488,28 @@ class EvaluationSheetInovarExportController extends Controller
      * «Exportação INOVAR — Semestre — 1.º Semestre» — so nothing hardcodes what
      * a school calls its units of time (§6). The teacher may replace it.
      */
-    protected function momentLabel(AcademicPeriod $period, ?string $given): string
+    protected function momentLabel(AcademicPeriod $period, ?string $given, SheetMomentKind $moment = SheetMomentKind::Final): string
     {
         $given = $given === null ? '' : trim($given);
 
         return $given !== ''
-            ? $this->capture->labelFor($given, $period)
-            : 'Exportação INOVAR — '.$this->capture->suggestedLabel($period);
+            ? $this->capture->labelFor($given, $period, $moment)
+            : 'Exportação INOVAR — '.$this->capture->suggestedLabel($period, $moment);
+    }
+
+    /**
+     * Qual dos dois momentos estruturais o professor está a exportar.
+     *
+     * Chega como `?momento=` porque é para lá que a Pauta aponta, e a ligação
+     * carrega o separador em que o professor estava. Uma palavra que não
+     * reconhecemos é o momento final, que é o que uma grelha do Inovar quase
+     * sempre é.
+     */
+    protected function moment(Request $request): SheetMomentKind
+    {
+        $value = $request->query('momento');
+
+        return SheetMomentKind::fromRequest($value === null ? null : (string) $value);
     }
 
     /**
@@ -504,8 +540,11 @@ class EvaluationSheetInovarExportController extends Controller
     /**
      * @return array<string, mixed>
      */
-    protected function context(SchoolClass $class, AcademicPeriod $period): array
-    {
+    protected function context(
+        SchoolClass $class,
+        AcademicPeriod $period,
+        SheetMomentKind $moment = SheetMomentKind::Final,
+    ): array {
         return [
             'schoolClass' => [
                 'ulid' => $class->ulid,
@@ -517,6 +556,10 @@ class EvaluationSheetInovarExportController extends Controller
                 'label' => $period->label,
                 'kind_label' => $period->kind->label(),
                 'ends_on' => $period->ends_on->toDateString(),
+                // O momento de onde o professor veio, para o ecrã o dizer e
+                // para o devolver intacto ao confirmar.
+                'moment' => $moment->value,
+                'moment_label' => $moment->momentLabel($period),
             ],
         ];
     }

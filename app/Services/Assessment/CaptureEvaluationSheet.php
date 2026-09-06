@@ -7,6 +7,7 @@ use App\Models\AcademicPeriod;
 use App\Models\ClassificationScope;
 use App\Models\EvaluationSheetExport;
 use App\Models\SchoolClass;
+use App\Models\SheetMomentKind;
 use App\Models\User;
 use App\Support\Assessment\CoverageWording;
 use App\Support\Assessment\DomainColorPalette;
@@ -36,7 +37,20 @@ use Illuminate\Support\Carbon;
  */
 class CaptureEvaluationSheet
 {
-    public const CURRENT_VERSION = 1;
+    /**
+     * A forma que este escritor produz. Só cresce.
+     *
+     * v1 → v2: o momento passou a dizer QUAL DOS DOIS momentos estruturais é —
+     * intercalar ou final. Uma fotografia v1 não o diz, e não lhe é atribuído
+     * nenhum: era tirada de um ecrã onde a distinção não existia, e decidir
+     * agora que foi «final» seria escrever no passado uma afirmação que
+     * ninguém fez. Quem lê mostra o que lá está, e cala o que lá não está.
+     *
+     * As decisões por domínio entraram no mesmo momento, mas dentro de
+     * `students[].domains[]`, onde a sua ausência já significa exatamente o que
+     * significa: não houve nenhuma.
+     */
+    public const CURRENT_VERSION = 2;
 
     public function __construct(
         protected BuildEvaluationSheet $builder,
@@ -69,6 +83,7 @@ class CaptureEvaluationSheet
         string $adapter = 'snapshot',
         array $extraWarnings = [],
         ?GeneratedExportFile $file = null,
+        SheetMomentKind $moment = SheetMomentKind::Final,
     ): EvaluationSheetExport {
         $this->guardTheDate($class, $period, $effectiveAt);
 
@@ -103,6 +118,11 @@ class CaptureEvaluationSheet
             'moment' => [
                 'label' => $momentLabel,
                 'effective_at' => $effectiveAt->toDateString(),
+                // QUAL DOS DOIS momentos estruturais. O título é editável e
+                // pode acabar a dizer qualquer coisa; isto é a identidade
+                // pedagógica do momento, e não muda por alguém reescrever o
+                // título (§21).
+                'kind' => $moment->value,
             ],
             'author' => ['name' => (string) $author->name],
             'domains' => $domains,
@@ -138,23 +158,30 @@ class CaptureEvaluationSheet
      * The label to offer, which the teacher then confirms or replaces.
      *
      * Built from the period's OWN configuration — «Semestre — 1.º Semestre»,
-     * «Período — 2.º Período» — so nothing anywhere hardcodes what a school
-     * calls its own units of time (§6).
+     * «Momento intercalar do 2.º Período» — so nothing anywhere hardcodes what
+     * a school calls its own units of time (§6).
+     *
+     * WHICH OF THE TWO STRUCTURAL MOMENTS is part of the label, because it is
+     * part of what is being kept: a photograph taken halfway through a period
+     * and one taken to close it are different documents, and a history where
+     * both read «Semestre — 1.º Semestre» would make them indistinguishable
+     * months later. The default stays the closing moment, which is what every
+     * pauta kept until now was.
      *
      * A SUGGESTION AND NOTHING MORE. It arrives in an editable field and is
      * only saved once somebody presses the button.
      */
-    public function suggestedLabel(AcademicPeriod $period): string
+    public function suggestedLabel(AcademicPeriod $period, SheetMomentKind $moment = SheetMomentKind::Final): string
     {
-        return $period->kind->label().' — '.$period->label;
+        return $moment->momentLabel($period);
     }
 
     /** What the teacher typed, tidied — never silently replaced. */
-    public function labelFor(?string $given, AcademicPeriod $period): string
+    public function labelFor(?string $given, AcademicPeriod $period, SheetMomentKind $moment = SheetMomentKind::Final): string
     {
         $given = $given === null ? '' : trim(preg_replace('/\s+/u', ' ', $given) ?? '');
 
-        return $given !== '' ? $given : $this->suggestedLabel($period);
+        return $given !== '' ? $given : $this->suggestedLabel($period, $moment);
     }
 
     /**

@@ -354,7 +354,11 @@ class EvaluationSheetHistoryTest extends TestCase
         $this->assertSame($this->teacher->name, $export->payload['author']['name']);
         $this->assertSame('Conselho de Turma — dezembro', $export->payload['moment']['label']);
         $this->assertSame($effectiveAt, $export->payload['moment']['effective_at']);
-        $this->assertSame(1, $export->payload['version']);
+        // v2: o momento passou a dizer QUAL DOS DOIS momentos estruturais é.
+        // Sem indicação nenhuma, o final — o momento por omissão, e o que toda
+        // a pauta guardada até aqui foi.
+        $this->assertSame('final', $export->payload['moment']['kind']);
+        $this->assertSame(2, $export->payload['version']);
         $this->assertSame('period', $export->payload['scope']);
         $this->assertSame('7.º A', $export->payload['class']['label']);
 

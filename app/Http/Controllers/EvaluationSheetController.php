@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AcademicPeriod;
 use App\Models\SchoolClass;
+use App\Models\SheetMomentKind;
 use App\Models\User;
 use App\Services\Assessment\BuildEvaluationSheet;
 use App\Services\Assessment\CaptureEvaluationSheet;
@@ -69,6 +70,13 @@ class EvaluationSheetController extends Controller
             ? $periods->firstWhere('ulid', $period)
             : $periods->first();
 
+        // QUAL DOS DOIS MOMENTOS ESTRUTURAIS. Uma unidade temporal tem um
+        // momento intercalar e um momento final, e o topo da pauta oferece os
+        // dois; o que muda entre eles não é um número — é o que se está a
+        // preparar. Sem indicação nenhuma, é o final: é o momento por omissão,
+        // e é o que qualquer ligação antiga para esta pauta continua a abrir.
+        $moment = SheetMomentKind::fromRequest($request->query('momento') === null ? null : (string) $request->query('momento'));
+
         $sheet = $selected !== null
             ? $this->builder->for($class, $selected)
             : null;
@@ -83,7 +91,7 @@ class EvaluationSheetController extends Controller
         // A non-null sheet already implies a selected period — it is only ever
         // built from one.
         $readiness = $sheet !== null && $sheet['students'] !== []
-            ? $this->readiness->for($class, $selected, $sheet, $canExportToInovar)
+            ? $this->readiness->for($class, $selected, $sheet, $canExportToInovar, $moment)
             : null;
 
         if ($sheet !== null) {
@@ -117,12 +125,26 @@ class EvaluationSheetController extends Controller
                 'scale_name' => $scale?->name,
             ],
             'decision' => DecisionScale::for($scale)->toPayload(),
-            'periods' => $periods->map(fn (AcademicPeriod $academicPeriod) => [
-                'ulid' => $academicPeriod->ulid,
-                'label' => $academicPeriod->label,
-                'kind_label' => $academicPeriod->kind->label(),
-                'selected' => $selected !== null && $academicPeriod->id === $selected->id,
-            ]),
+            // OS MOMENTOS ESTRUTURAIS DO ANO, e apenas eles: para cada unidade
+            // temporal configurada, o intercalar e o final, por essa ordem. Uma
+            // fotografia guardada não é um momento estrutural e não aparece
+            // aqui — vive no Histórico, que é onde um registo vive (§20).
+            'periods' => $periods->flatMap(fn (AcademicPeriod $academicPeriod) => array_map(
+                fn (SheetMomentKind $kind): array => [
+                    'ulid' => $academicPeriod->ulid,
+                    'moment' => $kind->value,
+                    'label' => $kind->tabLabel($academicPeriod),
+                    // A palavra da escola para a sua própria unidade de tempo.
+                    // Nada aqui escreve «semestre» (§6).
+                    'kind_label' => $academicPeriod->kind->label(),
+                    'moment_label' => $kind->momentLabel($academicPeriod),
+                    'selected' => $selected !== null
+                        && $academicPeriod->id === $selected->id
+                        && $kind === $moment,
+                ],
+                SheetMomentKind::inOrder(),
+            ))->values(),
+            'moment' => $moment->value,
             'sheet' => $sheet,
             // What the «Guardar esta pauta» form opens with. A SUGGESTION: both
             // fields are editable, the title is built from the period's own
@@ -131,7 +153,11 @@ class EvaluationSheetController extends Controller
             // outside it would be refused the moment the teacher pressed save.
             'saveDefaults' => $selected === null ? null : [
                 'period_ulid' => $selected->ulid,
-                'moment_label' => $this->capture->suggestedLabel($selected),
+                // O título abre a dizer QUE MOMENTO se está a guardar —
+                // «Momento intercalar do 1.º Semestre» ou «Semestre — 1.º
+                // Semestre» —, construído a partir da configuração do próprio
+                // período. Continua a ser editável: é uma sugestão.
+                'moment_label' => $this->capture->suggestedLabel($selected, $moment),
                 'effective_at' => $this->capture->defaultEffectiveDate($selected)->toDateString(),
                 'starts_on' => $selected->starts_on->toDateString(),
                 'ends_on' => $selected->ends_on->toDateString(),
