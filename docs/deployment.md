@@ -361,6 +361,91 @@ por checksum acima.
 - **Document root** do site = `.../htdocs/lapis.criativatek.com/public` (Laravel serve
   a partir de `public/`, não da raiz).
 
+## O MySQL é partilhado com outros 74 sites — e já encheu uma vez
+
+A 2026-09-05 às 08:41 as ligações ao MySQL chegaram a **513 contra um tecto de
+512**, e treze minutos depois o log do Lapispro apanhou um `Too many
+connections`. Não é um defeito desta aplicação: o servidor alberga **75 sites**
+no mesmo motor, e quando o tecto enche a porta fecha-se a quem chegar a seguir
+— um professor a meio de lançar notas incluso.
+
+### Duas explicações plausíveis que foram medidas e são falsas
+
+Escrevem-se aqui porque ambas parecem óbvias e ambas custam trabalho a
+perseguir. Foram verificadas a 2026-09-06 — **não repetir a investigação sem
+ler isto primeiro**:
+
+| Teoria | Porque parece certa | Porque é falsa |
+|---|---|---|
+| «75 pools PHP-FPM × 250 `pm.max_children` = 18 750 processos contra 512 ligações» | O valor 250 está mesmo em todos os 75 pools (é o que o CloudPanel escreve em cada site novo, nunca somado contra o MySQL) | Os pools são todos `pm = ondemand`: os processos nascem com pedidos e morrem depois (~14 vivos em repouso). E cada um pesa **46 MB** contra 11,9 GB de RAM — o tecto real ronda os **250**, não os 18 750 |
+| «os `schedule:run` de várias apps arrancam no mesmo segundo de cada minuto» | É verdade que arrancam: vários crontabs têm `* * * * *` | Amostrado de 4 em 4 décimos ao longo do segundo do cron, as ligações vão de **2 para 4**. O scheduler do Laravel abre e fecha depressa demais para sequer aparecer |
+
+**Em repouso o servidor inteiro anda nas 2 a 8 ligações.** O pico foi um evento
+pontual e a causa **continua por identificar**: o `Max_used_connections` do
+MySQL diz quantas foram e a que horas, nunca de quem — e o pico leva a prova
+com ele.
+
+### O vigia que fecha esse buraco
+
+`/usr/local/bin/mysql-conn-watch.sh`, no crontab do **root**, a cada minuto.
+A fonte vive no repo em [`scripts/mysql-conn-watch.sh`](../scripts/mysql-conn-watch.sh)
+— se o servidor for reinstalado, é de lá que volta.
+Acima de **60** ligações escreve em `/var/log/mysql-conn-watch.log` o
+`PROCESSLIST` agrupado por utilizador e base (no CloudPanel o utilizador **é** o
+site, por isso o registo nomeia o culpado) e as cinco ligações mais antigas —
+que é onde uma ligação presa se denuncia. Em repouso não escreve nada.
+
+```bash
+ssh xapp-root 'cat /var/log/mysql-conn-watch.log'   # vazio = ainda não houve pico
+ssh xapp-root 'mysql -u root -e "SHOW STATUS LIKE \"Max_used_connections\";"'
+```
+
+**Ao próximo `Too many connections`, ler esse ficheiro ANTES de teorizar.**
+
+### Higiene encontrada pelo caminho
+
+O crontab do `betanker` tinha **sete linhas idênticas** de `schedule:run`:
+sete processos PHP por minuto a fazer o mesmo, e qualquer tarefa agendada sem
+`withoutOverlapping` a correr sete vezes. Ficou uma (2026-09-06; cópia dos
+crontabs em `/root/cron-backup-20260906/`). Vale a pena olhar para
+`crontab -l` de cada site quando algo estranho acontecer no servidor — as
+duplicações não dão erro nenhum, só custam.
+
+### Se o tecto voltar a encher
+
+Por ordem, e **só depois de o registo do vigia dizer de quem são as ligações**:
+
+1. O site nomeado no registo — procurar ligações presas (`Sleep` com `TIME`
+   alto) ou um job a abrir ligações em ciclo.
+2. `pm.max_children` = 250 num pool significa que **um só site** pode pedir
+   metade do tecto do MySQL sozinho. Baixar para um valor alinhado com a RAM
+   (~40) é defensivo, mas mexe em 75 sites: não é decisão deste projeto.
+3. `SESSION_DRIVER`/`CACHE_STORE` em `database` (15 sites do servidor, o
+   Lapispro incluído) fazem cada pedido tocar na base. Mudar o **cache** para
+   `file` é barato e reversível; mudar as **sessões** desliga toda a gente que
+   está autenticada — nunca a meio de um dia de aulas.
+
+### O relógio da base está uma hora à frente da aplicação
+
+Medido a 2026-09-06: o MySQL corre em **CEST** (UTC+2) e a aplicação em
+**Europe/Lisbon** (UTC+1 no verão).
+
+```
+MySQL  NOW()   2026-09-06 00:03      PHP  now()   2026-09-05 23:03
+```
+
+**Hoje não corrompe nada** — o PHP escreve e lê com a mesma conversão, e não
+existe uma única consulta SQL crua a comparar com `NOW()` (verificado). Mas o
+esquema tem **202 colunas `TIMESTAMP`** (que o motor converte na escrita e na
+leitura) a conviver com **40 `DATETIME`** (que não converte nada).
+
+**A armadilha:** o remédio óbvio — pôr o MySQL em Lisboa — **desloca a leitura
+de todos os `TIMESTAMP` históricos em uma hora**. Registos disciplinares e
+presenças têm hora, e são sobre menores. O caminho correcto é fixar
+`'timezone' => '+00:00'` na ligação em `config/database.php` **com migração
+calculada dos valores já gravados**, nesta ordem — nunca o contrário, e nunca
+como um simples toggle.
+
 ## Laravel Scheduler (cron) — obrigatório
 
 **Sem esta entrada de cron, cinco tarefas de limpeza existem no código e nunca
@@ -862,6 +947,9 @@ Manter `APP_ENV=production` para o Vite servir os assets compilados, não o dev 
 - [ ] **`db:seed --class=ReferenceDataSeeder --force` correu neste deploy**
       (armadilha 9). Uma capability nova só existe depois disto; sem ela, a
       funcionalidade fica invisível mesmo para quem tem plano para a usar.
+- [ ] **Ligações ao MySQL sem novidade**: `cat /var/log/mysql-conn-watch.log`
+      vazio (ou sem entradas depois do deploy). O servidor é partilhado com
+      outros 74 sites e já encheu o tecto uma vez — ver «O MySQL é partilhado».
 - [ ] **`lapis:release-check --expect-version=… --expect-commit=…` passou** (passo 6).
       Enquanto não passar, não se sabe o que está em produção — sabe-se o que se
       quis enviar, que não é a mesma coisa.

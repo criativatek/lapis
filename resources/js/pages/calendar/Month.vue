@@ -976,19 +976,21 @@ function destroyEvent(event: CalendarEvent): void {
                             <button
                                 type="button"
                                 data-add-on-day
-                                class="rounded-md text-xs tabular-nums transition-colors outline-none hover:bg-foreground/10 focus-visible:ring-2 focus-visible:ring-ring"
+                                class="flex min-h-11 min-w-11 items-center justify-center rounded-md text-xs tabular-nums transition-colors outline-none hover:bg-foreground/10 focus-visible:ring-2 focus-visible:ring-ring"
                                 :class="[
                                     day.in_month
                                         ? 'font-medium'
                                         : 'text-muted-foreground',
-                                    day.is_today
-                                        ? 'bg-foreground px-1.5 py-0.5 text-background'
-                                        : 'px-1',
+                                    day.is_today ? 'text-background' : '',
                                 ]"
                                 :aria-label="`Novo acontecimento em ${dayLabel(day.date)}`"
                                 @click="openCreate(day.date)"
                             >
-                                {{ day.day }}
+                                <span
+                                    class="flex size-6 items-center justify-center rounded-md"
+                                    :class="day.is_today ? 'bg-foreground' : ''"
+                                    >{{ day.day }}</span
+                                >
                             </button>
                         </div>
 
@@ -1029,10 +1031,18 @@ function destroyEvent(event: CalendarEvent): void {
                                     day.exception.title
                                 }}</span>
                             </span>
+                            <!--
+                                O ícone fica pequeno de propósito — está dentro
+                                da própria linha do nome da exceção, numa
+                                célula com 112px de altura. Um alvo de 44px
+                                aqui tapava o número do dia por cima e a lista
+                                por baixo; p-2.5 é o maior praticável sem
+                                sobrepor os dois vizinhos.
+                            -->
                             <Link
                                 v-if="academicYearEditHref"
                                 :href="academicYearEditHref"
-                                class="-mt-px shrink-0 rounded-md p-0.5 opacity-70 outline-none transition-opacity hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring"
+                                class="-mt-px shrink-0 rounded-md p-2.5 opacity-70 outline-none transition-opacity hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring"
                                 title="Gerir exceções do ano letivo"
                                 data-exception-manage-link
                                 @click.stop
@@ -1127,7 +1137,7 @@ function destroyEvent(event: CalendarEvent): void {
                             v-if="hiddenCount(day) > 0"
                             type="button"
                             data-overflow
-                            class="mt-1 w-full rounded-md px-1 py-0.5 text-[0.7rem] font-medium underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                            class="mt-1 flex min-h-11 w-full items-center justify-center rounded-md px-1 text-[0.7rem] font-medium underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                             @click="toggle(day.date)"
                         >
                             {{
@@ -1175,10 +1185,11 @@ function destroyEvent(event: CalendarEvent): void {
                             <CalendarOff class="size-3" aria-hidden="true" />
                             {{ day.exception.type_label }} ·
                             {{ day.exception.title }}
+                            <!-- Mesma razão da grelha: p-2.5, não 44px, para não tapar o texto da própria etiqueta. -->
                             <Link
                                 v-if="academicYearEditHref"
                                 :href="academicYearEditHref"
-                                class="ml-0.5 rounded-md p-0.5 opacity-70 outline-none transition-opacity hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring"
+                                class="ml-0.5 rounded-md p-2.5 opacity-70 outline-none transition-opacity hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring"
                                 title="Gerir exceções do ano letivo"
                                 data-exception-manage-link
                             >

@@ -565,8 +565,16 @@ function saveAsTemplate() {
     });
 }
 
+const confirmingDelete = ref(false);
+const deletingReport = ref(false);
+
 function destroyReport() {
-    router.delete(`/reports/${props.report.ulid}`);
+    deletingReport.value = true;
+    router.delete(`/reports/${props.report.ulid}`, {
+        onFinish: () => {
+            deletingReport.value = false;
+        },
+    });
 }
 
 // ------------------------------------------------------------- finalization
@@ -860,6 +868,7 @@ function derive() {
                                     v-if="isFlagged(enrollment.id)"
                                     class="mt-2 h-8"
                                     placeholder="Nota (opcional)"
+                                    :aria-label="`Nota sobre ${enrollment.name}`"
                                     @update:model-value="setFlaggedNote(enrollment.id, String($event))"
                                 />
                             </li>
@@ -1182,7 +1191,12 @@ function derive() {
             </section>
 
             <div v-if="can.delete" class="border-t border-border pt-6">
-                <Button variant="ghost" size="sm" class="text-destructive" @click="destroyReport">
+                <div v-if="confirmingDelete" class="flex flex-wrap items-center gap-2">
+                    <span class="text-sm text-muted-foreground">Eliminar este rascunho? Não é reversível.</span>
+                    <Button variant="destructive" size="sm" :disabled="deletingReport" @click="destroyReport">Sim, eliminar</Button>
+                    <Button variant="ghost" size="sm" :disabled="deletingReport" @click="confirmingDelete = false">Cancelar</Button>
+                </div>
+                <Button v-else variant="ghost" size="sm" class="text-destructive" @click="confirmingDelete = true">
                     <Trash2 class="size-3.5" />
                     Eliminar rascunho
                 </Button>

@@ -412,10 +412,15 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                                          still the teacher's to revise; «Usar
                                          proposta» is how a first one is made and
                                          belongs to a proposal alone. -->
+                                    <!-- Fila de uma grelha de classificação usada ao teclado,
+                                         com muitos alunos visíveis ao mesmo tempo — 44px de
+                                         altura por linha empurrava a maioria da turma para
+                                         fora do ecrã. py-2 é o mínimo praticável; gap-2
+                                         já separa os dois botões. -->
                                     <div v-if="canDecide(row)" class="flex justify-end gap-2">
                                         <button
                                             type="button"
-                                            class="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted/40"
+                                            class="rounded-md border border-border px-2.5 py-2 text-xs hover:bg-muted/40"
                                             @click="openEditor(row)"
                                         >
                                             <PencilLine class="mr-1 inline size-3" />Alterar
@@ -423,7 +428,7 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                                         <button
                                             v-if="row.classification?.can_confirm"
                                             type="button"
-                                            class="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                                            class="rounded-md bg-primary px-2.5 py-2 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
                                             :disabled="confirmForm.processing"
                                             @click="useProposal(row)"
                                         >

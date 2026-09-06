@@ -25,6 +25,61 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.131.1] — 2026-09-06
+
+Correções de acessibilidade apontadas por auditoria: informação transmitida só
+por cor e rótulos em falta.
+
+- **Nota acima da cotação máxima**: deixou de ser assinalada só a vermelho no
+  próprio input (a casa não deixa o vermelho tocar numa nota) e só num `title`
+  que só aparecia ao pairar o rato. Passa a um aviso sempre visível junto à
+  célula (ícone + «excede N pts»), com o `title` mantido como reforço.
+- **Migração de perfil**: a linha alterada tinha só cor e negrito a
+  distingui-la da inalterada; ganhou a palavra «alterado» e um ícone.
+- **Grelha de instrumento**: o input de nota não tinha `aria-label` (o select
+  de estado ao lado já tinha); ganhou o mesmo padrão de nome.
+- **Relatório de turma**: o campo de nota por aluno só tinha `placeholder`
+  (desaparece ao escrever); ganhou `aria-label` com o nome do aluno. E
+  «Eliminar rascunho» ganhou confirmação e bloqueio contra duplo clique, no
+  mesmo padrão já usado para «Finalizar relatório» no mesmo ficheiro.
+- **Migração de perfil**: o campo «Motivo da migração» liga-se agora ao seu
+  erro por `aria-describedby`.
+- **Sumário de aula**: removido o `autofocus` do textarea, que saltava o
+  cabeçalho da página ao abrir.
+
+### Alvos de toque
+
+Doze controlos estavam abaixo dos 44 px que a norma exige para quem usa a
+aplicação com o dedo. Subiram: o **número do dia no calendário** (o alvo mais
+tocado da grelha em telemóvel, tinha ~26 px), o **«+N mais»** que é o único
+acesso aos acontecimentos escondidos de um dia, os botões-ícone das turmas, o
+link de editar turma, os botões de editar e remover registos — que passaram
+também a identificar-se por `aria-label` em vez de `title`, que os leitores de
+ecrã não anunciam de forma fiável —, o seletor «Turma inteira/Alunos» e os
+submits da migração de perfil.
+
+Dois ficaram deliberadamente abaixo dos 44 px, com o máximo praticável: o
+ícone «Gerir exceções» (dentro de uma célula estreita do calendário, onde 44 px
+tapariam o dia acima) e os botões «Alterar»/«Usar proposta» das classificações
+(uma grelha usada ao teclado, onde 44 px por linha esconderiam a maior parte
+da turma). Densidade e alcance estão em tensão real nestes dois sítios; a
+escolha fica registada em vez de silenciada.
+
+### Documentação
+
+- `docs/deployment.md` ganhou a secção **«O MySQL é partilhado com outros 74
+  sites»**: o que aconteceu no pico de 2026-09-05, **duas explicações
+  plausíveis que foram medidas e são falsas** (para ninguém repetir a
+  investigação), o vigia que passa a registar de quem são as ligações quando o
+  tecto se aproxima, e a armadilha do relógio da base estar uma hora à frente
+  da aplicação — onde o remédio óbvio desloca o histórico.
+- `docs/workflow.md` ganhou **«Ferramentas de teste que mentem em silêncio»**:
+  o `--profile` que não mede nada, o build em paralelo que parte testes de
+  Inertia, o `| tail` que engole um vermelho, e o teste que está verde por
+  nunca ter corrido.
+- `scripts/mysql-conn-watch.sh` entra no repositório — vivia só no servidor e
+  perdia-se numa reinstalação.
+
 ## [0.131.0] — 2026-09-06
 
 Correções que saíram de um diagnóstico profundo à aplicação (seis eixos de

@@ -224,8 +224,9 @@ describe('records Show — compor e confirmar são fases distintas', () => {
     it('editing names its own phase and keeps its own pair of buttons', async () => {
         const wrapper = mountShow({ records: [recordRow()] });
 
-        // O botão de editar é um ícone, e diz-se pelo `title`.
-        const editButton = wrapper.find('button[title="Editar"]');
+        // O botão de editar é um ícone, e diz-se pelo `aria-label` — o
+        // `title` não é um nome acessível fiável.
+        const editButton = wrapper.find('button[aria-label="Editar registo de Maria Silva"]');
         expect(editButton.exists()).toBe(true);
         await editButton.trigger('click');
 

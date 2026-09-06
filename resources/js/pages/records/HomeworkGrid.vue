@@ -219,7 +219,7 @@ function destroyBatch(): void {
                         v-for="status in statuses"
                         :key="status.value"
                         type="button"
-                        class="rounded-md border px-2 py-2 text-xs sm:py-1.5"
+                        class="flex min-h-11 items-center justify-center rounded-md border px-2 py-2 text-xs"
                         :class="row.homework_status === status.value ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:bg-muted/40'"
                         :aria-pressed="row.homework_status === status.value"
                         :aria-label="`${status.label} — ${row.name}`"

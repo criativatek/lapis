@@ -384,12 +384,12 @@ describe('Grid local protection integration', () => {
             await editPoints(wrapper, '25'); // over the 20-point maximum
             await nextTick();
 
-            const overMax = scoreCell(wrapper).classes();
-
-            expect(overMax).toContain('border-destructive');
-            expect(overMax).toContain('text-destructive');
-            expect(overMax).toContain('text-right');
-            expect(overMax).not.toContain('border-input');
+            // The over-max signal never colours the note itself (house rule:
+            // red never touches a grade) — the input keeps its normal border,
+            // and a visible badge (not just a hover title) carries the warning.
+            expect(scoreCell(wrapper).classes()).toContain('border-input');
+            expect(scoreCell(wrapper).classes()).toContain('text-right');
+            expect(wrapper.text()).toContain('excede 20 pts');
         });
     });
 });

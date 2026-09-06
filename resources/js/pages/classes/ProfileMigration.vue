@@ -90,7 +90,12 @@ function submit(): void {
                             <td class="px-3 py-2 text-right tabular-nums">
                                 <span v-if="cell.state === 'none'" class="text-muted-foreground">—</span>
                                 <span v-else-if="cell.state === 'kept'" class="text-xs text-muted-foreground" title="Decisão confirmada — mantida">mantida</span>
-                                <span v-else :class="cell.changed ? 'font-semibold text-amber-700 dark:text-amber-400' : 'text-muted-foreground'">
+                                <span v-else-if="cell.changed" class="inline-flex items-center gap-1 font-semibold text-amber-700 dark:text-amber-400">
+                                    {{ value(cell.after) }}
+                                    <TriangleAlert class="size-3" aria-hidden="true" />
+                                    <span class="text-xs font-normal">alterado</span>
+                                </span>
+                                <span v-else class="text-muted-foreground">
                                     {{ value(cell.after) }}
                                 </span>
                             </td>
@@ -109,19 +114,20 @@ function submit(): void {
                     maxlength="500"
                     class="w-full rounded-md border border-border bg-background px-3 py-2"
                     placeholder="Ex.: correção da ponderação de Escrita aprovada em conselho de turma"
+                    :aria-describedby="form.errors.reason ? 'migration-reason-error' : undefined"
                 />
             </label>
-            <p v-if="form.errors.reason" class="text-xs text-red-600">{{ form.errors.reason }}</p>
+            <p v-if="form.errors.reason" id="migration-reason-error" class="text-xs text-red-600">{{ form.errors.reason }}</p>
             <div class="flex gap-2">
                 <Link
                     :href="`/classes/${schoolClass.ulid}`"
-                    class="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted/40"
+                    class="rounded-md border border-border px-4 py-3 text-sm hover:bg-muted/40"
                 >
                     Cancelar
                 </Link>
                 <button
                     type="submit"
-                    class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                    class="rounded-md bg-primary px-4 py-3 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
                     :disabled="form.processing"
                 >
                     Confirmar migração

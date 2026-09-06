@@ -458,10 +458,10 @@ watch(
                     </select>
 
                     <template v-else>
-                        <div class="flex gap-1">
+                        <div class="flex gap-2">
                             <button
                                 type="button"
-                                class="rounded-md px-2 py-1 text-xs"
+                                class="min-h-11 rounded-md px-3 text-xs"
                                 :class="createTargetMode === 'whole_class' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-muted/40'"
                                 @click="createTargetMode = 'whole_class'"
                             >
@@ -469,7 +469,7 @@ watch(
                             </button>
                             <button
                                 type="button"
-                                class="rounded-md px-2 py-1 text-xs"
+                                class="min-h-11 rounded-md px-3 text-xs"
                                 :class="createTargetMode === 'students' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-muted/40'"
                                 @click="createTargetMode = 'students'"
                             >
@@ -743,16 +743,16 @@ watch(
                 <div class="flex shrink-0 items-center gap-1">
                     <button
                         type="button"
-                        class="rounded-md p-1.5 text-muted-foreground hover:bg-muted/40"
-                        title="Editar"
+                        class="flex min-h-11 min-w-11 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/40"
+                        :aria-label="`Editar registo de ${record.student ?? 'turma inteira'}`"
                         @click="edit(record)"
                     >
                         <Pencil class="size-4" />
                     </button>
                     <button
                         type="button"
-                        class="rounded-md p-1.5 text-muted-foreground hover:bg-muted/40 hover:text-red-600"
-                        title="Remover"
+                        class="flex min-h-11 min-w-11 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/40 hover:text-red-600"
+                        :aria-label="`Remover registo de ${record.student ?? 'turma inteira'}`"
                         @click="remove(record)"
                     >
                         <Trash2 class="size-4" />

@@ -1234,16 +1234,26 @@ function revertCancellation(): void {
                                     :disabled="!isReadOnly && cell(student.enrollment_id, item.id).state !== 'assessed' && cell(student.enrollment_id, item.id).state !== 'pending'"
                                     :class="[
                                         'h-7 w-20 rounded border bg-transparent pl-1.5 pr-5 text-right font-normal tabular-nums',
-                                        isReadOnly
-                                            ? 'cursor-default border-transparent opacity-100'
-                                            : isOverMax(student, item)
-                                              ? 'border-destructive text-destructive disabled:opacity-40'
-                                              : 'border-input disabled:opacity-40',
+                                        isReadOnly ? 'cursor-default border-transparent opacity-100' : 'border-input disabled:opacity-40',
                                     ]"
+                                    :aria-label="`Nota de ${student.name}${items.length > 1 ? ' em ' + item.code : ''}`"
                                     :title="isOverMax(student, item) ? `Excede a cotação máxima (${item.points_possible} pts).` : undefined"
                                     @input="onPointsInput(student, item, ($event.target as HTMLInputElement).value)"
                                     @keydown="onKeydown($event, rowIndex, columnIndex)"
                                 />
+                                <!-- Sinal sempre visível, não só cor/hover: a regra da
+                                     casa não deixa o vermelho tocar numa nota (por
+                                     isso saiu do input), mas isto é um erro de
+                                     sistema — validação, não juízo sobre o valor —
+                                     e o `title` sozinho só aparecia ao pairar o rato. -->
+                                <span
+                                    v-if="isOverMax(student, item)"
+                                    class="inline-flex items-center gap-0.5 text-xs font-medium text-destructive"
+                                    :title="`Excede a cotação máxima (${item.points_possible} pts).`"
+                                >
+                                    <CircleAlert class="size-3.5" aria-hidden="true" />
+                                    excede {{ item.points_possible }} pts
+                                </span>
                                 <div
                                     :class="[
                                         'relative inline-flex h-7 items-center rounded-md border bg-transparent text-xs focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2',

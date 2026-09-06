@@ -615,6 +615,7 @@ function submitPhotos(): void {
                                     as-child
                                     variant="ghost"
                                     size="icon"
+                                    class="size-11"
                                 >
                                     <Link
                                         :href="`/classes/${schoolClass.ulid}/evolucao/${student.ulid}`"
@@ -627,6 +628,7 @@ function submitPhotos(): void {
                                 <Button
                                     variant="ghost"
                                     size="icon"
+                                    class="size-11"
                                     :aria-label="`Editar dados de ${student.name}`"
                                     title="Editar"
                                     @click="openEdit(student)"
@@ -636,6 +638,7 @@ function submitPhotos(): void {
                                 <Button
                                     variant="ghost"
                                     size="icon"
+                                    class="size-11"
                                     :aria-label="`Remover ${student.name} da turma`"
                                     title="Remover"
                                     @click="remove(student)"

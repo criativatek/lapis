@@ -63,7 +63,7 @@ defineProps<{
                             :href="`/classes/${schoolClass.ulid}/edit`"
                             title="Editar turma"
                             :aria-label="`Editar turma ${schoolClass.label}`"
-                            class="relative z-10 rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                            class="relative z-10 flex min-h-11 min-w-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                         >
                             <Pencil class="size-4" />
                         </Link>

@@ -231,7 +231,7 @@ onBeforeUnmount(() => {
                         <Copy class="size-4" /> Basear no sumário anterior
                     </Button>
                 </div>
-                <textarea id="lesson-summary" v-model="summaryForm.content" name="content" rows="10" maxlength="16000" required autofocus class="min-h-56 w-full resize-y rounded-xl border border-input bg-background px-4 py-3 text-base leading-relaxed shadow-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50" placeholder="Escreve o sumário desta aula…" :disabled="summaryForm.processing" aria-describedby="lesson-summary-error" />
+                <textarea id="lesson-summary" v-model="summaryForm.content" name="content" rows="10" maxlength="16000" required class="min-h-56 w-full resize-y rounded-xl border border-input bg-background px-4 py-3 text-base leading-relaxed shadow-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50" placeholder="Escreve o sumário desta aula…" :disabled="summaryForm.processing" aria-describedby="lesson-summary-error" />
                 <InputError id="lesson-summary-error" :message="summaryForm.errors.content" />
             </div>
 

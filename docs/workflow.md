@@ -138,6 +138,31 @@ segurança. Armadilhas já vividas (todas reais):
 Antes de fechar algo com CHECK/colunas geradas: confia na CI (MySQL) ou corre um
 `migrate:fresh` real contra a BD MySQL local (`base`, :3306).
 
+### Ferramentas de teste que mentem em silêncio
+
+- **`php artisan test --profile` não mede nada.** O Collision retira o
+  `--profile` dos argumentos antes de o wrapper `laravel/pao` o ler, e o pao só
+  liga o colector se o vir lá. A opção corre sem erro e devolve resultados sem
+  perfil nenhum — quem procurar os testes lentos não recebe nada e não percebe
+  porquê. Usar **`PAO_DISABLE=true php artisan test --profile`**. Sem isto
+  mede-se por amostragem e conclui-se mal: a suite parecia não ter ponto quente
+  e tinha o `DemoDataSeeder` a correr **uma vez por teste** em 63 ficheiros
+  (37 s num só, ~7% da suite inteira).
+- **`--filter` a correr em paralelo com `npm run build` parte testes de
+  Inertia.** O build troca os hashes dos assets a meio, e qualquer teste que
+  renderize um blade com `@vite`/`@fonts` falha com `ViteException: Unable to
+  locate file in Vite manifest` — uma falha que não tem nada a ver com o
+  código em causa. Build e phpunit correm **em série**, nunca ao mesmo tempo.
+- **`php artisan test | tail -1` devolve o código de saída do `tail`.** Uma
+  suite vermelha passa por verde. Ler o JSON (`result`), não o exit code de um
+  pipeline.
+- **Um teste pode estar verde por nunca ter corrido.** Três ficheiros
+  `*MysqlGuaranteesTest` estavam presos atrás de `*_MYSQL_SCRATCH=1`, variáveis
+  que a CI não definia: 15 testes escritos precisamente para provar o que o
+  SQLite não prova, verdes por ausência desde sempre (corrigido em 0.131.0).
+  Ao ver um `skipped`, perguntar **porquê** — e se a condição que o salta
+  alguma vez é falsa em algum ambiente.
+
 ## Versão, changelog, memória
 
 - Incrementa `config/app.php` `version` (semver pré-1.0) **e** `CHANGELOG.md` a cada commit.
