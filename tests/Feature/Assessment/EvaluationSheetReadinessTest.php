@@ -398,10 +398,23 @@ class EvaluationSheetReadinessTest extends TestCase
 
         $this->asTenant(function () use ($schoolClass): void {
             $bruno = $this->enrollmentOf($schoolClass, 'Bruno Teixeira');
+
+            // NA FORMA QUE A APLICAÇÃO PRODUZ, e não numa que ela nunca produz.
+            // `RecordScores` limpa o valor sempre que o estado deixa de o
+            // carregar (`ResultState::carriesValue()`), e a base de dados diz o
+            // mesmo com o CHECK `sis_empty_is_not_zero_check`: só um elemento
+            // avaliado pode ter pontos. Trocar apenas o estado deixava para trás
+            // um valor que aquele estado não pode ter — o SQLite aceitava em
+            // silêncio, o MySQL recusa, e o registo que o teste montava nunca
+            // existiria em produção.
             StudentItemScore::query()
                 ->where('enrollment_id', $bruno->id)
                 ->limit(1)
-                ->update(['result_state' => ResultState::UnderReview->value]);
+                ->update([
+                    'result_state' => ResultState::UnderReview->value,
+                    'points_earned' => null,
+                    'scale_level_id' => null,
+                ]);
         });
 
         $readiness = $this->readiness($schoolClass, $academicPeriod);

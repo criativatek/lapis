@@ -25,6 +25,98 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.132.0] — 2026-09-06
+
+A **Pauta de Avaliação passa a ser o ecrã onde o professor decide**. Já era onde
+toda a informação avaliativa estava reunida, e mesmo assim obrigava a sair dela
+para atribuir o nível — a decidir noutro sítio a partir do que se tinha acabado
+de ver. Nesta versão a pauta reúne também a autoavaliação do aluno, deixa
+atribuir e alterar sem sair, e deixa levar cada momento guardado para fora em
+CSV e em Excel.
+
+### A decisão, a partir da pauta
+
+- **«Atribuir» onde não há decisão; o próprio valor como «Alterar» onde há.**
+  A coluna final deixa de ser só leitura. Clicar abre um painel compacto com o
+  que é preciso para decidir e nada mais: o nome do aluno, a **proposta do
+  Lapispro**, a classificação que já está atribuída, o global, os domínios, a
+  **autoavaliação** e o seletor da escala.
+- **Não há segunda fonte de verdade.** A decisão é escrita pelo caminho
+  canónico das classificações — a mesma linha, o mesmo `OpenClassification`, o
+  mesmo `ConfirmClassification` com o seu bloqueio de linha, a mesma validação e
+  **exatamente o mesmo rasto de auditoria** que o ecrã de Classificações deixa.
+  A pauta acrescenta o sítio de onde se decide, nunca uma segunda maneira de
+  guardar uma nota (§3.3).
+- **A proposta nunca é alterada.** O professor altera a decisão dele; o que o
+  Lapispro propôs fica exatamente como estava, e continua visível ao lado.
+- **A decisão da pauta atual é sempre reeditável** enquanto o professor mantiver
+  autorização. Guardar um momento não fecha nada, exportar não fecha nada, ter
+  histórico não fecha nada. Um 3 que passa a 4 passa a 4.
+- **«Preparar fecho» acompanha no mesmo instante**, porque é uma leitura da
+  pauta e não um segundo checklist a manter em dia.
+
+### A autoavaliação, ao lado do resultado
+
+- **O que o aluno disse de si próprio passa a estar na pauta**: o juízo global
+  numa coluna curta, e o que ele disse sobre cada domínio em expoente dentro do
+  próprio domínio — a mesma escrita que o Quadro Síntese já usava, para não
+  haver duas convenções para a mesma coisa.
+- **Visível por defeito onde existe**, ocultável pelo mesmo grupo de controlos
+  que já governa tudo o resto, e **sem coluna nem interruptor** onde ninguém se
+  pronunciou: um controlo para esconder o que não há não é uma opção.
+- **Nunca entra no cálculo** (§15). É informação de apoio à decisão, comparada
+  com a nota e jamais somada a ela — e há teste que o prova com uma
+  autoavaliação no extremo oposto do resultado.
+- **A leitura passa a viver num sítio só.** `SelfAssessmentReading` é agora a
+  leitura canónica e Resultados delega nela, para que dois ecrãs não possam
+  discordar sobre o que o mesmo aluno disse.
+
+### Levar um momento guardado para fora
+
+- **Cada pauta guardada exporta em CSV e em Excel.** Ficheiros do Lapispro,
+  para arquivo e leitura humana — coisa diferente da grelha do Inovar, que
+  continua onde estava e serve outro destino.
+- **O ficheiro de um momento representa esse momento.** Decidir 3, guardar, e
+  mudar depois para 4 não altera um único byte do ficheiro daquele momento;
+  quem quiser o 4 guarda um momento novo. A separação é estrutural: o
+  controlador que serve estes ficheiros **não recebe** o construtor da pauta,
+  nem o calculador, nem a escala — não tem por onde chegar ao presente.
+- **O Excel é legível por desenho**: título e contexto, cabeçalho em dois níveis
+  com os domínios agrupados e pintados com a mesma cor do ecrã (a cor identifica
+  o **domínio**, nunca o desempenho), painéis fixos, filtro, números como
+  números e níveis como texto.
+- **A proposta e a decisão têm colunas separadas.** Num ficheiro não há negrito
+  nem itálico, e a distinção que o ecrã faz pela tipografia só a estrutura a
+  pode fazer aqui.
+- **A pauta atual ganha também o seu Excel**, pelo mesmo escritor e com as
+  mesmas colunas — o que muda é a origem, nunca a forma.
+- Pautas guardadas antes disto continuam a abrir e a exportar: sem
+  autoavaliação, sem código de nível, sem cor. A ausência lê-se como ausência.
+
+### Correções
+
+- **O download do Excel deixa de rebentar em ambiente local.** `tempnam()` emite
+  um aviso quando a pasta temporária pedida não serve, e o Laravel converte
+  avisos em exceções: o ficheiro morria com 500 sem nada de errado com a pauta.
+  Passa a ser escrito para um buffer de saída, sem pasta temporária nenhuma para
+  dar errado. Apanhado a validar no browser.
+- **«Nível atribuído» voltou a ser duas palavras para um leitor de ecrã.** O
+  cabeçalho da coluna fixa quebrava em duas linhas com dois elementos sem espaço
+  entre eles, e era anunciado como «Nívelatribuído».
+
+### Auditado e deliberadamente não alterado
+
+- **`ResultsController`.** As duas ocorrências de `level->label` são o payload
+  `scaleBands`, que existe para o resolvedor de cor — decide por `is_negative` e
+  `sequence`, e nem sequer tem um campo `label` no seu tipo. Onde um nível é
+  *mostrado*, em Resultados e no Quadro Síntese, já é o código que aparece.
+- **Envio direto para o Microsoft Teams.** Não existe qualquer infraestrutura
+  Microsoft no produto — sem Graph, sem OAuth Microsoft, sem OneDrive, sem
+  SharePoint. Criá-la de raiz é uma decisão que não se toma sozinho. O CSV e o
+  XLSX já são formatos que o Teams abre, e o ponto de extensão para um destino
+  futuro está documentado em
+  [docs/evaluation-sheet-exports.md](docs/evaluation-sheet-exports.md).
+
 ## [0.131.1] — 2026-09-06
 
 Correções de acessibilidade apontadas por auditoria: informação transmitida só
