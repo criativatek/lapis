@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
-import { CircleAlert, Lock } from '@lucide/vue';
-import { computed } from 'vue';
+import { CircleAlert, FileSpreadsheet, Lock } from '@lucide/vue';
+import { computed, ref } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
+import ClassSynopsisTable from '@/components/results/ClassSynopsisTable.vue';
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
 import { pct, TREND_SHAPE, trendArrow, trendClasses, trendPoints, trendTitle } from '@/lib/results';
 import type { Evolution } from '@/lib/results';
+import type { Synopsis } from '@/lib/synopsis';
 
 /** A band of the profile's own scale. `code` is the value; `label` the mention. */
 type Level = { code: string; label: string; sequence: number; is_negative: boolean } | null;
@@ -58,7 +60,14 @@ type Student = {
 };
 
 const props = defineProps<{
-    schoolClass: { ulid: string; label: string; subject: string; has_profile: boolean; scale_name: string | null };
+    schoolClass: {
+        ulid: string;
+        label: string;
+        subject: string;
+        academic_year: string;
+        has_profile: boolean;
+        scale_name: string | null;
+    };
     decision: {
         label: string;
         classifies_by_level: boolean;
@@ -66,19 +75,44 @@ const props = defineProps<{
         min_value: string | null;
         max_value: string | null;
     };
-    scaleBands: { label: string; sequence: number; is_negative: boolean }[];
+    scaleBands: { code: string; label: string; sequence: number; is_negative: boolean }[];
     /** Whether this organization's plan includes the INOVAR export. */
     canExportToInovar: boolean;
+    /** Whether the Relatório do aluno is reachable — presentation only (§14). */
+    canViewStudentProgress: boolean;
     progression: {
         periods: { id: number; ulid: string; label: string; sequence: number }[];
         domains: { id: number; name: string }[];
         students: Student[];
     };
+    /** O ano visto pelos MOMENTOS — ver `BuildClassSynopsis`. */
+    synopsis: Synopsis;
 }>();
 
 const periods = computed(() => props.progression.periods);
 const domains = computed(() => props.progression.domains);
 const students = computed(() => props.progression.students);
+
+// -------------------------------------------------------------- as duas vistas
+//
+// DUAS LEITURAS DO MESMO ANO, e não duas páginas. «Ao longo do ano» é a leitura
+// longitudinal por momentos — o que aconteceu, e quando; «Por domínio» é a
+// leitura numérica que esta página sempre teve. Separá-las em dois ecrãs seria
+// obrigar a escolher antes de saber o que se procura; juntá-las numa só tabela
+// seria uma grelha com o dobro das colunas de que qualquer uma delas precisa.
+
+type SummaryView = 'moments' | 'domains';
+
+const view = ref<SummaryView>('moments');
+
+/**
+ * OS QUANTITATIVOS LIGAM-SE E DESLIGAM-SE, como na Pauta (§60).
+ *
+ * Uma pauta de 1.º ciclo lê-se por menções e os números só distraem; uma de 3.º
+ * ciclo precisa deles. As cores e as tendências continuam a funcionar nos dois
+ * modos, porque nenhuma delas depende de haver um número na célula.
+ */
+const showQuantitative = ref(true);
 
 /**
  * «P1», «P2» — short enough for a table this wide, and never without the real
@@ -197,10 +231,69 @@ function proposalText(proposal: Proposal | undefined): string {
 
         <EmptyState v-else-if="students.length === 0" title="Sem alunos nesta turma." />
 
+        <template v-else>
+            <!-- DUAS LEITURAS DO MESMO ANO. «Ao longo do ano» segue os momentos
+                 — o que aconteceu e quando; «Por domínio» segue os números, e é
+                 a leitura que esta página sempre teve. -->
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div class="flex overflow-hidden rounded-md border border-border" role="tablist">
+                    <button
+                        type="button"
+                        role="tab"
+                        :aria-selected="view === 'moments'"
+                        class="px-3 py-1.5 text-sm"
+                        :class="view === 'moments' ? 'bg-muted font-medium' : ''"
+                        @click="view = 'moments'"
+                    >
+                        Ao longo do ano
+                    </button>
+                    <button
+                        type="button"
+                        role="tab"
+                        :aria-selected="view === 'domains'"
+                        class="px-3 py-1.5 text-sm"
+                        :class="view === 'domains' ? 'bg-muted font-medium' : ''"
+                        @click="view = 'domains'"
+                    >
+                        Por domínio
+                    </button>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-3">
+                    <label v-if="view === 'moments'" class="flex items-center gap-1.5 text-sm">
+                        <input v-model="showQuantitative" type="checkbox" class="rounded border-border" />
+                        <span>Mostrar quantitativos</span>
+                    </label>
+                    <!-- Ligação simples, e não uma visita Inertia: uma resposta
+                         binária não volta por uma delas. -->
+                    <a
+                        :href="`/classes/${schoolClass.ulid}/results/quadro-sintese/xlsx`"
+                        class="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
+                        title="Exporta o quadro inteiro — momentos, domínios, elementos e a configuração — independentemente do que está visível no ecrã."
+                    >
+                        <FileSpreadsheet class="size-3.5" />
+                        Exportar Excel
+                    </a>
+                </div>
+            </div>
+
+            <ClassSynopsisTable
+                v-if="view === 'moments'"
+                :class-ulid="schoolClass.ulid"
+                :scale-bands="scaleBands"
+                :can-view-student-progress="canViewStudentProgress"
+                :show-quantitative="showQuantitative"
+                :synopsis="synopsis"
+            />
+        </template>
+
         <!-- Wide on purpose: a year of a class does not fit a viewport, and
              shrinking it to fit would be hiding it (§4). The student stays put
              while everything else scrolls past. -->
-        <div v-else class="max-h-[75vh] overflow-auto rounded-lg border border-border">
+        <div
+            v-if="schoolClass.has_profile && students.length > 0 && view === 'domains'"
+            class="max-h-[75vh] overflow-auto rounded-lg border border-border"
+        >
             <table class="w-max min-w-full text-sm">
                 <thead class="text-left">
                     <tr>
@@ -463,7 +556,52 @@ function proposalText(proposal: Proposal | undefined): string {
             </table>
         </div>
 
-        <p class="flex items-start gap-2 text-xs text-muted-foreground">
+        <!-- A LEGENDA DA LEITURA POR MOMENTOS. Nada aqui é decorativo: cada
+             frase existe porque alguma coisa na tabela é dita por uma cor, uma
+             seta ou uma inclinação, e nenhuma delas pode ser a única informação
+             que uma pessoa recebe (§25, §27). -->
+        <div
+            v-if="schoolClass.has_profile && students.length > 0 && view === 'moments'"
+            class="space-y-2 text-xs text-muted-foreground"
+        >
+            <p class="flex items-start gap-2">
+                <CircleAlert class="mt-0.5 size-3.5 shrink-0" />
+                <span>
+                    Cada coluna é um <strong>momento estruturante</strong> do ano. Os
+                    <strong>momentos formais</strong> — o que fecha cada
+                    {{ synopsis.periods[0]?.kind_label.toLowerCase() ?? 'unidade' }} — são o resultado da unidade e
+                    são os únicos que entram na <strong>avaliação contínua</strong>. Os
+                    <strong>momentos intercalares</strong> são fotografias informativas: mostram o que era verdade no
+                    dia em que a pauta foi guardada, servem para ler evolução, e <strong>não entram na média</strong>.
+                    Um momento intercalar que ninguém guardou aparece vazio — não é recalculado com os números de hoje.
+                </span>
+            </p>
+            <p class="flex items-start gap-2">
+                <CircleAlert class="mt-0.5 size-3.5 shrink-0" />
+                <span>
+                    A <strong>apreciação</strong> de cada célula é a que está a valer: a
+                    <span class="font-semibold">decisão do professor</span> quando existe, a
+                    <span class="italic">proposta do Lapispro</span> quando o professor não alterou nada — e uma
+                    proposta vale sem precisar de ser aprovada. A cor vem da <strong>posição do nível na escala</strong>
+                    <template v-if="schoolClass.scale_name"> ({{ schoolClass.scale_name }})</template>, nunca do número
+                    que ele tem; <strong>↑ Evolução</strong>, <strong>→ Manutenção</strong> e
+                    <strong>↓ Regressão</strong> comparam essa apreciação com a do momento estruturante anterior.
+                    Nenhuma cor e nenhuma seta está sozinha: o código, o nível e a frase inteira vão sempre no texto da
+                    célula ou na sua descrição.
+                </span>
+            </p>
+            <p v-if="scaleBands.length > 0" class="flex flex-wrap items-center gap-1.5">
+                <span>Escala:</span>
+                <span
+                    v-for="band in scaleBands"
+                    :key="band.sequence"
+                    class="rounded px-1.5 py-0.5"
+                    :class="levelClasses(band)"
+                >{{ band.code }} — {{ band.label }}</span>
+            </p>
+        </div>
+
+        <p v-if="view === 'domains'" class="flex items-start gap-2 text-xs text-muted-foreground">
             <CircleAlert class="mt-0.5 size-3.5 shrink-0" />
             <span>
                 Cada bloco é um domínio do perfil de avaliação: <strong>P1</strong>, <strong>P2</strong>… são a

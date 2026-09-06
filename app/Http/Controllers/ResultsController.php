@@ -366,6 +366,10 @@ class ResultsController extends Controller
             // Presentation only: the route is gated by the same capability, and
             // hiding a link is never what keeps anybody out (§8.2).
             'canExportToInovar' => app(Entitlements::class)->allows('inovar_export'),
+            // O Quadro liga ao Relatório do aluno em vez de repetir a análise
+            // individual (§14) — e só oferece a porta a quem ela abre. É
+            // apresentação: a rota continua atrás do seu próprio módulo.
+            'canViewStudentProgress' => app(Entitlements::class)->allows('student_progress'),
             // A ESCALA INTEIRA, com código e rótulo além da posição: a cor de
             // uma apreciação sai da POSIÇÃO do nível na escala e nunca do número
             // que ele calha ter (§24), e a legenda precisa de a dizer por
