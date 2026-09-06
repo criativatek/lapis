@@ -106,7 +106,14 @@ class EvaluationSheetCsvWriter
         foreach ($document->domains as $domain) {
             $name = (string) $domain['name'];
             $header[] = "{$name} — Percentagem";
-            $header[] = "{$name} — Nível";
+            // TRÊS COLUNAS, TRÊS AFIRMAÇÕES DIFERENTES. «Apreciação» é o que
+            // vale — a decisão do professor quando existe, a proposta quando
+            // não —, e as outras duas dizem de onde ela veio. Num ficheiro não
+            // há itálico nem negrito, e a distinção que o ecrã faz pela
+            // tipografia tem de ser feita aqui pela estrutura (§11).
+            $header[] = "{$name} — Apreciação";
+            $header[] = "{$name} — Proposta do Lapispro";
+            $header[] = "{$name} — Origem da apreciação";
 
             if ($withSelfAssessment) {
                 $header[] = "{$name} — Autoavaliação";
@@ -170,7 +177,22 @@ class EvaluationSheetCsvWriter
             $studentDomain = $byDomainId[$domainId] ?? null;
 
             $row[] = $this->percentage($studentDomain === null ? null : $studentDomain['normalized_value']);
-            $row[] = $studentDomain === null ? '' : (string) ($studentDomain['scale_level_code'] ?? $studentDomain['scale_level_label'] ?? '');
+
+            $proposed = $studentDomain === null
+                ? ''
+                : (string) ($studentDomain['scale_level_code'] ?? $studentDomain['scale_level_label'] ?? '');
+            $decided = $studentDomain === null
+                ? ''
+                : (string) ($studentDomain['decided_scale_level_code'] ?? $studentDomain['decided_scale_level_label'] ?? '');
+
+            // A apreciação que vale, a proposta sempre preservada ao lado, e a
+            // origem dita por palavras — porque um ficheiro lido meses depois
+            // não tem o ecrã ao lado para explicar a diferença.
+            $row[] = $decided !== '' ? $decided : $proposed;
+            $row[] = $proposed;
+            $row[] = $decided !== ''
+                ? 'Decisão do professor'
+                : ($proposed !== '' ? 'Proposta do Lapispro' : '');
 
             if ($withSelfAssessment) {
                 $row[] = (string) ($studentDomain['self_assessment']['code'] ?? '');

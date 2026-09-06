@@ -54,6 +54,86 @@ No ficheiro, a **proposta** e a **decisão** têm colunas separadas. Num CSV nã
 negrito nem itálico, e a distinção que o ecrã faz pela tipografia só a estrutura
 a pode fazer aqui; «Origem do nível» di-lo por palavras.
 
+Isso vale para o juízo global **e para cada domínio**. Cada domínio sai em três
+colunas — `Percentagem`, `Apreciação`, `Proposta do Lapispro` — mais
+`Origem da apreciação` no CSV:
+
+| Coluna | O que é |
+|---|---|
+| `X — Percentagem` | o **quantitativo calculado** pelo motor. Não muda por causa de decisão nenhuma. |
+| `X — Apreciação` | o que **vale**: a decisão do professor quando existe, a proposta quando não existe. |
+| `X — Proposta do Lapispro` | a banda em que o quantitativo caiu, **sempre preservada**. |
+| `X — Origem da apreciação` | «Decisão do professor» ou «Proposta do Lapispro», dito por palavras. |
+
+**Quantitativo calculado ≠ apreciação decidida.** São três afirmações distintas
+e simultaneamente verdadeiras: 47,5% é o que o motor apurou, «2» é o que o
+Lapispro propõe, «3» é o que o professor decidiu. Nenhuma apaga as outras, e o
+professor não altera nenhuma das duas primeiras — só a sua.
+
+Uma pauta guardada antes de esta decisão existir não traz as chaves
+`decided_*`, e a ausência delas **é** a informação: ninguém se pronunciou. O
+ficheiro histórico continua a dizer exatamente o que dizia.
+
+O que é proposta e o que é decisão — no global e por domínio — está em
+[evaluation-sheet-decisions.md](evaluation-sheet-decisions.md).
+
+## A grelha do Inovar: de quem é cada linha
+
+É a pergunta mais perigosa deste fluxo. Uma menção escrita na linha errada sai
+da escola como se fosse a nota daquela pessoa, e ninguém a apanha a ler. Por
+isso a resposta é **por confiança** e não por uma chave só —
+[`InovarStudentMatcher`](../app/Services/Export/InovarStudentMatcher.php).
+
+| Confiança | Quando | O que acontece |
+|---|---|---|
+| **Forte** | o N.º de processo coincide dos dois lados; ou o nome coincide no primeiro e no último e não há outro candidato | o Lapispro escreve |
+| **Provável** | o nome é forte mas o N.º de processo diverge; ou o número aponta uma pessoa e o nome outra | diz quem acha que é, e **espera** |
+| **Ambígua** | dois candidatos plausíveis | não sugere nenhum: o professor escolhe |
+| **Sem correspondência** | nada bate certo | a linha fica **exatamente como estava** — nunca um zero, nunca um F |
+
+**O N.º de processo deixou de ser requisito.** É um sinal forte quando existe
+dos dois lados; quando o Lapispro não o tem, não penaliza — o nome responde à
+mesma pergunta. Uma turma escrita à mão exporta.
+
+**Nome forte é primeiro e último**, depois de normalizar acentos, maiúsculas,
+hífenes, apóstrofos e partículas («de», «do», «da»…). Nomes do meio podem
+existir só de um lado ou estar abreviados: «Álvaro Manuel Simões» ↔
+«Alvaro Simões». O que **não** existe é aproximação — «Martins» e «Martin» não
+correspondem, nem sequer como sugestão automática.
+
+**A mesma matrícula nunca pode ser reclamada por duas linhas.** Irmãos com o
+mesmo primeiro e último nome, uma linha duplicada: ambas passam a ambíguas, em
+vez de uma delas levar a nota errada.
+
+**A resposta do professor não é uma instrução.** Cada escolha é reavaliada
+contra os candidatos que aquela linha admite; uma escolha fora dessa lista é
+descartada e a linha volta a pedir resposta. O ficheiro é sempre relido do
+disco.
+
+**O que bloqueia** são três coisas, e nenhuma delas é «falta informação»: uma
+coluna que não corresponde a domínio nenhum, uma escala sem correspondência
+INOVAR, e um N.º de processo repetido dentro do próprio ficheiro. Uma linha por
+identificar não é um erro — é uma pergunta —, mas nenhuma grelha sai enquanto
+ela estiver em aberto.
+
+## `inovar_code` é o valor exportado para o Inovar
+
+As colunas qualitativas da grelha recebem o **`inovar_code` da banda**: `B`,
+`MB`, `S`, `I`, `F`. Nunca o `code` da escala («4»), nunca o rótulo («Bom»).
+`code` é o nome curto que a escala dá à banda e vale outra coisa na escala
+seguinte; `label` é texto de autor que uma tradução parte. Uma escala sem
+correspondência declarada **não é exportável**, e dizê-lo é a resposta —
+inventar um código poria em frente de uma escola uma classificação que nenhuma
+regra aprovada produziu ([`InovarCodeResolver`](../app/Services/Export/InovarCodeResolver.php)).
+
+**Onde o professor decidiu a apreciação de um domínio, é a decisão dele que
+viaja** — pelo `inovar_code` da banda decidida. Onde não há decisão, vai o valor
+canónico de sempre; nada é inventado por causa disto.
+
+A **coluna do nível** é outra coisa e continua a seguir a sua regra: leva o
+`code` da escala («3», «4», «5»), que é o vocabulário dessa coluna, e só quando
+o professor escolhe a coluna — nunca «a coluna a seguir aos domínios».
+
 ## O Excel é do Lapispro, não é a grelha do Inovar
 
 Servem coisas diferentes. A grelha do Inovar preenche o ficheiro que a escola

@@ -25,6 +25,123 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.133.0] — 2026-09-06
+
+A Pauta de Avaliação já era o ecrã onde o professor decide. Nesta versão passa a
+sê-lo **também abaixo do juízo global**: cada domínio tem uma apreciação que é
+dele, a pauta deixa de escrever números quando o professor pediu uma pauta sem
+números, os momentos intercalares deixam de estar escondidos, e a grelha do
+Inovar deixa de bloquear por causa de uma informação que a escola já tinha no
+ficheiro que carregou.
+
+### A apreciação de cada domínio é uma decisão
+
+- **O professor decide, domínio a domínio.** A apreciação de «Escrita» era
+  sempre a banda em que o quantitativo calculado caía, e não havia onde dizer
+  outra coisa. Passa a haver: clicar na apreciação abre um painel pequeno com as
+  menções da escala configurada, e a escolha fica registada.
+- **Três afirmações, todas verdadeiras ao mesmo tempo.** 47,5 % é o que o motor
+  apurou, «2» é o que o Lapispro propõe, «3» é o que o professor decidiu. O
+  professor não altera o quantitativo e não altera a proposta — altera a leitura
+  que assume, e ela fica **ao lado** das outras duas, nunca por cima.
+- **Não é um valor.** A decisão sobre um domínio não entra na média ponderada,
+  não muda o resultado global e não recalcula coisa nenhuma. O motor de cálculo
+  não sabe que ela existe.
+- **«Usar a proposta do Lapispro» apaga a decisão** em vez de guardar uma vazia:
+  a ausência de linha significa exatamente «ninguém se pronunciou», que é o
+  estado natural de um domínio que ninguém reviu.
+- **Sempre reeditável.** Não há confirmação, não há publicação e não há fecho por
+  domínio. Guardar a pauta, exportar para o Inovar ou ter histórico não fecham
+  porta nenhuma. Cada alteração deixa rasto de auditoria com o valor anterior, o
+  novo e o domínio.
+- **Uma tabela nova, e só com o que é dela.** `domain_appreciation_decisions`
+  guarda o nível decidido e mais nada: não guarda o quantitativo, não copia a
+  proposta e não guarda médias. Uma consulta por pauta, nunca uma por célula.
+
+### Desligar «Valores quantitativos» passa a desligar os números
+
+- O toggle escondia as percentagens e deixava ficar «4», «3», «2» — que são
+  números. Nessa vista as células passam a escrever a **menção da escala**
+  («Bom»), e o código continua no texto de cada célula («Bom — código 4»).
+- Vale para os domínios, para o global e para o nível atribuído. **As menções
+  vêm da escala configurada**: não há nenhuma tabela que converta «4» em «Bom».
+- **Nem itálico nem negrito são informação para quem não os vê.** Cada célula
+  passa a carregar a frase inteira — «Decisão do professor: 3 — Suficiente.
+  Proposta do Lapispro: 2 — Insuficiente.» — no texto acessível, e não só no
+  `title`.
+
+### A cobertura deixa de afirmar avaliações que não houve
+
+- «Cobertura parcial — nem todos os elementos previstos foram avaliados» era
+  dito também sobre alunos sem avaliação nenhuma. Passa a haver **três estados
+  numa só fonte**: completa (nada a dizer), parcial («Embora tenha havido
+  avaliação neste domínio, nem todos os elementos previstos foram realizados»)
+  e sem elementos («Ainda não há elementos avaliados neste domínio»).
+- A frase concessiva só é dita onde **há resultado**. O ⚠ do ecrã, «Preparar
+  fecho» e a pauta guardada dizem todos a mesma coisa, porque leem o mesmo sítio.
+
+### Os momentos intercalares saem do esconderijo
+
+- O topo da pauta mostra agora os **dois momentos estruturais** de cada unidade
+  temporal, na ordem em que se vivem: «Intercalar 1.º Semestre · 1.º Semestre ·
+  Intercalar 2.º Semestre · 2.º Semestre». Uma escola com períodos vê
+  «Intercalar 1.º Período» — os rótulos derivam da configuração real, e nada no
+  código sabe o que é um semestre.
+- **Não é uma segunda noção de «intercalar»**: as Avaliações intercalares
+  continuam a ser o que eram. O que faltava era navegação para uma distinção que
+  já existia implicitamente, lida das datas do período.
+- Os dois momentos leem **exatamente a mesma pauta** — nenhum número muda. O que
+  muda é o título sugerido para a fotografia, o que «Preparar fecho» espera
+  encontrar, e se a grelha do Inovar leva o nível por omissão.
+- **Só os momentos estruturais são separadores.** Guardar mais pautas nunca
+  acrescenta separadores: uma fotografia é um registo e vive no Histórico.
+
+### A grelha do Inovar: correspondência por confiança
+
+- **O N.º de processo deixa de ser requisito.** Uma turma escrita à mão não tem
+  nenhum, e a exportação inteira ficava bloqueada por uma informação que vinha
+  no ficheiro da escola. Passa a ser um sinal forte entre outros.
+- Quatro respostas, e a fronteira entre elas é uma só — se o Lapispro escreve ou
+  se pergunta: **forte** (escreve), **provável** (diz quem acha que é e espera),
+  **ambígua** (não sugere nenhum; o professor escolhe) e **sem correspondência**
+  (a linha fica exatamente como estava — nunca um zero, nunca um F).
+- **Nomes do meio, acentos, hífenes e partículas deixam de estragar uma
+  correspondência óbvia**: «Álvaro Manuel Simões» ↔ «Alvaro Simões». O que não
+  existe é aproximação — «Martins» e «Martin» não correspondem, nem sequer como
+  sugestão.
+- **A mesma matrícula nunca pode ser reclamada por duas linhas.** Se acontece,
+  ambas passam a ambíguas em vez de uma delas levar a nota errada.
+- **A resposta do professor não é uma instrução**: é reavaliada contra os
+  candidatos que aquela linha admite, e uma escolha fora dessa lista é
+  descartada. Nenhuma grelha sai com uma linha por identificar.
+- **Onde o professor decidiu a apreciação de um domínio, é a decisão dele que a
+  escola recebe** — pelo `inovar_code` da banda decidida, nunca pelo número da
+  escala nem pelo rótulo. A coluna do nível continua a seguir a sua própria
+  regra.
+
+### Ficheiros e histórico
+
+- **CSV e Excel ganham três colunas por domínio**: `Percentagem`, `Apreciação`
+  (o que vale) e `Proposta do Lapispro` (sempre preservada), mais
+  `Origem da apreciação` no CSV. Num ficheiro não há itálico, e a distinção que
+  o ecrã faz pela tipografia só a estrutura a pode fazer.
+- **As fotografias congelam as três afirmações.** Uma pauta guardada com a
+  decisão «3» continua a dizer «3» depois de a decisão de hoje passar a «4», e
+  os ficheiros dela também.
+- **Compatibilidade para trás**: uma pauta guardada antes disto não traz as
+  chaves `decided_*` nem o tipo de momento, e **nada lhe é atribuído** — ausente
+  é «não foi registado», nunca «final» nem «sem decisão inventada». Abre, lê-se e
+  exporta-se exatamente como antes. Nenhum registo antigo foi reescrito.
+
+### Documentação
+
+- [`docs/evaluation-sheet-decisions.md`](docs/evaluation-sheet-decisions.md) —
+  proposta vs. decisão (global e por domínio), como se lê uma menção, os
+  momentos estruturais e os três estados de cobertura.
+- [`docs/evaluation-sheet-exports.md`](docs/evaluation-sheet-exports.md) — as
+  colunas por domínio, a correspondência por confiança e por que razão
+  **`inovar_code` é o valor exportado para o Inovar**.
+
 ## [0.132.0] — 2026-09-06
 
 A **Pauta de Avaliação passa a ser o ecrã onde o professor decide**. Já era onde

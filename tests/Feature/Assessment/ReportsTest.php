@@ -215,9 +215,12 @@ class ReportsTest extends TestCase
         $this->assertStringContainsString('class="print-hide"', $screen);
 
         // E o cabeçalho impresso diz de que turma, de que disciplina, de que
-        // período (com a terminologia dinâmica, nunca uma palavra fixa) e de
-        // que dia é a folha.
-        $this->assertStringContainsString('selectedPeriod.kind_label', $screen);
+        // MOMENTO — «Momento intercalar do 1.º Semestre», «Semestre — 1.º
+        // Semestre» —, com a terminologia dinâmica e nunca uma palavra fixa, e
+        // de que dia é a folha. Numa folha impressa não há separador
+        // selecionado a que recorrer, e um «1.º Semestre» tirado a meio do
+        // semestre diria que o fechou.
+        $this->assertStringContainsString('selectedPeriod.moment_label', $screen);
         $this->assertStringContainsString('printedOn', $screen);
     }
 
@@ -247,12 +250,16 @@ class ReportsTest extends TestCase
         $this->assertStringContainsString('Nº,Aluno', $body);
         $this->assertStringContainsString('Carolina Nunes', $body);
 
-        // Todos os domínios do perfil, com quantitativo E nível. A coluna
-        // chama-se «Nível» porque é o código do nível que leva — nomeá-la
-        // «Apreciação» com um «5» lá dentro seria descrever outra coisa.
+        // Todos os domínios do perfil, com o quantitativo e com as duas metades
+        // da apreciação. «Apreciação» é o que VALE — a decisão do professor
+        // quando existe, a proposta quando não —, e «Proposta do Lapispro» fica
+        // sempre ao lado: num ficheiro não há itálico a distingui-las, e a
+        // origem vem escrita por palavras.
         foreach (['Oralidade', 'Leitura', 'Escrita', 'Gramática', 'Educação Literária'] as $domain) {
             $this->assertStringContainsString("{$domain} — Percentagem", $body);
-            $this->assertStringContainsString("{$domain} — Nível", $body);
+            $this->assertStringContainsString("{$domain} — Apreciação", $body);
+            $this->assertStringContainsString("{$domain} — Proposta do Lapispro", $body);
+            $this->assertStringContainsString("{$domain} — Origem da apreciação", $body);
         }
 
         $this->assertStringContainsString('Global — Percentagem', $body);

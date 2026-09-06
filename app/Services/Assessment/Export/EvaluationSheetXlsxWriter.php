@@ -126,7 +126,11 @@ class EvaluationSheetXlsxWriter
         bool $withSelfAssessment,
     ): int {
         $secondRow = $headerRow + 1;
-        $perDomain = $withSelfAssessment ? 3 : 2;
+        // Quant. · Apreciação · Proposta [· Autoav.]. A apreciação é o que
+        // VALE — a decisão do professor quando existe, a proposta quando não —
+        // e a proposta fica sempre ao lado, porque num ficheiro não há itálico
+        // a distingui-las (§11).
+        $perDomain = $withSelfAssessment ? 4 : 3;
 
         $sheet->setCellValue([1, $headerRow], 'Nº');
         $sheet->setCellValue([2, $headerRow], 'Aluno');
@@ -141,9 +145,10 @@ class EvaluationSheetXlsxWriter
 
             $sheet->setCellValue([$column, $secondRow], 'Quant.');
             $sheet->setCellValue([$column + 1, $secondRow], 'Apreciação');
+            $sheet->setCellValue([$column + 2, $secondRow], 'Proposta');
 
             if ($withSelfAssessment) {
-                $sheet->setCellValue([$column + 2, $secondRow], 'Autoav.');
+                $sheet->setCellValue([$column + 3, $secondRow], 'Autoav.');
             }
 
             // A cor do domínio, no cabeçalho e por baixo dele — identidade, e
@@ -213,20 +218,25 @@ class EvaluationSheetXlsxWriter
             foreach ($document->domains as $domain) {
                 $studentDomain = $byDomainId[(int) $domain['domain_id']] ?? null;
 
+                $proposed = $this->levelOf($studentDomain);
+                $decided = $this->decidedLevelOf($studentDomain);
+
                 $this->writePercentage($sheet, $column, $row, $studentDomain['normalized_value'] ?? null);
-                $this->writeText($sheet, $column + 1, $row, $this->levelOf($studentDomain));
+                // A apreciação que vale — e a proposta, intacta, ao lado.
+                $this->writeText($sheet, $column + 1, $row, $decided !== '' ? $decided : $proposed);
+                $this->writeText($sheet, $column + 2, $row, $proposed);
 
                 if ($withSelfAssessment) {
-                    $this->writeText($sheet, $column + 2, $row, (string) ($studentDomain['self_assessment']['code'] ?? ''));
+                    $this->writeText($sheet, $column + 3, $row, (string) ($studentDomain['self_assessment']['code'] ?? ''));
                 }
 
-                $this->fill($sheet, $column, $row, $column + ($withSelfAssessment ? 2 : 1), $row, $this->rgb($domain), soft: true);
+                $this->fill($sheet, $column, $row, $column + ($withSelfAssessment ? 3 : 2), $row, $this->rgb($domain), soft: true);
 
                 if ($studentDomain !== null && ($studentDomain['has_coverage_warning'] ?? false) === true) {
                     $warnings[] = (string) $domain['name'];
                 }
 
-                $column += $withSelfAssessment ? 3 : 2;
+                $column += $withSelfAssessment ? 4 : 3;
             }
 
             /** @var array<string, mixed> $overall */
@@ -352,6 +362,24 @@ class EvaluationSheetXlsxWriter
         }
 
         return (string) ($row['scale_level_code'] ?? $row['scale_level_label'] ?? '');
+    }
+
+    /**
+     * A decisão do professor sobre um domínio, vazia quando não existe.
+     *
+     * Uma fotografia guardada antes de esta decisão existir não traz estas
+     * chaves, e a ausência delas é exatamente o que significa: ninguém se
+     * pronunciou. O ficheiro histórico continua a dizer o que dizia.
+     *
+     * @param  array<string, mixed>|null  $row
+     */
+    protected function decidedLevelOf(?array $row): string
+    {
+        if ($row === null) {
+            return '';
+        }
+
+        return (string) ($row['decided_scale_level_code'] ?? $row['decided_scale_level_label'] ?? '');
     }
 
     /** @param  array<string, mixed>|null  $classification */
