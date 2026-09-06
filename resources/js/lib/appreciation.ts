@@ -1,3 +1,4 @@
+import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
 import type {
     EvaluationSheetClassification,
     EvaluationSheetOverall,
@@ -32,6 +33,9 @@ export type LevelReference = {
     label?: string | null;
 };
 
+/** Um nível da escala configurada, o suficiente para o colocar e para o pintar. */
+export type ToneableBand = { code: string; label: string; sequence: number; is_negative: boolean };
+
 /** De quem é o juízo que a célula mostra. */
 export type AppreciationOrigin = 'decided' | 'proposed' | 'none';
 
@@ -46,6 +50,12 @@ export type Appreciation = {
     description: string;
     /** A menção sozinha, sem dizer de quem é — para onde a origem já é óbvia. */
     detail: string | null;
+    /**
+     * O nível QUE ESTÁ A VALER, com as duas metades — para se poder pintar sem
+     * ter de adivinhar qual delas ficou na célula. Null quando não há nível
+     * nenhum a valer, e nesse caso não há cor nenhuma a dar.
+     */
+    level: LevelReference | null;
 };
 
 /** O que se escreve, conforme a vista. */
@@ -104,7 +114,7 @@ export function domainAppreciation(
     showQuantitative: boolean,
 ): Appreciation {
     if (!domain) {
-        return { text: '—', origin: 'none', description: NO_APPRECIATION, detail: null };
+        return { text: '—', origin: 'none', description: NO_APPRECIATION, detail: null, level: null };
     }
 
     const proposed: LevelReference = {
@@ -119,12 +129,14 @@ export function domainAppreciation(
     );
 
     if (decidedText !== null) {
-        const decidedDetail = levelDetail(
-            { code: domain.decided_scale_level_code, label: domain.decided_scale_level_label },
-            showQuantitative,
-        );
+        const decided: LevelReference = {
+            code: domain.decided_scale_level_code,
+            label: domain.decided_scale_level_label,
+        };
+        const decidedDetail = levelDetail(decided, showQuantitative);
 
         return {
+            level: decided,
             text: decidedText,
             origin: 'decided',
             description:
@@ -138,10 +150,11 @@ export function domainAppreciation(
     const proposedText = levelText(proposed, showQuantitative);
 
     if (proposedText === null) {
-        return { text: '—', origin: 'none', description: NO_APPRECIATION, detail: null };
+        return { text: '—', origin: 'none', description: NO_APPRECIATION, detail: null, level: null };
     }
 
     return {
+        level: proposed,
         text: proposedText,
         origin: 'proposed',
         description: `Proposta do Lapispro, ainda não decidida pelo professor: ${proposedDetail}.`,
@@ -166,12 +179,13 @@ export function overallAppreciation(
     const text = levelText(level, showQuantitative);
 
     if (text === null) {
-        return { text: '—', origin: 'none', description: NO_APPRECIATION, detail: null };
+        return { text: '—', origin: 'none', description: NO_APPRECIATION, detail: null, level: null };
     }
 
     const detail = levelDetail(level, showQuantitative);
 
     return {
+        level,
         text,
         origin: 'proposed',
         description: `Leitura do Lapispro sobre o resultado global: ${detail}.`,
@@ -194,7 +208,7 @@ export function assignedLevel(
     showQuantitative: boolean,
 ): Appreciation {
     if (classification === null) {
-        return { text: '—', origin: 'none', description: 'Sem classificação registada.', detail: null };
+        return { text: '—', origin: 'none', description: 'Sem classificação registada.', detail: null, level: null };
     }
 
     const decided: LevelReference = {
@@ -207,6 +221,7 @@ export function assignedLevel(
         const detail = levelDetail(decided, showQuantitative) ?? classification.final_value;
 
         return {
+            level: decided,
             text: decidedText,
             origin: 'decided',
             description: `Decisão do professor: ${detail}.`,
@@ -224,6 +239,7 @@ export function assignedLevel(
         const detail = levelDetail(proposed, showQuantitative) ?? classification.proposed_value;
 
         return {
+            level: proposed,
             text: proposedText,
             origin: 'proposed',
             description: `Proposta do Lapispro, ainda não decidida pelo professor: ${detail}.`,
@@ -231,5 +247,47 @@ export function assignedLevel(
         };
     }
 
-    return { text: '—', origin: 'none', description: 'Sem classificação registada.', detail: null };
+    return { text: '—', origin: 'none', description: 'Sem classificação registada.', detail: null, level: null };
+}
+
+/**
+ * A COR DE UMA APRECIAÇÃO — pela POSIÇÃO do nível na escala, nunca pelo número
+ * que ele calha ter (§24).
+ *
+ * O «5» de uma escala de 1 a 5 é verde por ser o nível mais alto, e não por ser
+ * cinco: uma escala «Insuficiente/Suficiente/Bom», sem número nenhum, pinta-se
+ * exatamente da mesma maneira, e uma escala invertida — que nada proíbe —
+ * pinta-se ao contrário sem que uma linha de código saiba que existe. Quem faz
+ * essa leitura é `qualitativeToneFor`, que já existia e que Resultados e
+ * Avaliações usam; aqui só se encontra o nível de que se está a falar.
+ *
+ * PELO CÓDIGO PRIMEIRO, PELO RÓTULO DEPOIS — a mesma ordem de preferência que o
+ * resto do modelo de leitura já usa, e a que mantém legível uma pauta guardada
+ * quando só um dos dois viajou.
+ *
+ * SEM BANDAS, SEM COR, E É ASSIM QUE TEM DE SER. Uma pauta guardada não recebe
+ * bandas nenhumas de propósito: abrir uma fotografia não pode ir buscar nada ao
+ * presente, e a escala pode ter mudado desde então (§15). Fica sem cor, que é
+ * honesto, em vez de ficar com uma cor que ninguém escolheu.
+ */
+export function appreciationTone(
+    appreciation: Appreciation,
+    bands: ToneableBand[],
+): string {
+    if (appreciation.level === null || bands.length === 0) {
+        return '';
+    }
+
+    const code = appreciation.level.code ?? null;
+    const label = appreciation.level.label ?? null;
+
+    const band =
+        (code === null ? undefined : bands.find((candidate) => candidate.code === code)) ??
+        (label === null ? undefined : bands.find((candidate) => candidate.label === label));
+
+    if (band === undefined) {
+        return '';
+    }
+
+    return qualitativeToneClasses[qualitativeToneFor(band, bands)];
 }

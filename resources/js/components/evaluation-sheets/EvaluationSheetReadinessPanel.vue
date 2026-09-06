@@ -67,15 +67,34 @@ function href(action: EvaluationSheetReadinessAction, student?: EvaluationSheetR
     }
 }
 
+/**
+ * O QUE O CABEÇALHO DIZ, E A DISTINÇÃO QUE ELE TEM DE FAZER (§31).
+ *
+ * Uma PENDÊNCIA é trabalho por fazer: uma decisão por tomar, um domínio sem
+ * avaliação nenhuma, uma autoavaliação em falta. Um AVISO é informação sobre o
+ * que já foi feito — a cobertura parcial, sobretudo — e não há nele nada que o
+ * professor possa resolver agora: os elementos que não se realizaram não se
+ * realizam depois de o momento ter passado.
+ *
+ * Somar os dois num número só era o que fazia o contador subir por razões que
+ * ninguém podia baixar, e um contador que não desce é um contador que se
+ * ignora. O badge conta pendências; os avisos dizem-se por palavras ao lado.
+ */
 const headline = computed(() => {
     const attention = props.readiness.summary.attention_count;
+    const notices = props.readiness.summary.notice_count ?? 0;
+
+    const noticeSentence =
+        notices === 0 ? '' : notices === 1 ? ' Há também 1 aviso informativo.' : ` Há também ${notices} avisos informativos.`;
 
     if (attention === 0) {
         // Nunca «pronto para fechar» — decidir continua a ser do professor.
-        return 'Sem pendências detetadas.';
+        return `Sem pendências detetadas.${noticeSentence}`;
     }
 
-    return attention === 1 ? 'Há 1 ponto a verificar.' : `Há ${attention} pontos a verificar.`;
+    return attention === 1
+        ? `Há 1 ponto a verificar.${noticeSentence}`
+        : `Há ${attention} pontos a verificar.${noticeSentence}`;
 });
 </script>
 

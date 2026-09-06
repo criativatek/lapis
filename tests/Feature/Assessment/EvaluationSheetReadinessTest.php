@@ -16,11 +16,13 @@ use App\Models\SchoolClass;
 use App\Models\SelfAssessment;
 use App\Models\SelfAssessmentFilledBy;
 use App\Models\SelfAssessmentStatus;
+use App\Models\SheetMomentKind;
 use App\Models\StudentItemScore;
 use App\Models\Subject;
 use App\Models\User;
 use App\Services\Assessment\ActivateProfileVersion;
 use App\Services\Assessment\BuildEvaluationSheet;
+use App\Services\Assessment\CaptureEvaluationSheet;
 use App\Services\Assessment\ConfirmClassification;
 use App\Services\Assessment\EvaluationSheetReadiness;
 use App\Services\Assessment\InstrumentBuilder;
@@ -29,10 +31,12 @@ use App\Services\Assessment\ProposeClassifications;
 use App\Services\Assessment\RecordScores;
 use App\Services\Assessment\SelfAssessmentTemplateProvider;
 use App\Services\StudentEnrollmentService;
+use App\Support\Assessment\CoverageWording;
 use App\Support\Hashing\CanonicalPayload;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -544,6 +548,106 @@ class EvaluationSheetReadinessTest extends TestCase
         $this->assertSame(3, $readiness['summary']['students_with_notes']);
         $this->assertSame(3, $readiness['summary']['students_ready']);
         $this->assertSame(3, $readiness['summary']['attention_count']);
+    }
+
+    // ------------------------------------ pendências reais vs. avisos (§31-35)
+
+    #[Test]
+    public function partial_coverage_is_a_notice_and_never_counts_toward_the_badge(): void
+    {
+        $this->travelTo('2026-11-20');
+
+        [$schoolClass, $academicPeriod] = $this->context();
+
+        // Uma aluna avaliada em todos os domínios que têm elementos, mas com uma
+        // falta num deles: houve avaliação, e ela assenta em menos elementos do
+        // que os previstos. É a definição de cobertura parcial (§32).
+        $this->asTenant(function () use ($schoolClass): void {
+            $enrollment = $this->enrollmentOf($schoolClass, 'Carolina Nunes');
+            $score = StudentItemScore::query()
+                ->where('enrollment_id', $enrollment->getKey())
+                ->whereNotNull('points_earned')
+                ->orderBy('id')
+                ->firstOrFail();
+
+            $score->forceFill([
+                'result_state' => ResultState::Absent,
+                'points_earned' => null,
+            ])->save();
+        });
+
+        $readiness = $this->readiness($schoolClass, $academicPeriod);
+        $row = collect($readiness['students'])->firstWhere('name', 'Carolina Nunes');
+
+        $this->assertNotNull($row, 'A cobertura parcial continua a ser dita ao professor.');
+
+        $partial = collect($row['pending'])->firstWhere('label', CoverageWording::partial('overall'));
+
+        $this->assertNotNull($partial, 'A frase é a única que existe para este estado, e vem de CoverageWording.');
+
+        // O QUE MUDOU: é uma nota, não uma pendência. O professor não tem nada a
+        // resolver — os elementos que não se realizaram não se realizam agora —
+        // e um contador que sobe por causa disso é um contador que não desce.
+        $this->assertSame(EvaluationSheetReadiness::STATE_NEUTRAL, $partial['state']);
+        $this->assertSame(
+            0,
+            collect($row['pending'])->where('state', EvaluationSheetReadiness::STATE_ATTENTION)->count(),
+        );
+
+        // E, por isso, a aluna conta como estando sem pendências.
+        $this->assertGreaterThanOrEqual(1, $readiness['summary']['notice_count']);
+        $this->assertSame(
+            $readiness['summary']['students_total'] - 3,
+            $readiness['summary']['students_ready'],
+            'Diogo, Eva e Filipe têm pendências reais; a Carolina só tem um aviso.',
+        );
+    }
+
+    #[Test]
+    public function a_domain_with_no_assessment_at_all_stays_a_real_pending_point(): void
+    {
+        $this->travelTo('2026-11-20');
+
+        [$schoolClass, $academicPeriod] = $this->context();
+        $readiness = $this->readiness($schoolClass, $academicPeriod);
+
+        // Eva tem Gramática por avaliar enquanto os colegas a têm — não é
+        // cobertura parcial, é ausência de avaliação num domínio necessário, e
+        // isso é trabalho por fazer (§33).
+        $eva = collect($readiness['students'])->firstWhere('name', 'Eva Salgado');
+        $gap = collect($eva['pending'])->firstWhere('label', 'Sem resultados no domínio Gramática');
+
+        $this->assertNotNull($gap);
+        $this->assertSame(EvaluationSheetReadiness::STATE_ATTENTION, $gap['state']);
+        $this->assertGreaterThan(0, $readiness['summary']['attention_count']);
+    }
+
+    #[Test]
+    public function keeping_a_snapshot_does_not_clear_a_single_pending_point(): void
+    {
+        $this->travelTo('2026-11-20');
+
+        [$schoolClass, $academicPeriod] = $this->context();
+        $before = $this->readiness($schoolClass, $academicPeriod)['summary'];
+
+        $this->asTenant(fn () => app(CaptureEvaluationSheet::class)->capture(
+            $schoolClass,
+            $academicPeriod,
+            ClassificationScope::Period,
+            'Intercalar 1.º Semestre',
+            Carbon::parse('2026-11-20'),
+            $this->teacher,
+            moment: SheetMomentKind::Interim,
+        ));
+
+        $after = $this->readiness($schoolClass, $academicPeriod)['summary'];
+
+        // GUARDAR UMA FOTOGRAFIA NÃO RESOLVE NADA (§35). O estado depende dos
+        // dados reais; tirar um retrato deles não os muda, e um badge que
+        // baixasse por causa disso estaria a mentir sobre o que falta.
+        $this->assertSame($before['attention_count'], $after['attention_count']);
+        $this->assertSame($before['students_with_notes'], $after['students_with_notes']);
+        $this->assertSame($before['students_ready'], $after['students_ready']);
     }
 
     #[Test]

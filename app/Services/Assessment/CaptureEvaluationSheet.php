@@ -15,6 +15,7 @@ use App\Support\Assessment\EvaluationSheetException;
 use App\Support\Hashing\CanonicalPayload;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 /**
  * Takes the photograph of a Pauta de Avaliação.
@@ -157,23 +158,66 @@ class CaptureEvaluationSheet
     /**
      * The label to offer, which the teacher then confirms or replaces.
      *
-     * Built from the period's OWN configuration — «Semestre — 1.º Semestre»,
-     * «Momento intercalar do 2.º Período» — so nothing anywhere hardcodes what
-     * a school calls its own units of time (§6).
+     * Built from the period's OWN configuration — «1.º Semestre», «Intercalar
+     * 2.º Período» — so nothing anywhere hardcodes what a school calls its own
+     * units of time (§6).
      *
      * WHICH OF THE TWO STRUCTURAL MOMENTS is part of the label, because it is
      * part of what is being kept: a photograph taken halfway through a period
      * and one taken to close it are different documents, and a history where
-     * both read «Semestre — 1.º Semestre» would make them indistinguishable
-     * months later. The default stays the closing moment, which is what every
-     * pauta kept until now was.
+     * both read the same would make them indistinguishable months later.
+     *
+     * É O MESMO NOME QUE O SEPARADOR NO TOPO DA PAUTA, e passou a sê-lo quando
+     * o título deixou de ser um campo livre e passou a ser uma escolha entre os
+     * momentos estruturais do ano (§20). Duas razões, e a segunda é a que
+     * obriga: uma lista em que as quatro opções começassem todas por «Semestre
+     * — » teria o prefixo repetido em todas e a informação — qual delas — no
+     * fim; e uma sugestão que não coincidisse com nenhuma das opções abriria
+     * sempre em «Outro…», que é o contrário do que a lista existe para fazer.
+     *
+     * AS FOTOGRAFIAS JÁ GUARDADAS NÃO MUDAM. Mantêm o título com que foram
+     * guardadas; o que muda é a sugestão para as próximas (§15).
+     *
+     * `momentLabel()` continua a existir e continua a ser a frase mais longa —
+     * é ela que o cabeçalho do ecrã e o painel «Preparar fecho» usam, onde há
+     * espaço para dizer de que momento se trata por extenso.
      *
      * A SUGGESTION AND NOTHING MORE. It arrives in an editable field and is
      * only saved once somebody presses the button.
      */
     public function suggestedLabel(AcademicPeriod $period, SheetMomentKind $moment = SheetMomentKind::Final): string
     {
-        return $moment->momentLabel($period);
+        return $moment->tabLabel($period);
+    }
+
+    /**
+     * OS TÍTULOS ESTRUTURAIS QUE A LISTA OFERECE — para cada unidade temporal do
+     * ano, o intercalar e o final, por ordem cronológica (§20).
+     *
+     * A LISTA É A DO ANO INTEIRO, e não só a do momento aberto. Um professor
+     * numa reunião de fim de semestre pode estar a olhar para o separador do
+     * intercalar; obrigá-lo a trocar de separador só para escrever o título
+     * certo seria fazê-lo perder o que tinha no ecrã.
+     *
+     * E O TÍTULO É SÓ UM TÍTULO (§22). Escolher «2.º Semestre» na lista não muda
+     * o período de que a fotografia é, nem qual dos dois momentos estruturais
+     * ela guarda, nem a data de referência: essas três coisas viajam à parte, e
+     * é por isso que nada aqui as infere do texto escolhido.
+     *
+     * @param  Collection<int, AcademicPeriod>  $periods
+     * @return list<string>
+     */
+    public function structuralTitles(Collection $periods): array
+    {
+        $titles = [];
+
+        foreach ($periods as $period) {
+            foreach (SheetMomentKind::inOrder() as $kind) {
+                $titles[] = $this->suggestedLabel($period, $kind);
+            }
+        }
+
+        return $titles;
     }
 
     /** What the teacher typed, tidied — never silently replaced. */

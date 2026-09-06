@@ -240,8 +240,64 @@ class EvaluationSheetMomentsTest extends TestCase
         $final = $this->props($this->actingAs($teacher)->get("/classes/{$classUlid}/pauta-avaliacao"));
         $interim = $this->props($this->actingAs($teacher)->get("/classes/{$classUlid}/pauta-avaliacao?momento=interim"));
 
-        $this->assertSame('Semestre — 1.º Semestre', $final['saveDefaults']['moment_label']);
-        $this->assertSame('Momento intercalar do 1.º Semestre', $interim['saveDefaults']['moment_label']);
+        // O MESMO NOME QUE O SEPARADOR NO TOPO. O título deixou de ser um campo
+        // em branco e passou a ser uma escolha entre os momentos estruturais do
+        // ano (§20): a sugestão TEM de coincidir com uma das opções, ou a lista
+        // abriria sempre em «Outro…». A frase longa — «Semestre — 1.º Semestre»
+        // — continua a existir em `momentLabel()` e é a que o cabeçalho usa.
+        $this->assertSame('1.º Semestre', $final['saveDefaults']['moment_label']);
+        $this->assertSame('Intercalar 1.º Semestre', $interim['saveDefaults']['moment_label']);
+    }
+
+    #[Test]
+    public function the_title_field_offers_every_structural_moment_of_the_year(): void
+    {
+        $teacher = $this->seedDemo();
+        $classUlid = $this->classUlid($teacher);
+
+        $props = $this->props($this->actingAs($teacher)->get("/classes/{$classUlid}/pauta-avaliacao?momento=interim"));
+
+        // A LISTA É A DO ANO INTEIRO, por ordem cronológica, e sai da
+        // configuração — nada aqui sabe o que é um semestre (§6, §20).
+        $this->assertSame([
+            'Intercalar 1.º Semestre',
+            '1.º Semestre',
+            'Intercalar 2.º Semestre',
+            '2.º Semestre',
+        ], $props['saveDefaults']['moment_titles']);
+
+        // E o momento aberto é um deles, que é o que faz a lista abrir nele em
+        // vez de abrir em «Outro…» (§21).
+        $this->assertContains(
+            $props['saveDefaults']['moment_label'],
+            $props['saveDefaults']['moment_titles'],
+        );
+    }
+
+    #[Test]
+    public function a_custom_title_is_kept_verbatim_and_changes_nothing_else(): void
+    {
+        $teacher = $this->seedDemo();
+        $classUlid = $this->classUlid($teacher);
+
+        $periodUlid = $this->asTenant($teacher, fn (): string => SchoolClass::where('label', '7.º A')
+            ->firstOrFail()->academicYear->periods()->where('sequence', 1)->firstOrFail()->ulid);
+
+        $this->actingAs($teacher)->post("/classes/{$classUlid}/pauta-avaliacao/{$periodUlid}/guardar", [
+            'moment_label' => 'Reunião com a Diretora de Turma',
+            'effective_at' => '2026-12-10',
+            'moment' => 'interim',
+        ])->assertRedirect();
+
+        $export = $this->asTenant($teacher, fn (): EvaluationSheetExport => EvaluationSheetExport::query()
+            ->where('moment_label', 'Reunião com a Diretora de Turma')->firstOrFail());
+
+        // O TÍTULO É SÓ UM TÍTULO (§22). Nada nele foi lido para decidir de que
+        // momento a fotografia é, nem de que período, nem de que dia: essas três
+        // coisas vieram nos seus próprios campos.
+        $this->assertSame('interim', $export->payload['moment']['kind']);
+        $this->assertSame('2026-12-10', $export->effective_at->toDateString());
+        $this->assertSame('1.º Semestre', $export->payload['period']['label']);
     }
 
     // ---------------------------------------------- guardar, e só o histórico

@@ -203,7 +203,14 @@ export type EvaluationSheetReadiness = {
         students_total: number;
         students_with_notes: number;
         students_ready: number;
+        /** PENDÊNCIAS REAIS — trabalho por fazer. É este que o badge conta (§31). */
         attention_count: number;
+        /**
+         * Avisos informativos — cobertura parcial e afins. Não há neles nada
+         * que o professor possa resolver, e por isso ficam fora do badge.
+         * Opcional para uma leitura produzida antes de a distinção existir.
+         */
+        notice_count?: number;
     };
     items: EvaluationSheetReadinessItem[];
     students: EvaluationSheetReadinessStudent[];
@@ -243,6 +250,13 @@ export type EvaluationSheetPeriod = {
 export type EvaluationSheetSaveDefaults = {
     period_ulid: string;
     moment_label: string;
+    /**
+     * Os títulos dos momentos estruturais do ano, por ordem cronológica — para
+     * o campo do título ser uma escolha e não uma caixa em branco (§20). O
+     * `moment_label` acima é sempre um destes, para a lista abrir no momento em
+     * que o professor está (§21).
+     */
+    moment_titles: string[];
     effective_at: string;
     starts_on: string;
     ends_on: string;

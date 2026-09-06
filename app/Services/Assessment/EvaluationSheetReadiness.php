@@ -117,6 +117,7 @@ class EvaluationSheetReadiness
         $submittedSelfAssessments = 0;
         $selfAssessmentUniverse = 0;
         $studentsWithResultGaps = 0;
+        $studentsWithPending = 0;
 
         foreach ($students as $student) {
             $enrollmentId = (int) $student['enrollment_id'];
@@ -159,6 +160,11 @@ class EvaluationSheetReadiness
             // saying so teach nothing the first one did not.
             $coverage = $student['coverage'];
             $gapLines = [];
+            // O QUE É INFORMAÇÃO, E NÃO TRABALHO POR FAZER. Viaja na mesma
+            // lista do aluno — quem lê quer ver as duas coisas juntas — mas
+            // nasce separado, para que a contagem não tenha de adivinhar
+            // depois qual das linhas era qual (§31).
+            $notices = [];
 
             if (($coverage['no_elements'] ?? false) === true) {
                 $gapLines[] = ['state' => self::STATE_ATTENTION, 'label' => 'Sem elementos avaliados neste momento', 'action' => 'results'];
@@ -200,11 +206,24 @@ class EvaluationSheetReadiness
                     ($student['overall']['normalized_value'] ?? null) !== null,
                 );
 
+                // COBERTURA PARCIAL É UM AVISO, NÃO É UMA PENDÊNCIA (§32).
+                //
+                // Um aluno avaliado em todos os domínios necessários ESTÁ
+                // avaliado. Ter realizado menos elementos do que os previstos é
+                // uma nota sobre a evidência disponível — e não um trabalho por
+                // fazer: os elementos que não se realizaram não se realizam
+                // agora, e o professor não tem nada a resolver. Contá-la no
+                // badge era dizer-lhe o contrário, e era o que fazia o contador
+                // subir por razões que ele não podia baixar.
+                //
+                // Continua a aparecer na lista do aluno, porque é informação
+                // útil ao decidir; entra como NEUTRA, e é isso que a mantém
+                // fora da contagem.
                 if ($gapLines === []
                     && $state === CoverageWording::PARTIAL
                     && ($coverage['absences'] ?? []) !== []) {
-                    $gapLines[] = [
-                        'state' => self::STATE_ATTENTION,
+                    $notices[] = [
+                        'state' => self::STATE_NEUTRAL,
                         'label' => CoverageWording::partial('overall'),
                         'action' => 'results',
                     ];
@@ -247,13 +266,21 @@ class EvaluationSheetReadiness
                 }
             }
 
-            if ($pending !== []) {
+            // AS PENDÊNCIAS PRIMEIRO, OS AVISOS DEPOIS. É a ordem em que se lê:
+            // primeiro o que há a fazer, depois o que há a saber.
+            $lines = [...$pending, ...$notices];
+
+            if ($lines !== []) {
                 $rows[] = [
                     'enrollment_ulid' => $enrollmentUlids[$enrollmentId] ?? null,
                     'class_number' => $student['class_number'],
                     'name' => $student['name'],
-                    'pending' => $pending,
+                    'pending' => $lines,
                 ];
+            }
+
+            if ($pending !== []) {
+                $studentsWithPending++;
             }
         }
 
@@ -275,12 +302,25 @@ class EvaluationSheetReadiness
             $canPrepareInovarExport,
         );
 
-        // Every per-student entry is an attention point by construction — the
-        // list carries nothing neutral (see the decisions block above) — so
-        // the count of points to look at is simply the count of entries.
+        // O CONTADOR CONTA PENDÊNCIAS REAIS, E SÓ ELAS (§31).
+        //
+        // A lista de cada aluno leva duas coisas — o que há a fazer e o que há a
+        // saber —, e a diferença está escrita no estado de cada linha. Contar
+        // tudo faria o badge subir por causa de avisos que ninguém pode
+        // resolver, e um contador que não desce é um contador que se ignora.
         $attentionCount = 0;
+        $noticeCount = 0;
+
         foreach ($rows as $row) {
-            $attentionCount += count($row['pending']);
+            foreach ($row['pending'] as $entry) {
+                if ($entry['state'] === self::STATE_ATTENTION) {
+                    $attentionCount++;
+
+                    continue;
+                }
+
+                $noticeCount++;
+            }
         }
 
         return [
@@ -298,8 +338,15 @@ class EvaluationSheetReadiness
             'summary' => [
                 'students_total' => count($students),
                 'students_with_notes' => count($rows),
-                'students_ready' => count($students) - count($rows),
+                // «Sem pendências» é sobre PENDÊNCIAS. Um aluno cuja única
+                // linha é um aviso informativo não tem nada por fazer, e
+                // contá-lo como tendo faria o resumo dizer o contrário do
+                // contador que está ao lado (§31).
+                'students_ready' => count($students) - $studentsWithPending,
                 'attention_count' => $attentionCount,
+                // Os avisos, contados à parte para poderem ser mostrados sem
+                // inflacionar o badge.
+                'notice_count' => $noticeCount,
             ],
             'items' => $items,
             'students' => $rows,

@@ -2,11 +2,12 @@
 import { computed } from 'vue';
 import CoverageWarning from '@/components/CoverageWarning.vue';
 import {
+    appreciationTone,
     assignedLevel as readAssignedLevel,
     domainAppreciation,
     overallAppreciation,
 } from '@/lib/appreciation';
-import type { Appreciation } from '@/lib/appreciation';
+import type { Appreciation, ToneableBand } from '@/lib/appreciation';
 import { pct } from '@/lib/results';
 import type {
     EvaluationSheetDomain,
@@ -57,8 +58,19 @@ const props = withDefaults(
         showSelfAssessment?: boolean;
         /** Só na pauta viva. A guardada mostra os mesmos valores, sem ações. */
         decidable?: boolean;
+        /**
+         * A escala configurada, para dar COR à apreciação pela posição do nível
+         * nela (§24).
+         *
+         * VAZIA NA PAUTA GUARDADA, e de propósito. Abrir uma fotografia não
+         * pode ir buscar nada ao presente — a escala pode ter mudado desde
+         * então —, e uma cor tirada da escala de hoje seria uma afirmação sobre
+         * dezembro feita com o que se sabe em junho (§15). Sem bandas não há
+         * cor, e o texto guardado lê-se tal e qual.
+         */
+        scaleBands?: ToneableBand[];
     }>(),
-    { showSelfAssessment: false, decidable: false },
+    { showSelfAssessment: false, decidable: false, scaleBands: () => [] },
 );
 
 const emit = defineEmits<{
@@ -75,6 +87,17 @@ function studentDomain(student: EvaluationSheetStudent, domainId: number): Evalu
 /** A apreciação de um domínio, já resolvida para a vista que está ligada. */
 function domainCell(student: EvaluationSheetStudent, domainId: number): Appreciation {
     return domainAppreciation(studentDomain(student, domainId), props.showQuantitative);
+}
+
+/**
+ * A cor de uma apreciação — pela posição do nível na escala, nunca pelo número.
+ *
+ * A COR NUNCA É A ÚNICA INFORMAÇÃO (§25). O código ou o rótulo ficam escritos na
+ * célula, e a frase inteira («Decisão do professor: 4 — Bom») já viajava no
+ * `title` e no texto acessível antes de existir cor nenhuma.
+ */
+function toneOf(appreciation: Appreciation): string {
+    return appreciationTone(appreciation, props.scaleBands);
 }
 
 function overallCell(student: EvaluationSheetStudent): Appreciation {
@@ -322,11 +345,14 @@ function domainCellStyle(color: string): Record<string, string> {
                                     v-if="isDomainDecidable(student, domain)"
                                     type="button"
                                     class="sheet-domain-cta rounded px-1.5 py-0.5 hover:ring-1 hover:ring-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
-                                    :class="{
-                                        'bg-primary/10 font-semibold text-primary': domainCell(student, domain.domain_id).origin === 'decided',
-                                        'text-muted-foreground italic': domainCell(student, domain.domain_id).origin === 'proposed',
-                                        'text-muted-foreground': domainCell(student, domain.domain_id).origin === 'none',
-                                    }"
+                                    :class="[
+                                        toneOf(domainCell(student, domain.domain_id)),
+                                        {
+                                            'font-semibold ring-1 ring-primary/40': domainCell(student, domain.domain_id).origin === 'decided',
+                                            italic: domainCell(student, domain.domain_id).origin === 'proposed',
+                                            'text-muted-foreground': domainCell(student, domain.domain_id).origin === 'none',
+                                        },
+                                    ]"
                                     :title="domainCell(student, domain.domain_id).description"
                                     :aria-label="domainActionLabel(student, domain)"
                                     :aria-haspopup="'dialog'"
@@ -336,11 +362,15 @@ function domainCellStyle(color: string): Record<string, string> {
                                 </button>
                                 <span
                                     v-else
-                                    :class="{
-                                        'font-semibold': domainCell(student, domain.domain_id).origin === 'decided',
-                                        'text-muted-foreground italic': domainCell(student, domain.domain_id).origin === 'proposed',
-                                        'text-muted-foreground': domainCell(student, domain.domain_id).origin === 'none',
-                                    }"
+                                    class="rounded px-1.5 py-0.5"
+                                    :class="[
+                                        toneOf(domainCell(student, domain.domain_id)),
+                                        {
+                                            'font-semibold': domainCell(student, domain.domain_id).origin === 'decided',
+                                            italic: domainCell(student, domain.domain_id).origin === 'proposed',
+                                            'text-muted-foreground': domainCell(student, domain.domain_id).origin === 'none',
+                                        },
+                                    ]"
                                     :title="domainCell(student, domain.domain_id).description"
                                     :aria-label="domainCell(student, domain.domain_id).description"
                                 >{{ domainCell(student, domain.domain_id).text }}</span>
@@ -382,7 +412,11 @@ function domainCellStyle(color: string): Record<string, string> {
                         :class="showQuantitative ? '' : 'border-l-2'"
                     >
                         <span
-                            :class="{ 'text-muted-foreground': overallCell(student).origin === 'none' }"
+                            class="rounded px-1.5 py-0.5"
+                            :class="[
+                                toneOf(overallCell(student)),
+                                { 'text-muted-foreground': overallCell(student).origin === 'none' },
+                            ]"
                             :title="overallCell(student).description"
                             :aria-label="overallCell(student).description"
                         >{{ overallCell(student).text }}</span>

@@ -8,15 +8,24 @@
 
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
 
-/** Um nível da escala, tal como a apreciação vigente o carrega. */
-export type Appreciation = {
+/**
+ * Um nível da escala, tal como a apreciação vigente o carrega.
+ *
+ * O TIPO PARTE-SE EM DOIS de propósito. `Appreciation` admite `null` porque uma
+ * célula sem apreciação é o caso normal e quem lê tem de o tratar; mas a FORMA
+ * de uma apreciação é uma coisa por si, e sem um nome próprio ninguém consegue
+ * escrever `Appreciation['origin']` sem esbarrar no `null`.
+ */
+export type AppreciationValue = {
     origin: 'decided' | 'proposed' | 'none';
     code: string | null;
     label: string | null;
     text: string | null;
     sequence: number | null;
     is_negative: boolean | null;
-} | null;
+};
+
+export type Appreciation = AppreciationValue | null;
 
 export type SynopticTrend = {
     direction: 'up' | 'flat' | 'down';

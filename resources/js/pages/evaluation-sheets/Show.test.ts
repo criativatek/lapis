@@ -148,6 +148,15 @@ function baseProps() {
         moment: 'final' as const,
         sheet: baseSheet(),
         decision: baseDecision(),
+        // A escala por ordem: é dela que sai a COR de cada apreciação, pela
+        // posição do nível e nunca pelo número que ele tem (§24).
+        scaleBands: [
+            { code: '1', label: 'Muito Insuficiente', sequence: 1, is_negative: true },
+            { code: '2', label: 'Insuficiente', sequence: 2, is_negative: true },
+            { code: '3', label: 'Suficiente', sequence: 3, is_negative: false },
+            { code: '4', label: 'Bom', sequence: 4, is_negative: false },
+            { code: '5', label: 'Muito Bom', sequence: 5, is_negative: false },
+        ],
     };
 }
 
@@ -760,5 +769,152 @@ describe('evaluation-sheets/Show — valores quantitativos desligados', () => {
         await withoutQuantitative(props);
 
         expect(JSON.stringify(props.sheet)).toBe(before);
+    });
+});
+
+/**
+ * O TÍTULO DE UMA PAUTA GUARDADA é uma escolha, e não um campo em branco (§20).
+ *
+ * A razão é o histórico: escrever o título à mão de cada vez é como uma turma
+ * acaba com «1º semestre», «1.o Semestre» e «Semestre 1» a designarem o mesmo
+ * momento, e um histórico assim não se lê nem se ordena.
+ *
+ * «Outro…» é o que torna a lista aceitável — uma pauta guardada para uma
+ * reunião não é nenhum dos momentos estruturais — e o título continua a ser SÓ
+ * um título: não muda o momento nem a data, que viajam nos seus próprios campos.
+ */
+describe('o título do momento ao guardar a pauta', () => {
+    function propsWithSave() {
+        return {
+            ...baseProps(),
+            saveDefaults: {
+                period_ulid: 'period-1',
+                moment_label: 'Intercalar 1.º Semestre',
+                moment_titles: [
+                    'Intercalar 1.º Semestre',
+                    '1.º Semestre',
+                    'Intercalar 2.º Semestre',
+                    '2.º Semestre',
+                ],
+                effective_at: '2026-11-20',
+                starts_on: '2026-09-14',
+                ends_on: '2027-01-29',
+            },
+        };
+    }
+
+    async function openSaveForm(props: ReturnType<typeof propsWithSave>) {
+        const wrapper = mount(Show, { props });
+        const button = wrapper.findAll('button').find((candidate) => candidate.text().includes('Guardar esta pauta'))!;
+        await button.trigger('click');
+
+        return wrapper;
+    }
+
+    it('oferece todos os momentos estruturais do ano, e mais «Outro…»', async () => {
+        const wrapper = await openSaveForm(propsWithSave());
+        const select = wrapper.find('#moment-title');
+
+        expect(select.exists()).toBe(true);
+        expect(select.findAll('option').map((option) => option.text())).toEqual([
+            'Intercalar 1.º Semestre',
+            '1.º Semestre',
+            'Intercalar 2.º Semestre',
+            '2.º Semestre',
+            'Outro…',
+        ]);
+    });
+
+    it('abre no momento em que o professor está, e não em «Outro…»', async () => {
+        const wrapper = await openSaveForm(propsWithSave());
+
+        expect((wrapper.find('#moment-title').element as HTMLSelectElement).value).toBe('Intercalar 1.º Semestre');
+        // Sem campo livre à vista: não há nada para escrever enquanto a escolha
+        // for um dos momentos estruturais.
+        expect(wrapper.find('#moment-label').exists()).toBe(false);
+    });
+
+    it('«Outro…» abre um campo livre, e abre-o vazio', async () => {
+        const wrapper = await openSaveForm(propsWithSave());
+        const select = wrapper.find('#moment-title');
+
+        await select.setValue('__other__');
+
+        const field = wrapper.find('#moment-label');
+        expect(field.exists()).toBe(true);
+        // Vazio, e não pré-preenchido com «Intercalar 1.º Semestre»: um campo
+        // já preenchido convida a guardar exatamente o que se acabou de recusar.
+        expect((field.element as HTMLInputElement).value).toBe('');
+    });
+
+    it('diz que o título não muda o momento que está a ser guardado', async () => {
+        const wrapper = await openSaveForm(propsWithSave());
+
+        expect(wrapper.text()).toContain('Não altera o momento que está a ser guardado');
+    });
+});
+
+/**
+ * A COR E A SIGLA — as duas coisas que uma pauta mostra e que ninguém explicou
+ * ao professor até aqui.
+ *
+ * A cor de uma apreciação vem da POSIÇÃO do nível na escala, e nunca do número
+ * que ele calha ter (§24). E nunca é a única informação: o código continua
+ * escrito e a frase inteira continua no texto acessível de cada célula (§25).
+ *
+ * O «A» em expoente é a autoavaliação do aluno naquele domínio. Um «A4» sem
+ * explicação é uma sigla opaca, e o `title` só chega a quem passa o rato — por
+ * isso a legenda está escrita e visível sempre que a autoavaliação estiver
+ * ligada (§37).
+ */
+describe('a cor de uma apreciação e a sigla da autoavaliação', () => {
+    it('pinta a apreciação pela posição do nível na escala', () => {
+        const wrapper = mount(Show, { props: domainDecidableProps() });
+        const carolina = wrapper.findAll('tbody tr').find((row) => row.text().includes('Carolina Nunes'))!;
+
+        const domainCell = carolina
+            .findAll('button')
+            .find((button) => button.attributes('aria-label')?.includes('Oralidade'))!;
+
+        // «5» é o nível mais alto da escala de 1 a 5 → verde. O que o decide é
+        // a posição, não o número.
+        expect(domainCell.classes().join(' ')).toContain('emerald');
+    });
+
+    it('não deixa a cor ser a única informação', () => {
+        const wrapper = mount(Show, { props: domainDecidableProps() });
+        const carolina = wrapper.findAll('tbody tr').find((row) => row.text().includes('Carolina Nunes'))!;
+
+        const domainCell = carolina
+            .findAll('button')
+            .find((button) => button.attributes('aria-label')?.includes('Oralidade'))!;
+
+        // O código está escrito, e a frase inteira — de quem é o juízo e qual é
+        // — chega a quem não vê cor nenhuma.
+        expect(domainCell.text()).toBe('5');
+        expect(domainCell.attributes('aria-label')).toContain('Oralidade');
+        expect(domainCell.attributes('title')).toContain('Muito Bom');
+    });
+
+    it('explica o «A» por escrito, e não só ao passar o rato', () => {
+        const wrapper = mount(Show, { props: selfAssessedProps() });
+
+        expect(wrapper.text()).toContain('são a');
+        expect(wrapper.text()).toContain('autoavaliação do aluno');
+        // E diz o que ela NÃO é, que é a parte que mais importa (§15).
+        expect(wrapper.text()).toContain('não entra em cálculo nenhum');
+    });
+
+    it('não deixa a legenda do «A» quando a autoavaliação não está à vista', async () => {
+        const wrapper = mount(Show, { props: selfAssessedProps() });
+
+        const toggle = wrapper
+            .findAll('label')
+            .find((label) => label.text().includes('Autoavaliação'))!
+            .find('input');
+
+        await toggle.setValue(false);
+
+        expect(wrapper.text()).not.toContain('autoavaliação do aluno');
     });
 });

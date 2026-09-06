@@ -125,6 +125,18 @@ class EvaluationSheetController extends Controller
                 'scale_name' => $scale?->name,
             ],
             'decision' => DecisionScale::for($scale)->toPayload(),
+            // A ESCALA POR ORDEM, para a apreciação de cada célula ser pintada
+            // pela POSIÇÃO do nível nela e nunca pelo número que ele tem (§24).
+            // O ecrã pinta; a fotografia guardada não recebe isto e fica sem cor
+            // de nível, porque abri-la não pode ir buscar nada ao presente (§15).
+            'scaleBands' => $scale === null ? [] : $scale->levels
+                ->sortBy('sequence')
+                ->map(fn ($level): array => [
+                    'code' => (string) $level->code,
+                    'label' => (string) $level->label,
+                    'sequence' => (int) $level->sequence,
+                    'is_negative' => (bool) $level->is_negative,
+                ])->values()->all(),
             // OS MOMENTOS ESTRUTURAIS DO ANO, e apenas eles: para cada unidade
             // temporal configurada, o intercalar e o final, por essa ordem. Uma
             // fotografia guardada não é um momento estrutural e não aparece
@@ -154,10 +166,16 @@ class EvaluationSheetController extends Controller
             'saveDefaults' => $selected === null ? null : [
                 'period_ulid' => $selected->ulid,
                 // O título abre a dizer QUE MOMENTO se está a guardar —
-                // «Momento intercalar do 1.º Semestre» ou «Semestre — 1.º
-                // Semestre» —, construído a partir da configuração do próprio
-                // período. Continua a ser editável: é uma sugestão.
+                // «Intercalar 1.º Semestre», «1.º Semestre» —, construído a
+                // partir da configuração do próprio período. Continua a ser
+                // editável: é uma sugestão.
                 'moment_label' => $this->capture->suggestedLabel($selected, $moment),
+                // OS TÍTULOS ESTRUTURAIS DO ANO INTEIRO, para o campo deixar de
+                // ser uma caixa em branco e passar a ser uma escolha (§20). O
+                // valor por omissão acima é um destes, e é por isso que a lista
+                // abre no momento em que o professor está (§21) sem que nada
+                // tenha de comparar textos para o descobrir.
+                'moment_titles' => $this->capture->structuralTitles($periods),
                 'effective_at' => $this->capture->defaultEffectiveDate($selected)->toDateString(),
                 'starts_on' => $selected->starts_on->toDateString(),
                 'ends_on' => $selected->ends_on->toDateString(),

@@ -60,6 +60,12 @@ const props = defineProps<{
     sheet: EvaluationSheet | null;
     /** A escala em que a decisão é tomada — a mesma que Resultados recebe. */
     decision: EvaluationSheetDecisionScale;
+    /**
+     * Os níveis da escala, por ordem — para a apreciação de cada célula poder
+     * ser pintada pela POSIÇÃO do nível na escala e nunca pelo número que ele
+     * calha ter (§24). Vazia numa turma sem perfil.
+     */
+    scaleBands: { code: string; label: string; sequence: number; is_negative: boolean }[];
     saveDefaults?: EvaluationSheetSaveDefaults | null;
     /** Apresentação apenas: a rota está atrás de `module:inovar_export` no servidor. */
     canExportToInovar?: boolean;
@@ -282,6 +288,45 @@ const saveForm = useForm({
     moment: props.moment ?? 'final',
 });
 
+// ---------------------------------------------------- o título é uma escolha
+//
+// O CAMPO DEIXOU DE SER UMA CAIXA EM BRANCO. Os títulos que uma pauta guardada
+// costuma ter são os momentos estruturais do ano, e escrevê-los à mão de cada
+// vez é como um histórico acaba com «1º semestre», «1.o Semestre» e «Semestre 1»
+// a designarem o mesmo momento (§20). A lista sai da configuração do ano — nada
+// aqui sabe o que é um semestre.
+//
+// «Outro…» CONTINUA A EXISTIR, e é o que torna a lista aceitável: uma pauta
+// guardada para uma reunião, para um conselho de turma ou para um encarregado de
+// educação não é nenhum dos momentos estruturais, e obrigá-la a chamar-se «1.º
+// Semestre» seria pior do que não haver lista nenhuma (§22).
+//
+// E O TÍTULO É SÓ UM TÍTULO. Qual dos dois momentos estruturais está a ser
+// guardado viaja em `moment`, à parte, e a data em `effective_at`: escolher um
+// título não muda nenhuma das duas (§22).
+
+const OTHER = '__other__';
+
+const structuralTitles = computed(() => props.saveDefaults?.moment_titles ?? []);
+
+/** Abre no momento estrutural em que o professor está; «Outro…» só se lá não estiver. */
+const titleChoice = ref(
+    structuralTitles.value.includes(props.saveDefaults?.moment_label ?? '')
+        ? (props.saveDefaults?.moment_label ?? '')
+        : OTHER,
+);
+
+const usesCustomTitle = computed(() => titleChoice.value === OTHER);
+
+function chooseTitle(value: string): void {
+    titleChoice.value = value;
+
+    // Ao escolher «Outro…» o campo abre VAZIO em vez de trazer o título
+    // estrutural anterior: um campo pré-preenchido com «1.º Semestre» convida a
+    // guardar exatamente isso, que é o oposto de ter escolhido «Outro…».
+    saveForm.moment_label = value === OTHER ? '' : value;
+}
+
 const canSave = computed(() => props.saveDefaults !== null && props.saveDefaults !== undefined && props.sheet !== null);
 
 function submitSave(): void {
@@ -442,15 +487,34 @@ function submitSave(): void {
 
             <div class="grid gap-3 sm:grid-cols-2">
                 <div class="space-y-1">
-                    <label for="moment-label" class="text-sm font-medium">Título do momento</label>
+                    <label for="moment-title" class="text-sm font-medium">Título do momento</label>
+                    <select
+                        id="moment-title"
+                        :value="titleChoice"
+                        class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm"
+                        @change="chooseTitle(($event.target as HTMLSelectElement).value)"
+                    >
+                        <option v-for="title in structuralTitles" :key="title" :value="title">{{ title }}</option>
+                        <option :value="OTHER">Outro…</option>
+                    </select>
+                    <!-- O campo livre só aparece depois de alguém pedir «Outro…»:
+                         antes disso não há nada para escrever, e um campo vazio
+                         ao lado de uma lista convida a preencher os dois. -->
                     <input
+                        v-if="usesCustomTitle"
                         id="moment-label"
                         v-model="saveForm.moment_label"
                         type="text"
                         maxlength="200"
                         required
+                        placeholder="Ex.: Conselho de Turma — dezembro"
+                        aria-label="Título do momento"
                         class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm"
                     />
+                    <p class="text-xs text-muted-foreground">
+                        O título é o nome desta fotografia no histórico. Não altera o momento que está a ser guardado
+                        (<strong>{{ selectedPeriod?.moment_label ?? '—' }}</strong>) nem a data de referência.
+                    </p>
                     <InputError :message="saveForm.errors.moment_label" />
                 </div>
 
@@ -549,6 +613,7 @@ function submitSave(): void {
                 :show-domain-detail="showDomainDetail"
                 :show-warnings="showWarnings"
                 :show-self-assessment="showSelfAssessment && selfAssessmentAvailable"
+                :scale-bands="scaleBands"
                 :decidable="canDecideHere"
                 @decide="openDecision"
                 @decide-domain="openDomainDecision"
@@ -562,7 +627,25 @@ function submitSave(): void {
                 numa apreciação para a decidir ou para a devolver à proposta. A decisão é sempre sua e pode ser
                 alterada a qualquer momento — guardar, exportar ou ter histórico não a fecham. Com os
                 <strong>valores quantitativos</strong> desligados, as apreciações aparecem pela menção da escala
-                («Bom») em vez do código («4»); o código continua no texto de cada célula.
+                («Bom») em vez do código («4»); o código continua no texto de cada célula. A <strong>cor</strong> vem
+                da posição do nível na escala — o mais alto é verde, o mais baixo é vermelho —, nunca do número que
+                ele tem, e nunca é a única informação: o nível está escrito e a frase inteira está no texto de cada
+                célula.
+            </p>
+
+            <!-- A LEGENDA DO «A». Um «A4» em expoente ao lado de uma apreciação
+                 é ilegível para quem nunca viu a convenção, e o `title` só chega
+                 a quem passa o rato por cima (§37). A frase fica visível sempre
+                 que a autoavaliação estiver ligada, e desaparece com ela. -->
+            <p
+                v-if="showSelfAssessment && selfAssessmentAvailable"
+                class="text-xs text-muted-foreground print:text-black"
+            >
+                <strong>A1</strong>, <strong>A2</strong>, <strong>A3</strong>… em expoente são a
+                <strong>autoavaliação do aluno</strong> nesse domínio — o «A» é de autoavaliação e o número é o nível
+                que o próprio aluno se atribuiu na escala<template v-if="schoolClass.scale_name">
+                    {{ schoolClass.scale_name }}</template>. É informação de apoio: não entra em cálculo nenhum e
+                nunca determina a classificação.
             </p>
         </div>
 
