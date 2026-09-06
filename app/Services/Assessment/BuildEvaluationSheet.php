@@ -6,6 +6,7 @@ use App\Domain\Assessment\CalculationOutcome;
 use App\Models\AcademicPeriod;
 use App\Models\Classification;
 use App\Models\ClassificationScope;
+use App\Models\DomainAppreciationDecision;
 use App\Models\Enrollment;
 use App\Models\ProfileVersionDomain;
 use App\Models\Scale;
@@ -37,6 +38,14 @@ use Illuminate\Support\Collection;
  * informação de apoio e NUNCA entra no cálculo (§15): não pesa, não soma, não
  * arredonda coisa alguma. Uma pauta guardada antes disto não a traz, e continua
  * a abrir — o leitor trata a ausência como ausência, nunca como um zero.
+ *
+ * POR DOMÍNIO HÁ DUAS COISAS, E ELAS TÊM CHAVES DIFERENTES. `scale_level_*` é a
+ * PROPOSTA do Lapispro — a banda em que o quantitativo calculado cai — e
+ * continua a significar exatamente o que significava antes de existir decisão
+ * por domínio; é isso que mantém legível cada fotografia guardada até aqui.
+ * `decided_scale_level_*` é a DECISÃO DO PROFESSOR, e é null enquanto ninguém se
+ * pronunciar. As duas viajam sempre juntas: quem lê escolhe qual mostra, mas
+ * nenhuma apaga a outra, e o quantitativo não muda por causa de nenhuma delas.
  */
 class BuildEvaluationSheet
 {
@@ -45,6 +54,7 @@ class BuildEvaluationSheet
         protected CoverageExplanation $coverage,
         protected ScaleProposalResolver $proposals,
         protected SelfAssessmentReading $selfAssessments,
+        protected DomainAppreciationDecisions $domainDecisions,
     ) {}
 
     /**
@@ -71,6 +81,15 @@ class BuildEvaluationSheet
         // noutro, e juntá-los seria inventar uma frase que ninguém escreveu.
         $selfAssessments = $this->selfAssessments->forClassPeriod($schoolClass, $academicPeriod);
 
+        // As decisões do professor por domínio, também numa única consulta para
+        // a turma inteira. Vazio é o estado normal: a esmagadora maioria dos
+        // domínios fica na proposta, e é isso que a ausência de linha diz.
+        $decisions = $this->domainDecisions->for(
+            array_map(fn (array $result): int => (int) $result['enrollment']->getKey(), $results),
+            (int) $academicPeriod->getKey(),
+            $resolvedScope,
+        );
+
         $students = [];
         foreach ($results as $result) {
             $enrollment = $result['enrollment'];
@@ -89,6 +108,7 @@ class BuildEvaluationSheet
                     $scale,
                     $coverage[$enrollmentId]['domains'] ?? [],
                     $selfAssessment,
+                    $decisions[$enrollmentId] ?? [],
                 ),
                 'classification' => $this->classification($classifications[$enrollmentId] ?? null),
                 'coverage' => $coverage[$enrollmentId]['overall'] ?? CoverageExplanation::none(),
@@ -202,6 +222,7 @@ class BuildEvaluationSheet
     /**
      * @param  Collection<int, ProfileVersionDomain>  $profileDomains
      * @param  array<int, array<string, mixed>>  $coverage
+     * @param  array<int, DomainAppreciationDecision>  $decisions
      * @return list<array<string, mixed>>
      */
     protected function domains(
@@ -210,12 +231,14 @@ class BuildEvaluationSheet
         ?Scale $scale,
         array $coverage,
         ?SelfAssessment $selfAssessment = null,
+        array $decisions = [],
     ): array {
         $outcomes = collect($outcome->domains)->keyBy('domainId');
 
-        return array_values($profileDomains->map(function (ProfileVersionDomain $profileDomain) use ($outcomes, $scale, $coverage, $selfAssessment): array {
+        return array_values($profileDomains->map(function (ProfileVersionDomain $profileDomain) use ($outcomes, $scale, $coverage, $selfAssessment, $decisions): array {
             $domainOutcome = $outcomes->get($profileDomain->domain_id);
             $said = $this->selfAssessments->forDomain($selfAssessment, (int) $profileDomain->domain_id);
+            $decided = $decisions[(int) $profileDomain->domain_id] ?? null;
 
             if ($domainOutcome === null) {
                 // The engine never produced an outcome for this domain (e.g. no
@@ -230,6 +253,11 @@ class BuildEvaluationSheet
                     'scale_level_id' => null,
                     'scale_level_code' => null,
                     'scale_level_label' => null,
+                    // O professor pode ter-se pronunciado sobre um domínio que
+                    // o motor ainda não conseguiu calcular — é uma leitura
+                    // pedagógica, não a conclusão de uma conta, e um domínio sem
+                    // elementos é precisamente onde ela mais se justifica.
+                    ...$this->decision($decided),
                     'has_coverage_warning' => true,
                     'coverage' => $coverage[$profileDomain->domain_id] ?? CoverageExplanation::none(),
                     // O aluno pode ter-se pronunciado sobre um domínio que ainda
@@ -249,11 +277,37 @@ class BuildEvaluationSheet
                 'scale_level_id' => $level?->id,
                 'scale_level_code' => $level?->code,
                 'scale_level_label' => $level?->label,
+                ...$this->decision($decided),
                 'has_coverage_warning' => $domainOutcome->coverageWarning,
                 'coverage' => $coverage[$profileDomain->domain_id] ?? CoverageExplanation::none(),
                 'self_assessment' => $said,
             ];
         })->values()->all());
+    }
+
+    /**
+     * A decisão do professor sobre este domínio, ou a sua ausência.
+     *
+     * AS TRÊS CHAVES EXISTEM SEMPRE, mesmo a null. Uma célula sem decisão e uma
+     * célula que a perdeu por acidente têm de ser indistinguíveis para quem lê,
+     * e a forma do modelo não pode depender do que aconteceu a este aluno.
+     *
+     * O NÍVEL VIAJA COM CÓDIGO E RÓTULO pela mesma razão que a proposta: uma
+     * pauta de 2.º/3.º ciclo escreve «4», e o ecrã que esconde os quantitativos
+     * escreve «Bom». Guardar só um dos dois obrigaria a fotografia a ir buscar o
+     * outro a uma escala que pode ter mudado desde então (§15).
+     *
+     * @return array{decided_scale_level_id: int|null, decided_scale_level_code: string|null, decided_scale_level_label: string|null}
+     */
+    protected function decision(?DomainAppreciationDecision $decision): array
+    {
+        $level = $decision?->scaleLevel;
+
+        return [
+            'decided_scale_level_id' => $level?->id,
+            'decided_scale_level_code' => $level?->code,
+            'decided_scale_level_label' => $level?->label,
+        ];
     }
 
     /**

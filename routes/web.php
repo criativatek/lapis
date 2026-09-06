@@ -25,6 +25,7 @@ use App\Http\Controllers\DataImportController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\EvaluationSheetController;
 use App\Http\Controllers\EvaluationSheetCsvExportController;
+use App\Http\Controllers\EvaluationSheetDomainDecisionController;
 use App\Http\Controllers\EvaluationSheetHistoryController;
 use App\Http\Controllers\EvaluationSheetInovarExportController;
 use App\Http\Controllers\EvaluationSheetSnapshotExportController;
@@ -632,6 +633,12 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // com esse ulid — exatamente a armadilha que já obrigou
         // `results/quadro-sintese` a subir acima do seu próprio wildcard.
         Route::post('classes/{class}/pauta-avaliacao/{period}/guardar', [EvaluationSheetHistoryController::class, 'store'])->name('evaluation-sheets.store');
+        // A apreciação de UM domínio, decidida pelo professor. Endereçada pelo
+        // ALUNO e pelo DOMÍNIO, nunca pela linha que a guarda: um domínio sobre
+        // o qual ninguém se pronunciou ainda não tem linha nenhuma, e a primeira
+        // decisão não pode ficar à espera de uma (§3.3).
+        Route::post('classes/{class}/pauta-avaliacao/{period}/dominios/{enrollment}/{domain}', [EvaluationSheetDomainDecisionController::class, 'store'])
+            ->name('evaluation-sheets.domain-decision');
         Route::get('classes/{class}/pauta-avaliacao/historico', [EvaluationSheetHistoryController::class, 'history'])->name('evaluation-sheets.history');
         // O ficheiro de um registo. Declarada ANTES de `historico/{export}` por
         // higiene, e deliberadamente FORA de `module:inovar_export`: um registo

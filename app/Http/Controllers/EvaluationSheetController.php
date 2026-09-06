@@ -96,7 +96,9 @@ class EvaluationSheetController extends Controller
 
             // The address each decision is written to. Deliberately outside the
             // read model, so a kept pauta never carries identifiers it has no
-            // use for — see SheetAddressing.
+            // use for — see SheetAddressing. Domains carry one now too: each
+            // domain's appreciation is itself a decision the teacher may write.
+            $sheet['domains'] = SheetAddressing::decorateDomains($sheet['domains']);
             $sheet['students'] = SheetAddressing::decorate($sheet['students'], $class);
         }
 

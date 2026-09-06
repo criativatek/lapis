@@ -3,6 +3,7 @@
 namespace App\Support\Assessment;
 
 use App\Models\ClassificationStatus;
+use App\Models\Domain;
 use App\Models\SchoolClass;
 
 /**
@@ -28,6 +29,38 @@ use App\Models\SchoolClass;
  */
 final class SheetAddressing
 {
+    /**
+     * The address a DOMAIN's appreciation is written to.
+     *
+     * Here for the same reason the enrolment's is: `domain_id` is the internal
+     * identity the read model already carries, and a ulid is what a URL may
+     * name (§11.2). A snapshot carries neither — a photograph is not somewhere
+     * to go on writing to.
+     *
+     * @param  list<array<string, mixed>>  $domains
+     * @return list<array<string, mixed>>
+     */
+    public static function decorateDomains(array $domains): array
+    {
+        if ($domains === []) {
+            return [];
+        }
+
+        /** @var array<int, string> $ulids */
+        $ulids = Domain::query()
+            ->whereIn('id', array_column($domains, 'domain_id'))
+            ->pluck('ulid', 'id')
+            ->all();
+
+        return array_map(
+            static fn (array $domain): array => [
+                ...$domain,
+                'domain_ulid' => $ulids[(int) $domain['domain_id']] ?? null,
+            ],
+            $domains,
+        );
+    }
+
     /**
      * @param  list<array<string, mixed>>  $students
      * @return list<array<string, mixed>>
