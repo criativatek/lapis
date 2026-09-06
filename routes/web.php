@@ -17,6 +17,7 @@ use App\Http\Controllers\ClassProfileMigrationController;
 use App\Http\Controllers\ClassReassignmentController;
 use App\Http\Controllers\ClassStatisticsAnalysisController;
 use App\Http\Controllers\ClassStatisticsController;
+use App\Http\Controllers\ClassSynopsisExportController;
 use App\Http\Controllers\ConfigurationSharingController;
 use App\Http\Controllers\CorrectionImportController;
 use App\Http\Controllers\DashboardController;
@@ -558,6 +559,12 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::get('results', [ResultsController::class, 'index'])->name('results.index');
         // Declared BEFORE the {period?} wildcard, which would otherwise swallow
         // it and go looking for a period called «quadro-sintese».
+        //
+        // O ficheiro antes do ecrã: `quadro-sintese/xlsx` tem de ser reconhecido
+        // antes de `quadro-sintese`, ou o segundo trataria «xlsx» como se fosse
+        // outra coisa qualquer.
+        Route::get('classes/{class}/results/quadro-sintese/xlsx', [ClassSynopsisExportController::class, 'xlsx'])
+            ->name('results.summary.xlsx');
         Route::get('classes/{class}/results/quadro-sintese', [ResultsController::class, 'summary'])->name('results.summary');
         // Same reason as above: declared before the {period?} wildcard. The
         // period is optional — without one the read model opens on the latest

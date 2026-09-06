@@ -10,6 +10,7 @@ use App\Services\Ai\AiRequestFailed;
 use App\Services\Ai\AiUnavailable;
 use App\Services\Ai\Gateway\AiQuotaExceeded;
 use App\Services\Assessment\Ai\ResultsAnalyst;
+use App\Services\Assessment\BuildClassSynopsis;
 use App\Services\Assessment\BuildResultsProgression;
 use App\Services\Assessment\ClassResultsCalculator;
 use App\Services\Assessment\CoverageExplanation;
@@ -327,14 +328,24 @@ class ResultsController extends Controller
     /**
      * The Quadro Síntese: the whole year, every student, in one table.
      *
-     * ONE call to the read model and nothing else. Everything this screen shows
-     * — the standalone average of each period, the accumulated one, the movement
-     * between periods, the self-assessments, the proposals and the decisions —
-     * is already assembled there, per student and per domain. Recomputing any of
-     * it here, or in the browser, would be a second opinion about numbers that
-     * already have one (§3, §17).
+     * DUAS LEITURAS, E CADA UMA RESPONDE A UMA PERGUNTA DIFERENTE.
+     *
+     *   `progression`  o ano visto pelos NÚMEROS: a média ponderada de cada
+     *                  unidade, o acumulado do motor, o movimento entre
+     *                  unidades. É a leitura que esta página sempre teve e
+     *                  continua exatamente como estava.
+     *
+     *   `synopsis`     o ano visto pelos MOMENTOS: o intercalar e o final de
+     *                  cada unidade, a apreciação que vigora em cada um deles,
+     *                  os elementos que a sustentam, e a avaliação contínua
+     *                  formal. É a leitura longitudinal que faltava.
+     *
+     * NENHUMA DAS DUAS CALCULA COISA NENHUMA AQUI. Ambas são montadas sobre o
+     * mesmo motor, cada uma na sua classe, e recomputar qualquer parte delas
+     * neste controlador — ou no browser — seria uma segunda opinião sobre
+     * números que já têm uma (§3, §17).
      */
-    public function summary(SchoolClass $class): Response
+    public function summary(SchoolClass $class, BuildClassSynopsis $synopsis): Response
     {
         Gate::authorize('view', $class);
 
@@ -345,6 +356,7 @@ class ResultsController extends Controller
                 'ulid' => $class->ulid,
                 'label' => $class->label,
                 'subject' => $class->subject->name,
+                'academic_year' => $class->academicYear->label,
                 'has_profile' => $class->assessment_profile_version_id !== null,
                 'scale_name' => $scale?->name,
             ],
@@ -354,13 +366,20 @@ class ResultsController extends Controller
             // Presentation only: the route is gated by the same capability, and
             // hiding a link is never what keeps anybody out (§8.2).
             'canExportToInovar' => app(Entitlements::class)->allows('inovar_export'),
+            // A ESCALA INTEIRA, com código e rótulo além da posição: a cor de
+            // uma apreciação sai da POSIÇÃO do nível na escala e nunca do número
+            // que ele calha ter (§24), e a legenda precisa de a dizer por
+            // palavras para que a cor nunca seja a única informação (§25).
             'scaleBands' => $scale === null ? [] : $scale->levels
+                ->sortBy('sequence')
                 ->map(fn ($level): array => [
+                    'code' => (string) $level->code,
                     'label' => (string) $level->label,
                     'sequence' => (int) $level->sequence,
                     'is_negative' => (bool) $level->is_negative,
                 ])->values()->all(),
             'progression' => $this->progression->for($class),
+            'synopsis' => $synopsis->for($class),
         ]);
     }
 
