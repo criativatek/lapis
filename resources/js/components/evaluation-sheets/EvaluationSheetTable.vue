@@ -1,8 +1,19 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import CoverageWarning from '@/components/CoverageWarning.vue';
+import {
+    assignedLevel as readAssignedLevel,
+    domainAppreciation,
+    overallAppreciation,
+} from '@/lib/appreciation';
+import type { Appreciation } from '@/lib/appreciation';
 import { pct } from '@/lib/results';
-import type { EvaluationSheetDomain, EvaluationSheetSelfAssessment, EvaluationSheetStudent } from '@/types';
+import type {
+    EvaluationSheetDomain,
+    EvaluationSheetSelfAssessment,
+    EvaluationSheetStudent,
+    EvaluationSheetStudentDomain,
+} from '@/types';
 
 /**
  * A grelha da Pauta de Avaliação — UM ÚNICO componente.
@@ -20,6 +31,16 @@ import type { EvaluationSheetDomain, EvaluationSheetSelfAssessment, EvaluationSh
  * a grelha emite quem o professor quer classificar e é o ecrã que abre o painel
  * e escreve. Desligado é o que a pauta guardada usa — uma fotografia não tem
  * botões, porque não há nada no passado por decidir.
+ *
+ * ISSO VALE AGORA TAMBÉM PARA CADA DOMÍNIO. A apreciação de «Leitura» é
+ * clicável pela mesma razão que o «Nível atribuído» é: é uma decisão do
+ * professor, e uma decisão toma-se onde a informação está. Não há um botão em
+ * cada célula — o VALOR é o botão, e as trinta linhas continuam a ler-se como
+ * uma tabela e não como um painel de controlo.
+ *
+ * COMO SE LÊ UMA MENÇÃO não é decidido aqui: vive em `@/lib/appreciation`,
+ * porque a mesma regra vale para o domínio, para o global e para o nível
+ * atribuído, e três cópias dela seriam três sítios a divergir.
  */
 
 const props = withDefaults(
@@ -40,83 +61,28 @@ const props = withDefaults(
     { showSelfAssessment: false, decidable: false },
 );
 
-const emit = defineEmits<{ decide: [student: EvaluationSheetStudent] }>();
+const emit = defineEmits<{
+    decide: [student: EvaluationSheetStudent];
+    decideDomain: [payload: { student: EvaluationSheetStudent; domain: EvaluationSheetDomain }];
+}>();
 
 const domainColumns = computed(() => props.domains.map((domain) => ({ id: domain.domain_id, name: domain.name })));
 
-function studentDomain(student: EvaluationSheetStudent, domainId: number) {
+function studentDomain(student: EvaluationSheetStudent, domainId: number): EvaluationSheetStudentDomain | undefined {
     return student.domains.find((domain) => domain.domain_id === domainId);
 }
 
-/**
- * O QUE APARECE NA CÉLULA É O CÓDIGO DO NÍVEL, NÃO A MENÇÃO QUALITATIVA.
- * Numa pauta o nível é o número que o documento carrega — «3», não
- * «Suficiente» (SUP-2C774B). A menção continua a viajar, e vai para o `title`,
- * como o ecrã de Classificações já faz.
- *
- * O RECURSO AO RÓTULO É O QUE MANTÉM O HISTÓRICO LEGÍVEL: uma pauta guardada
- * antes desta correção não traz código nenhum, e tem de continuar a mostrar o
- * que estava no ecrã no dia em que foi guardada.
- */
-function levelText(code: string | null | undefined, label: string | null): string | null {
-    return code ?? label;
+/** A apreciação de um domínio, já resolvida para a vista que está ligada. */
+function domainCell(student: EvaluationSheetStudent, domainId: number): Appreciation {
+    return domainAppreciation(studentDomain(student, domainId), props.showQuantitative);
 }
 
-function levelTitle(code: string | null | undefined, label: string | null): string | undefined {
-    if (code == null || label == null) {
-        return undefined;
-    }
-
-    return `${code} — ${label}`;
+function overallCell(student: EvaluationSheetStudent): Appreciation {
+    return overallAppreciation(student.overall, props.showQuantitative);
 }
 
-/**
- * A proposta diz sempre o que é antes de dizer o que vale: a frase que a separa
- * de uma decisão vem primeiro, e a menção do nível só se junta quando existe.
- */
-function proposalTitle(levelTitleText: string | undefined): string {
-    const explanation = 'Proposta do Lapispro — ainda não decidida pelo professor.';
-
-    return levelTitleText === undefined ? explanation : `${explanation} (${levelTitleText})`;
-}
-
-/**
- * O «Nível atribuído»: a decisão do professor quando existe, senão a proposta
- * do Lapispro com um estilo mais leve — nunca a mesma força visual, para que
- * uma proposta nunca se leia como uma decisão já tomada (§6).
- */
-type AssignedLevel = { text: string; kind: 'decided' | 'proposed' | 'none'; title?: string };
-
-function assignedLevel(student: EvaluationSheetStudent): AssignedLevel {
-    const classification = student.classification;
-
-    if (classification === null) {
-        return { text: '—', kind: 'none' };
-    }
-
-    // Numa escala de intervalo não há nível nenhum a nomear: o valor escrito é
-    // a resposta inteira, e é ele que passa no `??`.
-    const finalText = levelText(classification.final_scale_level_code, classification.final_scale_level_label) ?? classification.final_value;
-
-    if (finalText !== null) {
-        return {
-            text: finalText,
-            kind: 'decided',
-            title: levelTitle(classification.final_scale_level_code, classification.final_scale_level_label),
-        };
-    }
-
-    const proposedText = levelText(classification.proposed_scale_level_code, classification.proposed_scale_level_label) ?? classification.proposed_value;
-
-    if (proposedText !== null) {
-        return {
-            text: proposedText,
-            kind: 'proposed',
-            title: levelTitle(classification.proposed_scale_level_code, classification.proposed_scale_level_label),
-        };
-    }
-
-    return { text: '—', kind: 'none' };
+function assignedLevel(student: EvaluationSheetStudent): Appreciation {
+    return readAssignedLevel(student.classification, props.showQuantitative);
 }
 
 /**
@@ -128,6 +94,23 @@ function assignedLevel(student: EvaluationSheetStudent): AssignedLevel {
  */
 function isDecidable(student: EvaluationSheetStudent): boolean {
     return props.decidable && student.can_decide === true && (student.enrollment_ulid ?? null) !== null;
+}
+
+/**
+ * Se a apreciação de UM DOMÍNIO pode ser decidida aqui.
+ *
+ * DELIBERADAMENTE DIFERENTE DE `isDecidable`. A classificação global fecha com
+ * a publicação; a apreciação de um domínio não tem publicação nenhuma e
+ * continua aberta enquanto a pauta o estiver (§9). O que ela precisa é de duas
+ * moradas — o aluno e o domínio —, e sem qualquer uma delas não há ação a
+ * oferecer em vez de haver um sítio inventado para onde escrever.
+ */
+function isDomainDecidable(student: EvaluationSheetStudent, domain: EvaluationSheetDomain): boolean {
+    return (
+        props.decidable &&
+        (student.enrollment_ulid ?? null) !== null &&
+        (domain.domain_ulid ?? null) !== null
+    );
 }
 
 /** Publicada: o valor fica, e deixa de haver o que alterar aqui. */
@@ -144,9 +127,28 @@ function isPublished(student: EvaluationSheetStudent): boolean {
 function actionLabel(student: EvaluationSheetStudent): string {
     const level = assignedLevel(student);
 
-    return level.kind === 'decided'
+    return level.origin === 'decided'
         ? `Alterar a classificação de ${student.name} — atualmente ${level.text}`
         : `Atribuir classificação a ${student.name}`;
+}
+
+/**
+ * O mesmo, para um domínio: quem, qual domínio, e o que lá está agora.
+ *
+ * A frase diz sempre DE QUEM É O JUÍZO que está na célula. Sem isso, «Alterar
+ * a apreciação de Leitura de Ana Marques — atualmente 4» não distinguiria uma
+ * proposta que ninguém reviu de uma decisão já tomada, e as duas pedem coisas
+ * diferentes a quem lê.
+ */
+function domainActionLabel(student: EvaluationSheetStudent, domain: EvaluationSheetDomain): string {
+    const cell = domainCell(student, domain.domain_id);
+    const who = `${domain.name} de ${student.name}`;
+
+    if (cell.origin === 'none') {
+        return `Atribuir apreciação de ${who}`;
+    }
+
+    return `Alterar a apreciação de ${who} — ${cell.description}`;
 }
 
 /**
@@ -305,12 +307,43 @@ function domainCellStyle(color: string): Record<string, string> {
                                 :class="showQuantitative ? '' : 'border-l'"
                                 :style="domainCellStyle(domain.color)"
                             >
+                                <!-- O VALOR É O BOTÃO. Um botão «alterar» em
+                                     cada uma de cento e cinquenta células
+                                     transformaria a pauta num painel de
+                                     controlo; clicar na apreciação é a mesma
+                                     ação sem o ruído. A decisão fica a negrito
+                                     e a proposta em itálico — e, porque nem
+                                     itálico nem negrito são informação para
+                                     quem não os vê, a frase inteira («Decisão
+                                     do professor: …», «Proposta do Lapispro,
+                                     ainda não decidida: …») vai no texto
+                                     acessível e não só no `title` (§8, §14). -->
+                                <button
+                                    v-if="isDomainDecidable(student, domain)"
+                                    type="button"
+                                    class="sheet-domain-cta rounded px-1.5 py-0.5 hover:ring-1 hover:ring-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+                                    :class="{
+                                        'bg-primary/10 font-semibold text-primary': domainCell(student, domain.domain_id).origin === 'decided',
+                                        'text-muted-foreground italic': domainCell(student, domain.domain_id).origin === 'proposed',
+                                        'text-muted-foreground': domainCell(student, domain.domain_id).origin === 'none',
+                                    }"
+                                    :title="domainCell(student, domain.domain_id).description"
+                                    :aria-label="domainActionLabel(student, domain)"
+                                    :aria-haspopup="'dialog'"
+                                    @click="emit('decideDomain', { student, domain })"
+                                >
+                                    {{ domainCell(student, domain.domain_id).text }}
+                                </button>
                                 <span
-                                        :class="{ 'text-muted-foreground': !levelText(studentDomain(student, domain.domain_id)?.scale_level_code, studentDomain(student, domain.domain_id)?.scale_level_label ?? null) }"
-                                        :title="levelTitle(studentDomain(student, domain.domain_id)?.scale_level_code, studentDomain(student, domain.domain_id)?.scale_level_label ?? null)"
-                                    >
-                                        {{ levelText(studentDomain(student, domain.domain_id)?.scale_level_code, studentDomain(student, domain.domain_id)?.scale_level_label ?? null) ?? '—' }}
-                                </span>
+                                    v-else
+                                    :class="{
+                                        'font-semibold': domainCell(student, domain.domain_id).origin === 'decided',
+                                        'text-muted-foreground italic': domainCell(student, domain.domain_id).origin === 'proposed',
+                                        'text-muted-foreground': domainCell(student, domain.domain_id).origin === 'none',
+                                    }"
+                                    :title="domainCell(student, domain.domain_id).description"
+                                    :aria-label="domainCell(student, domain.domain_id).description"
+                                >{{ domainCell(student, domain.domain_id).text }}</span>
                                 <!-- O que o aluno disse SOBRE ESTE DOMÍNIO, em
                                      expoente e a meia-voz, com o «A» a dizer de
                                      quem é a voz — a mesma escrita do Quadro
@@ -349,11 +382,10 @@ function domainCellStyle(color: string): Record<string, string> {
                         :class="showQuantitative ? '' : 'border-l-2'"
                     >
                         <span
-                                :class="{ 'text-muted-foreground': !levelText(student.overall.scale_level_code, student.overall.scale_level_label) }"
-                                :title="levelTitle(student.overall.scale_level_code, student.overall.scale_level_label)"
-                            >
-                                {{ levelText(student.overall.scale_level_code, student.overall.scale_level_label) ?? '—' }}
-                        </span>
+                            :class="{ 'text-muted-foreground': overallCell(student).origin === 'none' }"
+                            :title="overallCell(student).description"
+                            :aria-label="overallCell(student).description"
+                        >{{ overallCell(student).text }}</span>
                         <CoverageWarning
                             v-if="showWarnings && !showQuantitative && student.overall.has_coverage_warning"
                             :coverage="student.coverage"
@@ -391,10 +423,10 @@ function domainCellStyle(color: string): Record<string, string> {
                              abre a mesma decisão para a rever — «Alterar», nunca
                              «editar a proposta», que é outra coisa e não se faz. -->
                         <button
-                            v-if="isDecidable(student) && assignedLevel(student).kind === 'decided'"
+                            v-if="isDecidable(student) && assignedLevel(student).origin === 'decided'"
                             type="button"
                             class="rounded bg-primary/10 px-2 py-0.5 font-bold text-primary hover:ring-1 hover:ring-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
-                            :title="assignedLevel(student).title"
+                            :title="assignedLevel(student).description"
                             :aria-label="actionLabel(student)"
                             :aria-haspopup="'dialog'"
                             @click="emit('decide', student)"
@@ -407,9 +439,10 @@ function domainCellStyle(color: string): Record<string, string> {
                              proposta nunca é apresentada como se fosse uma nota. -->
                         <span v-else-if="isDecidable(student)" class="inline-flex items-center gap-1.5">
                             <span
-                                v-if="assignedLevel(student).kind === 'proposed'"
+                                v-if="assignedLevel(student).origin === 'proposed'"
                                 class="text-muted-foreground italic"
-                                :title="proposalTitle(assignedLevel(student).title)"
+                                :title="assignedLevel(student).description"
+                                :aria-label="assignedLevel(student).description"
                             >
                                 {{ assignedLevel(student).text }}
                             </span>
@@ -427,18 +460,20 @@ function domainCellStyle(color: string): Record<string, string> {
                         <!-- Sem ação: uma pauta guardada, ou uma classificação
                              já publicada. O valor lê-se na mesma. -->
                         <span
-                            v-else-if="assignedLevel(student).kind === 'decided'"
+                            v-else-if="assignedLevel(student).origin === 'decided'"
                             class="rounded bg-primary/10 px-2 py-0.5 font-bold text-primary"
                             :title="isPublished(student) && decidable
-                                ? `${assignedLevel(student).title ?? assignedLevel(student).text}. Já publicada.`
-                                : assignedLevel(student).title"
+                                ? `${assignedLevel(student).description} Já publicada.`
+                                : assignedLevel(student).description"
+                            :aria-label="assignedLevel(student).description"
                         >
                             {{ assignedLevel(student).text }}
                         </span>
                         <span
-                            v-else-if="assignedLevel(student).kind === 'proposed'"
+                            v-else-if="assignedLevel(student).origin === 'proposed'"
                             class="rounded px-2 py-0.5 text-muted-foreground italic"
-                            :title="proposalTitle(assignedLevel(student).title)"
+                            :title="assignedLevel(student).description"
+                            :aria-label="assignedLevel(student).description"
                         >
                             {{ assignedLevel(student).text }}
                         </span>

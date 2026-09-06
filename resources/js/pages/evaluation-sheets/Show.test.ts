@@ -195,12 +195,19 @@ describe('evaluation-sheets/Show — a única vista', () => {
 
         const carolinaRow = wrapper.findAll('tbody tr').find((row) => row.text().includes('Carolina Nunes'));
 
-        // Numa pauta o nível é o número. A menção não aparece em célula
-        // nenhuma da linha — nem no global, nem nos domínios, nem na decisão.
+        // COM OS QUANTITATIVOS À VISTA, numa pauta o nível é o número. A menção
+        // não aparece em célula nenhuma da linha — nem no global, nem nos
+        // domínios, nem na decisão. (Desligando-os, a regra inverte-se: ver
+        // «quantitativos desligados» mais abaixo.)
         expect(carolinaRow!.text()).not.toContain('Muito Bom');
 
-        // Mas não se perde: fica no `title`, ao alcance de quem passa o rato.
-        expect(carolinaRow!.find('.font-bold').attributes('title')).toBe('4 — Bom');
+        // Mas não se perde: a frase inteira acompanha a célula, e diz também DE
+        // QUEM é o juízo — negrito e itálico não são informação para quem não
+        // os vê (§8, §14).
+        const assigned = carolinaRow!.find('.font-bold');
+
+        expect(assigned.attributes('title')).toBe('Decisão do professor: 4 — Bom.');
+        expect(assigned.attributes('aria-label')).toBe('Decisão do professor: 4 — Bom.');
     });
 
     it('still reads a snapshot kept before the code existed, by falling back to its mention', () => {
@@ -541,5 +548,197 @@ describe('evaluation-sheets/Show — autoavaliação', () => {
         expect(panel.textContent).toContain('Autoavaliação');
         // E dito como apoio, nunca como uma segunda nota.
         expect(panel.textContent).toContain('nunca determina a classificação');
+    });
+});
+
+/**
+ * A pauta com as duas moradas que uma decisão por domínio precisa: a do aluno e
+ * a do domínio. Sem as duas não há ação a oferecer — e é isso que mantém uma
+ * fotografia sem botões.
+ */
+function domainDecidableProps() {
+    const props = decidableProps();
+
+    props.sheet!.domains[0].domain_ulid = 'domain-oralidade';
+    props.sheet!.domains[1].domain_ulid = 'domain-leitura';
+
+    return props;
+}
+
+/**
+ * O painel de um domínio, encontrado pelo que ele diz.
+ *
+ * Os diálogos são teleportados para o `body` e o jsdom é partilhado por todos
+ * os testes deste ficheiro: `querySelector('[role="dialog"]')` devolveria o
+ * primeiro que alguma vez foi aberto, não o que acabou de abrir.
+ */
+function openDomainPanel(): Element {
+    const panels = Array.from(document.querySelectorAll('[role="dialog"]'));
+    const panel = panels.reverse().find((candidate) => candidate.textContent?.includes('Quantitativo calculado'));
+
+    if (panel === undefined) {
+        throw new Error('O painel da apreciação por domínio não está aberto.');
+    }
+
+    return panel;
+}
+
+describe('evaluation-sheets/Show — a apreciação de cada domínio', () => {
+    beforeEach(() => {
+        routerPost.mockClear();
+    });
+
+    it('a apreciação de um domínio é o botão, e diz que é uma proposta', () => {
+        const wrapper = mount(Show, { props: domainDecidableProps() });
+        const carolina = wrapper.findAll('tbody tr').find((row) => row.text().includes('Carolina Nunes'))!;
+
+        const cell = carolina
+            .findAll('button')
+            .find((button) => button.attributes('aria-label')?.includes('Oralidade'))!;
+
+        expect(cell.text()).toBe('5');
+        expect(cell.attributes('title')).toContain('Proposta do Lapispro');
+        // Itálico não é informação para quem não o vê: a frase acompanha.
+        expect(cell.attributes('aria-label')).toContain('Proposta do Lapispro');
+    });
+
+    it('escreve a decisão pelo endereço do aluno e do domínio, e nunca pelo da classificação', async () => {
+        const wrapper = mount(Show, { props: domainDecidableProps() });
+        const carolina = wrapper.findAll('tbody tr').find((row) => row.text().includes('Carolina Nunes'))!;
+
+        await carolina
+            .findAll('button')
+            .find((button) => button.attributes('aria-label')?.includes('Oralidade'))!
+            .trigger('click');
+
+        // O painel deste domínio, e não um qualquer que tenha ficado no
+        // documento de um teste anterior: os diálogos são teleportados para o
+        // `body` e o jsdom é partilhado por todo o ficheiro.
+        const panel = openDomainPanel();
+
+        expect(panel.textContent).toContain('Oralidade — Carolina Nunes');
+        // O painel mostra o quantitativo e a proposta como CONTEXTO, e nenhum
+        // dos dois é um campo.
+        expect(panel.textContent).toContain('Quantitativo calculado');
+        expect(panel.textContent).toContain('Proposta do Lapispro');
+
+        const suficiente = Array.from(panel.querySelectorAll('button')).find((button) =>
+            button.textContent?.includes('Suficiente'),
+        )! as HTMLButtonElement;
+        suficiente.click();
+        await wrapper.vm.$nextTick();
+
+        expect(routerPost).toHaveBeenCalledTimes(1);
+        expect(routerPost.mock.calls[0][0]).toBe(
+            '/classes/class-1/pauta-avaliacao/period-1/dominios/enrollment-carolina/domain-oralidade',
+        );
+        expect(routerPost.mock.calls[0][1]).toEqual({ scale_level_id: 3 });
+    });
+
+    it('a decisão aparece a negrito e a proposta continua a ser dita', () => {
+        const props = domainDecidableProps();
+        props.sheet!.students[0].domains[0].decided_scale_level_id = 3;
+        props.sheet!.students[0].domains[0].decided_scale_level_code = '3';
+        props.sheet!.students[0].domains[0].decided_scale_level_label = 'Suficiente';
+
+        const wrapper = mount(Show, { props });
+        const carolina = wrapper.findAll('tbody tr').find((row) => row.text().includes('Carolina Nunes'))!;
+        const cell = carolina
+            .findAll('button')
+            .find((button) => button.attributes('aria-label')?.includes('Oralidade'))!;
+
+        expect(cell.text()).toBe('3');
+        expect(cell.classes()).toContain('font-semibold');
+        expect(cell.attributes('title')).toContain('Decisão do professor: 3 — Suficiente');
+        // A proposta não desaparece: é ela que explica por que houve decisão.
+        expect(cell.attributes('title')).toContain('Proposta do Lapispro: 5 — Muito Bom');
+    });
+
+    it('«Usar a proposta do Lapispro» apaga a decisão em vez de guardar uma vazia', async () => {
+        const props = domainDecidableProps();
+        props.sheet!.students[0].domains[0].decided_scale_level_id = 3;
+        props.sheet!.students[0].domains[0].decided_scale_level_code = '3';
+        props.sheet!.students[0].domains[0].decided_scale_level_label = 'Suficiente';
+
+        const wrapper = mount(Show, { props });
+        const carolina = wrapper.findAll('tbody tr').find((row) => row.text().includes('Carolina Nunes'))!;
+
+        await carolina
+            .findAll('button')
+            .find((button) => button.attributes('aria-label')?.includes('Oralidade'))!
+            .trigger('click');
+
+        const panel = openDomainPanel();
+        const back = Array.from(panel.querySelectorAll('button')).find((button) =>
+            button.textContent?.includes('Usar a proposta do Lapispro'),
+        )! as HTMLButtonElement;
+        back.click();
+        await wrapper.vm.$nextTick();
+
+        expect(routerPost.mock.calls[0][1]).toEqual({ scale_level_id: null });
+    });
+
+    it('uma pauta sem moradas não oferece ação nenhuma nos domínios', () => {
+        // `decidableProps()` endereça os alunos mas não os domínios — que é o
+        // que uma fotografia guardada faz.
+        const wrapper = mount(Show, { props: decidableProps() });
+        const carolina = wrapper.findAll('tbody tr').find((row) => row.text().includes('Carolina Nunes'))!;
+
+        const actions = carolina
+            .findAll('button')
+            .filter((button) => button.attributes('aria-label')?.includes('apreciação'));
+
+        expect(actions).toHaveLength(0);
+    });
+});
+
+describe('evaluation-sheets/Show — valores quantitativos desligados', () => {
+    async function withoutQuantitative(props: ReturnType<typeof domainDecidableProps>) {
+        const wrapper = mount(Show, { props });
+
+        const toggle = wrapper
+            .findAll('label')
+            .find((label) => label.text().includes('Valores quantitativos'))!
+            .find('input');
+
+        await toggle.setValue(false);
+
+        return wrapper;
+    }
+
+    it('substitui os códigos pelas menções da escala, e nunca por um valor inventado', async () => {
+        const wrapper = await withoutQuantitative(domainDecidableProps());
+        const carolina = wrapper.findAll('tbody tr').find((row) => row.text().includes('Carolina Nunes'))!;
+
+        // Domínio: «Muito Bom», não «5».
+        const domainCell = carolina
+            .findAll('button')
+            .find((button) => button.attributes('aria-label')?.includes('Oralidade'))!;
+        expect(domainCell.text()).toBe('Muito Bom');
+
+        // Global e nível atribuído seguem a mesma regra.
+        expect(carolina.find('.font-bold').text()).toBe('Bom');
+        expect(carolina.text()).not.toMatch(/\b5\b/);
+    });
+
+    it('o código não se perde: fica no texto acessível de cada célula', async () => {
+        const wrapper = await withoutQuantitative(domainDecidableProps());
+        const carolina = wrapper.findAll('tbody tr').find((row) => row.text().includes('Carolina Nunes'))!;
+
+        const domainCell = carolina
+            .findAll('button')
+            .find((button) => button.attributes('aria-label')?.includes('Oralidade'))!;
+
+        expect(domainCell.attributes('title')).toContain('código 5');
+        expect(carolina.find('.font-bold').attributes('title')).toContain('código 4');
+    });
+
+    it('esconder os quantitativos não toca no que o servidor enviou', async () => {
+        const props = domainDecidableProps();
+        const before = JSON.stringify(props.sheet);
+
+        await withoutQuantitative(props);
+
+        expect(JSON.stringify(props.sheet)).toBe(before);
     });
 });

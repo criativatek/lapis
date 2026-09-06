@@ -122,11 +122,23 @@ const entries = computed<Entry[]>(() => {
     return lines;
 });
 
-// Said only where there is in fact a result: the point is that it is
-// trustworthy, just built on less evidence than the rest of the class's.
+/**
+ * Said only where there is in fact a result — and this is the sentence that
+ * does the pedagogical work.
+ *
+ * «Nem todos os elementos previstos foram realizados» on its own reads as a
+ * complaint about the student. The concessive half is what turns it into what
+ * it actually is: a note about the EVIDENCE, said beside a result that exists
+ * and is trustworthy. Without a result there is nothing for the coverage to be
+ * partial OF, and the sentence is not said at all (§16) — the heading above
+ * already says «Sem elementos avaliados», which is a different fact.
+ *
+ * The same sentence, in the same words, is what «Preparar fecho» and a kept
+ * pauta say — see `App\Support\Assessment\CoverageWording` on the server.
+ */
 const footer = computed<string | null>(() =>
     props.hasValue
-        ? 'O resultado foi calculado com os restantes elementos.'
+        ? `Embora tenha havido avaliação ${props.scope === 'overall' ? 'neste momento' : 'neste domínio'}, nem todos os elementos previstos foram realizados. O resultado foi calculado com os restantes elementos.`
         : null,
 );
 </script>

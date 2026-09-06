@@ -4,6 +4,7 @@ import { Download, ListChecks, Printer, Table2 } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import EvaluationSheetDecisionDialog from '@/components/evaluation-sheets/EvaluationSheetDecisionDialog.vue';
+import EvaluationSheetDomainDecisionDialog from '@/components/evaluation-sheets/EvaluationSheetDomainDecisionDialog.vue';
 import EvaluationSheetReadinessPanel from '@/components/evaluation-sheets/EvaluationSheetReadinessPanel.vue';
 import EvaluationSheetTable from '@/components/evaluation-sheets/EvaluationSheetTable.vue';
 import EvaluationSheetViewControls from '@/components/evaluation-sheets/EvaluationSheetViewControls.vue';
@@ -12,6 +13,7 @@ import InputError from '@/components/InputError.vue';
 import type {
     EvaluationSheet,
     EvaluationSheetDecisionScale,
+    EvaluationSheetDomain,
     EvaluationSheetPeriod,
     EvaluationSheetReadiness,
     EvaluationSheetSaveDefaults,
@@ -112,6 +114,62 @@ function postDecision(data: { final_scale_level_id: number | null; final_value: 
             // Só em caso de sucesso: uma escrita recusada tem de deixar o painel
             // aberto com a mensagem, nunca uma célula a fingir que guardou.
             onSuccess: () => closeDecision(),
+        },
+    );
+}
+
+// ------------------------------------------- a decisão sobre um domínio
+//
+// A MESMA GRAMÁTICA, UMA ESCALA ABAIXO. O ecrã abre o painel e envia; quem
+// escreve é o serviço, com a sua autorização, a sua validação contra a escala
+// real da turma e o seu rasto (§3.3). O que muda em relação à decisão global é
+// só o endereço — este é do ALUNO e do DOMÍNIO — e o facto de aqui não haver
+// publicação nenhuma a fechar a porta: uma apreciação é sempre reeditável.
+
+const editingDomain = ref<{ student: EvaluationSheetStudent; domain: EvaluationSheetDomain } | null>(null);
+const savingDomain = ref(false);
+
+const domainDecisionError = computed<string | null>(
+    () => ((page.props.errors as Record<string, string> | undefined)?.scale_level_id ?? null),
+);
+
+function openDomainDecision(payload: { student: EvaluationSheetStudent; domain: EvaluationSheetDomain }): void {
+    if (!canDecideHere.value) {
+        return;
+    }
+
+    editingDomain.value = payload;
+}
+
+function closeDomainDecision(): void {
+    editingDomain.value = null;
+}
+
+function postDomainDecision(scaleLevelId: number | null): void {
+    const editing = editingDomain.value;
+    const period = selectedPeriod.value;
+
+    if (editing === null || period === null) {
+        return;
+    }
+
+    const enrollment = editing.student.enrollment_ulid;
+    const domain = editing.domain.domain_ulid;
+
+    if (!enrollment || !domain) {
+        return;
+    }
+
+    router.post(
+        `/classes/${props.schoolClass.ulid}/pauta-avaliacao/${period.ulid}/dominios/${enrollment}/${domain}`,
+        { scale_level_id: scaleLevelId },
+        {
+            preserveScroll: true,
+            onStart: () => (savingDomain.value = true),
+            onFinish: () => (savingDomain.value = false),
+            // Só em caso de sucesso: uma escrita recusada deixa o painel aberto
+            // com a mensagem, nunca uma célula a fingir que guardou.
+            onSuccess: () => closeDomainDecision(),
         },
     );
 }
@@ -435,14 +493,18 @@ function submitSave(): void {
                 :show-self-assessment="showSelfAssessment && selfAssessmentAvailable"
                 :decidable="canDecideHere"
                 @decide="openDecision"
+                @decide-domain="openDomainDecision"
             />
 
             <p class="text-xs text-muted-foreground print:text-black">
                 "—" significa sem elementos, nunca zero. O ícone de aviso assinala cobertura parcial ou a ausência de
-                elementos avaliados — passe o rato ou o foco por cima para ver o detalhe. Um nível em itálico é a
-                <strong>proposta</strong> do Lapispro, ainda não decidida; um nível a negrito é a
-                <strong>decisão</strong> do professor. A decisão é sempre sua e pode ser alterada a qualquer
-                momento — guardar, exportar ou ter histórico não a fecham.
+                elementos avaliados — passe o rato ou o foco por cima para ver o detalhe. Uma apreciação em itálico é a
+                <strong>proposta</strong> do Lapispro, ainda não decidida; uma apreciação a negrito é a
+                <strong>decisão</strong> do professor. Isso vale para o nível atribuído e para cada domínio: clique
+                numa apreciação para a decidir ou para a devolver à proposta. A decisão é sempre sua e pode ser
+                alterada a qualquer momento — guardar, exportar ou ter histórico não a fecham. Com os
+                <strong>valores quantitativos</strong> desligados, as apreciações aparecem pela menção da escala
+                («Bom») em vez do código («4»); o código continua no texto de cada célula.
             </p>
         </div>
 
@@ -459,6 +521,18 @@ function submitSave(): void {
             @close="closeDecision"
             @save="postDecision"
             @use-proposal="postDecision({ final_scale_level_id: null, final_value: null })"
+        />
+
+        <!-- A apreciação de um domínio, decidida a partir da própria célula. -->
+        <EvaluationSheetDomainDecisionDialog
+            v-if="sheet"
+            :student="editingDomain?.student ?? null"
+            :domain="editingDomain?.domain ?? null"
+            :decision="decision"
+            :saving="savingDomain"
+            :error="domainDecisionError"
+            @close="closeDomainDecision"
+            @save="postDomainDecision"
         />
     </div>
 </template>

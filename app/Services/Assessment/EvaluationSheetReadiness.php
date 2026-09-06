@@ -11,6 +11,7 @@ use App\Models\SchoolClass;
 use App\Models\SelfAssessment;
 use App\Models\SelfAssessmentStatus;
 use App\Models\StudentItemScore;
+use App\Support\Assessment\CoverageWording;
 use App\Support\Assessment\DecisionScale;
 use App\Support\Export\InovarLevelOption;
 use Illuminate\Support\Collection;
@@ -182,12 +183,23 @@ class EvaluationSheetReadiness
                 // the sheet is caused by a domain empty for the whole class —
                 // already reported once, at class level, and repeating it under
                 // every name would be noise, not information.
+                //
+                // E SÓ ONDE HÁ RESULTADO. «Cobertura parcial» é uma afirmação
+                // sobre um valor que existe; dita sobre alguém sem avaliação
+                // nenhuma, afirmaria uma avaliação que não houve (§16). O
+                // estado sai do mesmo sítio que a fotografia e o ⚠ do ecrã
+                // usam, para não haver duas frases para o mesmo facto (§17).
+                $state = CoverageWording::state(
+                    ($student['overall']['has_coverage_warning'] ?? false) === true,
+                    ($student['overall']['normalized_value'] ?? null) !== null,
+                );
+
                 if ($gapLines === []
-                    && ($student['overall']['has_coverage_warning'] ?? false) === true
+                    && $state === CoverageWording::PARTIAL
                     && ($coverage['absences'] ?? []) !== []) {
                     $gapLines[] = [
                         'state' => self::STATE_ATTENTION,
-                        'label' => 'Cobertura parcial — nem todos os elementos previstos foram avaliados',
+                        'label' => CoverageWording::partial('overall'),
                         'action' => 'results',
                     ];
                 }

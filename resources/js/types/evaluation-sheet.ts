@@ -18,6 +18,12 @@ export type EvaluationSheetDomain = {
     weight_percent: string;
     /** Hex string. Identity only — never a "bom/mau" signal (§ briefing). */
     color: string;
+    /**
+     * Onde a apreciação deste domínio é escrita. SÓ NA PAUTA VIVA — uma
+     * fotografia não é sítio para onde continuar a escrever (ver
+     * `SheetAddressing` no servidor).
+     */
+    domain_ulid?: string | null;
 };
 
 export type EvaluationSheetOverall = {
@@ -53,10 +59,24 @@ export type EvaluationSheetStudentDomain = {
     sequence: number;
     normalized_value: string | null;
     weight_percent_applied: string;
+    /**
+     * A PROPOSTA DO LAPISPRO — a banda em que o quantitativo calculado cai.
+     * Continua a significar o que sempre significou, e é por isso que cada
+     * fotografia guardada até aqui se lê exatamente como no dia em que foi
+     * tirada.
+     */
     scale_level_id: number | null;
     /** Ausente nos snapshots guardados antes da 0.130.1 — o leitor recorre ao rótulo. */
     scale_level_code?: string | null;
     scale_level_label: string | null;
+    /**
+     * A DECISÃO DO PROFESSOR sobre este domínio, quando existe. Null enquanto
+     * ninguém se pronunciar — e ausente nas pautas guardadas antes de esta
+     * decisão existir, que é a mesma coisa dita de outra maneira.
+     */
+    decided_scale_level_id?: number | null;
+    decided_scale_level_code?: string | null;
+    decided_scale_level_label?: string | null;
     has_coverage_warning: boolean;
     coverage: Coverage;
     /** Ausente nos snapshots guardados antes desta funcionalidade — ausência, nunca zero. */

@@ -8,6 +8,7 @@ use App\Models\ClassificationScope;
 use App\Models\EvaluationSheetExport;
 use App\Models\SchoolClass;
 use App\Models\User;
+use App\Support\Assessment\CoverageWording;
 use App\Support\Assessment\DomainColorPalette;
 use App\Support\Assessment\EvaluationSheetException;
 use App\Support\Hashing\CanonicalPayload;
@@ -247,10 +248,21 @@ class CaptureEvaluationSheet
             $overall = $student['overall'];
             $coverage = $student['coverage'];
 
+            // OS TRÊS ESTADOS, DITOS PELO MESMO SÍTIO que «Preparar fecho» e o
+            // ⚠ do ecrã usam (§17). A distinção que interessa é entre não ter
+            // havido avaliação nenhuma e ter havido avaliação incompleta: uma
+            // fotografia que dissesse a segunda coisa sobre a primeira estaria
+            // a afirmar, para sempre, que houve uma avaliação que não houve.
             if (($coverage['no_elements'] ?? false) === true) {
                 $warnings[] = "{$name}: sem elementos avaliados — a pauta não mostra qualquer resultado.";
             } elseif (($overall['has_coverage_warning'] ?? false) === true) {
-                $warnings[] = "{$name}: cobertura parcial — nem todos os elementos previstos foram avaliados.";
+                $state = CoverageWording::state(true, $overall['normalized_value'] !== null);
+
+                if ($state === CoverageWording::PARTIAL) {
+                    $warnings[] = "{$name}: ".lcfirst(CoverageWording::partial('overall'));
+                } else {
+                    $warnings[] = "{$name}: ".lcfirst(CoverageWording::none('overall'));
+                }
             }
 
             $classification = $student['classification'];
