@@ -25,6 +25,83 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.136.0] — 2026-09-07
+
+Duas correções que vinham do mesmo sítio: a pauta dizia que havia trabalho por
+fazer onde não havia, e o Quadro Síntese fechava o ano num número global sem o
+fechar em nenhum domínio.
+
+### Uma proposta por domínio não está à espera de ninguém
+
+**Regra de produto, agora escrita por inteiro:** as propostas qualitativas por
+domínio **não precisam de aprovação**. Se o Lapispro propõe «3 — Suficiente» e o
+professor não altera nada, «Suficiente» é a apreciação que **vigora**. Não há
+pendência, não há nada para clicar, e não se escreve linha nenhuma em
+`domain_appreciation_decisions` para o confirmar.
+
+O itálico dizia o contrário. Numa turma de trinta alunos com cinco domínios,
+cento e cinquenta células anunciavam trabalho que não existe. Passa a texto
+normal, e a frase acessível passa de «ainda não decidida pelo professor» a
+«vigente enquanto o professor não a alterar».
+
+**O que passa a ter marca é o contrário.** Quando o professor altera a proposta,
+a decisão dele leva o negrito que já tinha **e** um «prof.» em expoente — numa
+pauta guardada o anel do botão desaparece, e a espessura da letra ficaria a ser
+a única informação de que alguém interveio.
+
+**Isto não vale para o nível atribuído.** Esse é o ato formal do professor e tem
+uma pendência verdadeira enquanto ele não o toma: continua em itálico, continua
+com o botão «Atribuir» ao lado.
+
+**O histórico arruma-se sozinho.** As fotografias renderizam pelo mesmo
+componente, por isso um snapshot antigo — proposta sim, decisão não — passa a
+ler-se em texto normal sem que uma linha do payload seja tocada. Nenhum
+`payload_hash` muda. E guardar a pauta continua a não converter propostas em
+decisões: há agora um teste que o fixa.
+
+### Cada domínio fecha o ano com a sua própria conclusão
+
+Cada bloco de domínio ganha **«Final»** — a avaliação contínua final daquele
+domínio — e **«Aprec.»**, a apreciação que vale no fim do ano:
+
+```
+Oralidade
+  1.º semestre   77,3 %
+  2.º semestre   47,5 %
+  ------------------------------
+  Final          62,4 %  →  Suficiente
+```
+
+É a **mesma regra e a mesma função** que produzem o número global: a média dos
+resultados formais de cada unidade, com os pesos configurados quando existem.
+Um teste passa os mesmos números pelas duas entradas e exige o mesmo resultado —
+não há segunda fórmula. As **fotografias intercalares não entram**, e o
+desempenho acumulado também não: é a outra leitura do ano, e continua na sua
+coluna, em tons neutros.
+
+**A grelha separa três conceitos** pela ordem e por uma barra mais firme: os
+resultados formais de cada unidade, o analítico, e o formal final — que leva a
+cor do produto porque é dele que sairia uma proposta de nível.
+
+**O override final de um domínio** vive no sítio canónico que já existia: uma
+linha de âmbito acumulado na última unidade do ano, exatamente onde a decisão
+global já vive. Quando existe, prevalece — sem apagar a média nem a proposta.
+Uma decisão sobre um semestre **não** é reaproveitada como decisão do ano.
+
+**Os quantitativos desligam-se também aqui.** Com eles desligados a coluna
+«Final» sai da grelha e fica a menção — «Suficiente» em vez de «62,4 % ·».
+
+### O Excel
+
+Folha nova, **«Contínua Final por Domínio»**, entre «Domínios» e «Desempenho
+acumulado» — a ordem das folhas é a hierarquia das leituras. Uma linha por
+(aluno, domínio), com o resultado formal de cada unidade em coluna própria, a
+média que eles formam, a proposta, a decisão e a apreciação vigente. A
+«Configuração» diz o que entra, o que não entra, e que uma proposta não alterada
+vigora.
+
+O motor de cálculo não foi tocado.
+
 ## [0.135.0] — 2026-09-07
 
 Um professor abriu o Quadro Síntese e viu, no mesmo domínio, **68 % no 1.º

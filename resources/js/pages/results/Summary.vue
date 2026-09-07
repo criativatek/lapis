@@ -163,8 +163,13 @@ const lastPeriodIndex = computed(() => periods.value.length - 1);
 
 // Per domain: one column per period, an evolution column after every period but
 // the first, then the accumulated figure and the mention it falls in, and the
-// two that close the year — a média final formal e a apreciação que vale.
-const domainColumns = computed(() => periods.value.length * 2 + 3);
+// pair that closes the year — a média final formal e a apreciação que vale.
+//
+// COM OS QUANTITATIVOS DESLIGADOS A MÉDIA FINAL SAI DA GRELHA, coluna incluída.
+// Quem desligou os números pediu uma pauta sem números, e uma célula vazia
+// debaixo de «Final» não é uma pauta sem números — é uma pauta com um buraco. O
+// que fica é a apreciação, que é a resposta na língua que ele escolheu (§60).
+const domainColumns = computed(() => periods.value.length * 2 + (showQuantitative.value ? 3 : 2));
 
 /**
  * ------------------------------- a avaliação contínua final de cada domínio
@@ -586,6 +591,7 @@ function proposalText(proposal: Proposal | undefined): string {
                                  naquele domínio; o desempenho acumulado, à
                                  esquerda, fica em tons neutros (§14, §17). -->
                             <th
+                                v-if="showQuantitative"
                                 class="sticky top-[33px] z-20 border-b border-l-4 border-l-primary border-b-border bg-primary/10 px-2 py-1 text-center text-xs font-medium whitespace-nowrap"
                                 :title="`${CONTINUOUS} final — ${domain.name}. ${continuousFormula}`"
                                 :aria-label="`${CONTINUOUS} final — ${domain.name}. ${continuousFormula}`"
@@ -595,6 +601,7 @@ function proposalText(proposal: Proposal | undefined): string {
                             </th>
                             <th
                                 class="sticky top-[33px] z-20 border-b border-border bg-primary/10 px-2 py-1 text-center text-xs font-medium"
+                                :class="showQuantitative ? '' : 'border-l-4 border-l-primary'"
                                 :title="`Apreciação final de ${domain.name} — a decisão do professor quando existe, a proposta que sai da média final quando não.`"
                                 :aria-label="`Apreciação final de ${domain.name} — a decisão do professor quando existe, a proposta que sai da média final quando não.`"
                                 scope="col"
@@ -770,24 +777,24 @@ function proposalText(proposal: Proposal | undefined): string {
                                  ano. Com os quantitativos desligados o número
                                  sai e fica a apreciação, que é o que uma pauta
                                  sem números quer dizer (§60). -->
-                            <td class="border-l-4 border-l-primary px-2 py-1.5 text-center font-medium tabular-nums">
+                            <td
+                                v-if="showQuantitative"
+                                class="border-l-4 border-l-primary px-2 py-1.5 text-center font-medium tabular-nums"
+                            >
                                 <span
-                                    v-if="showQuantitative"
                                     :class="{ 'text-muted-foreground': (domainFinal(student, domain.id)?.normalized_value ?? null) === null }"
                                     :title="domainFinalTitle(student, domain)"
                                 >{{ pct(domainFinal(student, domain.id)?.normalized_value ?? null) }}</span>
-                                <span
-                                    v-else
-                                    class="text-muted-foreground"
-                                    :title="domainFinalTitle(student, domain)"
-                                >{{ (domainFinal(student, domain.id)?.normalized_value ?? null) === null ? '—' : '·' }}</span>
                             </td>
 
                             <!-- A APRECIAÇÃO QUE VALE no fim do ano para este
                                  domínio: a decisão do professor quando existe,
                                  a proposta que sai da média quando não — e a
                                  proposta não é uma pendência (§2). -->
-                            <td class="px-2 py-1.5 text-center whitespace-nowrap">
+                            <td
+                                class="px-2 py-1.5 text-center whitespace-nowrap"
+                                :class="showQuantitative ? '' : 'border-l-4 border-l-primary'"
+                            >
                                 <span
                                     v-if="domainFinalAppreciation(student, domain.id)"
                                     class="rounded px-1.5 py-0.5 text-xs"

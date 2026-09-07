@@ -287,9 +287,14 @@ class SummaryScreenTest extends TestCase
         $screen = $this->screen();
 
         // One column per period, an evolution column after each but the first,
-        // then the accumulated and its mention — e as duas que fecham o ano: a
-        // média final formal do domínio e a apreciação que dela resulta.
-        $this->assertStringContainsString('periods.value.length * 2 + 3', $screen);
+        // then the accumulated and its mention — e o par que fecha o ano: a
+        // média final formal do domínio e a apreciação que dela resulta. A média
+        // sai da grelha com os quantitativos desligados, coluna incluída, e a
+        // contagem acompanha-a.
+        $this->assertStringContainsString(
+            'periods.value.length * 2 + (showQuantitative.value ? 3 : 2)',
+            $screen,
+        );
         $this->assertStringContainsString('index === 0 ? 5 : 6', $screen);
         // Nothing here knows how many periods a year has.
         $this->assertStringNotContainsString('P1</th>', $screen);

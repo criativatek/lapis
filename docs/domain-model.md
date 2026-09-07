@@ -737,6 +737,43 @@ a meio do ano tem a média das unidades que viveu (§11.4).
 > cálculo do desempenho acumulado fica como está, a avaliação contínua é o
 > indicador formal, e nenhuma passa a significar a outra. Ver §13, Q4.
 
+#### 6.4.0 A avaliação contínua também se lê **por domínio**
+
+**Decisão de produto (2026-09-07).** A avaliação contínua não é só um número
+global: cada **domínio** tem a sua, e pela mesma regra —
+
+```
+Oralidade
+  1.º semestre   77,346938 %
+  2.º semestre   47,500000 %
+  ------------------------------------
+  Avaliação Contínua Final  62,423469 %   →  Suficiente
+```
+
+**A MESMA FUNÇÃO, e não uma cópia.** `ContinuousAssessment::forDomains()` chama
+`forStudent()` — onde a média ponderada vive — com os resultados formais de um
+domínio em vez dos globais. `ContinuousAssessmentByDomainTest` passa os mesmos
+números pelas duas entradas e exige o mesmo resultado; uma segunda fórmula
+divergiria na primeira alteração feita a só uma delas.
+
+**O que entra é o resultado formal de cada unidade**, tirado da pauta viva de
+cada período. Não entra o desempenho acumulado, não entram pontos brutos do ano
+e não entram fotografias intercalares — e esta última garantia é estrutural, não
+uma condição removível: `forDomains` recebe `AcademicPeriod`, e um momento
+intercalar não é um período.
+
+**Os pesos são os configurados** (`period_weight_percent`), e a igualdade quando
+nenhum está declarado. Uma unidade que o perfil exclui do acumulado está
+excluída daqui também, pela mesma coluna; uma unidade sem resultado sai do
+denominador em vez de valer zero (§13.3).
+
+**O override final de um domínio** vive onde o global já vivia: âmbito
+**acumulado** na última unidade do ano — `DomainAppreciationDecision` para o
+domínio, `Classification` para o global. Uma decisão de âmbito **período** é uma
+leitura daquele semestre e **não** é reaproveitada como conclusão do ano.
+Nenhum ecrã escreve ainda decisões de âmbito acumulado por domínio: a leitura
+está pronta, a escrita é uma decisão de produto por tomar.
+
 #### 6.4.1 O desempenho acumulado tem de ser **reconstruível**
 
 **Decisão de produto (2026-09-07, auditoria matemática).** Coexistirem não
@@ -826,6 +863,21 @@ apenas **overrides reais**. Quando existe override, é ele que vigora — e a
 proposta continua consultável ao lado, porque é ela que explica por que motivo o
 professor interveio. **O quantitativo não muda por causa de nenhuma das duas**:
 49 % continuam 49 %.
+
+**A interface dizia o contrário até 0.136.0, e o modelo estava certo.** A pauta
+pintava a proposta em itálico e a frase acessível chamava-lhe «ainda não decidida
+pelo professor» — descrevia uma pendência que esta secção sempre negou, e numa
+turma de trinta alunos com cinco domínios anunciava cento e cinquenta vezes
+trabalho que não existe. A proposta vigente escreve-se agora em **texto normal**;
+o que leva marca é o **override**, a negrito e com um «prof.» em expoente, porque
+numa fotografia guardada o negrito ficaria a ser a única informação de que
+alguém interveio (§25).
+
+Isto vale para os DOMÍNIOS e não para o **nível atribuído**, que é o ato formal
+do professor (§7) e tem uma pendência verdadeira enquanto ele não o toma — esse
+continua em itálico, com a ação por fazer ao lado. Guardar a pauta não converte
+propostas em decisões: `CaptureEvaluationSheet` nunca escreveu em
+`domain_appreciation_decisions`, e há um teste que o fixa.
 
 ### 6.7 O Quadro Síntese agrega; não é uma fonte de verdade
 
