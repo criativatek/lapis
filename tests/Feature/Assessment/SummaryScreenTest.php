@@ -264,11 +264,18 @@ class SummaryScreenTest extends TestCase
 
         // …and every short label carries the full one, for the pointer and for
         // a screen reader alike (§14).
-        foreach (['Evol.', 'Acum.', 'Menção', 'Prop.', 'Autoav.'] as $abbreviation) {
+        //
+        // «Acum.» PASSOU A «Desemp.», e não é uma preferência de abreviatura: a
+        // partir do momento em que a avaliação contínua e o desempenho
+        // acumulado aparecem no mesmo produto, «Acumulado» sozinho é ambíguo —
+        // quem acabou de ler uma pode supor que a outra é o mesmo somado de
+        // outra maneira. Ver `ReadingVocabulary`.
+        foreach (['Evol.', 'Desemp.', 'Menção', 'Prop.', 'Autoav.'] as $abbreviation) {
             $this->assertStringContainsString($abbreviation, $screen);
         }
 
-        $this->assertStringContainsString(':aria-label="`Média Ponderada Acumulada — ${domain.name}`"', $screen);
+        $this->assertStringNotContainsString('Acum.', $screen);
+        $this->assertStringContainsString('${ACCUMULATED_LONG} — ${domain.name}', $screen);
         $this->assertStringContainsString(':aria-label="`Menção qualitativa acumulada — ${domain.name}`"', $screen);
         $this->assertStringContainsString(':aria-label="`Autoavaliação global do aluno — ${period.label}`"', $screen);
         $this->assertStringContainsString(':aria-label="`${decision.label} — ${period.label}`"', $screen);

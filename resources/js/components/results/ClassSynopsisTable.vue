@@ -2,6 +2,7 @@
 import { Link } from '@inertiajs/vue3';
 import { ChevronDown, ChevronRight, CircleAlert, Camera } from '@lucide/vue';
 import { computed, ref } from 'vue';
+import { CONTINUOUS, CONTINUOUS_EXPLANATION } from '@/lib/readings';
 import {
     appreciationClasses,
     appreciationTitle,
@@ -18,7 +19,16 @@ import {
     
     
 } from '@/lib/synopsis';
-import type {ScaleBand, Synopsis, SynopticDomainCell, SynopticElement, SynopticMoment, SynopticReadingRow, SynopticElementResult, SynopticStudent} from '@/lib/synopsis';
+import type {
+    ScaleBand,
+    Synopsis,
+    SynopticDomainCell,
+    SynopticElement,
+    SynopticElementResult,
+    SynopticMoment,
+    SynopticReadingRow,
+    SynopticStudent,
+} from '@/lib/synopsis';
 
 /**
  * O QUADRO SÍNTESE AO LONGO DO ANO — momentos, domínios, elementos.
@@ -166,14 +176,22 @@ function momentTitle(moment: SynopticMoment): string {
     return `${moment.moment_label} — fotografia guardada a ${moment.snapshot.kept_at}, com data de referência ${moment.snapshot.effective_at ?? '—'}. Não entra na avaliação contínua.`;
 }
 
+/**
+ * O QUE A COLUNA DA AVALIAÇÃO CONTÍNUA DIZ DE SI PRÓPRIA.
+ *
+ * A frase canónica primeiro — a mesma em toda a aplicação e no Excel — e as
+ * unidades concretas desta turma a seguir. Uma explicação genérica sem as
+ * unidades deixaria o professor a adivinhar quais entraram; as unidades sem a
+ * explicação não diriam que as intercalares ficam de fora.
+ */
 const continuousUnitsSentence = computed(() => {
     const units = props.synopsis.continuous.units;
 
     if (units.length === 0) {
-        return 'Sem unidades formais configuradas.';
+        return `${CONTINUOUS}. Sem unidades formais configuradas.`;
     }
 
-    return `Média de ${units.map((unit) => unit.label).join(' e ')}. As fotografias intercalares não entram nesta média.`;
+    return `${CONTINUOUS}. ${CONTINUOUS_EXPLANATION} Nesta turma: ${units.map((unit) => unit.label).join(' e ')}.`;
 });
 </script>
 
@@ -210,7 +228,7 @@ const continuousUnitsSentence = computed(() => {
                             :key="moment.key"
                             :colspan="momentColumns(moment)"
                             class="border-b border-l-2 border-border px-3 py-1.5 text-center align-bottom text-xs font-semibold"
-                            :class="moment.is_formal ? 'bg-primary/10' : 'bg-muted'"
+                            :class="moment.is_formal ? 'bg-muted' : 'bg-muted/50'"
                             scope="colgroup"
                         >
                             <button
@@ -231,13 +249,20 @@ const continuousUnitsSentence = computed(() => {
                             </button>
                         </th>
 
+                        <!-- O INDICADOR FORMAL, e a barra que o separa de tudo
+                             o resto é mais firme por isso. É daqui que sai a
+                             proposta de nível; os momentos à esquerda são o
+                             caminho, e o desempenho acumulado — quando o
+                             professor o quiser ver — vive na outra vista, como
+                             leitura complementar. -->
                         <th
                             :colspan="showQuantitative ? 3 : 2"
-                            class="border-b border-l-4 border-border bg-emerald-500/10 px-3 py-1.5 text-center align-bottom text-xs font-semibold uppercase"
+                            class="border-b border-l-4 border-l-primary border-b-border bg-primary/15 px-3 py-1.5 text-center align-bottom text-xs font-semibold uppercase"
                             :title="continuousUnitsSentence"
+                            :aria-label="continuousUnitsSentence"
                             scope="colgroup"
                         >
-                            Avaliação contínua
+                            {{ CONTINUOUS }}
                         </th>
                     </tr>
 
@@ -403,13 +428,13 @@ const continuousUnitsSentence = computed(() => {
                                 </td>
                             </template>
 
-                            <td v-if="showQuantitative" class="border-l-4 border-border bg-emerald-500/5 px-2 py-1.5 text-center tabular-nums">
+                            <td v-if="showQuantitative" class="border-l-4 border-border bg-primary/5 px-2 py-1.5 text-center tabular-nums">
                                 <span :class="{ 'text-muted-foreground': (student.continuous?.normalized_value ?? null) === null }">
                                     {{ percent(student.continuous?.normalized_value ?? null) }}
                                 </span>
                             </td>
                             <td
-                                class="bg-emerald-500/5 px-2 py-1.5 text-center whitespace-nowrap"
+                                class="bg-primary/5 px-2 py-1.5 text-center whitespace-nowrap"
                                 :class="showQuantitative ? '' : 'border-l-4 border-border'"
                             >
                                 <span
@@ -434,7 +459,7 @@ const continuousUnitsSentence = computed(() => {
                                 >{{ student.continuous.proposal.value }}</span>
                                 <span v-else class="text-muted-foreground" title="Sem resultados formais para calcular uma média contínua.">—</span>
                             </td>
-                            <td class="bg-emerald-500/5 px-2 py-1.5 text-center whitespace-nowrap">
+                            <td class="bg-primary/5 px-2 py-1.5 text-center whitespace-nowrap">
                                 <span
                                     v-if="student.continuous?.decision?.final"
                                     class="rounded px-1.5 py-0.5 text-xs font-semibold"

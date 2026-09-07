@@ -5,6 +5,7 @@ import { computed, ref } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import StudentAvatar from '@/components/StudentAvatar.vue';
+import { ACCUMULATED, ACCUMULATED_EXPLANATION, ACCUMULATED_LONG } from '@/lib/readings';
 import { statusToneClasses } from '@/lib/statusTone';
 
 type Proposal = {
@@ -257,9 +258,10 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                         type="button"
                         class="rounded px-3 py-1 text-sm"
                         :class="scope === 'accumulated' ? 'bg-background font-medium shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+                        :title="ACCUMULATED_EXPLANATION"
                         @click="selectScope('accumulated')"
                     >
-                        Acumulado
+                        {{ ACCUMULATED }}
                     </button>
                 </div>
                 <div v-if="periods.length" class="flex gap-1">
@@ -285,7 +287,8 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <p class="text-sm text-muted-foreground">
                     <template v-if="scope === 'accumulated'">
-                        Acumulado: reprocessa todos os elementos válidos do ano até este período (não é a média dos períodos).
+                        {{ ACCUMULATED_LONG }}: reprocessa todos os elementos válidos do ano até este período — não é a média dos
+                        períodos, e não é a avaliação contínua.
                     </template>
                     <template v-else>O sistema propõe; o professor confirma.</template>
                     {{ pending }} por confirmar.
@@ -335,7 +338,7 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                             <th class="px-3 py-2 font-medium">Aluno</th>
                             <th class="px-3 py-2 text-center font-medium">Estado</th>
                             <th class="px-3 py-2 text-right font-medium">
-                                {{ scope === 'accumulated' ? 'Média Ponderada Acumulada' : 'Média Ponderada' }}
+                                {{ scope === 'accumulated' ? ACCUMULATED_LONG : 'Média Ponderada' }}
                             </th>
                             <th class="px-3 py-2 text-right font-medium">Proposta</th>
                             <th class="px-3 py-2 text-right font-medium">Autoavaliação</th>

@@ -2,6 +2,7 @@
 
 namespace App\Services\Assessment\Export;
 
+use App\Support\Assessment\ReadingVocabulary;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -150,7 +151,7 @@ class ClassSynopsisXlsxWriter
         }
 
         $continuousColumn = $column;
-        $sheet->setCellValue([$column, $headerRow], 'Avaliação contínua');
+        $sheet->setCellValue([$column, $headerRow], ReadingVocabulary::CONTINUOUS);
         $sheet->mergeCells([$column, $headerRow, $column + 3, $headerRow]);
         $sheet->setCellValue([$column, $secondRow], 'Média (%)');
         $sheet->setCellValue([$column + 1, $secondRow], 'Proposta');
@@ -427,6 +428,16 @@ class ClassSynopsisXlsxWriter
         $row = $this->block($sheet, $row, 'Níveis da escala, do mais baixo ao mais alto', $levels === []
             ? [['—', 'Escala sem níveis configurados']]
             : $levels);
+
+        // AS DUAS LEITURAS DO ANO, e a hierarquia entre elas, ditas antes de
+        // qualquer outra explicação: são o que este ficheiro mais arrisca ser
+        // confundido a dizer.
+        $readings = [];
+        foreach (ReadingVocabulary::legend() as $reading) {
+            $readings[] = [$reading['name'], $reading['explanation']];
+        }
+
+        $row = $this->block($sheet, $row, 'As duas leituras do ano', $readings);
 
         $this->block($sheet, $row, 'Como ler este ficheiro', [
             ['Momento formal', 'O resultado da unidade temporal. É reeditável e é o que entra na avaliação contínua.'],

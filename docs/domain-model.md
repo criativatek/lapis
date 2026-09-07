@@ -680,15 +680,38 @@ São **duas linhas distintas** para o mesmo aluno e período, não dois campos n
 
 > **Porquê duas tabelas e não uma com `domain_id` anulável.** No MySQL, `UNIQUE(enrollment_id, academic_period_id, scope, domain_id)` com `domain_id = NULL` para a linha global **não impediria duplicados**: o MySQL trata cada `NULL` como distinto, e dois recálculos concorrentes criariam duas linhas globais para o mesmo aluno. A separação em duas tabelas dá chaves únicas totalmente não-anuláveis nas duas. Custo: uma tabela extra. Benefício: impossível ter dois resultados globais do mesmo período.
 
-### 6.4 «Resultado acumulado» vs **avaliação contínua** — duas leituras do ano
+### 6.4 As **duas leituras do ano** — avaliação contínua e desempenho acumulado
 
-São coisas diferentes, dão números diferentes, e o Quadro Síntese mostra as duas
-lado a lado precisamente para que ninguém as confunda.
+**Decisão de produto (2026-09-07).** O produto tem **duas** leituras do mesmo ano
+letivo. Não se substituem, não se redefinem uma pela outra, e não são sinónimos:
+respondem a perguntas diferentes e dão números diferentes. O Quadro Síntese
+mostra as duas — mas **não com o mesmo destaque**.
 
-| | O que é | Onde vive |
-|---|---|---|
-| **Acumulado** | O motor **reprocessa os elementos brutos** de todas as unidades que contribuem, até e incluindo a do momento. Não é média de médias (ver acima). | `ClassificationScope::Accumulated` · `ClassResultsCalculator::forAccumulated()` |
-| **Avaliação contínua** | A **média dos resultados formais** de cada unidade temporal do ano: dois semestres → média entre o 1.º e o 2.º; três períodos → média entre os três. | `ContinuousAssessment` |
+| | O que é | Papel | Onde vive |
+|---|---|---|---|
+| **Avaliação contínua** | A **média** (ou média ponderada, conforme a configuração) dos **resultados formais** de cada unidade temporal do ano: dois semestres → média entre o 1.º e o 2.º; três períodos → média entre os três. | **FORMAL.** É daqui — e não do acumulado — que sai a proposta formal de nível/classificação. | `ContinuousAssessment` |
+| **Desempenho acumulado** | O motor **reprocessa os elementos de avaliação** de todas as unidades que contribuem, até e incluindo a do momento. Não é média de médias (ver §6.3). | **ANALÍTICO.** Leitura complementar. | `ClassificationScope::Accumulated` · `ClassResultsCalculator::forAccumulated()` — **intocado** |
+
+**Porque o segundo deixou de se chamar só «Acumulado».** Enquanto era a única
+leitura do ano, «Acumulado» dizia tudo o que havia a dizer. A partir do momento
+em que as duas aparecem lado a lado, o nome curto é ambíguo — um professor que
+acabou de ler «avaliação contínua» pode razoavelmente supor que a coluna ao lado
+é a mesma coisa somada de outra maneira. Na UI usa-se **«Desempenho acumulado»**,
+ou **«Resultado acumulado dos elementos de avaliação»** onde houver espaço. As
+palavras vivem num sítio só: `App\Support\Assessment\ReadingVocabulary`, com a
+cópia do browser em `resources/js/lib/readings.ts` e um teste a compará-las.
+
+**A hierarquia é visual e é deliberada.** A avaliação contínua é o indicador
+principal e leva o azul do produto; os momentos e o desempenho acumulado ficam
+em tons neutros. Ambos levam a sua explicação no `title` e no texto acessível.
+
+**O número que obriga a distinção a existir**, no cenário de demonstração e
+fixado em `TwoReadingsOfTheYearTest`:
+
+```
+Carolina Nunes · desempenho acumulado   89,73 %   (elementos do ano reprocessados)
+Carolina Nunes · avaliação contínua      89,40 %   (média do 1.º e do 2.º semestre)
+```
 
 **Os momentos intercalares NÃO entram na avaliação contínua.** Uma intercalar é
 uma fotografia informativa do estado do aluno a meio do caminho: serve para
@@ -710,10 +733,9 @@ a mesma coluna a decidir as duas coisas.
 regra que o motor aplica a um elemento por realizar (§13.3). Um aluno que entrou
 a meio do ano tem a média das unidades que viveu (§11.4).
 
-> **Nota de coerência a rever com o Product Owner.** As duas leituras coexistem
-> por decisão de produto. O motor continua a chamar «acumulado» à primeira, e é
-> essa que a Q4 desta ficha ainda deixa em aberto; a segunda é regra fechada e
-> está implementada como tal. Ver §13, Q4.
+> **Ambas fechadas.** A coexistência é a decisão, não um estado de transição: o
+> cálculo do desempenho acumulado fica como está, a avaliação contínua é o
+> indicador formal, e nenhuma passa a significar a outra. Ver §13, Q4.
 
 ### 6.5 Momentos estruturais e fotografias
 
@@ -1363,7 +1385,7 @@ Sub-questão: um aluno com **todos** os elementos de um domínio ausentes tem 0 
 
 **Recomendação: (a) `half_up`, `rounding_scale = 0`, `rounding_stage = 'final_only'`** para escalas de nível, e `rounding_scale = 0` em 0–20. Justificação: é a expectativa do professor português e evita o efeito «o sistema baixou-me a nota» de (b). **Necessário do PO:** confirmação e, sobretudo, se algum contexto exige `rounding_stage = 'each_domain'` — arredondar por domínio **muda o resultado final** e é irreversível depois de haver histórico.
 
-### Q4 — Como o «acumulado» combina os períodos (BLOQUEADOR)
+### Q4 — Como o «acumulado» combina os períodos (RESOLVIDA — duas leituras)
 O mockup diz «A classificação do 2.º semestre resulta de todas as aprendizagens do ano letivo (1.º e 2.º semestre)». A frase admite pelo menos três leituras, com resultados numericamente distintos:
 
 - (a) `all_valid_year_elements` — reprocessar **todos os elementos brutos** do ano; cada elemento pesa por si. Um aluno com 3 elementos no P1 e 7 no P2 é avaliado sobre 10 elementos.
@@ -1372,22 +1394,24 @@ O mockup diz «A classificação do 2.º semestre resulta de todas as aprendizag
 
 **Recomendação: (a).** É a leitura literal de «todas as aprendizagens» e a única que trata cada evidência com o mesmo peso. **Mas a diferença numérica entre (a) e (b) é material** e decide notas reais. **Necessário do PO:** decisão explícita.
 
-> **O que entretanto se fechou, e o que continua aberto.** A **avaliação contínua**
-> — a média dos resultados FORMAIS de cada unidade temporal, com os pesos de
-> `period_weight_percent` quando existem — passou a ser regra de produto fechada e
-> está implementada em `ContinuousAssessment` (§6.4). Isso é, na prática, a leitura
-> (b) aplicada a uma pergunta com nome próprio.
+> **RESOLVIDA (2026-09-07): o produto fica com as duas leituras.**
 >
-> **O motor NÃO foi alterado**: `ClassificationScope::Accumulated` continua a fazer
-> (a), e é essa a leitura que esta questão deixa em aberto. As duas coexistem
-> deliberadamente e o Quadro Síntese mostra-as lado a lado — no cenário de
-> demonstração dão 89,73 % e 89,40 % para a mesma aluna, dois números verdadeiros
-> para duas perguntas diferentes.
+> `accumulated_mode = 'all_valid_year_elements'` — a leitura (a) — **mantém-se
+> intocada** e passa a chamar-se **desempenho acumulado** na UI. É o indicador
+> ANALÍTICO.
 >
-> **O que falta decidir:** se «acumulado» deve passar a significar a avaliação
-> contínua (e então (a) desaparece do produto), ou se o produto mantém as duas
-> leituras com nomes distintos. Enquanto não houver decisão, nada aqui muda: a
-> alteração do motor exige aprovação explícita.
+> A leitura (b) existe agora com nome próprio — **avaliação contínua** — em
+> `ContinuousAssessment`: a média dos resultados formais de cada unidade
+> temporal, com os pesos de `period_weight_percent` quando existem. É o
+> indicador FORMAL, e é dele que sai a proposta formal de nível.
+>
+> Nenhuma substitui a outra e nenhuma é sinónimo da outra. No cenário de
+> demonstração dão 89,73 % e 89,40 % para a mesma aluna — dois números
+> verdadeiros para duas perguntas diferentes. Ver §6.4 e
+> `TwoReadingsOfTheYearTest`.
+>
+> As quatro sub-questões abaixo continuam a ser do PO e continuam a aplicar-se ao
+> **desempenho acumulado**.
 
 Sub-questões que o modelo já suporta, mas cuja resposta é do PO:
 1. Os **pesos dos domínios** podem diferir entre o cálculo do período e o do acumulado? (Modelo: hoje não; exigiria peso por `profile_version_periods` x domínio.)

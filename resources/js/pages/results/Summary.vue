@@ -6,6 +6,13 @@ import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import ClassSynopsisTable from '@/components/results/ClassSynopsisTable.vue';
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
+import {
+    ACCUMULATED,
+    ACCUMULATED_EXPLANATION,
+    ACCUMULATED_LONG,
+    CONTINUOUS,
+    CONTINUOUS_EXPLANATION,
+} from '@/lib/readings';
 import { pct, TREND_SHAPE, trendArrow, trendClasses, trendPoints, trendTitle } from '@/lib/results';
 import type { Evolution } from '@/lib/results';
 import type { Synopsis } from '@/lib/synopsis';
@@ -354,11 +361,11 @@ function proposalText(proposal: Proposal | undefined): string {
                             </template>
                             <th
                                 class="sticky top-[33px] z-20 border-b border-border bg-muted/30 px-2 py-1 text-center text-xs font-medium"
-                                :title="`Média Ponderada Acumulada — ${domain.name}`"
-                                :aria-label="`Média Ponderada Acumulada — ${domain.name}`"
+                                :title="`${ACCUMULATED_LONG} — ${domain.name}. ${ACCUMULATED_EXPLANATION}`"
+                                :aria-label="`${ACCUMULATED_LONG} — ${domain.name}. ${ACCUMULATED_EXPLANATION}`"
                                 scope="col"
                             >
-                                Acum.
+                                Desemp.
                             </th>
                             <th
                                 class="sticky top-[33px] z-20 border-b border-border bg-muted/30 px-2 py-1 text-center text-xs font-medium"
@@ -391,11 +398,11 @@ function proposalText(proposal: Proposal | undefined): string {
                             </th>
                             <th
                                 class="sticky top-[33px] z-20 border-b border-border bg-primary/5 px-2 py-1 text-center text-xs font-medium"
-                                :title="`Média Ponderada Acumulada — ${period.label}`"
-                                :aria-label="`Média Ponderada Acumulada — ${period.label}`"
+                                :title="`${ACCUMULATED_LONG} — ${period.label}. ${ACCUMULATED_EXPLANATION}`"
+                                :aria-label="`${ACCUMULATED_LONG} — ${period.label}. ${ACCUMULATED_EXPLANATION}`"
                                 scope="col"
                             >
-                                Acum.
+                                Desemp.
                             </th>
                             <th
                                 class="sticky top-[33px] z-20 border-b border-border bg-primary/5 px-2 py-1 text-center text-xs font-medium"
@@ -615,12 +622,13 @@ function proposalText(proposal: Proposal | undefined): string {
             <span>
                 Cada bloco é um domínio do perfil de avaliação: <strong>P1</strong>, <strong>P2</strong>… são a
                 <strong>Média Ponderada</strong> de cada período, <strong>Evol.</strong> compara esse período com o
-                anterior — sempre valores do próprio período, nunca acumulados —, <strong>Acum.</strong> é a
-                <strong>Média Ponderada Acumulada</strong> e a <strong>Menção</strong> é a banda dessa acumulada na
+                anterior — sempre valores do próprio período, nunca acumulados —, <strong>Desemp.</strong> é o
+                <strong>{{ ACCUMULATED_LONG.toLowerCase() }}</strong> e a <strong>Menção</strong> é a banda desse
+                desempenho na
                 escala do perfil<template v-if="schoolClass.scale_name"> ({{ schoolClass.scale_name }})</template>;
                 fica "—" quando a escala não tem banda definida — o Lapispro não infere limiares. O <strong>A</strong> em
-                expoente é a autoavaliação do aluno nesse domínio. No bloco <strong>Síntese</strong> ficam, por período, a Média Ponderada, a evolução, a
-                acumulada, a <strong>Proposta</strong>, a <strong>Autoavaliação</strong> global e o
+                expoente é a autoavaliação do aluno nesse domínio. No bloco <strong>Síntese</strong> ficam, por período, a Média Ponderada, a evolução, o
+                desempenho acumulado, a <strong>Proposta</strong>, a <strong>Autoavaliação</strong> global e o
                 <strong>{{ decision.label }}</strong><template v-if="schoolClass.scale_name"> na escala
                 {{ schoolClass.scale_name }}</template>. Um fundo
                 <span class="rounded bg-emerald-50 px-1 dark:bg-emerald-950/40">verde</span> ou
@@ -629,5 +637,23 @@ function proposalText(proposal: Proposal | undefined): string {
                 "—" significa sem elementos, nunca zero, e um período sem termo de comparação não mostra evolução.
             </span>
         </p>
+
+        <!-- AS DUAS LEITURAS DO ANO, ditas lado a lado e por extenso. Elas
+             respondem a perguntas diferentes e dão números diferentes; um
+             professor que veja as duas sem esta frase pode razoavelmente supor
+             que são a mesma coisa somada de outra maneira. -->
+        <div
+            v-if="schoolClass.has_profile && students.length > 0"
+            class="grid gap-3 rounded-lg border border-border bg-muted/10 px-4 py-3 text-xs text-muted-foreground sm:grid-cols-2"
+        >
+            <p>
+                <strong class="text-foreground">{{ CONTINUOUS }}</strong> — indicador formal.
+                {{ CONTINUOUS_EXPLANATION }} É desta que sai a proposta de nível.
+            </p>
+            <p>
+                <strong>{{ ACCUMULATED_LONG }}</strong> ({{ ACCUMULATED }}) — leitura complementar.
+                {{ ACCUMULATED_EXPLANATION }}
+            </p>
+        </div>
     </div>
 </template>

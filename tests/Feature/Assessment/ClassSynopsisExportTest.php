@@ -8,6 +8,7 @@ use App\Models\SchoolClass;
 use App\Models\SheetMomentKind;
 use App\Models\User;
 use App\Services\Assessment\CaptureEvaluationSheet;
+use App\Support\Assessment\ReadingVocabulary;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -335,6 +336,31 @@ class ClassSynopsisExportTest extends TestCase
         $configuration = $this->textOf($this->open($this->download())->getSheetByName('Configuração'));
         $this->assertStringContainsString('Cor da apreciação', $configuration);
         $this->assertStringContainsString('nunca é a única informação', $configuration);
+    }
+
+    #[Test]
+    public function the_file_names_the_two_readings_apart_and_says_which_one_is_formal(): void
+    {
+        $spreadsheet = $this->open($this->download());
+
+        // A coluna formal chama-se pelo nome canónico, e não «Acumulado».
+        $quadro = $this->textOf($spreadsheet->getSheetByName('Quadro Síntese'));
+        $this->assertStringContainsString(ReadingVocabulary::CONTINUOUS, $quadro);
+
+        // E a folha «Configuração» põe as duas lado a lado, pela ordem da
+        // hierarquia: o indicador formal primeiro, o analítico depois.
+        $configuration = $this->textOf($spreadsheet->getSheetByName('Configuração'));
+
+        $this->assertStringContainsString('As duas leituras do ano', $configuration);
+        $this->assertStringContainsString(ReadingVocabulary::CONTINUOUS_EXPLANATION, $configuration);
+        $this->assertStringContainsString(ReadingVocabulary::ACCUMULATED_LONG, $configuration);
+        $this->assertStringContainsString(ReadingVocabulary::ACCUMULATED_EXPLANATION, $configuration);
+
+        $this->assertLessThan(
+            strpos($configuration, ReadingVocabulary::ACCUMULATED_LONG),
+            strpos($configuration, ReadingVocabulary::CONTINUOUS_EXPLANATION),
+            'O indicador formal vem primeiro: a ordem é a hierarquia.',
+        );
     }
     // ------------------------------------------------------------ utilitários
 

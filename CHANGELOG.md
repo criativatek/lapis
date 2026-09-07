@@ -33,6 +33,32 @@ decidiu em cada um. Com isso vem a regra que faltava escrever por extenso — a
 avaliação contínua é a média dos resultados formais, e as intercalares são
 fotografias que não entram nela.
 
+### As duas leituras do ano, com nomes e pesos diferentes
+
+O produto passa a ter **duas** leituras do mesmo ano letivo, e a decisão é que
+elas coexistam. Não se substituem, não são sinónimos, e não têm o mesmo
+destaque:
+
+- **Avaliação contínua** — o indicador **formal**. A média (ou média ponderada,
+  conforme a configuração) dos resultados formais de cada unidade temporal. É
+  daqui, e não do acumulado, que sai a proposta formal de nível.
+- **Desempenho acumulado** — o indicador **analítico**, complementar. O cálculo
+  do motor **fica exatamente como estava**: reprocessa os elementos de avaliação
+  acumulados até ao momento.
+
+**Porque o segundo mudou de nome.** Enquanto era a única leitura do ano,
+«Acumulado» dizia tudo o que havia a dizer. Com as duas lado a lado, o nome
+curto passou a ser ambíguo — quem acabou de ler «avaliação contínua» pode supor
+que a coluna ao lado é a mesma coisa somada de outra maneira, e não é. Na UI lê-se
+**«Desempenho acumulado»**, ou **«Resultado acumulado dos elementos de
+avaliação»** onde há espaço, sempre com a sua explicação no texto acessível.
+
+**A hierarquia é visível.** A avaliação contínua leva o azul do produto e a
+barra mais firme; os momentos e o desempenho acumulado ficam em tons neutros. No
+cenário de demonstração as duas dão **89,73 %** e **89,40 %** para a mesma aluna
+— dois números verdadeiros para duas perguntas diferentes, e há um teste que
+falha no dia em que coincidirem.
+
 ### A avaliação contínua é a média dos resultados formais
 
 - **Uma regra, dita por inteiro.** Um ano tem unidades formais — dois semestres,
@@ -47,11 +73,8 @@ fotografias que não entram nela.
   nenhuma unidade tem peso declarado, todas pesam o mesmo — que é o que «a média
   entre o 1.º e o 2.º semestre» quer dizer em português. Uma unidade que o perfil
   exclui do acumulado fica fora também daqui.
-- **Não é o «acumulado», e os dois ficam lado a lado.** O acumulado do motor
-  reprocessa os elementos brutos do ano e **continua exatamente como estava**; a
-  avaliação contínua é a média das conclusões de cada unidade. No cenário de
-  demonstração dão 89,73 % e 89,40 % para a mesma aluna: dois números
-  verdadeiros para duas perguntas diferentes.
+- **Não é o desempenho acumulado**, e os dois ficam lado a lado com papéis
+  diferentes — ver a secção acima.
 - **Uma unidade sem resultado não é um zero.** Não entra no denominador, e um
   aluno que entrou a meio do ano tem a média das unidades que viveu.
 
