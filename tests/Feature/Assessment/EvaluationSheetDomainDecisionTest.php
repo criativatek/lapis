@@ -175,6 +175,40 @@ class EvaluationSheetDomainDecisionTest extends TestCase
     }
 
     #[Test]
+    public function guardar_a_pauta_nao_transforma_propostas_em_decisoes(): void
+    {
+        // ACEITAÇÃO TÁCITA (§2, §5). Uma proposta por domínio vigora sem ser
+        // aprovada, e guardar a pauta é fotografar o que já era verdade. Se o
+        // ato de guardar escrevesse decisões, passaria a existir um override que
+        // o professor nunca tomou — e «voltar à proposta» deixaria de ter
+        // sentido, porque a proposta teria sido convertida em decisão.
+        $teacher = $this->seedDemo();
+        [$classUlid, $periodUlid] = $this->context($teacher);
+
+        $this->assertSame(0, $this->asTenant($teacher, fn (): int => DomainAppreciationDecision::count()));
+
+        $this->actingAs($teacher)
+            ->post("/classes/{$classUlid}/pauta-avaliacao/{$periodUlid}/guardar", [
+                'moment_label' => 'Fotografia de teste',
+                'effective_at' => '2026-12-15',
+            ])
+            ->assertRedirect();
+
+        // NENHUMA linha nova. A fotografia guardou valores; não escreveu juízos.
+        $this->assertSame(
+            0,
+            $this->asTenant($teacher, fn (): int => DomainAppreciationDecision::count()),
+            'Guardar a pauta criou decisões por domínio que o professor nunca tomou.',
+        );
+
+        // E a célula continua a dizer o que dizia: proposta presente, decisão
+        // ausente. Guardar não muda a semântica de coisa nenhuma.
+        $cell = $this->cell($teacher, $classUlid, 'Carolina Nunes', 'Leitura');
+        $this->assertNotNull($cell['scale_level_code']);
+        $this->assertNull($cell['decided_scale_level_id']);
+    }
+
+    #[Test]
     public function a_decision_never_touches_the_quantitative_nor_the_proposal(): void
     {
         $teacher = $this->seedDemo();

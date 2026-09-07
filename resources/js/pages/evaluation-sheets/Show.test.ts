@@ -655,8 +655,57 @@ describe('evaluation-sheets/Show — a apreciação de cada domínio', () => {
 
         expect(cell.text()).toBe('5');
         expect(cell.attributes('title')).toContain('Proposta do Lapispro');
-        // Itálico não é informação para quem não o vê: a frase acompanha.
+        // O estilo não é informação para quem não o vê: a frase acompanha.
         expect(cell.attributes('aria-label')).toContain('Proposta do Lapispro');
+    });
+
+    it('uma proposta tacitamente aceite não se veste de pendência', () => {
+        // ACEITAÇÃO TÁCITA (§2). Uma proposta por domínio que o professor não
+        // alterou É a apreciação vigente. O itálico dizia-lhe «isto está por
+        // decidir» — e multiplicava por trinta alunos × cinco domínios um
+        // trabalho que não existe.
+        const wrapper = mount(Show, { props: domainDecidableProps() });
+        const carolina = wrapper.findAll('tbody tr').find((row) => row.text().includes('Carolina Nunes'))!;
+        const cell = carolina
+            .findAll('button')
+            .find((button) => button.attributes('aria-label')?.includes('Oralidade'))!;
+
+        expect(cell.classes()).not.toContain('italic');
+        expect(cell.attributes('title')).toContain('vigente enquanto o professor não a alterar');
+        expect(cell.attributes('title')).not.toContain('ainda não');
+
+        // E não há marca de alteração onde ninguém alterou nada.
+        expect(carolina.html()).not.toContain('>prof.</sup>');
+    });
+
+    it('o nível atribuído CONTINUA a mostrar a pendência que tem mesmo', () => {
+        // A distinção é de natureza e não de grau: um domínio é uma leitura
+        // qualitativa que acompanha o número; o nível atribuído é a decisão
+        // formal do professor (§3.3), e enquanto ela não existe há mesmo algo
+        // por fazer. O itálico e o botão «Atribuir» continuam lá.
+        //
+        // A Carolina do cenário já tem a classificação decidida; o que interessa
+        // aqui é o estado ANTERIOR a essa decisão — proposta feita, decisão por
+        // tomar.
+        const props = domainDecidableProps();
+        props.sheet!.students[0].classification = {
+            status: 'proposed',
+            proposed_value: '4',
+            proposed_scale_level_id: 4,
+            proposed_scale_level_code: '4',
+            proposed_scale_level_label: 'Bom',
+            final_value: null,
+            final_scale_level_id: null,
+            final_scale_level_code: null,
+            final_scale_level_label: null,
+            override_reason: null,
+        };
+
+        const wrapper = mount(Show, { props });
+        const carolina = wrapper.findAll('tbody tr').find((row) => row.text().includes('Carolina Nunes'))!;
+
+        expect(carolina.html()).toContain('italic');
+        expect(carolina.text()).toContain('Atribuir');
     });
 
     it('escreve a decisão pelo endereço do aluno e do domínio, e nunca pelo da classificação', async () => {
@@ -709,6 +758,11 @@ describe('evaluation-sheets/Show — a apreciação de cada domínio', () => {
         expect(cell.attributes('title')).toContain('Decisão do professor: 3 — Suficiente');
         // A proposta não desaparece: é ela que explica por que houve decisão.
         expect(cell.attributes('title')).toContain('Proposta do Lapispro: 5 — Muito Bom');
+
+        // E A ALTERAÇÃO TEM MARCA QUE NÃO É SÓ O NEGRITO (§25). Numa pauta
+        // guardada o anel do botão desaparece, e a espessura da letra ficaria a
+        // ser a única informação de que alguém interveio.
+        expect(carolina.html()).toContain('prof.');
     });
 
     it('«Usar a proposta do Lapispro» apaga a decisão em vez de guardar uma vazia', async () => {

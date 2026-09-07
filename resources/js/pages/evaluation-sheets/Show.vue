@@ -647,10 +647,13 @@ function submitSave(): void {
 
             <p class="text-xs text-muted-foreground print:text-black">
                 "—" significa sem elementos, nunca zero. O ícone de aviso assinala cobertura parcial ou a ausência de
-                elementos avaliados — passe o rato ou o foco por cima para ver o detalhe. Uma apreciação em itálico é a
-                <strong>proposta</strong> do Lapispro, ainda não decidida; uma apreciação a negrito é a
-                <strong>decisão</strong> do professor. Isso vale para o nível atribuído e para cada domínio: clique
-                numa apreciação para a decidir ou para a devolver à proposta. A decisão é sempre sua e pode ser
+                elementos avaliados — passe o rato ou o foco por cima para ver o detalhe. A apreciação de cada
+                <strong>domínio</strong> é a proposta do Lapispro, e ela <strong>vigora</strong> enquanto o professor
+                não a alterar: não há nada a aprovar. Quando ele a altera, prevalece a <strong>decisão</strong> dele —
+                a negrito e marcada com «prof.» — e o valor quantitativo calculado não muda. Clique numa apreciação
+                para a alterar, ou para a devolver à proposta. O <strong>nível atribuído</strong> é outra coisa: é a
+                decisão formal do professor, e enquanto ela não for tomada a proposta fica em itálico com o botão
+                «Atribuir» ao lado. A decisão é sempre sua e pode ser
                 alterada a qualquer momento — guardar, exportar ou ter histórico não a fecham. Com os
                 <strong>valores quantitativos</strong> desligados, as apreciações aparecem pela menção da escala
                 («Bom») em vez do código («4»); o código continua no texto de cada célula. A <strong>cor</strong> vem

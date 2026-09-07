@@ -104,6 +104,21 @@ const NO_APPRECIATION = 'Sem apreciação — nenhum elemento avaliado a produz.
  * A apreciação de UM DOMÍNIO: a decisão do professor quando existe, senão a
  * proposta do Lapispro.
  *
+ * ACEITAÇÃO TÁCITA — a regra que esta função escreve por palavras. Uma proposta
+ * por domínio **não precisa de ser aprovada**. Se o Lapispro propõe
+ * «3 — Suficiente» e o professor não a altera, «Suficiente» é a apreciação que
+ * VIGORA: não é uma pendência, não há nada para clicar, e não se escreve linha
+ * nenhuma em `domain_appreciation_decisions` para o confirmar. A ausência de
+ * decisão sempre significou «vigora a proposta» — o que mudou foi a frase
+ * deixar de dizer o contrário.
+ *
+ * ISTO NÃO VALE PARA A CLASSIFICAÇÃO GLOBAL, e a diferença é de natureza e não
+ * de grau: o nível atribuído é o ato formal do professor (§3.3) e tem uma
+ * pendência verdadeira enquanto ele não o toma — `assignedLevel()`, mais
+ * abaixo, continua a dizê-lo e continua a mostrar o botão que falta. Um domínio
+ * é uma leitura qualitativa que acompanha o número; um nível atribuído é uma
+ * decisão que alguém tem mesmo de tomar.
+ *
  * AS DUAS COISAS CONTINUAM A EXISTIR. Mostrar a decisão não apaga a proposta —
  * a frase de uma célula decidida diz o que o Lapispro tinha proposto, porque é
  * essa a informação que desapareceria da vista e é precisamente a que explica
@@ -157,7 +172,10 @@ export function domainAppreciation(
         level: proposed,
         text: proposedText,
         origin: 'proposed',
-        description: `Proposta do Lapispro, ainda não decidida pelo professor: ${proposedDetail}.`,
+        // VIGENTE, e não «por decidir». A frase antiga — «ainda não decidida
+        // pelo professor» — descrevia uma pendência que não existe: quem não
+        // altera nada não deixou nada por fazer.
+        description: `Proposta do Lapispro: ${proposedDetail} — vigente enquanto o professor não a alterar.`,
         detail: proposedDetail,
     };
 }

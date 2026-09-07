@@ -76,10 +76,12 @@ export function appreciationTitle(appreciation: Appreciation, subject?: string):
     }
 
     const named = appreciation.label && appreciation.code ? `${appreciation.code} — ${appreciation.label}` : appreciation.text;
+    // «VIGENTE», e não «ainda não alterada»: uma proposta por domínio que
+    // ninguém mexeu não está à espera de nada — é a apreciação que vale.
     const who =
         appreciation.origin === 'decided'
             ? 'Decisão do professor'
-            : 'Proposta do Lapispro, ainda não alterada';
+            : 'Proposta do Lapispro, vigente';
 
     return subject === undefined ? `${who}: ${named}` : `${subject} · ${who}: ${named}`;
 }

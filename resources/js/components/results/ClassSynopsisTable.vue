@@ -394,9 +394,15 @@ const continuousUnitsSentence = computed(() => {
                                         class="rounded px-1.5 py-0.5 text-xs"
                                         :class="[
                                             appreciationClasses(domainCell(readingOf(student, moment.key), domain.domain_id)!.current, scaleBands),
+                                            // UMA PROPOSTA POR DOMÍNIO NÃO É UMA
+                                            // PENDÊNCIA: vigora enquanto o
+                                            // professor não a alterar, e o
+                                            // itálico dizia o contrário. O que
+                                            // se marca é a alteração, quando ela
+                                            // existe.
                                             domainCell(readingOf(student, moment.key), domain.domain_id)!.current!.origin === 'decided'
                                                 ? 'font-semibold'
-                                                : 'italic',
+                                                : '',
                                         ]"
                                         :title="appreciationTitle(domainCell(readingOf(student, moment.key), domain.domain_id)!.current, domain.name)"
                                         :aria-label="appreciationTitle(domainCell(readingOf(student, moment.key), domain.domain_id)!.current, domain.name)"

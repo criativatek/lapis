@@ -334,13 +334,22 @@ function domainCellStyle(color: string): Record<string, string> {
                                      cada uma de cento e cinquenta células
                                      transformaria a pauta num painel de
                                      controlo; clicar na apreciação é a mesma
-                                     ação sem o ruído. A decisão fica a negrito
-                                     e a proposta em itálico — e, porque nem
-                                     itálico nem negrito são informação para
-                                     quem não os vê, a frase inteira («Decisão
-                                     do professor: …», «Proposta do Lapispro,
-                                     ainda não decidida: …») vai no texto
-                                     acessível e não só no `title` (§8, §14). -->
+                                     ação sem o ruído.
+                                     UMA PROPOSTA POR DOMÍNIO NÃO É UMA
+                                     PENDÊNCIA. O itálico que ela levava dizia
+                                     «isto ainda está por decidir», e não está:
+                                     quem não altera nada aceitou-a, e ela
+                                     vigora. Texto normal, portanto. O que
+                                     continua a merecer marca é o CONTRÁRIO —
+                                     quando o professor alterou a proposta, e aí
+                                     é a decisão dele que se destaca.
+                                     E porque nem negrito nem anel são
+                                     informação para quem não os vê, a frase
+                                     inteira («Decisão do professor: …. Proposta
+                                     do Lapispro: …», «Proposta do Lapispro: … —
+                                     vigente enquanto o professor não a
+                                     alterar.») vai no texto acessível e não só
+                                     no `title` (§8, §14). -->
                                 <button
                                     v-if="isDomainDecidable(student, domain)"
                                     type="button"
@@ -349,7 +358,6 @@ function domainCellStyle(color: string): Record<string, string> {
                                         toneOf(domainCell(student, domain.domain_id)),
                                         {
                                             'font-semibold ring-1 ring-primary/40': domainCell(student, domain.domain_id).origin === 'decided',
-                                            italic: domainCell(student, domain.domain_id).origin === 'proposed',
                                             'text-muted-foreground': domainCell(student, domain.domain_id).origin === 'none',
                                         },
                                     ]"
@@ -367,13 +375,25 @@ function domainCellStyle(color: string): Record<string, string> {
                                         toneOf(domainCell(student, domain.domain_id)),
                                         {
                                             'font-semibold': domainCell(student, domain.domain_id).origin === 'decided',
-                                            italic: domainCell(student, domain.domain_id).origin === 'proposed',
                                             'text-muted-foreground': domainCell(student, domain.domain_id).origin === 'none',
                                         },
                                     ]"
                                     :title="domainCell(student, domain.domain_id).description"
                                     :aria-label="domainCell(student, domain.domain_id).description"
                                 >{{ domainCell(student, domain.domain_id).text }}</span>
+                                <!-- A MARCA DE QUE HOUVE ALTERAÇÃO, e não só o
+                                     negrito. Uma pauta guardada perde o anel do
+                                     botão e ficaria a distinguir a decisão do
+                                     professor apenas pela espessura da letra —
+                                     que não é informação para quem não a vê
+                                     (§25). Aparece só onde alguém alterou
+                                     alguma coisa, que por desenho é raro. -->
+                                <sup
+                                    v-if="domainCell(student, domain.domain_id).origin === 'decided'"
+                                    class="ml-0.5 rounded bg-primary/10 px-1 text-[10px] font-normal whitespace-nowrap text-primary"
+                                    :title="domainCell(student, domain.domain_id).description"
+                                    :aria-label="domainCell(student, domain.domain_id).description"
+                                >prof.</sup>
                                 <!-- O que o aluno disse SOBRE ESTE DOMÍNIO, em
                                      expoente e a meia-voz, com o «A» a dizer de
                                      quem é a voz — a mesma escrita do Quadro

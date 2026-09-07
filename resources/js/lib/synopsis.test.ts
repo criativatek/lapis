@@ -82,17 +82,22 @@ describe('a cor de uma apreciação', () => {
 
 describe('a frase de uma apreciação', () => {
     it('diz de quem é o juízo, e não só qual é', () => {
-        // A distinção que no ecrã se faz por itálico e negrito tem de chegar a
-        // quem não vê nenhum dos dois (§25).
+        // A distinção que no ecrã se faz por negrito tem de chegar a quem não o
+        // vê (§25).
         expect(appreciationTitle(appreciation('4', NUMERIC, 'decided'))).toBe('Decisão do professor: 4 — Bom');
+
+        // E UMA PROPOSTA POR DOMÍNIO É VIGENTE, não pendente: quem não a
+        // alterou aceitou-a. A frase antiga — «ainda não alterada» — descrevia
+        // uma espera que não existe.
         expect(appreciationTitle(appreciation('4', NUMERIC, 'proposed'))).toBe(
-            'Proposta do Lapispro, ainda não alterada: 4 — Bom',
+            'Proposta do Lapispro, vigente: 4 — Bom',
         );
+        expect(appreciationTitle(appreciation('4', NUMERIC, 'proposed'))).not.toContain('ainda não');
     });
 
     it('nomeia o domínio quando a célula é de um domínio', () => {
         expect(appreciationTitle(appreciation('3', NUMERIC), 'Leitura')).toBe(
-            'Leitura · Proposta do Lapispro, ainda não alterada: 3 — Suficiente',
+            'Leitura · Proposta do Lapispro, vigente: 3 — Suficiente',
         );
     });
 

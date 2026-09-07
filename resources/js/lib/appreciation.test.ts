@@ -67,6 +67,21 @@ describe('domainAppreciation', () => {
         expect(reading.description).toContain('N2 — Em desenvolvimento');
     });
 
+    it('uma proposta por domínio é VIGENTE, e a frase não a trata como pendência', () => {
+        // ACEITAÇÃO TÁCITA. Se o Lapispro propõe e o professor não altera, a
+        // proposta é a apreciação que vale: não há nada a aprovar e não se
+        // escreve linha nenhuma para o confirmar. A frase antiga dizia «ainda
+        // não decidida pelo professor» — descrevia uma pendência inexistente e
+        // fazia a pauta parecer ter trabalho por fazer.
+        const reading = domainAppreciation(domain(), true);
+
+        expect(reading.description).toBe(
+            'Proposta do Lapispro: N2 — Em desenvolvimento — vigente enquanto o professor não a alterar.',
+        );
+        expect(reading.description).not.toContain('ainda não');
+        expect(reading.description).not.toContain('não decidida');
+    });
+
     it('com os quantitativos desligados escreve a menção, nunca o código', () => {
         const reading = domainAppreciation(domain(), false);
 
@@ -146,6 +161,32 @@ describe('overallAppreciation', () => {
 });
 
 describe('assignedLevel', () => {
+    it('o nível atribuído CONTINUA a ter uma pendência verdadeira', () => {
+        // A aceitação tácita vale para os DOMÍNIOS e não para aqui. O nível
+        // atribuído é o ato formal do professor (§3.3): enquanto ele não o toma,
+        // há mesmo alguma coisa por fazer, e a frase tem de continuar a dizê-lo.
+        // Se um dia esta asserção cair junto com a dos domínios, alguém apagou a
+        // distinção entre uma leitura qualitativa e uma decisão.
+        const reading = assignedLevel(
+            {
+                status: 'proposed',
+                proposed_value: '3',
+                proposed_scale_level_id: 3,
+                proposed_scale_level_code: 'N2',
+                proposed_scale_level_label: 'Em desenvolvimento',
+                final_value: null,
+                final_scale_level_id: null,
+                final_scale_level_code: null,
+                final_scale_level_label: null,
+                override_reason: null,
+            },
+            true,
+        );
+
+        expect(reading.origin).toBe('proposed');
+        expect(reading.description).toContain('ainda não decidida pelo professor');
+    });
+
     it('a decisão do professor domina a proposta e diz-se por inteiro', () => {
         const reading = assignedLevel(
             {

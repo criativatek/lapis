@@ -25,7 +25,10 @@ use Illuminate\Support\Facades\Schema;
  *
  * APAGAR A LINHA É VOLTAR À PROPOSTA. Não há aqui um estado «decidiu que é a
  * proposta»: a ausência de linha significa exatamente «o professor não se
- * pronunciou», e é isso que a pauta mostra em itálico.
+ * pronunciou» — e isso NÃO é uma pendência. A proposta vigora enquanto ninguém
+ * a alterar, e é por isso que a pauta a escreve em texto normal e marca apenas
+ * o caso contrário. Uma versão anterior desta frase dizia «itálico»: era o
+ * mesmo dado com a leitura errada.
  *
  * O ÂMBITO VIAJA porque a mesma matrícula tem leituras diferentes no período e
  * no acumulado (§6), e uma decisão tomada sobre uma delas não é uma decisão
