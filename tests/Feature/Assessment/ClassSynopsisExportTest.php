@@ -88,17 +88,66 @@ class ClassSynopsisExportTest extends TestCase
     // -------------------------------------------------------------- as folhas
 
     #[Test]
-    public function the_workbook_has_the_five_sheets_the_file_is_supposed_to_be_readable_by(): void
+    public function the_workbook_has_the_six_sheets_the_file_is_supposed_to_be_readable_by(): void
     {
         $spreadsheet = $this->open($this->download());
 
-        // «Desempenho acumulado» entra entre os domínios e os elementos porque é
-        // aí que responde: depois de se ver o número de cada domínio, e antes de
-        // se descer ao elemento a elemento que o produziu.
+        // A ORDEM É A HIERARQUIA DAS LEITURAS (§14): os resultados formais de
+        // cada momento, a conclusão FORMAL do ano por domínio, e só então a
+        // leitura ANALÍTICA — antes de se descer ao elemento que a produziu.
         $this->assertSame(
-            ['Quadro Síntese', 'Domínios', 'Desempenho acumulado', 'Elementos de Avaliação', 'Configuração'],
+            [
+                'Quadro Síntese',
+                'Domínios',
+                'Contínua Final por Domínio',
+                'Desempenho acumulado',
+                'Elementos de Avaliação',
+                'Configuração',
+            ],
             $spreadsheet->getSheetNames(),
         );
+    }
+
+    #[Test]
+    public function the_final_reading_of_each_domain_is_a_sheet_of_its_own(): void
+    {
+        $sheet = $this->open($this->download())->getSheetByName('Contínua Final por Domínio');
+
+        $this->assertNotNull($sheet, 'O ficheiro não leva a conclusão formal de cada domínio.');
+
+        $headers = array_keys($this->headerColumns($sheet, 1));
+
+        // O RESULTADO FORMAL DE CADA UNIDADE em coluna própria, com o nome que a
+        // escola lhe deu — nunca «P1».
+        $this->assertContains('Domínio', $headers);
+        $this->assertContains('1.º Semestre (%)', $headers);
+        $this->assertContains('2.º Semestre (%)', $headers);
+
+        // …e a conclusão que eles formam, com as duas metades do juízo.
+        $this->assertContains('Média final (%)', $headers);
+        $this->assertContains('Unidades contadas', $headers);
+        $this->assertContains('Proposta do Lapispro', $headers);
+        $this->assertContains('Decisão do professor', $headers);
+        $this->assertContains('Apreciação vigente', $headers);
+
+        $text = $this->textOf($sheet);
+        $this->assertStringContainsString('Oralidade', $text);
+        $this->assertStringContainsString('Carolina Nunes', $text);
+    }
+
+    #[Test]
+    public function the_configuration_says_what_the_final_domain_average_counts(): void
+    {
+        $configuration = $this->textOf($this->open($this->download())->getSheetByName('Configuração'));
+
+        // Quem abre o ficheiro daqui a três anos não tem o ecrã ao lado: a folha
+        // tem de dizer o que entra na média e — sobretudo — o que não entra.
+        $this->assertStringContainsString('Como ler a folha «Contínua Final por Domínio»', $configuration);
+        $this->assertStringContainsString('resultados formais', $configuration);
+        $this->assertStringContainsString('fotografias intercalares não entram', $configuration);
+
+        // E que uma proposta que ninguém alterou não está à espera de nada.
+        $this->assertStringContainsString('VIGORA', $configuration);
     }
 
     #[Test]

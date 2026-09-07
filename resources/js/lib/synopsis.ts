@@ -212,20 +212,32 @@ export type SynopticContinuousUnit = {
     level: SynopticLevel | null;
 };
 
+/**
+ * A AVALIAÇÃO CONTÍNUA FINAL — a média dos resultados FORMAIS do ano, com as
+ * parcelas de que ela é feita ao lado.
+ *
+ * A MESMA FORMA para o número global e para o de cada domínio, porque é a mesma
+ * leitura a duas escalas: a mesma classe produz as duas, e dar-lhes tipos
+ * diferentes convidaria a tratá-las como coisas diferentes.
+ */
+export type SynopticContinuousReading = {
+    units: SynopticContinuousUnit[];
+    counted_units: number;
+    normalized_value: string | null;
+    proposal: { value: string | null; state: string; is_percentage: boolean };
+    level: SynopticLevel | null;
+    decision: { final: { code: string; label: string } | null; final_value: string | null } | null;
+};
+
 export type SynopticStudent = {
     enrollment_id: number;
     enrollment_ulid: string | null;
     class_number: number | null;
     name: string;
     moments: SynopticReadingRow[];
-    continuous: {
-        units: SynopticContinuousUnit[];
-        counted_units: number;
-        normalized_value: string | null;
-        proposal: { value: string | null; state: string; is_percentage: boolean };
-        level: SynopticLevel | null;
-        decision: { final: { code: string; label: string } | null; final_value: string | null } | null;
-    } | null;
+    continuous: SynopticContinuousReading | null;
+    /** A mesma leitura, domínio a domínio, indexada pelo id do domínio. */
+    continuous_domains: Record<number, SynopticContinuousReading>;
     elements: SynopticElementResult[];
 };
 

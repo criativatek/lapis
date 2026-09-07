@@ -162,8 +162,96 @@ function openBreakdown(student: Student, period: PeriodCell, domainUlid: string 
 const lastPeriodIndex = computed(() => periods.value.length - 1);
 
 // Per domain: one column per period, an evolution column after every period but
-// the first, then the accumulated figure and the mention it falls in.
-const domainColumns = computed(() => periods.value.length * 2 + 1);
+// the first, then the accumulated figure and the mention it falls in, and the
+// two that close the year — a média final formal e a apreciação que vale.
+const domainColumns = computed(() => periods.value.length * 2 + 3);
+
+/**
+ * ------------------------------- a avaliação contínua final de cada domínio
+ *
+ * O QUE FALTAVA ERA UMA CONCLUSÃO. Cada bloco de domínio mostrava os resultados
+ * de cada unidade e o desempenho acumulado, e nenhuma coluna dizia em que é que
+ * o ano tinha dado NAQUELE domínio. O acumulado não serve de resposta: é a
+ * outra leitura, a que reprocessa os elementos brutos.
+ *
+ * TRÊS CONCEITOS QUE NÃO SE MISTURAM (§14), e a grelha diz qual é qual pela
+ * ordem e pela barra que os separa: primeiro os RESULTADOS FORMAIS de cada
+ * unidade, depois o ANALÍTICO — desempenho acumulado e a sua menção —, e por
+ * fim o FORMAL FINAL, que leva a cor do produto porque é dele que sairia uma
+ * proposta de nível.
+ *
+ * NADA É CALCULADO AQUI. A média vem de `ContinuousAssessment`, pela mesma
+ * classe que produz a global.
+ */
+function domainFinal(student: Student, domainId: number) {
+    return continuousDomainsByEnrollment.value.get(student.enrollment_id)?.[domainId] ?? null;
+}
+
+const continuousDomainsByEnrollment = computed(() => {
+    const map = new Map<number, Record<number, NonNullable<Synopsis['students'][number]['continuous']>>>();
+
+    props.synopsis.students.forEach((student) => {
+        map.set(student.enrollment_id, student.continuous_domains ?? {});
+    });
+
+    return map;
+});
+
+/**
+ * A APRECIAÇÃO FINAL DE UM DOMÍNIO: a decisão do professor quando existe, a
+ * proposta que sai da média quando não — a mesma aceitação tácita que vale em
+ * toda a aplicação (§2).
+ */
+function domainFinalAppreciation(student: Student, domainId: number): {
+    level: Level;
+    decided: boolean;
+    proposed: Level;
+} | null {
+    const reading = domainFinal(student, domainId);
+
+    if (reading === null) {
+        return null;
+    }
+
+    const proposed = reading.level;
+    const decided = reading.decision?.final ?? null;
+
+    if (decided !== null) {
+        return {
+            level: { code: decided.code, label: decided.label, sequence: 0, is_negative: false },
+            decided: true,
+            proposed,
+        };
+    }
+
+    return proposed === null ? null : { level: proposed, decided: false, proposed };
+}
+
+/** A frase inteira, que é o que chega a quem não vê nem cor nem negrito (§25). */
+function domainFinalTitle(student: Student, domain: { id: number; name: string }): string {
+    const reading = domainFinal(student, domain.id);
+
+    if (reading === null || reading.normalized_value === null) {
+        return `${domain.name}: sem resultados formais para uma avaliação contínua final.`;
+    }
+
+    const average = `${domain.name} · Avaliação Contínua Final: ${pct(reading.normalized_value)} — ${continuousFormula.value}`;
+    const appreciation = domainFinalAppreciation(student, domain.id);
+
+    if (appreciation === null) {
+        return average;
+    }
+
+    if (appreciation.decided) {
+        const proposed = appreciation.proposed;
+
+        return `${average} Decisão do professor: ${appreciation.level?.code} — ${appreciation.level?.label}.${
+            proposed === null ? '' : ` Proposta do Lapispro: ${proposed.code} — ${proposed.label}.`
+        }`;
+    }
+
+    return `${average} Proposta do Lapispro: ${appreciation.level?.code} — ${appreciation.level?.label} — vigente enquanto o professor não a alterar.`;
+}
 
 /**
  * WHERE ONE DOMAIN ENDS AND THE NEXT BEGINS.
@@ -351,7 +439,13 @@ function proposalText(proposal: Proposal | undefined): string {
                 </div>
 
                 <div class="flex flex-wrap items-center gap-3">
-                    <label v-if="view === 'moments'" class="flex items-center gap-1.5 text-sm">
+                    <!-- O INTERRUPTOR VALE NAS DUAS VISTAS. A leitura por
+                         domínio passou a fechar cada bloco com uma apreciação
+                         qualitativa, e uma pauta de 1.º ciclo lê-se por menções:
+                         desligar os números tem de continuar a desligá-los
+                         também aqui (§60). O que se apaga é o número, nunca o
+                         juízo. -->
+                    <label class="flex items-center gap-1.5 text-sm">
                         <input v-model="showQuantitative" type="checkbox" class="rounded border-border" />
                         <span>Mostrar quantitativos</span>
                     </label>
@@ -485,6 +579,27 @@ function proposalText(proposal: Proposal | undefined): string {
                                 scope="col"
                             >
                                 Menção
+                            </th>
+                            <!-- O FORMAL FINAL, e a barra que o separa do
+                                 analítico é mais firme por isso. Leva a cor do
+                                 produto porque é o indicador formal do ano
+                                 naquele domínio; o desempenho acumulado, à
+                                 esquerda, fica em tons neutros (§14, §17). -->
+                            <th
+                                class="sticky top-[33px] z-20 border-b border-l-4 border-l-primary border-b-border bg-primary/10 px-2 py-1 text-center text-xs font-medium whitespace-nowrap"
+                                :title="`${CONTINUOUS} final — ${domain.name}. ${continuousFormula}`"
+                                :aria-label="`${CONTINUOUS} final — ${domain.name}. ${continuousFormula}`"
+                                scope="col"
+                            >
+                                Final
+                            </th>
+                            <th
+                                class="sticky top-[33px] z-20 border-b border-border bg-primary/10 px-2 py-1 text-center text-xs font-medium"
+                                :title="`Apreciação final de ${domain.name} — a decisão do professor quando existe, a proposta que sai da média final quando não.`"
+                                :aria-label="`Apreciação final de ${domain.name} — a decisão do professor quando existe, a proposta que sai da média final quando não.`"
+                                scope="col"
+                            >
+                                Aprec.
                             </th>
                         </template>
 
@@ -648,6 +763,56 @@ function proposalText(proposal: Proposal | undefined): string {
                                     :title="`Menção qualitativa acumulada — ${domain.name}`"
                                 >{{ domainCell(student.periods[student.periods.length - 1], domain.id)?.mention?.label }}</span>
                                 <span v-else class="text-muted-foreground">—</span>
+                            </td>
+
+                            <!-- A AVALIAÇÃO CONTÍNUA FINAL DESTE DOMÍNIO: a
+                                 média dos resultados formais das unidades do
+                                 ano. Com os quantitativos desligados o número
+                                 sai e fica a apreciação, que é o que uma pauta
+                                 sem números quer dizer (§60). -->
+                            <td class="border-l-4 border-l-primary px-2 py-1.5 text-center font-medium tabular-nums">
+                                <span
+                                    v-if="showQuantitative"
+                                    :class="{ 'text-muted-foreground': (domainFinal(student, domain.id)?.normalized_value ?? null) === null }"
+                                    :title="domainFinalTitle(student, domain)"
+                                >{{ pct(domainFinal(student, domain.id)?.normalized_value ?? null) }}</span>
+                                <span
+                                    v-else
+                                    class="text-muted-foreground"
+                                    :title="domainFinalTitle(student, domain)"
+                                >{{ (domainFinal(student, domain.id)?.normalized_value ?? null) === null ? '—' : '·' }}</span>
+                            </td>
+
+                            <!-- A APRECIAÇÃO QUE VALE no fim do ano para este
+                                 domínio: a decisão do professor quando existe,
+                                 a proposta que sai da média quando não — e a
+                                 proposta não é uma pendência (§2). -->
+                            <td class="px-2 py-1.5 text-center whitespace-nowrap">
+                                <span
+                                    v-if="domainFinalAppreciation(student, domain.id)"
+                                    class="rounded px-1.5 py-0.5 text-xs"
+                                    :class="[
+                                        levelClasses(domainFinalAppreciation(student, domain.id)!.proposed),
+                                        domainFinalAppreciation(student, domain.id)!.decided ? 'font-semibold' : '',
+                                    ]"
+                                    :title="domainFinalTitle(student, domain)"
+                                    :aria-label="domainFinalTitle(student, domain)"
+                                >{{
+                                    showQuantitative
+                                        ? domainFinalAppreciation(student, domain.id)!.level?.code
+                                        : domainFinalAppreciation(student, domain.id)!.level?.label
+                                }}</span>
+                                <sup
+                                    v-if="domainFinalAppreciation(student, domain.id)?.decided"
+                                    class="ml-0.5 rounded bg-muted px-1 text-[10px] font-normal whitespace-nowrap text-muted-foreground"
+                                    :title="domainFinalTitle(student, domain)"
+                                    :aria-label="domainFinalTitle(student, domain)"
+                                >prof.</sup>
+                                <span
+                                    v-if="!domainFinalAppreciation(student, domain.id)"
+                                    class="text-muted-foreground"
+                                    :title="domainFinalTitle(student, domain)"
+                                >—</span>
                             </td>
                         </template>
 
@@ -848,6 +1013,12 @@ function proposalText(proposal: Proposal | undefined): string {
                 <strong>Clique num valor de {{ ACCUMULATED_SHORT.toLowerCase() }}</strong> para ver de onde ele vem:
                 os pontos de cada unidade, os elementos que os produziram e a fração que eles formam.
                 {{ ACCUMULATED_NOT_AN_AVERAGE }}
+                Já <strong>Final</strong> é a <strong>{{ CONTINUOUS }} final desse domínio</strong> — a média dos
+                resultados formais de cada unidade, e só deles: {{ continuousFormula }} As
+                <strong>fotografias intercalares não entram</strong>, e o desempenho acumulado também não. A
+                <strong>Aprec.</strong> ao lado é a apreciação que vale no fim do ano: a proposta que sai dessa média,
+                ou a decisão do professor quando ele a alterou — a negrito e marcada com «prof.». Uma proposta que
+                ninguém alterou <strong>vigora</strong>; não é uma pendência.
                 O <strong>Auto</strong> em expoente é a autoavaliação do aluno nesse domínio. No bloco
                 <strong>Síntese</strong> ficam, por unidade, a Média Ponderada, a evolução, o
                 desempenho acumulado, a <strong>Proposta</strong>, a <strong>Autoavaliação</strong> global e o

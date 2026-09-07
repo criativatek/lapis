@@ -16,19 +16,28 @@ use RuntimeException;
 /**
  * O QUADRO SÍNTESE EM EXCEL — o ficheiro do Lapispro, não a grelha do Inovar.
  *
- * CINCO FOLHAS, PORQUE SÃO CINCO PERGUNTAS. Uma única folha com o ano inteiro
- * ao nível do elemento teria centenas de colunas e não se leria; separadas, cada
+ * SEIS FOLHAS, PORQUE SÃO SEIS PERGUNTAS. Uma única folha com o ano inteiro ao
+ * nível do elemento teria centenas de colunas e não se leria; separadas, cada
  * uma responde ao que uma pessoa foi lá procurar:
  *
- *   Quadro Síntese          o ano de cada aluno, momento a momento, e a
- *                           avaliação contínua que o fecha
- *   Domínios                o mesmo, aberto por domínio
- *   Desempenho acumulado    de onde vem aquele número — os pontos de cada
- *                           unidade, o peso efetivo que eles criam, e a fração
- *                           única que formam
- *   Elementos de Avaliação  o que cada aluno fez, elemento a elemento
- *   Configuração            a escala, os pesos, a legenda — o que faz o resto
- *                           continuar compreensível daqui a três anos
+ *   Quadro Síntese              o ano de cada aluno, momento a momento, e a
+ *                               avaliação contínua que o fecha
+ *   Domínios                    o mesmo, aberto por domínio
+ *   Contínua Final por Domínio  em que é que o ano deu em CADA domínio: o
+ *                               resultado formal de cada unidade, a média que
+ *                               eles formam e a apreciação que vale
+ *   Desempenho acumulado        de onde vem aquele número — os pontos de cada
+ *                               unidade, o peso efetivo que eles criam, e a
+ *                               fração única que formam
+ *   Elementos de Avaliação      o que cada aluno fez, elemento a elemento
+ *   Configuração                a escala, os pesos, a legenda — o que faz o
+ *                               resto continuar compreensível daqui a três anos
+ *
+ * AS DUAS FOLHAS DO MEIO NÃO SÃO A MESMA COISA DUAS VEZES, e a ordem diz qual é
+ * qual: «Contínua Final por Domínio» é a conclusão FORMAL — a média dos
+ * resultados formais das unidades — e «Desempenho acumulado» é a leitura
+ * ANALÍTICA, que reprocessa os elementos brutos do ano. Dão números diferentes
+ * de propósito.
  *
  * A FOLHA DO ACUMULADO EXISTE PORQUE O NÚMERO NÃO SE EXPLICA SOZINHO. Quem veja
  * 68 % num semestre, 25 % no outro e 60 % de desempenho acumulado tem à frente
@@ -110,6 +119,10 @@ class ClassSynopsisXlsxWriter
 
         $this->writeSynopsisSheet($spreadsheet->getActiveSheet(), $synopsis, $context, $bands);
         $this->writeDomainsSheet($spreadsheet->createSheet(), $synopsis, $bands);
+        // A ORDEM DAS FOLHAS É A HIERARQUIA DAS LEITURAS (§14): os resultados
+        // formais de cada momento, depois a conclusão FORMAL do ano por domínio,
+        // e só então a leitura ANALÍTICA.
+        $this->writeContinuousByDomainSheet($spreadsheet->createSheet(), $synopsis, $bands);
         $this->writeAccumulatedSheet($spreadsheet->createSheet(), $synopsis, $context, $accumulated);
         $this->writeElementsSheet($spreadsheet->createSheet(), $synopsis);
         $this->writeConfigurationSheet($spreadsheet->createSheet(), $synopsis, $context);
@@ -317,7 +330,104 @@ class ClassSynopsisXlsxWriter
         $this->finish($sheet, 1, count($headers), $row - 1, freezeAt: 'C', nameWidth: 28, singleHeaderRow: true);
     }
 
-    // ------------------------------------------ folha 3: desempenho acumulado
+    // --------------------------------- folha 3: avaliação contínua final
+
+    /**
+     * A CONCLUSÃO FORMAL DO ANO, domínio a domínio.
+     *
+     * UMA LINHA POR (ALUNO, DOMÍNIO), com o resultado formal de cada unidade
+     * temporal em coluna própria e a média que eles formam. Quem some as
+     * colunas das unidades — pelos pesos que a folha «Configuração» declara —
+     * chega à média: é isso que torna o número verificável fora da aplicação.
+     *
+     * O QUE ENTRA E O QUE NÃO ENTRA, dito também por escrito na «Configuração»:
+     * entram os resultados formais das unidades; não entram fotografias
+     * intercalares nem o desempenho acumulado, que vive na folha ao lado e
+     * responde a outra pergunta.
+     *
+     * A APRECIAÇÃO VIGENTE é a decisão do professor quando existe e a proposta
+     * quando não — e uma proposta que ninguém alterou não é uma pendência: é o
+     * que vale. A coluna «Origem» diz qual das duas está a valer, para que a
+     * folha não dependa de quem a lê saber a regra.
+     *
+     * @param  array<string, mixed>  $synopsis
+     * @param  list<array<string, mixed>>  $bands
+     */
+    protected function writeContinuousByDomainSheet(Worksheet $sheet, array $synopsis, array $bands = []): void
+    {
+        $sheet->setTitle('Contínua Final por Domínio');
+
+        /** @var list<array<string, mixed>> $units */
+        $units = $synopsis['continuous']['units'];
+
+        $headers = ['Nº', 'Aluno', 'Domínio'];
+        foreach ($units as $unit) {
+            $headers[] = (string) $unit['label'].' (%)';
+        }
+        $headers[] = 'Média final (%)';
+        $headers[] = 'Unidades contadas';
+        $headers[] = 'Proposta do Lapispro';
+        $headers[] = 'Decisão do professor';
+        $headers[] = 'Apreciação vigente';
+        $headers[] = 'Origem';
+
+        $this->headerRow($sheet, $headers, 1);
+        $row = 2;
+
+        /** @var array<int, array<string, mixed>> $domainsById */
+        $domainsById = [];
+        foreach ($synopsis['domains'] as $domain) {
+            $domainsById[(int) $domain['domain_id']] = $domain;
+        }
+
+        foreach ($synopsis['students'] as $student) {
+            foreach ($student['continuous_domains'] ?? [] as $domainId => $reading) {
+                $domain = $domainsById[(int) $domainId] ?? null;
+
+                if (($student['class_number'] ?? null) !== null) {
+                    $sheet->setCellValue([1, $row], (int) $student['class_number']);
+                }
+
+                $this->text($sheet, 2, $row, (string) $student['name']);
+                $this->text($sheet, 3, $row, (string) ($domain['name'] ?? '(domínio removido)'));
+
+                if ($domain !== null) {
+                    $this->fill($sheet, 3, $row, 3, $row, $this->rgb($domain), soft: true);
+                }
+
+                $column = 4;
+                foreach ($reading['units'] as $unit) {
+                    $this->percentage($sheet, $column++, $row, $unit['normalized_value'] ?? null);
+                }
+
+                $this->percentage($sheet, $column, $row, $reading['normalized_value'] ?? null);
+                $sheet->setCellValue([$column + 1, $row], (int) ($reading['counted_units'] ?? 0));
+                $sheet->getStyle([$column + 1, $row])->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+                $proposed = $reading['level'] ?? null;
+                $decided = $reading['decision']['final'] ?? null;
+
+                $this->text($sheet, $column + 2, $row, (string) ($proposed['code'] ?? $proposed['label'] ?? ''));
+                $this->text($sheet, $column + 3, $row, (string) ($decided['code'] ?? $decided['label'] ?? ''));
+
+                $current = $decided ?? $proposed;
+                $this->text($sheet, $column + 4, $row, (string) ($current['code'] ?? $current['label'] ?? ''));
+                $this->paintLevel($sheet, $column + 4, $row, $current['code'] ?? null, $current['label'] ?? null, $bands);
+                $this->text(
+                    $sheet,
+                    $column + 5,
+                    $row,
+                    $current === null ? '' : $this->originLabel($decided === null ? 'proposed' : 'decided'),
+                );
+
+                $row++;
+            }
+        }
+
+        $this->finish($sheet, 1, count($headers), $row - 1, freezeAt: 'D', nameWidth: 28, singleHeaderRow: true);
+    }
+
+    // ------------------------------------------ folha 4: desempenho acumulado
 
     /**
      * DE ONDE VEM AQUELE NÚMERO, aluno a aluno e domínio a domínio.
@@ -433,7 +543,7 @@ class ClassSynopsisXlsxWriter
         $this->percentage($sheet, 8, $row, $effectiveWeight);
     }
 
-    // ----------------------------------------------------- folha 4: elementos
+    // ----------------------------------------------------- folha 5: elementos
 
     /** @param  array<string, mixed>  $synopsis */
     protected function writeElementsSheet(Worksheet $sheet, array $synopsis): void
@@ -512,7 +622,7 @@ class ClassSynopsisXlsxWriter
         $this->finish($sheet, 1, count($headers), $row - 1, freezeAt: 'C', nameWidth: 28, singleHeaderRow: true);
     }
 
-    // -------------------------------------------------- folha 5: configuração
+    // -------------------------------------------------- folha 6: configuração
 
     /**
      * @param  array<string, mixed>  $synopsis
@@ -582,6 +692,15 @@ class ClassSynopsisXlsxWriter
         $readings[] = ['Os pesos de cada uma', ReadingVocabulary::ACCUMULATED_VERSUS_CONTINUOUS];
 
         $row = $this->block($sheet, $row, 'As duas leituras do ano', $readings);
+
+        $row = $this->block($sheet, $row, 'Como ler a folha «Contínua Final por Domínio»', [
+            ['O que é', 'A conclusão FORMAL do ano em cada domínio: a média dos resultados formais de cada unidade temporal desse domínio.'],
+            ['O que entra', 'Apenas os resultados formais das unidades — os que fecham cada semestre, período ou módulo.'],
+            ['O que NÃO entra', 'As fotografias intercalares não entram, porque são leituras informativas a meio do caminho e não conclusões de unidade. O desempenho acumulado também não: é a outra leitura do ano e vive na folha seguinte.'],
+            ['Os pesos', 'São os configurados em «Unidades formais que entram na avaliação contínua», acima. Sem pesos declarados, todas as unidades pesam o mesmo.'],
+            ['Uma unidade sem resultado', 'Fica fora da média e do seu denominador. Não conta como zero — uma unidade que o aluno não viveu não é uma unidade em que ele tenha tido nada.'],
+            ['Apreciação vigente', 'A decisão do professor quando ela existe; a proposta do Lapispro quando não. Uma proposta que ninguém alterou VIGORA — não é uma pendência e não precisa de ser aprovada.'],
+        ]);
 
         $row = $this->block($sheet, $row, 'Como ler a folha «Desempenho acumulado»', [
             ['Uma linha por unidade', 'Os pontos obtidos e a cotação que essa unidade temporal contribuiu para o domínio.'],

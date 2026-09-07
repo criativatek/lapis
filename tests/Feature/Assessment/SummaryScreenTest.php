@@ -287,8 +287,9 @@ class SummaryScreenTest extends TestCase
         $screen = $this->screen();
 
         // One column per period, an evolution column after each but the first,
-        // then the accumulated and the mention closing the block.
-        $this->assertStringContainsString('periods.value.length * 2 + 1', $screen);
+        // then the accumulated and its mention — e as duas que fecham o ano: a
+        // média final formal do domínio e a apreciação que dela resulta.
+        $this->assertStringContainsString('periods.value.length * 2 + 3', $screen);
         $this->assertStringContainsString('index === 0 ? 5 : 6', $screen);
         // Nothing here knows how many periods a year has.
         $this->assertStringNotContainsString('P1</th>', $screen);

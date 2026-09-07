@@ -115,6 +115,19 @@ function synopsis(): Synopsis {
                     level: { code: '4', label: 'Bom', sequence: 4, is_negative: false },
                     decision: null,
                 },
+                // A mesma leitura, domínio a domínio. Esta grelha não a mostra —
+                // quem a mostra é a vista «Por domínio» —, mas ela viaja no
+                // mesmo modelo de leitura.
+                continuous_domains: {
+                    1: {
+                        units: [],
+                        counted_units: 2,
+                        normalized_value: '62.4234690000',
+                        proposal: { value: '3', state: 'resolved', is_percentage: false },
+                        level: { code: '3', label: 'Suficiente', sequence: 3, is_negative: false },
+                        decision: null,
+                    },
+                },
                 elements: [],
             },
         ],

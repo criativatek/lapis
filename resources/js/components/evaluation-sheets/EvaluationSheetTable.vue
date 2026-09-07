@@ -390,7 +390,7 @@ function domainCellStyle(color: string): Record<string, string> {
                                      alguma coisa, que por desenho é raro. -->
                                 <sup
                                     v-if="domainCell(student, domain.domain_id).origin === 'decided'"
-                                    class="ml-0.5 rounded bg-primary/10 px-1 text-[10px] font-normal whitespace-nowrap text-primary"
+                                    class="ml-0.5 rounded bg-muted px-1 text-[10px] font-normal whitespace-nowrap text-muted-foreground"
                                     :title="domainCell(student, domain.domain_id).description"
                                     :aria-label="domainCell(student, domain.domain_id).description"
                                 >prof.</sup>
