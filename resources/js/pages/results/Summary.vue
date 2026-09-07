@@ -590,6 +590,15 @@ function proposalText(proposal: Proposal | undefined): string {
                     célula ou na sua descrição.
                 </span>
             </p>
+            <p class="flex items-start gap-2">
+                <CircleAlert class="mt-0.5 size-3.5 shrink-0" />
+                <span>
+                    <strong>A1</strong>, <strong>A2</strong>… em expoente, ao abrir um momento, são a
+                    <strong>autoavaliação do aluno</strong> nesse domínio — o «A» é de autoavaliação e o número é o
+                    nível que ele próprio se atribuiu. É informação de apoio: não entra em cálculo nenhum. E «—»
+                    significa <strong>sem elementos</strong>, nunca zero.
+                </span>
+            </p>
             <p v-if="scaleBands.length > 0" class="flex flex-wrap items-center gap-1.5">
                 <span>Escala:</span>
                 <span

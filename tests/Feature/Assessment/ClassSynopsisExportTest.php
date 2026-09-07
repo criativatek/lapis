@@ -240,6 +240,19 @@ class ClassSynopsisExportTest extends TestCase
     }
 
     #[Test]
+    public function a_teacher_from_another_organization_cannot_open_the_screen_either(): void
+    {
+        // A MESMA PORTA PARA OS DOIS. Esconder o botão de exportar não guarda
+        // nada; o que guarda é a autorização, e ela é a mesma no ecrã e no
+        // ficheiro. 404 e não 403: a existência da turma também não é dela (§63).
+        $stranger = User::factory()->create();
+
+        $this->actingAs($stranger)
+            ->get('/classes/'.$this->classUlid().'/results/quadro-sintese')
+            ->assertNotFound();
+    }
+
+    #[Test]
     public function a_guest_gets_no_file_at_all(): void
     {
         $this->get('/classes/'.$this->classUlid().'/results/quadro-sintese/xlsx')
@@ -283,6 +296,46 @@ class ClassSynopsisExportTest extends TestCase
         $this->assertArrayHasKey('progression', $page['props']);
     }
 
+    #[Test]
+    public function an_appreciation_is_tinted_by_its_position_on_the_scale_and_still_says_the_level(): void
+    {
+        $sheet = $this->open($this->download())->getSheetByName('Quadro Síntese');
+        $row = $this->rowOf($sheet, 'Carolina Nunes');
+        $this->assertNotNull($row);
+
+        // A coluna «Apreciação vigente» do 1.º momento formal. A Carolina está
+        // no topo da escala, e o topo é verde — por ser o topo, e não por ser o
+        // número 5 (§24, §57).
+        $tinted = [];
+
+        foreach ($sheet->getRowIterator($row, $row) as $sheetRow) {
+            foreach ($sheetRow->getCellIterator() as $cell) {
+                $value = $cell->getValue();
+
+                if (! is_string($value) || $value === '') {
+                    continue;
+                }
+
+                $rgb = $cell->getStyle()->getFill()->getStartColor()->getRGB();
+
+                if (in_array($rgb, ['D1FAE5', 'DBEAFE', 'FEF3C7', 'FEE2E2'], true)) {
+                    $tinted[$value] = $rgb;
+                }
+            }
+        }
+
+        $this->assertNotEmpty($tinted, 'Nenhuma apreciação foi pintada.');
+
+        // E A COR NUNCA É A ÚNICA INFORMAÇÃO: a célula pintada continua a
+        // escrever o nível, e a folha «Configuração» diz o que a cor quer dizer.
+        foreach ($tinted as $text => $rgb) {
+            $this->assertNotSame('', trim((string) $text));
+        }
+
+        $configuration = $this->textOf($this->open($this->download())->getSheetByName('Configuração'));
+        $this->assertStringContainsString('Cor da apreciação', $configuration);
+        $this->assertStringContainsString('nunca é a única informação', $configuration);
+    }
     // ------------------------------------------------------------ utilitários
 
     private function textOf(Worksheet $sheet): string

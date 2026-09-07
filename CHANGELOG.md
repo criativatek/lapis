@@ -25,6 +25,132 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.134.0] — 2026-09-07
+
+O Quadro Síntese lia o ano de uma turma pelos **números**. Nesta versão passa a
+lê-lo também pelos **momentos**: o que aconteceu, quando, e o que o professor
+decidiu em cada um. Com isso vem a regra que faltava escrever por extenso — a
+avaliação contínua é a média dos resultados formais, e as intercalares são
+fotografias que não entram nela.
+
+### A avaliação contínua é a média dos resultados formais
+
+- **Uma regra, dita por inteiro.** Um ano tem unidades formais — dois semestres,
+  três períodos, os módulos que a escola configurou — e cada uma fecha com um
+  resultado. A avaliação contínua é a média desses, e de mais nada. Os
+  **momentos intercalares não entram**: uma intercalar é uma fotografia
+  informativa do estado do aluno a meio do caminho, serve para acompanhar e para
+  ler evolução, e fazer a média de «intercalar, final, intercalar, final»
+  contaria duas vezes o mesmo trajeto.
+- **Os pesos são os que estão configurados.** `period_weight_percent` já existia
+  na configuração do perfil e não era lido por ninguém; passa a ser. Quando
+  nenhuma unidade tem peso declarado, todas pesam o mesmo — que é o que «a média
+  entre o 1.º e o 2.º semestre» quer dizer em português. Uma unidade que o perfil
+  exclui do acumulado fica fora também daqui.
+- **Não é o «acumulado», e os dois ficam lado a lado.** O acumulado do motor
+  reprocessa os elementos brutos do ano e **continua exatamente como estava**; a
+  avaliação contínua é a média das conclusões de cada unidade. No cenário de
+  demonstração dão 89,73 % e 89,40 % para a mesma aluna: dois números
+  verdadeiros para duas perguntas diferentes.
+- **Uma unidade sem resultado não é um zero.** Não entra no denominador, e um
+  aluno que entrou a meio do ano tem a média das unidades que viveu.
+
+### O Quadro Síntese ao longo do ano
+
+- **Duas vistas do mesmo ecrã, e não um ecrã novo.** «Por domínio» é a leitura
+  que a página sempre teve e fica como estava; «Ao longo do ano» é a nova. Para
+  cada unidade temporal, o momento intercalar e o final, por ordem cronológica,
+  visualmente distintos e com a distinção dita por escrito.
+- **Três níveis, com só o primeiro aberto.** Trinta alunos × cinco domínios ×
+  quatro momentos × vinte elementos são milhares de células. Chega-se à
+  apreciação de cada aluno em cada momento e à média contínua; os domínios
+  abrem-se por momento, e os elementos de avaliação por aluno, quando alguém os
+  quer ver.
+- **Uma fotografia nunca é recalculada.** Se em novembro a proposta era
+  «Suficiente», o Quadro continua a dizê-lo em junho. Um momento intercalar que
+  ninguém guardou aparece vazio — que é a resposta verdadeira — em vez de ser
+  preenchido com os números de hoje.
+- **Liga ao que já existe.** O nome de cada aluno abre o Relatório do aluno; o
+  Quadro é a leitura da turma e não repete a análise individual.
+- **Não criou tabela nenhuma.** Agrega fontes canónicas — a pauta de cada
+  unidade, as fotografias guardadas, os elementos e a média contínua. Uma segunda
+  cópia dos quantitativos seria uma segunda verdade a manter em dia.
+
+### O Excel do Quadro Síntese
+
+- **Quatro folhas, porque são quatro perguntas**: o quadro, os domínios, os
+  elementos de avaliação, e a configuração — a escala, os pesos e a legenda que
+  fazem o resto continuar compreensível daqui a três anos.
+- **A folha «Domínios» diz, em cada linha e por escrito, se aquele momento entra
+  na avaliação contínua**, para que o ficheiro não dependa de quem o lê saber a
+  regra de cor.
+- **Exporta tudo**, independentemente do que está visível no ecrã: quem o abre
+  uma semana depois não tem como saber o que faltava.
+
+### A Pauta de Avaliação
+
+- **O título de uma pauta guardada passou a ser uma escolha.** Os momentos
+  estruturais do ano, tirados da configuração, mais «Outro…» para a pauta
+  guardada numa reunião. Escrever o título à mão de cada vez era como um
+  histórico acaba com «1º semestre», «1.o Semestre» e «Semestre 1» a designarem o
+  mesmo momento. O título continua a ser só um título: não muda o momento que
+  está a ser guardado, nem a data.
+- **A apreciação ganhou cor, pela posição do nível na escala.** O «5» é verde por
+  ser o nível mais alto, não por ser cinco: uma escala «NS/S/SB», sem número
+  nenhum, pinta-se da mesma maneira. A cor nunca é a única informação — o código
+  continua escrito e a frase inteira continua no texto acessível. Uma pauta
+  guardada fica sem cor de nível, de propósito: abri-la não pode ir buscar nada
+  ao presente.
+- **O «A» passou a ter legenda visível**: é a autoavaliação do aluno naquele
+  domínio, e a frase diz também o que ela não é — não entra em cálculo nenhum.
+
+### «Preparar fecho» conta pendências, não avisos
+
+- **Cobertura parcial deixou de ser uma pendência.** Um aluno avaliado em todos
+  os domínios necessários está avaliado; os elementos que não se realizaram não
+  se realizam depois de o momento passar, e não há ali nada que o professor possa
+  resolver. Continua na lista, porque é informação útil ao decidir; sai da
+  contagem, porque um contador que não desce é um contador que se ignora.
+- **Um domínio sem avaliação nenhuma continua a ser uma pendência real**, e
+  guardar uma fotografia não limpa nenhuma.
+
+### A IA devolve nomes, e não pseudónimos
+
+- **A frase que o professor via.** Na análise da sua própria turma, «a turma
+  acompanha, com exceção dos alunos E e F» — que não identifica ninguém. A
+  substituição de volta procurava «Aluno E», e um modelo escreve o prefixo uma
+  vez, no plural, com as letras soltas. Passa a reconhecer «Aluno A», «aluno A»,
+  «alunos A e B» e «Alunos A, B e C».
+- **O artigo sai com o pseudónimo.** «o aluno E» é masculino porque «aluno» é
+  masculino, não porque a pessoa o seja: trocar só o pseudónimo produzia «o Marta
+  Tomás». As contrações voltam à preposição que são — «dos alunos E e F» → «de
+  Eva Salgado e Filipe Andrade». Nada infere género a partir de um nome.
+- **Os nomes voltam curtos** — primeiro e último, como uma pessoa chama outra
+  numa reunião. Quem reescreve o texto do próprio professor continua a receber o
+  nome inteiro.
+- **Cobertura parcial deixou de significar «avaliação provisória».** Só a falta
+  de informação indispensável — um domínio necessário sem qualquer elemento —
+  justifica falar de leitura insuficiente.
+- Nada disto toca no provider, no modelo, nas quotas ou no motor de IA.
+
+### Relatórios
+
+- **Imprimir**, a partir do ecrã onde o relatório já está. O que sai é a
+  pré-visualização — o mesmo documento que o PDF e o Word levam. Sem página
+  paralela: uma composição escrita só para o papel seria uma terceira coisa a
+  manter em dia com as outras duas.
+- O PDF e o Word já existiam; ficaram afirmados por testes em vez de assumidos —
+  o `.docx` é um pacote Word com texto editável e acentos intactos, e o PDF
+  referencia fontes em vez de ser uma fotografia da página.
+
+### Notas técnicas
+
+- **Sem migrations.** Nada nesta versão precisou de uma tabela nova.
+- O custo do Quadro Síntese **não cresce com o tamanho da turma** — seis alunos e
+  trinta custam exatamente as mesmas consultas; o teto é dado pelo número de
+  unidades temporais.
+- As versões dos prompts de análise subiram, como sobem sempre que o texto muda.
+
 ## [0.133.0] — 2026-09-06
 
 A Pauta de Avaliação já era o ecrã onde o professor decide. Nesta versão passa a

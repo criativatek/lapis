@@ -680,8 +680,99 @@ São **duas linhas distintas** para o mesmo aluno e período, não dois campos n
 
 > **Porquê duas tabelas e não uma com `domain_id` anulável.** No MySQL, `UNIQUE(enrollment_id, academic_period_id, scope, domain_id)` com `domain_id = NULL` para a linha global **não impediria duplicados**: o MySQL trata cada `NULL` como distinto, e dois recálculos concorrentes criariam duas linhas globais para o mesmo aluno. A separação em duas tabelas dá chaves únicas totalmente não-anuláveis nas duas. Custo: uma tabela extra. Benefício: impossível ter dois resultados globais do mesmo período.
 
----
+### 6.4 «Resultado acumulado» vs **avaliação contínua** — duas leituras do ano
 
+São coisas diferentes, dão números diferentes, e o Quadro Síntese mostra as duas
+lado a lado precisamente para que ninguém as confunda.
+
+| | O que é | Onde vive |
+|---|---|---|
+| **Acumulado** | O motor **reprocessa os elementos brutos** de todas as unidades que contribuem, até e incluindo a do momento. Não é média de médias (ver acima). | `ClassificationScope::Accumulated` · `ClassResultsCalculator::forAccumulated()` |
+| **Avaliação contínua** | A **média dos resultados formais** de cada unidade temporal do ano: dois semestres → média entre o 1.º e o 2.º; três períodos → média entre os três. | `ContinuousAssessment` |
+
+**Os momentos intercalares NÃO entram na avaliação contínua.** Uma intercalar é
+uma fotografia informativa do estado do aluno a meio do caminho: serve para
+acompanhar e para ler evolução, e é guardada como fotografia quando o professor
+a guarda. Fazer a média de «intercalar, final, intercalar, final» contaria duas
+vezes o mesmo trajeto e daria um número que não responde a pergunta nenhuma.
+`ContinuousAssessment` não tem sequer como enganar-se: recebe `AcademicPeriod`,
+que é a unidade formal, e um momento intercalar não é um período — é um momento
+DENTRO de um (ver `SheetMomentKind`).
+
+**Os pesos são os configurados.** `profile_version_periods.period_weight_percent`
+é onde uma escola diz que o 2.º semestre pesa 60. Quando nenhuma unidade tem
+peso declarado, todas pesam o mesmo — que é o que «média entre o 1.º e o 2.º
+semestre» quer dizer em português. Uma unidade que o perfil exclui do acumulado
+(`contributes_to_accumulated = false`) fica também fora da avaliação contínua: é
+a mesma coluna a decidir as duas coisas.
+
+**Uma unidade sem resultado não é um zero** e não entra no denominador — a mesma
+regra que o motor aplica a um elemento por realizar (§13.3). Um aluno que entrou
+a meio do ano tem a média das unidades que viveu (§11.4).
+
+> **Nota de coerência a rever com o Product Owner.** As duas leituras coexistem
+> por decisão de produto. O motor continua a chamar «acumulado» à primeira, e é
+> essa que a Q4 desta ficha ainda deixa em aberto; a segunda é regra fechada e
+> está implementada como tal. Ver §13, Q4.
+
+### 6.5 Momentos estruturais e fotografias
+
+Cada unidade temporal tem **dois momentos que a escola reconhece** — o
+intercalar e o final (`SheetMomentKind`) — e o Quadro Síntese percorre-os por
+ordem cronológica:
+
+- **Momento formal** (o que fecha a unidade): lê-se do **estado atual**. A pauta
+  de um período é reeditável até ao fim, e o que ela diz hoje é o que é verdade
+  hoje. É esta — e nunca a intercalar — que entra na avaliação contínua.
+- **Momento intercalar**: lê-se da **pauta guardada**, e só de lá. Uma
+  intercalar não tem números próprios enquanto ninguém a guarda, porque o estado
+  avaliativo é um só, o de hoje; é o ato de guardar que fixa o que era verdade
+  naquele dia. Um momento intercalar sem fotografia **aparece vazio**, que é a
+  resposta verdadeira — nunca preenchido com os números de agora.
+
+**Uma fotografia nunca é recalculada.** Se em novembro a proposta era
+«Suficiente», o Quadro continua a dizer «Suficiente» em junho, mesmo que os
+mesmos elementos dessem hoje «Bom». A única coisa que uma fotografia vai buscar
+ao presente é a POSIÇÃO do nível na escala, para poder ser pintada e comparada —
+e quando a escala mudou ao ponto de já não a ter, fica sem cor em vez de ficar
+com a errada.
+
+**Uma pauta de título livre não é um momento estrutural.** Vive no Histórico,
+não entra na cronologia e não serve de termo de comparação para tendência
+nenhuma: a sua data e o seu sentido são o que o professor quis, e uma sequência
+construída sobre isso não seria uma sequência.
+
+### 6.6 A apreciação vigente por domínio — aceitação tácita
+
+Por domínio há **duas coisas**, e elas têm chaves diferentes:
+
+- a **proposta** do Lapispro — a banda em que o quantitativo calculado cai;
+- a **decisão** do professor — uma linha em `domain_appreciation_decisions`, que
+  só existe quando ele se pronunciou.
+
+**A proposta vigora tacitamente.** Não é preciso aprovar nada: se o Lapispro
+propõe «4 — Bom» e o professor não altera, «Bom» é a apreciação vigente. Não há
+pendência, não se cria linha de decisão nenhuma, e a tabela de decisões guarda
+apenas **overrides reais**. Quando existe override, é ele que vigora — e a
+proposta continua consultável ao lado, porque é ela que explica por que motivo o
+professor interveio. **O quantitativo não muda por causa de nenhuma das duas**:
+49 % continuam 49 %.
+
+### 6.7 O Quadro Síntese agrega; não é uma fonte de verdade
+
+`BuildClassSynopsis` compõe fontes canónicas — a pauta viva de cada unidade
+(`BuildEvaluationSheet`), as fotografias guardadas
+(`evaluation_sheet_exports`), os elementos (`BuildClassElements`, sobre o mesmo
+`CalculationEngine`) e a média contínua (`ContinuousAssessment`). **Não criou
+tabela nenhuma e não tem de criar**: uma segunda cópia dos quantitativos seria
+uma segunda verdade a manter em dia.
+
+O que o torna possível é que o modelo de leitura da Pauta e o payload de uma
+fotografia têm **a mesma forma** — a fotografia é literalmente o modelo de
+leitura, congelado. Há um leitor só (`SynopticReading`), e por isso o histórico
+não pode discordar do presente sobre o que estava no ecrã.
+
+---
 ## 7. Decisão: propostas, confirmação e override
 
 ### 7.1 `classifications`
@@ -1280,6 +1371,23 @@ O mockup diz «A classificação do 2.º semestre resulta de todas as aprendizag
 - (c) `last_period_only` — o P2 já é cumulativo por desenho do professor.
 
 **Recomendação: (a).** É a leitura literal de «todas as aprendizagens» e a única que trata cada evidência com o mesmo peso. **Mas a diferença numérica entre (a) e (b) é material** e decide notas reais. **Necessário do PO:** decisão explícita.
+
+> **O que entretanto se fechou, e o que continua aberto.** A **avaliação contínua**
+> — a média dos resultados FORMAIS de cada unidade temporal, com os pesos de
+> `period_weight_percent` quando existem — passou a ser regra de produto fechada e
+> está implementada em `ContinuousAssessment` (§6.4). Isso é, na prática, a leitura
+> (b) aplicada a uma pergunta com nome próprio.
+>
+> **O motor NÃO foi alterado**: `ClassificationScope::Accumulated` continua a fazer
+> (a), e é essa a leitura que esta questão deixa em aberto. As duas coexistem
+> deliberadamente e o Quadro Síntese mostra-as lado a lado — no cenário de
+> demonstração dão 89,73 % e 89,40 % para a mesma aluna, dois números verdadeiros
+> para duas perguntas diferentes.
+>
+> **O que falta decidir:** se «acumulado» deve passar a significar a avaliação
+> contínua (e então (a) desaparece do produto), ou se o produto mantém as duas
+> leituras com nomes distintos. Enquanto não houver decisão, nada aqui muda: a
+> alteração do motor exige aprovação explícita.
 
 Sub-questões que o modelo já suporta, mas cuja resposta é do PO:
 1. Os **pesos dos domínios** podem diferir entre o cálculo do período e o do acumulado? (Modelo: hoje não; exigiria peso por `profile_version_periods` x domínio.)

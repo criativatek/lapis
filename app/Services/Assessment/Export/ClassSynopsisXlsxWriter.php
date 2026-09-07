@@ -52,6 +52,27 @@ class ClassSynopsisXlsxWriter
     private const INTERIM_FILL = 'F1F5F9';
 
     /**
+     * A COR DE UMA APRECIAÇÃO, PELA POSIÇÃO DO NÍVEL NA ESCALA (§24, §57).
+     *
+     * As mesmas quatro tintas que o ecrã usa, e pela mesma regra: um nível
+     * negativo é vermelho, e os positivos repartem-se por âmbar, azul e verde
+     * conforme a sua posição relativa entre os positivos DA SUA PRÓPRIA ESCALA.
+     * O «5» é verde por ser o mais alto, não por ser cinco — uma escala
+     * «NS/S/SB» pinta-se exatamente igual.
+     *
+     * E NUNCA É A ÚNICA INFORMAÇÃO: a célula continua a escrever o código ou a
+     * menção, e a folha «Configuração» diz o que a cor significa.
+     *
+     * @var array<string, string>
+     */
+    private const TONES = [
+        'green' => 'D1FAE5',
+        'blue' => 'DBEAFE',
+        'amber' => 'FEF3C7',
+        'red' => 'FEE2E2',
+    ];
+
+    /**
      * @param  array<string, mixed>  $synopsis  o que `BuildClassSynopsis::for()` devolveu
      * @param  array<string, mixed>  $context  turma, disciplina, ano letivo, escala
      */
@@ -69,8 +90,14 @@ class ClassSynopsisXlsxWriter
             ))
             ->setCreator('Lapispro');
 
-        $this->writeSynopsisSheet($spreadsheet->getActiveSheet(), $synopsis, $context);
-        $this->writeDomainsSheet($spreadsheet->createSheet(), $synopsis);
+        // A ESCALA, POR ORDEM — é dela que sai a tinta de cada apreciação, pela
+        // POSIÇÃO do nível e nunca pelo número que ele calha ter (§24, §57).
+        // `array_values` porque o resto do escritor precisa de uma lista, e uma
+        // turma sem perfil chega aqui sem escala nenhuma.
+        $bands = array_values(is_array($context['scale_levels'] ?? null) ? $context['scale_levels'] : []);
+
+        $this->writeSynopsisSheet($spreadsheet->getActiveSheet(), $synopsis, $context, $bands);
+        $this->writeDomainsSheet($spreadsheet->createSheet(), $synopsis, $bands);
         $this->writeElementsSheet($spreadsheet->createSheet(), $synopsis);
         $this->writeConfigurationSheet($spreadsheet->createSheet(), $synopsis, $context);
 
@@ -84,8 +111,9 @@ class ClassSynopsisXlsxWriter
     /**
      * @param  array<string, mixed>  $synopsis
      * @param  array<string, mixed>  $context
+     * @param  list<array<string, mixed>>  $bands
      */
-    protected function writeSynopsisSheet(Worksheet $sheet, array $synopsis, array $context): void
+    protected function writeSynopsisSheet(Worksheet $sheet, array $synopsis, array $context, array $bands = []): void
     {
         $sheet->setTitle('Quadro Síntese');
 
@@ -160,6 +188,7 @@ class ClassSynopsisXlsxWriter
                 $this->percentage($sheet, $at, $row, $reading['overall']['normalized_value'] ?? null);
                 $current = $reading['overall']['current'] ?? null;
                 $this->text($sheet, $at + 1, $row, (string) ($current['text'] ?? ''));
+                $this->paintLevel($sheet, $at + 1, $row, $current['code'] ?? null, $current['label'] ?? null, $bands);
                 $this->text($sheet, $at + 2, $row, $this->originLabel($current['origin'] ?? null));
                 $this->text($sheet, $at + 3, $row, $this->trendLabel($reading['trend'] ?? null));
             }
@@ -169,6 +198,14 @@ class ClassSynopsisXlsxWriter
             if (is_array($continuous)) {
                 $this->percentage($sheet, $continuousColumn, $row, $continuous['normalized_value'] ?? null);
                 $this->text($sheet, $continuousColumn + 1, $row, (string) ($continuous['level']['code'] ?? $continuous['proposal']['value'] ?? ''));
+                $this->paintLevel(
+                    $sheet,
+                    $continuousColumn + 1,
+                    $row,
+                    $continuous['level']['code'] ?? null,
+                    $continuous['level']['label'] ?? null,
+                    $bands,
+                );
                 $decision = $continuous['decision'] ?? null;
                 $this->text(
                     $sheet,
@@ -192,8 +229,11 @@ class ClassSynopsisXlsxWriter
 
     // ------------------------------------------------------ folha 2: domínios
 
-    /** @param  array<string, mixed>  $synopsis */
-    protected function writeDomainsSheet(Worksheet $sheet, array $synopsis): void
+    /**
+     * @param  array<string, mixed>  $synopsis
+     * @param  list<array<string, mixed>>  $bands
+     */
+    protected function writeDomainsSheet(Worksheet $sheet, array $synopsis, array $bands = []): void
     {
         $sheet->setTitle('Domínios');
 
@@ -247,6 +287,7 @@ class ClassSynopsisXlsxWriter
                     $this->text($sheet, 8, $row, (string) ($cell['proposed']['code'] ?? $cell['proposed']['label'] ?? ''));
                     $this->text($sheet, 9, $row, (string) ($cell['decided']['code'] ?? $cell['decided']['label'] ?? ''));
                     $this->text($sheet, 10, $row, (string) ($current['text'] ?? ''));
+                    $this->paintLevel($sheet, 10, $row, $current['code'] ?? null, $current['label'] ?? null, $bands);
                     $this->text($sheet, 11, $row, $this->originLabel($current['origin'] ?? null));
                     $this->text($sheet, 12, $row, $this->trendLabel($cell['trend'] ?? null));
                     $this->text($sheet, 13, $row, ($cell['has_coverage_warning'] ?? false) ? 'Parcial ou em falta' : 'Completa');
@@ -395,6 +436,7 @@ class ClassSynopsisXlsxWriter
             ['Tendência', 'Movimento da apreciação vigente face ao momento estrutural anterior. Vazia quando não há termo de comparação.'],
             ['Célula vazia', 'Ausência de dado, nunca um zero. Um elemento por realizar não é uma classificação de zero.'],
             ['Cor de domínio', 'Identidade do domínio, nunca desempenho.'],
+            ['Cor da apreciação', 'A posição do nível na escala: o mais alto verde, o mais baixo vermelho. Nunca o número que o nível tem — uma escala sem números pinta-se igual. A cor nunca é a única informação: o nível está sempre escrito ao lado.'],
         ]);
 
         $sheet->getColumnDimension('A')->setWidth(34);
@@ -505,6 +547,78 @@ class ClassSynopsisXlsxWriter
 
         if (! $singleHeaderRow) {
             $sheet->getRowDimension($filterRow)->setRowHeight(30);
+        }
+    }
+
+    /**
+     * A tinta de um nível, ou nada quando ele não se consegue colocar na escala.
+     *
+     * A MESMA REPARTIÇÃO QUE `qualitativeToneFor` faz no browser: negativo →
+     * vermelho; entre os positivos, a posição relativa reparte por âmbar (mais
+     * baixo), azul (meio) e verde (mais alto). Duas implementações da mesma
+     * regra é o preço de o ficheiro não ser desenhado no browser — e é por isso
+     * que a regra está escrita nos dois sítios em vez de inferida em nenhum.
+     *
+     * @param  list<array<string, mixed>>  $bands
+     */
+    protected function toneFor(?string $code, ?string $label, array $bands): ?string
+    {
+        if ($bands === [] || ($code === null && $label === null)) {
+            return null;
+        }
+
+        $band = null;
+        foreach ($bands as $candidate) {
+            if (($code !== null && (string) $candidate['code'] === $code)
+                || ($label !== null && (string) $candidate['label'] === $label)) {
+                $band = $candidate;
+
+                break;
+            }
+        }
+
+        if ($band === null) {
+            return null;
+        }
+
+        if ($band['is_negative'] === true) {
+            return self::TONES['red'];
+        }
+
+        $positives = array_values(array_filter($bands, fn (array $row): bool => $row['is_negative'] !== true));
+        $rank = null;
+        foreach ($positives as $index => $row) {
+            if ((string) $row['code'] === (string) $band['code']) {
+                $rank = $index;
+
+                break;
+            }
+        }
+
+        if ($rank === null) {
+            return null;
+        }
+
+        $fraction = count($positives) <= 1 ? 1.0 : $rank / (count($positives) - 1);
+
+        return match (true) {
+            $fraction >= 2 / 3 => self::TONES['green'],
+            $fraction >= 1 / 3 => self::TONES['blue'],
+            default => self::TONES['amber'],
+        };
+    }
+
+    /**
+     * Pinta uma célula com a tinta de um nível, quando ela existe.
+     *
+     * @param  list<array<string, mixed>>  $bands
+     */
+    protected function paintLevel(Worksheet $sheet, int $column, int $row, ?string $code, ?string $label, array $bands): void
+    {
+        $tone = $this->toneFor($code, $label, $bands);
+
+        if ($tone !== null) {
+            $this->fill($sheet, $column, $row, $column, $row, $tone);
         }
     }
 

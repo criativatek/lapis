@@ -381,6 +381,18 @@ const continuousUnitsSentence = computed(() => {
                                         v-if="showQuantitative && domainCell(readingOf(student, moment.key), domain.domain_id)?.normalized_value"
                                         class="ml-1 text-[10px] text-muted-foreground tabular-nums"
                                     >{{ percent(domainCell(readingOf(student, moment.key), domain.domain_id)!.normalized_value) }}</span>
+                                    <!-- O QUE O ALUNO DISSE SOBRE ESTE DOMÍNIO,
+                                         em expoente e a meia-voz, com a mesma
+                                         convenção da Pauta — o «A» diz de quem
+                                         é a voz. É informação de apoio: não
+                                         entra em cálculo nenhum e nunca
+                                         determina a classificação (§15, §61). -->
+                                    <sup
+                                        v-if="domainCell(readingOf(student, moment.key), domain.domain_id)?.self_assessment"
+                                        class="ml-0.5 rounded bg-background/70 px-1 text-[10px] font-normal text-muted-foreground"
+                                        :title="`Autoavaliação do aluno — ${domain.name}: ${domainCell(readingOf(student, moment.key), domain.domain_id)!.self_assessment!.code} — ${domainCell(readingOf(student, moment.key), domain.domain_id)!.self_assessment!.label}`"
+                                        :aria-label="`Autoavaliação do aluno — ${domain.name}: ${domainCell(readingOf(student, moment.key), domain.domain_id)!.self_assessment!.code} — ${domainCell(readingOf(student, moment.key), domain.domain_id)!.self_assessment!.label}`"
+                                    >A{{ domainCell(readingOf(student, moment.key), domain.domain_id)!.self_assessment!.code }}</sup>
                                     <span
                                         v-if="domainCell(readingOf(student, moment.key), domain.domain_id)?.trend"
                                         class="ml-0.5 text-[10px]"
@@ -456,7 +468,7 @@ const continuousUnitsSentence = computed(() => {
                                                 <th class="py-1 pr-3 font-medium" scope="col">Elemento</th>
                                                 <th class="py-1 pr-3 font-medium" scope="col">Domínios</th>
                                                 <th class="py-1 pr-3 text-right font-medium" scope="col">Peso</th>
-                                                <th class="py-1 pr-3 text-right font-medium" scope="col">Resultado</th>
+                                                <th v-if="showQuantitative" class="py-1 pr-3 text-right font-medium" scope="col">Resultado</th>
                                                 <th class="py-1 pr-3 font-medium" scope="col">Nível</th>
                                                 <th class="py-1 font-medium" scope="col">Estado</th>
                                             </tr>
@@ -486,7 +498,11 @@ const continuousUnitsSentence = computed(() => {
                                                 <!-- Vazio é «não foi declarado»,
                                                      e nunca «pesa zero». -->
                                                 <td class="py-1 pr-3 text-right tabular-nums">{{ row.element.weight ?? '—' }}</td>
-                                                <td class="py-1 pr-3 text-right tabular-nums">{{ percent(row.result.normalized_value) }}</td>
+                                                <!-- O RESULTADO DO ELEMENTO SEGUE O MESMO INTERRUPTOR do resto
+                                                     da grelha (§60). Um professor que desligou os números não
+                                                     os quer de volta ao abrir o detalhe; o nível ao lado continua
+                                                     a dizer o que aconteceu. -->
+                                                <td v-if="showQuantitative" class="py-1 pr-3 text-right tabular-nums">{{ percent(row.result.normalized_value) }}</td>
                                                 <td class="py-1 pr-3 whitespace-nowrap">
                                                     <span
                                                         v-if="row.result.level"

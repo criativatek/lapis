@@ -8,6 +8,8 @@ use App\Models\Enrollment;
 use App\Models\ScaleLevel;
 use App\Models\SchoolClass;
 use App\Models\SheetMomentKind;
+use App\Models\Student;
+use App\Models\StudentIdentity;
 use App\Models\User;
 use App\Services\Assessment\BuildClassSynopsis;
 use App\Services\Assessment\CaptureEvaluationSheet;
@@ -17,6 +19,7 @@ use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -460,5 +463,78 @@ class ClassSynopsisTest extends TestCase
         foreach ($synopsis['students'] as $student) {
             $this->assertNotNull($student['enrollment_ulid']);
         }
+    }
+
+    // ------------------------------------------------------------ desempenho
+
+    /** Enche a turma até ao número pedido, com alunos sem elementos nenhuns. */
+    private function enrolUpTo(int $total): void
+    {
+        $this->asTenant(function () use ($total): void {
+            $class = SchoolClass::where('label', '7.º A')->firstOrFail();
+            $organization = $this->teacher->personalOrganization();
+            $existing = Enrollment::query()->where('class_id', $class->getKey())->count();
+
+            for ($number = $existing + 1; $number <= $total; $number++) {
+                $student = Student::factory()->recycle($organization)->create();
+
+                StudentIdentity::create([
+                    'student_id' => $student->getKey(),
+                    'organization_id' => $organization->getKey(),
+                    'display_name' => "Aluno de Teste {$number}",
+                ]);
+
+                Enrollment::factory()->recycle($organization)->create([
+                    'class_id' => $class->getKey(),
+                    'student_id' => $student->getKey(),
+                    'class_number' => $number,
+                    'enrolled_on' => '2026-09-14',
+                ]);
+            }
+        });
+    }
+
+    /** @return array{0: int, 1: int} consultas, e alunos lidos */
+    private function measure(): array
+    {
+        return $this->asTenant(function (): array {
+            $class = SchoolClass::where('label', '7.º A')->firstOrFail();
+
+            DB::flushQueryLog();
+            DB::enableQueryLog();
+            $synopsis = app(BuildClassSynopsis::class)->for($class);
+            $count = count(DB::getQueryLog());
+            DB::disableQueryLog();
+
+            return [$count, count($synopsis['students'])];
+        });
+    }
+
+    #[Test]
+    public function the_reading_does_not_cost_one_query_per_student(): void
+    {
+        // A AFIRMAÇÃO É COMPARATIVA, E É A ÚNICA QUE INTERESSA. Um número
+        // absoluto de consultas depende de quantos períodos o ano tem e muda
+        // com qualquer alteração ao motor; o que não pode mudar é o custo
+        // CRESCER COM A TURMA. Uma consulta por aluno passa despercebida em
+        // seis alunos e derruba a página em trinta (§62).
+        [$small, $smallStudents] = $this->measure();
+
+        $this->enrolUpTo(30);
+
+        [$large, $largeStudents] = $this->measure();
+
+        $this->assertSame(6, $smallStudents);
+        $this->assertSame(30, $largeStudents);
+
+        $this->assertSame(
+            $small,
+            $large,
+            "Seis alunos custaram {$small} consultas e trinta custaram {$large}: o custo cresce com a turma.",
+        );
+
+        // E o custo absoluto continua ligado ao número de UNIDADES TEMPORAIS —
+        // duas, neste ano — e não a nada que uma turma grande traga consigo.
+        $this->assertLessThanOrEqual(80, $large, "O Quadro Síntese custou {$large} consultas.");
     }
 }
