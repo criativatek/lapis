@@ -231,6 +231,30 @@ class ContinuousAssessment
     }
 
     /**
+     * A UNIDADE QUE FECHA O ANO desta turma — onde uma conclusão anual se
+     * escreve e de onde ela se lê.
+     *
+     * EXISTE PARA QUE QUEM ESCREVE E QUEM LÊ NÃO POSSAM DISCORDAR. A leitura,
+     * mais abaixo, procura decisões de âmbito acumulado na última unidade da
+     * coleção que recebe; quem as escreve não tem essa coleção em mãos e teria
+     * de a redescobrir. Uma decisão escrita numa unidade e procurada noutra não
+     * daria erro nenhum — ficaria simplesmente invisível, que é a pior forma de
+     * uma funcionalidade falhar.
+     *
+     * CONSULTA PRÓPRIA, E NÃO A RELAÇÃO. `AcademicYear::periods()` traz um
+     * `orderBy('sequence')` seu, e um `orderByDesc` acrescentado fica em segundo
+     * lugar — a consulta sairia pela ordem original e isto devolveria a PRIMEIRA
+     * unidade a chamar-lhe o fim do ano.
+     */
+    public static function finalUnitOf(SchoolClass $class): ?AcademicPeriod
+    {
+        return AcademicPeriod::query()
+            ->where('academic_year_id', $class->academic_year_id)
+            ->orderByDesc('sequence')
+            ->first();
+    }
+
+    /**
      * A decisão do professor sobre o ANO, domínio a domínio, quando ela existe.
      *
      * O MESMO DESENHO DA DECISÃO GLOBAL: âmbito ACUMULADO na última unidade do

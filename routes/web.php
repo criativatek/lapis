@@ -32,6 +32,7 @@ use App\Http\Controllers\EvaluationSheetHistoryController;
 use App\Http\Controllers\EvaluationSheetInovarExportController;
 use App\Http\Controllers\EvaluationSheetSnapshotExportController;
 use App\Http\Controllers\EvidenceController;
+use App\Http\Controllers\FinalDomainDecisionController;
 use App\Http\Controllers\HelpAssistantController;
 use App\Http\Controllers\HelpController;
 use App\Http\Controllers\HomeController;
@@ -582,6 +583,16 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // onde o número é global.
         Route::get('classes/{class}/results/desempenho-acumulado/{period}/{enrollment}/{domain?}', [AccumulatedBreakdownController::class, 'show'])
             ->name('results.accumulated-breakdown');
+        // A APRECIAÇÃO FINAL DE UM DOMÍNIO — a conclusão do ano, decidida pelo
+        // professor. Irmã da rota da Pauta, que escreve a leitura de um período;
+        // esta escreve a do ano, e a distinção entre as duas é o âmbito.
+        //
+        // A UNIDADE NÃO ESTÁ NO ENDEREÇO de propósito: uma conclusão de ano
+        // escreve-se sempre na unidade que o fecha, e essa é derivada no
+        // servidor pela mesma função que a leitura usa. Aceitá-la aqui permitiria
+        // escrever uma decisão numa unidade que ninguém lê.
+        Route::post('classes/{class}/results/quadro-sintese/dominios/{enrollment}/{domain}', [FinalDomainDecisionController::class, 'store'])
+            ->name('results.final-domain-decision');
         // Same reason as above: declared before the {period?} wildcard. The
         // period is optional — without one the read model opens on the latest
         // period that actually has results.

@@ -770,9 +770,24 @@ denominador em vez de valer zero (§13.3).
 **O override final de um domínio** vive onde o global já vivia: âmbito
 **acumulado** na última unidade do ano — `DomainAppreciationDecision` para o
 domínio, `Classification` para o global. Uma decisão de âmbito **período** é uma
-leitura daquele semestre e **não** é reaproveitada como conclusão do ano.
-Nenhum ecrã escreve ainda decisões de âmbito acumulado por domínio: a leitura
-está pronta, a escrita é uma decisão de produto por tomar.
+leitura daquele semestre e **não** é reaproveitada como conclusão do ano: são
+linhas distintas, com chaves distintas, e nenhuma se converte na outra.
+
+**Escreve-se a partir do Quadro Síntese**, clicando na apreciação final —
+`FinalDomainDecisionController`, que chama o mesmo `DecideDomainAppreciation`
+que a Pauta usa, com o outro âmbito. O serviço sempre recebeu o âmbito como
+argumento; o que faltava era alguém chamá-lo com `accumulated`.
+
+**A unidade não vai no endereço.** Uma conclusão de ano escreve-se sempre na
+unidade que o fecha, e essa é derivada no servidor por
+`ContinuousAssessment::finalUnitOf()` — a mesma que a leitura usa. Aceitá-la do
+cliente permitiria escrever uma decisão numa unidade que ninguém lê: não daria
+erro, não apareceria em lado nenhum, e ninguém saberia porquê.
+
+A decisão é **reeditável sem limite**, apagá-la devolve a proposta, e nenhuma
+das duas coisas move a média, a proposta ou os resultados de cada unidade. O
+rasto é o mesmo das decisões por domínio — `domain-appreciation.decided`,
+`.redecided`, `.cleared` — com o âmbito no registo.
 
 #### 6.4.1 O desempenho acumulado tem de ser **reconstruível**
 

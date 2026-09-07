@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import { CircleAlert, FileSpreadsheet, Lock } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import AccumulatedBreakdownPanel from '@/components/results/AccumulatedBreakdownPanel.vue';
 import ClassSynopsisTable from '@/components/results/ClassSynopsisTable.vue';
+import FinalDomainDecisionDialog from '@/components/results/FinalDomainDecisionDialog.vue';
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
 import {
     ACCUMULATED,
@@ -91,6 +92,8 @@ const props = defineProps<{
     canExportToInovar: boolean;
     /** Whether the Relatório do aluno is reachable — presentation only (§14). */
     canViewStudentProgress: boolean;
+    /** Se este professor pode concluir o ano num domínio — apresentação (§8.2). */
+    canDecideDomains: boolean;
     progression: {
         periods: { id: number; ulid: string; label: string; sequence: number }[];
         domains: { id: number; ulid: string; name: string }[];
@@ -230,6 +233,82 @@ function domainFinalAppreciation(student: Student, domainId: number): {
     }
 
     return proposed === null ? null : { level: proposed, decided: false, proposed };
+}
+
+/**
+ * ------------------------------------------- decidir a conclusão de um domínio
+ *
+ * O VALOR É A PORTA, como em todo o resto do produto. Um botão «alterar» em
+ * cada célula — trinta alunos × cinco domínios — transformaria a grelha num
+ * painel de controlo; clicar na apreciação é a mesma acção sem o ruído (§5).
+ *
+ * ESCREVE NO ÂMBITO DO ANO. A unidade não vai no endereço: uma conclusão anual
+ * escreve-se sempre na unidade que fecha o ano, e é o servidor que a deriva —
+ * pela mesma função que a leitura usa. Uma decisão de um semestre continua a
+ * ser outra coisa, noutra linha (§17).
+ */
+const decidingStudent = ref<Student | null>(null);
+const decidingDomain = ref<{ id: number; ulid: string; name: string } | null>(null);
+const decisionSaving = ref(false);
+const decisionError = ref<string | null>(null);
+
+const decidingReading = computed(() =>
+    decidingStudent.value === null || decidingDomain.value === null
+        ? null
+        : domainFinal(decidingStudent.value, decidingDomain.value.id),
+);
+
+function openFinalDecision(student: Student, domain: { id: number; ulid: string; name: string }): void {
+    if (!props.canDecideDomains) {
+        return;
+    }
+
+    decisionError.value = null;
+    decidingStudent.value = student;
+    decidingDomain.value = domain;
+}
+
+function closeFinalDecision(): void {
+    decidingStudent.value = null;
+    decidingDomain.value = null;
+    decisionError.value = null;
+}
+
+function saveFinalDecision(scaleLevelId: number | null): void {
+    const student = decidingStudent.value;
+    const domain = decidingDomain.value;
+
+    if (student === null || domain === null) {
+        return;
+    }
+
+    decisionSaving.value = true;
+    decisionError.value = null;
+
+    router.post(
+        `/classes/${props.schoolClass.ulid}/results/quadro-sintese/dominios/${student.enrollment_ulid}/${domain.ulid}`,
+        { scale_level_id: scaleLevelId },
+        {
+            preserveScroll: true,
+            onSuccess: () => closeFinalDecision(),
+            onError: (errors: Record<string, string>) => {
+                decisionError.value = errors.scale_level_id ?? 'Não foi possível guardar esta apreciação.';
+            },
+            onFinish: () => {
+                decisionSaving.value = false;
+            },
+        },
+    );
+}
+
+/** «Alterar a apreciação final de Oralidade de Ana — …», dito por inteiro. */
+function domainFinalActionLabel(student: Student, domain: { id: number; name: string }): string {
+    const appreciation = domainFinalAppreciation(student, domain.id);
+    const who = `${domain.name} de ${student.name}`;
+
+    return appreciation === null
+        ? `Atribuir a apreciação final de ${who}`
+        : `Alterar a apreciação final de ${who} — ${domainFinalTitle(student, domain)}`;
 }
 
 /** A frase inteira, que é o que chega a quem não vê nem cor nem negrito (§25). */
@@ -795,20 +874,31 @@ function proposalText(proposal: Proposal | undefined): string {
                                 class="px-2 py-1.5 text-center whitespace-nowrap"
                                 :class="showQuantitative ? '' : 'border-l-4 border-l-primary'"
                             >
-                                <span
+                                <!-- O VALOR É A PORTA. Clicar na apreciação
+                                     final abre o painel que a decide; sem
+                                     autorização não há botão nenhum, e o valor
+                                     lê-se na mesma. -->
+                                <component
+                                    :is="canDecideDomains && domainFinalAppreciation(student, domain.id) ? 'button' : 'span'"
                                     v-if="domainFinalAppreciation(student, domain.id)"
+                                    :type="canDecideDomains ? 'button' : undefined"
                                     class="rounded px-1.5 py-0.5 text-xs"
                                     :class="[
                                         levelClasses(domainFinalAppreciation(student, domain.id)!.proposed),
                                         domainFinalAppreciation(student, domain.id)!.decided ? 'font-semibold' : '',
+                                        canDecideDomains
+                                            ? 'hover:ring-1 hover:ring-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none'
+                                            : '',
                                     ]"
                                     :title="domainFinalTitle(student, domain)"
-                                    :aria-label="domainFinalTitle(student, domain)"
+                                    :aria-label="canDecideDomains ? domainFinalActionLabel(student, domain) : domainFinalTitle(student, domain)"
+                                    :aria-haspopup="canDecideDomains ? 'dialog' : undefined"
+                                    @click="canDecideDomains && openFinalDecision(student, domain)"
                                 >{{
                                     showQuantitative
                                         ? domainFinalAppreciation(student, domain.id)!.level?.code
                                         : domainFinalAppreciation(student, domain.id)!.level?.label
-                                }}</span>
+                                }}</component>
                                 <sup
                                     v-if="domainFinalAppreciation(student, domain.id)?.decided"
                                     class="ml-0.5 rounded bg-muted px-1 text-[10px] font-normal whitespace-nowrap text-muted-foreground"
@@ -1067,6 +1157,19 @@ function proposalText(proposal: Proposal | undefined): string {
             :student-name="breakdownStudent"
             :has-declared-period-weights="synopsis.continuous.weights_declared"
             @close="breakdownUrl = null"
+        />
+
+        <!-- A CONCLUSÃO DO ANO NUM DOMÍNIO, decidida. Montado uma vez só: a
+             decisão toma-se sobre uma célula de cada vez. -->
+        <FinalDomainDecisionDialog
+            :student-name="decidingStudent?.name ?? null"
+            :domain-name="decidingDomain?.name ?? null"
+            :reading="decidingReading"
+            :decision="decision"
+            :saving="decisionSaving"
+            :error="decisionError"
+            @close="closeFinalDecision"
+            @save="saveFinalDecision"
         />
     </div>
 </template>

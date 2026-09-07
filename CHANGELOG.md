@@ -83,10 +83,25 @@ coluna, em tons neutros.
 resultados formais de cada unidade, o analítico, e o formal final — que leva a
 cor do produto porque é dele que sairia uma proposta de nível.
 
-**O override final de um domínio** vive no sítio canónico que já existia: uma
-linha de âmbito acumulado na última unidade do ano, exatamente onde a decisão
-global já vive. Quando existe, prevalece — sem apagar a média nem a proposta.
-Uma decisão sobre um semestre **não** é reaproveitada como decisão do ano.
+**O professor pode concluir o ano em cada domínio.** Clicar na apreciação final
+abre o painel que a decide: a média final e as parcelas de que ela é feita como
+contexto, e as menções da escala para escolher. A decisão prevalece, é
+reeditável sem limite, e «Usar a proposta do Lapispro» devolve a célula à
+leitura do sistema. Nenhuma das duas coisas move a média, a proposta ou os
+resultados de cada unidade — e as fotografias já guardadas ficam byte a byte
+como estavam.
+
+Escreve-se no sítio canónico que já existia: uma linha de âmbito **acumulado**
+na última unidade do ano, exatamente onde a decisão global já vive. Uma decisão
+sobre um semestre **não** é reaproveitada como decisão do ano — são linhas
+distintas, e há um teste a impedi-lo. A unidade não vai no endereço: é derivada
+no servidor pela mesma função que a leitura usa, porque uma decisão escrita numa
+unidade que ninguém lê não daria erro, ficaria apenas invisível.
+
+O selector de menções passou a ser **um só componente**, partilhado pela Pauta e
+pelo Quadro Síntese: são a mesma escolha, e duas cópias divergiriam na primeira
+correção feita só de um lado. O rasto de auditoria é o que já existia, com o
+âmbito no registo.
 
 **Os quantitativos desligam-se também aqui.** Com eles desligados a coluna
 «Final» sai da grelha e fica a menção — «Suficiente» em vez de «62,4 % ·».

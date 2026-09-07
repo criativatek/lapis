@@ -168,6 +168,13 @@ export function shortName(name: string): string {
 
 export type SynopticLevel = { code: string; label: string; sequence: number; is_negative: boolean };
 
+/**
+ * O mesmo nível, com a IDENTIDADE dele. Um código é o que se escreve numa
+ * célula; `scale_level_id` é o que se envia de volta ao servidor quando alguém
+ * escolhe. Onde a escolha existe, é esta a forma que viaja.
+ */
+export type SynopticIdentifiedLevel = SynopticLevel & { scale_level_id: number };
+
 export type SynopticDomainCell = {
     domain_id: number;
     available: boolean;
@@ -226,7 +233,16 @@ export type SynopticContinuousReading = {
     normalized_value: string | null;
     proposal: { value: string | null; state: string; is_percentage: boolean };
     level: SynopticLevel | null;
-    decision: { final: { code: string; label: string } | null; final_value: string | null } | null;
+    /**
+     * A decisão do professor sobre o ANO, quando existe.
+     *
+     * `final` LEVA O NÍVEL INTEIRO, com `scale_level_id`, e não só o par
+     * código/menção: quem vai reabrir a decisão precisa de saber QUAL nível está
+     * escolhido para o marcar, e um código não é uma chave. O servidor sempre
+     * enviou a identidade completa (`levelPayload`); era este tipo que a
+     * descrevia mais estreita do que ela é.
+     */
+    decision: { final: SynopticIdentifiedLevel | null; final_value: string | null } | null;
 };
 
 export type SynopticStudent = {

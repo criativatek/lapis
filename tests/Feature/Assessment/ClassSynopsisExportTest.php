@@ -4,10 +4,13 @@ namespace Tests\Feature\Assessment;
 
 use App\Models\AuditEvent;
 use App\Models\ClassificationScope;
+use App\Models\Domain;
+use App\Models\DomainAppreciationDecision;
 use App\Models\SchoolClass;
 use App\Models\SheetMomentKind;
 use App\Models\User;
 use App\Services\Assessment\CaptureEvaluationSheet;
+use App\Services\Assessment\ContinuousAssessment;
 use App\Support\Assessment\ReadingVocabulary;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
@@ -133,6 +136,51 @@ class ClassSynopsisExportTest extends TestCase
         $text = $this->textOf($sheet);
         $this->assertStringContainsString('Oralidade', $text);
         $this->assertStringContainsString('Carolina Nunes', $text);
+    }
+
+    #[Test]
+    public function a_final_domain_decision_travels_beside_the_proposal_it_replaced(): void
+    {
+        $this->asTenant(function (): void {
+            $class = SchoolClass::where('label', '7.º A')->firstOrFail();
+            $last = ContinuousAssessment::finalUnitOf($class);
+            $enrollment = $class->enrollments()->with('student.identity')->get()
+                ->first(fn ($candidate): bool => $candidate->student->identity->display_name === 'Carolina Nunes');
+
+            DomainAppreciationDecision::create([
+                'enrollment_id' => $enrollment->getKey(),
+                'academic_period_id' => $last->getKey(),
+                'scope' => ClassificationScope::Accumulated,
+                'domain_id' => Domain::where('name', 'Escrita')->firstOrFail()->id,
+                'scale_level_id' => $class->profileVersion->scale->levels()->where('code', '3')->firstOrFail()->id,
+                'decided_by' => $this->teacher->getKey(),
+            ]);
+        });
+
+        $sheet = $this->open($this->download())->getSheetByName('Contínua Final por Domínio');
+        $columns = $this->headerColumns($sheet, 1);
+
+        $row = null;
+        foreach ($sheet->toArray(null, true, false, false) as $index => $cells) {
+            if (($cells[1] ?? null) === 'Carolina Nunes' && ($cells[2] ?? null) === 'Escrita') {
+                $row = $cells;
+
+                break;
+            }
+        }
+
+        $this->assertNotNull($row, 'A linha de Escrita da Carolina não está na folha.');
+
+        // AS TRÊS COISAS, LADO A LADO: o que o Lapispro propôs, o que o
+        // professor decidiu, e o que vale. Um ficheiro que só levasse a
+        // vigente esconderia precisamente a informação que explica a decisão.
+        $this->assertSame('5', (string) $row[$columns['Proposta do Lapispro'] - 1]);
+        $this->assertSame('3', (string) $row[$columns['Decisão do professor'] - 1]);
+        $this->assertSame('3', (string) $row[$columns['Apreciação vigente'] - 1]);
+        $this->assertSame('Decisão do professor', (string) $row[$columns['Origem'] - 1]);
+
+        // E A MÉDIA NÃO SE MEXE por causa de uma decisão qualitativa.
+        $this->assertSame(90.0, (float) $row[$columns['Média final (%)'] - 1]);
     }
 
     #[Test]

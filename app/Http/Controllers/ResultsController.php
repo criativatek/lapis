@@ -370,6 +370,11 @@ class ResultsController extends Controller
             // individual (§14) — e só oferece a porta a quem ela abre. É
             // apresentação: a rota continua atrás do seu próprio módulo.
             'canViewStudentProgress' => app(Entitlements::class)->allows('student_progress'),
+            // SE ESTE PROFESSOR PODE CONCLUIR O ANO NUM DOMÍNIO. É apresentação
+            // e mais nada: esconder a acção não é o que impede alguém de a fazer
+            // — a rota corre a mesma `Gate::authorize('update', $class)` antes
+            // de escrever seja o que for (§8.2).
+            'canDecideDomains' => Gate::allows('update', $class),
             // A ESCALA INTEIRA, com código e rótulo além da posição: a cor de
             // uma apreciação sai da POSIÇÃO do nível na escala e nunca do número
             // que ele calha ter (§24), e a legenda precisa de a dizer por

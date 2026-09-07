@@ -370,6 +370,54 @@ class SummaryScreenTest extends TestCase
     }
 
     #[Test]
+    public function the_final_appreciation_of_a_domain_is_the_door_to_deciding_it(): void
+    {
+        $screen = $this->screen();
+
+        // O VALOR É A PORTA (§5). Um botão «alterar» em cada uma de cento e
+        // cinquenta células transformaria a grelha num painel de controlo.
+        $this->assertStringContainsString('openFinalDecision(student, domain)', $screen);
+        $this->assertStringContainsString('<FinalDomainDecisionDialog', $screen);
+
+        // ESCREVE NO ÂMBITO DO ANO, e a unidade não vai no endereço: é o
+        // servidor que a deriva, pela mesma função que a leitura usa.
+        $this->assertStringContainsString('/results/quadro-sintese/dominios/', $screen);
+        $this->assertStringNotContainsString('/results/quadro-sintese/dominios/${unit', $screen);
+
+        // SEM AUTORIZAÇÃO NÃO HÁ BOTÃO, e o valor lê-se na mesma — esconder a
+        // acção é apresentação; quem impede é a rota (§8.2).
+        $this->assertStringContainsString("canDecideDomains && domainFinalAppreciation(student, domain.id) ? 'button' : 'span'", $screen);
+    }
+
+    #[Test]
+    public function the_screen_is_told_whether_this_teacher_may_conclude_a_domain(): void
+    {
+        $teacher = $this->seedDemo();
+        $props = $this->props($this->open($teacher, $this->classUlid($teacher)));
+
+        $this->assertTrue($props['canDecideDomains']);
+    }
+
+    #[Test]
+    public function the_level_picker_is_shared_with_the_pauta_rather_than_copied(): void
+    {
+        // Passou a haver DOIS sítios onde um domínio se decide — a Pauta, sobre
+        // um período, e o Quadro Síntese, sobre o ano. A lista de menções e o
+        // «voltar à proposta» são exatamente os mesmos; duas cópias divergiriam
+        // na primeira correção feita só de um lado.
+        foreach ([
+            'resources/js/components/evaluation-sheets/EvaluationSheetDomainDecisionDialog.vue',
+            'resources/js/components/results/FinalDomainDecisionDialog.vue',
+        ] as $dialog) {
+            $source = (string) file_get_contents(base_path($dialog));
+
+            $this->assertStringContainsString('DomainAppreciationPicker', $source, "{$dialog} não reutiliza o seletor.");
+            // E nenhum deles voltou a escrever a lista à mão.
+            $this->assertStringNotContainsString('v-for="level in decision.levels"', $source);
+        }
+    }
+
+    #[Test]
     public function the_self_assessment_marker_says_whose_voice_it_is(): void
     {
         $screen = $this->screen();

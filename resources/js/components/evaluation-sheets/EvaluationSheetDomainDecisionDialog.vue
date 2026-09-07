@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import InputError from '@/components/InputError.vue';
+import DomainAppreciationPicker from '@/components/assessment/DomainAppreciationPicker.vue';
 import {
     Dialog,
     DialogContent,
     DialogDescription,
-    DialogFooter,
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
@@ -126,58 +125,30 @@ const current = computed(() => domainAppreciation(cell.value, true));
                 </template>
             </dl>
 
-            <div v-if="decision.classifies_by_level" class="space-y-2">
-                <p id="apreciacao-legenda" class="text-sm font-medium">Apreciação a atribuir</p>
-                <div class="flex flex-wrap gap-2" role="group" aria-labelledby="apreciacao-legenda">
+            <!-- A ESCOLHA VIVE NUM COMPONENTE PARTILHADO, porque passou a haver
+                 dois sítios onde um domínio se decide: aqui, sobre um período,
+                 e no Quadro Síntese, sobre o ano. A lista de menções e o
+                 «voltar à proposta» são exactamente os mesmos nos dois, e duas
+                 cópias divergiriam na primeira correcção feita só de um lado. -->
+            <DomainAppreciationPicker
+                :levels="decision.levels"
+                :classifies-by-level="decision.classifies_by_level"
+                :chosen-id="chosenId"
+                :saving="saving"
+                :error="error"
+                :current-summary="`Está a ler-se ${current.text} — ${current.origin === 'decided' ? 'decisão sua' : 'proposta do Lapispro'}.`"
+                @save="(level: number | null) => emit('save', level)"
+            >
+                <template #actions>
                     <button
-                        v-for="level in decision.levels"
-                        :key="level.id"
                         type="button"
-                        :disabled="saving"
-                        class="rounded-md border px-3 py-1.5 text-sm disabled:opacity-60"
-                        :class="chosenId === level.id
-                            ? 'border-primary bg-primary text-primary-foreground'
-                            : 'border-border hover:bg-muted/40'"
-                        :aria-pressed="chosenId === level.id"
-                        @click="emit('save', level.id)"
+                        class="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
+                        @click="emit('close')"
                     >
-                        <span class="font-medium">{{ level.code }}</span>
-                        <span class="ml-1.5 opacity-80">{{ level.label }}</span>
+                        Fechar
                     </button>
-                </div>
-            </div>
-
-            <!-- Uma escala que é um intervalo não tem menções para escolher. Não
-                 é um erro nem um ecrã por acabar: é a escala a não expressar
-                 este tipo de juízo, e dizê-lo é melhor do que inventar bandas. -->
-            <p v-else class="text-sm text-muted-foreground">
-                A escala desta turma é um intervalo e não tem menções qualitativas,
-                por isso não há apreciação por domínio a atribuir aqui.
-            </p>
-
-            <InputError :message="error ?? undefined" />
-
-            <DialogFooter class="gap-2 sm:justify-between">
-                <button
-                    v-if="chosenId !== null"
-                    type="button"
-                    :disabled="saving"
-                    class="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40 disabled:opacity-60"
-                    @click="emit('save', null)"
-                >
-                    Usar a proposta do Lapispro
-                </button>
-                <span v-else class="text-xs text-muted-foreground">
-                    Está a ler-se {{ current.text }} — {{ current.origin === 'decided' ? 'decisão sua' : 'proposta do Lapispro' }}.
-                </span>
-                <button
-                    type="button"
-                    class="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
-                    @click="emit('close')"
-                >
-                    Fechar
-                </button>
-            </DialogFooter>
+                </template>
+            </DomainAppreciationPicker>
         </DialogContent>
     </Dialog>
 </template>
