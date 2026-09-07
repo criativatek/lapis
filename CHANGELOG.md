@@ -25,6 +25,100 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.135.0] — 2026-09-07
+
+Um professor abriu o Quadro Síntese e viu, no mesmo domínio, **68 % no 1.º
+semestre, 25 % no 2.º e 60 % de desempenho acumulado**. Três números
+verdadeiros, e nenhuma maneira de perceber o terceiro. Esta versão responde a
+essa pergunta — e a auditoria que a antecedeu confirmou que o motor estava
+certo.
+
+### A conta, e não um aviso a dizer «é outro cálculo»
+
+Antes de se mudar uma linha de UI, o valor foi **reconstruído contra dados
+reais**:
+
+```
+Educação Literária
+
+  1.º semestre     85,00 / 125,00  =  68,000000 %     peso efetivo 81,17 %
+  2.º semestre      7,33 /  29,00  =  25,275862 %     peso efetivo 18,83 %
+  ------------------------------------------------------------------------
+  Desempenho acumulado    92,33 / 154,00  =  59,954545 %   →  60
+  Avaliação contínua      (68,000000 + 25,275862) / 2  =  46,637931 %
+```
+
+**Não era bug.** O acumulado é UMA fração feita dos elementos todos do ano, e
+cada semestre pesa nela o que as suas cotações pesam: um único elemento de 100
+pontos no 1.º semestre trazia 125 das 154 cotações. Nenhuma média de semestres
+daria 60 % — e é essa a diferença entre as duas leituras que a 0.134.0 nomeou. O
+motor de cálculo **não foi tocado**, e há um teste que falha alto se alguém lhe
+mexer sem querer.
+
+### Cada valor acumulado abre a conta que o produziu
+
+Clicar num desempenho acumulado abre um painel com os pontos de cada unidade
+temporal, o **peso efetivo** que essas cotações criam, a fração que reproduz o
+número, e — a pedido — os elementos um a um com a sua contribuição, mais os que
+não foram considerados e porquê. A linha `92,33 ÷ 154,00 = 59,954545 %` está lá
+escrita: quem tiver os pontos à frente refaz a divisão à mão.
+
+«Peso efetivo» leva sempre o aviso de que **não é um peso configurado por
+ninguém** — resulta das cotações e muda à medida que o ano avança. Os pesos
+formais das unidades pertencem à avaliação contínua e não tocam neste número.
+
+O valor global abre uma decomposição **diferente**, porque é outra coisa: a
+média dos domínios ponderada pelos pesos do perfil, com os domínios sem
+elementos a saírem da conta em vez de valerem zero. Decompô-lo em pontos seria
+descrever uma conta que não corre.
+
+A decomposição **não viaja com a página**: trinta alunos × cinco domínios × duas
+unidades são trezentas células, e a pergunta faz-se sobre uma de cada vez.
+
+### O ano fecha num sítio
+
+O Quadro Síntese ganha o bloco **Avaliação Contínua Final**, depois das sínteses
+de cada unidade: a média formal do ano, a proposta que sai dela e a decisão do
+professor. Nenhuma síntese respondia pelo ano — cada uma responde por uma
+unidade. A proposta formal continua a sair da avaliação contínua e nunca do
+desempenho acumulado.
+
+A autoavaliação não aparece neste bloco de propósito: o aluno autoavalia-se em
+cada unidade, e não existe uma autoavaliação do ano.
+
+### As palavras que faltavam
+
+- **«P1», «P2» saíram.** Eram uma abreviatura que o ecrã inventava e que não
+  correspondia a nada escrito em lado nenhum — uma escola com módulos, ou com
+  três períodos, lia «P1» sem ter dado esse nome a coisa alguma. As colunas
+  passam a ter o nome que a escola deu à unidade.
+- **«Desemp.» passou a «Desemp. acum.»** «Desempenho» sozinho podia ser lido
+  como o desempenho do período, que é outro número na mesma linha; «Acum.» é o
+  nome que a distinção entre as duas leituras mandou abandonar. O nome inteiro e
+  a explicação continuam no `title` e no texto acessível.
+- **«A3» passou a «Auto 3».** O «A» podia ser um nível, uma alínea ou um aviso,
+  e a legenda que o explicava está no fundo da página, longe de quem está a ler
+  a célula. O dado por baixo é exatamente o mesmo.
+- **«Preparar fecho [1]» passou a «Preparar fecho · 1 ponto»**, com «1 ponto a
+  verificar antes do fecho» no texto acessível. Sem pendências não se anuncia um
+  zero.
+
+### O Excel leva a conta escrita
+
+Uma folha nova, **«Desempenho acumulado»**: uma linha por unidade temporal com
+os pontos e o peso efetivo, e a linha TOTAL que as soma. Num ficheiro não há
+onde clicar, por isso a conta vem escrita. A folha «Elementos de Avaliação»
+ganha **Pontos obtidos** e **Cotação** ao lado da percentagem — é a cotação, e
+não o resultado, que diz quanto um elemento pesa no ano. E a «Configuração»
+explica que o peso efetivo não é configuração nenhuma.
+
+### Nada disto mexeu no cálculo
+
+`ClassResultsCalculator::forAccumulated()` e `CalculationEngine` ficam como
+estavam. A única alteração no calculador é um **nome** dado a uma consulta que
+já lá estava: a explicação tem de percorrer exatamente a evidência que o motor
+percorreu, e duas cópias da regra «o que conta» acabariam por discordar.
+
 ## [0.134.0] — 2026-09-07
 
 O Quadro Síntese lia o ano de uma turma pelos **números**. Nesta versão passa a

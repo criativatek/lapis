@@ -327,6 +327,34 @@ describe('evaluation-sheets/Show — preparar fecho', () => {
         expect(wrapper.text()).toContain('Nível ainda não atribuído');
     });
 
+    it('conta pontos por palavras, e não um número solto', () => {
+        // «Preparar fecho [2]» PODIA SER QUALQUER COISA: um passo de um
+        // assistente, um contador de pautas, um aviso. A palavra diz o que se
+        // conta, e o texto acessível diz o que fazer com ele.
+        const button = (count: number) => {
+            const reading = readiness();
+            reading.summary.attention_count = count;
+            const wrapper = mount(Show, { props: { ...baseProps(), readiness: reading } });
+
+            return wrapper.findAll('button').find((candidate) => candidate.text().includes('Preparar fecho'))!;
+        };
+
+        const many = button(2);
+        expect(many.text()).toContain('2 pontos');
+        expect(many.attributes('aria-label')).toBe('Preparar fecho — 2 pontos a verificar antes do fecho');
+
+        // O singular é singular.
+        const single = button(1);
+        expect(single.text()).toContain('1 ponto');
+        expect(single.text()).not.toContain('1 pontos');
+        expect(single.attributes('aria-label')).toBe('Preparar fecho — 1 ponto a verificar antes do fecho');
+
+        // E SEM PENDÊNCIAS NÃO SE ANUNCIA UM ZERO: anuncia-se o que o botão faz.
+        const clean = button(0);
+        expect(clean.text()).not.toContain('0');
+        expect(clean.attributes('aria-label')).toBe('Preparar fecho — abrir a leitura de preparação desta pauta');
+    });
+
     it('offers no button at all when there is nothing to prepare', () => {
         const wrapper = mount(Show, { props: { ...baseProps(), readiness: null } });
 

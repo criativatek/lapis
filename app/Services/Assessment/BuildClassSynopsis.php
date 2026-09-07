@@ -82,7 +82,7 @@ class BuildClassSynopsis
                 'moments' => [],
                 'domains' => [],
                 'students' => [],
-                'continuous' => ['units' => [], 'students' => []],
+                'continuous' => ['units' => [], 'students' => [], 'weights_declared' => false],
                 'elements' => [],
                 'periods' => [],
             ];
@@ -119,7 +119,13 @@ class BuildClassSynopsis
             'moments' => $moments,
             'domains' => $domains,
             'students' => $students,
-            'continuous' => ['units' => $continuous['units']],
+            'continuous' => [
+                'units' => $continuous['units'],
+                // Se os pesos são da escola ou é a igualdade por omissão — o
+                // ecrã escreve frases diferentes num caso e no outro, e não tem
+                // como distinguir os dois a partir dos números (§15).
+                'weights_declared' => $continuous['weights_declared'],
+            ],
             'elements' => $elements['elements'],
             'periods' => array_values($periods->map(fn (AcademicPeriod $period): array => [
                 'id' => (int) $period->getKey(),

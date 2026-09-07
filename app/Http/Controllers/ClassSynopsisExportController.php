@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AcademicPeriod;
 use App\Models\SchoolClass;
 use App\Models\User;
+use App\Services\Assessment\AccumulatedBreakdown;
 use App\Services\Assessment\BuildClassSynopsis;
 use App\Services\Assessment\Export\ClassSynopsisXlsxWriter;
 use App\Services\Audit\AuditLog;
@@ -39,6 +41,7 @@ class ClassSynopsisExportController extends Controller
 {
     public function __construct(
         protected BuildClassSynopsis $synopsis,
+        protected AccumulatedBreakdown $breakdown,
         protected ClassSynopsisXlsxWriter $xlsx,
         protected AuditLog $audit,
     ) {}
@@ -50,6 +53,19 @@ class ClassSynopsisExportController extends Controller
         $synopsis = $this->synopsis->for($class);
         $scale = $class->profileVersion?->scale()->with('levels')->first();
 
+        // A CONTA DO DESEMPENHO ACUMULADO, para a turma inteira e de uma vez. O
+        // ecrã pergunta-a célula a célula, quando alguém a quer; o ficheiro
+        // leva-a toda, porque quem o abre uma semana depois não tem onde clicar.
+        // A ÚLTIMA UNIDADE DO ANO, por uma consulta PRÓPRIA e não pela relação.
+        // `AcademicYear::periods()` traz um `orderBy('sequence')` seu, e um
+        // `orderByDesc` acrescentado fica em segundo lugar: a consulta sairia
+        // pela ordem original e isto devolveria o PRIMEIRO semestre a chamar-lhe
+        // o fim do ano — a mesma armadilha que já está documentada em
+        // `TwoReadingsOfTheYearTest`.
+        $lastPeriod = AcademicPeriod::query()
+            ->where('academic_year_id', $class->academic_year_id)
+            ->orderByDesc('sequence')
+            ->first();
         $context = [
             'class_label' => (string) $class->label,
             'subject' => (string) $class->subject->name,
@@ -63,7 +79,12 @@ class ClassSynopsisExportController extends Controller
                     'is_negative' => (bool) $level->is_negative,
                 ])->values()->all(),
             'exported_on' => now()->format('d/m/Y H:i'),
+            'accumulated_period_label' => $lastPeriod === null ? null : (string) $lastPeriod->label,
         ];
+
+        $accumulated = $lastPeriod === null
+            ? []
+            : $this->breakdown->forClassByDomain($class, $lastPeriod);
 
         /** @var User $user */
         $user = $request->user();
@@ -81,7 +102,7 @@ class ClassSynopsisExportController extends Controller
             ],
         );
 
-        return response($this->xlsx->write($synopsis, $context), 200, [
+        return response($this->xlsx->write($synopsis, $context, $accumulated), 200, [
             'Content-Type' => $this->xlsx->contentType(),
             // NOME SEGURO, e derivado. `Str::slug` deixa cair tudo o que não
             // seja letra, dígito ou hífen, portanto nenhum rótulo de turma pode

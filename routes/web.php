@@ -5,6 +5,7 @@ use App\Http\Controllers\AcademicCalendarImportController;
 use App\Http\Controllers\AcademicYearCalendarController;
 use App\Http\Controllers\AcademicYearContextController;
 use App\Http\Controllers\AcademicYearController;
+use App\Http\Controllers\AccumulatedBreakdownController;
 use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\AssessmentController;
 use App\Http\Controllers\AssessmentProfileController;
@@ -566,6 +567,21 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::get('classes/{class}/results/quadro-sintese/xlsx', [ClassSynopsisExportController::class, 'xlsx'])
             ->name('results.summary.xlsx');
         Route::get('classes/{class}/results/quadro-sintese', [ResultsController::class, 'summary'])->name('results.summary');
+        // DE ONDE VEM AQUELE NÚMERO — a decomposição do desempenho acumulado de
+        // UMA célula, pedida quando alguém clica nela.
+        //
+        // A PEDIDO E NÃO COM A PÁGINA: uma turma de trinta alunos com cinco
+        // domínios tem trezentas células de acumulado, e mandar a decomposição
+        // de todas elas em cada `Inertia::render` seria pagar por uma pergunta
+        // que se faz sobre uma de cada vez (§26).
+        //
+        // Declarada acima do wildcard `results/{period?}` pela mesma razão que
+        // «quadro-sintese»: um segmento fixo tem de ser reconhecido antes do
+        // catch-all que o engoliria. O domínio é opcional porque a coluna
+        // existe nos dois sítios — dentro de um domínio, e no bloco da síntese,
+        // onde o número é global.
+        Route::get('classes/{class}/results/desempenho-acumulado/{period}/{enrollment}/{domain?}', [AccumulatedBreakdownController::class, 'show'])
+            ->name('results.accumulated-breakdown');
         // Same reason as above: declared before the {period?} wildcard. The
         // period is optional — without one the read model opens on the latest
         // period that actually has results.

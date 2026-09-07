@@ -16,15 +16,25 @@ use RuntimeException;
 /**
  * O QUADRO SÍNTESE EM EXCEL — o ficheiro do Lapispro, não a grelha do Inovar.
  *
- * QUATRO FOLHAS, PORQUE SÃO QUATRO PERGUNTAS. Uma única folha com o ano inteiro
+ * CINCO FOLHAS, PORQUE SÃO CINCO PERGUNTAS. Uma única folha com o ano inteiro
  * ao nível do elemento teria centenas de colunas e não se leria; separadas, cada
  * uma responde ao que uma pessoa foi lá procurar:
  *
- *   Quadro Síntese          o ano de cada aluno, momento a momento
+ *   Quadro Síntese          o ano de cada aluno, momento a momento, e a
+ *                           avaliação contínua que o fecha
  *   Domínios                o mesmo, aberto por domínio
+ *   Desempenho acumulado    de onde vem aquele número — os pontos de cada
+ *                           unidade, o peso efetivo que eles criam, e a fração
+ *                           única que formam
  *   Elementos de Avaliação  o que cada aluno fez, elemento a elemento
  *   Configuração            a escala, os pesos, a legenda — o que faz o resto
  *                           continuar compreensível daqui a três anos
+ *
+ * A FOLHA DO ACUMULADO EXISTE PORQUE O NÚMERO NÃO SE EXPLICA SOZINHO. Quem veja
+ * 68 % num semestre, 25 % no outro e 60 % de desempenho acumulado tem à frente
+ * um número que não é a média de dois; a folha mostra porquê — 85 em 125 contra
+ * 7,33 em 29, e 92,33 em 154 ao todo. No ecrã essa conta abre-se ao clicar; num
+ * ficheiro não há onde clicar, e por isso vem escrita.
  *
  * A ÚLTIMA FOLHA É A QUE JUSTIFICA AS OUTRAS. Um ficheiro aberto em 2029 tem de
  * poder ser lido sem a aplicação ao lado: sem saber que escala era, que pesos
@@ -76,8 +86,9 @@ class ClassSynopsisXlsxWriter
     /**
      * @param  array<string, mixed>  $synopsis  o que `BuildClassSynopsis::for()` devolveu
      * @param  array<string, mixed>  $context  turma, disciplina, ano letivo, escala
+     * @param  array<int, array<int, array<string, mixed>>>  $accumulated  o que `AccumulatedBreakdown::forClassByDomain()` devolveu, por matrícula e domínio
      */
-    public function write(array $synopsis, array $context): string
+    public function write(array $synopsis, array $context, array $accumulated = []): string
     {
         $spreadsheet = new Spreadsheet;
         $spreadsheet->getProperties()
@@ -99,6 +110,7 @@ class ClassSynopsisXlsxWriter
 
         $this->writeSynopsisSheet($spreadsheet->getActiveSheet(), $synopsis, $context, $bands);
         $this->writeDomainsSheet($spreadsheet->createSheet(), $synopsis, $bands);
+        $this->writeAccumulatedSheet($spreadsheet->createSheet(), $synopsis, $context, $accumulated);
         $this->writeElementsSheet($spreadsheet->createSheet(), $synopsis);
         $this->writeConfigurationSheet($spreadsheet->createSheet(), $synopsis, $context);
 
@@ -305,7 +317,123 @@ class ClassSynopsisXlsxWriter
         $this->finish($sheet, 1, count($headers), $row - 1, freezeAt: 'C', nameWidth: 28, singleHeaderRow: true);
     }
 
-    // ----------------------------------------------------- folha 3: elementos
+    // ------------------------------------------ folha 3: desempenho acumulado
+
+    /**
+     * DE ONDE VEM AQUELE NÚMERO, aluno a aluno e domínio a domínio.
+     *
+     * UMA LINHA POR UNIDADE, E UMA LINHA DE TOTAL. As linhas de unidade trazem
+     * os pontos que ela contribuiu e a fatia do denominador que eles ocupam; a
+     * linha de total traz a fração inteira e o resultado. Quem some as unidades
+     * chega ao total — é essa soma que torna o número reconstruível fora da
+     * aplicação, que é a razão de esta folha existir.
+     *
+     * O PESO EFETIVO NÃO É UM PESO CONFIGURADO, e a folha «Configuração»
+     * diz isso por escrito: é a fatia que as cotações de uma unidade ocupam no
+     * total, e muda sozinha à medida que o ano avança.
+     *
+     * @param  array<string, mixed>  $synopsis
+     * @param  array<string, mixed>  $context
+     * @param  array<int, array<int, array<string, mixed>>>  $accumulated
+     */
+    protected function writeAccumulatedSheet(Worksheet $sheet, array $synopsis, array $context, array $accumulated): void
+    {
+        $sheet->setTitle('Desempenho acumulado');
+
+        $headers = [
+            'Nº', 'Aluno', 'Domínio', 'Unidade temporal',
+            'Pontos obtidos', 'Cotação', 'Resultado (%)', 'Peso efetivo (%)',
+        ];
+
+        $this->headerRow($sheet, $headers, 1);
+        $row = 2;
+
+        /** @var array<int, string> $domainNames */
+        $domainNames = [];
+        foreach ($synopsis['domains'] as $domain) {
+            $domainNames[(int) $domain['domain_id']] = (string) $domain['name'];
+        }
+
+        foreach ($synopsis['students'] as $student) {
+            $byDomain = $accumulated[(int) $student['enrollment_id']] ?? [];
+
+            foreach ($byDomain as $domainId => $reading) {
+                foreach ($reading['units'] as $unit) {
+                    $this->accumulatedRow(
+                        $sheet,
+                        $row++,
+                        $student,
+                        $domainNames[(int) $domainId] ?? '(domínio removido)',
+                        (string) $unit['label'],
+                        $unit['points_earned'],
+                        $unit['points_possible'],
+                        $unit['normalized_value'],
+                        $unit['effective_weight_percent'],
+                    );
+                }
+
+                // O TOTAL, na mesma grelha das parcelas para que a soma se veja
+                // com os olhos. A negrito porque é a linha que responde.
+                $this->accumulatedRow(
+                    $sheet,
+                    $row,
+                    $student,
+                    $domainNames[(int) $domainId] ?? '(domínio removido)',
+                    'TOTAL — '.(string) ($context['accumulated_period_label'] ?? 'ano'),
+                    $reading['points_earned'],
+                    $reading['points_possible'],
+                    $reading['normalized_value'],
+                    '100',
+                );
+
+                $sheet->getStyle([1, $row, count($headers), $row])->getFont()->setBold(true);
+                $row++;
+            }
+        }
+
+        $this->finish($sheet, 1, count($headers), $row - 1, freezeAt: 'C', nameWidth: 28, singleHeaderRow: true);
+    }
+
+    /**
+     * @param  array<string, mixed>  $student
+     */
+    protected function accumulatedRow(
+        Worksheet $sheet,
+        int $row,
+        array $student,
+        string $domainName,
+        string $unitLabel,
+        ?string $earned,
+        ?string $possible,
+        ?string $normalized,
+        ?string $effectiveWeight,
+    ): void {
+        if (($student['class_number'] ?? null) !== null) {
+            $sheet->setCellValue([1, $row], (int) $student['class_number']);
+        }
+
+        $this->text($sheet, 2, $row, (string) $student['name']);
+        $this->text($sheet, 3, $row, $domainName);
+        $this->text($sheet, 4, $row, $unitLabel);
+
+        // PONTOS COMO NÚMEROS. Uma cotação soma-se e compara-se — ao contrário
+        // de um nível, que é uma menção e não uma quantidade.
+        foreach ([[5, $earned], [6, $possible]] as [$column, $value]) {
+            if ($value === null) {
+                $this->text($sheet, $column, $row, '');
+
+                continue;
+            }
+
+            $sheet->setCellValue([$column, $row], (float) $value);
+            $sheet->getStyle([$column, $row])->getNumberFormat()->setFormatCode('0.00');
+        }
+
+        $this->percentage($sheet, 7, $row, $normalized);
+        $this->percentage($sheet, 8, $row, $effectiveWeight);
+    }
+
+    // ----------------------------------------------------- folha 4: elementos
 
     /** @param  array<string, mixed>  $synopsis */
     protected function writeElementsSheet(Worksheet $sheet, array $synopsis): void
@@ -315,7 +443,7 @@ class ClassSynopsisXlsxWriter
         $headers = [
             'Nº', 'Aluno', 'Unidade temporal', 'Data', 'Elemento', 'Tipo', 'Natureza',
             'Domínios', 'Peso declarado', 'Conta para a classificação',
-            'Resultado (%)', 'Nível', 'Estado',
+            'Pontos obtidos', 'Cotação', 'Resultado (%)', 'Nível', 'Estado',
         ];
 
         $this->headerRow($sheet, $headers, 1);
@@ -362,9 +490,20 @@ class ClassSynopsisXlsxWriter
                 // é uma afirmação completamente diferente.
                 $this->text($sheet, 9, $row, $element['weight'] === null ? '' : (string) $element['weight']);
                 $this->text($sheet, 10, $row, $element['counts_toward_classification'] ? 'Sim' : 'Não');
-                $this->percentage($sheet, 11, $row, $result['normalized_value'] ?? null);
-                $this->text($sheet, 12, $row, (string) ($result['level']['code'] ?? $result['level']['label'] ?? ''));
-                $this->text($sheet, 13, $row, (string) $result['state_label']);
+                // OS PONTOS AO LADO DA PERCENTAGEM. É a cotação, e não o
+                // resultado, que diz quanto um elemento pesa no acumulado do
+                // ano — e é isso que a folha «Desempenho acumulado» soma.
+                foreach ([[11, $result['points_earned'] ?? null], [12, $result['points_possible'] ?? null]] as [$column, $value]) {
+                    if ($value === null) {
+                        continue;
+                    }
+
+                    $sheet->setCellValue([$column, $row], (float) $value);
+                    $sheet->getStyle([$column, $row])->getNumberFormat()->setFormatCode('0.00');
+                }
+                $this->percentage($sheet, 13, $row, $result['normalized_value'] ?? null);
+                $this->text($sheet, 14, $row, (string) ($result['level']['code'] ?? $result['level']['label'] ?? ''));
+                $this->text($sheet, 15, $row, (string) $result['state_label']);
 
                 $row++;
             }
@@ -373,7 +512,7 @@ class ClassSynopsisXlsxWriter
         $this->finish($sheet, 1, count($headers), $row - 1, freezeAt: 'C', nameWidth: 28, singleHeaderRow: true);
     }
 
-    // -------------------------------------------------- folha 4: configuração
+    // -------------------------------------------------- folha 5: configuração
 
     /**
      * @param  array<string, mixed>  $synopsis
@@ -437,7 +576,19 @@ class ClassSynopsisXlsxWriter
             $readings[] = [$reading['name'], $reading['explanation']];
         }
 
+        // A FRASE QUE DESFAZ A CONFUSÃO, logo a seguir aos dois nomes. É a
+        // primeira coisa que alguém pergunta ao ver os dois números lado a lado.
+        $readings[] = ['Porque diferem', ReadingVocabulary::ACCUMULATED_NOT_AN_AVERAGE];
+        $readings[] = ['Os pesos de cada uma', ReadingVocabulary::ACCUMULATED_VERSUS_CONTINUOUS];
+
         $row = $this->block($sheet, $row, 'As duas leituras do ano', $readings);
+
+        $row = $this->block($sheet, $row, 'Como ler a folha «Desempenho acumulado»', [
+            ['Uma linha por unidade', 'Os pontos obtidos e a cotação que essa unidade temporal contribuiu para o domínio.'],
+            ['Linha TOTAL', 'A soma das linhas acima. Pontos obtidos a dividir pela cotação, vezes cem, é o desempenho acumulado — a mesma conta que o ecrã mostra.'],
+            ['Peso efetivo', 'A fatia da cotação total que uma unidade ocupa. NÃO é um peso configurado por ninguém: resulta das cotações dos elementos e muda à medida que o ano avança. É por isso que uma unidade com mais elementos pesa mais no acumulado.'],
+            ['Pesos formais das unidades', 'Esses são outra coisa e vivem no bloco acima: pertencem à avaliação contínua e não têm efeito nenhum sobre o desempenho acumulado.'],
+        ]);
 
         $this->block($sheet, $row, 'Como ler este ficheiro', [
             ['Momento formal', 'O resultado da unidade temporal. É reeditável e é o que entra na avaliação contínua.'],

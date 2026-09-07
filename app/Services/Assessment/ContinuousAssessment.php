@@ -71,11 +71,18 @@ class ContinuousAssessment
      * @return array{
      *     units: list<array<string, mixed>>,
      *     students: array<int, array<string, mixed>>,
+     *     weights_declared: bool,
      * }
      */
     public function for(SchoolClass $class, Collection $periods, array $formalByPeriod): array
     {
         $weights = $this->weightsFor($class, $periods);
+        // SE OS PESOS SÃO DA ESCOLA OU SÃO A IGUALDADE POR OMISSÃO. Quem
+        // apresenta a média tem de saber dizer qual das duas frases escrever —
+        // «média entre o 1.º e o 2.º semestre» ou «1.º × 40 % + 2.º × 60 %» — e
+        // não tem como distinguir um peso declarado de 1 da igualdade que esta
+        // classe usa quando ninguém declarou nada.
+        $weightsDeclared = $this->weightsAreDeclared($class, $periods);
         $version = $class->profileVersion;
         $scale = $version?->scale()->with('levels')->first();
         // A COLUNA TEM UMA RESTRIÇÃO CHECK e ainda assim é estreitada aqui, do
@@ -121,7 +128,42 @@ class ContinuousAssessment
             );
         }
 
-        return ['units' => $units, 'students' => $students];
+        return ['units' => $units, 'students' => $students, 'weights_declared' => $weightsDeclared];
+    }
+
+    /**
+     * Se ALGUMA unidade elegível tem peso formal escrito na configuração.
+     *
+     * A pergunta é feita à mesma coluna que `weightsFor` lê, e sobre as mesmas
+     * unidades — uma segunda leitura das duas coisas podia responder sobre um
+     * conjunto diferente daquele de que a média foi feita.
+     *
+     * @param  Collection<int, AcademicPeriod>  $periods
+     */
+    protected function weightsAreDeclared(SchoolClass $class, Collection $periods): bool
+    {
+        $version = $class->profileVersion;
+
+        if ($version === null) {
+            return false;
+        }
+
+        $configured = $version->periods()->get()
+            ->keyBy(fn ($row): int => (int) $row->academic_period_id);
+
+        foreach ($periods as $period) {
+            $row = $configured->get((int) $period->getKey());
+
+            if ($row === null || ! $row->contributes_to_accumulated) {
+                continue;
+            }
+
+            if ($row->period_weight_percent !== null) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

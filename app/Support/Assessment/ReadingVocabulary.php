@@ -42,12 +42,38 @@ final class ReadingVocabulary
     /** O indicador ANALÍTICO, nomeado curto — para um cabeçalho estreito. */
     public const ACCUMULATED = 'Desempenho acumulado';
 
+    /**
+     * O MESMO NOME, ENCURTADO PARA UMA COLUNA QUE NÃO TEM LARGURA PARA ELE.
+     *
+     * «Desemp.» sozinho não diz desempenho de quê — pode ser lido como o
+     * desempenho do período, que é outro número na mesma linha. E «Acum.» é
+     * precisamente o nome que a distinção entre as duas leituras mandou
+     * abandonar. O que aqui se abrevia é a segunda palavra e mais nada, para
+     * que a coluna continue a afirmar as duas coisas de que depende ser
+     * entendida: que é DESEMPENHO e que é ACUMULADO. O nome inteiro e a
+     * explicação vão sempre no `title` e no texto acessível — a abreviatura
+     * nunca é a única informação (§25).
+     */
+    public const ACCUMULATED_SHORT = 'Desemp. acum.';
+
     /** O mesmo, por extenso — para onde houver espaço para o dizer inteiro. */
     public const ACCUMULATED_LONG = 'Resultado acumulado dos elementos de avaliação';
 
     public const CONTINUOUS_EXPLANATION = 'Média dos resultados formais dos períodos/semestres, segundo os pesos configurados. Os momentos intercalares não entram nesta média.';
 
     public const ACCUMULATED_EXPLANATION = 'Resultado obtido considerando diretamente os elementos de avaliação acumulados até ao momento. É uma leitura complementar: a proposta formal sai da avaliação contínua.';
+
+    /**
+     * A FRASE QUE DESFAZ A CONFUSÃO QUE O NÚMERO PROVOCA.
+     *
+     * Um professor que veja 68 % num semestre, 25 % no outro e 60 % no
+     * acumulado tem à frente um número que não é a média de dois. Esta é a
+     * frase que diz porquê, e vive ao lado da conta que a demonstra.
+     */
+    public const ACCUMULATED_NOT_AN_AVERAGE = 'Este valor é calculado diretamente a partir das cotações dos elementos de avaliação acumulados ao longo do ano. Não é a média dos semestres.';
+
+    /** As duas leituras contrastadas numa frase, para onde as duas aparecem juntas. */
+    public const ACCUMULATED_VERSUS_CONTINUOUS = 'A Avaliação Contínua usa os pesos formais dos períodos/semestres; o Desempenho acumulado usa diretamente os elementos de avaliação.';
 
     /**
      * As duas leituras, na ordem em que se leem — a formal primeiro.

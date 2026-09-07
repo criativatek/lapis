@@ -497,7 +497,16 @@ class PedagogicalRoundTripTest extends TestCase
 
         $normalized = [];
         foreach ($value as $key => $item) {
-            if (is_string($key) && ($key === 'ulid' || $key === 'id' || str_ends_with($key, '_id'))) {
+            // IDENTIDADE FORA, SEMÂNTICA DENTRO. Um clone noutra organização é
+            // outra linha, com outro id e outro ulid, e TEM de o ser — o que
+            // este teste compara é o que a leitura diz, não onde ela está
+            // guardada. `*_ulid` entra nesta lista pela mesma razão que `*_id`:
+            // um ulid de chave estrangeira é identidade tanto como o inteiro que
+            // substitui, e deixá-lo passar faz o teste falhar no dia em que uma
+            // leitura passe a levar mais um — que é exatamente o que aconteceu
+            // quando o Quadro Síntese ganhou o `enrollment_ulid` de que precisa
+            // para endereçar a decomposição de um acumulado.
+            if (is_string($key) && ($key === 'ulid' || $key === 'id' || str_ends_with($key, '_id') || str_ends_with($key, '_ulid'))) {
                 continue;
             }
             $normalized[$key] = $this->stripDatabaseIdentity($item);

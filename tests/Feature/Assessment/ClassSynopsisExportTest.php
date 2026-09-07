@@ -88,12 +88,15 @@ class ClassSynopsisExportTest extends TestCase
     // -------------------------------------------------------------- as folhas
 
     #[Test]
-    public function the_workbook_has_the_four_sheets_the_file_is_supposed_to_be_readable_by(): void
+    public function the_workbook_has_the_five_sheets_the_file_is_supposed_to_be_readable_by(): void
     {
         $spreadsheet = $this->open($this->download());
 
+        // «Desempenho acumulado» entra entre os domínios e os elementos porque é
+        // aí que responde: depois de se ver o número de cada domínio, e antes de
+        // se descer ao elemento a elemento que o produziu.
         $this->assertSame(
-            ['Quadro Síntese', 'Domínios', 'Elementos de Avaliação', 'Configuração'],
+            ['Quadro Síntese', 'Domínios', 'Desempenho acumulado', 'Elementos de Avaliação', 'Configuração'],
             $spreadsheet->getSheetNames(),
         );
     }
@@ -362,6 +365,60 @@ class ClassSynopsisExportTest extends TestCase
             'O indicador formal vem primeiro: a ordem é a hierarquia.',
         );
     }
+
+    // ------------------------------------------------- de onde vem o número
+
+    #[Test]
+    public function the_accumulated_sheet_writes_the_account_that_produces_the_number(): void
+    {
+        $sheet = $this->open($this->download())->getSheetByName('Desempenho acumulado');
+
+        $this->assertNotNull($sheet, 'O ficheiro não leva a folha do desempenho acumulado.');
+
+        $headers = $this->headerColumns($sheet, 1);
+
+        // OS PONTOS SÃO A EXPLICAÇÃO. Sem a cotação de cada unidade não há como
+        // perceber por que motivo o acumulado não é a média dos semestres — e é
+        // exatamente essa pergunta que esta folha existe para responder.
+        foreach (['Domínio', 'Unidade temporal', 'Pontos obtidos', 'Cotação', 'Resultado (%)', 'Peso efetivo (%)'] as $header) {
+            $this->assertContains($header, array_keys($headers), "Falta a coluna «{$header}».");
+        }
+
+        $text = $this->textOf($sheet);
+
+        // Uma linha por unidade temporal, e a linha que as soma.
+        $this->assertStringContainsString('1.º Semestre', $text);
+        $this->assertStringContainsString('2.º Semestre', $text);
+        $this->assertStringContainsString('TOTAL', $text);
+    }
+
+    #[Test]
+    public function the_file_explains_that_the_effective_weight_is_not_a_configured_one(): void
+    {
+        $configuration = $this->textOf($this->open($this->download())->getSheetByName('Configuração'));
+
+        // A CONFUSÃO QUE ESTA FRASE EVITA: um professor que veja «peso efetivo
+        // 81 %» pode razoavelmente procurar onde é que alguém configurou 81 %.
+        // Ninguém configurou — é o que as cotações fazem.
+        $this->assertStringContainsString('Como ler a folha «Desempenho acumulado»', $configuration);
+        $this->assertStringContainsString('NÃO é um peso configurado', $configuration);
+        $this->assertStringContainsString(ReadingVocabulary::ACCUMULATED_NOT_AN_AVERAGE, $configuration);
+    }
+
+    #[Test]
+    public function the_elements_sheet_carries_the_points_and_not_only_the_percentage(): void
+    {
+        $sheet = $this->open($this->download())->getSheetByName('Elementos de Avaliação');
+        $headers = array_keys($this->headerColumns($sheet, 1));
+
+        // A percentagem diz COMO correu; os pontos dizem QUANTO o elemento pesa
+        // no ano, que é a metade da história que faltava.
+        $this->assertContains('Pontos obtidos', $headers);
+        $this->assertContains('Cotação', $headers);
+        $this->assertContains('Unidade temporal', $headers);
+        $this->assertContains('Domínios', $headers);
+    }
+
     // ------------------------------------------------------------ utilitários
 
     private function textOf(Worksheet $sheet): string

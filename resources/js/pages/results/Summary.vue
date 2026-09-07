@@ -4,12 +4,15 @@ import { CircleAlert, FileSpreadsheet, Lock } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
+import AccumulatedBreakdownPanel from '@/components/results/AccumulatedBreakdownPanel.vue';
 import ClassSynopsisTable from '@/components/results/ClassSynopsisTable.vue';
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
 import {
     ACCUMULATED,
     ACCUMULATED_EXPLANATION,
     ACCUMULATED_LONG,
+    ACCUMULATED_NOT_AN_AVERAGE,
+    ACCUMULATED_SHORT,
     CONTINUOUS,
     CONTINUOUS_EXPLANATION,
 } from '@/lib/readings';
@@ -61,6 +64,7 @@ type PeriodCell = {
 
 type Student = {
     enrollment_id: number;
+    enrollment_ulid: string;
     name: string;
     class_number: number | null;
     periods: PeriodCell[];
@@ -89,7 +93,7 @@ const props = defineProps<{
     canViewStudentProgress: boolean;
     progression: {
         periods: { id: number; ulid: string; label: string; sequence: number }[];
-        domains: { id: number; name: string }[];
+        domains: { id: number; ulid: string; name: string }[];
         students: Student[];
     };
     /** O ano visto pelos MOMENTOS — ver `BuildClassSynopsis`. */
@@ -122,12 +126,40 @@ const view = ref<SummaryView>('moments');
 const showQuantitative = ref(true);
 
 /**
- * «P1», «P2» — short enough for a table this wide, and never without the real
- * period name behind it (§14).
+ * ---------------------------------------------------- de onde vem aquele número
+ *
+ * O ACUMULADO DE CADA CÉLULA ABRE-SE. Um professor que veja 68,0 % num
+ * semestre, 25,3 % no outro e 60 % de desempenho acumulado tem à frente um
+ * número que não é a média de dois; o painel mostra-lhe a conta que o produziu
+ * — os pontos de cada unidade, os elementos, e a fração que eles formam.
+ *
+ * A DECOMPOSIÇÃO NÃO VIAJA COM A PÁGINA. Trinta alunos × cinco domínios × duas
+ * unidades são trezentas células; a decomposição pede-se ao servidor quando
+ * alguém abre uma, e não trezentas vezes por precaução (§26).
  */
-function shortPeriod(index: number): string {
-    return `P${index + 1}`;
+const breakdownUrl = ref<string | null>(null);
+const breakdownStudent = ref('');
+
+/**
+ * A célula clicada, endereçada como o servidor a espera: turma, unidade,
+ * matrícula e — quando é a de um domínio — o domínio. Sem domínio, é o número
+ * global do bloco da síntese.
+ */
+function openBreakdown(student: Student, period: PeriodCell, domainUlid: string | null): void {
+    const unit = props.progression.periods.find((candidate) => candidate.id === period.period_id);
+
+    if (unit === undefined) {
+        return;
+    }
+
+    breakdownStudent.value = student.name;
+    breakdownUrl.value =
+        `/classes/${props.schoolClass.ulid}/results/desempenho-acumulado/${unit.ulid}/${student.enrollment_ulid}` +
+        (domainUlid === null ? '' : `/${domainUlid}`);
 }
+
+/** A última unidade do ano — a que o acumulado de um domínio responde por. */
+const lastPeriodIndex = computed(() => periods.value.length - 1);
 
 // Per domain: one column per period, an evolution column after every period but
 // the first, then the accumulated figure and the mention it falls in.
@@ -161,6 +193,58 @@ function synthesisColumns(index: number): number {
     return index === 0 ? 5 : 6;
 }
 
+/**
+ * ------------------------------------------------- a avaliação contínua final
+ *
+ * O ANO FECHA NUM SÍTIO, E NÃO NA ÚLTIMA SÍNTESE ESTANQUE. Cada bloco «Síntese»
+ * responde por UMA unidade temporal; nenhum deles responde pelo ano. A
+ * avaliação contínua é essa resposta — a média dos resultados formais de todas
+ * as unidades, com os pesos que a escola configurou —, e é dela, e nunca do
+ * desempenho acumulado, que sai a proposta formal de nível (§13, §14).
+ *
+ * O NÚMERO NÃO É CALCULADO AQUI. Vem de `ContinuousAssessment`, através do
+ * mesmo payload que a leitura por momentos já usa: uma segunda média feita no
+ * browser seria uma segunda resposta à mesma pergunta.
+ */
+const continuousByEnrollment = computed(() => {
+    const map = new Map<number, NonNullable<Synopsis['students'][number]['continuous']>>();
+
+    props.synopsis.students.forEach((student) => {
+        if (student.continuous !== null) {
+            map.set(student.enrollment_id, student.continuous);
+        }
+    });
+
+    return map;
+});
+
+/**
+ * COMO A MÉDIA É FEITA, dito por palavras e com as unidades desta turma.
+ *
+ * Com pesos declarados escreve-se a conta; sem eles escreve-se a igualdade, que
+ * é o que «média entre o 1.º e o 2.º semestre» quer dizer em português. Uma
+ * frase só serviria mal os dois casos.
+ */
+const continuousFormula = computed(() => {
+    const units = props.synopsis.continuous.units;
+
+    if (units.length === 0) {
+        return 'Sem unidades formais configuradas.';
+    }
+
+    if (!props.synopsis.continuous.weights_declared) {
+        return `Média dos resultados formais, com peso igual: ${units.map((unit) => unit.label).join(' e ')}.`;
+    }
+
+    return `Média ponderada dos resultados formais: ${units
+        .map((unit) => `${unit.label} × ${unit.weight_percent} %`)
+        .join(' + ')}.`;
+});
+
+const continuousTitle = computed(
+    () => `${CONTINUOUS} — indicador formal do ano. ${CONTINUOUS_EXPLANATION} ${continuousFormula.value}`,
+);
+
 /** DESEMPENHO, from the canonical resolver — never a colour chosen here. */
 function levelClasses(level: Level): string {
     if (level === null) {
@@ -174,9 +258,9 @@ function domainCell(period: PeriodCell, domainId: number): DomainCell | undefine
     return period.domains.find((domain) => domain.domain_id === domainId);
 }
 
-/** «Autoavaliação: 3 — Suficiente», for the discreet marker beside a domain's value. */
+/** «Autoavaliação do aluno: 3 — Suficiente», for the discreet marker beside a domain's value. */
 function selfAssessmentTitle(level: Level): string {
-    return level === null ? '' : `Autoavaliação: ${level.code} — ${level.label}`;
+    return level === null ? '' : `Autoavaliação do aluno: ${level.code} — ${level.label}`;
 }
 
 function proposalText(proposal: Proposal | undefined): string {
@@ -336,18 +420,39 @@ function proposalText(proposal: Proposal | undefined): string {
                         >
                             Síntese · {{ period.label }}
                         </th>
+                        <!-- O ANO, DEPOIS DAS UNIDADES. É o indicador formal e
+                             é o único bloco com a cor do produto: se tivesse a
+                             mesma tinta das sínteses, teria o mesmo peso, e a
+                             hierarquia entre as duas leituras deixaria de
+                             existir (§17). -->
+                        <th
+                            :colspan="3"
+                            class="sticky top-0 z-20 border-b border-l-4 border-l-primary border-b-border bg-primary/20 px-3 py-1.5 text-center text-xs font-semibold tracking-wide uppercase"
+                            :title="continuousTitle"
+                            :aria-label="continuousTitle"
+                            scope="colgroup"
+                        >
+                            Avaliação Contínua Final
+                        </th>
                     </tr>
                     <tr>
                         <template v-for="domain in domains" :key="`sub-${domain.id}`">
                             <template v-for="(period, index) in periods" :key="`sub-${domain.id}-${period.id}`">
+                                <!-- O NOME REAL DA UNIDADE, e não «P1». O ano
+                                     letivo desta turma tem as unidades que a
+                                     escola lhe configurou — semestres, períodos
+                                     ou módulos — e cada uma tem o nome que ela
+                                     lhe deu. «P1» era uma abreviatura que este
+                                     ecrã inventava e que não correspondia a
+                                     nada escrito em lado nenhum (§14). -->
                                 <th
-                                    class="sticky top-[33px] z-20 border-b border-border bg-muted/30 px-2 py-1 text-center text-xs font-medium"
+                                    class="sticky top-[33px] z-20 border-b border-border bg-muted/30 px-2 py-1 text-center text-xs font-medium whitespace-nowrap"
                                     :class="index === 0 ? BLOCK_EDGE : ''"
                                     :title="`${period.label} — ${domain.name}`"
                                     :aria-label="`${period.label} — ${domain.name}`"
                                     scope="col"
                                 >
-                                    {{ shortPeriod(index) }}
+                                    {{ period.label }}
                                 </th>
                                 <th
                                     v-if="index > 0"
@@ -359,13 +464,19 @@ function proposalText(proposal: Proposal | undefined): string {
                                     Evol.
                                 </th>
                             </template>
+                            <!-- «Desemp.» sozinho não dizia desempenho de quê —
+                                 podia ser lido como o desempenho do período,
+                                 que é outro número na mesma linha. O nome
+                                 inteiro e a explicação continuam no `title` e
+                                 no texto acessível: a abreviatura nunca é a
+                                 única informação (§25). -->
                             <th
-                                class="sticky top-[33px] z-20 border-b border-border bg-muted/30 px-2 py-1 text-center text-xs font-medium"
+                                class="sticky top-[33px] z-20 border-b border-border bg-muted/30 px-2 py-1 text-center text-xs font-medium whitespace-nowrap"
                                 :title="`${ACCUMULATED_LONG} — ${domain.name}. ${ACCUMULATED_EXPLANATION}`"
                                 :aria-label="`${ACCUMULATED_LONG} — ${domain.name}. ${ACCUMULATED_EXPLANATION}`"
                                 scope="col"
                             >
-                                Desemp.
+                                {{ ACCUMULATED_SHORT }}
                             </th>
                             <th
                                 class="sticky top-[33px] z-20 border-b border-border bg-muted/30 px-2 py-1 text-center text-xs font-medium"
@@ -397,12 +508,12 @@ function proposalText(proposal: Proposal | undefined): string {
                                 Evol.
                             </th>
                             <th
-                                class="sticky top-[33px] z-20 border-b border-border bg-primary/5 px-2 py-1 text-center text-xs font-medium"
+                                class="sticky top-[33px] z-20 border-b border-border bg-primary/5 px-2 py-1 text-center text-xs font-medium whitespace-nowrap"
                                 :title="`${ACCUMULATED_LONG} — ${period.label}. ${ACCUMULATED_EXPLANATION}`"
                                 :aria-label="`${ACCUMULATED_LONG} — ${period.label}. ${ACCUMULATED_EXPLANATION}`"
                                 scope="col"
                             >
-                                Desemp.
+                                {{ ACCUMULATED_SHORT }}
                             </th>
                             <th
                                 class="sticky top-[33px] z-20 border-b border-border bg-primary/5 px-2 py-1 text-center text-xs font-medium"
@@ -429,6 +540,31 @@ function proposalText(proposal: Proposal | undefined): string {
                                 {{ decision.classifies_by_level ? 'Nível' : 'Classif.' }}
                             </th>
                         </template>
+
+                        <th
+                            class="sticky top-[33px] z-20 border-b border-l-4 border-l-primary border-b-border bg-primary/10 px-2 py-1 text-center text-xs font-medium"
+                            :title="continuousTitle"
+                            :aria-label="continuousTitle"
+                            scope="col"
+                        >
+                            Média
+                        </th>
+                        <th
+                            class="sticky top-[33px] z-20 border-b border-border bg-primary/10 px-2 py-1 text-center text-xs font-medium"
+                            :title="`Proposta formal do Lapispro para o ano — sai da ${CONTINUOUS.toLowerCase()}, nunca do ${ACCUMULATED.toLowerCase()}.`"
+                            :aria-label="`Proposta formal do Lapispro para o ano — sai da ${CONTINUOUS.toLowerCase()}, nunca do ${ACCUMULATED.toLowerCase()}.`"
+                            scope="col"
+                        >
+                            Prop.
+                        </th>
+                        <th
+                            class="sticky top-[33px] z-20 border-r border-b border-border bg-primary/10 px-2 py-1 text-center text-xs font-medium"
+                            :title="`${decision.label} do ano, atribuído pelo professor.`"
+                            :aria-label="`${decision.label} do ano, atribuído pelo professor.`"
+                            scope="col"
+                        >
+                            {{ decision.classifies_by_level ? 'Nível' : 'Classif.' }}
+                        </th>
                     </tr>
                 </thead>
 
@@ -454,13 +590,20 @@ function proposalText(proposal: Proposal | undefined): string {
                                         title="Cobertura parcial — o resultado assenta apenas em parte dos elementos aplicáveis."
                                     />
                                     <!-- What the student said about this domain,
-                                         beside what the evidence says (§7). -->
+                                         beside what the evidence says (§7).
+                                         «A3» OBRIGAVA A DECIFRAR: o «A» podia
+                                         ser um nível, uma alínea ou um aviso, e
+                                         uma legenda no fundo da página não
+                                         acompanha quem está a ler a célula.
+                                         «Auto 3» diz-se sozinho, e continua a
+                                         ser informação de apoio que não entra
+                                         em cálculo nenhum (§15, §61). -->
                                     <sup
                                         v-if="domainCell(period, domain.id)?.self_assessment"
-                                        class="ml-0.5 rounded bg-muted px-1 text-[10px] font-normal text-muted-foreground"
+                                        class="ml-0.5 rounded bg-muted px-1 text-[10px] font-normal whitespace-nowrap text-muted-foreground"
                                         :title="selfAssessmentTitle(domainCell(period, domain.id)?.self_assessment ?? null)"
                                         :aria-label="selfAssessmentTitle(domainCell(period, domain.id)?.self_assessment ?? null)"
-                                    >A{{ domainCell(period, domain.id)?.self_assessment?.code }}</sup>
+                                    >Auto {{ domainCell(period, domain.id)?.self_assessment?.code }}</sup>
                                 </td>
                                 <td
                                     v-if="index > 0"
@@ -475,15 +618,24 @@ function proposalText(proposal: Proposal | undefined): string {
                                     </span>
                                 </td>
                             </template>
+                            <!-- O NÚMERO ABRE A CONTA QUE O PRODUZIU. É um
+                                 botão e não um ícone ao lado: uma coluna de
+                                 ícones em todas as células tornaria a grelha
+                                 mais pesada do que a explicação que oferece
+                                 (§5). Uma célula sem valor não abre nada — não
+                                 há conta nenhuma para mostrar. -->
                             <td class="bg-muted/20 px-2 py-1.5 text-center tabular-nums">
-                                <span
-                                    :class="{
-                                        'text-muted-foreground':
-                                            (domainCell(student.periods[student.periods.length - 1], domain.id)?.accumulated_average ?? null) === null,
-                                    }"
+                                <button
+                                    v-if="(domainCell(student.periods[lastPeriodIndex], domain.id)?.accumulated_average ?? null) !== null"
+                                    type="button"
+                                    class="rounded px-1 underline decoration-dotted underline-offset-2 hover:bg-muted focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+                                    :title="`Ver de onde vem este valor — ${ACCUMULATED_LONG} de ${domain.name}. ${ACCUMULATED_NOT_AN_AVERAGE}`"
+                                    :aria-label="`Ver a decomposição do ${ACCUMULATED.toLowerCase()} de ${student.name} em ${domain.name}`"
+                                    @click="openBreakdown(student, student.periods[lastPeriodIndex], domain.ulid)"
                                 >
-                                    {{ pct(domainCell(student.periods[student.periods.length - 1], domain.id)?.accumulated_average ?? null) }}
-                                </span>
+                                    {{ pct(domainCell(student.periods[lastPeriodIndex], domain.id)?.accumulated_average ?? null) }}
+                                </button>
+                                <span v-else class="text-muted-foreground">—</span>
                             </td>
                             <!-- The band that accumulated figure falls in, on the
                                  profile's own scale. Never a threshold decided
@@ -522,10 +674,22 @@ function proposalText(proposal: Proposal | undefined): string {
                                     <span>{{ trendArrow(period.evolution) }}</span>
                                 </span>
                             </td>
+                            <!-- O mesmo número, e a mesma porta — mas aqui o
+                                 acumulado é GLOBAL, e o que a decomposição
+                                 mostra são os domínios e os seus pesos, porque
+                                 é disso que este número é feito. -->
                             <td class="bg-muted/20 px-2 py-1.5 text-center tabular-nums">
-                                <span :class="{ 'text-muted-foreground': period.accumulated_average === null }">
+                                <button
+                                    v-if="period.accumulated_average !== null"
+                                    type="button"
+                                    class="rounded px-1 underline decoration-dotted underline-offset-2 hover:bg-muted focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+                                    :title="`Ver de onde vem este valor — ${ACCUMULATED_LONG} até ao fim do ${period.period_label}. ${ACCUMULATED_NOT_AN_AVERAGE}`"
+                                    :aria-label="`Ver a decomposição do ${ACCUMULATED.toLowerCase()} de ${student.name} até ao fim do ${period.period_label}`"
+                                    @click="openBreakdown(student, period, null)"
+                                >
                                     {{ pct(period.accumulated_average) }}
-                                </span>
+                                </button>
+                                <span v-else class="text-muted-foreground">—</span>
                             </td>
                             <td class="px-2 py-1.5 text-center tabular-nums">
                                 <span v-if="period.classification?.proposal.value" class="rounded bg-muted px-1.5 py-0.5">
@@ -558,6 +722,59 @@ function proposalText(proposal: Proposal | undefined): string {
                                 <span v-else class="text-muted-foreground" title="Ainda por atribuir — o Lapispro propõe, o professor decide.">—</span>
                             </td>
                         </template>
+
+                        <!-- …e o ano inteiro, no fim. A média formal, a
+                             proposta que sai dela, e a decisão do professor.
+                             A autoavaliação NÃO aparece aqui de propósito: o
+                             aluno autoavalia-se em cada unidade, e não existe
+                             uma autoavaliação do ano. Repetir aqui a da última
+                             unidade seria dar-lhe um significado que ela não
+                             tem (§14). -->
+                        <!-- SEM TINTA DE ORGANIZAÇÃO NAS CÉLULAS DE DADOS
+                             (§15): a hierarquia deste bloco está no cabeçalho e
+                             na barra que o separa, e é lá que tem de ficar. Uma
+                             cor de fundo aqui competiria com a tinta da
+                             tendência, que é a única num corpo de tabela que
+                             significa alguma coisa. -->
+                        <td class="border-l-4 border-l-primary px-2 py-1.5 text-center font-medium tabular-nums">
+                            <span
+                                :class="{
+                                    'text-muted-foreground':
+                                        (continuousByEnrollment.get(student.enrollment_id)?.normalized_value ?? null) === null,
+                                }"
+                                :title="continuousTitle"
+                            >{{ pct(continuousByEnrollment.get(student.enrollment_id)?.normalized_value ?? null) }}</span>
+                        </td>
+                        <td class="px-2 py-1.5 text-center tabular-nums">
+                            <span
+                                v-if="continuousByEnrollment.get(student.enrollment_id)?.level"
+                                class="rounded px-1.5 py-0.5 italic"
+                                :class="levelClasses(continuousByEnrollment.get(student.enrollment_id)!.level)"
+                                :title="`Proposta do Lapispro para a ${CONTINUOUS.toLowerCase()}: ${continuousByEnrollment.get(student.enrollment_id)!.level!.code} — ${continuousByEnrollment.get(student.enrollment_id)!.level!.label}. ${continuousFormula}`"
+                            >{{ continuousByEnrollment.get(student.enrollment_id)!.level!.code }}</span>
+                            <span
+                                v-else-if="continuousByEnrollment.get(student.enrollment_id)?.proposal?.value"
+                                class="rounded bg-muted px-1.5 py-0.5 italic"
+                                :title="continuousFormula"
+                            >{{ continuousByEnrollment.get(student.enrollment_id)!.proposal.value }}</span>
+                            <span
+                                v-else
+                                class="text-muted-foreground"
+                                title="Sem resultados formais suficientes para uma média contínua."
+                            >—</span>
+                        </td>
+                        <td class="px-2 py-1.5 text-center tabular-nums">
+                            <span
+                                v-if="continuousByEnrollment.get(student.enrollment_id)?.decision?.final"
+                                class="rounded px-1.5 py-0.5 font-bold"
+                                :title="`Decisão do professor para o ano: ${continuousByEnrollment.get(student.enrollment_id)!.decision!.final!.code} — ${continuousByEnrollment.get(student.enrollment_id)!.decision!.final!.label}`"
+                            >{{ continuousByEnrollment.get(student.enrollment_id)!.decision!.final!.code }}</span>
+                            <span
+                                v-else
+                                class="text-muted-foreground"
+                                title="Ainda por decidir — o Lapispro propõe, o professor decide."
+                            >—</span>
+                        </td>
                     </tr>
                 </tbody>
             </table>
@@ -600,10 +817,10 @@ function proposalText(proposal: Proposal | undefined): string {
             <p class="flex items-start gap-2">
                 <CircleAlert class="mt-0.5 size-3.5 shrink-0" />
                 <span>
-                    <strong>A1</strong>, <strong>A2</strong>… em expoente, ao abrir um momento, são a
-                    <strong>autoavaliação do aluno</strong> nesse domínio — o «A» é de autoavaliação e o número é o
-                    nível que ele próprio se atribuiu. É informação de apoio: não entra em cálculo nenhum. E «—»
-                    significa <strong>sem elementos</strong>, nunca zero.
+                    <strong>Auto 1</strong>, <strong>Auto 2</strong>… em expoente, ao abrir um momento, são a
+                    <strong>autoavaliação do aluno</strong> nesse domínio: o número é o nível que ele próprio se
+                    atribuiu. É informação de apoio: não entra em cálculo nenhum. E «—» significa
+                    <strong>sem elementos</strong>, nunca zero.
                 </span>
             </p>
             <p v-if="scaleBands.length > 0" class="flex flex-wrap items-center gap-1.5">
@@ -620,17 +837,24 @@ function proposalText(proposal: Proposal | undefined): string {
         <p v-if="view === 'domains'" class="flex items-start gap-2 text-xs text-muted-foreground">
             <CircleAlert class="mt-0.5 size-3.5 shrink-0" />
             <span>
-                Cada bloco é um domínio do perfil de avaliação: <strong>P1</strong>, <strong>P2</strong>… são a
-                <strong>Média Ponderada</strong> de cada período, <strong>Evol.</strong> compara esse período com o
-                anterior — sempre valores do próprio período, nunca acumulados —, <strong>Desemp.</strong> é o
+                Cada bloco é um domínio do perfil de avaliação: as colunas com o nome de cada unidade temporal
+                <template v-if="periods.length"> ({{ periods.map((period) => period.label).join(', ') }})</template>
+                são a <strong>Média Ponderada</strong> dessa unidade, <strong>Evol.</strong> compara-a com a anterior
+                — sempre valores da própria unidade, nunca acumulados —, <strong>{{ ACCUMULATED_SHORT }}</strong> é o
                 <strong>{{ ACCUMULATED_LONG.toLowerCase() }}</strong> e a <strong>Menção</strong> é a banda desse
                 desempenho na
                 escala do perfil<template v-if="schoolClass.scale_name"> ({{ schoolClass.scale_name }})</template>;
-                fica "—" quando a escala não tem banda definida — o Lapispro não infere limiares. O <strong>A</strong> em
-                expoente é a autoavaliação do aluno nesse domínio. No bloco <strong>Síntese</strong> ficam, por período, a Média Ponderada, a evolução, o
+                fica "—" quando a escala não tem banda definida — o Lapispro não infere limiares.
+                <strong>Clique num valor de {{ ACCUMULATED_SHORT.toLowerCase() }}</strong> para ver de onde ele vem:
+                os pontos de cada unidade, os elementos que os produziram e a fração que eles formam.
+                {{ ACCUMULATED_NOT_AN_AVERAGE }}
+                O <strong>Auto</strong> em expoente é a autoavaliação do aluno nesse domínio. No bloco
+                <strong>Síntese</strong> ficam, por unidade, a Média Ponderada, a evolução, o
                 desempenho acumulado, a <strong>Proposta</strong>, a <strong>Autoavaliação</strong> global e o
                 <strong>{{ decision.label }}</strong><template v-if="schoolClass.scale_name"> na escala
-                {{ schoolClass.scale_name }}</template>. Um fundo
+                {{ schoolClass.scale_name }}</template>; e no bloco
+                <strong>Avaliação Contínua Final</strong> fica o ano inteiro — {{ continuousFormula }} A proposta
+                formal do ano sai daí, e nunca do {{ ACCUMULATED.toLowerCase() }}. Um fundo
                 <span class="rounded bg-emerald-50 px-1 dark:bg-emerald-950/40">verde</span> ou
                 <span class="rounded bg-rose-50 px-1 dark:bg-rose-950/40">vermelho</span> indica
                 <strong>tendência</strong>, e é independente da cor do nível, que indica <strong>desempenho</strong>.
@@ -652,8 +876,19 @@ function proposalText(proposal: Proposal | undefined): string {
             </p>
             <p>
                 <strong>{{ ACCUMULATED_LONG }}</strong> ({{ ACCUMULATED }}) — leitura complementar.
-                {{ ACCUMULATED_EXPLANATION }}
+                {{ ACCUMULATED_EXPLANATION }} {{ ACCUMULATED_NOT_AN_AVERAGE }}
+                <template v-if="view === 'domains'">Clique num valor acumulado para ver a conta que o produziu.</template>
             </p>
         </div>
+
+        <!-- DE ONDE VEM AQUELE NÚMERO. Fora da tabela, porque é um painel sobre
+             ela — e montado uma vez só, porque a pergunta faz-se sobre uma
+             célula de cada vez. -->
+        <AccumulatedBreakdownPanel
+            :url="breakdownUrl"
+            :student-name="breakdownStudent"
+            :has-declared-period-weights="synopsis.continuous.weights_declared"
+            @close="breakdownUrl = null"
+        />
     </div>
 </template>

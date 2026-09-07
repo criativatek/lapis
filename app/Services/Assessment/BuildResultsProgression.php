@@ -132,6 +132,10 @@ class BuildResultsProgression
         foreach ($enrollments as $enrollmentId => $enrollment) {
             $students[] = [
                 'enrollment_id' => $enrollmentId,
+                // O ULID DA MATRÍCULA. Esta leitura passou a ser endereçável:
+                // cada valor acumulado abre a decomposição que o explica, e uma
+                // rota leva o ulid e nunca o id sequencial (§11.2).
+                'enrollment_ulid' => (string) $enrollment->ulid,
                 'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
                 'class_number' => $enrollment->class_number,
                 'periods' => $this->periodsFor(
@@ -163,7 +167,10 @@ class BuildResultsProgression
         $domainRows = [];
 
         foreach ($domains as $domain) {
-            $domainRows[] = ['id' => (int) $domain->id, 'name' => (string) $domain->name];
+            // O ulid ao lado do id pela mesma razão que a matrícula o leva: a
+            // decomposição de um acumulado é endereçada por domínio, e uma rota
+            // nunca leva um id sequencial (§11.2).
+            $domainRows[] = ['id' => (int) $domain->id, 'ulid' => (string) $domain->ulid, 'name' => (string) $domain->name];
         }
 
         return [

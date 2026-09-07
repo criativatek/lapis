@@ -296,6 +296,86 @@ class SummaryScreenTest extends TestCase
     }
 
     #[Test]
+    public function a_temporal_unit_is_called_by_the_name_the_school_gave_it(): void
+    {
+        $screen = $this->screen();
+
+        // «P1» ERA UMA ABREVIATURA INVENTADA POR ESTE ECRÃ, e não correspondia a
+        // nada escrito em lado nenhum: uma escola com módulos, ou com três
+        // períodos, lia «P1» sem ter dado esse nome a coisa nenhuma. O rótulo é
+        // agora o `label` que a própria unidade tem.
+        $this->assertStringNotContainsString('function shortPeriod', $screen);
+        $this->assertStringNotContainsString('`P${index + 1}`', $screen);
+        $this->assertStringContainsString('{{ period.label }} </th>', $screen);
+    }
+
+    #[Test]
+    public function the_accumulated_column_says_what_it_is_the_performance_of(): void
+    {
+        $screen = $this->screen();
+
+        // «Desemp.» sozinho podia ser lido como o desempenho DO PERÍODO, que é
+        // outro número na mesma linha; e «Acum.» é o nome que a distinção entre
+        // as duas leituras mandou abandonar. Nenhum dos dois volta.
+        $this->assertStringNotContainsString('Acum.', $screen);
+        $this->assertStringNotContainsString('> Desemp. <', $screen);
+        $this->assertStringContainsString('{{ ACCUMULATED_SHORT }}', $screen);
+
+        // E a abreviatura nunca é a única informação: o nome inteiro e a
+        // explicação continuam no `title` e no texto acessível (§25).
+        $this->assertStringContainsString('${ACCUMULATED_LONG} — ${domain.name}. ${ACCUMULATED_EXPLANATION}', $screen);
+    }
+
+    #[Test]
+    public function every_accumulated_value_opens_the_account_that_produced_it(): void
+    {
+        $screen = $this->screen();
+
+        // O NÚMERO É A PORTA. Um ícone por célula tornaria a grelha mais pesada
+        // do que a explicação que oferece; o valor clicável não custa uma
+        // coluna (§5).
+        $this->assertStringContainsString('openBreakdown(student, student.periods[lastPeriodIndex], domain.ulid)', $screen);
+        $this->assertStringContainsString('openBreakdown(student, period, null)', $screen);
+        $this->assertStringContainsString('results/desempenho-acumulado/', $screen);
+
+        // A PEDIDO, E NÃO COM A PÁGINA (§26): o componente do painel recebe uma
+        // rota, e é ele que a vai buscar quando alguém a abre.
+        $this->assertStringContainsString('<AccumulatedBreakdownPanel', $screen);
+        $this->assertStringContainsString(':url="breakdownUrl"', $screen);
+    }
+
+    #[Test]
+    public function the_year_is_closed_by_the_continuous_reading_and_never_by_the_accumulated(): void
+    {
+        $screen = $this->screen();
+
+        // O BLOCO FINAL EXISTE PORQUE NENHUMA SÍNTESE RESPONDE PELO ANO: cada
+        // uma responde por uma unidade temporal. A média do ano, a proposta
+        // formal e a decisão vivem aqui.
+        $this->assertStringContainsString('Avaliação Contínua Final', $screen);
+        $this->assertStringContainsString('continuousByEnrollment.get(student.enrollment_id)?.normalized_value', $screen);
+
+        // E A PROPOSTA FORMAL SAI DAQUI. Se um dia esta coluna passar a ler o
+        // acumulado, o produto passa a propor um nível a partir do indicador
+        // analítico — que é precisamente a troca que as duas leituras existem
+        // para tornar impossível.
+        $this->assertStringContainsString('continuousByEnrollment.get(student.enrollment_id)!.level!.code', $screen);
+        $this->assertStringNotContainsString('accumulated_average"', explode('Avaliação Contínua Final', $screen)[1] ?? '');
+    }
+
+    #[Test]
+    public function the_self_assessment_marker_says_whose_voice_it_is(): void
+    {
+        $screen = $this->screen();
+
+        // «A3» OBRIGAVA A DECIFRAR — o «A» podia ser um nível, uma alínea ou um
+        // aviso, e a legenda que o explicava está no fundo da página, longe de
+        // quem está a ler a célula. O dado por baixo é exatamente o mesmo.
+        $this->assertStringContainsString('>Auto {{ domainCell(period, domain.id)?.self_assessment?.code }}</sup>', $screen);
+        $this->assertStringContainsString('Autoavaliação do aluno: ${level.code} — ${level.label}', $screen);
+    }
+
+    #[Test]
     public function each_domain_is_a_block_the_eye_can_find_without_tracing_columns(): void
     {
         $screen = $this->screen();
@@ -355,9 +435,14 @@ class SummaryScreenTest extends TestCase
         $this->assertStringContainsString('qualitativeToneClasses[qualitativeToneFor(level, props.scaleBands)]', $screen);
         $this->assertStringNotContainsString('bg-emerald-50', explode('<template>', $screen)[0]);
 
-        // The decision is the strongest of the three judgements, and the only
-        // one in bold.
-        $this->assertSame(1, substr_count($screen, 'font-bold'));
+        // A DECISÃO É O MAIS FORTE DOS TRÊS JUÍZOS, e o único a negrito. São
+        // DUAS ocorrências porque há duas decisões — a de cada unidade temporal
+        // e a do ano, no bloco «Avaliação Contínua Final» —, e não porque a
+        // regra tenha afrouxado: a proposta continua em itálico e a
+        // autoavaliação a meia-voz. Se este número subir sem uma coluna de
+        // decisão nova, alguém pôs a negrito algo que não é uma decisão do
+        // professor.
+        $this->assertSame(2, substr_count($screen, 'font-bold'));
     }
 
     #[Test]

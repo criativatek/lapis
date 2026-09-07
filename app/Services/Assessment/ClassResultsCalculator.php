@@ -16,6 +16,7 @@ use App\Models\ResultState;
 use App\Models\SchoolClass;
 use App\Models\StudentItemScore;
 use App\Support\Assessment\AssessmentCutoff;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 
 /**
@@ -71,24 +72,7 @@ class ClassResultsCalculator
 
         [$rule, $domainWeights, $scaleBands] = $this->calculationConfiguration($version);
 
-        // Instruments that may count: flagged as counting, in a state the engine
-        // reads. A period result sees only its period; an accumulated result sees
-        // every contributing period up to it (the union of raw elements, Q4).
-        //
-        // THE ONE PLACE A CUTOFF IS APPLIED. It narrows the evidence before the
-        // engine ever sees it, on `applied_on` — the day the element was given,
-        // which is the only date that says anything about the class. The engine
-        // is untouched and still knows nothing about dates.
-        $instrumentQuery = $class->instruments()
-            ->whereIn('academic_period_id', $this->periodIdsFor($class, $period, $scope, $version))
-            ->where('counts_toward_classification', true)
-            ->with(['items.domainAllocations']);
-
-        $cutoff->applyTo($instrumentQuery, 'applied_on');
-
-        $instruments = $instrumentQuery
-            ->get()
-            ->filter(fn (Instrument $instrument) => $instrument->status->entersCalculation());
+        $instruments = $this->instrumentsInScope($class, $period, $scope, $version, $cutoff);
 
         $scoresByEnrollmentItem = StudentItemScore::query()
             ->whereIn('instrument_id', $instruments->pluck('id'))
@@ -187,6 +171,56 @@ class ClassResultsCalculator
             ->all();
 
         return [$rule, $domainWeights, $scaleBands];
+    }
+
+    /**
+     * The instruments a scope actually reads — the ONE definition of «what
+     * counts», reachable by name.
+     *
+     * IT WAS ALREADY THIS QUERY, inline in `forScope`. It has a name now because
+     * a second reader appeared: the breakdown that explains an accumulated
+     * figure to the teacher has to walk exactly the evidence the engine walked,
+     * and a copy of these three conditions — the periods in scope, the «counts
+     * toward classification» flag, the statuses the engine reads — would be a
+     * second answer to «what counted» that could one day disagree with the
+     * first. Nothing about the selection changed.
+     *
+     * Instruments that may count: flagged as counting, in a state the engine
+     * reads. A period result sees only its period; an accumulated result sees
+     * every contributing period up to it (the union of raw elements, Q4).
+     *
+     * THE ONE PLACE A CUTOFF IS APPLIED. It narrows the evidence before the
+     * engine ever sees it, on `applied_on` — the day the element was given,
+     * which is the only date that says anything about the class. The engine is
+     * untouched and still knows nothing about dates.
+     *
+     * @return EloquentCollection<int, Instrument>
+     */
+    public function instrumentsInScope(
+        SchoolClass $class,
+        AcademicPeriod $period,
+        ClassificationScope $scope,
+        ?AssessmentProfileVersion $versionOverride = null,
+        ?AssessmentCutoff $cutoff = null,
+    ): EloquentCollection {
+        $version = $versionOverride ?? $class->profileVersion;
+
+        if ($version === null) {
+            /** @var EloquentCollection<int, Instrument> */
+            return new EloquentCollection;
+        }
+
+        $instrumentQuery = $class->instruments()
+            ->whereIn('academic_period_id', $this->periodIdsFor($class, $period, $scope, $version))
+            ->where('counts_toward_classification', true)
+            ->with(['items.domainAllocations']);
+
+        ($cutoff ?? AssessmentCutoff::none())->applyTo($instrumentQuery, 'applied_on');
+
+        return $instrumentQuery
+            ->get()
+            ->filter(fn (Instrument $instrument) => $instrument->status->entersCalculation())
+            ->values();
     }
 
     /**

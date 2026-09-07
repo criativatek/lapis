@@ -262,7 +262,16 @@ export type Synopsis = {
     moments: SynopticMoment[];
     domains: SynopticDomain[];
     students: SynopticStudent[];
-    continuous: { units: { period_id: number; label: string; kind_label: string; weight_percent: string }[] };
+    continuous: {
+        units: { period_id: number; label: string; kind_label: string; weight_percent: string }[];
+        /**
+         * Se os pesos das unidades foram DECLARADOS pela escola, ou se são a
+         * igualdade que a avaliação contínua usa quando ninguém declarou
+         * nenhum. O ecrã escreve frases diferentes num caso e no outro, e não
+         * tem como distinguir os dois a partir dos números.
+         */
+        weights_declared: boolean;
+    };
     elements: SynopticElement[];
     periods: { id: number; ulid: string; label: string; kind_label: string; sequence: number }[];
 };

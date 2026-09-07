@@ -41,7 +41,18 @@ versão em [CHANGELOG.md](../CHANGELOG.md); o "porquê" das decisões em [docs/a
 
 | **Quadro Síntese ao longo do ano · avaliação contínua** | ✅ | O Quadro Síntese ganha uma segunda vista — o ano lido pelos **momentos** e não só pelos números —, sem terceira grelha: `BuildClassSynopsis` agrega fontes canónicas (a pauta de cada unidade, as fotografias guardadas, os elementos, a média contínua) e **não criou tabela nenhuma**. Três níveis expansíveis (momentos → domínios → elementos), filtro por aluno e ligação ao Relatório do aluno. A **avaliação contínua** passa a ser regra fechada: média dos resultados FORMAIS de cada unidade temporal, com os pesos de `period_weight_percent` quando existem — as **intercalares são fotografias e não entram**. É o indicador **formal**, e é dela que sai a proposta de nível. O motor do **desempenho acumulado** fica intocado e passa a ser o indicador **analítico**, com nome e destaque próprios; os dois aparecem lado a lado (89,73 % e 89,40 % no cenário de demonstração). Exportação **Excel de quatro folhas** (quadro, domínios, elementos, configuração). Ver [domain-model.md §6.4–6.7](domain-model.md). |
 
-Suite: 1986 testes verdes (1 skipped) · Pint/Larastan/vue-tsc limpos. **Em produção** em
+| **Desempenho acumulado explicável** | ✅ | Uma auditoria matemática sobre dados reais confirmou o motor e mostrou o que faltava: 68 % num semestre, 25 % no outro e 60 % acumulado está **certo** — o 1.º semestre trazia 125 das 154 cotações do ano —, mas não era **reconstruível** a partir do ecrã. Cada valor acumulado abre agora a conta que o produziu: pontos por unidade, **peso efetivo** (que não é peso configurado nenhum), a fração que reproduz o número, os elementos um a um com a sua contribuição, e os não considerados com o motivo. `AccumulatedBreakdown` **organiza** o que o motor já disse (`forAccumulated`, `forPeriod`, `forInstruments`) e não calcula nada; a decomposição é pedida por célula, nunca enviada com a página. O valor global decompõe-se em domínios e pesos, porque não é uma fração de pontos. O Quadro Síntese ganha o bloco **Avaliação Contínua Final**, e as colunas passam a ter o nome real de cada unidade («1.º Semestre», nunca «P1»), «Desemp. acum.», «Auto 3» e «Preparar fecho · 1 ponto». Excel de **cinco** folhas. `ClassResultsCalculator::forAccumulated()` e `CalculationEngine` intocados, com teste a afirmá-lo. Ver [domain-model.md §6.4.1](domain-model.md). |
+
+### Dívida de dados conhecida
+
+- **Álvaro Simões aparece duplicado entre a organização 4 e a 19** na base de
+  trabalho local (detetado a 2026-09-07, durante a auditoria do acumulado). Os
+  mesmos elementos de Educação Literária aparecem nas duas; outros domínios
+  divergem. **Não foi alterado**: não se cruzam inquilinos, e uma organização
+  não preenche dados da outra. Fica registado para ser decidido por quem sabe
+  qual das duas é a real.
+
+Suite: 4535 testes verdes (18 skipped) · Pint/Larastan/vue-tsc/ESLint limpos. **Em produção** em
 [lapispro.com](https://lapispro.com) — `lapis.criativatek.com` responde 301 para lá.
 
 ## Regras pedagógicas (5 questões que bloqueavam a Fase 1)

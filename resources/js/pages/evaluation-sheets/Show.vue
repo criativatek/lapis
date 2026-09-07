@@ -250,6 +250,25 @@ const showSelfAssessment = ref(true);
 
 const showReadiness = ref(false);
 
+/**
+ * O QUE O BOTÃO DIZ A QUEM NÃO VÊ O CONTADOR.
+ *
+ * O número no badge é uma abreviatura visual; quem chega por leitor de ecrã
+ * precisa da frase inteira — o que se conta e o que fazer com isso. Sem
+ * pendências não se anuncia um zero: anuncia-se o que o botão faz.
+ */
+const readinessLabel = computed(() => {
+    const count = props.readiness?.summary.attention_count ?? 0;
+
+    if (count === 0) {
+        return 'Preparar fecho — abrir a leitura de preparação desta pauta';
+    }
+
+    return count === 1
+        ? 'Preparar fecho — 1 ponto a verificar antes do fecho'
+        : `Preparar fecho — ${count} pontos a verificar antes do fecho`;
+});
+
 // ---------------------------------------------------------------- impressão
 //
 // NO PRÓPRIO ECRÃ, sem página paralela (§5): o que se imprime é este ecrã,
@@ -407,11 +426,17 @@ function submitSave(): void {
             <!-- «Preparar fecho» ABRE UMA LEITURA, não uma ação: o que está
                  completo, o que merece um olhar, o que não se aplica. Nada
                  aqui fecha, bloqueia ou decide — avisar, nunca impedir. -->
+            <!-- O NÚMERO SOZINHO NÃO DIZIA DE QUÊ. «Preparar fecho [1]» podia
+                 ser um passo de um assistente, um contador de pautas ou um
+                 aviso; a palavra «ponto» diz o que se conta, e o texto
+                 acessível diz o que fazer com ele. Zero pendências não mostra
+                 contador nenhum — «0» é ruído onde não há nada a verificar. -->
             <button
                 v-if="readiness"
                 type="button"
                 class="inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
                 :aria-expanded="showReadiness"
+                :aria-label="readinessLabel"
                 aria-controls="preparacao-do-fecho"
                 @click="showReadiness = !showReadiness"
             >
@@ -419,9 +444,10 @@ function submitSave(): void {
                 Preparar fecho
                 <span
                     v-if="readiness.summary.attention_count > 0"
-                    class="rounded-full bg-amber-100 px-1.5 text-xs font-medium text-amber-800"
+                    class="rounded-full bg-amber-100 px-1.5 text-xs font-medium whitespace-nowrap text-amber-800"
                 >
-                    {{ readiness.summary.attention_count }}
+                    · {{ readiness.summary.attention_count }}
+                    {{ readiness.summary.attention_count === 1 ? 'ponto' : 'pontos' }}
                 </span>
             </button>
             <!-- NÃO EXPORTA JÁ. Abre a etapa de preparação: carregar a grelha,

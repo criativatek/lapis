@@ -737,6 +737,53 @@ a meio do ano tem a média das unidades que viveu (§11.4).
 > cálculo do desempenho acumulado fica como está, a avaliação contínua é o
 > indicador formal, e nenhuma passa a significar a outra. Ver §13, Q4.
 
+#### 6.4.1 O desempenho acumulado tem de ser **reconstruível**
+
+**Decisão de produto (2026-09-07, auditoria matemática).** Coexistirem não
+chega: se o professor não conseguir refazer a conta, o número continua a ser uma
+afirmação sem prova. O caso que levantou o problema, verificado contra dados
+reais e fixado em `AccumulatedBreakdownTest`:
+
+```
+Educação Literária, um aluno, dois semestres
+
+  1.º semestre     85,00 / 125,00  =  68,000000 %     peso efetivo 81,168831 %
+  2.º semestre      7,33 /  29,00  =  25,275862 %     peso efetivo 18,831168 %
+  ------------------------------------------------------------------------
+  Desempenho acumulado    92,33 / 154,00  =  59,954545 %   →  60 (half_up, 0)
+  Avaliação contínua      (68,000000 + 25,275862) / 2  =  46,637931 %
+```
+
+**Não é bug, e a auditoria prova-o.** O acumulado é UMA fração feita dos
+elementos todos do ano; cada unidade pesa nela o que as suas **cotações** pesam.
+O 1.º semestre traz 125 das 154 cotações — 81,17 % do denominador — e por isso o
+resultado fica perto do dele. Nenhuma média de semestres daria este número, e é
+exatamente isso que a distinção entre as duas leituras afirma.
+
+**«Peso efetivo» NÃO é peso configurado.** É a fatia do denominador que as
+cotações de uma unidade ocupam, e muda sozinha à medida que o ano avança.
+`period_weight_percent` é outra coisa: pertence à avaliação contínua e não tem
+efeito nenhum sobre o acumulado. A UI e o Excel dizem-no por escrito, porque um
+professor que veja «81 %» procuraria onde é que alguém o configurou.
+
+**Onde vive.** `App\Services\Assessment\AccumulatedBreakdown` **organiza** o que
+o motor já disse — o acumulado de `forAccumulated()`, o resultado de cada unidade
+de `forPeriod()`, o detalhe de cada elemento de `forInstruments()`. Não calcula:
+uma divisão feita ali seria uma segunda resposta à mesma pergunta, e a explicação
+passaria a poder discordar do que explica.
+
+**Duas decomposições, porque são duas perguntas.** O acumulado de um **domínio**
+é uma fração de pontos e decompõe-se em pontos, unidade a unidade e elemento a
+elemento. O acumulado **global** não é uma fração de pontos — é a média dos
+domínios ponderada pelos pesos do perfil, com os domínios sem valor a saírem da
+conta em vez de valerem zero (§13.4) — e decompõe-se em domínios, peso e
+contribuição.
+
+**A pedido, e não com a página.** Trinta alunos × cinco domínios × duas unidades
+são trezentas células de acumulado. A decomposição de uma célula pede-se quando
+alguém a abre (rota `results.accumulated-breakdown`); a da turma inteira vai no
+Excel, numa passagem só (`forClassByDomain()`).
+
 ### 6.5 Momentos estruturais e fotografias
 
 Cada unidade temporal tem **dois momentos que a escola reconhece** — o
@@ -1409,6 +1456,14 @@ O mockup diz «A classificação do 2.º semestre resulta de todas as aprendizag
 > demonstração dão 89,73 % e 89,40 % para a mesma aluna — dois números
 > verdadeiros para duas perguntas diferentes. Ver §6.4 e
 > `TwoReadingsOfTheYearTest`.
+>
+> **E o acumulado passou a ser RECONSTRUÍVEL (2026-09-07).** Uma auditoria
+> matemática sobre dados reais mostrou que a leitura (a) produz números que a
+> leitura (b) nunca produziria — 68 % num semestre, 25 % no outro, 60 %
+> acumulado — e que o motor estava certo: o 1.º semestre trazia 125 das 154
+> cotações do ano. O que faltava não era cálculo, era prova. Cada valor
+> acumulado abre agora a conta que o produziu, elemento a elemento. Ver §6.4.1 e
+> `AccumulatedBreakdownTest`.
 >
 > As quatro sub-questões abaixo continuam a ser do PO e continuam a aplicar-se ao
 > **desempenho acumulado**.

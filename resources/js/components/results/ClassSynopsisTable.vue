@@ -407,17 +407,22 @@ const continuousUnitsSentence = computed(() => {
                                         class="ml-1 text-[10px] text-muted-foreground tabular-nums"
                                     >{{ percent(domainCell(readingOf(student, moment.key), domain.domain_id)!.normalized_value) }}</span>
                                     <!-- O QUE O ALUNO DISSE SOBRE ESTE DOMÍNIO,
-                                         em expoente e a meia-voz, com a mesma
-                                         convenção da Pauta — o «A» diz de quem
-                                         é a voz. É informação de apoio: não
-                                         entra em cálculo nenhum e nunca
-                                         determina a classificação (§15, §61). -->
+                                         em expoente e a meia-voz. É informação
+                                         de apoio: não entra em cálculo nenhum e
+                                         nunca determina a classificação (§15,
+                                         §61).
+                                         «A3» OBRIGAVA A DECIFRAR — o «A» podia
+                                         ser um nível, uma alínea ou um aviso, e
+                                         uma legenda no fundo da página não
+                                         acompanha quem está a ler a célula.
+                                         «Auto 3» diz-se sozinho, e o dado por
+                                         baixo é exatamente o mesmo. -->
                                     <sup
                                         v-if="domainCell(readingOf(student, moment.key), domain.domain_id)?.self_assessment"
-                                        class="ml-0.5 rounded bg-background/70 px-1 text-[10px] font-normal text-muted-foreground"
+                                        class="ml-0.5 rounded bg-background/70 px-1 text-[10px] font-normal whitespace-nowrap text-muted-foreground"
                                         :title="`Autoavaliação do aluno — ${domain.name}: ${domainCell(readingOf(student, moment.key), domain.domain_id)!.self_assessment!.code} — ${domainCell(readingOf(student, moment.key), domain.domain_id)!.self_assessment!.label}`"
                                         :aria-label="`Autoavaliação do aluno — ${domain.name}: ${domainCell(readingOf(student, moment.key), domain.domain_id)!.self_assessment!.code} — ${domainCell(readingOf(student, moment.key), domain.domain_id)!.self_assessment!.label}`"
-                                    >A{{ domainCell(readingOf(student, moment.key), domain.domain_id)!.self_assessment!.code }}</sup>
+                                    >Auto {{ domainCell(readingOf(student, moment.key), domain.domain_id)!.self_assessment!.code }}</sup>
                                     <span
                                         v-if="domainCell(readingOf(student, moment.key), domain.domain_id)?.trend"
                                         class="ml-0.5 text-[10px]"

@@ -2,6 +2,7 @@
 
 namespace App\Services\Assessment;
 
+use App\Domain\Assessment\Bc;
 use App\Domain\Assessment\CalculationEngine;
 use App\Domain\Assessment\CalculationRule;
 use App\Domain\Assessment\ScaleBand;
@@ -212,10 +213,26 @@ class BuildClassElements
         $outcome = $this->engine->calculate($inputs, $domainWeights, $rule, $scaleBands);
         $level = $this->proposals->bandFor($scale, $outcome->normalizedValue);
 
+        // OS PONTOS, ALÉM DA PERCENTAGEM. A percentagem diz COMO correu; os
+        // pontos dizem QUANTO este elemento pesa no ano — e é o peso, e não o
+        // resultado, que explica por que motivo o desempenho acumulado não é a
+        // média dos semestres. Vêm somados do próprio motor, domínio a domínio,
+        // e não recontados a partir das cotações dos itens: um item bónus ou um
+        // item excluído dariam outro número (§17).
+        $earned = '0';
+        $possible = '0';
+
+        foreach ($outcome->domains as $domainOutcome) {
+            $earned = Bc::add($earned, Bc::of($domainOutcome->pointsEarned));
+            $possible = Bc::add($possible, Bc::of($domainOutcome->pointsPossible));
+        }
+
         return [
             'instrument_id' => (int) $instrument->getKey(),
             'applicable' => $applicable,
             'normalized_value' => $outcome->normalizedValue,
+            'points_earned' => Bc::truncate($earned, 4),
+            'points_possible' => Bc::truncate($possible, 4),
             'result_state' => $outcome->resultState,
             'state_label' => $this->stateLabel($applicable, $states, $outcome->normalizedValue),
             'level' => $level === null ? null : [

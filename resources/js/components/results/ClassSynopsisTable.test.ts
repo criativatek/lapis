@@ -80,7 +80,29 @@ function synopsis(): Synopsis {
                                 is_negative: false,
                             },
                         },
-                        domains: [],
+                        domains: [
+                            {
+                                domain_id: 1,
+                                available: true,
+                                normalized_value: '91.302083',
+                                proposed: { code: '5', label: 'Muito Bom' },
+                                decided: null,
+                                current: {
+                                    origin: 'proposed',
+                                    code: '5',
+                                    label: 'Muito Bom',
+                                    text: '5',
+                                    sequence: 5,
+                                    is_negative: false,
+                                },
+                                trend: null,
+                                has_coverage_warning: false,
+                                // O QUE A ALUNA DISSE SOBRE ESTE DOMÍNIO. Vive
+                                // ao lado do que a prova diz, e não entra em
+                                // cálculo nenhum.
+                                self_assessment: { code: '3', label: 'Suficiente' },
+                            },
+                        ],
                         self_assessment: null,
                         trend: null,
                     },
@@ -101,6 +123,10 @@ function synopsis(): Synopsis {
                 { period_id: 1, label: '1.º Semestre', kind_label: 'Semestre', weight_percent: '1' },
                 { period_id: 2, label: '2.º Semestre', kind_label: 'Semestre', weight_percent: '1' },
             ],
+            // Peso 1 nas duas unidades é a IGUALDADE POR OMISSÃO, e não uma
+            // declaração da escola. A distinção existe porque o ecrã escreve
+            // frases diferentes num caso e no outro.
+            weights_declared: false,
         },
         elements: [],
         periods: [{ id: 1, ulid: 'p1', label: '1.º Semestre', kind_label: 'Semestre', sequence: 1 }],
@@ -184,6 +210,29 @@ describe('as duas leituras do ano', () => {
 
         expect(proposal).toBeDefined();
         expect(proposal!.find('span').attributes('title')).toContain('Proposta do Lapispro para a avaliação contínua');
+    });
+
+    it('a autoavaliação diz-se por extenso, e não em código', async () => {
+        const wrapper = render();
+
+        // O detalhe por domínio abre-se pelo cabeçalho do momento FORMAL, que é
+        // o segundo da cronologia: primeiro o intercalar, depois o que fecha.
+        const header = wrapper.findAll('thead button')[1];
+        expect(header).toBeDefined();
+        await header.trigger('click');
+
+        const marker = wrapper.find('sup');
+
+        // «A3» OBRIGAVA A DECIFRAR: o «A» podia ser um nível, uma alínea ou um
+        // aviso, e a legenda que o explicava está no fundo da página, longe de
+        // quem está a ler a célula. «Auto 3» diz-se sozinho.
+        expect(marker.text()).toBe('Auto 3');
+        expect(marker.text()).not.toBe('A3');
+
+        // E A ABREVIATURA NUNCA É A ÚNICA INFORMAÇÃO (§25): a frase inteira,
+        // com o domínio e a menção, vai no texto acessível.
+        expect(marker.attributes('aria-label')).toContain('Autoavaliação do aluno');
+        expect(marker.attributes('aria-label')).toContain('Suficiente');
     });
 
     it('um momento intercalar por guardar não inventa números', () => {
