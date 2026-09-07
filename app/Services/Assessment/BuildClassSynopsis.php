@@ -102,18 +102,44 @@ class BuildClassSynopsis
         $domains = $this->domains($live, $periods);
         $elements = $this->elements->for($class, $periods);
 
+        // OS RESULTADOS FORMAIS DE CADA UNIDADE, na leitura global E na leitura
+        // por domínio, tirados da MESMA pauta viva numa passagem só. É o mesmo
+        // material lido a duas escalas: pedir os domínios noutra volta seria
+        // recalcular a pauta inteira para obter números que já estão em mãos.
         $formalByPeriod = [];
+        $formalByPeriodByDomain = [];
+
         foreach ($live as $periodId => $sheet) {
             $row = [];
+            $byDomain = [];
+
             foreach ($sheet['students'] as $student) {
-                $row[(int) $student['enrollment_id']] = $student['overall']['normalized_value'] ?? null;
+                $enrollmentId = (int) $student['enrollment_id'];
+                $row[$enrollmentId] = $student['overall']['normalized_value'] ?? null;
+
+                foreach ($student['domains'] ?? [] as $domain) {
+                    $byDomain[(int) $domain['domain_id']][$enrollmentId] = $domain['normalized_value'] ?? null;
+                }
             }
+
             $formalByPeriod[$periodId] = $row;
+            $formalByPeriodByDomain[$periodId] = $byDomain;
         }
 
         $continuous = $this->continuous->for($class, $periods, $formalByPeriod);
+        $continuousDomains = $this->continuous->forDomains($class, $periods, $formalByPeriodByDomain);
 
-        $students = $this->students($class, $live, $snapshots, $moments, $domains, $scale, $elements, $continuous);
+        $students = $this->students(
+            $class,
+            $live,
+            $snapshots,
+            $moments,
+            $domains,
+            $scale,
+            $elements,
+            $continuous,
+            $continuousDomains,
+        );
 
         return [
             'moments' => $moments,
@@ -274,6 +300,7 @@ class BuildClassSynopsis
      * @param  list<array<string, mixed>>  $domains
      * @param  array{elements: list<array<string, mixed>>, by_student: array<int, list<array<string, mixed>>>}  $elements
      * @param  array{units: list<array<string, mixed>>, students: array<int, array<string, mixed>>}  $continuous
+     * @param  array{units: list<array<string, mixed>>, students: array<int, array<int, array<string, mixed>>>}  $continuousDomains
      * @return list<array<string, mixed>>
      */
     protected function students(
@@ -285,6 +312,7 @@ class BuildClassSynopsis
         ?Scale $scale,
         array $elements,
         array $continuous,
+        array $continuousDomains,
     ): array {
         $roster = $this->roster($live);
         $rows = [];
@@ -399,6 +427,11 @@ class BuildClassSynopsis
                 'name' => $identity['name'],
                 'moments' => $readings,
                 'continuous' => $continuous['students'][$enrollmentId] ?? null,
+                // A MESMA LEITURA, DOMÍNIO A DOMÍNIO. Cada bloco de domínio
+                // fecha com a sua própria avaliação contínua — a média dos
+                // resultados formais DESSE domínio —, pela mesma regra e pela
+                // mesma classe que produzem a global.
+                'continuous_domains' => $continuousDomains['students'][$enrollmentId] ?? [],
                 'elements' => $elements['by_student'][$enrollmentId] ?? [],
             ];
         }

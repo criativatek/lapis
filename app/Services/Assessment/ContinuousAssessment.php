@@ -6,6 +6,7 @@ use App\Domain\Assessment\Bc;
 use App\Models\AcademicPeriod;
 use App\Models\Classification;
 use App\Models\ClassificationScope;
+use App\Models\DomainAppreciationDecision;
 use App\Models\Scale;
 use App\Models\SchoolClass;
 use Illuminate\Support\Collection;
@@ -76,40 +77,14 @@ class ContinuousAssessment
      */
     public function for(SchoolClass $class, Collection $periods, array $formalByPeriod): array
     {
-        $weights = $this->weightsFor($class, $periods);
-        // SE OS PESOS SÃO DA ESCOLA OU SÃO A IGUALDADE POR OMISSÃO. Quem
-        // apresenta a média tem de saber dizer qual das duas frases escrever —
-        // «média entre o 1.º e o 2.º semestre» ou «1.º × 40 % + 2.º × 60 %» — e
-        // não tem como distinguir um peso declarado de 1 da igualdade que esta
-        // classe usa quando ninguém declarou nada.
-        $weightsDeclared = $this->weightsAreDeclared($class, $periods);
-        $version = $class->profileVersion;
-        $scale = $version?->scale()->with('levels')->first();
-        // A COLUNA TEM UMA RESTRIÇÃO CHECK e ainda assim é estreitada aqui, do
-        // mesmo modo e pela mesma razão que `ClassResultsCalculator` a estreita:
-        // a base de dados garante o conjunto, o código não pode assumi-lo.
-        $roundingMode = match ($version?->rounding_mode) {
-            'half_up', 'half_down', 'half_even', 'ceil', 'floor', 'none' => $version->rounding_mode,
-            default => 'half_up',
-        };
-        $roundingScale = $version->rounding_scale ?? 0;
-
-        $units = [];
-        foreach ($periods as $period) {
-            $periodId = (int) $period->getKey();
-
-            if (! array_key_exists($periodId, $weights)) {
-                continue;
-            }
-
-            $units[] = [
-                'period_id' => $periodId,
-                'label' => (string) $period->label,
-                'kind_label' => $period->kind->label(),
-                'sequence' => (int) $period->sequence,
-                'weight_percent' => $weights[$periodId],
-            ];
-        }
+        // A CONFIGURAÇÃO — pesos, unidades, escala, arredondamento — resolvida
+        // no mesmo sítio de que a leitura por domínio parte, para que as duas
+        // não possam partir de configurações diferentes. A frase que o ecrã
+        // escreve depende de `weights_declared`: «média entre o 1.º e o 2.º
+        // semestre» quando ninguém declarou pesos, «1.º × 40 % + 2.º × 60 %»
+        // quando declarou — e os números sozinhos não distinguem um peso
+        // declarado de 1 da igualdade por omissão.
+        [$units, $scale, $roundingMode, $roundingScale, $weightsDeclared] = $this->configuration($class, $periods);
 
         $decisions = $this->accumulatedDecisions($periods);
 
@@ -129,6 +104,173 @@ class ContinuousAssessment
         }
 
         return ['units' => $units, 'students' => $students, 'weights_declared' => $weightsDeclared];
+    }
+
+    /**
+     * A MESMA MÉDIA, UMA ESCALA ABAIXO: a avaliação contínua de cada DOMÍNIO.
+     *
+     * A REGRA É EXATAMENTE A DE CIMA, e é por isso que esta função não a repete:
+     * chama `forStudent()`, que é onde a média ponderada vive, com os resultados
+     * formais de um domínio em vez dos globais. Uma segunda fórmula aqui — ainda
+     * que idêntica no dia em que fosse escrita — seria uma segunda resposta à
+     * mesma pergunta, e as duas divergiriam na primeira alteração que alguém
+     * fizesse a só uma delas.
+     *
+     * O QUE ENTRA SÃO OS RESULTADOS FORMAIS DE CADA UNIDADE, domínio a domínio —
+     * os mesmos que a Pauta de cada período mostra. NÃO entra o desempenho
+     * acumulado, que é a outra leitura do ano e reprocessa elementos brutos; não
+     * entram fotografias intercalares, que não são unidades formais e que esta
+     * classe não tem sequer como ver (§10, §11).
+     *
+     * A DECISÃO FINAL DE UM DOMÍNIO, quando existe, vem do mesmo sítio canónico
+     * que a global: uma linha de âmbito ACUMULADO na última unidade do ano —
+     * `DomainAppreciationDecision` para o domínio, `Classification` para o
+     * global. Nada aqui a cria nem a preenche a partir da proposta.
+     *
+     * @param  Collection<int, AcademicPeriod>  $periods  as unidades formais do ano, por ordem
+     * @param  array<int, array<int, array<int, string|null>>>  $formalByPeriod  period id => domain id => enrollment id => percentagem normalizada do resultado formal
+     * @return array{
+     *     units: list<array<string, mixed>>,
+     *     students: array<int, array<int, array<string, mixed>>>,
+     *     weights_declared: bool,
+     * }
+     */
+    public function forDomains(SchoolClass $class, Collection $periods, array $formalByPeriod): array
+    {
+        [$units, $scale, $roundingMode, $roundingScale, $weightsDeclared] = $this->configuration($class, $periods);
+
+        $decisions = $this->accumulatedDomainDecisions($periods);
+
+        /** @var array<int, array<int, array<string, mixed>>> $students */
+        $students = [];
+
+        foreach ($this->domainIdsIn($formalByPeriod) as $domainId) {
+            // Uma vista dos resultados formais deste domínio na forma que
+            // `forStudent()` espera: unidade => matrícula => valor.
+            $byPeriod = [];
+            foreach ($formalByPeriod as $periodId => $byDomain) {
+                $byPeriod[(int) $periodId] = $byDomain[$domainId] ?? [];
+            }
+
+            foreach ($this->enrollmentIdsIn($byPeriod) as $enrollmentId) {
+                $students[$enrollmentId][$domainId] = $this->forStudent(
+                    $enrollmentId,
+                    $units,
+                    $byPeriod,
+                    $scale,
+                    $roundingMode,
+                    $roundingScale,
+                    $decisions[$domainId] ?? [],
+                );
+            }
+        }
+
+        return ['units' => $units, 'students' => $students, 'weights_declared' => $weightsDeclared];
+    }
+
+    /**
+     * O que a média precisa de saber sobre esta turma, resolvido uma vez.
+     *
+     * Estava inline em `for()`; ganhou nome quando um segundo leitor apareceu —
+     * a leitura por domínio —, para que as duas partam exatamente da mesma
+     * configuração. Nada mudou no que se resolve nem na ordem em que se resolve.
+     *
+     * @param  Collection<int, AcademicPeriod>  $periods
+     * @return array{0: list<array<string, mixed>>, 1: Scale|null, 2: 'ceil'|'floor'|'half_down'|'half_even'|'half_up'|'none', 3: int, 4: bool}
+     */
+    protected function configuration(SchoolClass $class, Collection $periods): array
+    {
+        $weights = $this->weightsFor($class, $periods);
+        $weightsDeclared = $this->weightsAreDeclared($class, $periods);
+        $version = $class->profileVersion;
+        $scale = $version?->scale()->with('levels')->first();
+        $roundingMode = match ($version?->rounding_mode) {
+            'half_up', 'half_down', 'half_even', 'ceil', 'floor', 'none' => $version->rounding_mode,
+            default => 'half_up',
+        };
+        $roundingScale = (int) ($version->rounding_scale ?? 0);
+
+        $units = [];
+        foreach ($periods as $period) {
+            $periodId = (int) $period->getKey();
+
+            if (! array_key_exists($periodId, $weights)) {
+                continue;
+            }
+
+            $units[] = [
+                'period_id' => $periodId,
+                'label' => (string) $period->label,
+                'kind_label' => $period->kind->label(),
+                'sequence' => (int) $period->sequence,
+                'weight_percent' => $weights[$periodId],
+            ];
+        }
+
+        return [$units, $scale, $roundingMode, $roundingScale, $weightsDeclared];
+    }
+
+    /**
+     * Os domínios sobre os quais há alguma coisa a dizer, na ordem em que as
+     * unidades os trouxeram.
+     *
+     * @param  array<int, array<int, array<int, string|null>>>  $formalByPeriod
+     * @return list<int>
+     */
+    protected function domainIdsIn(array $formalByPeriod): array
+    {
+        $ids = [];
+
+        foreach ($formalByPeriod as $byDomain) {
+            foreach (array_keys($byDomain) as $domainId) {
+                $ids[(int) $domainId] = true;
+            }
+        }
+
+        return array_map('intval', array_keys($ids));
+    }
+
+    /**
+     * A decisão do professor sobre o ANO, domínio a domínio, quando ela existe.
+     *
+     * O MESMO DESENHO DA DECISÃO GLOBAL: âmbito ACUMULADO na última unidade do
+     * ano. `accumulatedDecisions()` lê-a em `classifications`; esta lê-a em
+     * `domain_appreciation_decisions`, que tem a mesma coluna `scope` e o mesmo
+     * conjunto de valores. Uma decisão de âmbito PERÍODO não é reaproveitada
+     * como decisão do ano — uma leitura de um semestre não é uma conclusão do
+     * ano, e tratá-la como tal seria inventar uma associação que ninguém fez
+     * (§17).
+     *
+     * UMA CONSULTA para a turma inteira, seja qual for o número de alunos e de
+     * domínios.
+     *
+     * @param  Collection<int, AcademicPeriod>  $periods
+     * @return array<int, array<int, array<string, mixed>>> domain id => enrollment id => decisão
+     */
+    protected function accumulatedDomainDecisions(Collection $periods): array
+    {
+        if ($periods->isEmpty()) {
+            return [];
+        }
+
+        $decisions = DomainAppreciationDecision::query()
+            ->where('academic_period_id', $periods->last()->getKey())
+            ->where('scope', ClassificationScope::Accumulated)
+            ->with('scaleLevel')
+            ->get();
+
+        $byDomain = [];
+
+        foreach ($decisions as $decision) {
+            $byDomain[(int) $decision->domain_id][(int) $decision->enrollment_id] = [
+                'status' => 'decided',
+                'proposed' => null,
+                'final' => $this->levelPayload($decision->scaleLevel),
+                'final_value' => null,
+            ];
+        }
+
+        return $byDomain;
     }
 
     /**
