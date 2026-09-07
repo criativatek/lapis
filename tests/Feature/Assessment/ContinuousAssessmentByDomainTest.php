@@ -15,10 +15,12 @@ use App\Services\Assessment\BuildClassSynopsis;
 use App\Services\Assessment\CaptureEvaluationSheet;
 use App\Services\Assessment\ClassResultsCalculator;
 use App\Services\Assessment\ContinuousAssessment;
+use App\Services\StudentEnrollmentService;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\Test;
 use ReflectionMethod;
 use Tests\TestCase;
@@ -488,6 +490,61 @@ class ContinuousAssessmentByDomainTest extends TestCase
             $this->domainReading($synopsis, 'Carolina Nunes', 'Escrita')['decision'],
             'Uma decisão de um semestre foi tratada como decisão do ano.',
         );
+    }
+
+    // -------------------------------------------------------- desempenho
+
+    #[Test]
+    public function the_domain_averages_do_not_cost_a_query_per_student(): void
+    {
+        // §31. A média final de cada domínio sai dos resultados formais que a
+        // pauta viva JÁ trouxe — o mesmo material lido a duas escalas — e as
+        // decisões finais da turma inteira vêm numa consulta. Se um dia isto
+        // passar a perguntar por aluno, uma turma de trinta multiplica o custo
+        // da página por cinco domínios.
+        $this->asTenant(function (): void {
+            $class = SchoolClass::where('label', '7.º A')->firstOrFail();
+
+            $baseline = $this->countQueries(fn () => app(BuildClassSynopsis::class)->for($class));
+
+            // O cenário tem seis alunos; leva-se a turma a trinta.
+            for ($number = 7; $number <= 30; $number++) {
+                app(StudentEnrollmentService::class)->enrollNew($class, [
+                    'name' => "Aluno {$number}",
+                    'class_number' => $number,
+                    'enrolled_on' => '2026-09-14',
+                ]);
+            }
+
+            $enlarged = $this->countQueries(fn () => app(BuildClassSynopsis::class)->for($class->fresh()));
+
+            // O QUE SE FIXA NÃO É UM NÚMERO EXATO DE CONSULTAS, é que ele não
+            // acompanhe o número de alunos: vinte e quatro alunos a mais custam
+            // uma consulta constante, não vinte e quatro. Uma margem de duas
+            // absorve a consulta que só existe quando há linhas a carregar, sem
+            // deixar passar um N+1 — que aqui apareceria como +24.
+            $this->assertLessThanOrEqual(
+                $baseline + 2,
+                $enlarged,
+                "A leitura do Quadro Síntese passou de {$baseline} para {$enlarged} consultas ao quintuplicar a turma: "
+                .'o custo está a acompanhar o número de alunos.',
+            );
+        });
+    }
+
+    /** @param  callable(): mixed  $work */
+    private function countQueries(callable $work): int
+    {
+        $counted = 0;
+        DB::listen(function () use (&$counted): void {
+            $counted++;
+        });
+
+        $work();
+
+        // O `listen` não se remove, mas cada chamada parte de zero — é a
+        // diferença entre as duas medições que interessa, não o absoluto.
+        return $counted;
     }
 
     // --------------------------------------------------------- intercalares
