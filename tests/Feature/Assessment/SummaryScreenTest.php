@@ -287,15 +287,22 @@ class SummaryScreenTest extends TestCase
         $screen = $this->screen();
 
         // One column per period, an evolution column after each but the first,
-        // then the accumulated and its mention — e o par que fecha o ano: a
-        // média final formal do domínio e a apreciação que dela resulta. A média
-        // sai da grelha com os quantitativos desligados, coluna incluída, e a
-        // contagem acompanha-a.
+        // then the accumulated and its mention. E MAIS NADA: a conclusão do ano
+        // saiu do bloco de cada domínio para o bloco que fecha a grelha, e a
+        // contagem tem de acompanhar essa mudança — uma largura a mais aqui
+        // desalinha todas as colunas à direita dela.
+        $this->assertStringContainsString('periods.value.length * 2 + 1', $screen);
+        $this->assertStringContainsString('index === 0 ? 5 : 6', $screen);
+
+        // E O BLOCO FINAL CONTA-SE DOS DOMÍNIOS QUE HÁ, nunca de um número
+        // escrito à mão: dois por domínio — a média e a menção — e três no
+        // global, menos as médias quando os quantitativos estão desligados.
+        $this->assertStringContainsString('showQuantitative.value ? 2 : 1', $screen);
+        $this->assertStringContainsString('showQuantitative.value ? 3 : 2', $screen);
         $this->assertStringContainsString(
-            'periods.value.length * 2 + (showQuantitative.value ? 3 : 2)',
+            'domains.value.length * finalDomainColumns.value + finalGlobalColumns.value',
             $screen,
         );
-        $this->assertStringContainsString('index === 0 ? 5 : 6', $screen);
         // Nothing here knows how many periods a year has.
         $this->assertStringNotContainsString('P1</th>', $screen);
         $this->assertStringNotContainsString('1.º Período', $screen);
@@ -357,8 +364,10 @@ class SummaryScreenTest extends TestCase
 
         // O BLOCO FINAL EXISTE PORQUE NENHUMA SÍNTESE RESPONDE PELO ANO: cada
         // uma responde por uma unidade temporal. A média do ano, a proposta
-        // formal e a decisão vivem aqui.
-        $this->assertStringContainsString('Avaliação Contínua Final', $screen);
+        // formal e a decisão vivem aqui — e o nome do bloco vem do vocabulário
+        // partilhado, para que o ecrã e o Excel não lhe chamem coisas
+        // diferentes.
+        $this->assertStringContainsString('{{ CONTINUOUS_FINAL }}', $screen);
         $this->assertStringContainsString('continuousByEnrollment.get(student.enrollment_id)?.normalized_value', $screen);
 
         // E A PROPOSTA FORMAL SAI DAQUI. Se um dia esta coluna passar a ler o
@@ -366,7 +375,115 @@ class SummaryScreenTest extends TestCase
         // analítico — que é precisamente a troca que as duas leituras existem
         // para tornar impossível.
         $this->assertStringContainsString('continuousByEnrollment.get(student.enrollment_id)!.level!.code', $screen);
-        $this->assertStringNotContainsString('accumulated_average"', explode('Avaliação Contínua Final', $screen)[1] ?? '');
+        $this->assertStringNotContainsString(
+            'accumulated_average"',
+            explode('A AVALIAÇÃO CONTÍNUA FINAL', $screen)[1] ?? '',
+        );
+    }
+
+    /**
+     * A GRELHA LÊ-SE POR QUATRO BLOCOS, e é essa a leitura que a reorganização
+     * existe para tornar possível: o que aconteceu em cada DOMÍNIO, o que fechou
+     * cada UNIDADE TEMPORAL, e em que é que o ano deu.
+     */
+    #[Test]
+    public function the_grid_is_read_as_four_structural_blocks(): void
+    {
+        $screen = $this->screen();
+
+        $this->assertStringContainsString('Resultados por domínio', $screen);
+        $this->assertStringContainsString('Síntese · {{ period.label }}', $screen);
+        $this->assertStringContainsString('{{ CONTINUOUS_FINAL }}', $screen);
+
+        // TRÊS LINHAS DE CABEÇALHO, e não duas: os grandes blocos, os grupos
+        // dentro deles (cada domínio, e cada domínio outra vez no bloco final)
+        // e as colunas. Sem a linha do meio, a conclusão do ano de Oralidade
+        // ficaria debaixo de uma abreviatura em vez do nome do domínio.
+        $this->assertStringContainsString('rowspan="3"', $screen);
+        $this->assertStringContainsString('sticky top-8', $screen);
+        $this->assertStringContainsString('sticky top-16', $screen);
+        $this->assertStringNotContainsString('top-[33px]', $screen);
+    }
+
+    /**
+     * A CONCLUSÃO DO ANO DE CADA DOMÍNIO VIVE NO BLOCO FINAL, e não escondida
+     * dentro do bloco do domínio, encostada ao desempenho acumulado — que é a
+     * OUTRA leitura do ano (§6, §14).
+     */
+    #[Test]
+    public function every_domain_closes_the_year_inside_the_final_block(): void
+    {
+        $screen = $this->screen();
+
+        // O bloco final repete os domínios, e cada um leva a média e a menção.
+        $this->assertStringContainsString(':key="`sub-final-${domain.id}`"', $screen);
+        $this->assertStringContainsString(':key="`${student.enrollment_id}-final-${domain.id}`"', $screen);
+        $this->assertStringContainsString('{{ FINAL_AVERAGE }}', $screen);
+        $this->assertStringContainsString('{{ FINAL_MENTION }}', $screen);
+
+        // E O GLOBAL FECHA-O UMA VEZ SÓ. Duas médias do ano no mesmo ecrã
+        // seriam duas respostas à mesma pergunta (§15).
+        $this->assertSame(1, substr_count($screen, '> Global </th>'));
+        $this->assertSame(
+            1,
+            substr_count($screen, 'pct(continuousByEnrollment.get(student.enrollment_id)?.normalized_value ?? null)'),
+        );
+
+        // «FINAL» E «APREC.» ERAM O PROBLEMA. Uma coluna chamada só «Final»,
+        // dentro do bloco de um domínio, lia-se como «o último valor» e não
+        // como a média ponderada final do ano naquele domínio (§9, §10).
+        $this->assertStringNotContainsString('> Final </th>', $screen);
+        // …e a comparação é com o RÓTULO, não com a palavra: os comentários que
+        // explicam a mudança nomeiam as duas colunas antigas, e têm de o poder
+        // fazer.
+        $this->assertStringNotContainsString('> Aprec. </th>', $screen);
+    }
+
+    /**
+     * A HIERARQUIA DO TRAÇO ESTAVA INVERTIDA: o mais forte era um azul dentro
+     * do bloco de um domínio, a separar duas colunas internas, e as fronteiras
+     * entre os grandes blocos eram mais fracas do que ele (§16, §17, §18).
+     */
+    #[Test]
+    public function the_firmest_rule_is_the_one_between_the_big_blocks(): void
+    {
+        $screen = $this->screen();
+
+        // Três forças, por ordem: bloco, grupo, coluna.
+        $this->assertStringContainsString("const BLOCK_RULE = 'border-l-4 border-l-foreground/25'", $screen);
+        $this->assertStringContainsString("const GROUP_RULE = 'border-l-2 border-l-border'", $screen);
+
+        // E NENHUMA DELAS É AZUL. O azul do produto é ênfase FUNCIONAL — o
+        // fundo do bloco que carrega o indicador formal — e nunca um divisor
+        // estrutural: uma barra azul a separar duas colunas de um domínio
+        // gritava mais alto do que a fronteira entre os blocos (§18).
+        $this->assertStringNotContainsString('border-l-primary', $screen);
+        $this->assertStringNotContainsString('border-l-4 border-l-border', $screen);
+
+        // As sínteses ficaram em tons neutros: enquanto levavam a mesma tinta
+        // do bloco final, os dois tinham o mesmo peso e o final não se
+        // distinguia (§19).
+        $this->assertSame(0, substr_count($screen, 'bg-primary/5 px-2 py-1 text-center text-xs font-medium">'));
+        $this->assertStringContainsString('bg-muted/40 px-2 py-1', $screen);
+    }
+
+    /**
+     * COM OS QUANTITATIVOS DESLIGADOS, A PALAVRA — nunca o número disfarçado de
+     * menção. Um «3» onde devia estar «Suficiente» não é uma pauta sem números
+     * (§12, §34).
+     */
+    #[Test]
+    public function switching_the_numbers_off_leaves_the_words_and_never_the_codes(): void
+    {
+        $screen = $this->screen();
+
+        foreach ([
+            'showQuantitative ? domainFinalAppreciation(student, domain.id)!.level?.code : domainFinalAppreciation(student, domain.id)!.level?.label',
+            'showQuantitative ? continuousByEnrollment.get(student.enrollment_id)!.level!.code : continuousByEnrollment.get(student.enrollment_id)!.level!.label',
+            'showQuantitative ? continuousByEnrollment.get(student.enrollment_id)!.decision!.final!.code : continuousByEnrollment.get(student.enrollment_id)!.decision!.final!.label',
+        ] as $pair) {
+            $this->assertStringContainsString($pair, $screen);
+        }
     }
 
     #[Test]
@@ -437,8 +554,8 @@ class SummaryScreenTest extends TestCase
         // A firmer rule where each block begins, in the heading and in every row
         // alike, so the grouping is read down the table and not only across its
         // top (§12).
-        $this->assertStringContainsString("const BLOCK_EDGE = 'border-l-2 border-l-border'", $screen);
-        $this->assertStringContainsString(':class="index === 0 ? BLOCK_EDGE : \'\'"', $screen);
+        $this->assertStringContainsString("const GROUP_RULE = 'border-l-2 border-l-border'", $screen);
+        $this->assertStringContainsString(':class="index === 0 ? GROUP_RULE : \'\'"', $screen);
 
         // The domain's name is the most evident thing in the heading, and it
         // carries the grouping on its own: the tones alternate merely so the eye
@@ -452,9 +569,11 @@ class SummaryScreenTest extends TestCase
     {
         $screen = $this->screen();
 
-        // A heavier rule where the domains end, and a tone of its own, so the
-        // síntese is never read as one more domain (§13).
-        $this->assertStringContainsString("index === 0 ? 'border-l-4 border-l-border' : BLOCK_EDGE", $screen);
+        // A heavier rule where each big block begins — a síntese is never read
+        // as one more domain, and o bloco final nunca como mais uma síntese
+        // (§13, §17). O traço é o MESMO nas três fronteiras: é isso que faz
+        // delas uma hierarquia e não três decisões avulsas.
+        $this->assertStringContainsString(':class="BLOCK_RULE"', $screen);
         $this->assertStringContainsString('bg-primary/10', $screen);
         $this->assertStringContainsString('Síntese · {{ period.label }}', $screen);
     }

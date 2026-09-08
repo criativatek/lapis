@@ -44,6 +44,38 @@ export const ACCUMULATED_SHORT = 'Desemp. acum.';
 /** O mesmo, por extenso — para onde houver espaço para o dizer inteiro. */
 export const ACCUMULATED_LONG = 'Resultado acumulado dos elementos de avaliação';
 
+/**
+ * O BLOCO QUE FECHA O ANO, nomeado por inteiro.
+ *
+ * «Avaliação contínua» é a LEITURA; «Avaliação Contínua Final» é o sítio da
+ * grelha onde ela responde pelo ano — o global e cada domínio. Ter o nome numa
+ * constante é o que impede o ecrã e o Excel de lhe chamarem coisas diferentes.
+ */
+export const CONTINUOUS_FINAL = 'Avaliação Contínua Final';
+
+/**
+ * «FINAL» SOZINHO NÃO DIZIA DE QUE É QUE ERA O FINAL.
+ *
+ * Uma coluna chamada apenas «Final», encostada ao desempenho acumulado dentro
+ * do bloco de um domínio, lê-se como «o último valor» — e não é isso: é a média
+ * ponderada dos resultados formais do ano naquele domínio. O nome tem de
+ * afirmar as duas coisas de que depende ser entendido: que é uma MÉDIA e que é
+ * FINAL.
+ */
+export const FINAL_AVERAGE = 'Média final';
+
+export const FINAL_AVERAGE_EXPLANATION =
+    'Média ponderada final deste domínio, calculada a partir dos resultados formais dos períodos/semestres.';
+
+/**
+ * «Aprec.» era uma abreviatura que não se dizia sozinha.
+ *
+ * O que a célula mostra é a banda da escala que vale no fim do ano — uma
+ * menção. E «final» distingue-a da menção do desempenho acumulado, que vive no
+ * bloco do domínio e responde a outra pergunta.
+ */
+export const FINAL_MENTION = 'Menção final';
+
 export const CONTINUOUS_EXPLANATION =
     'Média dos resultados formais dos períodos/semestres, segundo os pesos configurados. Os momentos intercalares não entram nesta média.';
 

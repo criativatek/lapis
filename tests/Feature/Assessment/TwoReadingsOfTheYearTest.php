@@ -279,6 +279,13 @@ class TwoReadingsOfTheYearTest extends TestCase
             ReadingVocabulary::ACCUMULATED_LONG,
             ReadingVocabulary::CONTINUOUS_EXPLANATION,
             ReadingVocabulary::ACCUMULATED_EXPLANATION,
+            // O bloco que fecha o ano, e as duas colunas de cada domínio dentro
+            // dele. O ecrã escreve-os, o Excel escreve-os, e é aqui que se
+            // impede que um deles mude sozinho.
+            ReadingVocabulary::CONTINUOUS_FINAL,
+            ReadingVocabulary::FINAL_AVERAGE,
+            ReadingVocabulary::FINAL_AVERAGE_EXPLANATION,
+            ReadingVocabulary::FINAL_MENTION,
         ] as $phrase) {
             $this->assertStringContainsString(
                 $phrase,

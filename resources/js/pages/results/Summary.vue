@@ -16,6 +16,10 @@ import {
     ACCUMULATED_SHORT,
     CONTINUOUS,
     CONTINUOUS_EXPLANATION,
+    CONTINUOUS_FINAL,
+    FINAL_AVERAGE,
+    FINAL_AVERAGE_EXPLANATION,
+    FINAL_MENTION,
 } from '@/lib/readings';
 import { pct, TREND_SHAPE, trendArrow, trendClasses, trendPoints, trendTitle } from '@/lib/results';
 import type { Evolution } from '@/lib/results';
@@ -165,14 +169,15 @@ function openBreakdown(student: Student, period: PeriodCell, domainUlid: string 
 const lastPeriodIndex = computed(() => periods.value.length - 1);
 
 // Per domain: one column per period, an evolution column after every period but
-// the first, then the accumulated figure and the mention it falls in, and the
-// pair that closes the year — a média final formal e a apreciação que vale.
+// the first, then the accumulated figure and the mention it falls in.
 //
-// COM OS QUANTITATIVOS DESLIGADOS A MÉDIA FINAL SAI DA GRELHA, coluna incluída.
-// Quem desligou os números pediu uma pauta sem números, e uma célula vazia
-// debaixo de «Final» não é uma pauta sem números — é uma pauta com um buraco. O
-// que fica é a apreciação, que é a resposta na língua que ele escolheu (§60).
-const domainColumns = computed(() => periods.value.length * 2 + (showQuantitative.value ? 3 : 2));
+// A CONCLUSÃO DO ANO JÁ NÃO VIVE AQUI. Enquanto a média final formal e a
+// apreciação que dela sai eram duas colunas no fim do bloco de cada domínio,
+// ninguém as lia como a conclusão do ano: liam-se como mais duas colunas de um
+// domínio, encostadas ao desempenho acumulado — que é a OUTRA leitura. Foram
+// para um bloco próprio, no fim da grelha, onde a pergunta «como é que este
+// aluno terminou em Oralidade?» tem uma resposta e não uma dedução (§13, §14).
+const domainColumns = computed(() => periods.value.length * 2 + 1);
 
 /**
  * ------------------------------- a avaliação contínua final de cada domínio
@@ -319,7 +324,7 @@ function domainFinalTitle(student: Student, domain: { id: number; name: string }
         return `${domain.name}: sem resultados formais para uma avaliação contínua final.`;
     }
 
-    const average = `${domain.name} · Avaliação Contínua Final: ${pct(reading.normalized_value)} — ${continuousFormula.value}`;
+    const average = `${domain.name} · ${CONTINUOUS_FINAL} — ${FINAL_AVERAGE}: ${pct(reading.normalized_value)}. ${continuousFormula.value}`;
     const appreciation = domainFinalAppreciation(student, domain.id);
 
     if (appreciation === null) {
@@ -338,14 +343,34 @@ function domainFinalTitle(student: Student, domain: { id: number; name: string }
 }
 
 /**
+ * ------------------------------------------------------ as três forças de traço
+ *
+ * A GRELHA TEM QUATRO GRANDES BLOCOS — os resultados por domínio, a síntese de
+ * cada unidade temporal, e a avaliação contínua final —, e a fronteira entre
+ * eles é a informação estrutural mais importante que a tabela tem. Vinha
+ * desenhada ao contrário: o traço mais forte era um azul dentro do bloco de
+ * cada domínio, a separar duas colunas internas, e as fronteiras entre blocos
+ * eram mais fracas do que ele. Quem lia via a divisão errada em destaque.
+ *
+ * TRÊS FORÇAS, POR ORDEM: os grandes blocos, os grupos dentro deles (cada
+ * domínio, cada domínio do bloco final), e as colunas, que se separam pelo
+ * traço fino de toda a tabela e mais nada.
+ *
+ * E NEUTRO, SEMPRE. Um divisor estrutural não é um estado, uma seleção nem um
+ * foco; o azul do produto é para ênfase FUNCIONAL — aqui, o fundo do bloco que
+ * carrega o indicador formal — e não para dizer onde acaba uma coluna (§18).
+ */
+const BLOCK_RULE = 'border-l-4 border-l-foreground/25';
+
+/**
  * WHERE ONE DOMAIN ENDS AND THE NEXT BEGINS.
  *
- * A slightly firmer rule at each block's first column, in the header and in
+ * A slightly firmer rule at each group's first column, in the header and in
  * every row alike, so the grouping is read down the table and not only across
  * its heading. Structure, never colour — the domain's name and this separator
  * both carry it, so the blocks hold without either.
  */
-const BLOCK_EDGE = 'border-l-2 border-l-border';
+const GROUP_RULE = 'border-l-2 border-l-border';
 
 /**
  * Two very soft tones, alternating, on the domain HEADINGS only.
@@ -363,6 +388,32 @@ function domainTone(index: number): string {
 // first), the accumulated, the proposal, the self-assessment and the decision.
 function synthesisColumns(index: number): number {
     return index === 0 ? 5 : 6;
+}
+
+/**
+ * ------------------------------------------- as larguras do bloco que fecha o ano
+ *
+ * CADA DOMÍNIO OCUPA DUAS COLUNAS — a média final e a menção que ela dá —, e o
+ * GLOBAL ocupa três: a média do ano, a proposta formal e o nível atribuído.
+ *
+ * COM OS QUANTITATIVOS DESLIGADOS A MÉDIA SAI DA GRELHA, coluna incluída. Quem
+ * desligou os números pediu uma pauta sem números, e uma célula vazia debaixo de
+ * «Média final» não é uma pauta sem números — é uma pauta com um buraco. O que
+ * fica é a menção, que é a resposta na língua que ele escolheu (§60).
+ */
+const finalDomainColumns = computed(() => (showQuantitative.value ? 2 : 1));
+const finalGlobalColumns = computed(() => (showQuantitative.value ? 3 : 2));
+
+const domainsBlockColumns = computed(() => domains.value.length * domainColumns.value);
+const finalBlockColumns = computed(() => domains.value.length * finalDomainColumns.value + finalGlobalColumns.value);
+
+/**
+ * A régua com que um grupo do bloco final começa: a do bloco no primeiro
+ * domínio — porque é aí que a Avaliação Contínua Final começa — e a de grupo em
+ * cada domínio seguinte (§17).
+ */
+function finalGroupRule(index: number): string {
+    return index === 0 ? BLOCK_RULE : GROUP_RULE;
 }
 
 /**
@@ -428,6 +479,21 @@ function levelClasses(level: Level): string {
 
 function domainCell(period: PeriodCell, domainId: number): DomainCell | undefined {
     return period.domains.find((domain) => domain.domain_id === domainId);
+}
+
+/**
+ * O QUE O CABEÇALHO DE CADA COLUNA DO BLOCO FINAL DIZ DE SI PRÓPRIO.
+ *
+ * A abreviatura nunca é a única informação (§25): a coluna escreve «Média
+ * final», e o `title` e o texto acessível dizem de que média se trata, de que
+ * domínio, e de que resultados ela sai.
+ */
+function finalAverageHeaderTitle(domain: { name: string }): string {
+    return `${domain.name} — ${FINAL_AVERAGE}. ${FINAL_AVERAGE_EXPLANATION} ${continuousFormula.value}`;
+}
+
+function finalMentionHeaderTitle(domain: { name: string }): string {
+    return `${domain.name} — ${FINAL_MENTION}: a decisão do professor quando existe, a proposta que sai da ${FINAL_AVERAGE.toLowerCase()} quando não.`;
 }
 
 /** «Autoavaliação do aluno: 3 — Suficiente», for the discreet marker beside a domain's value. */
@@ -565,14 +631,64 @@ function proposalText(proposal: Proposal | undefined): string {
         >
             <table class="w-max min-w-full text-sm">
                 <thead class="text-left">
+                    <!-- OS QUATRO GRANDES BLOCOS, e é esta a linha que a grelha
+                         existe para se deixar ler: o que aconteceu em cada
+                         DOMÍNIO, o que fechou cada UNIDADE TEMPORAL, e em que é
+                         que o ano deu — a AVALIAÇÃO CONTÍNUA FINAL. A fronteira
+                         entre eles é o traço mais forte da tabela (§17). -->
                     <tr>
                         <th
-                            rowspan="2"
+                            rowspan="3"
                             class="sticky top-0 left-0 z-30 border-r border-b border-border bg-muted px-3 py-2 align-bottom font-medium"
                             scope="col"
                         >
                             Aluno
                         </th>
+                        <th
+                            :colspan="domainsBlockColumns"
+                            class="sticky top-0 z-20 h-8 border-b border-border bg-muted px-3 text-center text-xs font-semibold tracking-wide uppercase"
+                            title="O ano de cada domínio: o resultado formal de cada unidade temporal, o movimento entre elas, e o desempenho acumulado dos elementos de avaliação."
+                            scope="colgroup"
+                        >
+                            Resultados por domínio
+                        </th>
+                        <!-- Cada síntese responde por UMA unidade temporal, e
+                             nenhuma delas responde pelo ano — é por isso que são
+                             blocos separados e não colunas de um só. -->
+                        <th
+                            v-for="(period, index) in periods"
+                            :key="`bloco-sintese-${period.id}`"
+                            rowspan="2"
+                            :colspan="synthesisColumns(index)"
+                            class="sticky top-0 z-20 border-b border-border bg-muted/70 px-3 text-center text-xs font-semibold tracking-wide uppercase"
+                            :class="BLOCK_RULE"
+                            scope="colgroup"
+                        >
+                            Síntese · {{ period.label }}
+                        </th>
+                        <!-- O ANO, DEPOIS DAS UNIDADES. É o indicador formal, e
+                             é o único bloco com a cor do produto — ênfase
+                             FUNCIONAL, e não um divisor: se as sínteses
+                             levassem a mesma tinta, teriam o mesmo peso e a
+                             hierarquia entre as leituras deixaria de existir
+                             (§17, §18). -->
+                        <th
+                            :colspan="finalBlockColumns"
+                            class="sticky top-0 z-20 h-8 border-b border-border bg-primary/10 px-3 text-center text-xs font-semibold tracking-wide uppercase"
+                            :class="BLOCK_RULE"
+                            :title="continuousTitle"
+                            :aria-label="continuousTitle"
+                            scope="colgroup"
+                        >
+                            {{ CONTINUOUS_FINAL }}
+                        </th>
+                    </tr>
+
+                    <!-- OS GRUPOS DENTRO DE CADA BLOCO: um domínio de cada vez,
+                         à esquerda; e, no bloco final, o mesmo domínio outra
+                         vez, para que a resposta de fim de ano se leia por baixo
+                         do nome dele e não de uma abreviatura (§21). -->
+                    <tr>
                         <!-- The domain's name, made the most evident thing in
                              the heading: the grouping is read from the block,
                              not by tracing the columns under it (§8, §11). -->
@@ -580,39 +696,36 @@ function proposalText(proposal: Proposal | undefined): string {
                             v-for="(domain, domainIndex) in domains"
                             :key="domain.id"
                             :colspan="domainColumns"
-                            class="sticky top-0 z-20 border-b border-border px-3 py-1.5 text-center text-xs font-semibold tracking-wide text-foreground uppercase"
-                            :class="[domainTone(domainIndex), BLOCK_EDGE]"
+                            class="sticky top-8 z-20 h-8 border-b border-border px-3 text-center text-xs font-semibold tracking-wide text-foreground uppercase"
+                            :class="[domainTone(domainIndex), GROUP_RULE]"
                             scope="colgroup"
                         >
                             {{ domain.name }}
                         </th>
-                        <!-- The síntese is not a domain, and is separated more
-                             firmly than the domains are from each other (§13). -->
                         <th
-                            v-for="(period, index) in periods"
-                            :key="`sintese-${period.id}`"
-                            :colspan="synthesisColumns(index)"
-                            class="sticky top-0 z-20 border-b border-border bg-primary/10 px-3 py-1.5 text-center text-xs font-semibold tracking-wide uppercase"
-                            :class="index === 0 ? 'border-l-4 border-l-border' : BLOCK_EDGE"
+                            v-for="(domain, domainIndex) in domains"
+                            :key="`final-${domain.id}`"
+                            :colspan="finalDomainColumns"
+                            class="sticky top-8 z-20 h-8 border-b border-border bg-primary/5 px-3 text-center text-xs font-semibold tracking-wide text-foreground uppercase"
+                            :class="finalGroupRule(domainIndex)"
+                            :title="`${CONTINUOUS_FINAL} — ${domain.name}. ${FINAL_AVERAGE_EXPLANATION}`"
                             scope="colgroup"
                         >
-                            Síntese · {{ period.label }}
+                            {{ domain.name }}
                         </th>
-                        <!-- O ANO, DEPOIS DAS UNIDADES. É o indicador formal e
-                             é o único bloco com a cor do produto: se tivesse a
-                             mesma tinta das sínteses, teria o mesmo peso, e a
-                             hierarquia entre as duas leituras deixaria de
-                             existir (§17). -->
+                        <!-- O GLOBAL FECHA O BLOCO, e fecha-o uma vez só: a
+                             média do ano não se repete em dois sítios (§15). -->
                         <th
-                            :colspan="3"
-                            class="sticky top-0 z-20 border-b border-l-4 border-l-primary border-b-border bg-primary/20 px-3 py-1.5 text-center text-xs font-semibold tracking-wide uppercase"
+                            :colspan="finalGlobalColumns"
+                            class="sticky top-8 z-20 h-8 border-b border-border bg-primary/5 px-3 text-center text-xs font-semibold tracking-wide text-foreground uppercase"
+                            :class="GROUP_RULE"
                             :title="continuousTitle"
-                            :aria-label="continuousTitle"
                             scope="colgroup"
                         >
-                            Avaliação Contínua Final
+                            Global
                         </th>
                     </tr>
+
                     <tr>
                         <template v-for="domain in domains" :key="`sub-${domain.id}`">
                             <template v-for="(period, index) in periods" :key="`sub-${domain.id}-${period.id}`">
@@ -624,8 +737,8 @@ function proposalText(proposal: Proposal | undefined): string {
                                      ecrã inventava e que não correspondia a
                                      nada escrito em lado nenhum (§14). -->
                                 <th
-                                    class="sticky top-[33px] z-20 border-b border-border bg-muted/30 px-2 py-1 text-center text-xs font-medium whitespace-nowrap"
-                                    :class="index === 0 ? BLOCK_EDGE : ''"
+                                    class="sticky top-16 z-20 border-b border-border bg-muted/30 px-2 py-1 text-center text-xs font-medium whitespace-nowrap"
+                                    :class="index === 0 ? GROUP_RULE : ''"
                                     :title="`${period.label} — ${domain.name}`"
                                     :aria-label="`${period.label} — ${domain.name}`"
                                     scope="col"
@@ -634,7 +747,7 @@ function proposalText(proposal: Proposal | undefined): string {
                                 </th>
                                 <th
                                     v-if="index > 0"
-                                    class="sticky top-[33px] z-20 border-b border-border bg-muted/30 px-2 py-1 text-center text-xs font-medium"
+                                    class="sticky top-16 z-20 border-b border-border bg-muted/30 px-2 py-1 text-center text-xs font-medium"
                                     :title="`Evolução face a ${periods[index - 1].label} — ${domain.name}`"
                                     :aria-label="`Evolução face a ${periods[index - 1].label} — ${domain.name}`"
                                     scope="col"
@@ -649,7 +762,7 @@ function proposalText(proposal: Proposal | undefined): string {
                                  no texto acessível: a abreviatura nunca é a
                                  única informação (§25). -->
                             <th
-                                class="sticky top-[33px] z-20 border-b border-border bg-muted/30 px-2 py-1 text-center text-xs font-medium whitespace-nowrap"
+                                class="sticky top-16 z-20 border-b border-border bg-muted/30 px-2 py-1 text-center text-xs font-medium whitespace-nowrap"
                                 :title="`${ACCUMULATED_LONG} — ${domain.name}. ${ACCUMULATED_EXPLANATION}`"
                                 :aria-label="`${ACCUMULATED_LONG} — ${domain.name}. ${ACCUMULATED_EXPLANATION}`"
                                 scope="col"
@@ -657,42 +770,19 @@ function proposalText(proposal: Proposal | undefined): string {
                                 {{ ACCUMULATED_SHORT }}
                             </th>
                             <th
-                                class="sticky top-[33px] z-20 border-b border-border bg-muted/30 px-2 py-1 text-center text-xs font-medium"
+                                class="sticky top-16 z-20 border-b border-border bg-muted/30 px-2 py-1 text-center text-xs font-medium"
                                 :title="`Menção qualitativa acumulada — ${domain.name}`"
                                 :aria-label="`Menção qualitativa acumulada — ${domain.name}`"
                                 scope="col"
                             >
                                 Menção
                             </th>
-                            <!-- O FORMAL FINAL, e a barra que o separa do
-                                 analítico é mais firme por isso. Leva a cor do
-                                 produto porque é o indicador formal do ano
-                                 naquele domínio; o desempenho acumulado, à
-                                 esquerda, fica em tons neutros (§14, §17). -->
-                            <th
-                                v-if="showQuantitative"
-                                class="sticky top-[33px] z-20 border-b border-l-4 border-l-primary border-b-border bg-primary/10 px-2 py-1 text-center text-xs font-medium whitespace-nowrap"
-                                :title="`${CONTINUOUS} final — ${domain.name}. ${continuousFormula}`"
-                                :aria-label="`${CONTINUOUS} final — ${domain.name}. ${continuousFormula}`"
-                                scope="col"
-                            >
-                                Final
-                            </th>
-                            <th
-                                class="sticky top-[33px] z-20 border-b border-border bg-primary/10 px-2 py-1 text-center text-xs font-medium"
-                                :class="showQuantitative ? '' : 'border-l-4 border-l-primary'"
-                                :title="`Apreciação final de ${domain.name} — a decisão do professor quando existe, a proposta que sai da média final quando não.`"
-                                :aria-label="`Apreciação final de ${domain.name} — a decisão do professor quando existe, a proposta que sai da média final quando não.`"
-                                scope="col"
-                            >
-                                Aprec.
-                            </th>
                         </template>
 
                         <template v-for="(period, index) in periods" :key="`sub-sintese-${period.id}`">
                             <th
-                                class="sticky top-[33px] z-20 border-b border-border bg-primary/5 px-2 py-1 text-center text-xs font-medium"
-                                :class="index === 0 ? 'border-l-4 border-l-border' : BLOCK_EDGE"
+                                class="sticky top-16 z-20 border-b border-border bg-muted/40 px-2 py-1 text-center text-xs font-medium"
+                                :class="BLOCK_RULE"
                                 :title="`Média Ponderada — ${period.label}`"
                                 :aria-label="`Média Ponderada — ${period.label}`"
                                 scope="col"
@@ -701,7 +791,7 @@ function proposalText(proposal: Proposal | undefined): string {
                             </th>
                             <th
                                 v-if="index > 0"
-                                class="sticky top-[33px] z-20 border-b border-border bg-primary/5 px-2 py-1 text-center text-xs font-medium"
+                                class="sticky top-16 z-20 border-b border-border bg-muted/40 px-2 py-1 text-center text-xs font-medium"
                                 :title="`Evolução face a ${periods[index - 1].label}`"
                                 :aria-label="`Evolução face a ${periods[index - 1].label}`"
                                 scope="col"
@@ -709,7 +799,7 @@ function proposalText(proposal: Proposal | undefined): string {
                                 Evol.
                             </th>
                             <th
-                                class="sticky top-[33px] z-20 border-b border-border bg-primary/5 px-2 py-1 text-center text-xs font-medium whitespace-nowrap"
+                                class="sticky top-16 z-20 border-b border-border bg-muted/40 px-2 py-1 text-center text-xs font-medium whitespace-nowrap"
                                 :title="`${ACCUMULATED_LONG} — ${period.label}. ${ACCUMULATED_EXPLANATION}`"
                                 :aria-label="`${ACCUMULATED_LONG} — ${period.label}. ${ACCUMULATED_EXPLANATION}`"
                                 scope="col"
@@ -717,7 +807,7 @@ function proposalText(proposal: Proposal | undefined): string {
                                 {{ ACCUMULATED_SHORT }}
                             </th>
                             <th
-                                class="sticky top-[33px] z-20 border-b border-border bg-primary/5 px-2 py-1 text-center text-xs font-medium"
+                                class="sticky top-16 z-20 border-b border-border bg-muted/40 px-2 py-1 text-center text-xs font-medium"
                                 :title="`Proposta do Lapispro — ${period.label}`"
                                 :aria-label="`Proposta do Lapispro — ${period.label}`"
                                 scope="col"
@@ -725,7 +815,7 @@ function proposalText(proposal: Proposal | undefined): string {
                                 Prop.
                             </th>
                             <th
-                                class="sticky top-[33px] z-20 border-b border-border bg-primary/5 px-2 py-1 text-center text-xs font-medium"
+                                class="sticky top-16 z-20 border-b border-border bg-muted/40 px-2 py-1 text-center text-xs font-medium"
                                 :title="`Autoavaliação global do aluno — ${period.label}`"
                                 :aria-label="`Autoavaliação global do aluno — ${period.label}`"
                                 scope="col"
@@ -733,7 +823,7 @@ function proposalText(proposal: Proposal | undefined): string {
                                 Autoav.
                             </th>
                             <th
-                                class="sticky top-[33px] z-20 border-r border-b border-border bg-primary/5 px-2 py-1 text-center text-xs font-medium"
+                                class="sticky top-16 z-20 border-r border-b border-border bg-muted/40 px-2 py-1 text-center text-xs font-medium"
                                 :title="`${decision.label} — ${period.label}`"
                                 :aria-label="`${decision.label} — ${period.label}`"
                                 scope="col"
@@ -742,16 +832,46 @@ function proposalText(proposal: Proposal | undefined): string {
                             </th>
                         </template>
 
+                        <!-- CADA DOMÍNIO FECHA O ANO POR SI, e a resposta lê-se
+                             debaixo do nome dele: a média ponderada final e a
+                             menção que dela sai. «Final» sozinho não dizia de
+                             que é que era o final, e «Aprec.» não se dizia
+                             sozinho (§9, §10). -->
+                        <template v-for="(domain, domainIndex) in domains" :key="`sub-final-${domain.id}`">
+                            <th
+                                v-if="showQuantitative"
+                                class="sticky top-16 z-20 border-b border-border bg-primary/5 px-2 py-1 text-center text-xs font-medium whitespace-nowrap"
+                                :class="finalGroupRule(domainIndex)"
+                                :title="finalAverageHeaderTitle(domain)"
+                                :aria-label="finalAverageHeaderTitle(domain)"
+                                scope="col"
+                            >
+                                {{ FINAL_AVERAGE }}
+                            </th>
+                            <th
+                                class="sticky top-16 z-20 border-b border-border bg-primary/5 px-2 py-1 text-center text-xs font-medium whitespace-nowrap"
+                                :class="showQuantitative ? '' : finalGroupRule(domainIndex)"
+                                :title="finalMentionHeaderTitle(domain)"
+                                :aria-label="finalMentionHeaderTitle(domain)"
+                                scope="col"
+                            >
+                                {{ FINAL_MENTION }}
+                            </th>
+                        </template>
+
                         <th
-                            class="sticky top-[33px] z-20 border-b border-l-4 border-l-primary border-b-border bg-primary/10 px-2 py-1 text-center text-xs font-medium"
+                            v-if="showQuantitative"
+                            class="sticky top-16 z-20 border-b border-border bg-primary/5 px-2 py-1 text-center text-xs font-medium whitespace-nowrap"
+                            :class="GROUP_RULE"
                             :title="continuousTitle"
                             :aria-label="continuousTitle"
                             scope="col"
                         >
-                            Média
+                            {{ FINAL_AVERAGE }}
                         </th>
                         <th
-                            class="sticky top-[33px] z-20 border-b border-border bg-primary/10 px-2 py-1 text-center text-xs font-medium"
+                            class="sticky top-16 z-20 border-b border-border bg-primary/5 px-2 py-1 text-center text-xs font-medium"
+                            :class="showQuantitative ? '' : GROUP_RULE"
                             :title="`Proposta formal do Lapispro para o ano — sai da ${CONTINUOUS.toLowerCase()}, nunca do ${ACCUMULATED.toLowerCase()}.`"
                             :aria-label="`Proposta formal do Lapispro para o ano — sai da ${CONTINUOUS.toLowerCase()}, nunca do ${ACCUMULATED.toLowerCase()}.`"
                             scope="col"
@@ -759,7 +879,7 @@ function proposalText(proposal: Proposal | undefined): string {
                             Prop.
                         </th>
                         <th
-                            class="sticky top-[33px] z-20 border-r border-b border-border bg-primary/10 px-2 py-1 text-center text-xs font-medium"
+                            class="sticky top-16 z-20 border-r border-b border-border bg-primary/5 px-2 py-1 text-center text-xs font-medium"
                             :title="`${decision.label} do ano, atribuído pelo professor.`"
                             :aria-label="`${decision.label} do ano, atribuído pelo professor.`"
                             scope="col"
@@ -781,7 +901,7 @@ function proposalText(proposal: Proposal | undefined): string {
                         <!-- One block per domain of the profile version. -->
                         <template v-for="domain in domains" :key="`${student.enrollment_id}-${domain.id}`">
                             <template v-for="(period, index) in student.periods" :key="`${student.enrollment_id}-${domain.id}-${period.period_id}`">
-                                <td class="px-2 py-1.5 text-center tabular-nums" :class="index === 0 ? BLOCK_EDGE : ''">
+                                <td class="px-2 py-1.5 text-center tabular-nums" :class="index === 0 ? GROUP_RULE : ''">
                                     <span :class="{ 'text-muted-foreground': (domainCell(period, domain.id)?.weighted_average ?? null) === null }">
                                         {{ pct(domainCell(period, domain.id)?.weighted_average ?? null) }}
                                     </span>
@@ -851,73 +971,13 @@ function proposalText(proposal: Proposal | undefined): string {
                                 <span v-else class="text-muted-foreground">—</span>
                             </td>
 
-                            <!-- A AVALIAÇÃO CONTÍNUA FINAL DESTE DOMÍNIO: a
-                                 média dos resultados formais das unidades do
-                                 ano. Com os quantitativos desligados o número
-                                 sai e fica a apreciação, que é o que uma pauta
-                                 sem números quer dizer (§60). -->
-                            <td
-                                v-if="showQuantitative"
-                                class="border-l-4 border-l-primary px-2 py-1.5 text-center font-medium tabular-nums"
-                            >
-                                <span
-                                    :class="{ 'text-muted-foreground': (domainFinal(student, domain.id)?.normalized_value ?? null) === null }"
-                                    :title="domainFinalTitle(student, domain)"
-                                >{{ pct(domainFinal(student, domain.id)?.normalized_value ?? null) }}</span>
-                            </td>
-
-                            <!-- A APRECIAÇÃO QUE VALE no fim do ano para este
-                                 domínio: a decisão do professor quando existe,
-                                 a proposta que sai da média quando não — e a
-                                 proposta não é uma pendência (§2). -->
-                            <td
-                                class="px-2 py-1.5 text-center whitespace-nowrap"
-                                :class="showQuantitative ? '' : 'border-l-4 border-l-primary'"
-                            >
-                                <!-- O VALOR É A PORTA. Clicar na apreciação
-                                     final abre o painel que a decide; sem
-                                     autorização não há botão nenhum, e o valor
-                                     lê-se na mesma. -->
-                                <component
-                                    :is="canDecideDomains && domainFinalAppreciation(student, domain.id) ? 'button' : 'span'"
-                                    v-if="domainFinalAppreciation(student, domain.id)"
-                                    :type="canDecideDomains ? 'button' : undefined"
-                                    class="rounded px-1.5 py-0.5 text-xs"
-                                    :class="[
-                                        levelClasses(domainFinalAppreciation(student, domain.id)!.proposed),
-                                        domainFinalAppreciation(student, domain.id)!.decided ? 'font-semibold' : '',
-                                        canDecideDomains
-                                            ? 'hover:ring-1 hover:ring-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none'
-                                            : '',
-                                    ]"
-                                    :title="domainFinalTitle(student, domain)"
-                                    :aria-label="canDecideDomains ? domainFinalActionLabel(student, domain) : domainFinalTitle(student, domain)"
-                                    :aria-haspopup="canDecideDomains ? 'dialog' : undefined"
-                                    @click="canDecideDomains && openFinalDecision(student, domain)"
-                                >{{
-                                    showQuantitative
-                                        ? domainFinalAppreciation(student, domain.id)!.level?.code
-                                        : domainFinalAppreciation(student, domain.id)!.level?.label
-                                }}</component>
-                                <sup
-                                    v-if="domainFinalAppreciation(student, domain.id)?.decided"
-                                    class="ml-0.5 rounded bg-muted px-1 text-[10px] font-normal whitespace-nowrap text-muted-foreground"
-                                    :title="domainFinalTitle(student, domain)"
-                                    :aria-label="domainFinalTitle(student, domain)"
-                                >prof.</sup>
-                                <span
-                                    v-if="!domainFinalAppreciation(student, domain.id)"
-                                    class="text-muted-foreground"
-                                    :title="domainFinalTitle(student, domain)"
-                                >—</span>
-                            </td>
                         </template>
 
                         <!-- …then the year read whole, period by period. -->
                         <template v-for="(period, index) in student.periods" :key="`${student.enrollment_id}-sintese-${period.period_id}`">
                             <td
                                 class="px-2 py-1.5 text-center font-medium tabular-nums"
-                                :class="index === 0 ? 'border-l-4 border-l-border' : BLOCK_EDGE"
+                                :class="BLOCK_RULE"
                             >
                                 <span :class="{ 'text-muted-foreground': period.weighted_average === null }">{{ pct(period.weighted_average) }}</span>
                                 <CircleAlert
@@ -985,20 +1045,88 @@ function proposalText(proposal: Proposal | undefined): string {
                             </td>
                         </template>
 
-                        <!-- …e o ano inteiro, no fim. A média formal, a
-                             proposta que sai dela, e a decisão do professor.
-                             A autoavaliação NÃO aparece aqui de propósito: o
-                             aluno autoavalia-se em cada unidade, e não existe
-                             uma autoavaliação do ano. Repetir aqui a da última
-                             unidade seria dar-lhe um significado que ela não
-                             tem (§14). -->
-                        <!-- SEM TINTA DE ORGANIZAÇÃO NAS CÉLULAS DE DADOS
+                        <!-- ============ A AVALIAÇÃO CONTÍNUA FINAL ============
+                             Primeiro cada domínio — «como é que este aluno
+                             terminou em Oralidade?» —, e só depois o ano
+                             inteiro. Os números são exatamente os mesmos que
+                             estavam nas colunas «Final» e «Aprec.» de cada
+                             bloco de domínio: o que mudou foi o sítio onde se
+                             leem, que é o que faltava para se perceberem
+                             (§2, §6).
+
+                             SEM TINTA DE ORGANIZAÇÃO NAS CÉLULAS DE DADOS
                              (§15): a hierarquia deste bloco está no cabeçalho e
-                             na barra que o separa, e é lá que tem de ficar. Uma
-                             cor de fundo aqui competiria com a tinta da
+                             nas barras que o separam, e é lá que tem de ficar.
+                             Uma cor de fundo aqui competiria com a tinta da
                              tendência, que é a única num corpo de tabela que
                              significa alguma coisa. -->
-                        <td class="border-l-4 border-l-primary px-2 py-1.5 text-center font-medium tabular-nums">
+                        <template v-for="(domain, domainIndex) in domains" :key="`${student.enrollment_id}-final-${domain.id}`">
+                            <td
+                                v-if="showQuantitative"
+                                class="px-2 py-1.5 text-center font-medium tabular-nums"
+                                :class="finalGroupRule(domainIndex)"
+                            >
+                                <span
+                                    :class="{ 'text-muted-foreground': (domainFinal(student, domain.id)?.normalized_value ?? null) === null }"
+                                    :title="domainFinalTitle(student, domain)"
+                                >{{ pct(domainFinal(student, domain.id)?.normalized_value ?? null) }}</span>
+                            </td>
+
+                            <!-- A MENÇÃO QUE VALE no fim do ano para este
+                                 domínio: a decisão do professor quando existe,
+                                 a proposta que sai da média quando não — e a
+                                 proposta não é uma pendência (§2). -->
+                            <td
+                                class="px-2 py-1.5 text-center whitespace-nowrap"
+                                :class="showQuantitative ? '' : finalGroupRule(domainIndex)"
+                            >
+                                <!-- O VALOR É A PORTA. Clicar na menção final
+                                     abre o painel que a decide; sem autorização
+                                     não há botão nenhum, e o valor lê-se na
+                                     mesma. -->
+                                <component
+                                    :is="canDecideDomains && domainFinalAppreciation(student, domain.id) ? 'button' : 'span'"
+                                    v-if="domainFinalAppreciation(student, domain.id)"
+                                    :type="canDecideDomains ? 'button' : undefined"
+                                    class="rounded px-1.5 py-0.5 text-xs"
+                                    :class="[
+                                        levelClasses(domainFinalAppreciation(student, domain.id)!.proposed),
+                                        domainFinalAppreciation(student, domain.id)!.decided ? 'font-semibold' : '',
+                                        canDecideDomains
+                                            ? 'hover:ring-1 hover:ring-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none'
+                                            : '',
+                                    ]"
+                                    :title="domainFinalTitle(student, domain)"
+                                    :aria-label="canDecideDomains ? domainFinalActionLabel(student, domain) : domainFinalTitle(student, domain)"
+                                    :aria-haspopup="canDecideDomains ? 'dialog' : undefined"
+                                    @click="canDecideDomains && openFinalDecision(student, domain)"
+                                >{{
+                                    showQuantitative
+                                        ? domainFinalAppreciation(student, domain.id)!.level?.code
+                                        : domainFinalAppreciation(student, domain.id)!.level?.label
+                                }}</component>
+                                <sup
+                                    v-if="domainFinalAppreciation(student, domain.id)?.decided"
+                                    class="ml-0.5 rounded bg-muted px-1 text-[10px] font-normal whitespace-nowrap text-muted-foreground"
+                                    :title="domainFinalTitle(student, domain)"
+                                    :aria-label="domainFinalTitle(student, domain)"
+                                >prof.</sup>
+                                <span
+                                    v-if="!domainFinalAppreciation(student, domain.id)"
+                                    class="text-muted-foreground"
+                                    :title="domainFinalTitle(student, domain)"
+                                >—</span>
+                            </td>
+                        </template>
+
+                        <!-- …e o ano inteiro, no fim, uma vez só. A média
+                             formal, a proposta que sai dela, e a decisão do
+                             professor. A autoavaliação NÃO aparece aqui de
+                             propósito: o aluno autoavalia-se em cada unidade, e
+                             não existe uma autoavaliação do ano. Repetir aqui a
+                             da última unidade seria dar-lhe um significado que
+                             ela não tem (§14). -->
+                        <td v-if="showQuantitative" class="px-2 py-1.5 text-center font-medium tabular-nums" :class="GROUP_RULE">
                             <span
                                 :class="{
                                     'text-muted-foreground':
@@ -1007,13 +1135,21 @@ function proposalText(proposal: Proposal | undefined): string {
                                 :title="continuousTitle"
                             >{{ pct(continuousByEnrollment.get(student.enrollment_id)?.normalized_value ?? null) }}</span>
                         </td>
-                        <td class="px-2 py-1.5 text-center tabular-nums">
+                        <!-- COM OS QUANTITATIVOS DESLIGADOS, A PALAVRA. Um «3»
+                             onde devia estar «Suficiente» não é uma pauta sem
+                             números — é a mesma pauta com o número disfarçado
+                             de menção (§60). O código continua no `title`. -->
+                        <td class="px-2 py-1.5 text-center tabular-nums" :class="showQuantitative ? '' : GROUP_RULE">
                             <span
                                 v-if="continuousByEnrollment.get(student.enrollment_id)?.level"
                                 class="rounded px-1.5 py-0.5 italic"
                                 :class="levelClasses(continuousByEnrollment.get(student.enrollment_id)!.level)"
                                 :title="`Proposta do Lapispro para a ${CONTINUOUS.toLowerCase()}: ${continuousByEnrollment.get(student.enrollment_id)!.level!.code} — ${continuousByEnrollment.get(student.enrollment_id)!.level!.label}. ${continuousFormula}`"
-                            >{{ continuousByEnrollment.get(student.enrollment_id)!.level!.code }}</span>
+                            >{{
+                                showQuantitative
+                                    ? continuousByEnrollment.get(student.enrollment_id)!.level!.code
+                                    : continuousByEnrollment.get(student.enrollment_id)!.level!.label
+                            }}</span>
                             <span
                                 v-else-if="continuousByEnrollment.get(student.enrollment_id)?.proposal?.value"
                                 class="rounded bg-muted px-1.5 py-0.5 italic"
@@ -1030,7 +1166,11 @@ function proposalText(proposal: Proposal | undefined): string {
                                 v-if="continuousByEnrollment.get(student.enrollment_id)?.decision?.final"
                                 class="rounded px-1.5 py-0.5 font-bold"
                                 :title="`Decisão do professor para o ano: ${continuousByEnrollment.get(student.enrollment_id)!.decision!.final!.code} — ${continuousByEnrollment.get(student.enrollment_id)!.decision!.final!.label}`"
-                            >{{ continuousByEnrollment.get(student.enrollment_id)!.decision!.final!.code }}</span>
+                            >{{
+                                showQuantitative
+                                    ? continuousByEnrollment.get(student.enrollment_id)!.decision!.final!.code
+                                    : continuousByEnrollment.get(student.enrollment_id)!.decision!.final!.label
+                            }}</span>
                             <span
                                 v-else
                                 class="text-muted-foreground"
@@ -1096,39 +1236,57 @@ function proposalText(proposal: Proposal | undefined): string {
             </p>
         </div>
 
-        <p v-if="view === 'domains'" class="flex items-start gap-2 text-xs text-muted-foreground">
-            <CircleAlert class="mt-0.5 size-3.5 shrink-0" />
-            <span>
-                Cada bloco é um domínio do perfil de avaliação: as colunas com o nome de cada unidade temporal
-                <template v-if="periods.length"> ({{ periods.map((period) => period.label).join(', ') }})</template>
-                são a <strong>Média Ponderada</strong> dessa unidade, <strong>Evol.</strong> compara-a com a anterior
-                — sempre valores da própria unidade, nunca acumulados —, <strong>{{ ACCUMULATED_SHORT }}</strong> é o
-                <strong>{{ ACCUMULATED_LONG.toLowerCase() }}</strong> e a <strong>Menção</strong> é a banda desse
-                desempenho na
-                escala do perfil<template v-if="schoolClass.scale_name"> ({{ schoolClass.scale_name }})</template>;
-                fica "—" quando a escala não tem banda definida — o Lapispro não infere limiares.
-                <strong>Clique num valor de {{ ACCUMULATED_SHORT.toLowerCase() }}</strong> para ver de onde ele vem:
-                os pontos de cada unidade, os elementos que os produziram e a fração que eles formam.
-                {{ ACCUMULATED_NOT_AN_AVERAGE }}
-                Já <strong>Final</strong> é a <strong>{{ CONTINUOUS }} final desse domínio</strong> — a média dos
-                resultados formais de cada unidade, e só deles: {{ continuousFormula }} As
-                <strong>fotografias intercalares não entram</strong>, e o desempenho acumulado também não. A
-                <strong>Aprec.</strong> ao lado é a apreciação que vale no fim do ano: a proposta que sai dessa média,
-                ou a decisão do professor quando ele a alterou — a negrito e marcada com «prof.». Uma proposta que
-                ninguém alterou <strong>vigora</strong>; não é uma pendência.
-                O <strong>Auto</strong> em expoente é a autoavaliação do aluno nesse domínio. No bloco
-                <strong>Síntese</strong> ficam, por unidade, a Média Ponderada, a evolução, o
-                desempenho acumulado, a <strong>Proposta</strong>, a <strong>Autoavaliação</strong> global e o
-                <strong>{{ decision.label }}</strong><template v-if="schoolClass.scale_name"> na escala
-                {{ schoolClass.scale_name }}</template>; e no bloco
-                <strong>Avaliação Contínua Final</strong> fica o ano inteiro — {{ continuousFormula }} A proposta
-                formal do ano sai daí, e nunca do {{ ACCUMULATED.toLowerCase() }}. Um fundo
-                <span class="rounded bg-emerald-50 px-1 dark:bg-emerald-950/40">verde</span> ou
-                <span class="rounded bg-rose-50 px-1 dark:bg-rose-950/40">vermelho</span> indica
-                <strong>tendência</strong>, e é independente da cor do nível, que indica <strong>desempenho</strong>.
-                "—" significa sem elementos, nunca zero, e um período sem termo de comparação não mostra evolução.
-            </span>
-        </p>
+        <!-- A LEGENDA SEGUE OS BLOCOS DA GRELHA, e não a ordem por que as
+             colunas foram sendo acrescentadas. Depois de a tabela passar a
+             dizer-se a si própria — quatro blocos, cada um com o seu título —,
+             a legenda deixou de precisar de reconstruir a estrutura por
+             palavras: o que aqui fica é o que a UI não consegue mostrar, que é
+             a diferença entre as duas leituras e o significado das marcas
+             discretas (§31). -->
+        <dl v-if="view === 'domains'" class="grid gap-x-6 gap-y-2 text-xs text-muted-foreground sm:grid-cols-2">
+            <div>
+                <dt class="font-semibold text-foreground">Resultados por domínio</dt>
+                <dd>
+                    Por unidade<template v-if="periods.length"> ({{ periods.map((period) => period.label).join(', ') }})</template>,
+                    a <strong>Média Ponderada</strong> dessa unidade e a <strong>Evol.</strong> face à anterior —
+                    sempre valores da própria unidade. <strong>{{ ACCUMULATED_SHORT }}</strong> é o
+                    {{ ACCUMULATED_LONG.toLowerCase() }} e a <strong>Menção</strong> é a banda em que ele cai;
+                    <strong>clique no valor</strong> para ver a conta que o produziu.
+                </dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-foreground">Síntese de cada unidade</dt>
+                <dd>
+                    O aluno inteiro nessa unidade: Média Ponderada, evolução, {{ ACCUMULATED_SHORT.toLowerCase() }},
+                    <strong>Prop.</strong>, a <strong>Autoav.</strong> global e o
+                    <strong>{{ decision.label }}</strong>. Cada síntese responde por uma unidade temporal — nenhuma
+                    responde pelo ano.
+                </dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-foreground">{{ CONTINUOUS_FINAL }}</dt>
+                <dd>
+                    Em que é que o ano deu, domínio a domínio e no conjunto. A <strong>{{ FINAL_AVERAGE }}</strong>
+                    é a média dos resultados formais das unidades, e só deles: {{ continuousFormula }} As
+                    fotografias intercalares não entram, e o {{ ACCUMULATED.toLowerCase() }} também não — é a outra
+                    leitura do ano. A <strong>{{ FINAL_MENTION }}</strong> é a que vale: a proposta que sai dessa
+                    média, ou a <strong>decisão do professor</strong> quando ele a alterou, a negrito e marcada com
+                    «prof.». Uma proposta que ninguém alterou <strong>vigora</strong>; não é uma pendência.
+                </dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-foreground">As marcas</dt>
+                <dd>
+                    <strong>Auto</strong> em expoente é a autoavaliação do aluno, e não entra em cálculo nenhum. Um
+                    fundo <span class="rounded bg-emerald-50 px-1 dark:bg-emerald-950/40">verde</span> ou
+                    <span class="rounded bg-rose-50 px-1 dark:bg-rose-950/40">vermelho</span> indica
+                    <strong>tendência</strong> (↑ ↓), independente da cor do nível, que indica
+                    <strong>desempenho</strong> na escala do
+                    perfil<template v-if="schoolClass.scale_name"> ({{ schoolClass.scale_name }})</template>.
+                    «—» significa sem elementos, nunca zero.
+                </dd>
+            </div>
+        </dl>
 
         <!-- AS DUAS LEITURAS DO ANO, ditas lado a lado e por extenso. Elas
              respondem a perguntas diferentes e dão números diferentes; um
