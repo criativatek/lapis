@@ -773,6 +773,16 @@ domínio, `Classification` para o global. Uma decisão de âmbito **período** �
 leitura daquele semestre e **não** é reaproveitada como conclusão do ano: são
 linhas distintas, com chaves distintas, e nenhuma se converte na outra.
 
+**Lê-se no bloco «Avaliação Contínua Final»** do Quadro Síntese — um dos quatro
+grandes blocos da vista «Por domínio», a seguir aos resultados por domínio e às
+sínteses de cada unidade temporal. O bloco repete os domínios pelo nome e fecha
+com o **Global**, uma vez só; cada domínio traz a **Média final** e a **Menção
+final** (0.137.0). Enquanto essas duas colunas viviam dentro do bloco de cada
+domínio, chamadas «Final» e «Aprec.» e encostadas ao desempenho acumulado, o
+número estava certo e não era encontrado: «Final», ao lado de um acumulado,
+lê-se como «o último valor». Os nomes vivem em
+`ReadingVocabulary`/`readings.ts`, partilhados com o Excel.
+
 **Escreve-se a partir do Quadro Síntese**, clicando na apreciação final —
 `FinalDomainDecisionController`, que chama o mesmo `DecideDomainAppreciation`
 que a Pauta usa, com o outro âmbito. O serviço sempre recebeu o âmbito como
