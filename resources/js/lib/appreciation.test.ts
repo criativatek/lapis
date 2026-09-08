@@ -158,6 +158,47 @@ describe('overallAppreciation', () => {
         expect(overallAppreciation(overall, true).text).toBe('N3');
         expect(overallAppreciation(overall, false).text).toBe('Consolidado');
     });
+
+    it('a menção ganha ao valor na escala numa escala de bandas', () => {
+        // O `scale_value` de uma escala de bandas é o número do nível — «4»
+        // aqui, «3.000» na Escala 1 a 5 —, e a menção diz isso melhor. Era
+        // exatamente esse número que a coluna «Quant.» da Pauta mostrava no
+        // lugar da percentagem global.
+        expect(overallAppreciation(overall, true).text).not.toBe('4');
+        expect(overallAppreciation(overall, false).text).not.toBe('4');
+    });
+
+    it('numa escala de intervalo a proposta é o valor na escala', () => {
+        // Não há menção nenhuma a nomear — o valor É a resposta inteira, tal
+        // como na coluna «Nível atribuído» ao lado. Sem isto a proposta global
+        // de um professor do secundário não teria coluna nenhuma no ecrã: a de
+        // «Quant.» é uma percentagem, aqui como em cada domínio.
+        const interval = {
+            ...overall,
+            scale_value: '16.400',
+            scale_level_id: null,
+            scale_level_code: null,
+            scale_level_label: null,
+        };
+
+        expect(overallAppreciation(interval, true).text).toBe('16.400');
+        expect(overallAppreciation(interval, false).text).toBe('16.400');
+        expect(overallAppreciation(interval, true).origin).toBe('proposed');
+    });
+
+    it('sem valor nenhum continua a ser um travessão, e nunca um zero', () => {
+        const empty = {
+            ...overall,
+            normalized_value: null,
+            scale_value: null,
+            scale_level_id: null,
+            scale_level_code: null,
+            scale_level_label: null,
+        };
+
+        expect(overallAppreciation(empty, true).text).toBe('—');
+        expect(overallAppreciation(empty, true).origin).toBe('none');
+    });
 });
 
 describe('assignedLevel', () => {

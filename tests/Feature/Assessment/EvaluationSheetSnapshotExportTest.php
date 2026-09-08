@@ -530,4 +530,153 @@ class EvaluationSheetSnapshotExportTest extends TestCase
             $this->assertStringNotContainsString('Carolina', json_encode($event->properties).$event->summary);
         });
     }
+
+    // -------------------------------------- o quantitativo global, uma leitura
+
+    /**
+     * «GLOBAL — PERCENTAGEM» É A PERCENTAGEM, E NUNCA O NÚMERO DO NÍVEL.
+     *
+     * As duas coisas viveram um tempo na mesma coluna do ecrã — a de «Quant.»
+     * mostrava o valor na escala quando existia —, e um «3.000» aparecia entre
+     * percentagens. Os ficheiros sempre separaram as duas em colunas próprias e
+     * por isso nunca estiveram errados; estas asserções são o que impede que a
+     * confusão volte por aqui, e afirmam que a percentagem exportada é a MESMA
+     * que a fotografia guardou (§9: o ficheiro do momento representa o momento).
+     */
+    #[Test]
+    public function the_global_percentage_column_carries_the_percentage_and_the_scale_value_its_own(): void
+    {
+        $teacher = $this->seedDemo();
+        [$classUlid, $periodUlid, $enrollmentUlid] = $this->context($teacher);
+
+        $this->decide($teacher, $classUlid, $periodUlid, $enrollmentUlid, '3');
+        $exportUlid = $this->keep($teacher, $classUlid, $periodUlid, 'Momento intercalar');
+
+        [$normalizedValue, $scaleValue] = $this->keptOverallOf($teacher, $exportUlid, 'Carolina Nunes');
+
+        // A fotografia tem as duas coisas, e elas são MESMO diferentes — um
+        // cenário onde coincidissem não provaria nada.
+        $this->assertNotNull($normalizedValue);
+        $this->assertNotNull($scaleValue);
+        $expectedPercentage = number_format((float) $normalizedValue, 1, '.', '');
+        $this->assertNotSame($expectedPercentage, $scaleValue);
+
+        $body = (string) $this->csv($teacher, $classUlid, $exportUlid)->getContent();
+        $row = $this->csvRowFor($body, 'Carolina Nunes');
+        $header = $this->csvHeaderOf($body);
+
+        $percentageColumn = array_search('Global — Percentagem', $header, true);
+        $scaleColumn = array_search('Global — Valor na escala', $header, true);
+        $this->assertIsInt($percentageColumn);
+        $this->assertIsInt($scaleColumn);
+
+        $this->assertSame($expectedPercentage, $row[$percentageColumn]);
+        $this->assertSame($scaleValue, $row[$scaleColumn]);
+
+        // O que a coluna da percentagem NÃO é: o número do nível. Numa escala
+        // de 1 a 5 seria um «3.000» — a leitura que o ecrã mostrava.
+        $this->assertDoesNotMatchRegularExpression('/^[0-9]\.000$/', $row[$percentageColumn]);
+    }
+
+    #[Test]
+    public function the_excel_reads_the_same_global_percentage_as_the_csv(): void
+    {
+        $teacher = $this->seedDemo();
+        [$classUlid, $periodUlid, $enrollmentUlid] = $this->context($teacher);
+
+        $this->decide($teacher, $classUlid, $periodUlid, $enrollmentUlid, '3');
+        $exportUlid = $this->keep($teacher, $classUlid, $periodUlid, 'Momento intercalar');
+
+        [$normalizedValue, $scaleValue] = $this->keptOverallOf($teacher, $exportUlid, 'Carolina Nunes');
+        $expected = round((float) $normalizedValue, 1);
+
+        $rows = $this->openXlsx($this->xlsx($teacher, $classUlid, $exportUlid));
+        $studentRow = null;
+
+        foreach ($rows as $row) {
+            if (in_array('Carolina Nunes', array_map('strval', $row), true)) {
+                $studentRow = array_map('strval', $row);
+
+                break;
+            }
+        }
+
+        $this->assertIsArray($studentRow, 'A linha da aluna tem de estar no Excel.');
+
+        // A percentagem, escrita como número e arredondada a uma casa — a mesma
+        // que o CSV escreve e a mesma que a fotografia guardou.
+        $this->assertContains((string) $expected, $studentRow);
+        // E o valor na escala continua a ter a sua própria célula, como texto:
+        // um «3» numa escala de 1 a 5 não é uma quantidade a somar.
+        $this->assertContains($scaleValue, $studentRow);
+    }
+
+    /**
+     * O `overall` que a FOTOGRAFIA guardou para um aluno — nunca recalculado.
+     *
+     * @return array{0: ?string, 1: ?string}
+     */
+    private function keptOverallOf(User $teacher, string $exportUlid, string $name): array
+    {
+        return $this->asTenant($teacher, function () use ($exportUlid, $name): array {
+            $payload = EvaluationSheetExport::query()->where('ulid', $exportUlid)->firstOrFail()->payload;
+            /** @var array<int, array<string, mixed>> $students */
+            $students = $payload['students'];
+
+            foreach ($students as $student) {
+                if ($student['name'] !== $name) {
+                    continue;
+                }
+
+                /** @var array<string, mixed> $overall */
+                $overall = $student['overall'];
+
+                return [
+                    $overall['normalized_value'] === null ? null : (string) $overall['normalized_value'],
+                    $overall['scale_value'] === null ? null : (string) $overall['scale_value'],
+                ];
+            }
+
+            $this->fail("A fotografia não tem nenhum aluno chamado {$name}.");
+        });
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function csvHeaderOf(string $body): array
+    {
+        foreach ($this->csvLines($body) as $line) {
+            if (str_starts_with($line, 'Nº,') || str_starts_with($line, '"Nº"')) {
+                return str_getcsv($line, ',', '"', '\\');
+            }
+        }
+
+        $this->fail('O CSV não tem uma linha de cabeçalho da tabela.');
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function csvRowFor(string $body, string $name): array
+    {
+        foreach ($this->csvLines($body) as $line) {
+            if (str_contains($line, $name)) {
+                return str_getcsv($line, ',', '"', '\\');
+            }
+        }
+
+        $this->fail("O CSV não tem nenhuma linha para {$name}.");
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function csvLines(string $body): array
+    {
+        return array_values(array_filter(
+            preg_split('/\r\n|\n/', ltrim($body, "\xEF\xBB\xBF")) ?: [],
+            static fn (string $line): bool => trim($line) !== '',
+        ));
+    }
 }

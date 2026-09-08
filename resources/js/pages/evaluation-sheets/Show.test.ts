@@ -289,6 +289,111 @@ describe('evaluation-sheets/Show — a única vista', () => {
 });
 
 /**
+ * «Quant.» É UMA PERCENTAGEM EM TODA A LINHA — no global tal como em cada
+ * domínio.
+ *
+ * A coluna mostrou durante algum tempo o VALOR NA ESCALA no global: um «3.000»
+ * ou «4.000» em coluna com «47,5%», «62,0%» e «70,0%». Um cabeçalho, duas
+ * unidades — e o único número que resume a linha era o que não se podia
+ * comparar com nenhum dos outros. Pior: numa escala de bandas, esse valor é o
+ * número do nível, que a coluna «Apreciação» ao lado já dizia melhor.
+ *
+ * São TRÊS COISAS DIFERENTES e cada uma tem a sua coluna: a percentagem global
+ * calculada («Quant.»), a proposta qualitativa («Apreciação») e o nível
+ * atribuído pelo professor («Nível atribuído»).
+ */
+describe('evaluation-sheets/Show — o quantitativo global', () => {
+    function globalQuantitativeCell(wrapper: ReturnType<typeof mount>, name: string) {
+        const row = wrapper.findAll('tbody tr').find((candidate) => candidate.text().includes(name));
+
+        // A coluna do global é a que abre com um traço de 2 px — o mesmo que a
+        // separa dos domínios no cabeçalho.
+        return row!.findAll('td').find((cell) => cell.classes().includes('tabular-nums') && cell.classes().includes('border-l-2'));
+    }
+
+    it('mostra a percentagem global calculada, e nunca o valor na escala', () => {
+        const wrapper = mount(Show, { props: baseProps() });
+        const cell = globalQuantitativeCell(wrapper, 'Carolina Nunes');
+
+        // 91% é o resultado global; «5.000» é o nível 5 da escala, e não uma
+        // quantidade que se possa comparar com os 90,0% e os 93,1% ao lado.
+        expect(cell!.text()).toContain('91,0%');
+        expect(cell!.text()).not.toContain('5.000');
+    });
+
+    it('a coluna «Quant.» nunca escreve um número de nível, seja ele qual for', () => {
+        // A asserção genérica, e não só a do «5.000» deste fixture: «1.000» a
+        // «5.000» são níveis da Escala 1 a 5, e nenhum deles é um quantitativo.
+        // Uma percentagem termina sempre em «%» — um valor de escala nunca.
+        const wrapper = mount(Show, { props: baseProps() });
+        const cell = globalQuantitativeCell(wrapper, 'Carolina Nunes');
+        const text = cell!.text().trim();
+
+        expect(text).not.toMatch(/[0-9]\.[0-9]{3}/);
+        expect(text.endsWith('%')).toBe(true);
+    });
+
+    it('um aluno sem resultado nenhum continua com um travessão, e nunca um zero', () => {
+        // §13.3: vazio não é zero. Diogo não tem elementos avaliados.
+        const wrapper = mount(Show, { props: baseProps() });
+        const cell = globalQuantitativeCell(wrapper, 'Diogo Ferreira');
+
+        expect(cell!.text()).toContain('—');
+        expect(cell!.text()).not.toContain('0,0%');
+    });
+
+    it('com os quantitativos desligados a percentagem global desaparece, e fica a apreciação', async () => {
+        const wrapper = mount(Show, { props: baseProps() });
+        const quantitativeCheckbox = wrapper.findAll('input[type="checkbox"]')[0];
+
+        await quantitativeCheckbox.setValue(false);
+
+        expect(wrapper.text()).not.toContain('91,0%');
+        // O que o professor pediu foi uma pauta sem números — não uma pauta
+        // sem apreciação. A menção global continua lá.
+        expect(wrapper.text()).toContain('Muito Bom');
+    });
+
+    it('uma fotografia guardada lê a percentagem que guardou, e não uma recalculada', () => {
+        // O histórico usa este mesmo componente, e por isso a mesma leitura.
+        // Uma pauta guardada com 78% mostra 78%, mesmo que o nível guardado ao
+        // lado seja outro — é o que estava no ecrã no dia em que foi tirada.
+        const props = baseProps();
+        const student = props.sheet!.students[0];
+
+        student.overall.normalized_value = '78.000000';
+        student.overall.scale_value = '4.000';
+
+        const wrapper = mount(Show, { props });
+        const cell = globalQuantitativeCell(wrapper, 'Carolina Nunes');
+
+        expect(cell!.text()).toContain('78,0%');
+        expect(cell!.text()).not.toContain('4.000');
+    });
+
+    it('numa escala de intervalo o valor na escala continua no ecrã — na apreciação', async () => {
+        // O secundário classifica de 0 a 20: não há menção nenhuma a nomear, e
+        // a proposta É o número. Ele sai da coluna «Quant.», que é uma
+        // percentagem, mas não sai do ecrã.
+        const props = baseProps();
+        const student = props.sheet!.students[0];
+
+        student.overall.scale_value = '16.400';
+        student.overall.scale_level_id = null;
+        student.overall.scale_level_code = null;
+        student.overall.scale_level_label = null;
+
+        const wrapper = mount(Show, { props });
+        const row = wrapper.findAll('tbody tr').find((candidate) => candidate.text().includes('Carolina Nunes'));
+        const cell = globalQuantitativeCell(wrapper, 'Carolina Nunes');
+
+        expect(cell!.text()).toContain('91,0%');
+        expect(cell!.text()).not.toContain('16.400');
+        expect(row!.text()).toContain('16.400');
+    });
+});
+
+/**
  * «Preparar fecho» — o botão abre uma LEITURA já recebida do servidor.
  *
  * Abrir e fechar o painel não pede nada ao servidor e não toca na pauta;

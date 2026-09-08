@@ -185,6 +185,18 @@ export function domainAppreciation(
  *
  * Não tem decisão do professor: essa vive na coluna «Nível atribuído», que é
  * outra coluna e outra pergunta. Aqui há sempre e só a leitura do Lapispro.
+ *
+ * NUMA ESCALA DE INTERVALO NÃO HÁ MENÇÃO NENHUMA A NOMEAR, e a proposta é o
+ * próprio valor na escala — um 16,4 em 0 a 20. É a mesma coisa que
+ * `assignedLevel` já faz na coluna ao lado, onde «numa escala de intervalo o
+ * valor escrito É a resposta inteira». Sem isto, a proposta global de um
+ * professor do secundário não teria coluna nenhuma no ecrã: a de «Quant.» é uma
+ * percentagem — aqui como em cada domínio — e esta ficaria com um travessão.
+ *
+ * A ORDEM IMPORTA: a menção primeiro. Numa escala de bandas o valor na escala é
+ * o número do nível («3.000» para o nível 3), que a menção já diz melhor e sem
+ * casas decimais — e era exatamente esse número que a coluna «Quant.» mostrava
+ * de errado.
  */
 export function overallAppreciation(
     overall: EvaluationSheetOverall,
@@ -197,6 +209,21 @@ export function overallAppreciation(
     const text = levelText(level, showQuantitative);
 
     if (text === null) {
+        // Cru, e não reformatado aqui: é exatamente o que `assignedLevel` faz
+        // com `final_value` na coluna ao lado. Duas formatações do mesmo tipo de
+        // valor, escritas em dois sítios, seriam duas convenções a divergir.
+        const scaleValue = overall.scale_value ?? null;
+
+        if (scaleValue !== null) {
+            return {
+                level: null,
+                text: scaleValue,
+                origin: 'proposed',
+                description: `Proposta do Lapispro sobre o resultado global: ${scaleValue}.`,
+                detail: scaleValue,
+            };
+        }
+
         return { text: '—', origin: 'none', description: NO_APPRECIATION, detail: null, level: null };
     }
 

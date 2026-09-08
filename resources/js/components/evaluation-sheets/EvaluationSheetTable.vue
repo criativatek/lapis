@@ -415,9 +415,23 @@ function domainCellStyle(color: string): Record<string, string> {
                         </template>
                     </template>
 
+                    <!-- «Quant.» É UMA PERCENTAGEM, AQUI COMO EM CADA DOMÍNIO.
+                         Uma coluna com o mesmo cabeçalho tem de ter a mesma
+                         unidade em toda a linha: quando esta célula mostrava o
+                         valor na escala — um «3.000» ao lado de «47,5%», «62,0%»
+                         e «70,0%» —, a coluna dizia duas coisas diferentes na
+                         mesma linha, e o número global não era comparável com
+                         nenhum dos que estavam à sua esquerda. A leitura é a
+                         mesma que o CSV e o XLSX escrevem em «Global —
+                         Percentagem», e a mesma que o Quadro Síntese mostra.
+
+                         O VALOR NA ESCALA NÃO DESAPARECEU: é uma proposta, não
+                         uma quantidade, e por isso vive na coluna «Apreciação»
+                         ao lado — ver `overallAppreciation`, que o usa quando a
+                         escala não tem menção nenhuma a nomear. -->
                     <td v-if="showQuantitative" class="border-b border-l-2 border-border bg-muted/20 px-2 py-2 text-center font-medium tabular-nums">
-                        <span :class="{ 'text-muted-foreground': student.overall.scale_value == null && student.overall.normalized_value == null }">
-                            {{ student.overall.scale_value ?? pct(student.overall.normalized_value) }}
+                        <span :class="{ 'text-muted-foreground': student.overall.normalized_value == null }">
+                            {{ pct(student.overall.normalized_value) }}
                         </span>
                         <CoverageWarning
                             v-if="showWarnings && student.overall.has_coverage_warning"

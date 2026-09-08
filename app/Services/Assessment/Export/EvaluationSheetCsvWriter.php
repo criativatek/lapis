@@ -120,12 +120,17 @@ class EvaluationSheetCsvWriter
             }
         }
 
-        // O global vem em TRÊS colunas, não nas duas do ecrã. Na grelha a
-        // coluna «Quant.» mostra o valor na escala quando existe e a
-        // percentagem quando não existe — uma coluna, duas unidades. Num
-        // ficheiro isso é ambíguo: quem lê «5» não sabe se são 5% ou um 5 numa
-        // escala de 1 a 5. Aqui cada unidade tem a sua coluna, e uma delas
-        // fica vazia. Exportar mais nunca é o problema; exportar ambíguo é.
+        // O global vem em TRÊS colunas, não nas duas do ecrã, e cada uma com a
+        // sua unidade — quem lê «5» num ficheiro não sabe se são 5% ou um 5
+        // numa escala de 1 a 5. Exportar mais nunca é o problema; exportar
+        // ambíguo é.
+        //
+        // «Global — Percentagem» é a MESMA leitura que a coluna «Quant.» do
+        // ecrã mostra, e a mesma que cada domínio mostra ao lado dela. Foi
+        // assim que a divergência apareceu: durante algum tempo a grelha punha
+        // o valor na escala nessa coluna quando ele existia, e um «3.000»
+        // aparecia no meio de percentagens. O ficheiro estava certo e o ecrã é
+        // que não — hoje as duas leituras são uma só.
         $header[] = 'Global — Percentagem';
         $header[] = 'Global — Valor na escala';
         $header[] = 'Global — Nível';

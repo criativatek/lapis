@@ -25,6 +25,35 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.137.1] — 2026-09-08
+
+Uma coluna, uma unidade.
+
+### Corrigido
+
+- **O «Quant.» global da Pauta é uma percentagem, aqui como em cada domínio.**
+  A coluna mostrava o **valor na escala** quando ele existia: um «3.000» ou
+  «4.000» em coluna com «47,5%», «62,0%» e «70,0%». Um cabeçalho, duas unidades
+  — e o único número que resume a linha era o que não se podia comparar com
+  nenhum dos que estavam à sua esquerda. Pior, numa escala de bandas esse valor
+  **é** o número do nível, que a coluna «Apreciação» ao lado já dizia melhor e
+  sem casas decimais. A Pauta passa a mostrar a percentagem global calculada, a
+  mesma leitura que o CSV e o Excel já escreviam em «Global — Percentagem» e a
+  mesma que o Quadro Síntese mostra. **Nenhum número muda** — muda qual deles
+  está escrito naquela célula.
+- **O valor na escala não desapareceu do ecrã.** Numa escala de intervalo — o
+  secundário, de 0 a 20 — não há menção nenhuma a nomear e a proposta **é** o
+  número. Ele passa para a coluna «Apreciação», que é onde a coluna «Nível
+  atribuído» ao lado já o punha pela mesma razão. Sem isto, a correção acima
+  teria deixado a proposta global desses professores sem coluna nenhuma.
+
+As três coisas continuam a ser três, cada uma na sua coluna: a **percentagem
+global calculada**, a **proposta** e o **nível atribuído** pelo professor. O
+motor de cálculo, a proposta, a decisão formal, a exportação para o Inovar e as
+fotografias guardadas ficaram intocados: o histórico usa este mesmo componente e
+por isso lê a percentagem que guardou, e os ficheiros já separavam as duas
+unidades em colunas próprias — estavam certos, e não foram alterados.
+
 ## [0.137.0] — 2026-09-08
 
 A avaliação contínua final de cada domínio já estava certa. O que estava errado
