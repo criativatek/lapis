@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Assessment;
 
+use App\Domain\Assessment\Bc;
 use App\Models\Classification;
 use App\Models\ClassificationScope;
 use App\Models\ClassificationStatus;
@@ -173,12 +174,79 @@ class FinalUnitProposalAuditTest extends TestCase
             $this->fail('O aluno da classificação não está na pauta.');
         });
 
-        // As duas metades do mesmo ecrã, em desacordo, sem nada que o assinale.
+        // As duas metades do mesmo ecrã, em desacordo.
         $this->assertNotSame(
             $liveLevelId,
             $storedLevelId,
             'A pauta serve lado a lado um nível calculado agora e uma proposta guardada antes.',
         );
+    }
+
+    /**
+     * E O ECRÃ DIZ QUE ELAS ESTÃO EM DESACORDO.
+     *
+     * A outra metade do caso acima. Uma proposta guardada que já não corresponde
+     * aos dados não pode passar por recomendação de hoje: o payload traz a
+     * proposta ATUAL ao lado da guardada e um `proposal_is_stale` que o diz sem
+     * ambiguidade. `ConfirmClassification` já recusava confirmar uma proposta
+     * nestas condições — o que faltava era o professor poder sabê-lo antes de
+     * tentar, em vez de o descobrir pela mensagem de erro.
+     */
+    #[Test]
+    public function the_sheet_says_when_the_stored_proposal_no_longer_matches_the_data(): void
+    {
+        $row = $this->asTenant(function (): array {
+            $class = $this->schoolClass();
+            $period = $class->academicYear->periods->first();
+
+            app(ProposeClassifications::class)->forPeriod($class, $period);
+
+            $classification = Classification::query()
+                ->where('academic_period_id', $period->getKey())
+                ->where('scope', ClassificationScope::Period)
+                ->whereNotNull('proposed_value')
+                ->firstOrFail();
+
+            // Enquanto nada mudou, nada está desatualizado.
+            $before = $this->rowFor(app(BuildEvaluationSheet::class)->for($class, $period), (int) $classification->enrollment_id);
+
+            // A proposta guardada afasta-se do que os dados dizem.
+            $classification->forceFill([
+                'proposed_value' => Bc::add(Bc::of((string) $classification->proposed_value), '7'),
+            ])->save();
+
+            $after = $this->rowFor(app(BuildEvaluationSheet::class)->for($class, $period), (int) $classification->enrollment_id);
+
+            return [$before, $after];
+        });
+
+        [$before, $after] = $row;
+
+        $this->assertFalse($before['classification']['proposal_is_stale'], 'Sem nada mudar, nada está desatualizado.');
+        $this->assertTrue($after['classification']['proposal_is_stale'], 'Com os dados a divergir, o ecrã diz que a proposta é velha.');
+
+        // E a recomendação de hoje viaja ao lado dela, para poder ser mostrada.
+        $this->assertNotNull($after['classification']['current_value']);
+        $this->assertSame(
+            $after['overall']['scale_level_id'],
+            $after['classification']['current_scale_level_id'],
+            'Numa unidade intermédia a proposta de hoje é a banda do resultado de hoje.',
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $sheet
+     * @return array<string, mixed>
+     */
+    private function rowFor(array $sheet, int $enrollmentId): array
+    {
+        foreach ($sheet['students'] as $student) {
+            if ((int) $student['enrollment_id'] === $enrollmentId) {
+                return $student;
+            }
+        }
+
+        $this->fail('A matrícula não está na pauta.');
     }
 
     // ----------- (C) a proposta da última unidade é a avaliação contínua final

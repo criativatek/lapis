@@ -94,7 +94,7 @@ class BuildClassSynopsis
         // contínua vai usar.
         $live = [];
         foreach ($periods as $period) {
-            $live[(int) $period->getKey()] = $this->sheets->for($class, $period, ClassificationScope::Period);
+            $live[(int) $period->getKey()] = $this->sheets->for($class, $period, ClassificationScope::Period, withProposalBasis: false);
         }
 
         $snapshots = $this->structuralSnapshots($class, $periods);

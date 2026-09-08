@@ -2,6 +2,7 @@
 
 namespace App\Services\Assessment;
 
+use App\Domain\Assessment\Bc;
 use App\Domain\Assessment\CalculationOutcome;
 use App\Models\AcademicPeriod;
 use App\Models\Classification;
@@ -55,15 +56,18 @@ class BuildEvaluationSheet
         protected ScaleProposalResolver $proposals,
         protected SelfAssessmentReading $selfAssessments,
         protected DomainAppreciationDecisions $domainDecisions,
+        protected FormalProposalBasis $basis,
     ) {}
 
     /**
+     * @param  bool  $withProposalBasis  se a leitura traz a proposta de HOJE ao lado da guardada e o aviso de desatualizada. Na unidade que fecha o ano isso obriga a apurar os resultados das outras unidades, e quem não vai ler esses campos não tem por que os pagar — é o caso do Quadro Síntese, que abre a pauta de cada unidade e faz a sua própria leitura do ano.
      * @return array{class_id: int, academic_period_id: int, scope: string, domains: list<array<string, mixed>>, students: list<array<string, mixed>>}
      */
     public function for(
         SchoolClass $schoolClass,
         AcademicPeriod $academicPeriod,
         ClassificationScope|string $scope = ClassificationScope::Period,
+        bool $withProposalBasis = true,
     ): array {
         $resolvedScope = is_string($scope) ? ClassificationScope::from($scope) : $scope;
         $results = $this->calculator->forScope($schoolClass, $academicPeriod, $resolvedScope);
@@ -90,6 +94,24 @@ class BuildEvaluationSheet
             $resolvedScope,
         );
 
+        // DE QUE NÚMERO NASCE A PROPOSTA DESTA UNIDADE — o resultado dela a meio
+        // do ano, a avaliação contínua final na unidade que o fecha. A pauta
+        // precisa de o saber por duas razões: para o poder mostrar ao professor
+        // quando ele abre a decisão (uma proposta cuja origem não está no ecrã
+        // não se pode conferir) e para dizer quando a proposta GUARDADA já não
+        // corresponde ao que os dados dizem hoje.
+        //
+        // As linhas já calculadas seguem para lá: numa unidade intermédia isto
+        // não custa consulta nenhuma, e na última paga-se o cálculo das outras
+        // unidades uma vez para a turma inteira.
+        $basisByEnrollment = [];
+
+        if ($withProposalBasis) {
+            foreach ($this->basis->forRows($schoolClass, $academicPeriod, $resolvedScope, $results) as $row) {
+                $basisByEnrollment[(int) $row['enrollment']->getKey()] = $row['outcome'];
+            }
+        }
+
         $students = [];
         foreach ($results as $result) {
             $enrollment = $result['enrollment'];
@@ -110,7 +132,11 @@ class BuildEvaluationSheet
                     $selfAssessment,
                     $decisions[$enrollmentId] ?? [],
                 ),
-                'classification' => $this->classification($classifications[$enrollmentId] ?? null),
+                'classification' => $this->classification(
+                    $classifications[$enrollmentId] ?? null,
+                    $basisByEnrollment[$enrollmentId] ?? null,
+                    $scale,
+                ),
                 'coverage' => $coverage[$enrollmentId]['overall'] ?? CoverageExplanation::none(),
                 // O juízo global do próprio aluno. Null quando não respondeu à
                 // pergunta global — nunca a média do que disse por domínio.
@@ -313,11 +339,39 @@ class BuildEvaluationSheet
     /**
      * @return array<string, mixed>|null
      */
-    protected function classification(?Classification $classification): ?array
-    {
+    /**
+     * A classificação guardada, e — a seu lado — a proposta que os dados de hoje
+     * produzem.
+     *
+     * PORQUE SÃO DUAS COISAS. `proposed_*` é uma linha escrita no momento em que
+     * alguém correu «propor»; o resultado ao lado dela é calculado agora. Entre
+     * um e outro pode ter sido corrigida uma cotação, excluído um elemento,
+     * lançado um teste — e a linha não sabe disso. Até aqui o ecrã servia as
+     * duas metades lado a lado sem nada que dissesse qual era a de hoje: uma
+     * percentagem de 50,3 % ao lado de «Proposta do Lapispro: 2», e a banda dos
+     * 50,3 % é 3.
+     *
+     * `current_*` é a recomendação de hoje e `is_stale` diz se ela deixou de
+     * coincidir com a guardada. A comparação é a MESMA que
+     * `ConfirmClassification` já faz antes de deixar confirmar — uma proposta
+     * desatualizada é recusada lá —, e é por isso que ela tem de ser feita aqui
+     * também: o professor tem de o saber antes de tentar, e não pela mensagem de
+     * erro depois de clicar.
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function classification(
+        ?Classification $classification,
+        ?CalculationOutcome $basis,
+        ?Scale $scale,
+    ): ?array {
         if ($classification === null) {
             return null;
         }
+
+        $currentLevel = $basis === null ? null : $scale?->levels->firstWhere('id', $basis->scaleLevelId);
+        $stored = $classification->proposed_value;
+        $current = $basis?->proposedValue;
 
         return [
             'status' => $classification->status->value,
@@ -325,6 +379,17 @@ class BuildEvaluationSheet
             'proposed_scale_level_id' => $classification->proposed_scale_level_id,
             'proposed_scale_level_code' => $classification->proposedScaleLevel?->code,
             'proposed_scale_level_label' => $classification->proposedScaleLevel?->label,
+            // A proposta que os dados de HOJE produzem, na mesma escala.
+            'current_normalized_value' => $basis?->normalizedValue,
+            'current_value' => $current,
+            'current_scale_level_id' => $basis?->scaleLevelId,
+            'current_scale_level_code' => $currentLevel?->code,
+            'current_scale_level_label' => $currentLevel?->label,
+            // Sem uma das duas metades não há desacordo a afirmar: uma linha
+            // aberta sem proposta não está desatualizada, está por propor.
+            'proposal_is_stale' => $stored !== null
+                && $current !== null
+                && Bc::compare(Bc::of((string) $stored), Bc::of((string) $current)) !== 0,
             'final_value' => $classification->final_value,
             'final_scale_level_id' => $classification->final_scale_level_id,
             'final_scale_level_code' => $classification->finalScaleLevel?->code,

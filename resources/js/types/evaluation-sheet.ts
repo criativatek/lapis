@@ -94,6 +94,29 @@ export type EvaluationSheetClassification = {
     /** Ausente nos snapshots guardados antes da 0.130.1. */
     proposed_scale_level_code?: string | null;
     proposed_scale_level_label: string | null;
+    /**
+     * A PROPOSTA QUE OS DADOS DE HOJE PRODUZEM — ao lado da que ficou guardada
+     * quando alguém correu «propor».
+     *
+     * As duas coincidem quase sempre e divergem quando algo mudou pelo meio: uma
+     * cotação corrigida, um elemento excluído, um teste lançado. Enquanto só a
+     * guardada viajava, o ecrã mostrava uma percentagem de hoje ao lado de uma
+     * recomendação de antes sem nada que os distinguisse.
+     *
+     * Ausentes nas fotografias guardadas antes disto existir — e num snapshot
+     * não faziam sentido nenhum, porque uma fotografia não tem «hoje».
+     */
+    current_normalized_value?: string | null;
+    current_value?: string | null;
+    current_scale_level_id?: number | null;
+    current_scale_level_code?: string | null;
+    current_scale_level_label?: string | null;
+    /**
+     * A guardada já não corresponde aos dados. `ConfirmClassification` recusa
+     * qualquer decisão neste estado — o professor tem de gerar a proposta outra
+     * vez —, e por isso o ecrã tem de o dizer antes de ele tentar.
+     */
+    proposal_is_stale?: boolean;
     final_value: string | null;
     final_scale_level_id: number | null;
     /** Ausente nos snapshots guardados antes da 0.130.1. */

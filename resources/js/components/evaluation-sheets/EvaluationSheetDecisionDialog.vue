@@ -83,6 +83,20 @@ function readable(code: string | null | undefined, label: string | null | undefi
     return label ? `${head} — ${label}` : head;
 }
 
+const isStale = computed(
+    () =>
+        props.student?.classification?.proposal_is_stale === true &&
+        (props.student?.classification?.current_scale_level_id ?? null) !== null,
+);
+
+/**
+ * A proposta que o professor vê ao decidir — a de HOJE.
+ *
+ * Enquanto a guardada corresponder aos dados, são a mesma coisa. Quando deixam
+ * de coincidir é a atual que se mostra: o servidor recusa confirmar sobre uma
+ * proposta desatualizada, e pôr aqui o número velho seria oferecer ao professor
+ * exatamente aquilo que ele não vai conseguir guardar.
+ */
 const proposal = computed(() => {
     const classification = props.student?.classification;
 
@@ -90,11 +104,42 @@ const proposal = computed(() => {
         return '—';
     }
 
+    if (isStale.value) {
+        return readable(
+            classification.current_scale_level_code,
+            classification.current_scale_level_label,
+            classification.current_value ?? null,
+        );
+    }
+
     return readable(
         classification.proposed_scale_level_code,
         classification.proposed_scale_level_label,
         classification.proposed_value,
     );
+});
+
+/**
+ * O NÚMERO DE QUE A PROPOSTA NASCE, quando não é o desta unidade.
+ *
+ * Na unidade que fecha o ano a proposta é a avaliação contínua final — a média
+ * ponderada dos resultados formais de todas as unidades — e não o resultado
+ * isolado do último semestre que a grelha mostra ao lado. Sem esta linha o
+ * professor via uma proposta que não conseguia conferir com número nenhum no
+ * ecrã.
+ *
+ * Nas unidades intermédias os dois valores são o mesmo, e repeti-lo em duas
+ * linhas seria ruído.
+ */
+const proposalBasis = computed(() => {
+    const basis = props.student?.classification?.current_normalized_value ?? null;
+    const standalone = props.student?.overall.normalized_value ?? null;
+
+    if (basis === null || standalone === null || Number(basis).toFixed(1) === Number(standalone).toFixed(1)) {
+        return null;
+    }
+
+    return pct(basis);
 });
 
 const assigned = computed(() => {
@@ -131,16 +176,15 @@ function selfAssessmentTitle(level: EvaluationSheetSelfAssessment | null | undef
     return `${what}: ${level.code} — ${level.label}`;
 }
 
-/** O global do aluno: o valor na escala quando existe, senão a percentagem. */
-const overall = computed(() => {
-    const student = props.student;
-
-    if (!student) {
-        return '—';
-    }
-
-    return student.overall.scale_value ?? pct(student.overall.normalized_value);
-});
+/**
+ * O global do aluno NESTA UNIDADE, em percentagem — a mesma leitura da coluna
+ * «Quant.» da grelha e a mesma de cada domínio na lista abaixo.
+ *
+ * Mostrava aqui o valor na escala quando ele existia, e numa escala de bandas
+ * esse valor é o número do nível: um «3.000» solto por cima de uma lista de
+ * percentagens, sem rótulo que dissesse o que era.
+ */
+const overall = computed(() => pct(props.student?.overall.normalized_value ?? null));
 
 /** Os domínios do perfil, com o que este aluno tem em cada um. */
 const domainRows = computed(() =>
@@ -214,12 +258,32 @@ function onOpenChange(open: boolean): void {
                 <div class="rounded-md border border-border bg-muted/20 px-3 py-2">
                     <p class="text-xs text-muted-foreground">Proposta do Lapispro</p>
                     <p class="text-sm font-medium">{{ proposal }}</p>
+                    <!-- DE QUE NÚMERO ELA NASCE, quando não é o desta unidade.
+                         No fecho do ano a proposta é a avaliação contínua final,
+                         e é ela que tem de estar escrita — uma recomendação que
+                         não se pode conferir com nada no ecrã é um número para
+                         acreditar, não para decidir. -->
+                    <p v-if="proposalBasis" class="mt-0.5 text-xs text-muted-foreground">
+                        Média ponderada final: <span class="font-medium tabular-nums">{{ proposalBasis }}</span>
+                    </p>
                 </div>
                 <div class="rounded-md border border-border bg-muted/20 px-3 py-2">
                     <p class="text-xs text-muted-foreground">{{ decision.label }}</p>
                     <p class="text-sm font-medium">{{ assigned ?? 'Ainda não atribuído' }}</p>
                 </div>
             </div>
+
+            <!-- A PROPOSTA GUARDADA JÁ NÃO CORRESPONDE AOS DADOS. Dito aqui,
+                 antes de o professor tentar guardar: o servidor recusa a
+                 decisão neste estado, e descobrir isso pela mensagem de erro
+                 depois de clicar é descobri-lo tarde. -->
+            <p
+                v-if="isStale"
+                class="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200"
+            >
+                <strong>Proposta desatualizada.</strong> As pontuações mudaram desde que a proposta foi gerada.
+                Acima está a proposta para os dados atuais; gere-a novamente em Classificações antes de decidir.
+            </p>
 
             <div class="rounded-md border border-border">
                 <div class="flex items-center justify-between border-b border-border px-3 py-1.5 text-xs">

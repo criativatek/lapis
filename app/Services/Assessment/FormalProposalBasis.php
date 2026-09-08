@@ -68,8 +68,27 @@ class FormalProposalBasis
         AcademicPeriod $period,
         ClassificationScope $scope = ClassificationScope::Period,
     ): array {
-        $rows = $this->calculator->forScope($class, $period, $scope);
+        return $this->forRows($class, $period, $scope, $this->calculator->forScope($class, $period, $scope));
+    }
 
+    /**
+     * O mesmo, para quem JÁ TEM as linhas desta unidade calculadas.
+     *
+     * A Pauta calcula-as para desenhar a grelha e precisa depois de saber de que
+     * número nasce a proposta. Pedir-lhe que entre por `forScope()` faria o motor
+     * correr uma segunda vez sobre a mesma unidade para devolver o mesmo
+     * resultado — e uma segunda passagem é sempre uma oportunidade de as duas
+     * darem números diferentes.
+     *
+     * @param  list<array{enrollment: Enrollment, outcome: CalculationOutcome}>  $rows
+     * @return list<array{enrollment: Enrollment, outcome: CalculationOutcome}>
+     */
+    public function forRows(
+        SchoolClass $class,
+        AcademicPeriod $period,
+        ClassificationScope $scope,
+        array $rows,
+    ): array {
         // O ÂMBITO ACUMULADO JÁ É UMA LEITURA DO ANO — reprocessa os elementos
         // brutos do ano inteiro — e não tem por isso nada a ganhar em ser
         // substituído por uma média de médias. Só o âmbito de PERÍODO, e só na
@@ -79,6 +98,14 @@ class FormalProposalBasis
         }
 
         return $this->onContinuousAverage($class, $period, $rows);
+    }
+
+    /**
+     * Esta unidade fecha o ano? — a pergunta sozinha, para quem só precisa dela.
+     */
+    public function isFinalUnit(SchoolClass $class, AcademicPeriod $period): bool
+    {
+        return $this->closesTheYear($class, $period);
     }
 
     /**
@@ -124,7 +151,7 @@ class FormalProposalBasis
             return $rows;
         }
 
-        $continuous = $this->continuous->for($class, $periods, $this->formalResultsOf($class, $periods));
+        $continuous = $this->continuous->for($class, $periods, $this->formalResultsOf($class, $periods, $period, $rows));
         $students = $continuous['students'];
 
         [$scale, $roundingMode, $roundingScale] = $this->scaleOf($class);
@@ -236,17 +263,32 @@ class FormalProposalBasis
      * números por cima de uma leitura muito maior (classificações, decisões por
      * domínio, autoavaliações, cobertura), e nada disso entra numa média.
      *
+     * A UNIDADE ATUAL NÃO É RECALCULADA. Quem chama já a tem em mãos — é dela
+     * que a proposta está a ser reassente — e pedi-la ao motor outra vez seria
+     * correr a mesma conta duas vezes no mesmo pedido. Sem isto, abrir o Quadro
+     * Síntese passava de 80 para 92 consultas, porque ele abre a pauta de cada
+     * unidade e a última mandava recalcular todas.
+     *
      * @param  Collection<int, AcademicPeriod>  $periods
+     * @param  list<array{enrollment: Enrollment, outcome: CalculationOutcome}>  $known  as linhas já calculadas de `$current`
      * @return array<int, array<int, string|null>>
      */
-    protected function formalResultsOf(SchoolClass $class, Collection $periods): array
-    {
+    protected function formalResultsOf(
+        SchoolClass $class,
+        Collection $periods,
+        AcademicPeriod $current,
+        array $known,
+    ): array {
         $formal = [];
 
         foreach ($periods as $unit) {
+            $lines = (int) $unit->getKey() === (int) $current->getKey()
+                ? $known
+                : $this->calculator->forScope($class, $unit, ClassificationScope::Period);
+
             $row = [];
 
-            foreach ($this->calculator->forScope($class, $unit, ClassificationScope::Period) as $line) {
+            foreach ($lines as $line) {
                 $row[(int) $line['enrollment']->getKey()] = $line['outcome']->normalizedValue;
             }
 

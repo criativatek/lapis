@@ -274,20 +274,27 @@ export function assignedLevel(
         };
     }
 
-    const proposed: LevelReference = {
-        code: classification.proposed_scale_level_code,
-        label: classification.proposed_scale_level_label,
-    };
-    const proposedText = levelText(proposed, showQuantitative) ?? classification.proposed_value;
+    // A PROPOSTA QUE VALE É A DE HOJE. Quando a guardada deixou de corresponder
+    // aos dados — `proposal_is_stale` —, mostrar o número dela seria pôr à
+    // frente do professor uma recomendação que já ninguém faz e que o servidor
+    // recusa deixar confirmar. Nesse caso vale a atual, e a frase diz porquê.
+    const stale = classification.proposal_is_stale === true && classification.current_scale_level_id != null;
+    const proposed: LevelReference = stale
+        ? { code: classification.current_scale_level_code, label: classification.current_scale_level_label }
+        : { code: classification.proposed_scale_level_code, label: classification.proposed_scale_level_label };
+    const fallback = (stale ? classification.current_value : classification.proposed_value) ?? null;
+    const proposedText = levelText(proposed, showQuantitative) ?? fallback;
 
     if (proposedText !== null) {
-        const detail = levelDetail(proposed, showQuantitative) ?? classification.proposed_value;
+        const detail = levelDetail(proposed, showQuantitative) ?? fallback;
 
         return {
             level: proposed,
             text: proposedText,
             origin: 'proposed',
-            description: `Proposta do Lapispro, ainda não decidida pelo professor: ${detail}.`,
+            description: stale
+                ? `Proposta do Lapispro para os dados atuais: ${detail}. A proposta guardada está desatualizada — gere-a novamente antes de decidir.`
+                : `Proposta do Lapispro, ainda não decidida pelo professor: ${detail}.`,
             detail,
         };
     }
