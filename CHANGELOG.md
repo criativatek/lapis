@@ -25,6 +25,85 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.137.0] — 2026-09-08
+
+A avaliação contínua final de cada domínio já estava certa. O que estava errado
+era o sítio onde se lia — e um número que ninguém encontra é um número que não
+existe.
+
+### O ano de cada domínio passa a ter um bloco próprio
+
+Na 0.136.0 cada bloco de domínio acabava em duas colunas, **«Final»** e
+**«Aprec.»**, encostadas ao desempenho acumulado. O cálculo estava certo; a
+leitura não. «Final», ao lado de um valor acumulado, lê-se como «o último
+valor» — e não como «a média ponderada dos resultados formais do ano neste
+domínio», que é o que era. E a **Avaliação Contínua Final** vivia num bloco
+estreito no extremo direito, só com o número global.
+
+O Quadro Síntese passa a ler-se por **quatro blocos**, e o cabeçalho — agora com
+três linhas — di-lo por palavras:
+
+```
+RESULTADOS POR DOMÍNIO   │ SÍNTESE · 1.º SEM. │ SÍNTESE · 2.º SEM. │ AVALIAÇÃO CONTÍNUA FINAL
+Oralidade │ Leitura │ …   │ MP Acum Prop …    │ MP Evol Acum …     │ Oralidade │ Leitura │ … │ GLOBAL
+```
+
+O último bloco **repete os domínios pelo nome** e fecha com o **Global**, uma vez
+só. A pergunta «como é que este aluno terminou em Oralidade?» passa a ter uma
+resposta debaixo da palavra «Oralidade», em vez de uma dedução:
+
+```
+AVALIAÇÃO CONTÍNUA FINAL · Oralidade
+  Média final    62,4 %
+  Menção final   3 — Suficiente
+```
+
+### «Final» passa a «Média final»; «Aprec.» passa a «Menção final»
+
+Os dois nomes vivem em `ReadingVocabulary` e em `readings.ts`, com o teste de
+paridade a comparar as duas cópias — o Excel escreve os mesmos. A explicação
+inteira («média ponderada final deste domínio, calculada a partir dos resultados
+formais dos períodos/semestres») segue no `title` e no texto acessível, porque a
+abreviatura nunca é a única informação.
+
+### Nenhuma conta mudou
+
+Os números são os que `ContinuousAssessment` já mandava no mesmo payload; o que
+mudou foi a coluna em que aparecem. As **fotografias intercalares** continuam de
+fora, o **desempenho acumulado** continua a ser a leitura complementar e mantém
+o painel que o decompõe, a **decisão do professor** continua a escrever-se no
+âmbito do ano (`scope = accumulated`) e uma **proposta que ninguém alterou
+continua a vigorar**. A página não faz uma consulta a mais: o modelo de leitura
+não foi tocado.
+
+### A hierarquia do traço estava invertida
+
+O traço mais forte da tabela era um azul de 4 px **dentro** do bloco de um
+domínio, a separar duas colunas internas — e gritava mais alto do que a
+fronteira entre os grandes blocos. Passam a existir três forças, todas neutras:
+**bloco** (4 px), **grupo** (2 px) e **coluna** (o traço fino da tabela). O azul
+do produto fica reservado para a ênfase funcional — o fundo do bloco que carrega
+o indicador formal —, e as sínteses passam a tons neutros para que esse fundo
+volte a distinguir alguma coisa.
+
+Com **«Mostrar quantitativos» desligado**, as médias saem da grelha e ficam as
+palavras da escala: «Suficiente», «Bom» — nunca «3» ou «4» a fazer de menção.
+Vale agora também para a proposta e para o nível do bloco global.
+
+### A legenda encurta
+
+Reconstruía a estrutura da tabela por palavras num parágrafo único. Depois de a
+grelha passar a dizer-se a si própria, fica o que a UI não consegue mostrar:
+a diferença entre as duas leituras do ano, o «prof.», o «Auto N» e as setas de
+tendência.
+
+### Excel
+
+A folha «Contínua Final por Domínio» passa a **«Média final»**, **«Proposta
+final»**, **«Decisão final»** e **«Menção vigente»**; a coluna «Origem» continua
+a dizer «Proposta do Lapispro» ou «Decisão do professor», que é o que descreve.
+A folha «Configuração» explica as quatro. Nenhum número muda.
+
 ## [0.136.0] — 2026-09-07
 
 Duas correções que vinham do mesmo sítio: a pauta dizia que havia trabalho por
