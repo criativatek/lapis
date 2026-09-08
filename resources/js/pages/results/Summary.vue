@@ -133,6 +133,25 @@ const view = ref<SummaryView>('moments');
 const showQuantitative = ref(true);
 
 /**
+ * O DESEMPENHO ACUMULADO É UMA LEITURA COMPLEMENTAR, E NEM TODA A GENTE A QUER
+ * À VISTA.
+ *
+ * Serve para perceber o resultado dos elementos acumulados até aqui e o peso
+ * efetivo de cada um — análise pedagógica, não classificação. NÃO alimenta a
+ * avaliação contínua final, não alimenta a proposta e não alimenta o nível
+ * atribuído, e desligá-lo não muda nenhum desses números: o que ele esconde são
+ * duas colunas por domínio, e mais nada.
+ *
+ * DOIS CONTROLOS, DUAS PERGUNTAS DIFERENTES. «Mostrar quantitativos» decide se
+ * se veem percentagens e códigos; este decide se esta LEITURA está na grelha.
+ * Misturá-los daria a um professor que desligasse os números uma grelha sem uma
+ * leitura que ele não pediu para tirar.
+ *
+ * Ligado por omissão: quem já usava o Quadro Síntese não perde nada ao abrir.
+ */
+const showAccumulated = ref(true);
+
+/**
  * ---------------------------------------------------- de onde vem aquele número
  *
  * O ACUMULADO DE CADA CÉLULA ABRE-SE. Um professor que veja 68,0 % num
@@ -177,7 +196,9 @@ const lastPeriodIndex = computed(() => periods.value.length - 1);
 // domínio, encostadas ao desempenho acumulado — que é a OUTRA leitura. Foram
 // para um bloco próprio, no fim da grelha, onde a pergunta «como é que este
 // aluno terminou em Oralidade?» tem uma resposta e não uma dedução (§13, §14).
-const domainColumns = computed(() => periods.value.length * 2 + 1);
+const domainColumns = computed(
+    () => periods.value.length * 2 - 1 + (showAccumulated.value ? 2 : 0),
+);
 
 /**
  * ------------------------------- a avaliação contínua final de cada domínio
@@ -387,7 +408,9 @@ function domainTone(index: number): string {
 // Per period of the síntese: the standalone average, its evolution (except the
 // first), the accumulated, the proposal, the self-assessment and the decision.
 function synthesisColumns(index: number): number {
-    return index === 0 ? 5 : 6;
+    const base = index === 0 ? 5 : 6;
+
+    return showAccumulated.value ? base : base - 1;
 }
 
 /**
@@ -599,6 +622,17 @@ function proposalText(proposal: Proposal | undefined): string {
                         <input v-model="showQuantitative" type="checkbox" class="rounded border-border" />
                         <span>Mostrar quantitativos</span>
                     </label>
+                    <!-- A OUTRA LEITURA DO ANO, que nem toda a gente quer à
+                         vista. Esconde duas colunas por domínio e nada mais:
+                         a avaliação contínua final, a proposta e o nível
+                         atribuído não dependem dela e não mudam com isto. -->
+                    <label
+                        class="flex items-center gap-1.5 text-sm"
+                        :title="`${ACCUMULATED_LONG} — ${ACCUMULATED_EXPLANATION}`"
+                    >
+                        <input v-model="showAccumulated" type="checkbox" class="rounded border-border" />
+                        <span>Mostrar desempenho acumulado</span>
+                    </label>
                     <!-- Ligação simples, e não uma visita Inertia: uma resposta
                          binária não volta por uma delas. -->
                     <a
@@ -771,6 +805,7 @@ function proposalText(proposal: Proposal | undefined): string {
                                  no texto acessível: a abreviatura nunca é a
                                  única informação (§25). -->
                             <th
+                                v-if="showAccumulated"
                                 class="sticky top-16 z-20 border-b border-border bg-muted/30 px-2 py-1 text-center text-xs font-medium whitespace-nowrap"
                                 :title="`${ACCUMULATED_LONG} — ${domain.name}. ${ACCUMULATED_EXPLANATION}`"
                                 :aria-label="`${ACCUMULATED_LONG} — ${domain.name}. ${ACCUMULATED_EXPLANATION}`"
@@ -779,6 +814,7 @@ function proposalText(proposal: Proposal | undefined): string {
                                 {{ ACCUMULATED_SHORT }}
                             </th>
                             <th
+                                v-if="showAccumulated"
                                 class="sticky top-16 z-20 border-b border-border bg-muted/30 px-2 py-1 text-center text-xs font-medium"
                                 :title="`Menção qualitativa acumulada — ${domain.name}`"
                                 :aria-label="`Menção qualitativa acumulada — ${domain.name}`"
@@ -808,6 +844,7 @@ function proposalText(proposal: Proposal | undefined): string {
                                 Evol.
                             </th>
                             <th
+                                v-if="showAccumulated"
                                 class="sticky top-16 z-20 border-b border-border bg-muted/40 px-2 py-1 text-center text-xs font-medium whitespace-nowrap"
                                 :title="`${ACCUMULATED_LONG} — ${period.label}. ${ACCUMULATED_EXPLANATION}`"
                                 :aria-label="`${ACCUMULATED_LONG} — ${period.label}. ${ACCUMULATED_EXPLANATION}`"
@@ -954,7 +991,7 @@ function proposalText(proposal: Proposal | undefined): string {
                                  mais pesada do que a explicação que oferece
                                  (§5). Uma célula sem valor não abre nada — não
                                  há conta nenhuma para mostrar. -->
-                            <td class="bg-muted/20 px-2 py-1.5 text-center tabular-nums">
+                            <td v-if="showAccumulated" class="bg-muted/20 px-2 py-1.5 text-center tabular-nums">
                                 <button
                                     v-if="(domainCell(student.periods[lastPeriodIndex], domain.id)?.accumulated_average ?? null) !== null"
                                     type="button"
@@ -970,7 +1007,7 @@ function proposalText(proposal: Proposal | undefined): string {
                             <!-- The band that accumulated figure falls in, on the
                                  profile's own scale. Never a threshold decided
                                  here, and «—» where the scale has no band for it. -->
-                            <td class="bg-muted/20 px-2 py-1.5 text-center whitespace-nowrap">
+                            <td v-if="showAccumulated" class="bg-muted/20 px-2 py-1.5 text-center whitespace-nowrap">
                                 <span
                                     v-if="domainCell(student.periods[student.periods.length - 1], domain.id)?.mention"
                                     class="rounded px-1.5 py-0.5 text-xs"
@@ -1009,7 +1046,7 @@ function proposalText(proposal: Proposal | undefined): string {
                                  acumulado é GLOBAL, e o que a decomposição
                                  mostra são os domínios e os seus pesos, porque
                                  é disso que este número é feito. -->
-                            <td class="bg-muted/20 px-2 py-1.5 text-center tabular-nums">
+                            <td v-if="showAccumulated" class="bg-muted/20 px-2 py-1.5 text-center tabular-nums">
                                 <button
                                     v-if="period.accumulated_average !== null"
                                     type="button"

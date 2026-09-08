@@ -207,7 +207,26 @@ function bodyCells(wrapper: VueWrapper): string[] {
 }
 
 async function withoutQuantitative(wrapper: VueWrapper): Promise<VueWrapper> {
-    await wrapper.find('input[type="checkbox"]').setValue(false);
+    await wrapper.findAll('input[type="checkbox"]')[0].setValue(false);
+
+    return wrapper;
+}
+
+/**
+ * O SEGUNDO CONTROLO: a leitura acumulada sai da grelha, e mais nada muda.
+ *
+ * Encontrado pelo RÓTULO e não pela posição: dois controlos lado a lado trocam
+ * de ordem à primeira mudança de layout, e um índice trocado faria este teste
+ * afirmar coisas sobre o controlo errado sem nunca falhar.
+ */
+async function withoutAccumulated(wrapper: VueWrapper): Promise<VueWrapper> {
+    const label = wrapper.findAll('label').find((candidate) => candidate.text().includes('desempenho acumulado'));
+
+    if (label === undefined) {
+        throw new Error('O controlo «Mostrar desempenho acumulado» não está no ecrã.');
+    }
+
+    await label.find('input[type="checkbox"]').setValue(false);
 
     return wrapper;
 }
@@ -490,5 +509,73 @@ describe('Quadro Síntese · por domínio — os casos que faltavam', () => {
         const columns = wrapper.findAll('thead tr:nth-child(3) th').map((cell) => cell.text().trim());
         expect(columns).not.toContain('Média final');
         expect(columns.filter((label) => label === 'Menção final')).toHaveLength(2);
+    });
+});
+
+/**
+ * DOIS CONTROLOS, DUAS PERGUNTAS.
+ *
+ * «Mostrar quantitativos» decide se se veem números; «Mostrar desempenho
+ * acumulado» decide se a leitura analítica do ano está na grelha. Um professor
+ * que desligue os números não pediu para tirar uma leitura, e um que tire a
+ * leitura não pediu para ficar sem números.
+ *
+ * E DESLIGAR NÃO MUDA CONTA NENHUMA: a avaliação contínua final, a proposta e o
+ * nível atribuído não dependem do acumulado, e o que sai da grelha são duas
+ * colunas por domínio.
+ */
+describe('Quadro Síntese · por domínio — o desempenho acumulado', () => {
+    it('ligado por omissão, com a coluna e a menção acumulada', async () => {
+        const wrapper = await domainsView();
+        const columns = wrapper.findAll('thead tr:nth-child(3) th').map((cell) => cell.text().trim());
+
+        expect(columns).toContain('Desemp. acum.');
+        expect(columns).toContain('Menção');
+    });
+
+    it('desligado, as duas colunas saem e a grelha estreita', async () => {
+        const before = (await domainsView()).findAll('tbody tr:first-child td').length;
+        const wrapper = await withoutAccumulated(await domainsView());
+        const columns = wrapper.findAll('thead tr:nth-child(3) th').map((cell) => cell.text().trim());
+
+        expect(columns).not.toContain('Desemp. acum.');
+        expect(columns).not.toContain('Menção');
+
+        // Dois domínios × duas colunas, mais a coluna que cada unidade tinha
+        // no bloco das sínteses: seis ao todo, e a grelha estreita mesmo.
+        expect(wrapper.findAll('tbody tr:first-child td').length).toBe(before - 6);
+    });
+
+    it('desligado, a avaliação contínua final não mexe', async () => {
+        const wrapper = await withoutAccumulated(await domainsView());
+        const columns = wrapper.findAll('thead tr:nth-child(3) th').map((cell) => cell.text().trim());
+
+        // O bloco final continua inteiro: cada domínio com a sua média e a sua
+        // menção, e o global a fechar.
+        expect(columns.filter((label) => label === 'Média final')).toHaveLength(3);
+        expect(columns.filter((label) => label === 'Menção final')).toHaveLength(2);
+        expect(bodyCells(wrapper)).toContain('62,4%');
+    });
+
+    it('as larguras declaradas continuam a bater certo com ele desligado', async () => {
+        const wrapper = await withoutAccumulated(await domainsView());
+
+        const declared = wrapper
+            .findAll('thead tr:first-child th')
+            .slice(1)
+            .reduce((total, cell) => total + Number(cell.attributes('colspan') ?? 1), 0);
+
+        expect(wrapper.findAll('thead tr:nth-child(3) th')).toHaveLength(declared);
+        expect(wrapper.findAll('tbody tr:first-child td')).toHaveLength(declared);
+    });
+
+    it('os dois controlos não se confundem um com o outro', async () => {
+        // Sem números, a leitura acumulada continua na grelha.
+        const noNumbers = await withoutQuantitative(await domainsView());
+        expect(noNumbers.findAll('thead tr:nth-child(3) th').map((c) => c.text().trim())).toContain('Desemp. acum.');
+
+        // Sem a leitura acumulada, os números continuam.
+        const noAccumulated = await withoutAccumulated(await domainsView());
+        expect(bodyCells(noAccumulated).some((cell) => cell.includes('%'))).toBe(true);
     });
 });

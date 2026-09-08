@@ -291,8 +291,12 @@ class SummaryScreenTest extends TestCase
         // saiu do bloco de cada domínio para o bloco que fecha a grelha, e a
         // contagem tem de acompanhar essa mudança — uma largura a mais aqui
         // desalinha todas as colunas à direita dela.
-        $this->assertStringContainsString('periods.value.length * 2 + 1', $screen);
+        // E A LEITURA ACUMULADA PODE SAIR DA GRELHA, o que tira duas colunas a
+        // cada domínio e uma a cada síntese. As larguras têm de contar com isso,
+        // ou o cabeçalho promete mais células do que a linha tem.
+        $this->assertStringContainsString('periods.value.length * 2 - 1 + (showAccumulated.value ? 2 : 0)', $screen);
         $this->assertStringContainsString('index === 0 ? 5 : 6', $screen);
+        $this->assertStringContainsString('showAccumulated.value ? base : base - 1', $screen);
 
         // E O BLOCO FINAL CONTA-SE DOS DOMÍNIOS QUE HÁ, nunca de um número
         // escrito à mão: dois por domínio — a média e a menção — e três no
