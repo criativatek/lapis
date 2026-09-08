@@ -30,6 +30,30 @@ class LessonScheduleTest extends TestCase
 {
     use RefreshDatabase;
 
+    /**
+     * O RELÓGIO DESTE FICHEIRO. Nenhum caso aqui dentro lê a data real.
+     *
+     * Os casos são de duas famílias que só coexistem se o "hoje" for uma
+     * decisão e não um acidente: uns fixam a semana que materializam
+     * (2026-09-07 a 2026-09-13) e o ano letivo em que ela cai (2026-09-01 a
+     * 2027-06-30); outros precisam de um `starts_on` que seja mesmo "hoje",
+     * ou de um `effective_from` a tantos dias de distância, porque é isso
+     * que a validação de versionamento compara.
+     *
+     * Com o relógio real as duas famílias contradizem-se assim que a data de
+     * execução ultrapassa a semana fixa: o `starts_on` de `slotPayload()` —
+     * "hoje" — passa para depois de segunda-feira 2026-09-07 e a ocorrência
+     * dessa segunda deixa de nascer. Foi o que aconteceu a 2026-09-08, com
+     * três casos a falhar sem nenhuma alteração de código.
+     *
+     * 2026-09-01 (terça) é o primeiro dia do ano letivo fixo — logo "hoje"
+     * cai dentro dele — e fica antes da semana fixa, pelo que as duas
+     * ocorrências dessa semana são posteriores ao `starts_on` do slot.
+     */
+    private const FROZEN_NOW = '2026-09-01 12:00:00';
+
+    private const TIMEZONE = 'Europe/Lisbon';
+
     private Organization $organization;
 
     private User $teacher;
@@ -37,6 +61,12 @@ class LessonScheduleTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // Depois do parent::setUp() — é ele que arranca a aplicação — e antes
+        // de qualquer factory, para que nada neste caso (dados, validação ou
+        // materialização) veja outra data que não esta. O relógio é reposto
+        // no tearDown por InteractsWithTestCaseLifecycle.
+        CarbonImmutable::setTestNow(CarbonImmutable::parse(self::FROZEN_NOW, self::TIMEZONE));
 
         Route::middleware(['web', 'auth', 'organization'])->group(function (): void {
             Route::post('/_test/lesson-slots', [LessonScheduleController::class, 'store']);
@@ -1133,25 +1163,28 @@ class LessonScheduleTest extends TestCase
         $this->assertSame($firstEffectiveFrom, $future->starts_on->toDateString());
     }
 
+    /**
+     * O "hoje" deste ficheiro — self::FROZEN_NOW, e não a data de execução.
+     */
     private function today(): string
     {
-        return CarbonImmutable::now('Europe/Lisbon')->toDateString();
+        return CarbonImmutable::now(self::TIMEZONE)->toDateString();
     }
 
     private function inDays(int $days): string
     {
-        return CarbonImmutable::now('Europe/Lisbon')->addDays($days)->toDateString();
+        return CarbonImmutable::now(self::TIMEZONE)->addDays($days)->toDateString();
     }
 
     /**
-     * ISO day-of-week (1 = Monday .. 7 = Sunday) of the real "today" — for a
-     * test that needs its slot's own `day_of_week` to actually match today,
+     * ISO day-of-week (1 = Monday .. 7 = Sunday) of this file's "today" — for
+     * a test that needs its slot's own `day_of_week` to actually match today,
      * so that re-materializing today's own date hits the same weekday
      * instead of silently matching nothing.
      */
     private function todayDayOfWeek(): int
     {
-        return CarbonImmutable::now('Europe/Lisbon')->dayOfWeekIso;
+        return CarbonImmutable::now(self::TIMEZONE)->dayOfWeekIso;
     }
 
     /**
@@ -1219,15 +1252,17 @@ class LessonScheduleTest extends TestCase
             // HOJE, E NÃO UMA DATA ESCRITA À MÃO. O que estes casos querem é um
             // horário que ainda não começou — o único que
             // `RecurringLessonSlotRequest` deixa alterar sem `effective_from`.
-            // Enquanto aqui esteve `2026-09-01`, isso foi verdade até à
-            // meia-noite de 1 de setembro de 2026 e mentira a partir daí: a
-            // validação passou a exigir a data de entrada em vigor, o PUT passou
-            // a voltar com erros, e o `assertRedirect()` não distingue um
-            // redirect de sucesso de um redirect de validação falhada. Um teste
-            // que só passa antes de uma data é um teste que deixa de proteger
-            // seja o que for no dia seguinte.
-            'starts_on' => today()->toDateString(),
-            'ends_on' => today()->addYear()->toDateString(),
+            // Uma data escrita à mão aqui deixa de ser "hoje" no dia seguinte:
+            // a validação passa a exigir a data de entrada em vigor, o PUT
+            // volta com erros, e o `assertRedirect()` não distingue um redirect
+            // de sucesso de um redirect de validação falhada.
+            //
+            // "Hoje" é self::FROZEN_NOW (ver a constante): fixo, e escolhido
+            // para ficar dentro do ano letivo destes casos e antes da semana
+            // que eles materializam. Ligado ao relógio real, este `starts_on`
+            // ultrapassava essa semana e apagava-lhe a primeira ocorrência.
+            'starts_on' => $this->today(),
+            'ends_on' => CarbonImmutable::now(self::TIMEZONE)->addYear()->toDateString(),
         ], $overrides);
     }
 

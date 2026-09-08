@@ -104,6 +104,27 @@ final»**, **«Decisão final»** e **«Menção vigente»**; a coluna «Origem�
 a dizer «Proposta do Lapispro» ou «Decisão do professor», que é o que descreve.
 A folha «Configuração» explica as quatro. Nenhum número muda.
 
+## [0.136.1] — 2026-09-08
+
+Correção **apenas de testes**. Nenhum ficheiro de produção foi alterado — o
+comportamento da aplicação é exatamente o mesmo da 0.136.0.
+
+### Corrigido
+
+- **`LessonScheduleTest` deixou de depender da data em que é executado.** Três
+  casos — a materialização idempotente de vários horários e as duas variantes de
+  «abrir a semana materializa só essa semana» — começaram a falhar a 2026-09-08
+  sem nenhuma alteração de código. Os casos fixam a semana que materializam
+  (2026-09-07 a 2026-09-13), mas o `starts_on` do horário era «hoje»: assim que o
+  relógio real passou segunda-feira, 2026-09-07, essa segunda ficou antes do
+  início do horário e a sua aula deixou de nascer. O ficheiro passa a congelar o
+  relógio em 2026-09-01 12:00 (`Europe/Lisbon`) no `setUp()` — o primeiro dia do
+  ano letivo que os mesmos casos já fixavam, e antes da semana que materializam —,
+  o que reconcilia as duas famílias de casos do ficheiro: os de data fixa e os que
+  precisam de um «hoje» verdadeiro para a validação de versionamento comparar.
+  Um teste que só passa antes de uma data deixa de proteger o que quer que seja
+  no dia seguinte.
+
 ## [0.136.0] — 2026-09-07
 
 Duas correções que vinham do mesmo sítio: a pauta dizia que havia trabalho por
