@@ -635,7 +635,16 @@ function proposalText(proposal: Proposal | undefined): string {
                          existe para se deixar ler: o que aconteceu em cada
                          DOMÍNIO, o que fechou cada UNIDADE TEMPORAL, e em que é
                          que o ano deu — a AVALIAÇÃO CONTÍNUA FINAL. A fronteira
-                         entre eles é o traço mais forte da tabela (§17). -->
+                         entre eles é o traço mais forte da tabela (§17).
+
+                         AS DUAS PRIMEIRAS LINHAS TÊM ALTURA DECLARADA (`h-8`) E
+                         NÃO QUEBRAM. Três cabeçalhos empilhados só se colam uns
+                         por baixo dos outros se as alturas forem as que os
+                         `top-*` dizem que são; um nome de unidade temporal ou de
+                         domínio invulgarmente longo a partir-se em duas linhas
+                         desalinharia as duas seguintes ao rolar. O nome inteiro
+                         cabe porque a largura de um bloco é sempre a soma de
+                         várias colunas. -->
                     <tr>
                         <th
                             rowspan="3"
@@ -646,7 +655,7 @@ function proposalText(proposal: Proposal | undefined): string {
                         </th>
                         <th
                             :colspan="domainsBlockColumns"
-                            class="sticky top-0 z-20 h-8 border-b border-border bg-muted px-3 text-center text-xs font-semibold tracking-wide uppercase"
+                            class="sticky top-0 z-20 h-8 border-b border-border bg-muted px-3 text-center text-xs font-semibold tracking-wide whitespace-nowrap uppercase"
                             title="O ano de cada domínio: o resultado formal de cada unidade temporal, o movimento entre elas, e o desempenho acumulado dos elementos de avaliação."
                             scope="colgroup"
                         >
@@ -660,7 +669,7 @@ function proposalText(proposal: Proposal | undefined): string {
                             :key="`bloco-sintese-${period.id}`"
                             rowspan="2"
                             :colspan="synthesisColumns(index)"
-                            class="sticky top-0 z-20 border-b border-border bg-muted/70 px-3 text-center text-xs font-semibold tracking-wide uppercase"
+                            class="sticky top-0 z-20 h-8 border-b border-border bg-muted/70 px-3 text-center text-xs font-semibold tracking-wide whitespace-nowrap uppercase"
                             :class="BLOCK_RULE"
                             scope="colgroup"
                         >
@@ -674,7 +683,7 @@ function proposalText(proposal: Proposal | undefined): string {
                              (§17, §18). -->
                         <th
                             :colspan="finalBlockColumns"
-                            class="sticky top-0 z-20 h-8 border-b border-border bg-primary/10 px-3 text-center text-xs font-semibold tracking-wide uppercase"
+                            class="sticky top-0 z-20 h-8 border-b border-border bg-primary/10 px-3 text-center text-xs font-semibold tracking-wide whitespace-nowrap uppercase"
                             :class="BLOCK_RULE"
                             :title="continuousTitle"
                             :aria-label="continuousTitle"
@@ -696,7 +705,7 @@ function proposalText(proposal: Proposal | undefined): string {
                             v-for="(domain, domainIndex) in domains"
                             :key="domain.id"
                             :colspan="domainColumns"
-                            class="sticky top-8 z-20 h-8 border-b border-border px-3 text-center text-xs font-semibold tracking-wide text-foreground uppercase"
+                            class="sticky top-8 z-20 h-8 border-b border-border px-3 text-center text-xs font-semibold tracking-wide whitespace-nowrap text-foreground uppercase"
                             :class="[domainTone(domainIndex), GROUP_RULE]"
                             scope="colgroup"
                         >
@@ -706,7 +715,7 @@ function proposalText(proposal: Proposal | undefined): string {
                             v-for="(domain, domainIndex) in domains"
                             :key="`final-${domain.id}`"
                             :colspan="finalDomainColumns"
-                            class="sticky top-8 z-20 h-8 border-b border-border bg-primary/5 px-3 text-center text-xs font-semibold tracking-wide text-foreground uppercase"
+                            class="sticky top-8 z-20 h-8 border-b border-border bg-primary/5 px-3 text-center text-xs font-semibold tracking-wide whitespace-nowrap text-foreground uppercase"
                             :class="finalGroupRule(domainIndex)"
                             :title="`${CONTINUOUS_FINAL} — ${domain.name}. ${FINAL_AVERAGE_EXPLANATION}`"
                             scope="colgroup"
@@ -717,7 +726,7 @@ function proposalText(proposal: Proposal | undefined): string {
                              média do ano não se repete em dois sítios (§15). -->
                         <th
                             :colspan="finalGlobalColumns"
-                            class="sticky top-8 z-20 h-8 border-b border-border bg-primary/5 px-3 text-center text-xs font-semibold tracking-wide text-foreground uppercase"
+                            class="sticky top-8 z-20 h-8 border-b border-border bg-primary/5 px-3 text-center text-xs font-semibold tracking-wide whitespace-nowrap text-foreground uppercase"
                             :class="GROUP_RULE"
                             :title="continuousTitle"
                             scope="colgroup"

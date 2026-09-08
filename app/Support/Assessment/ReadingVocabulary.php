@@ -89,6 +89,25 @@ final class ReadingVocabulary
      */
     public const FINAL_MENTION = 'Menção final';
 
+    /**
+     * AS TRÊS COLUNAS DO EXCEL, que o ecrã condensa numa só.
+     *
+     * A grelha mostra a menção que VALE e diz no `title` de onde ela vem; uma
+     * folha de cálculo não tem `title` nenhum, e por isso abre as três: o que o
+     * Lapispro propôs, o que o professor decidiu, e qual das duas está a valer.
+     *
+     * É POR ISSO QUE A TERCEIRA SE CHAMA «VIGENTE» E NÃO «FINAL». Ao lado das
+     * outras duas — que também são finais —, «final» não distinguiria nada; o
+     * que a distingue é ser a que vigora. No ecrã, onde está sozinha, é
+     * `FINAL_MENTION` que a nomeia. As duas frases dizem a mesma coisa e vivem
+     * as duas aqui, para que nenhuma mude sem a outra.
+     */
+    public const FINAL_PROPOSAL = 'Proposta final';
+
+    public const FINAL_DECISION = 'Decisão final';
+
+    public const CURRENT_MENTION = 'Menção vigente';
+
     public const CONTINUOUS_EXPLANATION = 'Média dos resultados formais dos períodos/semestres, segundo os pesos configurados. Os momentos intercalares não entram nesta média.';
 
     public const ACCUMULATED_EXPLANATION = 'Resultado obtido considerando diretamente os elementos de avaliação acumulados até ao momento. É uma leitura complementar: a proposta formal sai da avaliação contínua.';

@@ -450,3 +450,45 @@ describe('Quadro Síntese · por domínio — a grelha fecha certa', () => {
         expect(width(groups.slice(2))).toBe(finalBlock);
     });
 });
+
+describe('Quadro Síntese · por domínio — os casos que faltavam', () => {
+    it('um domínio sem leitura contínua mostra «—» e não uma célula em falta', async () => {
+        const base = props();
+        const synopsisWithoutLeitura = base.synopsis;
+        // O ANO PODE NÃO TER FECHADO NUM DOMÍNIO — um domínio sem qualquer
+        // resultado formal não tem média nenhuma, e «—» é a resposta honesta.
+        // O que não pode acontecer é a célula desaparecer: a linha deixaria de
+        // bater certo com o cabeçalho.
+        delete synopsisWithoutLeitura.students[0].continuous_domains[2];
+
+        const wrapper = mount(Summary, {
+            props: { ...base, synopsis: synopsisWithoutLeitura },
+            global: { stubs },
+        });
+        await wrapper.findAll('button[role="tab"]')[1].trigger('click');
+
+        const declared = wrapper
+            .findAll('thead tr:first-child th')
+            .slice(1)
+            .reduce((total, cell) => total + Number(cell.attributes('colspan') ?? 1), 0);
+
+        expect(wrapper.findAll('tbody tr:first-child td')).toHaveLength(declared);
+        expect(wrapper.find('[title*="Leitura: sem resultados formais"]').exists()).toBe(true);
+    });
+
+    it('três períodos com os quantitativos desligados continuam a fechar certo', async () => {
+        const wrapper = await withoutQuantitative(await threePeriodsView());
+
+        const declared = wrapper
+            .findAll('thead tr:first-child th')
+            .slice(1)
+            .reduce((total, cell) => total + Number(cell.attributes('colspan') ?? 1), 0);
+
+        expect(wrapper.findAll('thead tr:nth-child(3) th')).toHaveLength(declared);
+        expect(wrapper.findAll('tbody tr:first-child td')).toHaveLength(declared);
+
+        const columns = wrapper.findAll('thead tr:nth-child(3) th').map((cell) => cell.text().trim());
+        expect(columns).not.toContain('Média final');
+        expect(columns.filter((label) => label === 'Menção final')).toHaveLength(2);
+    });
+});

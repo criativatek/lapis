@@ -574,8 +574,41 @@ class SummaryScreenTest extends TestCase
         // (§13, §17). O traço é o MESMO nas três fronteiras: é isso que faz
         // delas uma hierarquia e não três decisões avulsas.
         $this->assertStringContainsString(':class="BLOCK_RULE"', $screen);
-        $this->assertStringContainsString('bg-primary/10', $screen);
         $this->assertStringContainsString('Síntese · {{ period.label }}', $screen);
+
+        // E A SÍNTESE É NEUTRA. A tinta do produto está reservada ao bloco que
+        // carrega o indicador formal; enquanto as sínteses a partilhavam, os
+        // dois tinham o mesmo peso e a hierarquia entre eles não existia (§19).
+        //
+        // A COMPARAÇÃO É COM A CÉLULA, e não com o ficheiro: a asserção antiga
+        // procurava «bg-primary/10» em lado nenhum em particular, e continuou a
+        // passar depois de essa tinta ter mudado de bloco. Um teste que passa
+        // seja onde for que a string esteja não afirma nada sobre o sítio.
+        $sintese = $this->headerCell($screen, 'Síntese · {{ period.label }}');
+        $this->assertStringContainsString('bg-muted/70', $sintese);
+        $this->assertStringNotContainsString('bg-primary', $sintese);
+
+        $final = $this->headerCell($screen, '{{ CONTINUOUS_FINAL }}');
+        $this->assertStringContainsString('bg-primary/10', $final);
+    }
+
+    /**
+     * A célula de cabeçalho que termina num dado rótulo — do `<th` que a abre
+     * até ao texto que ela mostra.
+     *
+     * Existe porque uma asserção sobre a aparência de UMA célula não se pode
+     * fazer sobre o ficheiro inteiro: a mesma classe noutro sítio faria o teste
+     * passar sem que a célula a tivesse.
+     */
+    private function headerCell(string $screen, string $label): string
+    {
+        $end = strpos($screen, $label);
+        $this->assertNotFalse($end, "«{$label}» não está no ecrã.");
+
+        $start = strrpos(substr($screen, 0, $end), '<th');
+        $this->assertNotFalse($start, "«{$label}» não está dentro de uma célula de cabeçalho.");
+
+        return substr($screen, $start, $end - $start);
     }
 
     #[Test]

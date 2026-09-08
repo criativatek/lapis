@@ -372,9 +372,9 @@ class ClassSynopsisXlsxWriter
         // que fase do ano se trata, que é a final (§29).
         $headers[] = ReadingVocabulary::FINAL_AVERAGE.' (%)';
         $headers[] = 'Unidades contadas';
-        $headers[] = 'Proposta final';
-        $headers[] = 'Decisão final';
-        $headers[] = 'Menção vigente';
+        $headers[] = ReadingVocabulary::FINAL_PROPOSAL;
+        $headers[] = ReadingVocabulary::FINAL_DECISION;
+        $headers[] = ReadingVocabulary::CURRENT_MENTION;
         $headers[] = 'Origem';
 
         $this->headerRow($sheet, $headers, 1);
@@ -706,9 +706,9 @@ class ClassSynopsisXlsxWriter
             ['Os pesos', 'São os configurados em «Unidades formais que entram na avaliação contínua», acima. Sem pesos declarados, todas as unidades pesam o mesmo.'],
             ['Uma unidade sem resultado', 'Fica fora da média e do seu denominador. Não conta como zero — uma unidade que o aluno não viveu não é uma unidade em que ele tenha tido nada.'],
             [ReadingVocabulary::FINAL_AVERAGE, ReadingVocabulary::FINAL_AVERAGE_EXPLANATION],
-            ['Proposta final', 'O nível que sai dessa média pela escala do perfil. É uma proposta do Lapispro: o sistema propõe, o professor decide.'],
-            ['Decisão final', 'O nível que o professor atribuiu ao domínio, quando ele se pronunciou. Fica vazia quando não o fez — e isso não é uma pendência.'],
-            ['Menção vigente', 'A que está a valer: a decisão final quando ela existe; a proposta final quando não. Uma proposta que ninguém alterou VIGORA — não precisa de ser aprovada.'],
+            [ReadingVocabulary::FINAL_PROPOSAL, 'O nível que sai dessa média pela escala do perfil. É uma proposta do Lapispro: o sistema propõe, o professor decide.'],
+            [ReadingVocabulary::FINAL_DECISION, 'O nível que o professor atribuiu ao domínio, quando ele se pronunciou. Fica vazia quando não o fez — e isso não é uma pendência.'],
+            [ReadingVocabulary::CURRENT_MENTION, 'A que está a valer: a decisão final quando ela existe; a proposta final quando não. Uma proposta que ninguém alterou VIGORA — não precisa de ser aprovada. É a coluna a que o ecrã chama «'.ReadingVocabulary::FINAL_MENTION.'», onde ela aparece sozinha.'],
         ]);
 
         $row = $this->block($sheet, $row, 'Como ler a folha «Desempenho acumulado»', [
