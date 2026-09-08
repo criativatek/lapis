@@ -47,8 +47,13 @@ type Student = {
     can_be_removed: boolean;
     /** A chave que a secção «Grupos» devolve ao servidor. */
     id: number;
-    /** O grupo a que pertence HOJE — `null` é «Sem grupo», e é legítimo. */
+    /**
+     * O grupo a que pertence agora, ou aquele em que entra quando a sua
+     * pertença começar. `null` é «Sem grupo», e é um estado legítimo.
+     */
     class_group_id: number | null;
+    /** Desde quando essa pertença vale (§ ClassRoster::compositionFor()). */
+    class_group_since: string | null;
 };
 
 type ProfileOption = { version_id: number; label: string };
@@ -83,6 +88,12 @@ const props = defineProps<{
      * clique que o servidor recusaria.
      */
     classGroups: ClassGroup[] | null;
+    /**
+     * «Hoje» limitado ao ano letivo desta turma — a data por omissão dos
+     * diálogos «Mover» e «Permutar». Nula quando não há módulo de aulas, pelo
+     * mesmo sinal que `classGroups`.
+     */
+    classGroupsDefaultDate: string | null;
 }>();
 
 /**
@@ -471,6 +482,7 @@ function submitPhotos(): void {
             :class-ulid="schoolClass.ulid"
             :groups="classGroups"
             :students="students"
+            :default-date="classGroupsDefaultDate ?? ''"
         />
 
         <section class="space-y-3">

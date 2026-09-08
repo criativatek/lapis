@@ -62,6 +62,33 @@ class MoveClassGroupMembership
                     ]);
                 }
 
+                // CORRIGIR NÃO É MUDAR. Quando a data pedida é exatamente o dia
+                // em que a pertença atual começou, não há duas épocas a separar
+                // — há uma só, e o professor está a dizer que ela sempre foi
+                // outra. A janela é reescrita no sítio em vez de ser partida.
+                //
+                // Sem isto havia um beco: distribuir os alunos em setembro e
+                // logo a seguir dar-se conta de que o João ficou em T1 por
+                // engano. Fechar uma janela no dia em que ela abriu produz
+                // `effective_until < effective_from`, que a CHECK da tabela
+                // recusa; e a única data que passava era o dia seguinte, o que
+                // deixava escrito que o João esteve um dia em T1 — uma coisa
+                // que nunca aconteceu. Nada se perde: uma janela que começa
+                // hoje e ainda está aberta não tem passado nenhum a proteger.
+                if ($current->effective_from->toDateString() === $effectiveFrom) {
+                    $this->rules->assertNothingStartsAfter($enrollment, $effectiveFrom);
+
+                    if ($targetGroup === null) {
+                        $current->delete();
+
+                        return;
+                    }
+
+                    $current->update(['class_group_id' => $targetGroup->getKey()]);
+
+                    return;
+                }
+
                 $this->rules->assertClosesAfterItStarted($current, $effectiveFrom);
                 $current->update(['effective_until' => $this->rules->dayBefore($effectiveFrom)]);
             }

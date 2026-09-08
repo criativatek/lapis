@@ -73,6 +73,7 @@ function baseProps() {
         // «Grupos» não existe de todo. Estes casos são sobre a remoção de um
         // aluno e não passam sequer por ali.
         classGroups: null,
+        classGroupsDefaultDate: null,
     };
 }
 
@@ -144,6 +145,7 @@ function student(overrides: Record<string, unknown> = {}) {
         ulid: 'enrollment-1',
         id: 1,
         class_group_id: null,
+        class_group_since: null,
         name: 'Maria Teste',
         has_identity: true,
         pseudonym: 'ALU-AAAA',

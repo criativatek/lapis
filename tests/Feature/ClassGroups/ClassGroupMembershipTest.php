@@ -130,17 +130,88 @@ class ClassGroupMembershipTest extends ClassGroupsTestCase
         });
     }
 
+    /**
+     * O BECO DA MONTAGEM, fechado: distribuir os alunos e logo a seguir dar-se
+     * conta de que um deles ficou no grupo errado.
+     *
+     * A data da correção é o próprio dia em que a pertença começou. Fechar a
+     * janela nesse dia produziria `effective_until < effective_from` — que a
+     * CHECK da tabela recusa —, e a única data que passava era o dia seguinte,
+     * deixando escrito que o aluno esteve um dia em T1. Nunca esteve.
+     */
     #[Test]
-    public function a_move_cannot_close_a_window_on_the_day_it_started(): void
+    public function correcting_an_assignment_on_the_day_it_started_rewrites_it_instead_of_splitting(): void
     {
         [$class, $groups, $enrollments] = $this->classWithGroups();
         $this->assign($class, [$enrollments[0]->id => $groups['T1']->id]);
 
+        $this->inTenant($this->organization, function () use ($groups, $enrollments): void {
+            app(MoveClassGroupMembership::class)->execute($enrollments[0], $groups['T2'], self::YEAR_STARTS_ON);
+        });
+
+        $membership = $this->memberships()->sole();
+
+        $this->assertSame($groups['T2']->id, $membership->class_group_id);
+        $this->assertSame(self::YEAR_STARTS_ON, $membership->effective_from->toDateString());
+        $this->assertNull($membership->effective_until);
+    }
+
+    #[Test]
+    public function correcting_an_assignment_to_no_group_removes_the_window_it_created(): void
+    {
+        [$class, $groups, $enrollments] = $this->classWithGroups();
+        $this->assign($class, [$enrollments[0]->id => $groups['T1']->id]);
+
+        $this->inTenant($this->organization, function () use ($enrollments): void {
+            app(MoveClassGroupMembership::class)->execute($enrollments[0], null, self::YEAR_STARTS_ON);
+        });
+
+        $this->assertCount(0, $this->memberships());
+    }
+
+    #[Test]
+    public function a_correction_is_refused_when_a_later_window_already_exists(): void
+    {
+        [$class, $groups, $enrollments] = $this->classWithGroups();
+        $this->assign($class, [$enrollments[0]->id => $groups['T1']->id]);
+
+        $this->inTenant($this->organization, function () use ($groups, $enrollments): void {
+            app(MoveClassGroupMembership::class)->execute($enrollments[0], $groups['T2'], '2026-11-15');
+        });
+
+        // A janela inicial já não é a última: reescrevê-la no sítio deixaria a
+        // de novembro pendurada num passado que mudou por baixo dela.
         $this->expectException(ValidationException::class);
 
         $this->inTenant($this->organization, function () use ($groups, $enrollments): void {
             app(MoveClassGroupMembership::class)->execute($enrollments[0], $groups['T2'], self::YEAR_STARTS_ON);
         });
+    }
+
+    #[Test]
+    public function a_swap_on_the_first_day_rewrites_both_windows_in_place(): void
+    {
+        [$class, $groups, $enrollments] = $this->classWithGroups();
+        $this->assign($class, [
+            $enrollments[0]->id => $groups['T1']->id,
+            $enrollments[1]->id => $groups['T2']->id,
+        ]);
+
+        $this->inTenant($this->organization, function () use ($enrollments): void {
+            app(SwapClassGroupMembership::class)->execute($enrollments[0], $enrollments[1], self::YEAR_STARTS_ON);
+        });
+
+        $memberships = $this->memberships();
+
+        $this->assertCount(2, $memberships, 'Uma correção não pode duplicar as janelas.');
+        $this->assertSame(
+            $groups['T2']->id,
+            $memberships->firstWhere('enrollment_id', $enrollments[0]->id)->class_group_id,
+        );
+        $this->assertSame(
+            $groups['T1']->id,
+            $memberships->firstWhere('enrollment_id', $enrollments[1]->id)->class_group_id,
+        );
     }
 
     #[Test]

@@ -7,6 +7,7 @@ use App\Models\ClassGroupMembership;
 use App\Models\RecurringLessonSlot;
 use App\Models\SchoolClass;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
@@ -171,6 +172,72 @@ class ClassGroupScreenTest extends ClassGroupsTestCase
             $this->inTenant($this->organization, fn () => $group->fresh()->archived_at),
             'O grupo não podia ter sido arquivado com tempos do horário ainda em vigor.',
         );
+    }
+
+    /**
+     * O ecrã lê a composição PELO ANO LETIVO, e não pelo relógio.
+     *
+     * Encontrado a validar isto no browser: a 9 de setembro, numa turma cujo
+     * ano começa a 14, o professor distribuía os trinta alunos e a página
+     * respondia-lhe «T1: 0 alunos» com todos debaixo de «Sem grupo» — porque as
+     * pertenças começam no primeiro dia do ano e esse dia ainda não tinha
+     * chegado. E «Distribuir alunos» voltava a oferecê-los, para o servidor os
+     * recusar a seguir com «já pertence a um grupo».
+     */
+    #[Test]
+    public function the_page_reads_the_composition_inside_the_academic_year_even_before_it_starts(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-08-20 09:00:00', self::TIMEZONE));
+
+        $class = $this->schoolClassFor($this->teacher);
+        [$enrollment] = $this->enroll($class, 1);
+        $group = $this->group($class, 'T1');
+
+        $this->asTeacher()->post("/classes/{$class->ulid}/groups/assignments", [
+            'assignments' => [['enrollment_id' => $enrollment->id, 'class_group_id' => $group->id]],
+        ])->assertRedirect();
+
+        $props = $this->asTeacher()->get("/classes/{$class->ulid}")->viewData('page')['props'];
+
+        $this->assertSame(1, $props['classGroups'][0]['members_count']);
+        $this->assertSame($group->id, $props['students'][0]['class_group_id']);
+        // E a data que os diálogos oferecem é a do início do ano, não «hoje» —
+        // «hoje» seria recusado por cair fora do ano letivo.
+        $this->assertSame(self::YEAR_STARTS_ON, $props['classGroupsDefaultDate']);
+    }
+
+    /**
+     * O MESMO BECO, POR ALUNO: quem entra em novembro não pode aparecer «Sem
+     * grupo» de setembro a novembro.
+     *
+     * A pertença dele começa no dia em que entrou (§ initialEffectiveFrom), e
+     * lida pelo dia de hoje ele ficava dois meses debaixo de «Sem grupo» —
+     * com «Distribuir alunos» a voltar a oferecê-lo e o servidor a recusá-lo
+     * a seguir. O ecrã mostra o grupo em que ele entra, e a data a partir da
+     * qual isso vale.
+     */
+    #[Test]
+    public function a_late_entry_student_shows_the_group_they_are_about_to_join(): void
+    {
+        $class = $this->schoolClassFor($this->teacher);
+        [$early] = $this->enroll($class, 1);
+        [$late] = $this->enroll($class, 1, '2026-11-03');
+        $group = $this->group($class, 'T1');
+
+        $this->asTeacher()->post("/classes/{$class->ulid}/groups/assignments", [
+            'assignments' => [
+                ['enrollment_id' => $early->id, 'class_group_id' => $group->id],
+                ['enrollment_id' => $late->id, 'class_group_id' => $group->id],
+            ],
+        ])->assertRedirect();
+
+        $props = $this->asTeacher()->get("/classes/{$class->ulid}")->viewData('page')['props'];
+        $students = collect($props['students'])->keyBy('id');
+
+        $this->assertSame($group->id, $students[$late->id]['class_group_id']);
+        $this->assertSame('2026-11-03', $students[$late->id]['class_group_since']);
+        $this->assertSame(self::YEAR_STARTS_ON, $students[$early->id]['class_group_since']);
+        $this->assertSame(2, $props['classGroups'][0]['members_count']);
     }
 
     #[Test]

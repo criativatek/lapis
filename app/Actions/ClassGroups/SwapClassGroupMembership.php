@@ -84,6 +84,31 @@ class SwapClassGroupMembership
                 $this->rules->assertAcceptsMembers($membership->classGroup()->firstOrFail());
             }
 
+            $lowerGroupId = $lowerMembership->class_group_id;
+            $higherGroupId = $higherMembership->class_group_id;
+
+            // CORRIGIR NÃO É PERMUTAR, pela mesma razão que em
+            // MoveClassGroupMembership: quando as duas janelas começaram
+            // exatamente no dia pedido, o professor está a corrigir a
+            // distribuição inicial e não a registar uma troca a meio do ano.
+            // As duas janelas trocam de grupo no sítio, e não fica escrito que
+            // cada um esteve um dia no grupo errado.
+            //
+            // Ou as duas, ou nenhuma: uma permuta em que só um dos lados
+            // começou nesse dia É uma troca a meio, e segue o caminho normal.
+            $bothStartOnThatDay = $lowerMembership->effective_from->toDateString() === $effectiveFrom
+                && $higherMembership->effective_from->toDateString() === $effectiveFrom;
+
+            if ($bothStartOnThatDay) {
+                $this->rules->assertNothingStartsAfter($lower, $effectiveFrom);
+                $this->rules->assertNothingStartsAfter($higher, $effectiveFrom);
+
+                $lowerMembership->update(['class_group_id' => $higherGroupId]);
+                $higherMembership->update(['class_group_id' => $lowerGroupId]);
+
+                return;
+            }
+
             foreach ([[$lower, $lowerMembership], [$higher, $higherMembership]] as [$enrollment, $membership]) {
                 /** @var Enrollment $enrollment */
                 /** @var ClassGroupMembership $membership */
@@ -94,14 +119,14 @@ class SwapClassGroupMembership
 
             // Trocados: cada um herda o grupo que o outro tinha.
             ClassGroupMembership::create([
-                'class_group_id' => $higherMembership->class_group_id,
+                'class_group_id' => $higherGroupId,
                 'enrollment_id' => $lower->getKey(),
                 'effective_from' => $effectiveFrom,
                 'effective_until' => null,
             ]);
 
             ClassGroupMembership::create([
-                'class_group_id' => $lowerMembership->class_group_id,
+                'class_group_id' => $lowerGroupId,
                 'enrollment_id' => $higher->getKey(),
                 'effective_from' => $effectiveFrom,
                 'effective_until' => null,

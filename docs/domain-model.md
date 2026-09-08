@@ -205,6 +205,47 @@ Inscrição do aluno numa turma. **É o eixo de todos os resultados** — nunca 
 > **Porquê `enrolled_on` na chave única:** um aluno pode sair e reentrar na mesma turma. `UNIQUE(class_id, student_id)` bloquearia a reentrada; incluir `left_on` não serviria, porque o MySQL trata `NULL` como distinto e permitiria duas inscrições activas em simultâneo. Ver Questão **Q9**.
 
 ---
+#### `class_groups`
+Os grupos fixos em que uma turma se desdobra em certos tempos do horário — «T1», «T2», «PL1», «B». **Não são turmas.** Um grupo não tem disciplina, não tem perfil de avaliação e não tem pauta: é uma partição da turma que só o horário e o sumário conhecem, e que nunca entra num cálculo, numa proposta, num denominador ou num filtro de avaliação (§19 do desenho; ver `ClassGroupsDoNotTouchAssessmentTest`).
+
+Os rótulos são **livres**: nada em código conhece «T1». A unicidade é por turma, e não global.
+
+| Coluna | Tipo | Null | Notas |
+|---|---|---|---|
+| `id`, `ulid`, `organization_id` | | não | |
+| `class_id` | `BIGINT UNSIGNED` | não | FK `classes` · `ON DELETE RESTRICT` |
+| `label` | `VARCHAR(40)` | não | «T1», «PL2», «Grupo da manhã» |
+| `position` | `SMALLINT UNSIGNED` | não | `DEFAULT 0`. A ordem do professor, não a de criação. |
+| `archived_at` | `TIMESTAMP` | sim | Arquivado: continua legível em toda a parte, deixa de aceitar pertenças novas e de poder ser escolhido em tempos novos do horário. |
+| `created_at`, `updated_at` | `DATETIME` | não | |
+
+`UNIQUE(class_id, label)` · `INDEX(organization_id, class_id, position)`
+
+> **Arquivar, nunca apagar, assim que há história.** Uma aula de novembro diz «8.º F · T1» porque aponta para esta linha; apagá-la transformaria o sumário dessa aula numa aula da turma inteira, o que é falso. Só um grupo sem uma única pertença, sem tempos do horário e sem aulas é mesmo apagado — é o que mantém a criação reversível. E arquivar é **recusado** enquanto houver tempos do horário ainda em vigor a usá-lo: arquivar em silêncio produziria aulas futuras de um grupo que a interface já não deixa escolher.
+
+#### `class_group_memberships`
+A quem pertence um grupo, **e desde quando**.
+
+Deliberadamente **não** é uma coluna `class_group_id` em `enrollments`: uma coluna só sabe dizer onde o aluno está hoje, e a pergunta que o horário faz é sempre datada — «quem estava em T1 na aula de 12 de novembro?». Guardada como intervalo, a resposta de novembro continua verdadeira depois de o aluno passar para T2 em janeiro.
+
+| Coluna | Tipo | Null | Notas |
+|---|---|---|---|
+| `id`, `ulid`, `organization_id` | | não | |
+| `class_group_id` | `BIGINT UNSIGNED` | não | FK `class_groups` · `ON DELETE RESTRICT` |
+| `enrollment_id` | `BIGINT UNSIGNED` | não | FK `enrollments` · `ON DELETE RESTRICT` |
+| `effective_from` | `DATE` | não | Inclusivo. Na criação inicial é `max(ano_letivo.starts_on, enrollment.enrolled_on)` — nunca pedido ao professor. |
+| `effective_until` | `DATE` | sim | Inclusivo. `NULL` = ainda em vigor. |
+| `created_at`, `updated_at` | `DATETIME` | não | |
+
+`CHECK class_group_memberships_window_check`: `effective_until IS NULL OR effective_until >= effective_from` (só MySQL/MariaDB) · `INDEX(organization_id, enrollment_id, effective_from, effective_until)` · `INDEX(class_group_id, effective_from, effective_until)`
+
+> **A não-sobreposição não cabe numa constraint.** Nem o MySQL nem o SQLite têm exclusão por intervalos. A invariante — «uma inscrição não tem duas pertenças abertas ao mesmo tempo na mesma turma» — é imposta pelas ações em `App\Actions\ClassGroups\*`, todas com `lockForUpdate()` e re-verificação **dentro** da transação. O que a tabela garante é o que uma CHECK garante: um intervalo bem formado.
+
+> **Mudar fecha e abre; corrigir reescreve.** Uma mudança a meio do ano fecha a janela atual em `data - 1` e abre outra em `data`, tal como `ReviseRecurringLessonSlot` faz aos tempos do horário. Quando a data pedida é **exactamente** o dia em que a janela atual começou não há duas épocas a separar — há uma só, mal registada — e a janela é reescrita no sítio. Sem isso, corrigir um engano da distribuição inicial deixaria escrito que o aluno esteve um dia no grupo errado.
+
+> **Uma pertença não impede remover uma inscrição sem história.** Ao contrário das dez relações de `EnrollmentHistory::RELATIONS`, esta está em `CLEARED_WITH_ENROLLMENT`: sai com a inscrição, na mesma transação, e só depois de estar provado que não há uma única avaliação, evidência ou classificação a proteger. O grupo com que cada **aula** nasceu vive em `lessons.class_group_id`, e não aqui.
+
+---
 ### 2.3 Escalas
 
 #### `scales`

@@ -56,12 +56,25 @@ export type GroupedStudent = {
     name: string;
     class_number: number | null;
     class_group_id: number | null;
+    /**
+     * Desde quando a pertença atual vale. Num aluno de ingresso tardio é o dia
+     * em que ele entrou na turma, e é a data mais cedo em que a pertença dele
+     * pode ser corrigida — antes disso o servidor recusa, com razão.
+     */
+    class_group_since: string | null;
 };
 
 const props = defineProps<{
     classUlid: string;
     groups: ClassGroup[];
     students: GroupedStudent[];
+    /**
+     * A data que os diálogos com «válida a partir de» oferecem por omissão.
+     * Vem do servidor — «hoje», limitado ao ano letivo desta turma — porque o
+     * relógio do browser não sabe quando o ano começa, e em setembro ofereceria
+     * uma data que a própria ação recusaria.
+     */
+    defaultDate: string;
 }>();
 
 const activeGroups = computed(() => props.groups.filter((group) => !group.archived));
@@ -81,14 +94,6 @@ function groupLabel(groupId: number | null): string {
     }
 
     return props.groups.find((group) => group.id === groupId)?.label ?? 'Sem grupo';
-}
-
-function todayIsoDate(): string {
-    const now = new Date();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-
-    return `${now.getFullYear()}-${month}-${day}`;
 }
 
 // ------------------------------------------------------------ criar/renomear
@@ -249,9 +254,15 @@ function openMoveDialog(student: GroupedStudent): void {
     moveForm.enrollment_id = student.id;
     moveForm.class_group_id =
         activeGroups.value.find((group) => group.id !== student.class_group_id)?.id ?? null;
-    // Só um valor por omissão — o servidor valida a data contra o ano letivo
-    // da turma, independentemente do que o relógio do browser sugerir aqui.
-    moveForm.effective_from = todayIsoDate();
+    // A data mais tardia entre a do ecrã e o início da pertença atual: corrigir
+    // a pertença de um aluno de ingresso tardio numa data anterior ao dia em que
+    // ele entrou seria recusado, e o professor não tem por que adivinhá-la.
+    // Continua a ser só um valor por omissão — ele pode mudá-lo, e é o servidor
+    // que valida seja qual for o que daqui sair.
+    moveForm.effective_from =
+        student.class_group_since !== null && student.class_group_since > props.defaultDate
+            ? student.class_group_since
+            : props.defaultDate;
     moveForm.clearErrors();
     moveDialogOpen.value = true;
 }
@@ -300,7 +311,7 @@ function openSwapDialog(): void {
         groupedStudents.value.find(
             (student) => student.class_group_id !== groupedStudents.value[0]?.class_group_id,
         )?.id ?? null;
-    swapForm.effective_from = todayIsoDate();
+    swapForm.effective_from = props.defaultDate;
     swapForm.clearErrors();
     swapDialogOpen.value = true;
 }

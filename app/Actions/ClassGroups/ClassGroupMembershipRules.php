@@ -109,6 +109,30 @@ class ClassGroupMembershipRules
     }
 
     /**
+     * O mesmo que `assertNothingStartsOnOrAfter()`, mas ESTRITAMENTE depois —
+     * para o caminho que reescreve a janela atual no sítio em vez de a partir.
+     *
+     * Nesse caminho a janela que começa exatamente na data É a que vai ser
+     * corrigida: recusá-la seria recusar a própria operação. O que continua a
+     * ter de não existir é uma janela POSTERIOR, que a correção não sabe
+     * reescrever.
+     */
+    public function assertNothingStartsAfter(Enrollment $enrollment, string $effectiveFrom): void
+    {
+        $later = ClassGroupMembership::query()
+            ->where('enrollment_id', $enrollment->getKey())
+            ->whereHas('classGroup', fn ($query) => $query->where('class_id', $enrollment->class_id))
+            ->whereDate('effective_from', '>', $effectiveFrom)
+            ->exists();
+
+        if ($later) {
+            throw ValidationException::withMessages([
+                'effective_from' => __('Já existe uma alteração de grupo registada depois dessa data. Reveja o histórico do aluno primeiro.'),
+            ]);
+        }
+    }
+
+    /**
      * A data em que a pertença inicial de uma inscrição começa.
      *
      * `max(início do ano letivo, entrada do aluno)` (§4 do briefing), e nunca

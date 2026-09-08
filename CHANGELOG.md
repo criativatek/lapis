@@ -25,6 +25,109 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.139.0] — 2026-09-09
+
+As turmas que, em certos tempos, funcionam divididas passam a poder dizê-lo. O
+8.º F continua a ser **uma** turma — com uma pauta, um perfil e um conjunto de
+alunos —, mas na sexta-feira às 8:30 quem tem aula é o T1, e às 9:20 o T2. A
+avaliação não muda de sítio nem por um número.
+
+### Adicionado
+
+- **Grupos de turma, com nomes livres.** «T1» e «T2» não estão escritos em lado
+  nenhum do código: «A» e «B», «PL1» e «PL2», «Grupo da manhã» valem o mesmo. Um
+  grupo pertence à turma, é único dentro dela, e não tem disciplina, perfil nem
+  pauta próprios — não é uma turma artificial, é uma partição que só o horário e
+  o sumário conhecem.
+- **A secção «Grupos» no ecrã da turma, entre o Horário e os Alunos.** Sem
+  assistente: criar, renomear, ordenar, distribuir, mover, permutar e arquivar
+  acontecem todos na mesma página, que continua sempre reeditável. Quem não
+  pertencer a grupo nenhum aparece debaixo de «Sem grupo», que é um estado
+  legítimo e com nome — nem todos os alunos têm de estar num grupo.
+- **A distribuição inicial não pergunta datas.** A pertença de cada aluno começa
+  no início do ano letivo, ou no dia em que ele entrou na turma, conforme o que
+  for mais tarde. Pedir a data seria pedir ao professor que repetisse o que o
+  ano letivo já diz — e num aluno de ingresso tardio ele teria de a ir procurar.
+- **Mudar de grupo pergunta a partir de quando, e guarda as duas épocas.** A
+  pertença atual fecha-se na véspera e nasce outra na data, com a mesma caixa
+  explicativa que o horário já usa: «as aulas até ao dia anterior mantêm a
+  configuração atual; a partir desta data passa a vigorar a nova». Perguntar
+  «quem estava em T1 a 12 de novembro?» continua a dar a resposta de novembro
+  depois de o aluno passar para T2 em janeiro.
+- **Permutar dois alunos é uma operação só.** Uma data, um pedido, uma
+  transação: ou os dois trocam, ou não troca nenhum. Partida em duas chamadas,
+  existiria um instante com os dois no mesmo grupo — e, se a segunda falhasse,
+  um desequilíbrio que ninguém pediu e que nada assinalava.
+- **«Participantes» no editor de horário.** Turma inteira, T1, T2. Só aparece
+  numa turma que tenha grupos: um seletor com uma opção seria ruído a sugerir
+  uma configuração em falta. Cada aula nasce com o grupo do tempo que a gerou,
+  guardado na própria aula.
+- **Os sumários dizem de que grupo são.** «8.º F» ou «8.º F · T1», no cartão da
+  semana, no cabeçalho do sumário e no separador do browser — a mesma frase
+  composta num sítio só, para que os três não possam discordar.
+- **Um mecanismo único para «que alunos pertencem a esta aula».** Ainda não há
+  presenças nesta aplicação, e é por isso que a resposta é escrita agora: no dia
+  em que houver, não pode ser descoberta outra vez dentro desse ecrã e mais uma
+  vez dentro do relatório que as conta. Lê pela data da aula, e nunca por «hoje».
+
+### Alterado
+
+- **«Reutilizar o sumário anterior» procura no mesmo grupo, e só nele.** T1 e T2
+  avançam a ritmos diferentes: o anterior de «8.º F · T1» é a aula anterior de
+  T1, e o de uma aula da turma inteira é a anterior da turma inteira. Quando não
+  existe anterior do mesmo grupo a resposta é «não há sumário anterior» — nunca
+  o de outro grupo por não haver melhor. Uma sugestão errada custa mais do que
+  sugestão nenhuma, sobretudo num campo que se pré-preenche e se pode gravar sem
+  reler.
+- **Dois grupos diferentes à mesma hora deixam de ser um conflito de horário.**
+  A regra passa a ser sobre alunos partilhados e não sobre horas: T1 e T2 em
+  simultâneo são permitidos — é literalmente para isso que os grupos existem —,
+  enquanto turma inteira + T1, e T1 + T1, continuam a ser conflitos.
+- **Uma pertença a um grupo não impede remover um aluno sem história.** Ao
+  contrário das dez chaves estrangeiras que uma inscrição já protege — avaliações,
+  classificações, registos, medidas —, marcar uma caixa numa secção de arrumação
+  não pode tornar um aluno acrescentado por engano indelével para sempre. As
+  pertenças saem com a inscrição, na mesma transação, e só depois de estar
+  provado que não há uma única avaliação a proteger. O grupo com que cada **aula**
+  nasceu vive na aula, e não aqui: nenhuma aula nem nenhum sumário é alterado.
+
+### Compatibilidade
+
+- **Todos os horários e todas as aulas que já existem continuam a ser da turma
+  inteira**, sem backfill e sem migração de dados: a coluna nova nasce nula, e
+  nulo quer dizer exatamente isso. Nenhum professor tem de rever o horário que
+  já configurou.
+- **A importação de horários em PDF fica igual.** O parser desta versão ainda
+  não lê grupos, e os tempos importados entram como turma inteira; o professor
+  pode depois editar o tempo e escolher o grupo. As respostas da
+  pré-visualização e da confirmação são, bloco a bloco, as mesmas de antes.
+- **Rever um tempo do horário já em vigor continua a não reescrever o passado.**
+  Mudar «turma inteira» para T1 a partir de uma data fecha a versão atual e abre
+  uma nova; as aulas de novembro ficam com o grupo que na altura era verdade.
+- **A avaliação não sabe o que é um grupo.** A pauta, o Quadro Síntese, as
+  classificações, os instrumentos e os relatórios continuam a ser da turma
+  inteira: nenhum grupo entra num cálculo, numa proposta, num denominador ou num
+  filtro. Um caso de teste desdobra uma turma ao meio e compara cinco leituras
+  de avaliação antes e depois, exigindo que sejam iguais; outro recusa-se a
+  deixar a palavra «grupo» entrar num ficheiro de `Services/Assessment` ou
+  `Services/Reporting`.
+
+### Corrigido
+
+- **O ecrã da turma lê a composição dentro do ano letivo, e não pelo relógio.**
+  Um professor que preparasse os grupos em agosto, ou na primeira semana de
+  setembro, distribuía os trinta alunos e via «T1: 0 alunos» com todos debaixo
+  de «Sem grupo» — porque as pertenças começam no primeiro dia do ano e esse dia
+  ainda não tinha chegado. E o passo seguinte era pior: «Distribuir alunos»
+  voltava a oferecê-los, para o servidor os recusar com «já pertence a um
+  grupo». Um aluno de ingresso tardio caía no mesmo buraco, durante os dois
+  meses até entrar. Encontrado a validar isto no browser.
+- **Corrigir um engano da distribuição inicial deixou de ser impossível.** Pôr o
+  João em T2 no próprio dia em que ele foi posto em T1 não fecha uma janela no
+  dia em que ela abriu — reescreve-a. Antes, a única data que a validação
+  deixava passar era o dia seguinte, o que deixava escrito no histórico que o
+  João esteve um dia em T1. Nunca esteve.
+
 ## [0.138.2] — 2026-09-08
 
 Dois pontos sem saída nos fluxos de turma. Remover um aluno com história deixa

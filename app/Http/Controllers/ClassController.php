@@ -124,13 +124,21 @@ class ClassController extends Controller
         // pior do que nenhum número.
         $hasLessonsModule = $this->entitlements->allows('lessons');
         $classGroups = $hasLessonsModule ? $class->classGroups()->get() : collect();
-        $memberCounts = $hasLessonsModule ? $roster->memberCountsOn($class, $today) : [];
-        $groupByEnrollment = $hasLessonsModule
-            ? $roster->groupIdByEnrollmentOn(
+        // «Hoje», mas dentro do ano letivo desta turma: em setembro, antes de o
+        // ano abrir, «quem está em T1» só pode querer dizer «quem vai estar»
+        // (§ ClassRoster::readingDateFor()). Sem isto o ecrã dizia «0 alunos»
+        // logo a seguir a o professor os ter distribuído.
+        $rosterDate = $hasLessonsModule ? $roster->readingDateFor($class, $today) : $today;
+        $composition = $hasLessonsModule
+            ? $roster->compositionFor(
+                $class,
                 array_values(array_map(intval(...), $class->activeEnrollments()->pluck('id')->all())),
-                $today,
+                $rosterDate,
             )
-            : [];
+            : ['groups' => [], 'counts' => [], 'since' => []];
+        $memberCounts = $composition['counts'];
+        $groupByEnrollment = $composition['groups'];
+        $groupSince = $composition['since'];
         $groupLabelsById = $classGroups->pluck('label', 'id');
 
         return Inertia::render('classes/Show', [
@@ -187,6 +195,11 @@ class ClassController extends Controller
             // `recurringLessonSlots` dá, e é o que faz a secção inteira não
             // existir em vez de aparecer vazia a convidar a um clique que
             // seria recusado no servidor.
+            // A data que os diálogos «Mover» e «Permutar» oferecem por omissão.
+            // Vem do servidor e não do relógio do browser porque tem de cair
+            // dentro do ano letivo desta turma: em setembro, antes de o ano
+            // abrir, «hoje» seria recusado pela própria ação.
+            'classGroupsDefaultDate' => $hasLessonsModule ? $rosterDate : null,
             'classGroups' => $hasLessonsModule
                 ? $classGroups->map(fn (ClassGroup $group) => [
                     'ulid' => $group->ulid,
@@ -229,6 +242,10 @@ class ClassController extends Controller
                     // estado legítimo e com nome, e não uma configuração por
                     // acabar (§9 do briefing).
                     'class_group_id' => $groupByEnrollment[$enrollment->id] ?? null,
+                    // Desde quando essa pertença vale — a data que o diálogo
+                    // «Mover» oferece. Num aluno de ingresso tardio é o dia em
+                    // que ele entrou, e não o início do ano letivo.
+                    'class_group_since' => $groupSince[$enrollment->id] ?? null,
                     'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
                     // So the edit dialog opens on an empty field instead of
                     // offering "(sem identidade)" as if it were a real name.
