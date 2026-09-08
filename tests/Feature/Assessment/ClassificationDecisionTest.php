@@ -434,4 +434,84 @@ class ClassificationDecisionTest extends TestCase
             return "/classes/{$class->ulid}/classifications/{$classification->academicPeriod->ulid}/{$classification->enrollment->ulid}/decide";
         });
     }
+
+    // ------------------------------------ o âmbito acumulado saiu deste ecrã
+
+    /**
+     * NÃO HÁ SEGUNDO ÂMBITO DE DECISÃO NESTE ECRÃ.
+     *
+     * O seletor «período / acumulado» prometia um que nunca existiu: «propor» e
+     * «publicar» escreviam em linhas de âmbito acumulado, mas confirmar escreve
+     * sempre na do período — o professor podia gerar propostas que não havia
+     * como decidir, e ficar convencido de que estava a classificar o ano. Com
+     * uma classificação global por ano, a da última unidade formal, deixou de
+     * haver a pergunta a que aquele botão respondia.
+     */
+    #[Test]
+    public function the_screen_no_longer_offers_accumulated_as_a_scope_of_decision(): void
+    {
+        $screen = (string) preg_replace(
+            '/\s+/u',
+            ' ',
+            (string) file_get_contents(base_path('resources/js/pages/classifications/Show.vue')),
+        );
+
+        // Nem o seletor, nem a prop que o alimentava, nem o âmbito a viajar nos
+        // pedidos: o ecrã deixou de ter como falar de outro âmbito.
+        $this->assertStringNotContainsString('selectScope', $screen);
+        $this->assertStringNotContainsString('scope: props.scope', $screen);
+        $this->assertStringNotContainsString("scope === 'accumulated'", $screen);
+
+        // E a leitura acumulada não se perdeu — mudou para onde é analítica e
+        // traz a decomposição consigo.
+        $this->assertStringContainsString('results/quadro-sintese', $screen);
+    }
+
+    /**
+     * E A DECISÃO CONTINUA A ESCREVER-SE ONDE SEMPRE SE ESCREVEU.
+     *
+     * A limpeza acima é de interface. O endpoint é o mesmo, o serviço é o mesmo,
+     * e a linha que fica é a de âmbito PERÍODO — nenhuma linha acumulada nasce
+     * ao lado dela.
+     */
+    #[Test]
+    public function the_decision_still_writes_the_period_row_through_the_canonical_endpoint(): void
+    {
+        $teacher = $this->seedDemo();
+
+        [$ulid, $levelId] = $this->asTenant($teacher, function (): array {
+            $class = SchoolClass::where('label', '7.º A')->firstOrFail();
+            $period = $class->academicYear->periods->first();
+
+            app(ProposeClassifications::class)->forPeriod($class, $period);
+
+            $classification = $this->classificationFor($period, 'Carolina Nunes');
+
+            return [
+                (string) $classification->ulid,
+                (int) $class->profileVersion->scale->levels->firstWhere('code', '4')->id,
+            ];
+        });
+
+        $this->actingAs($teacher)
+            ->post($this->decideUrl($ulid), [
+                'final_scale_level_id' => $levelId,
+                'final_value' => null,
+                'override_reason' => '',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->asTenant($teacher, function () use ($ulid, $levelId): void {
+            $written = Classification::where('ulid', $ulid)->firstOrFail();
+
+            $this->assertSame(ClassificationScope::Period, $written->scope);
+            $this->assertSame($levelId, (int) $written->final_scale_level_id);
+
+            $this->assertSame(
+                0,
+                Classification::where('scope', ClassificationScope::Accumulated)->count(),
+                'Decidir aqui não abre nenhuma classificação de âmbito acumulado.',
+            );
+        });
+    }
 }

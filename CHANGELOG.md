@@ -25,6 +25,48 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.138.1] — 2026-09-08
+
+A conclusão do ano passa a ter um sítio só, e o ecrã das classificações deixa
+de prometer uma decisão que não existe. Nenhum número muda.
+
+### Corrigido
+
+- **A síntese da última unidade deixou de repetir a proposta e o nível.** Desde
+  que a proposta do último momento passou a ser a média do ano, «Prop. 4 /
+  Nível 5» dentro do bloco «Síntese · 2.º Semestre» e «Proposta 4 / Nível
+  atribuído 5» no bloco final eram o mesmo juízo escrito duas vezes na mesma
+  linha — e nada no ecrã dizia que eram a mesma coisa. A síntese da unidade que
+  fecha o ano fica analítica: a média ponderada dela, a evolução, o desempenho
+  acumulado quando está ligado, e a autoavaliação. A conclusão do ano lê-se uma
+  vez, no bloco «Avaliação Contínua Final». **Os momentos intermédios ficam como
+  estavam** — o 1.º semestre continua a mostrar a proposta e o nível dele, que é
+  o que ele tem a dizer.
+- **Qual é a unidade que fecha o ano vem do servidor** (`closes_the_year`, de
+  `ContinuousAssessment::finalUnitOf()`), nunca da posição no array. Funciona
+  com dois semestres, três períodos e com o que a escola configurar; um ano com
+  uma unidade acrescentada ao fim não passa a limpar a síntese errada.
+- **O seletor «período / acumulado» saiu das Classificações.** Prometia um
+  segundo âmbito de decisão que nunca existiu: «propor» e «publicar» escreviam
+  em linhas de âmbito acumulado, mas confirmar escreve sempre na do período — o
+  professor podia gerar propostas que não havia como decidir, convencido de que
+  estava a classificar o ano. Com uma classificação global por ano — a da última
+  unidade formal — deixou de haver a pergunta a que o botão respondia. A leitura
+  acumulada não se perdeu: fica onde é analítica, no Quadro Síntese, com a
+  decomposição a abrir em cada valor, e o ecrã leva lá quem a procura.
+
+### Alterado
+
+- No bloco final, «Prop.» e «Nível» passam a **«Proposta»** e **«Nível
+  atribuído»** por extenso. É onde a decisão do ano se lê, e uma abreviatura
+  poupa espaço onde ele não falta.
+
+A distinção entre âmbito de período e âmbito acumulado **fica inteira para as
+apreciações por domínio** — `DomainAppreciationDecision` e
+`FinalDomainDecisionController` não foram tocados. Nenhum endpoint, serviço,
+tabela ou migração mudou, e a decisão continua a escrever-se por
+`classifications.decide`, em âmbito de período.
+
 ## [0.138.0] — 2026-09-08
 
 Fechar o ano deixou de ser classificar o último semestre.

@@ -57,7 +57,6 @@ const props = defineProps<{
         min_value: string | null;
         max_value: string | null;
     };
-    scope: 'period' | 'accumulated';
     periods: { ulid: string; label: string; selected: boolean }[];
     rows: Row[];
 }>();
@@ -71,10 +70,6 @@ function basePath(periodUlid?: string): string {
     const period = periodUlid ?? selectedPeriod.value?.ulid ?? '';
 
     return `/classes/${props.schoolClass.ulid}/classifications/${period}`;
-}
-
-function selectScope(scope: 'period' | 'accumulated'): void {
-    router.get(basePath(), { scope }, { preserveScroll: true });
 }
 
 // The period's own weighted average, as Resultados prints it. "—" for a null (no
@@ -114,7 +109,7 @@ function proposalLabel(proposal: Proposal): string {
 }
 
 function selectPeriod(ulid: string): void {
-    router.get(basePath(ulid), { scope: props.scope }, { preserveScroll: true });
+    router.get(basePath(ulid), {}, { preserveScroll: true });
 }
 
 const proposing = ref(false);
@@ -127,7 +122,10 @@ function propose(): void {
 
     router.post(
         `${basePath()}/propose`,
-        { scope: props.scope },
+        // SEM ÂMBITO. O controlador aceita-o e assume «período» quando não vem —
+        // que é o único que a decisão sabe escrever, e agora o único que este
+        // ecrã propõe.
+        {},
         {
             preserveScroll: true,
             onStart: () => (proposing.value = true),
@@ -143,7 +141,7 @@ function publish(): void {
 
     router.post(
         `${basePath()}/publish`,
-        { scope: props.scope },
+        {},
         {
             preserveScroll: true,
             onStart: () => (publishing.value = true),
@@ -245,25 +243,27 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                 </Link>
             </div>
             <div class="flex flex-wrap items-center gap-3">
-                <div class="flex gap-1 rounded-md bg-muted/40 p-0.5">
-                    <button
-                        type="button"
-                        class="rounded px-3 py-1 text-sm"
-                        :class="scope === 'period' ? 'bg-background font-medium shadow-sm' : 'text-muted-foreground hover:text-foreground'"
-                        @click="selectScope('period')"
-                    >
-                        Por período
-                    </button>
-                    <button
-                        type="button"
-                        class="rounded px-3 py-1 text-sm"
-                        :class="scope === 'accumulated' ? 'bg-background font-medium shadow-sm' : 'text-muted-foreground hover:text-foreground'"
-                        :title="ACCUMULATED_EXPLANATION"
-                        @click="selectScope('accumulated')"
-                    >
-                        {{ ACCUMULATED }}
-                    </button>
-                </div>
+                <!-- O SELETOR DE ÂMBITO SAIU DAQUI, e o que ele mostrava mudou
+                     de sítio em vez de se perder.
+                     Prometia um segundo âmbito de DECISÃO que nunca existiu:
+                     «propor» e «publicar» escreviam em linhas acumuladas, mas
+                     confirmar escreve sempre na do período — o professor podia
+                     gerar propostas que não havia como decidir, e ficar a
+                     pensar que estava a classificar o ano quando não estava.
+                     Com uma classificação global por ano, a da última unidade
+                     formal, deixou de haver a pergunta a que este botão
+                     respondia.
+
+                     A LEITURA ACUMULADA CONTINUA, no Quadro Síntese, onde é o
+                     que é — analítica, com a decomposição a abrir em cada
+                     valor. Aqui era um número sem a conta que o produziu. -->
+                <Link
+                    :href="`/classes/${schoolClass.ulid}/results/quadro-sintese`"
+                    class="text-sm text-primary hover:underline"
+                    :title="`${ACCUMULATED_LONG} — ${ACCUMULATED_EXPLANATION}`"
+                >
+                    Ver o {{ ACCUMULATED.toLowerCase() }} no Quadro Síntese →
+                </Link>
                 <div v-if="periods.length" class="flex gap-1">
                     <button
                         v-for="period in periods"
@@ -286,11 +286,7 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
         <template v-else>
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <p class="text-sm text-muted-foreground">
-                    <template v-if="scope === 'accumulated'">
-                        {{ ACCUMULATED_LONG }}: reprocessa todos os elementos válidos do ano até este período — não é a média dos
-                        períodos, e não é a avaliação contínua.
-                    </template>
-                    <template v-else>O sistema propõe; o professor confirma.</template>
+                    O sistema propõe; o professor confirma.
                     {{ pending }} por confirmar.
                 </p>
                 <div class="flex gap-2">
@@ -338,7 +334,7 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                             <th class="px-3 py-2 font-medium">Aluno</th>
                             <th class="px-3 py-2 text-center font-medium">Estado</th>
                             <th class="px-3 py-2 text-right font-medium">
-                                {{ scope === 'accumulated' ? ACCUMULATED_LONG : 'Média Ponderada' }}
+                                Média Ponderada
                             </th>
                             <th class="px-3 py-2 text-right font-medium">Proposta</th>
                             <th class="px-3 py-2 text-right font-medium">Autoavaliação</th>

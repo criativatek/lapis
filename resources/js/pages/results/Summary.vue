@@ -99,7 +99,19 @@ const props = defineProps<{
     /** Se este professor pode concluir o ano num domínio — apresentação (§8.2). */
     canDecideDomains: boolean;
     progression: {
-        periods: { id: number; ulid: string; label: string; sequence: number }[];
+        // `closes_the_year` vem do SERVIDOR — `ContinuousAssessment::finalUnitOf()`
+        // — e nunca de «a última do array»: a síntese da unidade que fecha o ano
+        // não repete a proposta nem o nível, porque os dois vivem no bloco final,
+        // e decidi-lo pela posição erraria de unidade no dia em que o ano ganhasse
+        // outra. Ausente num payload anterior a isto existir, e aí nenhuma fecha
+        // o ano — que é exatamente o comportamento de antes.
+        periods: {
+            id: number;
+            ulid: string;
+            label: string;
+            sequence: number;
+            closes_the_year?: boolean;
+        }[];
         domains: { id: number; ulid: string; name: string }[];
         students: Student[];
     };
@@ -405,12 +417,34 @@ function domainTone(index: number): string {
     return index % 2 === 0 ? 'bg-muted' : 'bg-muted/60';
 }
 
-// Per period of the síntese: the standalone average, its evolution (except the
-// first), the accumulated, the proposal, the self-assessment and the decision.
+/**
+ * A UNIDADE QUE FECHA O ANO — dita pelo servidor, nunca pela posição.
+ *
+ * Um payload anterior a este campo não marca nenhuma, e aí nada muda: é o
+ * comportamento de antes, que é a resposta certa para uma leitura que não sabe
+ * responder à pergunta.
+ */
+function closesTheYear(index: number): boolean {
+    return periods.value[index]?.closes_the_year === true;
+}
+
+/**
+ * Por unidade da síntese: a média estanque, a evolução (menos na primeira), o
+ * acumulado, a proposta, a autoavaliação e a decisão.
+ *
+ * NA UNIDADE QUE FECHA O ANO A PROPOSTA E O NÍVEL SAEM DAQUI. Eles são a mesma
+ * proposta e a mesma decisão que o bloco «Avaliação Contínua Final» mostra —
+ * desde que a proposta do último momento passou a ser a média do ano, não são
+ * sequer números diferentes. Repetidos, liam-se como duas conclusões a competir:
+ * uma «Prop. 4 / Nível 5» dentro do 2.º semestre e outra igual no fim, e nada no
+ * ecrã dizia que eram a mesma. A síntese da última unidade fica analítica — o
+ * que aconteceu naquele semestre — e a conclusão do ano tem um sítio só.
+ */
 function synthesisColumns(index: number): number {
     const base = index === 0 ? 5 : 6;
+    const withoutDecision = closesTheYear(index) ? base - 2 : base;
 
-    return showAccumulated.value ? base : base - 1;
+    return showAccumulated.value ? withoutDecision : withoutDecision - 1;
 }
 
 /**
@@ -852,7 +886,12 @@ function proposalText(proposal: Proposal | undefined): string {
                             >
                                 {{ ACCUMULATED_SHORT }}
                             </th>
+                            <!-- A PROPOSTA E O NÍVEL SAEM DA ÚLTIMA UNIDADE:
+                                 são os mesmos que o bloco «Avaliação Contínua
+                                 Final» mostra, e repetidos liam-se como duas
+                                 conclusões a competir. -->
                             <th
+                                v-if="!closesTheYear(index)"
                                 class="sticky top-16 z-20 border-b border-border bg-muted/40 px-2 py-1 text-center text-xs font-medium"
                                 :title="`Proposta do Lapispro — ${period.label}`"
                                 :aria-label="`Proposta do Lapispro — ${period.label}`"
@@ -862,6 +901,7 @@ function proposalText(proposal: Proposal | undefined): string {
                             </th>
                             <th
                                 class="sticky top-16 z-20 border-b border-border bg-muted/40 px-2 py-1 text-center text-xs font-medium"
+                                :class="closesTheYear(index) ? 'border-r border-border' : ''"
                                 :title="`Autoavaliação global do aluno — ${period.label}`"
                                 :aria-label="`Autoavaliação global do aluno — ${period.label}`"
                                 scope="col"
@@ -869,6 +909,7 @@ function proposalText(proposal: Proposal | undefined): string {
                                 Autoav.
                             </th>
                             <th
+                                v-if="!closesTheYear(index)"
                                 class="sticky top-16 z-20 border-r border-b border-border bg-muted/40 px-2 py-1 text-center text-xs font-medium"
                                 :title="`${decision.label} — ${period.label}`"
                                 :aria-label="`${decision.label} — ${period.label}`"
@@ -922,7 +963,7 @@ function proposalText(proposal: Proposal | undefined): string {
                             :aria-label="`Proposta formal do Lapispro para o ano — sai da ${CONTINUOUS.toLowerCase()}, nunca do ${ACCUMULATED.toLowerCase()}.`"
                             scope="col"
                         >
-                            Prop.
+                            Proposta
                         </th>
                         <th
                             class="sticky top-16 z-20 border-r border-b border-border bg-primary/5 px-2 py-1 text-center text-xs font-medium"
@@ -930,7 +971,7 @@ function proposalText(proposal: Proposal | undefined): string {
                             :aria-label="`${decision.label} do ano, atribuído pelo professor.`"
                             scope="col"
                         >
-                            {{ decision.classifies_by_level ? 'Nível' : 'Classif.' }}
+                            {{ decision.classifies_by_level ? 'Nível atribuído' : 'Classificação atribuída' }}
                         </th>
                     </tr>
                 </thead>
@@ -1059,7 +1100,7 @@ function proposalText(proposal: Proposal | undefined): string {
                                 </button>
                                 <span v-else class="text-muted-foreground">—</span>
                             </td>
-                            <td class="px-2 py-1.5 text-center tabular-nums">
+                            <td v-if="!closesTheYear(index)" class="px-2 py-1.5 text-center tabular-nums">
                                 <span v-if="period.classification?.proposal.value" class="rounded bg-muted px-1.5 py-0.5">
                                     {{ proposalText(period.classification.proposal) }}
                                 </span>
@@ -1076,8 +1117,13 @@ function proposalText(proposal: Proposal | undefined): string {
                             </td>
                             <!-- The decision of THAT period, kept as it was: a
                                  quadro síntese that showed only the latest would
-                                 be hiding the year it exists to show (§10). -->
-                            <td class="px-2 py-1.5 text-center tabular-nums">
+                                 be hiding the year it exists to show (§10).
+                                 NA UNIDADE QUE FECHA O ANO, NÃO: aí a decisão da
+                                 unidade É a decisão do ano, e é no bloco final
+                                 que ela se lê. Mostrá-la nos dois sítios não
+                                 acrescentava um dado — punha a mesma resposta
+                                 duas vezes na mesma linha. -->
+                            <td v-if="!closesTheYear(index)" class="px-2 py-1.5 text-center tabular-nums">
                                 <span
                                     v-if="period.classification?.final"
                                     class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 font-bold"

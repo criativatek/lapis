@@ -43,8 +43,9 @@ const DOMAINS = [
 ];
 
 const PERIODS = [
-    { id: 1, ulid: 'per-1', label: '1.º Semestre', sequence: 1 },
-    { id: 2, ulid: 'per-2', label: '2.º Semestre', sequence: 2 },
+    { id: 1, ulid: 'per-1', label: '1.º Semestre', sequence: 1, closes_the_year: false },
+    // A ÚLTIMA UNIDADE VEM MARCADA PELO SERVIDOR, nunca deduzida da posição.
+    { id: 2, ulid: 'per-2', label: '2.º Semestre', sequence: 2, closes_the_year: true },
 ];
 
 function continuousUnit(periodId: number, label: string, value: string | null) {
@@ -240,9 +241,9 @@ async function withoutAccumulated(wrapper: VueWrapper): Promise<VueWrapper> {
 async function threePeriodsView(): Promise<VueWrapper> {
     const base = props();
     const periods = [
-        { id: 1, ulid: 'per-1', label: '1.º Período', sequence: 1 },
-        { id: 2, ulid: 'per-2', label: '2.º Período', sequence: 2 },
-        { id: 3, ulid: 'per-3', label: '3.º Período', sequence: 3 },
+        { id: 1, ulid: 'per-1', label: '1.º Período', sequence: 1, closes_the_year: false },
+        { id: 2, ulid: 'per-2', label: '2.º Período', sequence: 2, closes_the_year: false },
+        { id: 3, ulid: 'per-3', label: '3.º Período', sequence: 3, closes_the_year: true },
     ];
 
     const wrapper = mount(Summary, {
@@ -577,5 +578,98 @@ describe('Quadro Síntese · por domínio — o desempenho acumulado', () => {
         // Sem a leitura acumulada, os números continuam.
         const noAccumulated = await withoutAccumulated(await domainsView());
         expect(bodyCells(noAccumulated).some((cell) => cell.includes('%'))).toBe(true);
+    });
+});
+
+/**
+ * A CONCLUSÃO DO ANO TEM UM SÍTIO SÓ.
+ *
+ * A síntese de uma unidade intermédia mostra a proposta e o nível daquela
+ * unidade, que é o que ela tem a dizer. A síntese da unidade que FECHA o ano
+ * não: aí a proposta é a média do ano e o nível é o nível do ano, e os dois
+ * estão no bloco «Avaliação Contínua Final». Repetidos, liam-se como duas
+ * conclusões a competir na mesma linha.
+ *
+ * QUAL DELAS FECHA O ANO VEM DO SERVIDOR (`closes_the_year`), nunca da posição:
+ * um ano com uma unidade acrescentada ao fim limparia a síntese errada.
+ */
+describe('Quadro Síntese · por domínio — a conclusão do ano não se repete', () => {
+    /** Os cabeçalhos de uma síntese, do bloco cujo título contém `label`. */
+    function synthesisHeaders(wrapper: VueWrapper, label: string): string[] {
+        const blocks = wrapper.findAll('thead tr:first-child th');
+        const widths = blocks.map((cell) => Number(cell.attributes('colspan') ?? 1));
+        const index = blocks.findIndex((cell) => cell.text().includes(label));
+
+        if (index < 0) {
+            throw new Error(`Não há bloco «${label}» no cabeçalho.`);
+        }
+
+        // O primeiro bloco é o do «Aluno», que tem rowspan e por isso NÃO tem
+        // célula própria na linha de baixo: contá-lo desalinharia tudo por um.
+        const before = widths.slice(1, index).reduce((total, width) => total + width, 0);
+        const columns = wrapper.findAll('thead tr:nth-child(3) th').map((cell) => cell.text().trim());
+
+        return columns.slice(before, before + widths[index]);
+    }
+
+    it('a síntese de uma unidade intermédia mantém a proposta e o nível', async () => {
+        const columns = synthesisHeaders(await domainsView(), '1.º Semestre');
+
+        expect(columns).toContain('Prop.');
+        expect(columns).toContain('Nível');
+        expect(columns).toContain('Autoav.');
+    });
+
+    it('a síntese da unidade que fecha o ano não os repete', async () => {
+        const columns = synthesisHeaders(await domainsView(), '2.º Semestre');
+
+        expect(columns).not.toContain('Prop.');
+        expect(columns).not.toContain('Nível');
+        // O que fica é analítico: o resultado da unidade, a evolução, o
+        // acumulado e o que o aluno disse de si.
+        expect(columns).toContain('MP');
+        expect(columns).toContain('Evol.');
+        expect(columns).toContain('Autoav.');
+    });
+
+    it('e a decisão continua a ler-se, uma vez, no bloco final', async () => {
+        const columns = synthesisHeaders(await domainsView(), 'Avaliação Contínua Final');
+
+        expect(columns).toContain('Média final');
+        expect(columns).toContain('Proposta');
+        expect(columns).toContain('Nível atribuído');
+    });
+
+    it('com três períodos, só o terceiro deixa de repetir', async () => {
+        const wrapper = await threePeriodsView();
+
+        expect(synthesisHeaders(wrapper, '1.º Período')).toContain('Prop.');
+        expect(synthesisHeaders(wrapper, '2.º Período')).toContain('Prop.');
+        expect(synthesisHeaders(wrapper, '3.º Período')).not.toContain('Prop.');
+        expect(synthesisHeaders(wrapper, '3.º Período')).not.toContain('Nível');
+    });
+
+    it('sem o servidor marcar nenhuma, nada muda — o comportamento de antes', async () => {
+        // Um payload anterior a `closes_the_year` existir não sabe responder à
+        // pergunta, e a resposta certa é não esconder nada.
+        const base = props();
+        const wrapper = mount(Summary, {
+            props: {
+                ...base,
+                progression: {
+                    ...base.progression,
+                    periods: base.progression.periods.map((period) => ({
+                        id: period.id,
+                        ulid: period.ulid,
+                        label: period.label,
+                        sequence: period.sequence,
+                    })),
+                },
+            },
+            global: { stubs },
+        });
+        await wrapper.findAll('button').find((b) => b.text() === 'Por domínio')!.trigger('click');
+
+        expect(synthesisHeaders(wrapper as VueWrapper, '2.º Semestre')).toContain('Prop.');
     });
 });

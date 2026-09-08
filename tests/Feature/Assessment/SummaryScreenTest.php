@@ -296,7 +296,13 @@ class SummaryScreenTest extends TestCase
         // ou o cabeçalho promete mais células do que a linha tem.
         $this->assertStringContainsString('periods.value.length * 2 - 1 + (showAccumulated.value ? 2 : 0)', $screen);
         $this->assertStringContainsString('index === 0 ? 5 : 6', $screen);
-        $this->assertStringContainsString('showAccumulated.value ? base : base - 1', $screen);
+        $this->assertStringContainsString('showAccumulated.value ? withoutDecision : withoutDecision - 1', $screen);
+
+        // E A UNIDADE QUE FECHA O ANO PERDE DUAS COLUNAS — a proposta e o nível,
+        // que o bloco final já mostra. Qual delas é vem do servidor, nunca da
+        // posição no array: `closes_the_year`, e não `length - 1`.
+        $this->assertStringContainsString('closesTheYear(index) ? base - 2 : base', $screen);
+        $this->assertStringContainsString('periods.value[index]?.closes_the_year === true', $screen);
 
         // E O BLOCO FINAL CONTA-SE DOS DOMÍNIOS QUE HÁ, nunca de um número
         // escrito à mão: dois por domínio — a média e a menção — e três no

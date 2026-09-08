@@ -155,12 +155,24 @@ class BuildResultsProgression
         // browser, and `map()->all()` keeps whatever keys the collection had.
         $periodRows = [];
 
+        // QUAL DELAS FECHA O ANO, dito pelo servidor e pela mesma função que a
+        // decisão final por domínio já usa. O Quadro Síntese precisa disto para
+        // não repetir, na síntese da última unidade, a proposta e o nível que o
+        // bloco final já mostra — e uma regra de apresentação assente em «a
+        // última do array» seria a mesma pergunta respondida onde
+        // `ContinuousAssessment::finalUnitOf()` não chega: um ano com uma
+        // unidade acrescentada ao fim limparia a síntese da unidade errada, sem
+        // erro nenhum (§43).
+        $finalUnit = ContinuousAssessment::finalUnitOf($class);
+
         foreach ($periods as $period) {
             $periodRows[] = [
                 'id' => (int) $period->id,
                 'ulid' => (string) $period->ulid,
                 'label' => (string) $period->label,
                 'sequence' => (int) $period->sequence,
+                'closes_the_year' => $finalUnit !== null
+                    && (int) $finalUnit->getKey() === (int) $period->id,
             ];
         }
 
