@@ -56,6 +56,9 @@ function mountPage(overrides: { starts_at?: string; ends_at?: string | null } = 
                 status: 'preparation' as const,
                 status_label: 'Por preparar',
                 school_class: { ulid: 'class-a', label: '7.º A', subject: 'Matemática' },
+                // Aula da turma inteira: o rótulo é o da turma, sem sufixo.
+                context_label: '7.º A',
+                class_group_label: null,
                 summary: null,
                 ...overrides,
             },

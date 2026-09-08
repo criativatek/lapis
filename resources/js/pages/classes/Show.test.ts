@@ -68,6 +68,11 @@ function baseProps() {
         former_students: [],
         availableProfiles: [],
         recurringLessonSlots: null,
+        // `null` a par de `recurringLessonSlots`, e pela mesma razão: sem o
+        // módulo das aulas não há tempos onde usar um grupo, e a secção
+        // «Grupos» não existe de todo. Estes casos são sobre a remoção de um
+        // aluno e não passam sequer por ali.
+        classGroups: null,
     };
 }
 
@@ -137,6 +142,8 @@ describe('classes/Show — enrollment quota (limit) error', () => {
 function student(overrides: Record<string, unknown> = {}) {
     return {
         ulid: 'enrollment-1',
+        id: 1,
+        class_group_id: null,
         name: 'Maria Teste',
         has_identity: true,
         pseudonym: 'ALU-AAAA',

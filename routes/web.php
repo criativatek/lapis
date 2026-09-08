@@ -12,6 +12,7 @@ use App\Http\Controllers\AssessmentProfileController;
 use App\Http\Controllers\CalendarEventController;
 use App\Http\Controllers\ChangelogController;
 use App\Http\Controllers\ClassController;
+use App\Http\Controllers\ClassGroupController;
 use App\Http\Controllers\ClassificationController;
 use App\Http\Controllers\ClassPhotoImportController;
 use App\Http\Controllers\ClassProfileMigrationController;
@@ -504,6 +505,25 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::put('lesson-slots/{recurringLessonSlot}', [LessonScheduleController::class, 'update'])->name('lesson-slots.update');
         Route::delete('lesson-slots/{recurringLessonSlot}', [LessonScheduleController::class, 'destroy'])->name('lesson-slots.destroy');
         Route::post('classes/{class}/lessons/materialize', [LessonScheduleController::class, 'materialize'])->name('lessons.materialize');
+
+        // Os grupos em que uma turma se desdobra (T1/T2). Aqui dentro, e não
+        // no bloco `module:classes` acima, porque um grupo só existe para o
+        // horário: sem o módulo das aulas não há tempos onde o usar, e a
+        // secção nem sequer aparece no ecrã da turma. Aninhados na turma —
+        // a turma é sempre o contexto, e é através dela que cada grupo e cada
+        // inscrição são resolvidos (ClassGroupController::enrollmentOf()).
+        Route::post('classes/{class}/groups', [ClassGroupController::class, 'store'])->name('classes.groups.store');
+        Route::put('classes/{class}/groups/order', [ClassGroupController::class, 'reorder'])->name('classes.groups.reorder');
+        Route::post('classes/{class}/groups/assignments', [ClassGroupController::class, 'assign'])->name('classes.groups.assign');
+        Route::post('classes/{class}/groups/moves', [ClassGroupController::class, 'move'])->name('classes.groups.move');
+        Route::post('classes/{class}/groups/swaps', [ClassGroupController::class, 'swap'])->name('classes.groups.swap');
+        // Depois das rotas literais acima — «order», «assignments», «moves» e
+        // «swaps» seriam engolidos como ulids de grupo, a mesma armadilha que
+        // `classes/schedule-setup` já documenta mais acima.
+        Route::put('classes/{class}/groups/{classGroup}', [ClassGroupController::class, 'update'])->name('classes.groups.update');
+        Route::delete('classes/{class}/groups/{classGroup}', [ClassGroupController::class, 'destroy'])->name('classes.groups.destroy');
+        Route::post('classes/{class}/groups/{classGroup}/archive', [ClassGroupController::class, 'archive'])->name('classes.groups.archive');
+        Route::delete('classes/{class}/groups/{classGroup}/archive', [ClassGroupController::class, 'restore'])->name('classes.groups.restore');
 
         // Importing a timetable export into recurring slots. Global rather than
         // nested inside a turma — one file spans several — and gated by this

@@ -25,7 +25,14 @@ use Illuminate\Support\Facades\DB;
 class ReviseRecurringLessonSlot
 {
     /**
-     * @param  array{day_of_week: int, starts_at: string, ends_at: string, ends_on: string|null}  $newAttributes
+     * `class_group_id` viaja aqui como qualquer outro atributo, e é ele que faz
+     * «turma inteira → T1» num tempo já em vigor ficar certo sem esforço
+     * nenhum: a linha antiga fecha-se com o grupo que tinha, a nova nasce com o
+     * novo, e as aulas já materializadas continuam presas à linha antiga pelo
+     * id. Nenhuma delas é reescrita, porque nada aqui escreve em `lessons` — e
+     * o grupo de cada aula é um instantâneo guardado na própria aula.
+     *
+     * @param  array{class_group_id: int|null, day_of_week: int, starts_at: string, ends_at: string, ends_on: string|null}  $newAttributes
      */
     public function execute(RecurringLessonSlot $slot, string $effectiveFrom, array $newAttributes): RecurringLessonSlot
     {
@@ -50,6 +57,7 @@ class ReviseRecurringLessonSlot
             // $current already belongs to for the whole length of this request.
             return RecurringLessonSlot::create([
                 'class_id' => $current->class_id,
+                'class_group_id' => $newAttributes['class_group_id'],
                 'day_of_week' => $newAttributes['day_of_week'],
                 'starts_at' => $newAttributes['starts_at'],
                 'ends_at' => $newAttributes['ends_at'],

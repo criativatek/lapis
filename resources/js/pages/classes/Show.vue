@@ -2,6 +2,8 @@
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { FileUp, Footprints, Pencil, Trash2, UserPlus } from '@lucide/vue';
 import { computed, onMounted, ref } from 'vue';
+import ClassGroupsSection from '@/components/classes/ClassGroupsSection.vue';
+import type { ClassGroup } from '@/components/classes/ClassGroupsSection.vue';
 import FileInput from '@/components/FileInput.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
@@ -43,6 +45,10 @@ type Student = {
      * EnrollmentController::destroy(), que volta a perguntar ao servidor.
      */
     can_be_removed: boolean;
+    /** A chave que a secção «Grupos» devolve ao servidor. */
+    id: number;
+    /** O grupo a que pertence HOJE — `null` é «Sem grupo», e é legítimo. */
+    class_group_id: number | null;
 };
 
 type ProfileOption = { version_id: number; label: string };
@@ -70,6 +76,13 @@ const props = defineProps<{
     }[];
     availableProfiles: ProfileOption[];
     recurringLessonSlots: RecurringLessonSlot[] | null;
+    /**
+     * `null` — e não uma lista vazia — quando o módulo das aulas não está no
+     * plano. É o mesmo sinal que `recurringLessonSlots` dá, e é o que faz a
+     * secção inteira não existir em vez de aparecer vazia a convidar a um
+     * clique que o servidor recusaria.
+     */
+    classGroups: ClassGroup[] | null;
 }>();
 
 /**
@@ -442,8 +455,23 @@ function submitPhotos(): void {
             <LessonScheduleEditor
                 :class-id="schoolClass.id"
                 :slots="recurringLessonSlots"
+                :groups="classGroups ?? []"
             />
         </div>
+
+        <!--
+            Entre o Horário e os Alunos, encostada aos dois: os grupos saem da
+            relação de turma e servem os tempos do horário, e é entre essas
+            duas coisas que se lêem. Aparece pelo mesmo sinal que o editor de
+            horário — sem o módulo das aulas, não há tempos onde usar um grupo.
+        -->
+        <ClassGroupsSection
+            v-if="classGroups != null"
+            id="grupos"
+            :class-ulid="schoolClass.ulid"
+            :groups="classGroups"
+            :students="students"
+        />
 
         <section class="space-y-3">
             <div class="flex items-center justify-between">

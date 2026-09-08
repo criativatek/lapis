@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Lessons;
 
+use App\Models\ClassGroup;
 use App\Models\RecurringLessonSlot;
 use App\Models\SchoolClass;
 use App\Rules\BelongsToCurrentOrganization;
@@ -45,6 +46,18 @@ class RecurringLessonSlotRequest extends FormRequest
 
         return [
             'class_id' => ['required', 'integer', new BelongsToCurrentOrganization(SchoolClass::class)],
+            // «Participantes»: NULL é a turma inteira, e é o que todos os
+            // tempos já existentes dizem — nenhum backfill, nenhum professor
+            // tem de rever o horário que já configurou (§22 do briefing).
+            //
+            // `new BelongsToCurrentOrganization(...)` e nunca `exists:`: um
+            // `exists:` corre no query builder e não vê o global scope, pelo
+            // que aceitaria o id de um grupo de outra escola. Que o grupo seja
+            // DESTA turma, e que não esteja arquivado, é verificado em
+            // `withValidator()` — nenhuma regra estática sabe isso.
+            'class_group_id' => [
+                'nullable', 'integer', new BelongsToCurrentOrganization(ClassGroup::class),
+            ],
             'day_of_week' => ['required', 'integer', 'between:1,7'],
             'starts_at' => ['required', 'date_format:H:i'],
             'ends_at' => ['required', 'date_format:H:i', 'after:starts_at'],
@@ -104,6 +117,8 @@ class RecurringLessonSlotRequest extends FormRequest
      */
     public function withValidator(Validator $validator): void
     {
+        $validator->after($this->validateClassGroup(...));
+
         $validator->after(function (Validator $validator): void {
             $recurringLessonSlot = $this->route('recurringLessonSlot');
             $effectiveFrom = $this->input('effective_from');
@@ -154,6 +169,59 @@ class RecurringLessonSlotRequest extends FormRequest
                 );
             }
         });
+    }
+
+    /**
+     * O grupo escolhido tem de ser DESTA turma, e tem de aceitar trabalho novo.
+     *
+     * Nenhuma das duas coisas cabe numa regra estática:
+     * `BelongsToCurrentOrganization` garante a organização e mais nada, pelo
+     * que o id de um grupo de outra turma minha passaria por lá sem tropeçar;
+     * e «arquivado» é um estado que muda enquanto o formulário está aberto.
+     *
+     * O CASO QUE ESTA REGRA NÃO APANHA — de propósito: um tempo do horário que
+     * JÁ aponta para um grupo entretanto arquivado continua a poder ser
+     * revisto sem lhe mexer no grupo. Só a ESCOLHA de um grupo arquivado é
+     * recusada, e por isso a comparação é com o valor que o slot já tinha.
+     * Sem isto, arquivar um grupo trancaria os tempos que o usam, e a saída
+     * seria desarquivar o grupo para poder mexer no horário — o beco que
+     * ArchiveClassGroup existe para não abrir.
+     */
+    private function validateClassGroup(Validator $validator): void
+    {
+        $classGroupId = $this->input('class_group_id');
+
+        if ($classGroupId === null || $classGroupId === '') {
+            return;
+        }
+
+        $classGroup = ClassGroup::query()->find((int) $classGroupId);
+
+        if ($classGroup === null) {
+            return; // BelongsToCurrentOrganization já terá falhado.
+        }
+
+        if ($classGroup->class_id !== $this->integer('class_id')) {
+            $validator->errors()->add(
+                'class_group_id',
+                __('O grupo escolhido não pertence a esta turma.'),
+            );
+
+            return;
+        }
+
+        $recurringLessonSlot = $this->route('recurringLessonSlot');
+        $wasAlreadyThisGroup = $recurringLessonSlot instanceof RecurringLessonSlot
+            && $recurringLessonSlot->class_group_id === $classGroup->getKey();
+
+        if ($classGroup->isArchived() && ! $wasAlreadyThisGroup) {
+            $validator->errors()->add(
+                'class_group_id',
+                __('O grupo :label está arquivado e não pode ser usado em tempos novos do horário.', [
+                    'label' => $classGroup->label,
+                ]),
+            );
+        }
     }
 
     private function routeSlotRequiresVersioning(): bool

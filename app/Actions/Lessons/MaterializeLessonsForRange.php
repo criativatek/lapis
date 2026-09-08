@@ -128,6 +128,18 @@ class MaterializeLessonsForRange
                         self::TIMEZONE,
                     );
 
+                    // O GRUPO É COPIADO PARA A AULA, e vai nos atributos de
+                    // CRIAÇÃO — nunca na chave do firstOrCreate. A identidade
+                    // de uma aula continua a ser (turma, tempo do horário,
+                    // início): pôr o grupo na chave faria uma revisão do slot
+                    // criar uma segunda aula por cima da que já existe naquele
+                    // instante, que é exatamente a duplicação que a chave
+                    // `lessons_class_slot_start_unique` existe para impedir.
+                    //
+                    // E porque está nos atributos de criação, e não nos de
+                    // atualização, uma aula que JÁ exista fica com o grupo com
+                    // que nasceu ainda que o slot tenha mudado entretanto. É o
+                    // que faz do instantâneo um instantâneo.
                     $lessons->push(Lesson::query()->firstOrCreate(
                         [
                             'class_id' => $lockedClass->id,
@@ -135,6 +147,7 @@ class MaterializeLessonsForRange
                             'starts_at' => $startsAt,
                         ],
                         [
+                            'class_group_id' => $slot->class_group_id,
                             'ends_at' => $endsAt,
                             'status' => LessonStatus::Preparation,
                             'created_by' => $actor->id,

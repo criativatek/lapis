@@ -76,6 +76,11 @@ class LessonScheduleController extends Controller implements HasMiddleware
         $validated = $request->safe();
 
         $this->reviseRecurringLessonSlot->execute($recurringLessonSlot, $validated['effective_from'], [
+            // `?? null` e não a chave a seco: um cliente antigo — ou o
+            // formulário de uma turma sem grupos, que nem desenha o campo — não
+            // envia `class_group_id` de todo, e a ausência quer dizer
+            // exatamente o mesmo que NULL: turma inteira.
+            'class_group_id' => $validated['class_group_id'] ?? null,
             'day_of_week' => $validated['day_of_week'],
             'starts_at' => $validated['starts_at'],
             'ends_at' => $validated['ends_at'],

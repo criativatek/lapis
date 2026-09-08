@@ -24,6 +24,9 @@ type Lesson = {
     starts_at: string;
     ends_at: string | null;
     school_class: { ulid: string; label: string };
+    /** «8.º F», ou «8.º F · T1» numa aula de um grupo. Composto no servidor. */
+    context_label: string;
+    class_group_label: string | null;
     subject: string;
     status: 'preparation' | 'prepared' | 'taught';
     status_label: string;
@@ -220,7 +223,7 @@ function lessonTime(lesson: Lesson): string {
                             <div class="min-w-0 flex-1">
                                 <div class="flex flex-wrap items-center gap-2">
                                     <span class="font-medium">{{
-                                        lesson.school_class.label
+                                        lesson.context_label
                                     }}</span>
                                     <span
                                         class="text-sm text-muted-foreground"

@@ -18,6 +18,9 @@ type Lesson = {
     ends_at: string | null;
     status: 'preparation' | 'prepared' | 'taught';
     status_label: string;
+    /** «8.º F», ou «8.º F · T1» numa aula de um grupo. Composto no servidor. */
+    context_label: string;
+    class_group_label: string | null;
     school_class: {
         ulid: string;
         label: string;
@@ -188,7 +191,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <Head :title="`${lesson.school_class.label} — Sumário`" />
+    <Head :title="`${lesson.context_label} — Sumário`" />
 
     <main class="mx-auto w-full max-w-3xl space-y-6 p-4 pb-28 sm:p-6 sm:pb-8">
         <Button as-child variant="ghost" class="-ml-3 min-h-11">
@@ -200,7 +203,7 @@ onBeforeUnmount(() => {
 
         <div class="space-y-3">
             <div class="flex flex-wrap items-start justify-between gap-3">
-                <Heading :title="lesson.school_class.label" :description="lesson.school_class.subject" />
+                <Heading :title="lesson.context_label" :description="lesson.school_class.subject" />
                 <Badge variant="secondary" :class="statusToneClasses(lesson.status)">{{ lesson.status_label }}</Badge>
             </div>
 

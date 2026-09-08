@@ -37,7 +37,7 @@ class LessonController extends Controller implements HasMiddleware
     public function show(Lesson $lesson): Response
     {
         Gate::authorize('view', $lesson);
-        $lesson->load(['schoolClass.subject', 'summary']);
+        $lesson->load(['schoolClass.subject', 'classGroup', 'summary']);
 
         return Inertia::render('lessons/Show', [
             'lesson' => [
@@ -46,6 +46,10 @@ class LessonController extends Controller implements HasMiddleware
                 'ends_at' => $lesson->ends_at?->toIso8601String(),
                 'status' => $lesson->status->value,
                 'status_label' => $this->statusLabel($lesson->status),
+                // «8.º F» ou «8.º F · T1» — composto no servidor para que o
+                // título, o cabeçalho e o `<Head>` digam todos a mesma coisa.
+                'context_label' => $lesson->contextLabel(),
+                'class_group_label' => $lesson->classGroup?->label,
                 'school_class' => [
                     'ulid' => $lesson->schoolClass->ulid,
                     'label' => $lesson->schoolClass->label,
@@ -89,6 +93,23 @@ class LessonController extends Controller implements HasMiddleware
      * CURRENT lesson's still-open, not-yet-saved form. Nothing is persisted
      * here, and nothing here links the two lessons afterwards — once copied,
      * it is just text the teacher can edit or overwrite like anything else.
+     *
+     * DO MESMO GRUPO, E DE MAIS NENHUM. Numa turma desdobrada, T1 e T2 são
+     * duas sequências pedagógicas distintas que avançam a ritmos diferentes: o
+     * anterior de «8.º F · T1» é a aula anterior de T1, e o anterior da turma
+     * inteira é a aula anterior da turma inteira. Oferecer o sumário de T2 a
+     * quem está a escrever o de T1 é oferecer matéria que aquele grupo não deu
+     * — e como isto pré-preenche um campo que o professor pode gravar sem
+     * reler, um engano destes escreve-se sozinho no registo da turma.
+     *
+     * SEM RECURSO A OUTRO GRUPO quando não há anterior do mesmo. A resposta é
+     * a mesma que numa primeira aula do ano — «não há sumário anterior» —, e
+     * não o de outro grupo por não haver melhor. Uma sugestão errada custa
+     * mais do que sugestão nenhuma.
+     *
+     * A comparação é com `class_group_id` da PRÓPRIA aula (o instantâneo) e
+     * não com o do tempo do horário que a gerou: é o grupo que a aula teve, e
+     * é esse que continua verdadeiro depois de o horário ser revisto.
      */
     public function previousSummary(Lesson $lesson): JsonResponse
     {
@@ -96,6 +117,9 @@ class LessonController extends Controller implements HasMiddleware
 
         $previous = Lesson::query()
             ->where('class_id', $lesson->class_id)
+            ->where(fn ($query) => $lesson->class_group_id === null
+                ? $query->whereNull('class_group_id')
+                : $query->where('class_group_id', $lesson->class_group_id))
             ->where('starts_at', '<', $lesson->starts_at)
             ->whereHas('summary')
             ->with('summary')

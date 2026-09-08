@@ -25,7 +25,12 @@ final class WeeklyLessonsQuery
             ->whereHas('schoolClass', fn ($query) => $query
                 ->where('academic_year_id', $academicYear->getKey())
                 ->whereHas('teachers', fn ($teachers) => $teachers->whereKey($teacher->getKey())))
+            // `classGroup` carregado com a lista inteira, e nunca lido por
+            // aula: o cartão da semana mostra o rótulo em cada linha, e uma
+            // consulta por linha faria de uma semana cheia trinta idas à base
+            // de dados só para escrever «T1» trinta vezes.
             ->with('schoolClass.subject')
+            ->with('classGroup')
             ->with([
                 'summary' => fn (Relation $query) => $query->select([
                     'id', 'lesson_id', DB::raw('SUBSTR(content, 1, 180) as content_excerpt'),
@@ -41,6 +46,12 @@ final class WeeklyLessonsQuery
                     'starts_at' => $lesson->starts_at->toIso8601String(),
                     'ends_at' => $lesson->ends_at?->toIso8601String(),
                     'school_class' => ['ulid' => $lesson->schoolClass->ulid, 'label' => $lesson->schoolClass->label],
+                    // «8.º F» ou «8.º F · T1», composto no servidor
+                    // (Lesson::contextLabel()) para que o cartão da semana, o
+                    // cabeçalho do sumário e o `<Head>` não possam divergir no
+                    // separador que usam.
+                    'context_label' => $lesson->contextLabel(),
+                    'class_group_label' => $lesson->classGroup?->label,
                     'subject' => $lesson->schoolClass->subject->name,
                     'status' => $lesson->status->value,
                     'status_label' => $this->statusLabel($lesson->status),

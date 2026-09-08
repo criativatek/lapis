@@ -16,12 +16,28 @@ export type RecurringLessonSlot = {
     starts_on: string | null;
     ends_on: string | null;
     already_in_vigor: boolean;
+    /** `null` = turma inteira. É o que todos os tempos já existentes dizem. */
+    class_group_id: number | null;
+    class_group_label: string | null;
 };
 
 const props = defineProps<{
     classId: number;
     slots: RecurringLessonSlot[];
+    /**
+     * Os grupos da turma. Lista vazia numa turma que não está desdobrada — e
+     * nesse caso o campo «Participantes» não chega a aparecer: uma escolha com
+     * uma só opção é ruído (§12 do briefing).
+     */
+    groups: { ulid: string; id: number; label: string; archived: boolean }[];
 }>();
+
+// Só os grupos que ainda aceitam trabalho novo. Um grupo arquivado continua
+// legível nos tempos que já o usam — a lista mostra o rótulo que o servidor
+// mandou —, mas não pode ser ESCOLHIDO para um tempo novo nem numa revisão.
+const selectableGroups = computed(() =>
+    props.groups.filter((group) => !group.archived),
+);
 
 const weekdays = [
     'segunda-feira',
@@ -33,8 +49,18 @@ const weekdays = [
     'domingo',
 ];
 const editingUlid = ref<string | null>(null);
-const form = useForm({
+const form = useForm<{
+    class_id: number;
+    class_group_id: number | null;
+    day_of_week: number;
+    starts_at: string;
+    ends_at: string;
+    starts_on: string;
+    ends_on: string;
+    effective_from: string;
+}>({
     class_id: props.classId,
+    class_group_id: null,
     day_of_week: 1,
     starts_at: '',
     ends_at: '',
@@ -64,6 +90,7 @@ function resetForm(): void {
     editingUlid.value = null;
     form.reset();
     form.class_id = props.classId;
+    form.class_group_id = null;
     form.effective_from = '';
     form.clearErrors();
 }
@@ -71,6 +98,7 @@ function resetForm(): void {
 function edit(slot: RecurringLessonSlot): void {
     editingUlid.value = slot.ulid;
     form.class_id = props.classId;
+    form.class_group_id = slot.class_group_id;
     form.day_of_week = slot.day_of_week;
     form.starts_at = slot.starts_at;
     form.ends_at = slot.ends_at;
@@ -96,6 +124,7 @@ function submit(): void {
             ? data
             : {
                   class_id: data.class_id,
+                  class_group_id: data.class_group_id,
                   day_of_week: data.day_of_week,
                   starts_at: data.starts_at,
                   ends_at: data.ends_at,
@@ -152,6 +181,11 @@ function remove(slot: RecurringLessonSlot): void {
                     <p class="font-medium">
                         {{ capitalizeFirst(weekdays[slot.day_of_week - 1]) }} ·
                         {{ slot.starts_at }}–{{ slot.ends_at }}
+                        <span
+                            v-if="slot.class_group_label"
+                            class="ml-1 rounded-full bg-secondary px-2 py-0.5 text-xs font-normal"
+                            >{{ slot.class_group_label }}</span
+                        >
                     </p>
                     <p
                         v-if="slot.starts_on || slot.ends_on"
@@ -267,6 +301,47 @@ function remove(slot: RecurringLessonSlot): void {
                     /><InputError :message="form.errors.ends_on" />
                 </div>
             </div>
+            <!--
+                «Participantes» só existe numa turma desdobrada. Numa turma sem
+                grupos o campo não aparece de todo — não há escolha nenhuma a
+                fazer, e um seletor com uma opção só seria ruído que sugeriria
+                uma configuração em falta.
+            -->
+            <fieldset v-if="selectableGroups.length" class="grid gap-1.5">
+                <legend class="mb-1.5 text-sm font-medium">Participantes</legend>
+                <label
+                    class="flex min-h-10 items-center gap-2 text-sm"
+                    :for="`slot-participants-all`"
+                >
+                    <input
+                        id="slot-participants-all"
+                        v-model="form.class_group_id"
+                        type="radio"
+                        name="slot-participants"
+                        :value="null"
+                        class="size-4"
+                    />
+                    Turma inteira
+                </label>
+                <label
+                    v-for="group in selectableGroups"
+                    :key="group.ulid"
+                    class="flex min-h-10 items-center gap-2 text-sm"
+                    :for="`slot-participants-${group.ulid}`"
+                >
+                    <input
+                        :id="`slot-participants-${group.ulid}`"
+                        v-model="form.class_group_id"
+                        type="radio"
+                        name="slot-participants"
+                        :value="group.id"
+                        class="size-4"
+                    />
+                    {{ group.label }}
+                </label>
+                <InputError :message="form.errors.class_group_id" />
+            </fieldset>
+
             <div
                 v-if="editingSlotAlreadyInVigor"
                 class="grid gap-1.5 rounded-md border border-dashed p-3"

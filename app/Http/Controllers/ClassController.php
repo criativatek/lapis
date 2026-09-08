@@ -6,6 +6,7 @@ use App\Http\Requests\ClassRequest;
 use App\Models\AcademicYear;
 use App\Models\AssessmentProfile;
 use App\Models\AssessmentProfileVersion;
+use App\Models\ClassGroup;
 use App\Models\Classification;
 use App\Models\ClassStatus;
 use App\Models\Enrollment;
@@ -16,6 +17,7 @@ use App\Models\SchoolClass;
 use App\Models\Subject;
 use App\Models\User;
 use App\Rules\BelongsToCurrentOrganization;
+use App\Services\Classes\ClassRoster;
 use App\Services\ClassService;
 use App\Services\EnrollmentHistory;
 use App\Support\Entitlements\Entitlements;
@@ -104,7 +106,7 @@ class ClassController extends Controller
         return to_route('classes.show', $class->ulid);
     }
 
-    public function show(SchoolClass $class, EnrollmentHistory $history): Response
+    public function show(SchoolClass $class, EnrollmentHistory $history, ClassRoster $roster): Response
     {
         Gate::authorize('view', $class);
 
@@ -114,6 +116,22 @@ class ClassController extends Controller
         $today = CarbonImmutable::now($timezone)->toDateString();
 
         $enrollmentsWithHistory = $history->idsWithHistoryIn($class);
+
+        // Os grupos e a sua composição DE HOJE, em duas consultas para a turma
+        // inteira — nunca uma por grupo nem uma por aluno (§ ClassRoster).
+        // `withCount('memberships')` daria o número errado de propósito: contaria
+        // também as janelas já fechadas, e «T1 (14)» num grupo de oito alunos é
+        // pior do que nenhum número.
+        $hasLessonsModule = $this->entitlements->allows('lessons');
+        $classGroups = $hasLessonsModule ? $class->classGroups()->get() : collect();
+        $memberCounts = $hasLessonsModule ? $roster->memberCountsOn($class, $today) : [];
+        $groupByEnrollment = $hasLessonsModule
+            ? $roster->groupIdByEnrollmentOn(
+                array_values(array_map(intval(...), $class->activeEnrollments()->pluck('id')->all())),
+                $today,
+            )
+            : [];
+        $groupLabelsById = $classGroups->pluck('label', 'id');
 
         return Inertia::render('classes/Show', [
             'schoolClass' => [
@@ -142,7 +160,7 @@ class ClassController extends Controller
             // row in place for Lessons already materialized from it to keep
             // pointing at, and without this filter it would reappear here
             // mixed in with the version that replaced it.
-            'recurringLessonSlots' => $this->entitlements->allows('lessons')
+            'recurringLessonSlots' => $hasLessonsModule
                 ? $class->recurringLessonSlots()
                     ->where(fn (Builder $query) => $query->whereNull('ends_on')->orWhereDate('ends_on', '>=', $today))
                     ->orderBy('day_of_week')->orderBy('starts_at')->get()->map(
@@ -154,8 +172,30 @@ class ClassController extends Controller
                             'starts_on' => $slot->starts_on?->toDateString(),
                             'ends_on' => $slot->ends_on?->toDateString(),
                             'already_in_vigor' => $slot->isAlreadyInVigor($timezone),
+                            // NULL = turma inteira, e é o que todos os tempos já
+                            // existentes dizem. O id vai a par do rótulo porque o
+                            // seletor do editor de horário casa por id.
+                            'class_group_id' => $slot->class_group_id,
+                            'class_group_label' => $slot->class_group_id === null
+                                ? null
+                                : $groupLabelsById[$slot->class_group_id] ?? null,
                         ],
                     )->values()
+                : null,
+            // A secção «Grupos». `null` — e não uma lista vazia — quando o
+            // módulo das aulas não está no plano: é o mesmo sinal que
+            // `recurringLessonSlots` dá, e é o que faz a secção inteira não
+            // existir em vez de aparecer vazia a convidar a um clique que
+            // seria recusado no servidor.
+            'classGroups' => $hasLessonsModule
+                ? $classGroups->map(fn (ClassGroup $group) => [
+                    'ulid' => $group->ulid,
+                    'id' => $group->id,
+                    'label' => $group->label,
+                    'position' => $group->position,
+                    'archived' => $group->isArchived(),
+                    'members_count' => $memberCounts[$group->id] ?? 0,
+                ])->values()
                 : null,
             // Names come from the encrypted identity — shown to the class's own
             // teacher, who is authorized. The pseudonym is what leaves the app.
@@ -178,7 +218,17 @@ class ClassController extends Controller
             'students' => $class->activeEnrollments()->with('student.identity')->orderBy('class_number')->get()
                 ->map(fn (Enrollment $enrollment) => [
                     'ulid' => $enrollment->ulid,
+                    // O id numérico é o que a secção «Grupos» envia de volta:
+                    // a atribuição, a mudança e a permuta falam de inscrições,
+                    // e o `BelongsToCurrentOrganization` dos form requests
+                    // resolve-as pela chave primária. Já é assim que
+                    // `schoolClass.id` chega ao editor de horário.
+                    'id' => $enrollment->id,
                     'can_be_removed' => ! in_array($enrollment->getKey(), $enrollmentsWithHistory, true),
+                    // A que grupo pertence HOJE — null é «Sem grupo», que é um
+                    // estado legítimo e com nome, e não uma configuração por
+                    // acabar (§9 do briefing).
+                    'class_group_id' => $groupByEnrollment[$enrollment->id] ?? null,
                     'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
                     // So the edit dialog opens on an empty field instead of
                     // offering "(sem identidade)" as if it were a real name.
