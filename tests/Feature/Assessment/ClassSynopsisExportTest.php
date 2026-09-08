@@ -129,9 +129,9 @@ class ClassSynopsisExportTest extends TestCase
         // …e a conclusão que eles formam, com as duas metades do juízo.
         $this->assertContains('Média final (%)', $headers);
         $this->assertContains('Unidades contadas', $headers);
-        $this->assertContains('Proposta do Lapispro', $headers);
-        $this->assertContains('Decisão do professor', $headers);
-        $this->assertContains('Apreciação vigente', $headers);
+        $this->assertContains('Proposta final', $headers);
+        $this->assertContains('Decisão final', $headers);
+        $this->assertContains('Menção vigente', $headers);
 
         $text = $this->textOf($sheet);
         $this->assertStringContainsString('Oralidade', $text);
@@ -174,9 +174,9 @@ class ClassSynopsisExportTest extends TestCase
         // AS TRÊS COISAS, LADO A LADO: o que o Lapispro propôs, o que o
         // professor decidiu, e o que vale. Um ficheiro que só levasse a
         // vigente esconderia precisamente a informação que explica a decisão.
-        $this->assertSame('5', (string) $row[$columns['Proposta do Lapispro'] - 1]);
-        $this->assertSame('3', (string) $row[$columns['Decisão do professor'] - 1]);
-        $this->assertSame('3', (string) $row[$columns['Apreciação vigente'] - 1]);
+        $this->assertSame('5', (string) $row[$columns['Proposta final'] - 1]);
+        $this->assertSame('3', (string) $row[$columns['Decisão final'] - 1]);
+        $this->assertSame('3', (string) $row[$columns['Menção vigente'] - 1]);
         $this->assertSame('Decisão do professor', (string) $row[$columns['Origem'] - 1]);
 
         // E A MÉDIA NÃO SE MEXE por causa de uma decisão qualitativa.

@@ -364,11 +364,17 @@ class ClassSynopsisXlsxWriter
         foreach ($units as $unit) {
             $headers[] = (string) $unit['label'].' (%)';
         }
-        $headers[] = 'Média final (%)';
+        // OS MESMOS NOMES QUE O ECRÃ, e pela mesma razão: quem exporta o Quadro
+        // Síntese está a levar consigo o que acabou de ler, e dois vocabulários
+        // para as mesmas seis colunas obrigá-lo-iam a traduzir. «Proposta do
+        // Lapispro» e «Decisão do professor» continuam a ser as palavras da
+        // ORIGEM — e é na coluna «Origem» que elas vivem; os títulos dizem de
+        // que fase do ano se trata, que é a final (§29).
+        $headers[] = ReadingVocabulary::FINAL_AVERAGE.' (%)';
         $headers[] = 'Unidades contadas';
-        $headers[] = 'Proposta do Lapispro';
-        $headers[] = 'Decisão do professor';
-        $headers[] = 'Apreciação vigente';
+        $headers[] = 'Proposta final';
+        $headers[] = 'Decisão final';
+        $headers[] = 'Menção vigente';
         $headers[] = 'Origem';
 
         $this->headerRow($sheet, $headers, 1);
@@ -699,7 +705,10 @@ class ClassSynopsisXlsxWriter
             ['O que NÃO entra', 'As fotografias intercalares não entram, porque são leituras informativas a meio do caminho e não conclusões de unidade. O desempenho acumulado também não: é a outra leitura do ano e vive na folha seguinte.'],
             ['Os pesos', 'São os configurados em «Unidades formais que entram na avaliação contínua», acima. Sem pesos declarados, todas as unidades pesam o mesmo.'],
             ['Uma unidade sem resultado', 'Fica fora da média e do seu denominador. Não conta como zero — uma unidade que o aluno não viveu não é uma unidade em que ele tenha tido nada.'],
-            ['Apreciação vigente', 'A decisão do professor quando ela existe; a proposta do Lapispro quando não. Uma proposta que ninguém alterou VIGORA — não é uma pendência e não precisa de ser aprovada.'],
+            [ReadingVocabulary::FINAL_AVERAGE, ReadingVocabulary::FINAL_AVERAGE_EXPLANATION],
+            ['Proposta final', 'O nível que sai dessa média pela escala do perfil. É uma proposta do Lapispro: o sistema propõe, o professor decide.'],
+            ['Decisão final', 'O nível que o professor atribuiu ao domínio, quando ele se pronunciou. Fica vazia quando não o fez — e isso não é uma pendência.'],
+            ['Menção vigente', 'A que está a valer: a decisão final quando ela existe; a proposta final quando não. Uma proposta que ninguém alterou VIGORA — não precisa de ser aprovada.'],
         ]);
 
         $row = $this->block($sheet, $row, 'Como ler a folha «Desempenho acumulado»', [
