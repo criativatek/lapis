@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Head, router, useForm } from '@inertiajs/vue3';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { ArrowLeft } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import ContextualHelp from '@/components/ContextualHelp.vue';
 import FileInput from '@/components/FileInput.vue';
@@ -388,13 +389,29 @@ const limitError = computed(() => (form.errors as Record<string, string>).limit)
             </p>
 
             <div class="space-y-2">
-                <div class="flex items-center gap-3">
+                <div class="flex flex-wrap items-center gap-3">
                     <Button
                         type="button"
                         :disabled="form.processing || !!photosFile"
                         @click="submit"
                         >Confirmar importação</Button
                     >
+                    <!-- A OUTRA SAÍDA, e a razão desta fatia: até aqui só se
+                         podia confirmar, e quem trouxesse o ficheiro errado
+                         saía pelo botão «anterior» do browser. Mesmo padrão da
+                         pré-visualização do horário — mas um DELETE em vez de
+                         um link, porque sair daqui apaga mesmo a pasta
+                         temporária deste token. Não inscreve ninguém. -->
+                    <Button as-child variant="ghost" :disabled="form.processing">
+                        <Link
+                            :href="`/classes/${schoolClassUlid}/roster-imports/${token}`"
+                            method="delete"
+                            as="button"
+                            type="button"
+                        >
+                            <ArrowLeft class="size-4" /> Escolher outro ficheiro
+                        </Link>
+                    </Button>
                     <span class="text-sm text-muted-foreground">
                         {{ form.rows.filter((r) => r.include).length }} de
                         {{ form.rows.length }} serão inscritos.

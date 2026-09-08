@@ -445,6 +445,14 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::get('classes/{class}/roster-imports/{token}/photos/{index}', [RosterImportController::class, 'previewPhoto'])
             ->where(['token' => '[0-9a-fA-F-]{36}', 'index' => '[0-9]+'])
             ->name('classes.roster-imports.preview-photo');
+        // A SAÍDA DA PRÉ-VISUALIZAÇÃO — o «Escolher outro ficheiro» que só a
+        // importação do horário tinha. DELETE porque desiste mesmo de alguma
+        // coisa: a pasta temporária deste token, com as fotografias dos alunos
+        // lá dentro, deixa de existir no próprio pedido em vez de ficar à
+        // espera do prune agendado.
+        Route::delete('classes/{class}/roster-imports/{token}', [RosterImportController::class, 'discard'])
+            ->where('token', '[0-9a-fA-F-]{36}')
+            ->name('classes.roster-imports.discard');
 
         Route::get('students/{student}/photo', [StudentPhotoController::class, 'show'])->name('students.photo');
     });

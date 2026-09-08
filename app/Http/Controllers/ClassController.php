@@ -17,6 +17,7 @@ use App\Models\Subject;
 use App\Models\User;
 use App\Rules\BelongsToCurrentOrganization;
 use App\Services\ClassService;
+use App\Services\EnrollmentHistory;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Tenancy\CurrentOrganization;
 use Carbon\CarbonImmutable;
@@ -103,7 +104,7 @@ class ClassController extends Controller
         return to_route('classes.show', $class->ulid);
     }
 
-    public function show(SchoolClass $class): Response
+    public function show(SchoolClass $class, EnrollmentHistory $history): Response
     {
         Gate::authorize('view', $class);
 
@@ -111,6 +112,8 @@ class ClassController extends Controller
 
         $timezone = $this->currentOrganization->get()->timezone;
         $today = CarbonImmutable::now($timezone)->toDateString();
+
+        $enrollmentsWithHistory = $history->idsWithHistoryIn($class);
 
         return Inertia::render('classes/Show', [
             'schoolClass' => [
@@ -160,9 +163,22 @@ class ClassController extends Controller
             // moved class, cancelled or been excluded is not part of the group
             // a teacher works with today — and is not deleted either: they are
             // listed below, under their own heading (§4, §13).
+            // QUEM JÁ NÃO SE PODE REMOVER, dito antes de o professor tentar.
+            //
+            // Dez queries com um `IN` para a turma inteira — nunca uma por
+            // aluno (EnrollmentHistory::idsWithHistoryIn explica porquê). É
+            // barato o suficiente para caber aqui, e é o que evita que um
+            // professor carregue três vezes no mesmo botão sem perceber
+            // porque nada acontece, que foi o que aconteceu em produção.
+            //
+            // ISTO É APRESENTAÇÃO. A autoridade continua a ser
+            // EnrollmentController::destroy(), que faz a pergunta outra vez: um
+            // separador aberto há uma hora mostra o botão como estava e
+            // continua a não apagar nada (§8.2).
             'students' => $class->activeEnrollments()->with('student.identity')->orderBy('class_number')->get()
                 ->map(fn (Enrollment $enrollment) => [
                     'ulid' => $enrollment->ulid,
+                    'can_be_removed' => ! in_array($enrollment->getKey(), $enrollmentsWithHistory, true),
                     'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
                     // So the edit dialog opens on an empty field instead of
                     // offering "(sem identidade)" as if it were a real name.

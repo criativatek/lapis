@@ -12,6 +12,22 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@inertiajs/vue3', () => ({
     Head: defineComponent({ setup: (_, { slots }) => () => h('div', slots.default?.()) }),
+    // «Escolher outro ficheiro» é um <Link method="delete">. O duplo põe o
+    // destino e o método em atributos `data-*` para que um teste possa
+    // afirmar PARA ONDE vai e COM QUE MÉTODO — que é a diferença entre uma
+    // saída e uma confirmação.
+    Link: defineComponent({
+        props: {
+            href: { type: String, default: '' },
+            method: { type: String, default: 'get' },
+        },
+        setup: (props, { slots }) => () =>
+            h(
+                'a',
+                { 'data-href': props.href, 'data-method': props.method },
+                slots.default?.(),
+            ),
+    }),
     router: {
         post: vi.fn(),
     },
@@ -83,6 +99,64 @@ describe('roster-imports/Preview — reactivation quota (limit) error', () => {
 
         expect(wrapper.text()).toContain(
             'Atingiu o limite de 300 alunos ativos do seu plano. Os dados existentes são mantidos — para inscrever outro, reduza primeiro o número de alunos ativos.',
+        );
+    });
+});
+
+/**
+ * A SAÍDA DA PRÉ-VISUALIZAÇÃO.
+ *
+ * Este ecrã só sabia confirmar: quem trouxesse o ficheiro errado saía pelo
+ * botão «anterior» do browser, porque nada nesta página o levava de volta. A
+ * pré-visualização do horário já tinha «Escolher outro ficheiro»; esta passa a
+ * ter o mesmo, e a apagar mesmo o que ficou por confirmar.
+ */
+describe('roster-imports/Preview — a saída dentro da aplicação', () => {
+    it('offers a way out that is not the browser back button', () => {
+        const wrapper = mountPage();
+
+        expect(wrapper.text()).toContain('Escolher outro ficheiro');
+    });
+
+    it('points that way out at this import, as a delete', () => {
+        const exit = mountPage()
+            .findAll('a')
+            .find((link) => link.text().includes('Escolher outro ficheiro'));
+
+        expect(exit).toBeDefined();
+        // Sem o token não se saberia o que apagar; sem o DELETE seria uma
+        // navegação que deixava as fotografias no disco.
+        expect(exit!.attributes('data-href')).toBe(
+            '/classes/class-1/roster-imports/token-1',
+        );
+        expect(exit!.attributes('data-method')).toBe('delete');
+    });
+
+    it('never confirms the import on the way out', () => {
+        const wrapper = mountPage();
+
+        wrapper
+            .findAll('a')
+            .find((link) => link.text().includes('Escolher outro ficheiro'))!
+            .trigger('click');
+
+        // Sair não é confirmar: o POST de confirmação não é feito.
+        expect(confirmForm().post).not.toHaveBeenCalled();
+    });
+
+    it('leaves the confirmation button working', () => {
+        const wrapper = mountPage();
+
+        const confirm = wrapper
+            .findAll('button')
+            .find((button) => button.text().includes('Confirmar importação'));
+
+        expect(confirm).toBeDefined();
+
+        confirm!.trigger('click');
+
+        expect(confirmForm().post).toHaveBeenCalledWith(
+            '/classes/class-1/roster-imports/token-1/confirm',
         );
     });
 });

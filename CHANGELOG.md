@@ -25,6 +25,46 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.138.2] — 2026-09-08
+
+Dois pontos sem saída nos fluxos de turma. Remover um aluno com história deixa
+de dar erro, e a pré-visualização da importação passa a ter volta. Nenhum dado
+muda de sítio e nenhuma regra de avaliação é tocada.
+
+### Corrigido
+
+- **Remover um aluno que já tem registos deixou de rebentar.** Todas as chaves
+  estrangeiras que chegam a uma inscrição são RESTRICT de propósito — uma
+  inscrição é o eixo de tudo o que se avalia, e apagá-la levaria a história
+  atrás. Só que a aplicação não sabia disso antes de tentar: a base de dados
+  recusava, a recusa subia como erro genérico, e em produção alguém carregou
+  três vezes no mesmo botão sem perceber porquê. A pergunta passa a ser feita
+  **antes** do apagamento, por `EnrollmentHistory`, que conhece as dez relações
+  de uma vez só. Uma inscrição enganada, sobre a qual ainda ninguém escreveu
+  nada, continua a apagar-se como sempre; uma com história é recusada com uma
+  frase que diz o que lá está — «já tem avaliações registadas e registos nesta
+  turma. Estes dados são preservados.» **Nada é apagado em cascata para o botão
+  poder funcionar**, e a mensagem não manda o professor executar nenhuma ação
+  que a aplicação não tenha: não existe hoje forma manual de marcar uma
+  inscrição como transferida — esse estado só é escrito ao importar a relação de
+  turma da escola —, por isso a mensagem explica e cala-se.
+- **A pauta da turma diz quem já não se pode remover, antes de se tentar.** O
+  botão fica visível e desativado, com a razão no tooltip, em vez de desaparecer
+  e deixar o professor à procura dele. É apresentação: quem recusa continua a
+  ser o servidor, que volta a fazer a pergunta — um separador aberto há uma hora
+  mostra o botão como estava e continua a não apagar nada. Custa dez consultas
+  por turma, nunca uma por aluno.
+- **A pré-visualização da importação de alunos ganhou saída.** Tinha um único
+  botão, «Confirmar importação»: quem lá chegasse com o ficheiro errado — do ano
+  passado, da turma ao lado — só saía pelo «anterior» do browser, que é um
+  mecanismo do browser e não da aplicação. Passa a ter «Escolher outro
+  ficheiro», o mesmo que a pré-visualização do horário já tinha, e que devolve o
+  professor ao diálogo de carregamento com o ficheiro por escolher. Não inscreve
+  ninguém. E desiste mesmo: a pasta temporária daquela importação, com as
+  fotografias dos alunos que lá estivessem, é apagada no próprio pedido em vez
+  de ficar à espera do prune agendado — que continua a fazer falta para quem
+  simplesmente fecha o separador.
+
 ## [0.138.1] — 2026-09-08
 
 A conclusão do ano passa a ter um sítio só, e o ecrã das classificações deixa

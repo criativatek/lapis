@@ -132,3 +132,20 @@ descobertas, para não misturar frentes. Cada uma precisa da sua própria fatia.
   todos os hashes já gravados e obriga a decidir o que fazer com eles.
   Enquanto não for tratado, **`isIntact()` não serve para detetar adulteração** e
   não deve ser usado como se servisse.
+
+- **Uma inscrição não se pode marcar como transferida à mão.** `EnrollmentStatus`
+  distingue `active`, `transferred_out`, `left` e `concluded`, e
+  `EnrollmentStatusReason` guarda o porquê («TR», «MT», «AM», «EF») — mas o único
+  caminho que escreve essas colunas é a importação da relação de turma
+  (`RosterImportController` → `StudentEnrollmentService::fillFromRoster()`). Não
+  há ecrã, botão ou rota que o professor possa usar para dizer «este aluno saiu»
+  sem ter o ficheiro da escola à mão.
+
+  Encontrado ao dar mensagem legível à remoção bloqueada (0.138.2). A mensagem
+  ficou deliberadamente **sem sugestão de alternativa**: mandar «marcar como
+  transferido» seria mandar clicar num botão que não existe, e
+  `EnrollmentRemovalTest` tem um teste que impede alguém de o acrescentar sem
+  primeiro construir a ação. A fatia que falta é essa ação — provavelmente
+  dentro do diálogo de edição do aluno, com estado, motivo e `left_on`, e com o
+  cuidado de não a deixar parecer uma decisão pedagógica: nenhum destes estados
+  é uma nota, e nada no motor de avaliação os lê (§9, §27).

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Enrollment;
 use App\Models\SchoolClass;
+use App\Services\EnrollmentHistory;
 use App\Services\StudentEnrollmentService;
 use Closure;
 use Illuminate\Http\RedirectResponse;
@@ -125,14 +126,48 @@ class EnrollmentController extends Controller
         return back();
     }
 
-    public function destroy(SchoolClass $class, Enrollment $enrollment): RedirectResponse
+    /**
+     * Remove uma inscrição enganada — e SÓ uma inscrição enganada.
+     *
+     * A pergunta é feita ANTES do DELETE, e não apanhada depois. Todas as
+     * chaves estrangeiras que chegam a `enrollments` são RESTRICT de propósito
+     * (§13.3): a base de dados recusava, a recusa subia como QueryException e o
+     * professor via um erro genérico — em produção, três vezes seguidas, porque
+     * nada lhe dizia porquê. Uma restrição relacional legítima é uma condição
+     * de negócio conhecida, não uma avaria, e `EnrollmentHistory` sabe
+     * antecipá-la; apanhar a QueryException a jusante trataria as duas como a
+     * mesma coisa e continuaria a esconder a razão.
+     *
+     * O QUE EXISTE FICA. Nada é apagado em cascata e nada é reescrito: a
+     * inscrição bloqueada continua exatamente como estava, com a sua história
+     * inteira, e o professor recebe uma frase que diz o que lá está.
+     */
+    public function destroy(SchoolClass $class, Enrollment $enrollment, EnrollmentHistory $history): RedirectResponse
     {
         Gate::authorize('update', $class);
 
         abort_unless($enrollment->class_id === $class->id, 404);
 
-        // Removing a mistaken enrollment. Once results exist this needs to become
-        // a status change (left/transferred), not a delete — the FK is RESTRICT.
+        $blocking = $history->blocking($enrollment);
+
+        if ($blocking !== []) {
+            // Um redirecionamento normal, como qualquer outra recusa desta
+            // aplicação — NÃO um código de estado escolhido a dedo. O 409 seria
+            // a semântica HTTP certa e é exatamente por isso que não se usa: o
+            // Inertia reserva-o para dizer ao cliente que a versão dos assets
+            // mudou, e devolvê-lo aqui faria a página recarregar por inteiro em
+            // vez de mostrar a mensagem. O professor fica onde estava, com o
+            // aluno ainda na pauta.
+            Inertia::flash('toast', [
+                'type' => 'error',
+                // «este aluno» quando não há identidade — e não o marcador
+                // «(sem identidade)» do ecrã, que numa frase não se leria.
+                'message' => $history->explain($enrollment->student->identity->display_name ?? 'este aluno', $blocking),
+            ]);
+
+            return back();
+        }
+
         $enrollment->delete();
 
         return back();

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { FileUp, Footprints, Pencil, Trash2, UserPlus } from '@lucide/vue';
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import FileInput from '@/components/FileInput.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
@@ -36,6 +36,13 @@ type Student = {
     is_late_entry: boolean;
     status_label: string;
     photo_url: string | null;
+    /**
+     * Falso quando já existe história pedagógica presa a esta inscrição —
+     * avaliações, classificações, registos, medidas. Serve para explicar o
+     * botão, nunca para autorizar o que quer que seja: quem recusa é
+     * EnrollmentController::destroy(), que volta a perguntar ao servidor.
+     */
+    can_be_removed: boolean;
 };
 
 type ProfileOption = { version_id: number; label: string };
@@ -298,6 +305,23 @@ function openImportDialog(): void {
     importForm.clearErrors();
     importDialogOpen.value = true;
 }
+
+/**
+ * «Escolher outro ficheiro», visto deste lado.
+ *
+ * Quem desiste da pré-visualização volta ao passo de onde saiu — o diálogo de
+ * carregamento — e não apenas à turma com o botão algures no ecrã. O `?importar`
+ * é apagado do URL a seguir, para que uma atualização da página não reabra um
+ * diálogo que o professor entretanto fechou.
+ */
+onMounted(() => {
+    if (!new URL(window.location.href).searchParams.has('importar')) {
+        return;
+    }
+
+    openImportDialog();
+    window.history.replaceState({}, '', window.location.pathname);
+});
 
 function onRosterFileChange(event: Event): void {
     importForm.roster = (event.target as HTMLInputElement).files?.[0] ?? null;
@@ -635,12 +659,26 @@ function submitPhotos(): void {
                                 >
                                     <Pencil class="size-4" />
                                 </Button>
+                                <!-- Desativado, e não escondido: um botão que
+                                     desaparece deixa o professor a procurá-lo.
+                                     O `title` diz porquê, e o `aria-label`
+                                     leva a mesma razão a quem não vê o
+                                     tooltip. -->
                                 <Button
                                     variant="ghost"
                                     size="icon"
                                     class="size-11"
-                                    :aria-label="`Remover ${student.name} da turma`"
-                                    title="Remover"
+                                    :disabled="!student.can_be_removed"
+                                    :aria-label="
+                                        student.can_be_removed
+                                            ? `Remover ${student.name} da turma`
+                                            : `${student.name} não pode ser removido: já tem registos pedagógicos nesta turma`
+                                    "
+                                    :title="
+                                        student.can_be_removed
+                                            ? 'Remover'
+                                            : 'Já tem registos pedagógicos nesta turma — os dados são preservados'
+                                    "
                                     @click="remove(student)"
                                 >
                                     <Trash2 class="size-4" />

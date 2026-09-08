@@ -22,6 +22,9 @@ vi.mock('@inertiajs/vue3', () => ({
         delete: vi.fn(),
         get: vi.fn(),
     },
+    // Lido por `canFollowUp`, que só é avaliado quando a pauta tem alguém —
+    // daí só fazer falta agora que há testes com alunos na turma.
+    usePage: () => ({ props: { modules: [], readOnlyModules: [] } }),
     useForm: (data: Record<string, unknown>) => {
         const form = reactive({
             ...data,
@@ -128,5 +131,106 @@ describe('classes/Show — enrollment quota (limit) error', () => {
         await wrapper.vm.$nextTick();
 
         expect(wrapper.text()).not.toContain('Erro estranho de outro formulário.');
+    });
+});
+
+function student(overrides: Record<string, unknown> = {}) {
+    return {
+        ulid: 'enrollment-1',
+        name: 'Maria Teste',
+        has_identity: true,
+        pseudonym: 'ALU-AAAA',
+        class_number: 1,
+        process_number: null,
+        enrolled_on: '2026-09-14',
+        is_late_entry: false,
+        status_label: 'Inscrito',
+        photo_url: null,
+        can_be_removed: true,
+        ...overrides,
+    };
+}
+
+function removeButton(wrapper: VueWrapper, name: string) {
+    return wrapper
+        .findAll('button')
+        .find((button) =>
+            (button.attributes('aria-label') ?? '').startsWith(`Remover ${name}`) ||
+            (button.attributes('aria-label') ?? '').startsWith(`${name} não pode`),
+        );
+}
+
+/**
+ * REMOVER UM ALUNO, DITO ANTES DA TENTATIVA.
+ *
+ * O servidor continua a ser quem recusa (`EnrollmentController::destroy`).
+ * Isto é o que a página consegue explicar de antemão, para que ninguém carregue
+ * três vezes no mesmo botão sem perceber porquê — que foi o relato de produção.
+ */
+describe('classes/Show — remover um aluno com história', () => {
+    it('keeps the remove button usable for a student with nothing attached', () => {
+        const wrapper = mount(Show, {
+            props: { ...baseProps(), students: [student()] },
+        });
+        wrappers.push(wrapper);
+
+        const button = removeButton(wrapper, 'Maria Teste');
+
+        expect(button).toBeDefined();
+        expect(button!.attributes('disabled')).toBeUndefined();
+    });
+
+    it('disables it — without hiding it — once there is history', () => {
+        const wrapper = mount(Show, {
+            props: {
+                ...baseProps(),
+                students: [student({ can_be_removed: false })],
+            },
+        });
+        wrappers.push(wrapper);
+
+        const button = removeButton(wrapper, 'Maria Teste');
+
+        // ESCONDER SERIA PIOR: o professor ficava à procura de um botão que
+        // não estava lá. Fica visível, desativado, e diz porquê.
+        expect(button).toBeDefined();
+        expect(button!.attributes('disabled')).toBeDefined();
+        expect(button!.attributes('title')).toContain('registos pedagógicos');
+        expect(button!.attributes('aria-label')).toContain('não pode ser removido');
+    });
+});
+
+/**
+ * «Escolher outro ficheiro», visto deste lado: quem desiste da
+ * pré-visualização volta ao passo de carregamento, e não apenas à turma.
+ */
+describe('classes/Show — o regresso da pré-visualização da importação', () => {
+    afterEach(() => {
+        window.history.replaceState({}, '', '/');
+    });
+
+    // O diálogo é teleportado para o <body>, fora da árvore do componente —
+    // daí a leitura ser feita ao documento e não ao wrapper.
+    const dialogText = () => document.body.textContent ?? '';
+
+    it('leaves the import dialog closed on a normal visit', async () => {
+        window.history.replaceState({}, '', '/classes/class-1');
+
+        const wrapper = mountPage();
+        await wrapper.vm.$nextTick();
+
+        expect(dialogText()).not.toContain('Importar lista de turma');
+    });
+
+    it('reopens the upload dialog when coming back from a discarded import', async () => {
+        window.history.replaceState({}, '', '/classes/class-1?importar=1');
+
+        const wrapper = mountPage();
+        await wrapper.vm.$nextTick();
+
+        expect(dialogText()).toContain('Importar lista de turma');
+        // E o marcador sai do URL, para que uma atualização da página não
+        // reabra um diálogo que o professor entretanto fechou.
+        expect(window.location.search).toBe('');
     });
 });

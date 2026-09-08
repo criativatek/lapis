@@ -10,10 +10,11 @@ use Illuminate\Support\Facades\Storage;
  * Deletes abandoned roster-import temp folders
  * (storage/app/private/roster-imports/{token}/) left behind when a teacher
  * uploads a roster (and photos), sees the preview, and never confirms —
- * closes the tab, navigates away, gives up. There is no "cancel" action in
- * the UI, so RosterImportTempStorage::delete() only ever runs from
- * RosterImportController::confirm()'s cleanup; without this command those
- * folders — containing real student photos — would never be removed.
+ * closes the tab, navigates away, gives up. DESISTIR DE PROPÓSITO já tem saída
+ * própria — «Escolher outro ficheiro», RosterImportController::discard() —, que
+ * apaga a pasta no próprio pedido. O que continua a não avisar ninguém é o
+ * separador que se fecha, e é para esse que este comando existe: sem ele,
+ * pastas com fotografias reais de alunos ficavam para sempre.
  * Matches the design's own promise ("o ficheiro carregado não é retido
  * indefinidamente", docs/superpowers/specs/2026-07-28-roster-import-design.md)
  * and RosterImportTempStorage's own docblock ("deleted in full once the

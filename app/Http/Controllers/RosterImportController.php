@@ -210,6 +210,40 @@ class RosterImportController extends Controller
         ]);
     }
 
+    /**
+     * DESISTIR DA IMPORTAÇÃO — a saída que faltava.
+     *
+     * A pré-visualização só sabia confirmar. Quem chegasse aqui com o ficheiro
+     * errado tinha um único caminho de volta: o botão «anterior» do browser, um
+     * mecanismo do browser e não da aplicação, que reenvia o POST original
+     * conforme o que o professor responder à caixa que o próprio browser
+     * levanta. Um passo com uma só saída não é um passo, é um beco.
+     *
+     * NÃO INSCREVE NINGUÉM E NÃO ESCREVE NADA. É o oposto de confirm(): o que
+     * faz é apagar — a pasta temporária deste token, com as fotografias que lá
+     * estivessem. O PruneRosterImportTempStorage continua a fazer falta (quem
+     * fecha o separador nunca passa por aqui), mas quem desiste de propósito
+     * deixa de ter fotografias de alunos à espera de um cron.
+     *
+     * O token nunca chega ao disco sem primeiro se provar desta turma: o
+     * `belongsToClass` é a mesma guarda de previewPhoto() e de confirm(), pela
+     * mesma razão — a permissão sobre a turma diz quem pode importar para ela,
+     * não de quem é uma pasta.
+     */
+    public function discard(SchoolClass $class, string $token): RedirectResponse
+    {
+        Gate::authorize('update', $class);
+
+        if ($this->tempStorage->belongsToClass($token, $class->id)) {
+            $this->tempStorage->delete($token);
+        }
+
+        // De volta ao passo de carregamento, não apenas à turma: `importar`
+        // reabre o diálogo de onde o ficheiro anterior saiu, para que escolher
+        // outro seja um clique e não uma caça ao botão.
+        return to_route('classes.show', ['class' => $class->ulid, 'importar' => 1]);
+    }
+
     public function previewPhoto(SchoolClass $class, string $token, int $index): Response
     {
         Gate::authorize('update', $class);
