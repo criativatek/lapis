@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
@@ -65,6 +66,35 @@ class Enrollment extends Model
         $query->where('status', EnrollmentStatus::Active);
     }
 
+    /**
+     * As inscrições que faziam parte da turma NAQUELE DIA.
+     *
+     * A pergunta datada, que `scopeActive()` acima não responde: `status` diz
+     * onde a inscrição está hoje, e `enrolled_on`/`left_on` dizem entre que
+     * dias ela esteve. Quem materializa a presença de uma aula de 12 de
+     * novembro precisa das duas coisas ao mesmo tempo.
+     *
+     * O PREDICADO JÁ EXISTIA, ESPALHADO. AssessmentSummaryQuery,
+     * BuildClassElements, ClassResultsCalculator e InstrumentCompleteness
+     * escrevem-no em memória, cada um por si, contra a data de aplicação de um
+     * elemento. Este scope é a mesma regra dita uma vez em SQL, para quem
+     * precisa dela como consulta; os quatro sítios da avaliação ficam
+     * exatamente como estão — nada aqui muda um único número de uma pauta.
+     *
+     * `whereDate` nos dois lados: são colunas `date` guardadas como
+     * «Y-m-d 00:00:00», e a comparação textual contra um limite «Y-m-d»
+     * perderia a inscrição que começa nesse mesmo dia.
+     *
+     * @param  Builder<Enrollment>  $query
+     */
+    public function scopeEnrolledOn(Builder $query, string $date): void
+    {
+        $query->whereDate('enrolled_on', '<=', $date)
+            ->where(fn (Builder $inner) => $inner
+                ->whereNull('left_on')
+                ->orWhereDate('left_on', '>=', $date));
+    }
+
     protected function casts(): array
     {
         return [
@@ -91,6 +121,14 @@ class Enrollment extends Model
     public function student(): BelongsTo
     {
         return $this->belongsTo(Student::class);
+    }
+
+    /**
+     * @return HasMany<ClassGroupMembership, $this>
+     */
+    public function classGroupMemberships(): HasMany
+    {
+        return $this->hasMany(ClassGroupMembership::class);
     }
 
     /**

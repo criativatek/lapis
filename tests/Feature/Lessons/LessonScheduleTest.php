@@ -487,6 +487,11 @@ class LessonScheduleTest extends TestCase
         ));
         $this->inTenant($this->organization, fn (): Lesson => Lesson::create([
             'class_id' => $schoolClass->id,
+            // Explícito: estas aulas são da TURMA INTEIRA. É o que o
+            // instantâneo de `class_group_id` guarda, e é o que estes
+            // casos comparam antes e depois de rever ou fechar o tempo
+            // do horário.
+            'class_group_id' => null,
             'recurring_lesson_slot_id' => $slot->id,
             'starts_at' => $today.' 09:30:00',
             'ends_at' => $today.' 10:20:00',
@@ -525,6 +530,11 @@ class LessonScheduleTest extends TestCase
         ));
         $lesson = $this->inTenant($this->organization, fn (): Lesson => Lesson::create([
             'class_id' => $schoolClass->id,
+            // Explícito: estas aulas são da TURMA INTEIRA. É o que o
+            // instantâneo de `class_group_id` guarda, e é o que estes
+            // casos comparam antes e depois de rever ou fechar o tempo
+            // do horário.
+            'class_group_id' => null,
             'recurring_lesson_slot_id' => $slot->id,
             'starts_at' => $today.' 09:30:00',
             'ends_at' => $today.' 10:20:00',
@@ -704,6 +714,11 @@ class LessonScheduleTest extends TestCase
         ));
         $lesson = $this->inTenant($this->organization, fn (): Lesson => Lesson::create([
             'class_id' => $schoolClass->id,
+            // Explícito: estas aulas são da TURMA INTEIRA. É o que o
+            // instantâneo de `class_group_id` guarda, e é o que estes
+            // casos comparam antes e depois de rever ou fechar o tempo
+            // do horário.
+            'class_group_id' => null,
             'recurring_lesson_slot_id' => $slot->id,
             'starts_at' => $today.' 09:30:00',
             'ends_at' => $today.' 10:20:00',
@@ -768,6 +783,11 @@ class LessonScheduleTest extends TestCase
         ));
         $lesson = $this->inTenant($this->organization, fn (): Lesson => Lesson::create([
             'class_id' => $schoolClass->id,
+            // Explícito: estas aulas são da TURMA INTEIRA. É o que o
+            // instantâneo de `class_group_id` guarda, e é o que estes
+            // casos comparam antes e depois de rever ou fechar o tempo
+            // do horário.
+            'class_group_id' => null,
             'recurring_lesson_slot_id' => $slot->id,
             'starts_at' => $startsOn.' 09:30:00',
             'ends_at' => $startsOn.' 10:20:00',

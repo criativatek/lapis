@@ -171,6 +171,20 @@ class SchoolClass extends Model
     }
 
     /**
+     * Os grupos em que esta turma se desdobra — todos, incluindo os
+     * arquivados, pela mesma razão que `enrollments()` devolve toda a
+     * relação de turma: um grupo arquivado continua a ser o que uma aula de
+     * novembro diz. Quem quer só os que ainda aceitam trabalho novo pede
+     * `->active()` (ClassGroup::scopeActive).
+     *
+     * @return HasMany<ClassGroup, $this>
+     */
+    public function classGroups(): HasMany
+    {
+        return $this->hasMany(ClassGroup::class, 'class_id')->orderBy('position')->orderBy('id');
+    }
+
+    /**
      * @return HasMany<Instrument, $this>
      */
     public function instruments(): HasMany

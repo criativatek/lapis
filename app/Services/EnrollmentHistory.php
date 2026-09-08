@@ -53,6 +53,36 @@ class EnrollmentHistory
     ];
 
     /**
+     * O QUE VAI COM A INSCRIÇÃO, em vez de a impedir de sair.
+     *
+     * A lista acima existe porque apagar aquelas linhas apagaria história
+     * pedagógica. Uma pertença a um grupo do horário não é isso: é uma
+     * arrumação organizativa, e não sobrevive a si própria — não existe «o T1
+     * do aluno que já não está na turma».
+     *
+     * E PÔ-LA NA LISTA DE CIMA CRIARIA UM BECO. Um aluno acrescentado por
+     * engano, marcado para T1 e ainda sem uma única avaliação deixaria de
+     * poder ser removido, para sempre, por causa de uma caixa que o professor
+     * marcou — e nem sequer tirá-lo do grupo o desbloquearia, porque a janela
+     * fechada continua a ser uma linha. É exatamente a irreversibilidade que
+     * esta aplicação tem por regra não introduzir.
+     *
+     * O QUE NÃO SE PERDE: o grupo com que cada AULA nasceu está guardado em
+     * `lessons.class_group_id`, na própria aula, e não aqui. Apagar estas
+     * linhas não altera uma única aula nem um único sumário.
+     *
+     * A chave estrangeira continua RESTRICT como todas as outras — a base de
+     * dados nunca apaga isto sozinha, às escondidas. Quem o apaga é
+     * EnrollmentController::destroy(), de propósito, na mesma transação, e só
+     * depois de `blocking()` ter respondido que não há história nenhuma.
+     *
+     * @var array<string, string>
+     */
+    protected const CLEARED_WITH_ENROLLMENT = [
+        'class_group_memberships' => 'pertenças a grupos da turma',
+    ];
+
+    /**
      * O que impede esta inscrição de ser removida, por palavras.
      *
      * Lista vazia significa «pode ser removida»: uma inscrição enganada, criada
@@ -87,6 +117,24 @@ class EnrollmentHistory
         }
 
         return array_values($found);
+    }
+
+    /**
+     * Apaga o que acompanha a inscrição, imediatamente antes de a apagar.
+     *
+     * SÓ É CHAMADO DEPOIS DE `blocking()` TER DEVOLVIDO VAZIO — é essa a
+     * pré-condição, e é o que faz disto uma limpeza e não uma perda: uma
+     * inscrição sem uma única avaliação, evidência, classificação ou
+     * relatório não tem história que estas linhas possam estar a guardar.
+     *
+     * `DB::table()` pela mesma razão que `blocking()`: a pergunta feita aqui
+     * é a mesma que a base de dados faria antes de recusar o DELETE.
+     */
+    public function clearAccompanying(Enrollment $enrollment): void
+    {
+        foreach (array_keys(self::CLEARED_WITH_ENROLLMENT) as $table) {
+            DB::table($table)->where('enrollment_id', $enrollment->getKey())->delete();
+        }
     }
 
     /**

@@ -3,6 +3,8 @@
 namespace Tests\Feature\Classes;
 
 use App\Models\AcademicYear;
+use App\Models\ClassGroup;
+use App\Models\ClassGroupMembership;
 use App\Models\Enrollment;
 use App\Models\EvidenceKind;
 use App\Models\EvidenceRecord;
@@ -264,8 +266,16 @@ class EnrollmentRemovalTest extends TestCase
         $connection = DB::connection();
         $schema = $connection->getDriverName() === 'mysql' ? $connection->getDatabaseName() : null;
 
-        $known = (fn (): array => array_keys(static::RELATIONS))
-            ->call(new EnrollmentHistory);
+        // AS DUAS LISTAS, E A SOMA TEM DE DAR TUDO. `RELATIONS` é o que
+        // BLOQUEIA a remoção; `CLEARED_WITH_ENROLLMENT` é o que SAI com ela.
+        // Uma tabela nova com um `enrollment_id` continua a ter de aparecer
+        // numa delas — o que este caso guarda é que ninguém a esquece, não
+        // que ela tenha de bloquear. Classificá-la é uma decisão, e é para
+        // ser tomada de propósito.
+        $known = (fn (): array => array_merge(
+            array_keys(static::RELATIONS),
+            array_keys(static::CLEARED_WITH_ENROLLMENT),
+        ))->call(new EnrollmentHistory);
 
         $pointingAtEnrollments = [];
 
@@ -287,6 +297,46 @@ class EnrollmentRemovalTest extends TestCase
             $pointingAtEnrollments,
             array_values(array_unique($known)),
             'Há uma tabela com chave estrangeira para `enrollments` que EnrollmentHistory não conhece.',
+        );
+    }
+
+    /**
+     * O caso que fecha o beco: um aluno acrescentado por engano e metido num
+     * grupo do horário continua a poder ser removido.
+     *
+     * Se as pertenças a grupos estivessem na lista que BLOQUEIA, marcar uma
+     * caixa numa secção de arrumação tornaria a inscrição indelével para
+     * sempre — e nem tirar o aluno do grupo a desbloquearia, porque a janela
+     * fechada continua a ser uma linha.
+     */
+    #[Test]
+    public function a_student_who_only_belongs_to_a_schedule_group_can_still_be_removed(): void
+    {
+        $class = $this->createClass();
+        $enrollment = $this->enroll($class, 'Rita Enganada');
+
+        app(CurrentOrganization::class)->runFor(
+            $this->user->personalOrganization(),
+            function () use ($class, $enrollment): void {
+                $group = ClassGroup::create(['class_id' => $class->id, 'label' => 'T1', 'position' => 0]);
+
+                ClassGroupMembership::create([
+                    'class_group_id' => $group->id,
+                    'enrollment_id' => $enrollment->id,
+                    'effective_from' => '2026-09-01',
+                    'effective_until' => null,
+                ]);
+            },
+        );
+
+        $this->actingAs($this->user)
+            ->delete("/classes/{$class->ulid}/students/{$enrollment->ulid}")
+            ->assertRedirect();
+
+        $this->assertNull(Enrollment::withoutGlobalScopes()->find($enrollment->id));
+        $this->assertSame(
+            0,
+            ClassGroupMembership::withoutGlobalScopes()->where('enrollment_id', $enrollment->id)->count(),
         );
     }
 

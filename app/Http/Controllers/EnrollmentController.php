@@ -9,6 +9,7 @@ use App\Services\StudentEnrollmentService;
 use Closure;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 
@@ -141,6 +142,11 @@ class EnrollmentController extends Controller
      * O QUE EXISTE FICA. Nada é apagado em cascata e nada é reescrito: a
      * inscrição bloqueada continua exatamente como estava, com a sua história
      * inteira, e o professor recebe uma frase que diz o que lá está.
+     *
+     * A ÚNICA COISA QUE SAI COM A INSCRIÇÃO — quando ela sai, isto é, quando
+     * não há história nenhuma a proteger — são as pertenças a grupos do
+     * horário, que são arrumação organizativa e não sobrevivem à inscrição.
+     * A razão por extenso está em EnrollmentHistory::CLEARED_WITH_ENROLLMENT.
      */
     public function destroy(SchoolClass $class, Enrollment $enrollment, EnrollmentHistory $history): RedirectResponse
     {
@@ -168,7 +174,15 @@ class EnrollmentController extends Controller
             return back();
         }
 
-        $enrollment->delete();
+        // O que acompanha a inscrição sai com ela, e na mesma transação: as
+        // pertenças a grupos do horário são arrumação organizativa e não
+        // história pedagógica (§ EnrollmentHistory::CLEARED_WITH_ENROLLMENT).
+        // Chegar aqui já significa que `blocking()` respondeu vazio — não há
+        // uma única avaliação, evidência ou classificação a proteger.
+        DB::transaction(function () use ($enrollment, $history): void {
+            $history->clearAccompanying($enrollment);
+            $enrollment->delete();
+        });
 
         return back();
     }
