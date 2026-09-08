@@ -212,6 +212,44 @@ async function withoutQuantitative(wrapper: VueWrapper): Promise<VueWrapper> {
     return wrapper;
 }
 
+/**
+ * A MESMA TURMA COM TRÊS PERÍODOS — porque nada nesta grelha pode saber quantas
+ * unidades um ano letivo tem (§2). Uma largura escrita à mão desalinharia todas
+ * as colunas à direita dela, e num quadro deste tamanho isso lê-se como o
+ * resultado de outro aluno.
+ */
+async function threePeriodsView(): Promise<VueWrapper> {
+    const base = props();
+    const periods = [
+        { id: 1, ulid: 'per-1', label: '1.º Período', sequence: 1 },
+        { id: 2, ulid: 'per-2', label: '2.º Período', sequence: 2 },
+        { id: 3, ulid: 'per-3', label: '3.º Período', sequence: 3 },
+    ];
+
+    const wrapper = mount(Summary, {
+        props: {
+            ...base,
+            progression: {
+                ...base.progression,
+                periods,
+                students: [
+                    {
+                        ...base.progression.students[0],
+                        periods: periods.map((period) =>
+                            periodCell(period.id, period.label, '70.000000', '68.000000'),
+                        ),
+                    },
+                ],
+            },
+        },
+        global: { stubs },
+    });
+
+    await wrapper.findAll('button[role="tab"]')[1].trigger('click');
+
+    return wrapper;
+}
+
 describe('Quadro Síntese · por domínio — os quatro blocos', () => {
     it('lê-se por blocos: os domínios, cada síntese, e a avaliação contínua final', async () => {
         const headings = (await domainsView()).findAll('thead tr:first-child th').map((cell) => cell.text().trim());
@@ -331,5 +369,84 @@ describe('Quadro Síntese · por domínio — a hierarquia do traço', () => {
         const wrapper = await domainsView();
 
         expect(wrapper.html()).toContain('border-l-2 border-l-border');
+    });
+});
+
+describe('Quadro Síntese · por domínio — três períodos', () => {
+    it('acrescenta uma unidade a cada domínio sem mexer no bloco final', async () => {
+        const wrapper = await threePeriodsView();
+        const blocks = wrapper.findAll('thead tr:first-child th').map((cell) => cell.text().trim());
+
+        expect(blocks).toEqual([
+            'Aluno',
+            'Resultados por domínio',
+            'Síntese · 1.º Período',
+            'Síntese · 2.º Período',
+            'Síntese · 3.º Período',
+            'Avaliação Contínua Final',
+        ]);
+
+        // Por domínio: 3 unidades + 2 evoluções + acumulado + menção = 7.
+        // No bloco final continuam a ser 2 por domínio, porque a conclusão do
+        // ano é uma só por muitas unidades que ele tenha.
+        const columns = wrapper.findAll('thead tr:nth-child(3) th').map((cell) => cell.text().trim());
+
+        expect(columns.filter((label) => label === '1.º Período')).toHaveLength(2);
+        expect(columns.filter((label) => label === 'Média final')).toHaveLength(3);
+        expect(columns.filter((label) => label === 'Menção final')).toHaveLength(2);
+    });
+
+    it('as larguras declaradas batem certo com as células que a linha tem', async () => {
+        const wrapper = await threePeriodsView();
+
+        const declared = wrapper
+            .findAll('thead tr:first-child th')
+            .slice(1)
+            .reduce((total, cell) => total + Number(cell.attributes('colspan') ?? 1), 0);
+
+        // UMA CÉLULA A MAIS OU A MENOS DESALINHA A TABELA INTEIRA, e num quadro
+        // desta largura isso lê-se como o resultado de outro aluno.
+        expect(wrapper.findAll('tbody tr:first-child td')).toHaveLength(declared);
+    });
+});
+
+describe('Quadro Síntese · por domínio — a grelha fecha certa', () => {
+    /** A soma dos `colspan` da linha dos grandes blocos, sem a coluna do aluno. */
+    function declaredWidth(wrapper: VueWrapper): number {
+        return wrapper
+            .findAll('thead tr:first-child th')
+            .slice(1)
+            .reduce((total, cell) => total + Number(cell.attributes('colspan') ?? 1), 0);
+    }
+
+    it('com os quantitativos ligados, o cabeçalho e a linha contam o mesmo', async () => {
+        const wrapper = await domainsView();
+
+        expect(wrapper.findAll('thead tr:nth-child(3) th')).toHaveLength(declaredWidth(wrapper));
+        expect(wrapper.findAll('tbody tr:first-child td')).toHaveLength(declaredWidth(wrapper));
+    });
+
+    it('e desligados também — a largura acompanha as colunas que saem', async () => {
+        const wrapper = await withoutQuantitative(await domainsView());
+
+        expect(wrapper.findAll('thead tr:nth-child(3) th')).toHaveLength(declaredWidth(wrapper));
+        expect(wrapper.findAll('tbody tr:first-child td')).toHaveLength(declaredWidth(wrapper));
+    });
+
+    it('os grupos do cabeçalho somam a largura do bloco a que pertencem', async () => {
+        const wrapper = await domainsView();
+        const blocks = wrapper.findAll('thead tr:first-child th').slice(1);
+        const groups = wrapper.findAll('thead tr:nth-child(2) th');
+
+        const domainsBlock = Number(blocks[0].attributes('colspan'));
+        const finalBlock = Number(blocks[blocks.length - 1].attributes('colspan'));
+
+        const width = (cells: typeof groups) =>
+            cells.reduce((total, cell) => total + Number(cell.attributes('colspan') ?? 1), 0);
+
+        // Os dois primeiros grupos são os domínios; os três últimos, o bloco
+        // final (os mesmos domínios outra vez, e o Global).
+        expect(width(groups.slice(0, 2))).toBe(domainsBlock);
+        expect(width(groups.slice(2))).toBe(finalBlock);
     });
 });
