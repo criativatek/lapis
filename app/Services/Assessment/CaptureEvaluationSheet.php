@@ -90,7 +90,15 @@ class CaptureEvaluationSheet
 
         // ONE build, exactly as the screen does it, with the colour resolved
         // through the single seam both sides share.
-        $sheet = $this->builder->for($class, $period, $scope);
+        //
+        // SEM A PROPOSTA DE «HOJE», e é a única diferença deliberada face ao
+        // ecrã: `current_*` e `proposal_is_stale` respondem a «isto ainda
+        // corresponde aos dados?», e uma fotografia não tem hoje. Congelados,
+        // seriam uma afirmação sobre o presente feita no passado — e a primeira
+        // cotação corrigida a seguir tornava-a falsa sem ninguém dar por isso.
+        // O que a fotografia guarda é o que estava escrito naquele momento: a
+        // proposta e a decisão.
+        $sheet = $this->builder->for($class, $period, $scope, withProposalBasis: false);
         $domains = DomainColorPalette::decorate($sheet['domains']);
         $students = $sheet['students'];
 

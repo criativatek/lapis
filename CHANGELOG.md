@@ -25,6 +25,59 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.138.0] — 2026-09-08
+
+Fechar o ano deixou de ser classificar o último semestre.
+
+### Alterado
+
+- **A proposta da última unidade formal é a avaliação contínua final.** Uma
+  unidade a meio do ano continua a propor a partir de si própria — o 1.º
+  semestre é o que aconteceu no 1.º semestre. A unidade que **fecha** o ano
+  passa a propor a partir da média ponderada dos resultados formais de todas as
+  unidades, porque é isso que o professor está a decidir quando a fecha. Com
+  77,7 % no 2.º semestre e 64,3 % de média do ano, a proposta é a banda dos
+  64,3 %. Vive tudo num sítio só, `FormalProposalBasis`, por onde passam quem
+  escreve a proposta e quem a valida antes de deixar confirmar.
+- **O resultado estanque não desaparece.** Continua calculado, continua na
+  coluna «Quant.», e continua a ser com ele que se lê evolução de uma unidade
+  para a outra. O que muda é de que número nasce a proposta — e a explicação
+  congelada com a decisão passa a dizê-lo, com as parcelas da média e o retrato
+  isolado da unidade guardado a seu lado.
+- **O nível atribuído na última unidade é o nível final do ano.** Uma decisão,
+  uma linha, dois sítios onde se lê. A distinção entre âmbito de período e
+  âmbito acumulado fica inteira para as **apreciações por domínio**, onde há
+  mesmo duas perguntas: a leitura de um semestre e a conclusão do ano.
+
+### Corrigido
+
+- **O «Nível» do bloco «Avaliação Contínua Final» mostrava «—» a quem tinha
+  acabado de o atribuir.** A leitura procurava uma classificação de âmbito
+  acumulado que nenhum ecrã escreve — a Pauta, Resultados e Classificações
+  escrevem todas a de período. Não faltava a decisão: procurava-se onde ela não
+  estava. Sem endpoint novo, sem serviço novo, sem tabela nova e sem migração.
+- **Uma proposta desatualizada já não passa por recomendação de hoje.** A
+  proposta é uma linha escrita quando alguém correu «propor»; o quantitativo ao
+  lado é calculado agora. Entre os dois pode ter sido corrigida uma cotação — e
+  o ecrã mostrava «50,3 %» ao lado de «Proposta do Lapispro: 2», quando a banda
+  dos 50,3 % é 3. A pauta passa a trazer a proposta atual e a dizer quando a
+  guardada deixou de corresponder, pela mesma comparação que já recusava
+  confirmá-la. O professor sabe-o **antes** de tentar, e não pela mensagem de
+  erro depois de clicar.
+- **O modal de decisão diz de que número a proposta nasce** — «Média ponderada
+  final» — e deixou de mostrar o valor na escala («3.000») por cima de uma lista
+  de percentagens. É a mesma correção que a grelha levou na 0.137.1, no último
+  sítio onde ainda faltava.
+
+### Adicionado
+
+- **«Mostrar desempenho acumulado»,** um segundo controlo no Quadro Síntese. O
+  desempenho acumulado é uma leitura analítica: não alimenta a avaliação
+  contínua final, não alimenta a proposta e não alimenta o nível atribuído.
+  Desligá-lo tira seis colunas de uma grelha larga e não muda conta nenhuma. É
+  um controlo à parte do «Mostrar quantitativos», que responde a outra pergunta:
+  sem números, esta leitura continua lá; sem esta leitura, os números continuam.
+
 ## [0.137.1] — 2026-09-08
 
 Uma coluna, uma unidade.
