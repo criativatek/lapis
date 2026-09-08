@@ -86,7 +86,7 @@ class ContinuousAssessment
         // declarado de 1 da igualdade por omissão.
         [$units, $scale, $roundingMode, $roundingScale, $weightsDeclared] = $this->configuration($class, $periods);
 
-        $decisions = $this->accumulatedDecisions($periods);
+        $decisions = $this->finalUnitDecisions($periods);
 
         $students = [];
         $enrollmentIds = $this->enrollmentIdsIn($formalByPeriod);
@@ -258,7 +258,7 @@ class ContinuousAssessment
      * A decisão do professor sobre o ANO, domínio a domínio, quando ela existe.
      *
      * O MESMO DESENHO DA DECISÃO GLOBAL: âmbito ACUMULADO na última unidade do
-     * ano. `accumulatedDecisions()` lê-a em `classifications`; esta lê-a em
+     * ano. `finalUnitDecisions()` lê-a em `classifications`; esta lê-a em
      * `domain_appreciation_decisions`, que tem a mesma coluna `scope` e o mesmo
      * conjunto de valores. Uma decisão de âmbito PERÍODO não é reaproveitada
      * como decisão do ano — uma leitura de um semestre não é uma conclusão do
@@ -470,16 +470,36 @@ class ContinuousAssessment
     }
 
     /**
-     * A decisão do professor sobre o ano, quando ela existe.
+     * A DECISÃO DO PROFESSOR SOBRE O ANO — que é a decisão que ele tomou na
+     * última unidade formal, e não um segundo ato à parte.
      *
-     * É a `Classification` de âmbito ACUMULADO — o sítio canónico onde uma
-     * conclusão de ano já se escreve. Esta classe lê-a e nada mais: não a cria,
-     * não a preenche a partir da proposta, e não a considera em falta.
+     * UMA CLASSIFICAÇÃO GLOBAL, MOSTRADA EM DOIS CONTEXTOS. O nível que o
+     * professor atribui ao fechar o 2.º semestre é o nível com que o aluno
+     * termina o ano: não há um «nível do último semestre» e depois um «nível
+     * final» independente, e pedir-lhe o mesmo juízo duas vezes seria pedir-lhe
+     * que se repetisse. Por isso esta leitura vai à `Classification` de âmbito
+     * PERÍODO da última unidade — a mesma linha que a Pauta escreve, que
+     * Classificações e Resultados escrevem, e que a exportação para o INOVAR já
+     * lê (§3.3).
+     *
+     * ANTES PROCURAVA UMA LINHA DE ÂMBITO ACUMULADO, e essa linha nunca era
+     * escrita por caminho nenhum: `classifications.decide` escreve âmbito
+     * PERÍODO, que é o seu valor por omissão e o único que os três ecrãs
+     * enviam. O bloco final mostrava «—» a um professor que tinha acabado de
+     * atribuir o nível — não por lhe faltar a decisão, mas por a procurar onde
+     * ela não estava.
+     *
+     * ISTO NÃO REVOGA A DISTINÇÃO ENTRE OS DOIS ÂMBITOS. Ela continua inteira
+     * onde tem sentido pedagógico: a apreciação de um domínio num semestre e a
+     * apreciação final desse domínio no ano são perguntas diferentes, e
+     * `DomainAppreciationDecision` continua a guardar as duas em linhas
+     * separadas (§17). O que aqui se corrige é só a classificação GLOBAL, onde
+     * nunca houve duas perguntas — havia uma pergunta e dois sítios.
      *
      * @param  Collection<int, AcademicPeriod>  $periods
      * @return array<int, array<string, mixed>>
      */
-    protected function accumulatedDecisions(Collection $periods): array
+    protected function finalUnitDecisions(Collection $periods): array
     {
         if ($periods->isEmpty()) {
             return [];
@@ -489,7 +509,7 @@ class ContinuousAssessment
 
         $classifications = Classification::query()
             ->where('academic_period_id', $last->getKey())
-            ->where('scope', ClassificationScope::Accumulated)
+            ->where('scope', ClassificationScope::Period)
             ->whereNull('superseded_by_id')
             ->with(['proposedScaleLevel', 'finalScaleLevel'])
             ->get();

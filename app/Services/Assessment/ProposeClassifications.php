@@ -18,10 +18,15 @@ use Illuminate\Support\Facades\DB;
  * A student whose result is not computable (every element excluded → no value)
  * gets no proposal row: there is nothing to propose, and an empty proposal would
  * read as a zero, which it is not (§9).
+ *
+ * DE QUE RESULTADO NASCE A PROPOSTA não se decide aqui: decide-se em
+ * `FormalProposalBasis`, que responde «o resultado desta unidade» a meio do ano
+ * e «a avaliação contínua final» na unidade que o fecha. Esta classe só escreve
+ * o que de lá vier, e é isso que a mantém a fazer uma coisa só.
  */
 class ProposeClassifications
 {
-    public function __construct(protected ClassResultsCalculator $calculator) {}
+    public function __construct(protected FormalProposalBasis $basis) {}
 
     /**
      * @param  bool  $refreshOnly  when true, only existing open proposals are recalculated — no new proposal rows are created. Used by a profile migration, whose preview showed only the impact on results that already exist.
@@ -35,7 +40,7 @@ class ProposeClassifications
             return ['created' => 0, 'updated' => 0, 'skipped_frozen' => 0, 'no_value' => 0];
         }
 
-        $results = $this->calculator->forScope($class, $period, $scope);
+        $results = $this->basis->forScope($class, $period, $scope);
         $counts = ['created' => 0, 'updated' => 0, 'skipped_frozen' => 0, 'no_value' => 0];
 
         DB::transaction(function () use ($results, $period, $scope, $version, $refreshOnly, &$counts): void {

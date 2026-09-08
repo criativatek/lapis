@@ -36,7 +36,7 @@ use Illuminate\Support\Facades\DB;
 class ConfirmClassification
 {
     public function __construct(
-        protected ClassResultsCalculator $calculator,
+        protected FormalProposalBasis $basis,
         protected ScaleProposalResolver $proposals,
         protected AuditLog $audit,
     ) {}
@@ -409,7 +409,14 @@ class ConfirmClassification
 
         // Recompute in the same scope the proposal was generated in — an
         // accumulated proposal must be re-checked against the accumulated result.
-        foreach ($this->calculator->forScope($class, $period, $classification->scope) as $row) {
+        //
+        // PELO MESMO SERVIÇO QUE A ESCREVEU, e não pelo calculador em cru: na
+        // unidade que fecha o ano a proposta nasce da avaliação contínua final
+        // (`FormalProposalBasis`), e recalculá-la aqui a partir do resultado
+        // isolado dessa unidade daria outro número. A confirmação seria então
+        // recusada por «desatualizada» sem nada estar desatualizado — o pior
+        // tipo de erro, porque acusa o utilizador de um problema que não existe.
+        foreach ($this->basis->forScope($class, $period, $classification->scope) as $row) {
             if ($row['enrollment']->id === $enrollment->id) {
                 return $row['outcome'];
             }

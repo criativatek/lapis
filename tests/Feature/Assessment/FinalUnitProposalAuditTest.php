@@ -5,10 +5,12 @@ namespace Tests\Feature\Assessment;
 use App\Models\Classification;
 use App\Models\ClassificationScope;
 use App\Models\ClassificationStatus;
+use App\Models\DomainAppreciationDecision;
 use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Assessment\BuildClassSynopsis;
 use App\Services\Assessment\BuildEvaluationSheet;
+use App\Services\Assessment\DecideDomainAppreciation;
 use App\Services\Assessment\ProposeClassifications;
 use App\Services\Assessment\ScaleProposalResolver;
 use App\Support\Tenancy\CurrentOrganization;
@@ -19,14 +21,22 @@ use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
 /**
- * AUDIT — DE ONDE VEM A PROPOSTA NA ÚLTIMA UNIDADE FORMAL, E ONDE VIVE A
- * DECISÃO DO ANO.
+ * DE ONDE VEM A PROPOSTA NA ÚLTIMA UNIDADE FORMAL, E ONDE VIVE A DECISÃO DO ANO.
  *
- * Este ficheiro NÃO afirma o que o produto quer. Afirma o que o código faz
- * hoje, para que a diferença entre as duas coisas fique escrita e verificável
- * antes de alguém lhe tocar. Cada asserção aqui é uma frase sobre o estado
- * atual: se uma delas passar a falhar depois de uma correção, é porque a
- * correção mudou exatamente aquilo que se propunha mudar.
+ * A REGRA QUE ESTE FICHEIRO PROTEGE, em quatro frases:
+ *
+ *  (A) o motor das bandas põe cada percentagem onde a escala manda, e uma média
+ *      à volta dos 50 % é nível 3 — nunca 2;
+ *  (B) a proposta guardada e o resultado calculado ao vivo são duas coisas, e
+ *      podem deixar de coincidir sem que nada o assinale;
+ *  (C) a meio do ano uma unidade propõe a partir de si própria; a unidade que
+ *      FECHA o ano propõe a partir da avaliação contínua final;
+ *  (D) o nível atribuído nessa última unidade É o nível final do ano — uma
+ *      decisão, uma linha, dois sítios onde se lê.
+ *
+ * A distinção entre âmbito de PERÍODO e âmbito ACUMULADO continua inteira para
+ * as APRECIAÇÕES POR DOMÍNIO, que são outra pergunta (§17), e há aqui um caso a
+ * afirmá-lo.
  */
 class FinalUnitProposalAuditTest extends TestCase
 {
@@ -171,22 +181,22 @@ class FinalUnitProposalAuditTest extends TestCase
         );
     }
 
-    // ------------- (C) a proposta da última unidade é a estanque, não a contínua
+    // ----------- (C) a proposta da última unidade é a avaliação contínua final
 
     /**
-     * NA ÚLTIMA UNIDADE FORMAL EXISTEM HOJE DUAS PROPOSTAS, e elas respondem a
-     * perguntas diferentes:
+     * NA ÚLTIMA UNIDADE FORMAL A PROPOSTA É A AVALIAÇÃO CONTÍNUA FINAL.
      *
-     *  - a da `Classification` daquela unidade — `ProposeClassifications` →
-     *    `ClassResultsCalculator::forScope(Period)` —, que é o resultado
-     *    ESTANQUE do 2.º semestre;
-     *  - a do bloco «Avaliação Contínua Final» do Quadro Síntese, que é a banda
-     *    da MÉDIA das unidades formais do ano.
+     * Fechar o ano não é classificar o último semestre: o que se propõe ao
+     * professor quando ele fecha a última unidade é a conclusão do ANO — a
+     * média ponderada dos resultados formais de todas as unidades.
      *
-     * São dois números, dois níveis possíveis, e nenhum dos dois sabe do outro.
+     * O RESULTADO ESTANQUE DESSA UNIDADE NÃO DESAPARECE, e este caso afirma as
+     * duas coisas ao mesmo tempo: a coluna «Quant.» continua a mostrar o
+     * retrato isolado do semestre — é com ele que se lê evolução —, e a
+     * proposta ao lado já não nasce dele.
      */
     #[Test]
-    public function the_last_unit_proposal_comes_from_its_own_result_and_not_from_the_continuous_average(): void
+    public function the_last_unit_proposal_comes_from_the_continuous_average_and_not_from_its_own_result(): void
     {
         $reading = $this->asTenant(function (): array {
             $class = $this->schoolClass();
@@ -212,17 +222,36 @@ class FinalUnitProposalAuditTest extends TestCase
                 continue;
             }
 
-            // O número da unidade e o número do ano são mesmo diferentes.
+            // O retrato do semestre continua a ser o retrato do semestre.
             if ((string) $standalone !== (string) $continuous['normalized_value']) {
                 $divergences++;
             }
 
-            // E a proposta guardada na Classification é a da UNIDADE: nasce do
-            // `overall` estanque desta pauta, nunca da média contínua.
+            // E a proposta guardada segue a MÉDIA DO ANO, que é a mesma que o
+            // bloco «Avaliação Contínua Final» do Quadro mostra.
             $this->assertSame(
-                $row['overall']['scale_level_id'],
+                $continuous['level']['scale_level_id'] ?? null,
                 $row['classification']['proposed_scale_level_id'] ?? null,
-                "A proposta guardada de «{$row['name']}» segue o resultado estanque da unidade.",
+                "A proposta guardada de «{$row['name']}» segue a avaliação contínua final.",
+            );
+
+            // E o valor guardado de que ela nasce é a própria média do ano —
+            // lido da linha, porque o payload da pauta só carrega a proposta
+            // já lida na escala.
+            $stored = $this->asTenant(fn (): ?string => Classification::query()
+                ->where('enrollment_id', (int) $row['enrollment_id'])
+                ->where('scope', ClassificationScope::Period)
+                ->orderByDesc('academic_period_id')
+                ->value('proposed_normalized_value'));
+
+            // Comparado às 6 casas da própria coluna: a média é calculada com
+            // mais precisão do que `decimal(9,6)` guarda, e exigir aqui a
+            // igualdade literal seria afirmar uma coisa sobre o tipo da coluna
+            // em vez de sobre a origem do número.
+            $this->assertSame(
+                number_format((float) $continuous['normalized_value'], 6, '.', ''),
+                number_format((float) $stored, 6, '.', ''),
+                "O valor de que a proposta de «{$row['name']}» nasce é a média do ano.",
             );
         }
 
@@ -233,23 +262,60 @@ class FinalUnitProposalAuditTest extends TestCase
         );
     }
 
-    // --------------------- (D) a decisão do ano é uma SEGUNDA linha, nunca escrita
-
     /**
-     * O QUADRO SÍNTESE LÊ UMA DECISÃO QUE NENHUM ECRÃ ESCREVE.
+     * NUMA UNIDADE INTERMÉDIA A PROPOSTA CONTINUA A SER A DELA.
      *
-     * `ContinuousAssessment::accumulatedDecisions()` procura uma `Classification`
-     * na última unidade com `scope = accumulated`. O endpoint canónico
-     * (`classifications.decide`) escreve `scope = period` — é o seu valor por
-     * omissão, e nem a Pauta nem Resultados nem Classificações enviam outro.
-     *
-     * Resultado: o professor atribui o nível na Pauta, a linha do 2.º semestre
-     * fica decidida, e o bloco «Avaliação Contínua Final → Global → Nível»
-     * continua a mostrar «—», porque a linha que ele lê nunca chegou a existir.
-     * Duas linhas para a mesma conclusão do ano, uma delas por preencher.
+     * A outra metade da regra, e a que impede que a correção acima se espalhe
+     * para onde não devia: o 1.º semestre propõe a partir do 1.º semestre. Só a
+     * unidade que FECHA o ano muda de fundamento.
      */
     #[Test]
-    public function the_canonical_decision_writes_the_period_row_while_the_synopsis_reads_the_accumulated_one(): void
+    public function an_intermediate_unit_still_proposes_from_its_own_result(): void
+    {
+        $this->asTenant(function (): void {
+            $class = $this->schoolClass();
+            $first = $class->academicYear->periods->first();
+
+            app(ProposeClassifications::class)->forPeriod($class, $first);
+
+            $sheet = app(BuildEvaluationSheet::class)->for($class, $first);
+            $checked = 0;
+
+            foreach ($sheet['students'] as $row) {
+                if ($row['classification'] === null || $row['overall']['normalized_value'] === null) {
+                    continue;
+                }
+
+                $this->assertSame(
+                    $row['overall']['scale_level_id'],
+                    $row['classification']['proposed_scale_level_id'],
+                    "A proposta de «{$row['name']}» no 1.º semestre é a do próprio semestre.",
+                );
+                $checked++;
+            }
+
+            $this->assertGreaterThan(0, $checked, 'O cenário tem de ter propostas no 1.º semestre.');
+        });
+    }
+
+    // ------------------- (D) uma decisão global, mostrada em dois contextos
+
+    /**
+     * O NÍVEL ATRIBUÍDO NA ÚLTIMA UNIDADE É O NÍVEL FINAL DO ANO.
+     *
+     * Uma decisão, uma linha, dois sítios onde se lê. O professor atribui o
+     * nível na Pauta ao fechar o 2.º semestre — `classifications.decide`, âmbito
+     * PERÍODO — e o bloco «Avaliação Contínua Final → Global» mostra esse mesmo
+     * nível, porque é o mesmo juízo. Não há um segundo ato formal para «o ano»,
+     * e por isso não há nenhuma linha de âmbito acumulado a criar.
+     *
+     * ISTO É SÓ SOBRE A CLASSIFICAÇÃO GLOBAL. A distinção entre a apreciação de
+     * um domínio numa unidade e a apreciação final desse domínio no ano fica
+     * inteira — são perguntas pedagógicas diferentes, e vivem em linhas
+     * separadas de `DomainAppreciationDecision` (§17).
+     */
+    #[Test]
+    public function the_level_assigned_on_the_last_unit_is_the_level_the_synopsis_shows_for_the_year(): void
     {
         $names = $this->asTenant(function (): array {
             $class = $this->schoolClass();
@@ -304,23 +370,73 @@ class FinalUnitProposalAuditTest extends TestCase
         $this->assertSame(ClassificationStatus::Confirmed, $periodRow->status);
         $this->assertSame($levelId, (int) $periodRow->final_scale_level_id);
 
-        // E a linha que o Quadro Síntese lê como «decisão do ano» não existe.
+        // E NENHUMA LINHA DE ÂMBITO ACUMULADO É CRIADA para o global: não há
+        // segundo ato formal, e por isso não há segunda linha.
         $this->assertNull(
             $accumulatedRow,
-            'Decidir pelo caminho canónico não escreve nenhuma linha de âmbito acumulado.',
+            'A decisão global do ano não abre nenhuma linha de âmbito acumulado.',
         );
 
-        // Por isso o bloco final do Quadro mostra a proposta e um travessão no
-        // lugar do nível — apesar de o professor ter acabado de o atribuir.
+        // O bloco final do Quadro mostra a decisão que o professor acabou de
+        // tomar na Pauta — a mesma, não uma cópia nem uma segunda.
         $continuous = $this->student(
             $this->asTenant(fn (): array => app(BuildClassSynopsis::class)->for($this->schoolClass())),
             $name,
         )['continuous'];
 
         $this->assertNotNull($continuous['proposal'], 'O bloco final tem proposta.');
-        $this->assertNull(
+        $this->assertNotNull(
             $continuous['decision'],
-            'O bloco final não vê a decisão que o professor tomou na Pauta.',
+            'O bloco final vê a decisão que o professor tomou na Pauta.',
         );
+        $this->assertSame(
+            $levelId,
+            (int) $continuous['decision']['final']['scale_level_id'],
+            'É o mesmo nível, não outro.',
+        );
+        $this->assertSame('confirmed', $continuous['decision']['status']);
+    }
+
+    /**
+     * A DISTINÇÃO ENTRE OS DOIS ÂMBITOS FICA INTEIRA PARA OS DOMÍNIOS.
+     *
+     * A correção acima é sobre a classificação GLOBAL e só sobre ela. Decidir a
+     * apreciação de «Oralidade» no 2.º semestre não é dizer nada sobre
+     * «Oralidade» no ano, e as duas continuam a viver em linhas próprias — é o
+     * que impede que uma leitura de meio de caminho se leia como uma conclusão
+     * que ninguém tirou (§17).
+     */
+    #[Test]
+    public function a_domain_decision_on_the_unit_is_still_not_a_decision_about_the_year(): void
+    {
+        $this->asTenant(function (): void {
+            $class = $this->schoolClass();
+            $last = $class->academicYear->periods->last();
+            $enrollment = $class->enrollments()->firstOrFail();
+            $domain = $class->profileVersion->domains()->firstOrFail();
+            $level = $class->profileVersion->scale->levels->first();
+
+            app(DecideDomainAppreciation::class)->decide(
+                $class,
+                $last,
+                ClassificationScope::Period,
+                $enrollment,
+                $domain->domain,
+                $level->id,
+                $this->teacher,
+            );
+
+            $rows = DomainAppreciationDecision::query()
+                ->where('enrollment_id', $enrollment->getKey())
+                ->where('academic_period_id', $last->getKey())
+                ->get()
+                ->keyBy(fn ($row): string => $row->scope->value);
+
+            $this->assertTrue($rows->has('period'), 'A apreciação da unidade foi escrita.');
+            $this->assertFalse(
+                $rows->has('accumulated'),
+                'E não se converteu numa conclusão sobre o ano.',
+            );
+        });
     }
 }
