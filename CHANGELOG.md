@@ -25,6 +25,15 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.140.1] — 2026-09-09
+
+### Corrigido
+
+- **O histórico pedagógico distingue aulas vazias.** Um `Lesson` materializado
+  em preparação, sem sumário ou plano, já não força uma nova versão do horário;
+  aulas lecionadas ou com registos pedagógicos continuam a preservar a versão
+  histórica.
+
 ## [0.140.0] — 2026-09-09
 
 ### Adicionado
@@ -104,7 +113,6 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   [docs/roster-import.md](docs/roster-import.md) — os três passos, as regras de
   correspondência, e o que acontece ao remover um aluno. Não confundir com
   `docs/data-import.md`, que é o restauro de um backup da organização.
-
 ## [0.139.1] — 2026-09-09
 
 ### Corrigido

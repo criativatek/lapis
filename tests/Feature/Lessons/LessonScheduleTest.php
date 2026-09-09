@@ -7,6 +7,7 @@ use App\Http\Controllers\LessonScheduleController;
 use App\Models\AcademicCalendarException;
 use App\Models\AcademicCalendarExceptionType;
 use App\Models\AcademicYear;
+use App\Models\ClassGroup;
 use App\Models\Lesson;
 use App\Models\LessonStatus;
 use App\Models\Organization;
@@ -470,6 +471,34 @@ class LessonScheduleTest extends TestCase
         $this->assertNull($slot->ends_on);
     }
 
+    #[Test]
+    public function a_materialized_preparation_lesson_without_records_does_not_require_versioning(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $slot = $this->slotWithLesson($schoolClass);
+
+        $this->putSlot($slot, $schoolClass, [
+            'class_group_id' => $this->groupFor($schoolClass)->id,
+        ])
+            ->assertRedirect()
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertDatabaseCount('recurring_lesson_slots', 1);
+    }
+
+    #[Test]
+    public function a_taught_lesson_requires_versioning(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $slot = $this->slotWithLesson($schoolClass, LessonStatus::Taught);
+
+        $this->putSlot($slot, $schoolClass, [
+            'effective_from' => $this->inDays(1),
+        ])->assertRedirect();
+
+        $this->assertDatabaseCount('recurring_lesson_slots', 2);
+    }
+
     /**
      * (b) A OUTRA metade do mesmo caso-limite: um slot cujo starts_on é HOJE
      * mas que já produziu pelo menos uma Lesson TEM histórico a proteger —
@@ -538,7 +567,7 @@ class LessonScheduleTest extends TestCase
             'recurring_lesson_slot_id' => $slot->id,
             'starts_at' => $today.' 09:30:00',
             'ends_at' => $today.' 10:20:00',
-            'status' => LessonStatus::Preparation,
+            'status' => LessonStatus::Taught,
             'created_by' => $this->teacher->id,
         ]));
         $before = $this->byColumn($lesson->getAttributes());
@@ -1256,6 +1285,48 @@ class LessonScheduleTest extends TestCase
                 return $schoolClass;
             },
         );
+    }
+
+    private function groupFor(SchoolClass $schoolClass, string $label = 'T1'): ClassGroup
+    {
+        return $this->inTenant($this->organization, fn (): ClassGroup => ClassGroup::factory()
+            ->recycle($this->organization)
+            ->create(['class_id' => $schoolClass->id, 'label' => $label]));
+    }
+
+    private function lessonForSlot(
+        RecurringLessonSlot $slot,
+        LessonStatus $status = LessonStatus::Preparation,
+    ): Lesson {
+        return $this->inTenant($this->organization, fn (): Lesson => Lesson::create([
+            'class_id' => $slot->class_id,
+            'class_group_id' => $slot->class_group_id,
+            'recurring_lesson_slot_id' => $slot->id,
+            'starts_at' => $this->today().' 09:30:00',
+            'ends_at' => $this->today().' 10:20:00',
+            'status' => $status,
+            'created_by' => $this->teacher->id,
+        ]));
+    }
+
+    private function slotWithLesson(
+        SchoolClass $schoolClass,
+        LessonStatus $status = LessonStatus::Preparation,
+        ?int $classGroupId = null,
+    ): RecurringLessonSlot {
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
+            $this->slotAttributes($schoolClass, ['class_group_id' => $classGroupId]),
+        ));
+        $this->lessonForSlot($slot, $status);
+
+        return $slot;
+    }
+
+    private function putSlot(RecurringLessonSlot $slot, SchoolClass $schoolClass, array $overrides = [])
+    {
+        return $this->actingAs($this->teacher)
+            ->withSession(['organization_id' => $this->organization->id])
+            ->put("/_test/lesson-slots/{$slot->ulid}", $this->slotPayload($schoolClass, $overrides));
     }
 
     /**

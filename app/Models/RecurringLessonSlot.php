@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToOrganization;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -121,6 +122,22 @@ class RecurringLessonSlot extends Model
     }
 
     /**
+     * Whether any linked Lesson contains pedagogical history that must remain
+     * attached to this schedule version.
+     */
+    public function hasRelevantPedagogicalHistory(): bool
+    {
+        return $this->lessons()
+            ->where(function (Builder $query): void {
+                $query
+                    ->where('status', LessonStatus::Taught)
+                    ->orWhereHas('summary')
+                    ->orWhereHas('plan');
+            })
+            ->exists();
+    }
+
+    /**
      * The real branch condition for LessonScheduleController::update()/
      * destroy(): does changing this slot destructively (in-place edit,
      * hard delete) risk rewriting history, or not?
@@ -134,9 +151,9 @@ class RecurringLessonSlot extends Model
      *   requiresVersioning = isAlreadyInVigor
      *       AND NOT (startedExactlyToday AND no Lessons yet)
      *
-     * Lessons are the only historical fact this feature tracks, so
-     * `lessons()->exists()` is the whole "has history" check — no other
-     * table is relevant here.
+     * Only relevant pedagogical history protects a schedule version. A
+     * materialized preparation Lesson without a summary or plan is empty
+     * history and may be updated in place.
      */
     public function requiresVersioning(string $timezone): bool
     {
@@ -144,6 +161,6 @@ class RecurringLessonSlot extends Model
             return false;
         }
 
-        return ! ($this->startedExactlyToday($timezone) && ! $this->lessons()->exists());
+        return ! ($this->startedExactlyToday($timezone) && ! $this->hasRelevantPedagogicalHistory());
     }
 }
