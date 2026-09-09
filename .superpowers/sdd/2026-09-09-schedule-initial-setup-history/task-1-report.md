@@ -58,3 +58,35 @@ equivalent coverage.
 - `npm install` reported four pre-existing dependency audit findings (one
   moderate and three high); no dependency files were changed.
 - No implementation concerns remain for Task 1.
+
+## Fix round 1
+
+### Changes
+
+- Corrected `requiresVersioning()` so every currently-in-vigor slot versions
+  only when `hasRelevantPedagogicalHistory()` is true. Future slots remain
+  false, and past-started slots with only preparation Lessons now update in
+  place.
+- Added regression coverage for past-started and today-starting preparation
+  Lessons, plus independent route-level coverage proving `LessonSummary` and
+  `LessonPlan` each force a new version.
+- Updated existing schedule-versioning fixtures to provide explicit relevant
+  history, preserving their intended boundary/materialization assertions.
+- Reverted `config/app.php` and `CHANGELOG.md` to the pre-Task-1 values;
+  release metadata remains reserved for the final gated task.
+
+### Commit
+
+- `04f16138ada1006cfd99832b48d5d87dc994b470` — fix implementation.
+
+### Validation
+
+- Focused filters (`materialized_preparation`, `taught_lesson`,
+  `lesson_summary`, `lesson_plan`): 4 tests, 16 assertions, passed.
+- Full `LessonScheduleTest.php`: 35 tests, 148 assertions, passed.
+- `composer ci:check`: passed — PHPUnit 4,651 tests, 28,563 assertions,
+  19 skipped; ESLint, vue-tsc, Pint, and PHPStan all passed.
+
+### Concerns
+
+- No new concerns. Existing dependency audit findings remain unchanged.

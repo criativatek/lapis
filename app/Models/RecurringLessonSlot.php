@@ -142,18 +142,10 @@ class RecurringLessonSlot extends Model
      * destroy(): does changing this slot destructively (in-place edit,
      * hard delete) risk rewriting history, or not?
      *
-     * `isAlreadyInVigor()` alone draws that line at "today or earlier", but
-     * a slot whose `starts_on` is exactly today and that has not yet
-     * produced a single Lesson has no history to protect — it behaves
-     * exactly like a future slot until the first Lesson exists under it.
-     * That is the one carve-out on top of `isAlreadyInVigor()`:
-     *
-     *   requiresVersioning = isAlreadyInVigor
-     *       AND NOT (startedExactlyToday AND no Lessons yet)
-     *
      * Only relevant pedagogical history protects a schedule version. A
      * materialized preparation Lesson without a summary or plan is empty
-     * history and may be updated in place.
+     * history and may be updated in place, regardless of whether its slot
+     * started today or earlier.
      */
     public function requiresVersioning(string $timezone): bool
     {
@@ -161,6 +153,6 @@ class RecurringLessonSlot extends Model
             return false;
         }
 
-        return ! ($this->startedExactlyToday($timezone) && ! $this->hasRelevantPedagogicalHistory());
+        return $this->hasRelevantPedagogicalHistory();
     }
 }

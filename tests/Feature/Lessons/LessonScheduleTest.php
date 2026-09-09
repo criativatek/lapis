@@ -9,7 +9,9 @@ use App\Models\AcademicCalendarExceptionType;
 use App\Models\AcademicYear;
 use App\Models\ClassGroup;
 use App\Models\Lesson;
+use App\Models\LessonPlan;
 use App\Models\LessonStatus;
+use App\Models\LessonSummary;
 use App\Models\Organization;
 use App\Models\OrganizationSubscription;
 use App\Models\Plan;
@@ -358,6 +360,7 @@ class LessonScheduleTest extends TestCase
         $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
             $this->slotAttributes($schoolClass, ['starts_on' => null, 'ends_on' => null]),
         ));
+        $this->lessonForSlot($slot, LessonStatus::Taught);
         $effectiveFrom = $this->inDays(10);
         $newEndsOn = $this->inDays(300);
 
@@ -413,6 +416,7 @@ class LessonScheduleTest extends TestCase
         $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
             $this->slotAttributes($schoolClass, ['starts_on' => null, 'ends_on' => null]),
         ));
+        $this->lessonForSlot($slot, LessonStatus::Taught);
         $effectiveFrom = $this->inDays(5);
 
         $this->actingAs($this->teacher)
@@ -476,14 +480,20 @@ class LessonScheduleTest extends TestCase
     {
         $schoolClass = $this->schoolClassFor($this->teacher);
         $slot = $this->slotWithLesson($schoolClass);
+        $past = $this->inDays(-1);
+        $group = $this->groupFor($schoolClass);
+        $slot->update(['starts_on' => $past]);
 
         $this->putSlot($slot, $schoolClass, [
-            'class_group_id' => $this->groupFor($schoolClass)->id,
+            'starts_on' => $past,
+            'class_group_id' => $group->id,
         ])
             ->assertRedirect()
             ->assertSessionDoesntHaveErrors();
 
         $this->assertDatabaseCount('recurring_lesson_slots', 1);
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => $slot->refresh());
+        $this->assertSame($group->id, $slot->class_group_id);
     }
 
     #[Test]
@@ -500,14 +510,11 @@ class LessonScheduleTest extends TestCase
     }
 
     /**
-     * (b) A OUTRA metade do mesmo caso-limite: um slot cujo starts_on é HOJE
-     * mas que já produziu pelo menos uma Lesson TEM histórico a proteger —
-     * as duas invariantes de effective_from (>= hoje E > starts_on) juntam-se
-     * e só deixam passar amanhã ou mais tarde; effective_from === hoje é
-     * rejeitado, com a mensagem específica sobre a aula de hoje.
+     * A materialized preparation Lesson without a summary or plan is empty
+     * history even when its slot starts today.
      */
     #[Test]
-    public function revising_a_today_starting_slot_with_a_lesson_today_is_rejected_when_effective_from_is_today(): void
+    public function a_today_starting_preparation_lesson_without_records_does_not_require_versioning(): void
     {
         $schoolClass = $this->schoolClassFor($this->teacher);
         $today = $this->today();
@@ -528,18 +535,70 @@ class LessonScheduleTest extends TestCase
             'created_by' => $this->teacher->id,
         ]));
 
-        $this->actingAs($this->teacher)
-            ->withSession(['organization_id' => $this->organization->id])
-            ->put("/_test/lesson-slots/{$slot->ulid}", $this->slotPayload($schoolClass, [
-                'starts_on' => $today,
-                'ends_on' => null,
-                'effective_from' => $today,
-            ]))
-            ->assertSessionHasErrors('effective_from');
+        $this->putSlot($slot, $schoolClass, [
+            'day_of_week' => 3,
+            'starts_at' => '10:00',
+            'ends_at' => '10:50',
+            'starts_on' => $today,
+            'ends_on' => null,
+        ])
+            ->assertRedirect()
+            ->assertSessionDoesntHaveErrors();
 
         $this->assertDatabaseCount('recurring_lesson_slots', 1);
         $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => $slot->refresh());
         $this->assertNull($slot->ends_on);
+        $this->assertSame(3, $slot->day_of_week);
+        $this->assertStringStartsWith('10:00', $slot->starts_at);
+    }
+
+    #[Test]
+    public function a_lesson_summary_requires_versioning(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $slot = $this->slotWithLesson($schoolClass);
+        $lesson = $this->inTenant($this->organization, fn (): Lesson => $slot->lessons()->sole());
+        $this->inTenant($this->organization, fn (): LessonSummary => LessonSummary::create([
+            'lesson_id' => $lesson->id,
+            'content' => 'Sumário escrito.',
+        ]));
+
+        $this->putSlot($slot, $schoolClass, ['effective_from' => $this->inDays(1)])
+            ->assertRedirect()
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertDatabaseCount('recurring_lesson_slots', 2);
+        $this->assertTrue($slot->refresh()->ends_on->isSameDay(Carbon::parse($this->today())));
+        $new = $this->inTenant(
+            $this->organization,
+            fn (): RecurringLessonSlot => RecurringLessonSlot::query()->where('id', '!=', $slot->id)->sole(),
+        );
+        $this->assertSame($this->inDays(1), $new->starts_on->toDateString());
+    }
+
+    #[Test]
+    public function a_lesson_plan_requires_versioning(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $slot = $this->slotWithLesson($schoolClass);
+        $lesson = $this->inTenant($this->organization, fn (): Lesson => $slot->lessons()->sole());
+        $this->inTenant($this->organization, fn (): LessonPlan => LessonPlan::create([
+            'lesson_id' => $lesson->id,
+            'planned_summary' => 'Plano de aula.',
+            'created_by' => $this->teacher->id,
+        ]));
+
+        $this->putSlot($slot, $schoolClass, ['effective_from' => $this->inDays(1)])
+            ->assertRedirect()
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertDatabaseCount('recurring_lesson_slots', 2);
+        $this->assertTrue($slot->refresh()->ends_on->isSameDay(Carbon::parse($this->today())));
+        $new = $this->inTenant(
+            $this->organization,
+            fn (): RecurringLessonSlot => RecurringLessonSlot::query()->where('id', '!=', $slot->id)->sole(),
+        );
+        $this->assertSame($this->inDays(1), $new->starts_on->toDateString());
     }
 
     /**
@@ -615,6 +674,7 @@ class LessonScheduleTest extends TestCase
         $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
             $this->slotAttributes($schoolClass, ['starts_on' => null, 'ends_on' => $originalEndsOn]),
         ));
+        $this->lessonForSlot($slot, LessonStatus::Taught);
         $effectiveFrom = $this->inDays(120);
         $newEndsOn = $this->inDays(300);
 
@@ -647,6 +707,7 @@ class LessonScheduleTest extends TestCase
         $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
             $this->slotAttributes($schoolClass, ['starts_on' => null, 'ends_on' => $boundedEndsOn]),
         ));
+        $this->lessonForSlot($slot, LessonStatus::Taught);
 
         $this->actingAs($this->teacher)
             ->withSession(['organization_id' => $this->organization->id])
@@ -678,6 +739,7 @@ class LessonScheduleTest extends TestCase
         $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
             $this->slotAttributes($schoolClass, ['starts_on' => null, 'ends_on' => null]),
         ));
+        $this->lessonForSlot($slot, LessonStatus::Taught);
 
         $this->actingAs($this->teacher)
             ->withSession(['organization_id' => $this->organization->id])
@@ -865,7 +927,6 @@ class LessonScheduleTest extends TestCase
                 'effective_from' => $this->inDays(400),
             ]))
             ->assertRedirect();
-
         $this->assertSame($before, $this->inTenant(
             $this->organization,
             fn (): array => $this->byColumn(Lesson::query()->findOrFail($lesson->id)->getAttributes()),
@@ -920,6 +981,7 @@ class LessonScheduleTest extends TestCase
                 'ends_on' => null,
             ]),
         ));
+        $history = $this->lessonForSlot($slot, LessonStatus::Taught);
 
         $this->actingAs($this->teacher)
             ->withSession(['organization_id' => $this->organization->id])
@@ -932,6 +994,7 @@ class LessonScheduleTest extends TestCase
                 'effective_from' => '2026-09-15',
             ]))
             ->assertRedirect();
+        $this->inTenant($this->organization, fn () => $history->delete());
 
         $new = $this->inTenant(
             $this->organization,
@@ -988,6 +1051,7 @@ class LessonScheduleTest extends TestCase
                 'ends_on' => null,
             ]),
         ));
+        $history = $this->lessonForSlot($slot, LessonStatus::Taught);
 
         $this->actingAs($this->teacher)
             ->withSession(['organization_id' => $this->organization->id])
@@ -1000,6 +1064,7 @@ class LessonScheduleTest extends TestCase
                 'effective_from' => '2026-09-15',
             ]))
             ->assertRedirect();
+        $this->inTenant($this->organization, fn () => $history->delete());
 
         $this->inTenant($this->organization, fn () => app(MaterializeLessonsForRange::class)->execute(
             $schoolClass,
@@ -1036,6 +1101,7 @@ class LessonScheduleTest extends TestCase
                 'ends_on' => null,
             ]),
         ));
+        $history = $this->lessonForSlot($slot, LessonStatus::Taught);
 
         $this->actingAs($this->teacher)
             ->withSession(['organization_id' => $this->organization->id])
@@ -1049,6 +1115,7 @@ class LessonScheduleTest extends TestCase
                 'effective_from' => '2026-09-15',
             ]))
             ->assertRedirect();
+        $this->inTenant($this->organization, fn () => $history->delete());
 
         $this->inTenant($this->organization, fn () => app(MaterializeLessonsForRange::class)->execute(
             $schoolClass,
@@ -1092,6 +1159,7 @@ class LessonScheduleTest extends TestCase
                 'ends_on' => null,
             ]),
         ));
+        $history = $this->lessonForSlot($slot, LessonStatus::Taught);
 
         $this->actingAs($this->teacher)
             ->withSession(['organization_id' => $this->organization->id])
@@ -1104,6 +1172,7 @@ class LessonScheduleTest extends TestCase
                 'effective_from' => '2026-09-15',
             ]))
             ->assertRedirect();
+        $this->inTenant($this->organization, fn () => $history->delete());
 
         $this->inTenant($this->organization, fn (): AcademicCalendarException => AcademicCalendarException::factory()
             ->recycle($this->organization)
@@ -1174,6 +1243,7 @@ class LessonScheduleTest extends TestCase
         $original = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
             $this->slotAttributes($schoolClass, ['day_of_week' => 1, 'starts_on' => null, 'ends_on' => null]),
         ));
+        $history = $this->lessonForSlot($original, LessonStatus::Taught);
         $firstEffectiveFrom = $this->inDays(30);
 
         $this->actingAs($this->teacher)
@@ -1185,6 +1255,7 @@ class LessonScheduleTest extends TestCase
                 'effective_from' => $firstEffectiveFrom,
             ]))
             ->assertRedirect();
+        $this->inTenant($this->organization, fn () => $history->delete());
 
         $this->assertDatabaseCount('recurring_lesson_slots', 2);
         $future = $this->inTenant(
