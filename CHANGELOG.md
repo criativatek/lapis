@@ -38,6 +38,14 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   na aplicação: era o teste que estava errado, não a regra — mas enquanto
   falhava, cada release seguia com a CI vermelha e uma falha verdadeira ficava
   indistinguível desta.
+- **A migração que dá um papel a uma pergunta de autoavaliação volta a
+  reverter.** O `down()` largava o índice único `saq_template_role_unique`, mas
+  o InnoDB adopta-o para sustentar a chave estrangeira de
+  `self_assessment_template_id` — é a coluna mais à esquerda — e depois recusa
+  largá-lo (MySQL 1553), mesmo com o índice da própria chave ainda no sítio. A
+  chave passa a sair primeiro e a voltar com a definição com que foi criada.
+  Estava escondido atrás da falha acima: a CI nunca chegava ao passo da
+  reversão.
 
 ## [0.139.0] — 2026-09-09
 

@@ -33,11 +33,39 @@ return new class extends Migration
         });
     }
 
+    /**
+     * The key comes off first, and that is not tidiness.
+     *
+     * `self_assessment_template_id` is the leftmost column of the unique index
+     * added above, so InnoDB adopts that index to support the column's foreign
+     * key and then refuses to drop it — «Cannot drop index
+     * 'saq_template_role_unique': needed in a foreign key constraint» (MySQL
+     * 1553) — even though the index the key created for itself is still there.
+     * Dropping the key first breaks that hold; the `finally` puts it back with
+     * the definition it was created with (`->constrained()->cascadeOnDelete()`),
+     * so a failure in between never leaves the table without its key.
+     *
+     * `dropForeign` names it by COLUMN, never by name: that is the only form
+     * SQLite accepts, and it folds into the table rebuild SQLite does anyway.
+     */
     public function down(): void
     {
         Schema::table('self_assessment_questions', function (Blueprint $table): void {
-            $table->dropUnique('saq_template_role_unique');
-            $table->dropColumn('role');
+            $table->dropForeign(['self_assessment_template_id']);
         });
+
+        try {
+            Schema::table('self_assessment_questions', function (Blueprint $table): void {
+                $table->dropUnique('saq_template_role_unique');
+                $table->dropColumn('role');
+            });
+        } finally {
+            Schema::table('self_assessment_questions', function (Blueprint $table): void {
+                $table->foreign('self_assessment_template_id')
+                    ->references('id')
+                    ->on('self_assessment_templates')
+                    ->cascadeOnDelete();
+            });
+        }
     }
 };
