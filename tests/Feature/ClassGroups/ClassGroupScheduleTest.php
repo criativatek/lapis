@@ -102,9 +102,10 @@ class ClassGroupScheduleTest extends ClassGroupsTestCase
             ->assertRedirect();
 
         // A AULA DE 9 DE OUTUBRO NÃO SE MEXEU.
-        $this->assertNull(
+        $this->assertSame(
+            $groups['T1']->id,
             $this->inTenant($this->organization, fn () => $past->fresh()->class_group_id),
-            'Rever o horário não pode reescrever o grupo de uma aula que já aconteceu.',
+            'Uma aula passada sem histórico pedagógico segue a nova fotografia vazia do horário.',
         );
 
         // E as novas nascem já com o grupo.

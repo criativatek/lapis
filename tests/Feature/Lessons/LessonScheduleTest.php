@@ -24,6 +24,7 @@ use App\Support\Tenancy\CurrentOrganization;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Validation\ValidationException;
 use PHPUnit\Framework\Attributes\Test;
@@ -644,6 +645,129 @@ class LessonScheduleTest extends TestCase
             $this->organization,
             fn (): array => $this->byColumn(Lesson::query()->findOrFail($relevant->id)->getAttributes()),
         ));
+    }
+
+    #[Test]
+    public function a_lock_recheck_versions_when_history_is_acquired_after_the_initial_direct_decision(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $slot = $this->slotWithLesson($schoolClass);
+        $lesson = $this->inTenant($this->organization, fn (): Lesson => $slot->lessons()->sole());
+        $group = $this->groupFor($schoolClass);
+        $effectiveFrom = $this->inDays(1);
+        $historyAdded = false;
+
+        DB::listen(function ($query) use (&$historyAdded, $lesson): void {
+            if ($historyAdded
+                || ! str_contains($query->sql, 'recurring_lesson_slots')
+                || ! str_contains($query->sql, '"id"')
+                || ! str_contains($query->sql, 'limit 1')) {
+                return;
+            }
+
+            $historyAdded = true;
+            LessonSummary::create([
+                'lesson_id' => $lesson->id,
+                'content' => 'Histórico adquirido durante o recheck.',
+            ]);
+        });
+
+        $this->putSlot($slot, $schoolClass, [
+            'class_group_id' => $group->id,
+            'effective_from' => $effectiveFrom,
+        ])
+            ->assertRedirect()
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertTrue($historyAdded);
+        $this->assertDatabaseCount('recurring_lesson_slots', 2);
+        $this->assertDatabaseHas('lessons', [
+            'id' => $lesson->id,
+            'class_group_id' => null,
+        ]);
+        $this->assertDatabaseHas('recurring_lesson_slots', [
+            'id' => $slot->id,
+            'class_group_id' => null,
+        ]);
+        $new = $this->inTenant(
+            $this->organization,
+            fn (): RecurringLessonSlot => RecurringLessonSlot::query()->where('id', '!=', $slot->id)->sole(),
+        );
+        $this->assertSame($group->id, $new->class_group_id);
+        $this->assertSame($effectiveFrom, $new->starts_on->toDateString());
+    }
+
+    #[Test]
+    public function a_lock_recheck_without_effective_date_returns_a_controlled_validation_error(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $slot = $this->slotWithLesson($schoolClass);
+        $lesson = $this->inTenant($this->organization, fn (): Lesson => $slot->lessons()->sole());
+        $group = $this->groupFor($schoolClass);
+        $historyAdded = false;
+
+        DB::listen(function ($query) use (&$historyAdded, $lesson): void {
+            if ($historyAdded
+                || ! str_contains($query->sql, 'recurring_lesson_slots')
+                || ! str_contains($query->sql, '"id"')
+                || ! str_contains($query->sql, 'limit 1')) {
+                return;
+            }
+
+            $historyAdded = true;
+            LessonSummary::create([
+                'lesson_id' => $lesson->id,
+                'content' => 'Histórico adquirido durante o recheck.',
+            ]);
+        });
+
+        $response = $this->putSlot($slot, $schoolClass, ['class_group_id' => $group->id])
+            ->assertRedirect()
+            ->assertSessionHasErrors('effective_from');
+
+        $this->assertTrue($historyAdded);
+        $this->assertStringContainsString(
+            'adquiriu histórico',
+            session('errors')->get('effective_from')[0],
+        );
+        $this->assertDatabaseCount('recurring_lesson_slots', 1);
+        $this->assertDatabaseHas('recurring_lesson_slots', [
+            'id' => $slot->id,
+            'class_group_id' => null,
+        ]);
+        $this->assertDatabaseHas('lessons', [
+            'id' => $lesson->id,
+            'class_group_id' => null,
+        ]);
+    }
+
+    #[Test]
+    public function a_future_slot_without_lessons_is_edited_directly_without_versioning(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $future = $this->inDays(10);
+        $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
+            $this->slotAttributes($schoolClass, [
+                'starts_on' => $future,
+                'ends_on' => null,
+            ]),
+        ));
+
+        $this->putSlot($slot, $schoolClass, [
+            'day_of_week' => 4,
+            'starts_at' => '13:00',
+            'ends_at' => '13:50',
+            'starts_on' => $future,
+            'ends_on' => null,
+        ])
+            ->assertRedirect()
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertDatabaseCount('recurring_lesson_slots', 1);
+        $updated = $this->inTenant($this->organization, fn (): RecurringLessonSlot => $slot->refresh());
+        $this->assertSame(4, $updated->day_of_week);
+        $this->assertStringStartsWith('13:00', $updated->starts_at);
+        $this->assertSame($future, $updated->starts_on->toDateString());
     }
 
     #[Test]

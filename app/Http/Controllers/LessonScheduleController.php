@@ -86,9 +86,11 @@ class LessonScheduleController extends Controller implements HasMiddleware
                 if ($locked->requiresVersioning($timezone)) {
                     $effectiveFrom = $validated['effective_from'] ?? null;
 
-                    if (! is_string($effectiveFrom)) {
+                    if (! is_string($effectiveFrom) || trim($effectiveFrom) === '') {
                         throw ValidationException::withMessages([
-                            'effective_from' => __('Indique a partir de quando a alteração passa a vigorar.'),
+                            'effective_from' => __(
+                                'Este tempo adquiriu histórico durante a gravação; indique a partir de quando a alteração passa a vigorar.',
+                            ),
                         ]);
                     }
 
