@@ -143,8 +143,24 @@ return new class extends Migration
 
         Schema::table('instrument_items', function (Blueprint $table) {
             $table->unique(['instrument_id', 'code'], 'instrument_items_instrument_id_code_unique');
+        });
+
+        // The mirror image of Phase 7 above, and it bites for the same reason.
+        // `instrument_group_id` is the leftmost column of the unique index we
+        // are about to drop, so InnoDB is holding that index to support the
+        // column's foreign key — it prefers a unique index to the one the key
+        // created for itself — and refuses to let it go (MySQL 1553). The key
+        // comes off first; the column follows once nothing indexes it.
+        Schema::table('instrument_items', function (Blueprint $table) {
+            $table->dropForeign(['instrument_group_id']);
+        });
+
+        Schema::table('instrument_items', function (Blueprint $table) {
             $table->dropUnique('instrument_items_group_code_unique');
-            $table->dropConstrainedForeignId('instrument_group_id');
+        });
+
+        Schema::table('instrument_items', function (Blueprint $table) {
+            $table->dropColumn('instrument_group_id');
         });
 
         // The composite unique backs the foreign key again, so the standalone

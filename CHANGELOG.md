@@ -46,6 +46,10 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   chave passa a sair primeiro e a voltar com a definição com que foi criada.
   Estava escondido atrás da falha acima: a CI nunca chegava ao passo da
   reversão.
+- **E a dos grupos de instrumento também.** O mesmo 1553, na direcção
+  contrária: a subida já tratava o caso e a descida não. A chave de
+  `instrument_group_id` sai antes do índice único que a sustenta, e a coluna
+  só depois.
 
 ## [0.139.0] — 2026-09-09
 
