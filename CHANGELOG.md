@@ -25,6 +25,14 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.140.2] — 2026-09-09
+
+### Corrigido
+
+- **O recheck do lock funciona em SQLite e MySQL.** Os testes de concorrência
+  já reconhecem a consulta bloqueada independentemente da quoting do driver,
+  mantendo a revalidação do histórico dentro da transação.
+
 ## [0.140.1] — 2026-09-09
 
 ### Corrigido

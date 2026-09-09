@@ -660,7 +660,7 @@ class LessonScheduleTest extends TestCase
         DB::listen(function ($query) use (&$historyAdded, $lesson): void {
             if ($historyAdded
                 || ! str_contains($query->sql, 'recurring_lesson_slots')
-                || ! str_contains($query->sql, '"id"')
+                || preg_match('/(["`]id["`]|\\bid\\b)/i', $query->sql) !== 1
                 || ! str_contains($query->sql, 'limit 1')) {
                 return;
             }
@@ -709,7 +709,7 @@ class LessonScheduleTest extends TestCase
         DB::listen(function ($query) use (&$historyAdded, $lesson): void {
             if ($historyAdded
                 || ! str_contains($query->sql, 'recurring_lesson_slots')
-                || ! str_contains($query->sql, '"id"')
+                || preg_match('/(["`]id["`]|\\bid\\b)/i', $query->sql) !== 1
                 || ! str_contains($query->sql, 'limit 1')) {
                 return;
             }
