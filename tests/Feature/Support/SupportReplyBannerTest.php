@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Support;
 
+use App\Actions\Support\ChangeSupportStatus;
 use App\Actions\Support\OpenSupportRequest;
 use App\Models\SupportCategory;
 use App\Models\SupportRequest;
@@ -25,6 +26,8 @@ class SupportReplyBannerTest extends TestCase
 {
     use RefreshDatabase;
 
+    private ?User $operator = null;
+
     private function requestFor(User $user, SupportRequestStatus $status): SupportRequest
     {
         $request = app(OpenSupportRequest::class)->open([
@@ -33,9 +36,20 @@ class SupportReplyBannerTest extends TestCase
             'description' => 'Conteúdo de teste.',
         ], $user, $user->personalOrganization());
 
-        $request->forceFill(['status' => $status])->save();
+        // O estado chega pela acção do domínio, e não por um `forceFill` que o
+        // teste escrevesse à mão: `waiting_for_user` sem `waiting_since` é
+        // recusado por uma CHECK constraint, e `resolved` sem `resolved_at`
+        // também. Escrever só a coluna passava em SQLite, que ignora CHECKs, e
+        // falhava em MySQL — que é onde a CI corre e onde está a produção.
+        app(ChangeSupportStatus::class)->to($request, $status, $this->operator());
 
-        return $request;
+        return $request->refresh();
+    }
+
+    /** Quem muda o estado de um pedido é sempre um operador. Aqui basta que exista. */
+    private function operator(): User
+    {
+        return $this->operator ??= User::factory()->create();
     }
 
     #[Test]
