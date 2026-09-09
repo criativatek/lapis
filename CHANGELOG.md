@@ -25,6 +25,20 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.139.1] — 2026-09-09
+
+### Corrigido
+
+- **A CI volta a ser um gate.** Um teste da faixa «o suporte respondeu-lhe»
+  escrevia o estado do pedido directamente na coluna, saltando a acção do
+  domínio que arruma os carimbos que o acompanham. Em SQLite passava — SQLite
+  ignora as CHECK constraints —, mas em MySQL a base de dados recusava
+  `waiting_for_user` sem `waiting_since`, e a suíte falhava. O estado passa a
+  chegar por `ChangeSupportStatus`, como em todo o resto do domínio. Nada muda
+  na aplicação: era o teste que estava errado, não a regra — mas enquanto
+  falhava, cada release seguia com a CI vermelha e uma falha verdadeira ficava
+  indistinguível desta.
+
 ## [0.139.0] — 2026-09-09
 
 As turmas que, em certos tempos, funcionam divididas passam a poder dizê-lo. O
