@@ -26,6 +26,27 @@ use App\Domain\Import\PhotoMatch;
  * would be wrong). extractTableGridMatches() only runs when the Intuitivo
  * shape yields nothing, since a real file is always one format or the other,
  * never both.
+ *
+ * A PHOTO WITHOUT A CAPTION IS STILL A PHOTO.
+ *
+ * The export dialog has an option — «colocar o nome ao lado da foto» — that
+ * teachers do miss, and a file produced without it carries the images and no
+ * captions at all. This parser used to answer such a file with an empty list:
+ * every image read, paired with nothing, and dropped. The teacher was then
+ * left with a class of students, a folder of their photos, and no path
+ * between the two except deleting the students and starting over.
+ *
+ * So an image that pairs with no caption is now returned as a PhotoMatch with
+ * an EMPTY name, at its own place in document order alongside the named ones.
+ * An empty name never auto-matches a student — RosterImportPreviewBuilder's
+ * findPhotoIndex() refuses it explicitly — so it only reaches the preview's
+ * photo pool, where the teacher assigns it by hand. Nothing is guessed; what
+ * changed is that the bytes survive long enough to be assignable at all.
+ *
+ * The cost is that a decorative image in the same document — a school crest
+ * in a header, say — now also arrives as an unnamed photo. That is one
+ * thumbnail to ignore in the preview, and the preview is precisely the point:
+ * an image nobody claims there is never written anywhere.
  */
 class PhotoFileParser
 {
@@ -131,30 +152,43 @@ class PhotoFileParser
         // Both node kinds, in one query, preserve document order.
         $nodes = $xpath->query('//v:imagedata | //w:altChunk');
 
-        $matches = [];
-
         if ($nodes === false) {
-            return $matches;
+            return [];
         }
 
-        /** @var list<string|null> $pendingImageTargets FIFO queue, oldest first */
-        $pendingImageTargets = [];
+        /**
+         * Every image seen, keyed by its position in document order. Recorded
+         * rather than consumed, so an image whose caption never arrives can
+         * still be returned unnamed at the end instead of vanishing.
+         *
+         * @var array<int, string|null> $imagesByPosition
+         */
+        $imagesByPosition = [];
+
+        /** @var list<int> $unclaimed positions still waiting for a caption, oldest first */
+        $unclaimed = [];
+
+        /** @var array<int, PhotoMatch> $named position => the match its own caption produced */
+        $named = [];
 
         foreach ($nodes as $node) {
             /** @var \DOMElement $node */
             if ($node->localName === 'imagedata') {
                 $rid = $node->getAttributeNS(self::NS_R, 'pict');
-                $pendingImageTargets[] = $relationships[$rid] ?? null;
+                $position = count($imagesByPosition);
+                $imagesByPosition[$position] = $relationships[$rid] ?? null;
+                $unclaimed[] = $position;
 
                 continue;
             }
 
             // altChunk
-            if ($pendingImageTargets === []) {
+            if ($unclaimed === []) {
                 continue; // A caption with no preceding image — nothing to pair.
             }
 
-            $imageTarget = array_shift($pendingImageTargets);
+            $position = array_shift($unclaimed);
+            $imageTarget = $imagesByPosition[$position];
 
             if ($imageTarget === null) {
                 continue; // That image's own relationship could not be resolved.
@@ -171,7 +205,7 @@ class PhotoFileParser
             $captionHtml = $zip->getFromName($chunkTarget);
 
             if ($imageBytes !== false && $captionHtml !== false) {
-                $matches[] = new PhotoMatch(
+                $named[$position] = new PhotoMatch(
                     name: $this->extractName($captionHtml),
                     imageBytes: $imageBytes,
                     extension: strtolower(pathinfo($imageTarget, PATHINFO_EXTENSION)) ?: 'jpg',
@@ -179,7 +213,7 @@ class PhotoFileParser
             }
         }
 
-        return $matches;
+        return $this->withUnnamedImages($named, $imagesByPosition, $zip);
     }
 
     /**
@@ -204,14 +238,18 @@ class PhotoFileParser
 
         $rows = $xpath->query('//w:tr');
 
-        $matches = [];
-
         if ($rows === false) {
-            return $matches;
+            return [];
         }
 
-        /** @var list<string|null> $pendingImageTargets FIFO queue, oldest first */
-        $pendingImageTargets = [];
+        /** @var array<int, string|null> $imagesByPosition */
+        $imagesByPosition = [];
+
+        /** @var list<int> $unclaimed positions still waiting for a caption, oldest first */
+        $unclaimed = [];
+
+        /** @var array<int, PhotoMatch> $named */
+        $named = [];
 
         foreach ($rows as $row) {
             if (! $row instanceof \DOMElement) {
@@ -224,7 +262,9 @@ class PhotoFileParser
                 foreach ($blips as $blip) {
                     /** @var \DOMElement $blip */
                     $rid = $blip->getAttributeNS(self::NS_R, 'embed');
-                    $pendingImageTargets[] = $relationships[$rid] ?? null;
+                    $position = count($imagesByPosition);
+                    $imagesByPosition[$position] = $relationships[$rid] ?? null;
+                    $unclaimed[] = $position;
                 }
             }
 
@@ -245,11 +285,12 @@ class PhotoFileParser
                     continue;
                 }
 
-                if ($pendingImageTargets === []) {
+                if ($unclaimed === []) {
                     continue; // A caption with no preceding image — nothing to pair.
                 }
 
-                $imageTarget = array_shift($pendingImageTargets);
+                $position = array_shift($unclaimed);
+                $imageTarget = $imagesByPosition[$position];
 
                 if ($imageTarget === null) {
                     continue; // That image's own relationship could not be resolved.
@@ -258,7 +299,7 @@ class PhotoFileParser
                 $imageBytes = $zip->getFromName($imageTarget);
 
                 if ($imageBytes !== false) {
-                    $matches[] = new PhotoMatch(
+                    $named[$position] = new PhotoMatch(
                         name: $name,
                         imageBytes: $imageBytes,
                         extension: strtolower(pathinfo($imageTarget, PATHINFO_EXTENSION)) ?: 'jpg',
@@ -267,7 +308,49 @@ class PhotoFileParser
             }
         }
 
-        return $matches;
+        return $this->withUnnamedImages($named, $imagesByPosition, $zip);
+    }
+
+    /**
+     * Puts back every image that no caption ever claimed, as a match with an
+     * empty name, at its own place in document order.
+     *
+     * This is why positions are tracked instead of a queue being consumed
+     * (see the class docblock): a file exported without «colocar o nome ao
+     * lado da foto» has captions for nobody, and the teacher's way out of
+     * that is the preview's photo pool — which can only offer photos that
+     * were actually read. Order matters there too, because that pool is
+     * browsed against the same grid the teacher is looking at in Word.
+     *
+     * @param  array<int, PhotoMatch>  $named
+     * @param  array<int, string|null>  $imagesByPosition
+     * @return list<PhotoMatch>
+     */
+    protected function withUnnamedImages(array $named, array $imagesByPosition, \ZipArchive $zip): array
+    {
+        $matches = $named;
+
+        foreach ($imagesByPosition as $position => $imageTarget) {
+            if ($imageTarget === null || isset($matches[$position])) {
+                continue;
+            }
+
+            $imageBytes = $zip->getFromName($imageTarget);
+
+            if ($imageBytes === false) {
+                continue;
+            }
+
+            $matches[$position] = new PhotoMatch(
+                name: '',
+                imageBytes: $imageBytes,
+                extension: strtolower(pathinfo($imageTarget, PATHINFO_EXTENSION)) ?: 'jpg',
+            );
+        }
+
+        ksort($matches);
+
+        return array_values($matches);
     }
 
     /**

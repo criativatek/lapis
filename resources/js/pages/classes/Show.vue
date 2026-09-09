@@ -310,13 +310,36 @@ function removeStudentPhoto(): void {
     );
 }
 
+/**
+ * Quem já está a ser removido não volta a ser pedido.
+ *
+ * O botão ficava ativo enquanto o DELETE ia a caminho, e o segundo clique
+ * pedia a remoção de uma inscrição que o primeiro já tinha apagado — que o
+ * servidor deixou de responder com um 404, mas que continua a ser um pedido
+ * que nunca devia ter partido. É o ULID e não o índice da linha: a pauta
+ * volta a ser desenhada quando a resposta chega.
+ */
+const removing = ref<Set<string>>(new Set());
+
 function remove(student: Student): void {
-    if (confirm(`Remover ${student.name} da turma?`)) {
-        router.delete(
-            `/classes/${props.schoolClass.ulid}/students/${student.ulid}`,
-            { preserveScroll: true },
-        );
+    if (removing.value.has(student.ulid)) {
+        return;
     }
+
+    if (!confirm(`Remover ${student.name} da turma?`)) {
+        return;
+    }
+
+    removing.value = new Set(removing.value).add(student.ulid);
+
+    router.delete(`/classes/${props.schoolClass.ulid}/students/${student.ulid}`, {
+        preserveScroll: true,
+        onFinish: () => {
+            const pending = new Set(removing.value);
+            pending.delete(student.ulid);
+            removing.value = pending;
+        },
+    });
 }
 
 const importDialogOpen = ref(false);
@@ -334,16 +357,26 @@ function openImportDialog(): void {
  * «Escolher outro ficheiro», visto deste lado.
  *
  * Quem desiste da pré-visualização volta ao passo de onde saiu — o diálogo de
- * carregamento — e não apenas à turma com o botão algures no ecrã. O `?importar`
+ * carregamento — e não apenas à turma com o botão algures no ecrã. O parâmetro
  * é apagado do URL a seguir, para que uma atualização da página não reabra um
  * diálogo que o professor entretanto fechou.
+ *
+ * São dois diálogos porque são dois pontos de partida: importar a lista da
+ * turma, e corrigir as fotos de uma turma que já existe. Desistir de uma
+ * correção de fotos e cair no diálogo do Excel seria mandar o professor
+ * recomeçar por um sítio onde nunca esteve.
  */
 onMounted(() => {
-    if (!new URL(window.location.href).searchParams.has('importar')) {
+    const parameters = new URL(window.location.href).searchParams;
+
+    if (parameters.has('fotos')) {
+        openPhotoDialog();
+    } else if (parameters.has('importar')) {
+        openImportDialog();
+    } else {
         return;
     }
 
-    openImportDialog();
     window.history.replaceState({}, '', window.location.pathname);
 });
 
@@ -496,7 +529,7 @@ function submitPhotos(): void {
                         size="sm"
                         @click="openPhotoDialog"
                     >
-                        <FileUp class="size-4" /> Adicionar fotos
+                        <FileUp class="size-4" /> Adicionar ou corrigir fotos
                     </Button>
                     <Button
                         type="button"
@@ -708,7 +741,10 @@ function submitPhotos(): void {
                                     variant="ghost"
                                     size="icon"
                                     class="size-11"
-                                    :disabled="!student.can_be_removed"
+                                    :disabled="
+                                        !student.can_be_removed ||
+                                        removing.has(student.ulid)
+                                    "
                                     :aria-label="
                                         student.can_be_removed
                                             ? `Remover ${student.name} da turma`
@@ -933,11 +969,12 @@ function submitPhotos(): void {
             <DialogContent>
                 <form @submit.prevent="submitPhotos">
                     <DialogHeader>
-                        <DialogTitle>Adicionar fotos</DialogTitle>
+                        <DialogTitle>Adicionar ou corrigir fotos</DialogTitle>
                         <DialogDescription>
                             Ficheiro Word exportado do Intuitivo — modelo EB019.
-                            Associa as fotos aos alunos já inscritos, através do
-                            nome.
+                            Serve para adicionar fotos e para corrigir as que
+                            ficaram erradas: a associação é revista antes de ser
+                            aplicada, e nenhum aluno é eliminado nem recriado.
                         </DialogDescription>
                     </DialogHeader>
                     <div class="grid gap-4 py-4">
@@ -955,7 +992,7 @@ function submitPhotos(): void {
                     </div>
                     <DialogFooter>
                         <Button type="submit" :disabled="photoForm.processing">
-                            Associar fotos
+                            Rever associação
                         </Button>
                     </DialogFooter>
                 </form>

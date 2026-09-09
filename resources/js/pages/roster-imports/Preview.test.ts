@@ -125,9 +125,11 @@ describe('roster-imports/Preview — a saída dentro da aplicação', () => {
 
         expect(exit).toBeDefined();
         // Sem o token não se saberia o que apagar; sem o DELETE seria uma
-        // navegação que deixava as fotografias no disco.
+        // navegação que deixava as fotografias no disco. E `flow` diz a que
+        // passo voltar: importar a lista e corrigir fotos são dois pontos de
+        // partida, e desistir de um não pode cair no diálogo do outro.
         expect(exit!.attributes('data-href')).toBe(
-            '/classes/class-1/roster-imports/token-1',
+            '/classes/class-1/roster-imports/token-1?flow=roster',
         );
         expect(exit!.attributes('data-method')).toBe('delete');
     });

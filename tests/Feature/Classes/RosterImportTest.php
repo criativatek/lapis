@@ -531,14 +531,22 @@ class RosterImportTest extends TestCase
         $photoPath = "roster-imports/{$token}/0.jpg";
         Storage::disk('local')->assertExists($photoPath);
 
-        // An empty name fails the confirm() validation (rows.*.name is
-        // required) BEFORE any row is processed. Before the fix, the whole
-        // method body — including Gate::authorize() and validate() — sat
-        // inside the try/finally that deletes the temp folder, so a
-        // validation failure here silently destroyed the still-needed photo.
+        // A name over 255 characters fails the confirm() validation BEFORE any
+        // row is processed. Before the fix, the whole method body — including
+        // Gate::authorize() and validate() — sat inside the try/finally that
+        // deletes the temp folder, so a validation failure here silently
+        // destroyed the still-needed photo.
+        //
+        // It used to be an EMPTY name that tripped the rule. That stopped
+        // being invalid on purpose: the photo-correction flow previews
+        // students who may not have an identity yet, and confirm() skips a
+        // nameless row with nobody on the roll rather than refusing the whole
+        // file. The invariant under test here is the temp folder's, not the
+        // name rule's, so it is checked with a name that is still genuinely
+        // out of bounds.
         $response = $this->actingAs($this->user)->post("/classes/{$class->ulid}/roster-imports/{$token}/confirm", [
             'rows' => [[
-                'name' => '',
+                'name' => str_repeat('a', 256),
                 'class_number' => 1,
                 'birth_date' => null,
                 'situation_code' => 'X',

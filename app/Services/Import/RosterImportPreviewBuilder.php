@@ -4,14 +4,14 @@ namespace App\Services\Import;
 
 use App\Domain\Import\EnrollmentSituation;
 use App\Domain\Import\PhotoMatch;
+use App\Domain\Import\RosterMatch;
 use App\Domain\Import\RosterRow;
 use Illuminate\Support\Str;
 
 /**
  * Merges parsed roster rows with parsed photo matches into plain arrays ready
  * to hand to the Inertia preview page. Never touches Eloquent or the
- * database directly — $isAlreadyEnrolled is injected so this stays a fast,
- * pure unit.
+ * database directly — the matcher is injected so this stays a fast, pure unit.
  */
 class RosterImportPreviewBuilder
 {
@@ -30,13 +30,20 @@ class RosterImportPreviewBuilder
     public const ACTION_SKIP = 'skip';
 
     /**
+     * More than one student on the roll answers to this row. Never resolved
+     * here, and never included by default: the teacher points at the right one
+     * in the preview, or says it is somebody new (§3).
+     */
+    public const ACTION_AMBIGUOUS = 'ambiguous';
+
+    /**
      * @param  list<RosterRow>  $rosterRows
      * @param  list<PhotoMatch>  $photoMatches
-     * @param  \Closure(string): ?int  $enrolledAs  Receives the name already normalized (squished, lowercased) — not the raw roster spelling — and answers with the id of the enrollment that student already has in this class, or null. A real (database-backed) implementation must compare against an equally normalized column/value.
+     * @param  \Closure(RosterRow): RosterMatch  $matcher  What this class already knows about the row — which enrolment, recognised how, and whether more than one answered. MatchRosterToEnrollments::forClass() is the database-backed implementation.
      * @param  \Closure(int): ?string|null  $currentStateOf  The words the record currently uses for that enrolment, so the preview can show a change instead of only a destination (§12). Optional: without it the preview simply shows no «estado atual».
      * @return list<array<string, mixed>>
      */
-    public function build(array $rosterRows, array $photoMatches, \Closure $enrolledAs, ?\Closure $currentStateOf = null): array
+    public function build(array $rosterRows, array $photoMatches, \Closure $matcher, ?\Closure $currentStateOf = null): array
     {
         $nameCounts = [];
 
@@ -45,21 +52,55 @@ class RosterImportPreviewBuilder
             $nameCounts[$key] = ($nameCounts[$key] ?? 0) + 1;
         }
 
+        // O MATCHER CORRE UMA VEZ POR LINHA, ANTES DE SE DECIDIR SEJA O QUE
+        // FOR. Duas linhas podem apontar ao mesmo aluno sem terem o mesmo
+        // nome — basta o n.º de processo repetido, que é um engano corrente
+        // num ficheiro feito à mão —, e nesse caso a segunda escrevia por
+        // cima da primeira sem que nada o dissesse: um nome perdia-se, uma
+        // foto ia para o sítio errado, e a contagem final dizia «2 alunos
+        // atualizados» como se fossem dois registos. Contar os destinos exige
+        // conhecê-los todos primeiro (§8).
+        $matches = [];
+        $enrollmentCounts = [];
+
+        foreach ($rosterRows as $index => $row) {
+            $match = $matcher($row);
+            $matches[$index] = $match;
+
+            if ($match->enrollmentId !== null) {
+                $enrollmentCounts[$match->enrollmentId] = ($enrollmentCounts[$match->enrollmentId] ?? 0) + 1;
+            }
+        }
+
         $preview = [];
 
-        foreach ($rosterRows as $row) {
+        foreach ($rosterRows as $index => $row) {
             $key = $this->normalize($row->name);
+            $match = $matches[$index];
 
+            // Duas linhas para o mesmo aluno são um duplicado tanto como duas
+            // linhas com o mesmo nome, e tratam-se da mesma maneira: nenhuma
+            // entra, e a pré-visualização mostra as duas.
+            $duplicateTarget = $match->enrollmentId !== null
+                && ($enrollmentCounts[$match->enrollmentId] ?? 0) > 1;
+
+            // Contadas à parte, e não somadas numa só: «este nome aparece duas
+            // vezes» e «estas duas linhas são o mesmo aluno» são coisas
+            // diferentes de se ler num ecrã, e a segunda acontece com nomes
+            // que não se parecem nada um com o outro. Dizer «nome duplicado no
+            // ficheiro» a quem tem dois nomes distintos com o mesmo n.º de
+            // processo seria mandá-lo procurar uma coisa que não existe.
             $duplicateInFile = $nameCounts[$key] > 1;
-            $enrollmentId = $enrolledAs($key);
             $photoIndex = $this->findPhotoIndex($row->name, $photoMatches);
 
             // A name appearing twice in the same file is not something to guess
-            // about; everyone else is either new here, or already on the roll and
-            // therefore an UPDATE rather than a second enrolment (§8).
+            // about, and neither is a name that two students on the roll both
+            // answer to. Everyone else is either new here, or already on the
+            // roll and therefore an UPDATE rather than a second enrolment (§8).
             $action = match (true) {
-                $duplicateInFile => self::ACTION_SKIP,
-                $enrollmentId !== null => self::ACTION_UPDATE,
+                $duplicateInFile, $duplicateTarget => self::ACTION_SKIP,
+                $match->ambiguous => self::ACTION_AMBIGUOUS,
+                $match->enrollmentId !== null => self::ACTION_UPDATE,
                 default => self::ACTION_ENROL,
             };
 
@@ -67,8 +108,8 @@ class RosterImportPreviewBuilder
             // unrecognised one says so rather than being quietly treated as
             // «Matriculado» (§10, §24).
             $situation = EnrollmentSituation::tryFromCode($row->situationCode);
-            $currentState = $enrollmentId !== null && $currentStateOf !== null
-                ? $currentStateOf($enrollmentId)
+            $currentState = $match->enrollmentId !== null && $currentStateOf !== null
+                ? $currentStateOf($match->enrollmentId)
                 : null;
             $newState = $situation?->label();
 
@@ -89,10 +130,25 @@ class RosterImportPreviewBuilder
                 'photo_index' => $photoIndex,
                 'photo_extension' => $photoIndex !== null ? $photoMatches[$photoIndex]->extension : null,
                 'duplicate_in_file' => $duplicateInFile,
-                'already_enrolled' => $enrollmentId !== null,
-                'enrollment_id' => $enrollmentId,
+                'duplicate_target' => $duplicateTarget,
+                'already_enrolled' => $match->enrollmentId !== null,
+                'enrollment_id' => $match->enrollmentId,
+                // «Reconhecido pelo n.º de processo» and «reconhecido pelo
+                // nome» do not deserve the same amount of the teacher's trust,
+                // so the preview is told which of the two happened (§3).
+                'matched_by' => $match->matchedBy,
+                'ambiguous' => $match->ambiguous,
+                'candidates' => $match->candidates,
+                // «Nome atual → Nome novo» (§5): a corrected spelling updates
+                // the student it already belongs to; it never adds a second one.
+                'current_name' => $match->currentName,
+                'name_changes' => $match->currentName !== null
+                    && $this->normalize($match->currentName) !== $key,
+                // The difference between «associar uma foto» and «substituir a
+                // que lá está» — worth saying before it happens, not after (§4).
+                'has_photo_today' => $match->hasPhoto,
                 'action' => $action,
-                'include' => $action !== self::ACTION_SKIP,
+                'include' => $action === self::ACTION_ENROL || $action === self::ACTION_UPDATE,
             ];
         }
 
@@ -120,7 +176,8 @@ class RosterImportPreviewBuilder
     public function matchPhotosToRows(array $rows, array $photoMatches): array
     {
         foreach ($rows as &$row) {
-            $photoIndex = $this->findPhotoIndex($row['name'], $photoMatches);
+            $name = $row['name'] ?? null;
+            $photoIndex = $this->findPhotoIndex(is_string($name) ? $name : '', $photoMatches);
 
             if ($photoIndex !== null) {
                 $row['photo_index'] = $photoIndex;
@@ -140,6 +197,12 @@ class RosterImportPreviewBuilder
      * a real roster — this checks each name's words against the other's, in
      * order, so either one may be the abbreviated side.
      *
+     * A PHOTO WITH NO NAME NEVER MATCHES ANYBODY. PhotoFileParser now returns
+     * the images out of a file exported without captions, so that the teacher
+     * can assign them by hand in the preview. Auto-matching one of those would
+     * be inventing an association out of nothing but position — precisely the
+     * mistake this flow exists to make impossible.
+     *
      * @param  list<PhotoMatch>  $photoMatches
      */
     protected function findPhotoIndex(string $name, array $photoMatches): ?int
@@ -147,6 +210,10 @@ class RosterImportPreviewBuilder
         $targetWords = $this->words($name);
 
         foreach ($photoMatches as $index => $photo) {
+            if (trim($photo->name) === '') {
+                continue;
+            }
+
             $photoWords = $this->words($photo->name);
 
             if ($this->isWordSubsequence($photoWords, $targetWords) || $this->isWordSubsequence($targetWords, $photoWords)) {

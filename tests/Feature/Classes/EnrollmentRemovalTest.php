@@ -19,6 +19,7 @@ use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -138,6 +139,83 @@ class EnrollmentRemovalTest extends TestCase
             ->assertRedirect();
 
         $this->assertNull(Enrollment::withoutGlobalScopes()->find($enrollment->id));
+    }
+
+    // ------------------------------------------- o aluno que já não está lá
+
+    /**
+     * REMOVER DUAS VEZES O MESMO ALUNO NÃO É UM ERRO.
+     *
+     * `enrollments` não tem soft delete, de propósito: uma inscrição enganada
+     * apagada some mesmo. Só que isso torna o ULID irresolúvel no instante
+     * seguinte, e o binding implícito respondia a isso com um 404 cru, dentro
+     * do modal de erro do Inertia. Foi o que o professor do 7.º B viu ao
+     * tentar reconstruir a turma — o botão não se desativava enquanto o pedido
+     * estava a caminho, e o segundo clique caía aqui. O estado final é o que
+     * ele pediu; a resposta passa a dizê-lo.
+     */
+    #[Test]
+    public function removing_the_same_student_twice_is_answered_in_words_and_never_with_a_404(): void
+    {
+        $class = $this->createClass();
+        $enrollment = $this->enroll($class, 'Joao Enganado');
+
+        $this->actingAs($this->user)
+            ->delete("/classes/{$class->ulid}/students/{$enrollment->ulid}")
+            ->assertRedirect();
+
+        $second = $this->actingAs($this->user)
+            ->delete("/classes/{$class->ulid}/students/{$enrollment->ulid}");
+
+        $second->assertRedirect();
+        $this->assertNotSame(404, $second->getStatusCode());
+        $this->assertNotSame(500, $second->getStatusCode());
+
+        $toast = $this->toast();
+        $this->assertSame('success', $toast['type']);
+        $this->assertStringContainsString('já não está nesta turma', $toast['message']);
+    }
+
+    #[Test]
+    public function a_ulid_that_never_existed_removes_nobody_and_says_so(): void
+    {
+        $class = $this->createClass();
+        $enrollment = $this->enroll($class, 'Joao Que Fica');
+
+        $response = $this->actingAs($this->user)
+            ->delete("/classes/{$class->ulid}/students/".Str::ulid()->toString());
+
+        $response->assertRedirect();
+        $this->assertNotSame(404, $response->getStatusCode());
+        $this->assertNotNull(Enrollment::withoutGlobalScopes()->find($enrollment->id));
+    }
+
+    /**
+     * A recusa por história continua a ser uma recusa, mesmo repetida.
+     *
+     * Um separador aberto há uma hora mostra o botão como estava. Carregar
+     * nele outra vez não pode encontrar nem um 404 nem um 500 — encontra a
+     * mesma frase, e o aluno continua na pauta com tudo o que tem.
+     */
+    #[Test]
+    public function a_blocked_removal_stays_blocked_and_readable_when_it_is_retried(): void
+    {
+        $class = $this->createClass();
+        $enrollment = $this->enroll($class, 'Maria Avaliada');
+        $score = $this->scoreFor($class, $enrollment);
+
+        foreach (range(1, 3) as $attempt) {
+            $response = $this->actingAs($this->user)
+                ->delete("/classes/{$class->ulid}/students/{$enrollment->ulid}");
+
+            $response->assertRedirect();
+            $this->assertNotSame(404, $response->getStatusCode(), "Tentativa {$attempt}");
+            $this->assertNotSame(500, $response->getStatusCode(), "Tentativa {$attempt}");
+            $this->assertSame('error', $this->toast()['type'], "Tentativa {$attempt}");
+        }
+
+        $this->assertNotNull(Enrollment::withoutGlobalScopes()->find($enrollment->id));
+        $this->assertNotNull(StudentItemScore::withoutGlobalScopes()->find($score->id));
     }
 
     // ----------------------------------------- a inscrição que tem história

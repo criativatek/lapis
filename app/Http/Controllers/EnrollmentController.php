@@ -147,14 +147,45 @@ class EnrollmentController extends Controller
      * não há história nenhuma a proteger — são as pertenças a grupos do
      * horário, que são arrumação organizativa e não sobrevivem à inscrição.
      * A razão por extenso está em EnrollmentHistory::CLEARED_WITH_ENROLLMENT.
+     *
+     * A INSCRIÇÃO É RESOLVIDA AQUI, E NÃO PELO BINDING IMPLÍCITO DA ROTA.
+     * `enrollments` não tem soft delete — de propósito: uma inscrição enganada
+     * apagada some mesmo. Só que isso torna o ULID irresolúvel no instante
+     * seguinte, e o binding implícito responde a isso com um 404 cru, dentro
+     * do modal de erro do Inertia. Foi o que aconteceu em produção: o botão
+     * não se desativa enquanto o pedido está a caminho, o primeiro clique
+     * apagou o aluno, e o segundo — no mesmo botão, ou num separador aberto há
+     * uma hora — mostrou «404 Not Found» a quem tinha acabado de fazer
+     * exatamente o que queria. Remover duas vezes o mesmo aluno não é um erro
+     * do professor nem um endereço inválido: é a mesma frase legível que a
+     * 0.138.2 deu à recusa por história, e o estado final é o pretendido.
+     *
+     * O 404 fica para o que continua a ser: um ULID que pertence a OUTRA turma
+     * desta organização. Aí não há nada de benigno a explicar — a resposta não
+     * confirma que aquela inscrição existe, e os dois testes de isolamento da
+     * 0.138.2 continuam a exigi-lo (ADR-0002).
      */
-    public function destroy(SchoolClass $class, Enrollment $enrollment, EnrollmentHistory $history): RedirectResponse
+    public function destroy(SchoolClass $class, string $enrollment, EnrollmentHistory $history): RedirectResponse
     {
         Gate::authorize('update', $class);
 
-        abort_unless($enrollment->class_id === $class->id, 404);
+        $onTheRoll = $class->enrollments()->where('ulid', $enrollment)->first();
 
-        $blocking = $history->blocking($enrollment);
+        if ($onTheRoll === null) {
+            // Existe, mas noutra turma: 404, como sempre.
+            abort_if(Enrollment::where('ulid', $enrollment)->exists(), 404);
+
+            // Não existe em lado nenhum desta organização. Já não está aqui —
+            // que é precisamente o que o professor pediu.
+            Inertia::flash('toast', [
+                'type' => 'success',
+                'message' => 'Este aluno já não está nesta turma.',
+            ]);
+
+            return back();
+        }
+
+        $blocking = $history->blocking($onTheRoll);
 
         if ($blocking !== []) {
             // Um redirecionamento normal, como qualquer outra recusa desta
@@ -168,7 +199,7 @@ class EnrollmentController extends Controller
                 'type' => 'error',
                 // «este aluno» quando não há identidade — e não o marcador
                 // «(sem identidade)» do ecrã, que numa frase não se leria.
-                'message' => $history->explain($enrollment->student->identity->display_name ?? 'este aluno', $blocking),
+                'message' => $history->explain($onTheRoll->student->identity->display_name ?? 'este aluno', $blocking),
             ]);
 
             return back();
@@ -179,9 +210,9 @@ class EnrollmentController extends Controller
         // história pedagógica (§ EnrollmentHistory::CLEARED_WITH_ENROLLMENT).
         // Chegar aqui já significa que `blocking()` respondeu vazio — não há
         // uma única avaliação, evidência ou classificação a proteger.
-        DB::transaction(function () use ($enrollment, $history): void {
-            $history->clearAccompanying($enrollment);
-            $enrollment->delete();
+        DB::transaction(function () use ($onTheRoll, $history): void {
+            $history->clearAccompanying($onTheRoll);
+            $onTheRoll->delete();
         });
 
         return back();

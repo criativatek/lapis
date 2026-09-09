@@ -17,11 +17,18 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
+/** One of the students already on the roll that a row could be about. */
+type Candidate = {
+    enrollment_id: number;
+    name: string;
+    class_number: number | null;
+};
+
 type PreviewRow = {
     name: string;
     class_number: number | null;
     birth_date: string | null;
-    situation_code: string;
+    situation_code: string | null;
     situation_recognized: boolean;
     /** «Mudou de turma» — the words, not the code. Null when unrecognised. */
     situation_label: string | null;
@@ -33,19 +40,34 @@ type PreviewRow = {
     photo_index: number | null;
     photo_extension: string | null;
     duplicate_in_file: boolean;
+    /** Duas linhas apontam ao MESMO aluno — nomes diferentes, destino igual. */
+    duplicate_target: boolean;
     already_enrolled: boolean;
     /** The enrolment this row updates, when the student is already on the roll. */
     enrollment_id: number | null;
-    /** `enrol` · `update` · `skip` — decided server-side, never here. */
+    /** `process_number` · `name` · null — how the student was recognised. */
+    matched_by: string | null;
+    /** More than one student on the roll answers to this row. */
+    ambiguous: boolean;
+    candidates: Candidate[];
+    /** The name on record today, so a correction can be shown as a change. */
+    current_name: string | null;
+    name_changes: boolean;
+    /** Whether that student already has a photo — «associar» vs «substituir». */
+    has_photo_today: boolean;
+    /** `enrol` · `update` · `skip` · `ambiguous` — decided server-side, never here. */
     action: string;
     include: boolean;
 };
 
 // Every photo PhotoFileParser extracted, whether or not it auto-matched a
-// row by name — the teacher can assign any of these to any row (below).
+// row by name — and, since a file exported without «colocar o nome ao lado
+// da foto» carries no names at all, whether or not it HAS a name. Those are
+// the ones `named: false` marks: they can only ever be assigned by hand.
 type PhotoOption = {
     index: number;
     extension: string;
+    named: boolean;
 };
 
 type HelpArticle = { id: string; title: string; summary: string };
@@ -55,8 +77,17 @@ const props = defineProps<{
     token: string;
     rows: PreviewRow[];
     photos: PhotoOption[];
+    /**
+     * `roster` — a list of students was uploaded, most of them probably new.
+     * `photos` — the class already exists and only its photos are being
+     * corrected. Same page, same confirm, same discard: what changes is what
+     * the teacher is told they are about to do.
+     */
+    flow?: string;
     helpArticles?: HelpArticle[];
 }>();
+
+const isPhotoCorrection = computed(() => props.flow === 'photos');
 
 // class_number is '' when empty (the backend treats empty as null, via the
 // ConvertEmptyStringsToNull middleware); a plain null would not satisfy the
@@ -64,6 +95,13 @@ const props = defineProps<{
 type FormRow = Omit<PreviewRow, 'class_number'> & {
     class_number: number | string;
     photo_temp_path: string | null;
+    /**
+     * Which student an ambiguous row is about, once the teacher has said.
+     * '' until then, 'new' for somebody this class does not have yet, or the
+     * enrolment id as a string. Never decided here by default — that is the
+     * whole point of marking the row ambiguous in the first place.
+     */
+    ambiguous_choice: string;
 };
 
 // Shared by the initial form seed AND by re-seeding form.rows after
@@ -77,6 +115,7 @@ function toFormRow(row: PreviewRow): FormRow {
             row.photo_index !== null
                 ? `roster-imports/${props.token}/${row.photo_index}.${row.photo_extension}`
                 : null,
+        ambiguous_choice: '',
     };
 }
 
@@ -87,7 +126,7 @@ const form = useForm<{ rows: FormRow[] }>({
 // Auto-matching by name (see attachPhotos() server-side) is the normal case —
 // the manual picker below stays collapsed by default so a correctly-matched
 // row doesn't force the teacher to look at every other photo. It only opens
-// on demand, per row, via the "Trocar foto"/"escolher" trigger.
+// on demand, per row, via the "trocar"/"escolher" trigger.
 const photoPickerOpen = ref<boolean[]>(props.rows.map(() => false));
 
 const photosFile = ref<File | null>(null);
@@ -112,7 +151,7 @@ function submitPhotos(): void {
 
     router.post(
         `/classes/${props.schoolClassUlid}/roster-imports/${props.token}/photos`,
-        { photos: photosFile.value, rows: form.rows },
+        { photos: photosFile.value, rows: form.rows, flow: props.flow ?? 'roster' },
         {
             forceFormData: true,
             preserveState: true,
@@ -124,6 +163,18 @@ function submitPhotos(): void {
                 // re-seeded explicitly, through the same toFormRow() used
                 // on initial load.
                 form.rows = props.rows.map(toFormRow);
+
+                // Numa correção de fotos, uma linha só tem alguma coisa a
+                // fazer quando tem uma foto — é o mesmo critério com que o
+                // servidor marcou as linhas da primeira leitura. Sem isto,
+                // trocar de ficheiro deixava todas as associações novas por
+                // marcar, e confirmar não fazia nada.
+                if (isPhotoCorrection.value) {
+                    form.rows.forEach((row) => {
+                        row.include = row.photo_index !== null;
+                    });
+                }
+
                 photosFile.value = null;
             },
             onError: (errors) => {
@@ -166,13 +217,109 @@ function assignPhoto(rowIndex: number, photo: PhotoOption | null): void {
     row.photo_temp_path = photo
         ? `roster-imports/${props.token}/${photo.index}.${photo.extension}`
         : null;
+
+    // Assigning a photo to a row in the photo-correction flow is the teacher
+    // saying "this one" — having to tick a second box afterwards would be
+    // asking the same question twice. Clearing it un-ticks the row again,
+    // because there is then nothing left for that row to do.
+    if (isPhotoCorrection.value) {
+        row.include = photo !== null;
+    }
 }
+
+/**
+ * Which student an ambiguous row is about, once the teacher has said so.
+ *
+ * Until they do, the row stays out of the import: two students answering to
+ * the same name is not something to resolve by picking the first one. Saying
+ * «novo aluno» is a real answer too — a second Maria Silva who is genuinely a
+ * second person.
+ */
+function resolveAmbiguity(rowIndex: number, choice: string): void {
+    const row = form.rows[rowIndex];
+    row.ambiguous_choice = choice;
+
+    if (choice === '') {
+        row.enrollment_id = null;
+        row.include = false;
+
+        return;
+    }
+
+    row.enrollment_id = choice === 'new' ? null : Number(choice);
+    row.include = true;
+}
+
+function normalizeName(value: string): string {
+    return value.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+// Computed from the LIVE row, not from the server's own name_changes flag:
+// the teacher can correct a name right here, and the summary has to describe
+// what confirming would actually do, not what the file happened to say.
+function hasNameChange(row: FormRow): boolean {
+    return (
+        row.current_name !== null &&
+        row.name.trim() !== '' &&
+        normalizeName(row.current_name) !== normalizeName(row.name)
+    );
+}
+
+function isNewStudent(row: FormRow): boolean {
+    return row.enrollment_id === null && !row.ambiguous;
+}
+
+/**
+ * NOTHING IS APPLIED BEFORE THE FINAL CONFIRMATION (§6), so this is the only
+ * account of it the teacher gets beforehand — and it is live: every count
+ * follows the ticks, the name corrections and the photo assignments as they
+ * are made, not as the file arrived.
+ */
+const summary = computed(() => {
+    const included = form.rows.filter((row) => row.include);
+
+    return {
+        recognized: form.rows.filter((row) => row.already_enrolled).length,
+        newStudents: included.filter(isNewStudent).length,
+        nameUpdates: included.filter(hasNameChange).length,
+        photosAdded: included.filter(
+            (row) => row.photo_index !== null && !row.has_photo_today,
+        ).length,
+        photosReplaced: included.filter(
+            (row) => row.photo_index !== null && row.has_photo_today,
+        ).length,
+        ambiguous: form.rows.filter(
+            (row) => row.ambiguous && row.ambiguous_choice === '',
+        ).length,
+        duplicates: form.rows.filter(
+            (row) => row.duplicate_in_file || row.duplicate_target,
+        ).length,
+        skipped: form.rows.filter((row) => !row.include).length,
+    };
+});
+
+const assignedPhotoCount = computed(
+    () => form.rows.filter((row) => row.photo_index !== null).length,
+);
+
+const unnamedPhotoCount = computed(
+    () => props.photos.filter((photo) => !photo.named).length,
+);
+
+const unassignedPhotoCount = computed(
+    () => props.photos.length - assignedPhotoCount.value,
+);
 
 function submit(): void {
     form.post(
         `/classes/${props.schoolClassUlid}/roster-imports/${props.token}/confirm`,
     );
 }
+
+const discardHref = computed(
+    () =>
+        `/classes/${props.schoolClassUlid}/roster-imports/${props.token}?flow=${props.flow ?? 'roster'}`,
+);
 
 // `limit` (App\Support\Limits\Limits::assertCanIncreaseFor, tripped by a
 // reactivation via fillFromRoster()) is never a field of this form — read
@@ -182,14 +329,97 @@ const limitError = computed(() => (form.errors as Record<string, string>).limit)
 </script>
 
 <template>
-    <Head title="Pré-visualização da importação" />
+    <Head
+        :title="
+            isPhotoCorrection
+                ? 'Corrigir fotos da turma'
+                : 'Pré-visualização da importação'
+        "
+    />
 
     <div class="mx-auto w-full max-w-4xl space-y-6 p-4">
         <Heading
-            title="Confirmar importação"
-            description="Revê cada aluno antes de inscrever. Desmarca uma linha para a excluir."
+            :title="
+                isPhotoCorrection ? 'Corrigir fotos' : 'Confirmar importação'
+            "
+            :description="
+                isPhotoCorrection
+                    ? 'Estes são os alunos que já estão nesta turma. Atribui uma foto a cada um e confirma no fim. Nenhum aluno é eliminado, criado ou alterado nas avaliações.'
+                    : 'Revê cada aluno antes de inscrever. Desmarca uma linha para a excluir.'
+            "
         />
         <ContextualHelp :articles="helpArticles" />
+
+        <!-- O QUE VAI ACONTECER, ANTES DE ACONTECER (§6). Contas ao vivo:
+             seguem as marcações, as correções de nome e as fotos atribuídas
+             à medida que são feitas, e não o que o ficheiro trazia. -->
+        <div class="rounded-lg border border-border bg-muted/40 p-4">
+            <h2 class="text-sm font-semibold">Antes de confirmar</h2>
+            <dl
+                class="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-3"
+            >
+                <div class="flex justify-between gap-2">
+                    <dt class="text-muted-foreground">Já nesta turma</dt>
+                    <dd class="font-medium">{{ summary.recognized }}</dd>
+                </div>
+                <div class="flex justify-between gap-2">
+                    <dt class="text-muted-foreground">A inscrever</dt>
+                    <dd class="font-medium">{{ summary.newStudents }}</dd>
+                </div>
+                <div class="flex justify-between gap-2">
+                    <dt class="text-muted-foreground">Nomes a corrigir</dt>
+                    <dd class="font-medium">{{ summary.nameUpdates }}</dd>
+                </div>
+                <div class="flex justify-between gap-2">
+                    <dt class="text-muted-foreground">Fotos a associar</dt>
+                    <dd class="font-medium">{{ summary.photosAdded }}</dd>
+                </div>
+                <div class="flex justify-between gap-2">
+                    <dt class="text-muted-foreground">Fotos a substituir</dt>
+                    <dd class="font-medium">{{ summary.photosReplaced }}</dd>
+                </div>
+                <div class="flex justify-between gap-2">
+                    <dt class="text-muted-foreground">Por decidir</dt>
+                    <dd
+                        class="font-medium"
+                        :class="summary.ambiguous > 0 ? 'text-amber-700 dark:text-amber-300' : ''"
+                    >
+                        {{ summary.ambiguous }}
+                    </dd>
+                </div>
+                <div class="flex justify-between gap-2">
+                    <dt class="text-muted-foreground">Duplicados no ficheiro</dt>
+                    <dd class="font-medium">{{ summary.duplicates }}</dd>
+                </div>
+                <div class="flex justify-between gap-2">
+                    <dt class="text-muted-foreground">Linhas ignoradas</dt>
+                    <dd class="font-medium">{{ summary.skipped }}</dd>
+                </div>
+                <div v-if="photos.length" class="flex justify-between gap-2">
+                    <dt class="text-muted-foreground">Fotos por atribuir</dt>
+                    <dd class="font-medium">{{ unassignedPhotoCount }}</dd>
+                </div>
+            </dl>
+            <p class="mt-3 text-xs text-muted-foreground">
+                Nada é escrito até confirmares. Avaliações, registos,
+                intervenções e relatórios não são tocados por esta operação.
+            </p>
+        </div>
+
+        <!-- O caso do 7.º B, dito por palavras: o ficheiro foi exportado sem a
+             opção «colocar o nome ao lado da foto», por isso as fotos vêm sem
+             nome nenhum e não há por onde as associar automaticamente. Vêm à
+             mesma — e atribuem-se à mão, aqui. -->
+        <p
+            v-if="unnamedPhotoCount > 0"
+            class="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+        >
+            {{ unnamedPhotoCount }} de {{ photos.length }} fotos deste ficheiro
+            não trazem nome — o ficheiro terá sido exportado sem a opção
+            «colocar o nome ao lado da foto». Não são associadas
+            automaticamente, para não adivinhar de quem são: usa «escolher» na
+            coluna Foto para atribuir cada uma.
+        </p>
 
         <div class="space-y-6">
             <TableShell>
@@ -199,15 +429,32 @@ const limitError = computed(() => (form.errors as Record<string, string>).limit)
                         <th class="px-3 py-2.5 font-medium">Foto</th>
                         <th class="px-3 py-2.5 font-medium">Nome</th>
                         <th class="px-3 py-2.5 font-medium">Nº</th>
-                        <th class="px-3 py-2.5 font-medium">Data nasc.</th>
-                        <th class="px-3 py-2.5 font-medium">Nota</th>
+                        <th
+                            v-if="!isPhotoCorrection"
+                            class="px-3 py-2.5 font-medium"
+                        >
+                            Data nasc.
+                        </th>
+                        <th
+                            v-if="!isPhotoCorrection"
+                            class="px-3 py-2.5 font-medium"
+                        >
+                            Nota
+                        </th>
                         <th class="px-3 py-2.5 font-medium">Avisos</th>
                     </tr>
                 </template>
                 <template #body>
                     <tr v-for="(row, index) in form.rows" :key="index">
                             <td class="px-3 py-2.5">
-                                <input v-model="row.include" type="checkbox" />
+                                <input
+                                    v-model="row.include"
+                                    type="checkbox"
+                                    :disabled="
+                                        row.ambiguous &&
+                                        row.ambiguous_choice === ''
+                                    "
+                                />
                             </td>
                             <td class="px-3 py-2.5">
                                 <Collapsible v-model:open="photoPickerOpen[index]">
@@ -286,6 +533,15 @@ const limitError = computed(() => (form.errors as Record<string, string>).limit)
                             </td>
                             <td class="px-3 py-2.5">
                                 <Input v-model="row.name" class="h-8" />
+                                <!-- «Nome atual → Nome novo» (§5): a mesma
+                                     pessoa com a grafia corrigida, e não um
+                                     segundo aluno. -->
+                                <p
+                                    v-if="hasNameChange(row)"
+                                    class="mt-1 text-xs text-amber-800 dark:text-amber-300"
+                                >
+                                    {{ row.current_name }} → {{ row.name }}
+                                </p>
                             </td>
                             <td class="px-3 py-2.5">
                                 <Input
@@ -294,24 +550,97 @@ const limitError = computed(() => (form.errors as Record<string, string>).limit)
                                     class="h-8 w-16"
                                 />
                             </td>
-                            <td class="px-3 py-2.5 text-muted-foreground">
+                            <td
+                                v-if="!isPhotoCorrection"
+                                class="px-3 py-2.5 text-muted-foreground"
+                            >
                                 {{ row.birth_date ?? '—' }}
                             </td>
-                            <td class="px-3 py-2.5 text-muted-foreground">
+                            <td
+                                v-if="!isPhotoCorrection"
+                                class="px-3 py-2.5 text-muted-foreground"
+                            >
                                 {{ row.note ?? '—' }}
                             </td>
                             <td class="px-3 py-2.5">
+                                <!-- DOIS ALUNOS RESPONDEM A ESTA LINHA. Não se
+                                     escolhe por eles: enquanto não for dito
+                                     qual, a linha fica de fora (§3). -->
+                                <div v-if="row.ambiguous" class="space-y-1">
+                                    <Badge
+                                        variant="outline"
+                                        class="border-amber-300 text-amber-900 dark:border-amber-800 dark:text-amber-200"
+                                        >mais do que um aluno com este nome —
+                                        escolhe qual</Badge
+                                    >
+                                    <select
+                                        class="h-8 w-full rounded-md border border-border bg-background px-2 text-xs"
+                                        :value="row.ambiguous_choice"
+                                        @change="
+                                            resolveAmbiguity(
+                                                index,
+                                                ($event.target as HTMLSelectElement)
+                                                    .value,
+                                            )
+                                        "
+                                    >
+                                        <option value="">Por decidir</option>
+                                        <option
+                                            v-for="candidate in row.candidates"
+                                            :key="candidate.enrollment_id"
+                                            :value="String(candidate.enrollment_id)"
+                                        >
+                                            {{
+                                                candidate.class_number
+                                                    ? `n.º ${candidate.class_number} — `
+                                                    : ''
+                                            }}{{ candidate.name }}
+                                        </option>
+                                        <option value="new">
+                                            É um aluno novo
+                                        </option>
+                                    </select>
+                                </div>
+
                                 <Badge
                                     v-if="row.duplicate_in_file"
                                     variant="outline"
                                     >nome duplicado no ficheiro</Badge
+                                >
+                                <!-- Nomes diferentes, aluno igual: quase sempre
+                                     o mesmo n.º de processo escrito em duas
+                                     linhas. Dizer «nome duplicado» aqui mandava
+                                     o professor procurar uma repetição que não
+                                     existe. -->
+                                <Badge
+                                    v-if="row.duplicate_target"
+                                    variant="outline"
+                                    class="border-amber-300 text-amber-900 dark:border-amber-800 dark:text-amber-200"
+                                    >duas linhas para o mesmo aluno — nenhuma
+                                    entra</Badge
                                 >
                                 <!-- Already on the roll: the roster fills in what
                                      the record is missing and erases nothing. -->
                                 <Badge
                                     v-if="row.already_enrolled"
                                     variant="outline"
-                                    >já nesta turma — atualiza os dados em falta</Badge
+                                >
+                                    {{
+                                        row.matched_by === 'process_number'
+                                            ? 'já nesta turma — reconhecido pelo n.º de processo'
+                                            : 'já nesta turma — atualiza os dados em falta'
+                                    }}
+                                </Badge>
+                                <!-- «associar» e «substituir» não são a mesma
+                                     coisa, e a diferença diz-se antes (§4). -->
+                                <Badge
+                                    v-if="
+                                        row.photo_index !== null &&
+                                        row.has_photo_today
+                                    "
+                                    variant="outline"
+                                    class="border-amber-300 text-amber-900 dark:border-amber-800 dark:text-amber-200"
+                                    >substitui a foto atual</Badge
                                 >
                                 <!-- THE CODE READ, NOT THE CODE SHOWN. «MT» on
                                      a roll means «Mudou de turma», and a
@@ -332,7 +661,10 @@ const limitError = computed(() => (form.errors as Record<string, string>).limit)
                                 </Badge>
 
                                 <Badge
-                                    v-if="!row.situation_recognized"
+                                    v-if="
+                                        !isPhotoCorrection &&
+                                        !row.situation_recognized
+                                    "
                                     variant="outline"
                                     class="border-amber-300 text-amber-900 dark:border-amber-800 dark:text-amber-200"
                                 >
@@ -350,13 +682,21 @@ const limitError = computed(() => (form.errors as Record<string, string>).limit)
             </TableShell>
 
             <div class="space-y-3 rounded-lg border border-dashed border-border p-4">
-                <h2 class="text-sm font-semibold">Adicionar fotos</h2>
+                <h2 class="text-sm font-semibold">
+                    {{
+                        isPhotoCorrection
+                            ? 'Usar outro ficheiro de fotos'
+                            : 'Adicionar fotos'
+                    }}
+                </h2>
                 <p class="text-xs text-muted-foreground">
                     Ficheiro Word exportado do Intuitivo (modelo EB019) com as
-                    fotos dos alunos. As fotos são associadas por nome às linhas acima —
-                    inclui primeiro quaisquer correções de nome que já tenhas
-                    feito. Faz isto antes de confirmar: depois de confirmada a
-                    importação já não é possível associar fotos aqui.
+                    fotos dos alunos. As fotos com nome são associadas por nome
+                    às linhas acima — inclui primeiro quaisquer correções de
+                    nome que já tenhas feito. As fotos sem nome ficam
+                    disponíveis para atribuíres à mão. Podes trocar de ficheiro
+                    aqui quantas vezes precisares; nada é escrito até
+                    confirmares.
                 </p>
                 <div class="flex flex-wrap items-end gap-3">
                     <div class="grid gap-2">
@@ -373,7 +713,11 @@ const limitError = computed(() => (form.errors as Record<string, string>).limit)
                         :disabled="!photosFile || photosProcessing"
                         @click="submitPhotos"
                     >
-                        Adicionar fotos
+                        {{
+                            isPhotoCorrection
+                                ? 'Ler este ficheiro'
+                                : 'Adicionar fotos'
+                        }}
                     </Button>
                 </div>
                 <InputError :message="photosError ?? undefined" />
@@ -384,8 +728,8 @@ const limitError = computed(() => (form.errors as Record<string, string>).limit)
                 class="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900"
             >
                 Escolheste um ficheiro de fotos mas ainda não o adicionaste —
-                clica em "Adicionar fotos" acima antes de confirmar, ou os
-                alunos ficam sem foto.
+                clica no botão acima antes de confirmar, ou os alunos ficam sem
+                foto.
             </p>
 
             <div class="space-y-2">
@@ -394,17 +738,22 @@ const limitError = computed(() => (form.errors as Record<string, string>).limit)
                         type="button"
                         :disabled="form.processing || !!photosFile"
                         @click="submit"
-                        >Confirmar importação</Button
+                        >{{
+                            isPhotoCorrection
+                                ? 'Confirmar correção'
+                                : 'Confirmar importação'
+                        }}</Button
                     >
                     <!-- A OUTRA SAÍDA, e a razão desta fatia: até aqui só se
                          podia confirmar, e quem trouxesse o ficheiro errado
                          saía pelo botão «anterior» do browser. Mesmo padrão da
                          pré-visualização do horário — mas um DELETE em vez de
                          um link, porque sair daqui apaga mesmo a pasta
-                         temporária deste token. Não inscreve ninguém. -->
+                         temporária deste token. Não inscreve ninguém e não
+                         altera nada do que já existe na turma. -->
                     <Button as-child variant="ghost" :disabled="form.processing">
                         <Link
-                            :href="`/classes/${schoolClassUlid}/roster-imports/${token}`"
+                            :href="discardHref"
                             method="delete"
                             as="button"
                             type="button"
@@ -414,7 +763,7 @@ const limitError = computed(() => (form.errors as Record<string, string>).limit)
                     </Button>
                     <span class="text-sm text-muted-foreground">
                         {{ form.rows.filter((r) => r.include).length }} de
-                        {{ form.rows.length }} serão inscritos.
+                        {{ form.rows.length }} linhas selecionadas.
                     </span>
                 </div>
                 <InputError :message="limitError" />

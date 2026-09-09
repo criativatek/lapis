@@ -131,4 +131,53 @@ class RosterFixture
 
         return $path;
     }
+
+    /**
+     * An arbitrary EB058e roster, for the re-import cases.
+     *
+     * The other two builders describe one fixed class each, which is exactly
+     * what a first-import test needs and exactly what a RE-import test cannot
+     * use: the whole subject there is the SECOND file — the one with a name
+     * spelled right, a student who was missing, or two people the school calls
+     * the same thing. Fictional data only.
+     *
+     * @param  list<array{name: string, process_number?: string|null, situation?: string, class_number?: int|null}>  $students
+     */
+    public function buildFrom(array $students): string
+    {
+        $spreadsheet = new Spreadsheet;
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $sheet->setCellValue('A4', 'Agrupamento de Escolas Exemplo');
+        $sheet->setCellValue('H9', 'RELAÇÃO DE TURMA');
+
+        foreach ([
+            'A14' => 'N.º MATR.', 'C14' => 'NOME', 'I14' => 'IDADE', 'K14' => 'DATA NASC.',
+            'M14' => 'SIT.', 'N14' => 'REPET.', 'P14' => 'ASE', 'Q14' => 'NEE',
+            'S14' => 'EMR', 'T14' => 'PLNM', 'U14' => 'N.º PROC.',
+        ] as $cell => $header) {
+            $sheet->setCellValue($cell, $header);
+        }
+
+        $row = 15;
+
+        foreach ($students as $index => $student) {
+            $sheet->setCellValue('A'.$row, $student['class_number'] ?? ($index + 1));
+            $sheet->setCellValue('C'.$row, $student['name']);
+            $sheet->setCellValue('M'.$row, $student['situation'] ?? 'X');
+
+            if (($student['process_number'] ?? null) !== null) {
+                $sheet->setCellValueExplicit('U'.$row, $student['process_number'], DataType::TYPE_STRING);
+            }
+
+            $row++;
+        }
+
+        $sheet->setCellValue('C'.($row + 1), 'Total Alunos - '.count($students));
+
+        $path = tempnam(sys_get_temp_dir(), 'roster_fixture_from_').'.xlsx';
+        (new Xlsx($spreadsheet))->save($path);
+
+        return $path;
+    }
 }

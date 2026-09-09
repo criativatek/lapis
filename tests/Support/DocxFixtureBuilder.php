@@ -201,6 +201,110 @@ class DocxFixtureBuilder
         return $path;
     }
 
+    /**
+     * THE FILE AT THE HEART OF THIS WHOLE FLOW: an EB019 export produced with
+     * «colocar o nome ao lado da foto» switched OFF.
+     *
+     * Same VML shape as build(), and the photos are all there — but there is
+     * not one <w:altChunk> in the document, because there are no captions to
+     * embed. Every image is present and nothing says whose it is. The parser
+     * used to answer this file with an empty list, which is what left a class
+     * of students and a folder of their photos with no way to meet.
+     *
+     * @param  list<string>  $imageBytes
+     */
+    public static function buildWithoutCaptions(array $imageBytes): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'photo_fixture_uncaptioned_').'.docx';
+        $zip = new \ZipArchive;
+        $zip->open($path, \ZipArchive::CREATE | \ZipArchive::OVERWRITE);
+
+        $relationships = '';
+        $imageCells = '';
+
+        foreach ($imageBytes as $index => $bytes) {
+            $n = $index + 1;
+            $imageRid = "rImg{$n}";
+
+            $zip->addFromString("media/image{$n}.jpg", $bytes);
+            $relationships .= '<Relationship Id="'.$imageRid.'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="/media/image'.$n.'.jpg"/>';
+            $imageCells .= '<w:tc><w:p><w:r><w:pict><v:shape><v:imagedata r:pict="'.$imageRid.'"/></v:shape></w:pict></w:r></w:p></w:tc>';
+        }
+
+        $documentXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            .'<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+            .'xmlns:v="urn:schemas-microsoft-com:vml" '
+            .'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            .'<w:body><w:tbl><w:tr>'.$imageCells.'</w:tr></w:tbl></w:body></w:document>';
+
+        $relsXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            .'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            .$relationships.'</Relationships>';
+
+        $contentTypesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            .'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            .'<Default Extension="jpg" ContentType="image/jpeg"/>'
+            .'<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+            .'</Types>';
+
+        $zip->addFromString('[Content_Types].xml', $contentTypesXml);
+        $zip->addFromString('_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>');
+        $zip->addFromString('word/document.xml', $documentXml);
+        $zip->addFromString('word/_rels/document.xml.rels', $relsXml);
+        $zip->close();
+
+        return $path;
+    }
+
+    /**
+     * The same omission in the modern-Word-table shape: a row of pictures and
+     * no row of names under it.
+     *
+     * @param  list<string>  $imageBytes
+     */
+    public static function buildTableGridWithoutCaptions(array $imageBytes): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'photo_fixture_grid_uncaptioned_').'.docx';
+        $zip = new \ZipArchive;
+        $zip->open($path, \ZipArchive::CREATE | \ZipArchive::OVERWRITE);
+
+        $relationships = '';
+        $imageCells = '';
+
+        foreach ($imageBytes as $index => $bytes) {
+            $n = $index + 1;
+            $imageRid = "rImg{$n}";
+
+            $zip->addFromString("word/media/image{$n}.jpg", $bytes);
+            $relationships .= '<Relationship Id="'.$imageRid.'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image'.$n.'.jpg"/>';
+            $imageCells .= '<w:tc><w:p><w:r><w:drawing><a:blip r:embed="'.$imageRid.'"/></w:drawing></w:r></w:p></w:tc>';
+        }
+
+        $documentXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            .'<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+            .'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+            .'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            .'<w:body><w:tbl><w:tr>'.$imageCells.'</w:tr></w:tbl></w:body></w:document>';
+
+        $relsXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            .'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            .$relationships.'</Relationships>';
+
+        $contentTypesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            .'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            .'<Default Extension="jpg" ContentType="image/jpeg"/>'
+            .'<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+            .'</Types>';
+
+        $zip->addFromString('[Content_Types].xml', $contentTypesXml);
+        $zip->addFromString('_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>');
+        $zip->addFromString('word/document.xml', $documentXml);
+        $zip->addFromString('word/_rels/document.xml.rels', $relsXml);
+        $zip->close();
+
+        return $path;
+    }
+
     protected static function captionHtml(string $name): string
     {
         return '<html><head><meta charset="utf-8"/></head><body><div>'.htmlspecialchars($name).' </div></body></html>';

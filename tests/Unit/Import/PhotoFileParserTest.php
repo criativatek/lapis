@@ -150,4 +150,65 @@ class PhotoFileParserTest extends TestCase
         $this->assertCount(1, $matches);
         $this->assertSame($jpeg, $matches[0]->imageBytes);
     }
+
+    #[Test]
+    public function it_returns_the_photos_of_a_file_exported_without_names_so_they_can_be_assigned_by_hand(): void
+    {
+        // O ficheiro do 7.º B: exportado sem «colocar o nome ao lado da foto».
+        // As imagens estão todas lá e não há uma única legenda. Devolver uma
+        // lista vazia — o que acontecia — era deitar fora as fotografias.
+        $path = DocxFixtureBuilder::buildWithoutCaptions([
+            DocxFixtureBuilder::tinyJpeg(),
+            DocxFixtureBuilder::tinyJpeg(),
+            DocxFixtureBuilder::tinyJpeg(),
+        ]);
+
+        $matches = (new PhotoFileParser)->parse($path);
+
+        $this->assertCount(3, $matches);
+
+        foreach ($matches as $match) {
+            $this->assertSame('', $match->name, 'Não se inventa um nome que o ficheiro não traz.');
+            $this->assertNotSame('', $match->imageBytes);
+            $this->assertSame('jpg', $match->extension);
+        }
+    }
+
+    #[Test]
+    public function it_returns_the_photos_of_an_uncaptioned_table_grid_file_too(): void
+    {
+        $path = DocxFixtureBuilder::buildTableGridWithoutCaptions([
+            DocxFixtureBuilder::tinyJpeg(),
+            DocxFixtureBuilder::tinyJpeg(),
+        ]);
+
+        $matches = (new PhotoFileParser)->parse($path);
+
+        $this->assertCount(2, $matches);
+        $this->assertSame('', $matches[0]->name);
+        $this->assertSame('', $matches[1]->name);
+    }
+
+    #[Test]
+    public function an_image_left_over_when_a_caption_is_missing_still_arrives_unnamed(): void
+    {
+        // Meio ficheiro legendado. O emparelhamento é FIFO e não sabe que a
+        // célula vazia ERA a legenda de alguém, por isso «Rui Matos» reclama a
+        // segunda imagem e sobra a terceira. O que este teste fixa é que a que
+        // sobra chega à mesma, sem nome e no fim — antes desaparecia, e com ela
+        // a fotografia de um aluno.
+        $path = DocxFixtureBuilder::buildTableGrid([
+            ['name' => 'Ana Pereira', 'imageBytes' => DocxFixtureBuilder::tinyJpeg()],
+            ['name' => '', 'imageBytes' => DocxFixtureBuilder::tinyJpeg()],
+            ['name' => 'Rui Matos', 'imageBytes' => DocxFixtureBuilder::tinyJpeg()],
+        ]);
+
+        $matches = (new PhotoFileParser)->parse($path);
+
+        $this->assertCount(3, $matches);
+        $this->assertSame(['Ana Pereira', 'Rui Matos', ''], array_map(
+            fn ($match): string => $match->name,
+            $matches,
+        ));
+    }
 }

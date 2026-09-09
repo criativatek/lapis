@@ -25,6 +25,86 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.140.0] — 2026-09-09
+
+### Adicionado
+
+- **Corrigir uma importação sem apagar a turma.** Uma turma importada com o
+  ficheiro errado só tinha uma saída: apagar os alunos um a um e recomeçar — e
+  levar com eles tudo o que estava pendurado no registo de cada um. «Adicionar
+  ou corrigir fotos» passa a abrir a mesma pré-visualização do resto da
+  importação, com uma linha por aluno **já inscrito**, e nada é escrito antes
+  da confirmação final. Voltar a carregar a lista de alunos numa turma que já
+  existe faz o mesmo: reconhece quem lá está, corrige, e não duplica ninguém.
+- **A pré-visualização diz o que vai acontecer antes de acontecer.** Alunos
+  reconhecidos, a inscrever, nomes a corrigir, fotos a associar, fotos a
+  substituir, ambiguidades por decidir, duplicados e linhas ignoradas — em
+  contas ao vivo, que seguem as marcações e as correções à medida que são
+  feitas, e não o que o ficheiro trazia.
+- **Reconhecimento pelo n.º de processo.** O identificador que a escola dá ao
+  aluno passa a ser a primeira coisa a ser comparada, à frente do nome: um nome
+  corrige-se, um n.º de processo não. O nome só decide quando é inequívoco, e a
+  pré-visualização diz por qual dos dois cada aluno foi reconhecido.
+- **Ambiguidade é uma pergunta, não um palpite.** Quando mais do que um aluno
+  da turma responde à mesma linha, ela fica de fora da importação e mostra os
+  candidatos numa caixa de seleção — com «é um aluno novo» como resposta
+  legítima. O sistema propõe; quem decide é o professor (§3.3).
+
+### Corrigido
+
+- **As fotografias de um ficheiro exportado sem os nomes deixam de ser
+  deitadas fora.** O modelo EB019 tem uma opção — «colocar o nome ao lado da
+  foto» — que é fácil de deixar por marcar, e um ficheiro assim traz as
+  imagens e nenhuma legenda. O leitor emparelhava cada imagem com a sua
+  legenda e descartava as que não tinham nenhuma, o que nesse caso eram todas:
+  o professor via «0 foto(s) associada(s)» e mais nada. As imagens passam a
+  chegar sem nome à pré-visualização, onde se atribuem à mão. Nenhuma é
+  associada automaticamente — uma foto sem nome não diz de quem é, e a posição
+  na grelha não é prova.
+- **Reimportar passa a poder corrigir a foto de um aluno que já está inscrito.**
+  O caminho da confirmação escrevia a foto no disco e apagava-a a seguir para
+  toda a linha que correspondesse a alguém já na turma. Era o beco: depois de a
+  turma existir, nenhuma reimportação conseguia lá pôr uma fotografia. A foto
+  anterior é substituída pelo mesmo escritor único do caminho manual, que só
+  larga a antiga depois de a nova estar no sítio.
+- **Uma Relação de Turma com a coluna «SIT.» vazia volta a poder ser
+  confirmada.** A regra exigia o código de situação em todas as linhas, e uma
+  célula vazia chega ao servidor como nulo — a importação inteira era recusada
+  por um ficheiro que a própria pré-visualização já sabia explicar («sem
+  situação no ficheiro — o estado da matrícula fica como está»).
+- **Desistir de uma correção de fotos volta ao sítio de onde se saiu.**
+  «Escolher outro ficheiro» reabria sempre o diálogo do Excel, mesmo para quem
+  tinha entrado pelas fotos.
+- **Remover um aluno duas vezes deixou de responder «404 Not Found».** A
+  inscrição chegava ao controlador pelo binding implícito da rota, e
+  `enrollments` não tem soft delete de propósito — apagada, o ULID fica
+  irresolúvel no instante seguinte. O botão não se desativava enquanto o
+  pedido ia a caminho, por isso o segundo clique — ou um separador aberto há
+  uma hora — trazia o 404 cru dentro do modal de erro do Inertia a quem tinha
+  acabado de fazer exatamente o que queria. Foi o que se viu no 7.º B, ao
+  tentar reconstruir a turma à mão. A inscrição passa a ser procurada na
+  turma, e um aluno que já não está lá é respondido com uma frase — «Este
+  aluno já não está nesta turma» — que descreve o estado que o professor
+  pediu. O botão desativa-se também enquanto o pedido está a caminho, para que
+  o segundo clique não chegue a partir.
+- **O 404 continua a ser 404 onde tem de ser.** Um ULID de outra turma desta
+  organização não recebe a resposta benigna: confirmar que aquela inscrição
+  existe seria dizer mais do que quem pergunta tem direito a saber, e os dois
+  testes de isolamento da 0.138.2 continuam a exigi-lo (ADR-0002). A recusa
+  por história também não mudou — um aluno com avaliações registadas continua
+  a ser recusado pela mesma frase da 0.138.2, e nada é apagado em cascata.
+
+### Notas
+
+- Nenhuma migração. Nada nesta versão apaga, recria ou reordena registos:
+  resultados, classificações, relatórios, autoavaliações, intervenções e
+  evidências ficam onde estavam, e o `pseudonym_code` de cada aluno — a
+  identidade técnica de que tudo isso depende — nunca é tocado.
+- O fluxo passa a ter documento próprio:
+  [docs/roster-import.md](docs/roster-import.md) — os três passos, as regras de
+  correspondência, e o que acontece ao remover um aluno. Não confundir com
+  `docs/data-import.md`, que é o restauro de um backup da organização.
+
 ## [0.139.1] — 2026-09-09
 
 ### Corrigido
