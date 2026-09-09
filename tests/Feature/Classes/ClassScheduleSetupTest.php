@@ -236,6 +236,7 @@ class ClassScheduleSetupTest extends TestCase
                 $this->assertCount(1, $slots);
                 $this->assertSame('09:30', $slots[0]['starts_at']);
                 $this->assertTrue($slots[0]['already_in_vigor']);
+                $this->assertFalse($slots[0]['requires_versioning']);
             });
     }
 

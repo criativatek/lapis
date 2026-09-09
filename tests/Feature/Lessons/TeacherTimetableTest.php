@@ -361,6 +361,7 @@ class TeacherTimetableTest extends TestCase
                 ->has('slots', 1)
                 ->where('slots.0.ulid', $replacement->ulid)
                 ->where('slots.0.already_in_vigor', true)
+                ->where('slots.0.requires_versioning', false)
                 ->etc());
     }
 
@@ -377,6 +378,7 @@ class TeacherTimetableTest extends TestCase
             ->get('/timetable')
             ->assertInertia(fn (AssertableInertia $page) => $page
                 ->where('slots.0.already_in_vigor', false)
+                ->where('slots.0.requires_versioning', false)
                 ->etc());
     }
 

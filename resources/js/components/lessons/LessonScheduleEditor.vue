@@ -16,6 +16,7 @@ export type RecurringLessonSlot = {
     starts_on: string | null;
     ends_on: string | null;
     already_in_vigor: boolean;
+    requires_versioning: boolean;
     /** `null` = turma inteira. É o que todos os tempos já existentes dizem. */
     class_group_id: number | null;
     class_group_label: string | null;
@@ -69,13 +70,10 @@ const form = useForm<{
     effective_from: '',
 });
 
-// Derived from `props.slots` — the same slot the list itself already knows
-// about — rather than a second ref kept in sync by hand, so editing() can
-// never disagree with what the "Editar" button that opened the form saw.
-const editingSlotAlreadyInVigor = computed(
+const editingSlotRequiresVersioning = computed(
     () =>
         props.slots.find((slot) => slot.ulid === editingUlid.value)
-            ?.already_in_vigor ?? false,
+            ?.requires_versioning ?? false,
 );
 
 function todayIsoDate(): string {
@@ -107,7 +105,7 @@ function edit(slot: RecurringLessonSlot): void {
     // Only a UI default — the server independently validates effective_from
     // against "today" in the organization's own timezone regardless of what
     // the browser's clock defaulted it to.
-    form.effective_from = slot.already_in_vigor ? todayIsoDate() : '';
+    form.effective_from = slot.requires_versioning ? todayIsoDate() : '';
     form.clearErrors();
 }
 
@@ -117,7 +115,7 @@ function submit(): void {
     // one that has not started yet, sends no such field at all rather than
     // an empty string for the backend to have to ignore.
     const includeEffectiveFrom =
-        editingUlid.value !== null && editingSlotAlreadyInVigor.value;
+        editingUlid.value !== null && editingSlotRequiresVersioning.value;
 
     form.transform((data) =>
         includeEffectiveFrom
@@ -343,7 +341,7 @@ function remove(slot: RecurringLessonSlot): void {
             </fieldset>
 
             <div
-                v-if="editingSlotAlreadyInVigor"
+                v-if="editingSlotRequiresVersioning"
                 class="grid gap-1.5 rounded-md border border-dashed p-3"
             >
                 <Label for="slot-effective-from"

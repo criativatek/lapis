@@ -97,6 +97,7 @@ class TeacherTimetableController extends Controller implements HasMiddleware
                 'starts_on' => $slot->starts_on?->toDateString(),
                 'ends_on' => $slot->ends_on?->toDateString(),
                 'already_in_vigor' => $slot->isAlreadyInVigor($timezone),
+                'requires_versioning' => $slot->requiresVersioning($timezone),
                 'school_class' => [
                     'ulid' => $slot->schoolClass->ulid,
                     'label' => $slot->schoolClass->label,

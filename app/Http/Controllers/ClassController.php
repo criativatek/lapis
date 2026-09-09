@@ -180,6 +180,7 @@ class ClassController extends Controller
                             'starts_on' => $slot->starts_on?->toDateString(),
                             'ends_on' => $slot->ends_on?->toDateString(),
                             'already_in_vigor' => $slot->isAlreadyInVigor($timezone),
+                            'requires_versioning' => $slot->requiresVersioning($timezone),
                             // NULL = turma inteira, e é o que todos os tempos já
                             // existentes dizem. O id vai a par do rótulo porque o
                             // seletor do editor de horário casa por id.
