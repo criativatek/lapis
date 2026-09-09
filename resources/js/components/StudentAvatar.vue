@@ -2,6 +2,12 @@
 import { User } from '@lucide/vue';
 import type { HTMLAttributes } from 'vue';
 import { computed, ref, watch } from 'vue';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 
 /**
@@ -26,8 +32,16 @@ const props = withDefaults(
         /** xs (24px) for dense assessment grids, md (34px) for the roster. */
         size?: 'xs' | 'md';
         class?: HTMLAttributes['class'];
+        zoomable?: boolean;
+        studentName?: string;
     }>(),
-    { photoUrl: null, size: 'md', class: undefined },
+    {
+        photoUrl: null,
+        size: 'md',
+        class: undefined,
+        zoomable: false,
+        studentName: '',
+    },
 );
 
 // The grid size is deliberately smaller than the roster's: the photo adapts to
@@ -49,6 +63,30 @@ const classes = computed(() =>
 // A photo that 404s or fails to decode must not leave a broken image in the
 // table — it falls back to the same placeholder as a student who has none.
 const failed = ref(false);
+const dialogOpen = ref(false);
+const triggerButton = ref<HTMLButtonElement | null>(null);
+
+const handlePhotoError = () => {
+    failed.value = true;
+    dialogOpen.value = false;
+};
+
+const focusTrigger = () => {
+    triggerButton.value?.focus();
+};
+
+const onDialogOpenChange = (open: boolean) => {
+    dialogOpen.value = open;
+
+    if (!open) {
+        window.setTimeout(focusTrigger, 0);
+    }
+};
+
+const onDialogCloseAutoFocus = (event: Event) => {
+    event.preventDefault();
+    focusTrigger();
+};
 
 // A replaced photo arrives as a new URL; give it a fresh chance to load.
 watch(
@@ -58,11 +96,54 @@ watch(
     },
 );
 
-const showPhoto = computed(() => props.photoUrl !== null && !failed.value);
+const showPhoto = computed(() => Boolean(props.photoUrl) && !failed.value);
 </script>
 
 <template>
-    <span :class="classes" aria-hidden="true">
+    <Dialog
+        v-if="zoomable && showPhoto"
+        :open="dialogOpen"
+        @update:open="onDialogOpenChange"
+    >
+        <button
+            ref="triggerButton"
+            type="button"
+            :class="classes"
+            :aria-expanded="dialogOpen"
+            aria-haspopup="dialog"
+            :aria-label="`Ampliar fotografia de ${studentName}`"
+            @click="dialogOpen = true"
+            @keydown.enter.prevent="dialogOpen = true"
+            @keydown.space.prevent="dialogOpen = true"
+        >
+            <img
+                :src="photoUrl!"
+                alt=""
+                loading="lazy"
+                decoding="async"
+                class="size-full object-cover"
+                @error="handlePhotoError"
+            />
+        </button>
+        <DialogContent
+            class="flex max-h-[calc(100vh-5rem)] max-w-[calc(100vw-2rem)] items-center justify-center overflow-hidden p-12"
+            @close-auto-focus="onDialogCloseAutoFocus"
+        >
+            <DialogTitle class="sr-only">
+                Fotografia de {{ studentName }}
+            </DialogTitle>
+            <DialogDescription class="sr-only">
+                Pré-visualização da fotografia do aluno.
+            </DialogDescription>
+            <img
+                :src="photoUrl!"
+                :alt="`Fotografia de ${studentName}`"
+                class="max-h-[calc(100vh-5rem)] max-w-[calc(100vw-2rem)] object-contain"
+                @error="handlePhotoError"
+            />
+        </DialogContent>
+    </Dialog>
+    <span v-else :class="classes" aria-hidden="true">
         <img
             v-if="showPhoto"
             :src="photoUrl!"
@@ -70,7 +151,7 @@ const showPhoto = computed(() => props.photoUrl !== null && !failed.value);
             loading="lazy"
             decoding="async"
             class="size-full object-cover"
-            @error="failed = true"
+            @error="handlePhotoError"
         />
         <User
             v-else
