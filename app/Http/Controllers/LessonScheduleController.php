@@ -7,6 +7,7 @@ use App\Actions\Lessons\ReviseRecurringLessonSlot;
 use App\Http\Controllers\Concerns\RefusesDuringImpersonation;
 use App\Http\Requests\Lessons\RecurringLessonSlotRequest;
 use App\Models\Lesson;
+use App\Models\LessonStatus;
 use App\Models\RecurringLessonSlot;
 use App\Models\SchoolClass;
 use App\Models\User;
@@ -17,6 +18,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 
 class LessonScheduleController extends Controller implements HasMiddleware
 {
@@ -67,13 +69,50 @@ class LessonScheduleController extends Controller implements HasMiddleware
 
         $timezone = $this->currentOrganization->get()->timezone;
 
-        if (! $recurringLessonSlot->requiresVersioning($timezone)) {
-            $recurringLessonSlot->update($request->safe()->except('class_id', 'effective_from'));
-
-            return back();
-        }
-
         $validated = $request->safe();
+
+        if (! $recurringLessonSlot->requiresVersioning($timezone)) {
+            return DB::transaction(function () use (
+                $recurringLessonSlot,
+                $timezone,
+                $validated,
+            ): RedirectResponse {
+                /** @var RecurringLessonSlot $locked */
+                $locked = RecurringLessonSlot::query()
+                    ->whereKey($recurringLessonSlot->getKey())
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if ($locked->requiresVersioning($timezone)) {
+                    $effectiveFrom = $validated['effective_from'] ?? null;
+
+                    if (! is_string($effectiveFrom)) {
+                        throw ValidationException::withMessages([
+                            'effective_from' => __('Indique a partir de quando a alteração passa a vigorar.'),
+                        ]);
+                    }
+
+                    $this->reviseRecurringLessonSlot->execute($locked, $effectiveFrom, [
+                        'class_group_id' => $validated['class_group_id'] ?? null,
+                        'day_of_week' => $validated['day_of_week'],
+                        'starts_at' => $validated['starts_at'],
+                        'ends_at' => $validated['ends_at'],
+                        'ends_on' => $validated['ends_on'],
+                    ]);
+
+                    return back();
+                }
+
+                $locked->update($validated->except('class_id', 'effective_from'));
+                $locked->lessons()
+                    ->where('status', LessonStatus::Preparation)
+                    ->whereDoesntHave('summary')
+                    ->whereDoesntHave('plan')
+                    ->update(['class_group_id' => $locked->class_group_id]);
+
+                return back();
+            });
+        }
 
         $this->reviseRecurringLessonSlot->execute($recurringLessonSlot, $validated['effective_from'], [
             // `?? null` e não a chave a seco: um cliente antigo — ou o

@@ -550,6 +550,100 @@ class LessonScheduleTest extends TestCase
         $this->assertNull($slot->ends_on);
         $this->assertSame(3, $slot->day_of_week);
         $this->assertStringStartsWith('10:00', $slot->starts_at);
+        $this->assertSame($today, $slot->starts_on->toDateString());
+        $this->assertDatabaseHas('lessons', [
+            'recurring_lesson_slot_id' => $slot->id,
+            'class_group_id' => null,
+        ]);
+    }
+
+    #[Test]
+    public function editing_an_empty_whole_class_lesson_to_a_group_aligns_its_snapshot_without_versioning(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $slot = $this->slotWithLesson($schoolClass, LessonStatus::Preparation, null);
+        $group = $this->groupFor($schoolClass);
+        $lesson = $this->inTenant($this->organization, fn (): Lesson => $slot->lessons()->sole());
+
+        $this->putSlot($slot, $schoolClass, ['class_group_id' => $group->id])
+            ->assertRedirect()
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertDatabaseCount('recurring_lesson_slots', 1);
+        $this->assertDatabaseHas('recurring_lesson_slots', [
+            'id' => $slot->id,
+            'class_group_id' => $group->id,
+        ]);
+        $this->assertDatabaseHas('lessons', [
+            'id' => $lesson->id,
+            'class_group_id' => $group->id,
+        ]);
+    }
+
+    #[Test]
+    public function editing_an_empty_lesson_from_one_group_to_another_aligns_its_snapshot_without_versioning(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $firstGroup = $this->groupFor($schoolClass);
+        $secondGroup = $this->groupFor($schoolClass, 'T2');
+        $slot = $this->slotWithLesson($schoolClass, LessonStatus::Preparation, $firstGroup->id);
+        $lesson = $this->inTenant($this->organization, fn (): Lesson => $slot->lessons()->sole());
+        $startsOn = $slot->starts_on?->toDateString();
+
+        $this->putSlot($slot, $schoolClass, ['class_group_id' => $secondGroup->id])
+            ->assertRedirect()
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertDatabaseCount('recurring_lesson_slots', 1);
+        $this->assertDatabaseHas('recurring_lesson_slots', [
+            'id' => $slot->id,
+            'class_group_id' => $secondGroup->id,
+        ]);
+        $this->assertSame(
+            $startsOn,
+            $this->inTenant($this->organization, fn (): RecurringLessonSlot => $slot->refresh())
+                ->starts_on?->toDateString(),
+        );
+        $this->assertDatabaseHas('lessons', [
+            'id' => $lesson->id,
+            'class_group_id' => $secondGroup->id,
+        ]);
+    }
+
+    #[Test]
+    public function mixed_empty_and_relevant_lessons_version_without_aligning_any_snapshot(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $slot = $this->slotWithLesson($schoolClass, LessonStatus::Preparation, null);
+        $empty = $this->inTenant($this->organization, fn (): Lesson => $slot->lessons()->sole());
+        $relevant = $this->inTenant($this->organization, fn (): Lesson => Lesson::create([
+            'class_id' => $slot->class_id,
+            'class_group_id' => $slot->class_group_id,
+            'recurring_lesson_slot_id' => $slot->id,
+            'starts_at' => $this->today().' 11:00:00',
+            'ends_at' => $this->today().' 11:50:00',
+            'status' => LessonStatus::Taught,
+            'created_by' => $this->teacher->id,
+        ]));
+        $beforeRelevant = $this->byColumn($relevant->getAttributes());
+        $group = $this->groupFor($schoolClass);
+
+        $this->putSlot($slot, $schoolClass, [
+            'class_group_id' => $group->id,
+            'effective_from' => $this->inDays(1),
+        ])
+            ->assertRedirect()
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertDatabaseCount('recurring_lesson_slots', 2);
+        $this->assertDatabaseHas('lessons', [
+            'id' => $empty->id,
+            'class_group_id' => null,
+        ]);
+        $this->assertSame($beforeRelevant, $this->inTenant(
+            $this->organization,
+            fn (): array => $this->byColumn(Lesson::query()->findOrFail($relevant->id)->getAttributes()),
+        ));
     }
 
     #[Test]
