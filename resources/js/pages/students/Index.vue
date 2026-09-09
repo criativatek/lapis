@@ -366,7 +366,7 @@ function followUpHref(enrollment: DirectoryEnrollment): string {
                         <tr v-for="student in rows" :key="student.student_ulid" class="align-top">
                             <td class="px-4 py-3">
                                 <div class="flex items-center gap-2">
-                                    <StudentAvatar :photo-url="student.photo_url" />
+                                    <StudentAvatar :photo-url="student.photo_url" :student-name="student.name" zoomable />
                                     <span>
                                         <span class="block font-medium">{{ student.name }}</span>
                                         <span class="block font-mono text-xs text-muted-foreground">

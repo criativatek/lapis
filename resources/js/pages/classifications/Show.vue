@@ -348,7 +348,7 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                                 <td class="px-3 py-2 whitespace-nowrap">
                                     <div class="flex items-center gap-1.5">
                                         <span class="text-muted-foreground">{{ row.class_number ?? '—' }}</span>
-                                        <StudentAvatar :photo-url="row.photo_url" size="xs" />
+                                        <StudentAvatar :photo-url="row.photo_url" :student-name="row.name" zoomable size="xs" />
                                         <span class="font-medium">{{ row.name }}</span>
                                     </div>
                                 </td>

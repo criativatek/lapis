@@ -1150,7 +1150,13 @@ function revertCancellation(): void {
                                 <!-- Hidden on narrow viewports only here: this column is
                                      sticky and competes directly with the question columns
                                      the teacher is typing into. The name never hides. -->
-                                <StudentAvatar :photo-url="student.photo_url" size="xs" class="hidden sm:inline-flex" />
+                                <StudentAvatar
+                                    :photo-url="student.photo_url"
+                                    :student-name="student.name"
+                                    zoomable
+                                    size="xs"
+                                    class="hidden sm:inline-flex"
+                                />
                                 <span class="font-medium">{{ student.name }}</span>
                                 <span
                                     v-if="student.joined_after_instrument"

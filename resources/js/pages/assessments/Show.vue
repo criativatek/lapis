@@ -160,7 +160,7 @@ const stateBadgeClass: Record<string, string> = {
                         <td class="px-4 py-3">
                             <div class="flex items-center gap-1.5">
                                 <span class="text-muted-foreground">{{ student.class_number ?? '—' }}</span>
-                                <StudentAvatar :photo-url="student.photo_url" size="xs" />
+                                <StudentAvatar :photo-url="student.photo_url" :student-name="student.name" zoomable size="xs" />
                                 <span class="font-medium">{{ student.name }}</span>
                             </div>
                         </td>
@@ -182,7 +182,7 @@ const stateBadgeClass: Record<string, string> = {
             <ul class="divide-y divide-dashed divide-border rounded-lg border border-dashed border-border text-sm text-muted-foreground">
                 <li v-for="student in nonApplicableStudents" :key="student.enrollment_id" class="flex items-center gap-2 px-4 py-2">
                     <span>{{ student.class_number ?? '—' }}</span>
-                    <StudentAvatar :photo-url="student.photo_url" size="xs" />
+                    <StudentAvatar :photo-url="student.photo_url" :student-name="student.name" zoomable size="xs" />
                     <span>{{ student.name }}</span>
                     <span class="ml-auto text-xs">Não aplicável</span>
                 </li>

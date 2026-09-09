@@ -387,7 +387,7 @@ function post(row: Row, data: { final_scale_level_id: number | null; final_value
                         <td class="sticky left-0 z-10 bg-background px-3 py-2 whitespace-nowrap">
                             <div class="flex items-center gap-1.5">
                                 <span class="text-muted-foreground">{{ row.class_number ?? '—' }}</span>
-                                <StudentAvatar :photo-url="row.photo_url" size="xs" />
+                                <StudentAvatar :photo-url="row.photo_url" :student-name="row.name" zoomable size="xs" />
                                 <span class="font-medium">{{ row.name }}</span>
                             </div>
                         </td>

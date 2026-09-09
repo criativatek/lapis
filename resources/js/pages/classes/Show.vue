@@ -688,7 +688,7 @@ function submitPhotos(): void {
                         </td>
                         <td class="px-4 py-3 font-medium">
                             <div class="flex items-center gap-2">
-                                <StudentAvatar :photo-url="student.photo_url" />
+                                <StudentAvatar :photo-url="student.photo_url" :student-name="student.name" zoomable />
                                 <span>{{ student.name }}</span>
                                 <Badge
                                     v-if="student.is_late_entry"
