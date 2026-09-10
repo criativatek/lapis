@@ -25,6 +25,18 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.140.4] — 2026-09-10
+
+### Corrigido
+
+- **A fotografia ampliada deixa de ser cortada.** A moldura do diálogo do
+  `StudentAvatar` reserva a sua largura também a partir dos 640px — o
+  `DialogContent` base impunha `sm:max-w-lg` e o `tailwind-merge` não o
+  deixava cair —, e os limites da imagem passam a descontar o padding da
+  moldura. Antes, a fotografia ficava mais larga do que a caixa e o
+  `overflow-hidden` cortava-lhe os lados; o padding, reduzido, também
+  deixa de comer um quarto da largura num telemóvel.
+
 ## [0.140.3] — 2026-09-10
 
 ### Adicionado

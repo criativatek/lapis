@@ -125,8 +125,18 @@ const showPhoto = computed(() => Boolean(props.photoUrl) && !failed.value);
                 @error="handlePhotoError"
             />
         </button>
+        <!--
+            As larguras têm de ser dadas por breakpoint: o DialogContent base
+            traz `sm:max-w-lg`, e o tailwind-merge não deixa um `max-w-*` sem
+            variante substituir um `sm:max-w-*` — sem o `sm:` explícito aqui, a
+            partir dos 640px a moldura ficava presa aos 32rem.
+
+            E os limites da própria imagem descontam o padding: com valores de
+            viewport iguais aos da moldura, a fotografia ficava mais larga do
+            que a caixa e o `overflow-hidden` cortava-lhe os lados.
+        -->
         <DialogContent
-            class="flex max-h-[calc(100vh-5rem)] max-w-[calc(100vw-2rem)] items-center justify-center overflow-hidden p-12"
+            class="flex max-h-[calc(100vh-5rem)] max-w-[calc(100vw-2rem)] items-center justify-center overflow-hidden p-4 sm:max-w-[calc(100vw-8rem)] sm:p-6"
             @close-auto-focus="onDialogCloseAutoFocus"
         >
             <DialogTitle class="sr-only">
@@ -138,7 +148,7 @@ const showPhoto = computed(() => Boolean(props.photoUrl) && !failed.value);
             <img
                 :src="photoUrl!"
                 :alt="`Fotografia de ${studentName}`"
-                class="max-h-[calc(100vh-5rem)] max-w-[calc(100vw-2rem)] object-contain"
+                class="max-h-[calc(100vh-7rem)] max-w-[calc(100vw-4rem)] object-contain sm:max-h-[calc(100vh-8rem)] sm:max-w-[calc(100vw-11rem)]"
                 @error="handlePhotoError"
             />
         </DialogContent>

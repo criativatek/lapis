@@ -43,13 +43,34 @@ describe('StudentAvatar', () => {
         expect(dialogImage?.getAttribute('alt')).toBe(
             'Fotografia de Álvaro Simões',
         );
+        // Os limites da imagem descontam o padding da moldura, e descontam-no
+        // outra vez no breakpoint sm, onde o padding é maior: com os mesmos
+        // valores da moldura a fotografia ficava mais larga do que a caixa e o
+        // overflow-hidden cortava-lhe os lados.
         expect(dialogImage?.className).toContain(
-            'max-h-[calc(100vh-5rem)]',
+            'max-h-[calc(100vh-7rem)]',
         );
         expect(dialogImage?.className).toContain(
-            'max-w-[calc(100vw-2rem)]',
+            'max-w-[calc(100vw-4rem)]',
+        );
+        expect(dialogImage?.className).toContain(
+            'sm:max-h-[calc(100vh-8rem)]',
+        );
+        expect(dialogImage?.className).toContain(
+            'sm:max-w-[calc(100vw-11rem)]',
         );
         expect(dialogImage?.className).toContain('object-contain');
+
+        // E a moldura tem de repor a sua própria largura no breakpoint sm: o
+        // DialogContent base traz `sm:max-w-lg`, que o tailwind-merge não
+        // deixa cair por causa de um `max-w-*` sem variante.
+        const dialogContent = document.body.querySelector(
+            '[data-slot="dialog-content"]',
+        );
+
+        expect(dialogContent?.className).toContain(
+            'sm:max-w-[calc(100vw-8rem)]',
+        );
     });
 
     it('keeps the existing fallback without a trigger when there is no photo', () => {
