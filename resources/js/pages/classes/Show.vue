@@ -459,13 +459,13 @@ function submitPhotos(): void {
     <Head :title="schoolClass.label" />
 
     <div class="mx-auto w-full max-w-3xl space-y-6 p-4">
-        <div class="flex items-start justify-between gap-3">
+        <div class="flex flex-wrap items-start justify-between gap-3">
             <Heading
                 :title="schoolClass.label"
                 :description="`${schoolClass.subject} · ${schoolClass.academic_year}`"
             />
             <div class="flex flex-col items-end gap-1.5">
-                <div class="flex items-center gap-2">
+                <div class="flex flex-wrap items-center justify-end gap-2">
                     <template v-if="!schoolClass.archived">
                         <Button
                             v-if="schoolClass.status === 'preparation'"
@@ -599,9 +599,9 @@ function submitPhotos(): void {
         />
 
         <section class="space-y-3">
-            <div class="flex items-center justify-between">
+            <div class="flex flex-wrap items-center justify-between gap-2">
                 <h2 class="text-sm font-semibold">Adicionar aluno</h2>
-                <div class="flex items-center gap-2">
+                <div class="flex flex-wrap items-center gap-2">
                     <Button
                         v-if="students.length"
                         type="button"

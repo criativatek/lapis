@@ -25,6 +25,18 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.141.1] — 2026-09-10
+
+### Corrigido
+
+- **Sem scroll horizontal a 390px na página da turma.** A linha de ações do
+  cabeçalho (Ativar/Editar/Arquivar turma) e a linha «Adicionar aluno»
+  (Adicionar fotos/Importar lista/Concluir) não tinham `flex-wrap`; com um
+  terceiro botão a mais em cada uma (Arquivar/Restaurar/Eliminar e Concluir,
+  respetivamente), o conteúdo passava a ser mais largo do que o ecrã e
+  empurrava a página inteira para o lado. Ambas as linhas passam a quebrar
+  para uma segunda linha em vez de forçar overflow.
+
 ## [0.141.0] — 2026-09-10
 
 ### Adicionado
