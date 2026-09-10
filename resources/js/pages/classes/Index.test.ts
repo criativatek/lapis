@@ -7,10 +7,11 @@ import type { SchoolClass } from './Index.vue';
 vi.mock('@inertiajs/vue3', () => ({
     Head: defineComponent({ setup: (_, { slots }) => () => h('div', slots.default?.()) }),
     Link: defineComponent({ inheritAttrs: false, setup: (_, { attrs, slots }) => () => h('a', attrs, slots.default?.()) }),
+    router: { delete: vi.fn() },
 }));
 
-function mountIndex(classes: SchoolClass[] = []) {
-    return mount(Index, { props: { classes } });
+function mountIndex(classes: SchoolClass[] = [], viewingArchived = false) {
+    return mount(Index, { props: { classes, viewingArchived } });
 }
 
 /**

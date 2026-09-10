@@ -25,6 +25,28 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.141.0] — 2026-09-10
+
+### Adicionado
+
+- **Ciclo de vida da turma: arquivar, restaurar, eliminar em definitivo.** Uma
+  turma normal já não pode ser apagada diretamente — primeiro tem de ser
+  arquivada (`archived_at`, uma coluna nova e ortogonal ao `status` existente,
+  tal como já acontecia com `ClassGroup`). Arquivar não apaga nada e tira a
+  turma da lista por omissão sem a esconder de vez: continua acessível, listada
+  em «Turmas arquivadas», e pode ser restaurada a qualquer momento sem perder
+  história. A eliminação definitiva só fica disponível depois de arquivada e de
+  decorridos três anos sobre o fim real do ano letivo (`academic_year.ends_on`
+  — nunca `created_at` nem `archived_at`), e só quando a turma já não tem
+  nenhuma história pedagógica por proteger (`SchoolClassHistory`, o mesmo
+  espírito de `EnrollmentHistory`): uma turma arquivada com alunos, avaliações,
+  registos ou relatórios recusa a eliminação com uma frase que diz o que fica,
+  em vez de um erro de base de dados.
+- **«Concluir» no fim da gestão de alunos e fotos.** Depois de importar a lista
+  ou tratar fotografias, a turma tem agora um botão explícito de saída — uma
+  navegação simples, sem escrever nada —, em vez de o professor ter de recorrer
+  ao menu lateral ou ao botão «voltar» do navegador.
+
 ## [0.140.4] — 2026-09-10
 
 ### Corrigido

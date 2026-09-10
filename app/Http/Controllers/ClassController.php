@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Classes\ArchiveSchoolClass;
 use App\Http\Requests\ClassRequest;
 use App\Models\AcademicYear;
 use App\Models\AssessmentProfile;
@@ -18,6 +19,7 @@ use App\Models\Subject;
 use App\Models\User;
 use App\Rules\BelongsToCurrentOrganization;
 use App\Services\Classes\ClassRoster;
+use App\Services\Classes\SchoolClassHistory;
 use App\Services\ClassService;
 use App\Services\EnrollmentHistory;
 use App\Support\Entitlements\Entitlements;
@@ -26,6 +28,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -36,6 +39,7 @@ class ClassController extends Controller
         protected ClassService $service,
         protected Entitlements $entitlements,
         protected CurrentOrganization $currentOrganization,
+        protected ArchiveSchoolClass $archiveSchoolClass,
     ) {}
 
     public function index(): Response
@@ -43,7 +47,10 @@ class ClassController extends Controller
         Gate::authorize('viewAny', SchoolClass::class);
 
         // Only the teacher's own classes (§23). Tenant isolation plus class_teachers.
+        // Arquivadas ficam de fora por omissão — têm a sua própria lista, em
+        // classes.archived.
         $classes = $this->teacherClasses()
+            ->notArchived()
             ->with(['subject', 'academicYear'])
             ->withCount('enrollments')
             ->orderByDesc('created_at')
@@ -59,7 +66,38 @@ class ClassController extends Controller
                 'students_count' => $class->enrollments_count,
             ]);
 
-        return Inertia::render('classes/Index', ['classes' => $classes]);
+        return Inertia::render('classes/Index', ['classes' => $classes, 'viewingArchived' => false]);
+    }
+
+    /**
+     * «Turmas arquivadas» — a mesma lista, ao contrário, com a informação de
+     * retenção que a turma ativa não precisa de mostrar.
+     */
+    public function archived(): Response
+    {
+        Gate::authorize('viewAny', SchoolClass::class);
+
+        $classes = $this->teacherClasses()
+            ->archivedOnly()
+            ->with(['subject', 'academicYear'])
+            ->withCount('enrollments')
+            ->orderByDesc('archived_at')
+            ->get()
+            ->map(fn (SchoolClass $class) => [
+                'ulid' => $class->ulid,
+                'label' => $class->label,
+                'subject' => $class->subject->name,
+                'academic_year' => $class->academicYear->label,
+                'grade_level' => $class->grade_level,
+                'status_label' => $class->status->label(),
+                'status' => $class->status->value,
+                'students_count' => $class->enrollments_count,
+                'archived_at' => $class->archived_at?->toDateString(),
+                'eligible_for_deletion_at' => $class->eligibleForPermanentDeletionAt()?->toDateString(),
+                'is_eligible_for_deletion' => $class->isEligibleForPermanentDeletion(),
+            ]);
+
+        return Inertia::render('classes/Index', ['classes' => $classes, 'viewingArchived' => true]);
     }
 
     /**
@@ -153,6 +191,10 @@ class ClassController extends Controller
                 'status_label' => $class->status->label(),
                 'profile_name' => $class->profileVersion?->profile->name,
                 'subject_id' => $class->subject_id,
+                'archived' => $class->isArchived(),
+                'archived_at' => $class->archived_at?->toDateString(),
+                'eligible_for_deletion_at' => $class->eligibleForPermanentDeletionAt()?->toDateString(),
+                'is_eligible_for_deletion' => $class->isEligibleForPermanentDeletion(),
             ],
             // Active profiles for this subject, so a class created without one can
             // be assigned later without going back to the profile screen.
@@ -370,11 +412,71 @@ class ClassController extends Controller
         return back();
     }
 
-    public function destroy(SchoolClass $class): RedirectResponse
+    public function archive(SchoolClass $class): RedirectResponse
+    {
+        Gate::authorize('archive', $class);
+
+        $this->archiveSchoolClass->execute($class);
+
+        return back();
+    }
+
+    public function restore(SchoolClass $class): RedirectResponse
+    {
+        Gate::authorize('restore', $class);
+
+        $this->archiveSchoolClass->restore($class);
+
+        return back();
+    }
+
+    /**
+     * Eliminar em definitivo — só depois de arquivada, só depois dos três
+     * anos de retenção (SchoolClass::eligibleForPermanentDeletionAt) e só se
+     * não sobrar história pedagógica nenhuma (SchoolClassHistory::blocking).
+     *
+     * TRÊS RECUSAS, TRÊS FRASES — nunca um 403 nem um 409. A mesma disciplina
+     * de EnrollmentController::destroy(): uma restrição de negócio conhecida
+     * chega como um toast normal, não como um erro genérico.
+     */
+    public function destroy(SchoolClass $class, SchoolClassHistory $history): RedirectResponse
     {
         Gate::authorize('delete', $class);
 
-        $class->delete();
+        if (! $class->isArchived()) {
+            Inertia::flash('toast', [
+                'type' => 'error',
+                'message' => 'Arquive a turma antes de a eliminar definitivamente.',
+            ]);
+
+            return back();
+        }
+
+        $eligibleAt = $class->eligibleForPermanentDeletionAt();
+
+        if ($eligibleAt !== null && CarbonImmutable::now('Europe/Lisbon')->startOfDay()->lt($eligibleAt->startOfDay())) {
+            Inertia::flash('toast', [
+                'type' => 'error',
+                'message' => "Esta turma poderá ser eliminada definitivamente a partir de {$eligibleAt->format('d/m/Y')}.",
+            ]);
+
+            return back();
+        }
+
+        $blocking = $history->blocking($class);
+
+        if ($blocking !== []) {
+            Inertia::flash('toast', [
+                'type' => 'error',
+                'message' => $history->explain($class->label, $blocking),
+            ]);
+
+            return back();
+        }
+
+        DB::transaction(function () use ($class): void {
+            $class->delete();
+        });
 
         return to_route('classes.index');
     }

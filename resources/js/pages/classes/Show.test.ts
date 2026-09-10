@@ -63,6 +63,10 @@ function baseProps() {
             // than the profile-assignment form — irrelevant to this fix and
             // kept out of the way.
             profile_name: 'Perfil Teste',
+            archived: false,
+            archived_at: null,
+            eligible_for_deletion_at: null,
+            is_eligible_for_deletion: false,
         },
         students: [],
         former_students: [],

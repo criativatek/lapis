@@ -409,11 +409,16 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     Route::middleware('module:classes')->group(function () {
         Route::get('classes', [ClassController::class, 'index'])->name('classes.index');
         Route::get('classes/create', [ClassController::class, 'create'])->name('classes.create');
+        // Antes de `classes/{class}`, pela mesma razão de `classes/schedule-setup`
+        // e `classes/create` acima: senão «archived» seria engolido como ulid.
+        Route::get('classes/archived', [ClassController::class, 'archived'])->name('classes.archived');
         Route::post('classes', [ClassController::class, 'store'])->name('classes.store');
         Route::get('classes/{class}', [ClassController::class, 'show'])->name('classes.show');
         Route::get('classes/{class}/edit', [ClassController::class, 'edit'])->name('classes.edit');
         Route::put('classes/{class}', [ClassController::class, 'update'])->name('classes.update');
         Route::post('classes/{class}/activate', [ClassController::class, 'activate'])->name('classes.activate');
+        Route::post('classes/{class}/archive', [ClassController::class, 'archive'])->name('classes.archive');
+        Route::delete('classes/{class}/archive', [ClassController::class, 'restore'])->name('classes.restore');
         Route::put('classes/{class}/profile', [ClassController::class, 'updateProfile'])->name('classes.profile.update');
         Route::delete('classes/{class}', [ClassController::class, 'destroy'])->name('classes.destroy');
 

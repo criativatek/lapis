@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
-import { FileUp, Footprints, Pencil, Trash2, UserPlus } from '@lucide/vue';
+import { Archive, ArchiveRestore, FileUp, Footprints, Pencil, Trash2, UserPlus } from '@lucide/vue';
 import { computed, onMounted, ref } from 'vue';
 import ClassGroupsSection from '@/components/classes/ClassGroupsSection.vue';
 import type { ClassGroup } from '@/components/classes/ClassGroupsSection.vue';
@@ -69,6 +69,10 @@ const props = defineProps<{
         status: string;
         status_label: string;
         profile_name: string | null;
+        archived: boolean;
+        archived_at: string | null;
+        eligible_for_deletion_at: string | null;
+        is_eligible_for_deletion: boolean;
     };
     students: Student[];
     /** Students who were on this roll and are no longer part of the class. */
@@ -168,6 +172,42 @@ function activateClass(): void {
             preserveScroll: true,
         },
     );
+}
+
+function archiveClass(): void {
+    if (
+        !confirm(
+            'Arquivar esta turma?\n\nDeixará de aparecer nas turmas ativas, mas todos os dados serão preservados e poderá restaurá-la mais tarde.',
+        )
+    ) {
+        return;
+    }
+
+    router.post(`/classes/${props.schoolClass.ulid}/archive`, {}, { preserveScroll: true });
+}
+
+function restoreClass(): void {
+    router.delete(`/classes/${props.schoolClass.ulid}/archive`, { preserveScroll: true });
+}
+
+function deleteClassPermanently(): void {
+    if (
+        !confirm(
+            'Eliminar definitivamente esta turma?\n\nEsta ação é irreversível e não pode ser desfeita.',
+        )
+    ) {
+        return;
+    }
+
+    router.delete(`/classes/${props.schoolClass.ulid}`);
+}
+
+/** «YYYY-MM-DD» → «DD/MM/YYYY», sem passar por `Date` — uma data sem hora não
+ * tem fuso horário a desviar o dia. */
+function formatDate(iso: string): string {
+    const [year, month, day] = iso.split('-');
+
+    return `${day}/${month}/${year}`;
 }
 
 // class_number is '' when empty (the backend treats empty as null); a plain
@@ -424,26 +464,66 @@ function submitPhotos(): void {
                 :title="schoolClass.label"
                 :description="`${schoolClass.subject} · ${schoolClass.academic_year}`"
             />
-            <div class="flex items-center gap-2">
-                <Button
-                    v-if="schoolClass.status === 'preparation'"
-                    type="button"
-                    size="sm"
-                    @click="activateClass"
-                >
-                    Ativar turma
-                </Button>
-                <Button as-child variant="outline" size="sm">
-                    <Link
-                        :href="`/classes/${schoolClass.ulid}/edit`"
-                        :aria-label="`Editar turma ${schoolClass.label}`"
-                    >
-                        <Pencil class="size-4" /> Editar turma
-                    </Link>
-                </Button>
-                <Badge variant="secondary" :class="statusToneClasses(schoolClass.status)">{{
-                    schoolClass.status_label
-                }}</Badge>
+            <div class="flex flex-col items-end gap-1.5">
+                <div class="flex items-center gap-2">
+                    <template v-if="!schoolClass.archived">
+                        <Button
+                            v-if="schoolClass.status === 'preparation'"
+                            type="button"
+                            size="sm"
+                            @click="activateClass"
+                        >
+                            Ativar turma
+                        </Button>
+                        <Button as-child variant="outline" size="sm">
+                            <Link
+                                :href="`/classes/${schoolClass.ulid}/edit`"
+                                :aria-label="`Editar turma ${schoolClass.label}`"
+                            >
+                                <Pencil class="size-4" /> Editar turma
+                            </Link>
+                        </Button>
+                        <!-- Posição secundária, de propósito (§11): a ação
+                             visível para uma turma ativa ou em preparação é
+                             arquivar, nunca eliminar. -->
+                        <Button
+                            v-if="schoolClass.status === 'preparation' || schoolClass.status === 'active'"
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            @click="archiveClass"
+                        >
+                            <Archive class="size-4" /> Arquivar turma
+                        </Button>
+                    </template>
+                    <template v-else>
+                        <Button type="button" variant="outline" size="sm" @click="restoreClass">
+                            <ArchiveRestore class="size-4" /> Restaurar turma
+                        </Button>
+                        <Button
+                            v-if="schoolClass.is_eligible_for_deletion"
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            @click="deleteClassPermanently"
+                        >
+                            <Trash2 class="size-4" /> Eliminar definitivamente
+                        </Button>
+                    </template>
+                    <Badge variant="secondary" :class="statusToneClasses(schoolClass.status)">{{
+                        schoolClass.status_label
+                    }}</Badge>
+                </div>
+                <p v-if="schoolClass.archived" class="text-xs text-muted-foreground">
+                    Arquivada
+                    <template v-if="schoolClass.is_eligible_for_deletion">
+                        · Elegível para eliminação definitiva
+                    </template>
+                    <template v-else-if="schoolClass.eligible_for_deletion_at">
+                        · Elegível para eliminação definitiva a partir de
+                        {{ formatDate(schoolClass.eligible_for_deletion_at) }}
+                    </template>
+                </p>
             </div>
         </div>
 
@@ -538,6 +618,16 @@ function submitPhotos(): void {
                         @click="openImportDialog"
                     >
                         <FileUp class="size-4" /> Importar lista
+                    </Button>
+                    <!-- Navegação pura, nunca uma submissão: a importação da
+                         lista e das fotos já deixam o professor de volta
+                         nesta página, sem um sinal explícito de «terminei».
+                         Este botão é esse sinal — um gesto de saída, não uma
+                         mutação de dados. -->
+                    <Button as-child size="sm">
+                        <Link :href="`/classes/${schoolClass.ulid}`">
+                            Concluir
+                        </Link>
                     </Button>
                 </div>
             </div>

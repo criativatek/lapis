@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToOrganization;
+use Carbon\CarbonImmutable;
 use Database\Factories\SchoolClassFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -12,6 +13,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * A class (turma). Named SchoolClass because Class is reserved; the table is
@@ -27,8 +29,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int|null $assessment_profile_version_id
  * @property ClassStatus $status
  * @property bool $include_evidence_in_report
+ * @property Carbon|null $archived_at
  */
-#[Fillable(['academic_year_id', 'subject_id', 'grade_level', 'course_code', 'label', 'assessment_profile_version_id', 'status', 'include_evidence_in_report'])]
+#[Fillable(['academic_year_id', 'subject_id', 'grade_level', 'course_code', 'label', 'assessment_profile_version_id', 'status', 'include_evidence_in_report', 'archived_at'])]
 class SchoolClass extends Model
 {
     /** @use HasFactory<SchoolClassFactory> */
@@ -54,6 +57,7 @@ class SchoolClass extends Model
         return [
             'status' => ClassStatus::class,
             'include_evidence_in_report' => 'boolean',
+            'archived_at' => 'datetime',
         ];
     }
 
@@ -104,6 +108,67 @@ class SchoolClass extends Model
     public function scopeTaughtBy(Builder $query, User $teacher): Builder
     {
         return $query->whereHas('teachers', fn ($teachers) => $teachers->whereKey($teacher->getKey()));
+    }
+
+    /**
+     * As turmas que continuam nas listas por omissão — não arquivadas.
+     *
+     * NÃO SE CHAMA `scopeActive()`, de propósito. Já existe `ClassStatus::Active`
+     * neste modelo, e um `scopeActive()` aqui ao lado leria como o mesmo
+     * conceito — quando são dois eixos ortogonais: uma turma `status = Active`
+     * pode estar arquivada ao mesmo tempo (encerrada há dois anos, mas ainda
+     * dentro dos três anos de retenção), e o inverso também é possível.
+     *
+     * @param  Builder<SchoolClass>  $query
+     * @return Builder<SchoolClass>
+     */
+    public function scopeNotArchived(Builder $query): Builder
+    {
+        return $query->whereNull('archived_at');
+    }
+
+    /**
+     * @param  Builder<SchoolClass>  $query
+     * @return Builder<SchoolClass>
+     */
+    public function scopeArchivedOnly(Builder $query): Builder
+    {
+        return $query->whereNotNull('archived_at');
+    }
+
+    public function isArchived(): bool
+    {
+        return $this->archived_at !== null;
+    }
+
+    /**
+     * A partir de quando esta turma pode ser eliminada em definitivo — três
+     * anos depois do FIM DO ANO LETIVO, e só depois disso.
+     *
+     * A BASE É SEMPRE `academic_year.ends_on`, NUNCA `created_at`, `archived_at`
+     * NEM QUALQUER DATA DE ÚLTIMO ACESSO. É a única data com significado legal
+     * para retenção de dados escolares — quando arquivar ou quando alguém
+     * voltou a abrir a turma não altera esse prazo em nada.
+     */
+    public function eligibleForPermanentDeletionAt(): ?CarbonImmutable
+    {
+        if (! $this->isArchived()) {
+            return null;
+        }
+
+        return CarbonImmutable::instance($this->academicYear->ends_on)->addYears(3);
+    }
+
+    public function isEligibleForPermanentDeletion(): bool
+    {
+        if (! $this->isArchived()) {
+            return false;
+        }
+
+        $eligibleAt = $this->eligibleForPermanentDeletionAt();
+
+        return $eligibleAt !== null
+            && CarbonImmutable::now('Europe/Lisbon')->startOfDay()->greaterThanOrEqualTo($eligibleAt->startOfDay());
     }
 
     /**

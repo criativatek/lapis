@@ -33,12 +33,24 @@ class SchoolClassPolicy
 
     public function delete(User $user, SchoolClass $class): bool
     {
-        // Only the owner, and only while nothing depends on it yet.
+        // Authorization only — WHO may attempt a permanent delete. Whether the
+        // class is actually archived, retention-eligible, and free of
+        // pedagogical history is a business rule checked by the controller
+        // (never a raw 403 — the teacher gets a readable explanation instead).
         return $class->teachers()
             ->wherePivot('role', 'owner')
             ->whereKey($user->getKey())
-            ->exists()
-            && $class->enrollments()->doesntExist();
+            ->exists();
+    }
+
+    public function archive(User $user, SchoolClass $class): bool
+    {
+        return $this->teaches($user, $class);
+    }
+
+    public function restore(User $user, SchoolClass $class): bool
+    {
+        return $this->teaches($user, $class);
     }
 
     public function assignTeacher(User $user, SchoolClass $class): bool

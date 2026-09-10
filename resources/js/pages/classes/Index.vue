@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3';
-import { CalendarPlus, Pencil, Plus, Users } from '@lucide/vue';
+import { Head, Link, router } from '@inertiajs/vue3';
+import { ArchiveRestore, CalendarPlus, Pencil, Plus, Users } from '@lucide/vue';
 import EmptyState from '@/components/EmptyState.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import { Badge } from '@/components/ui/badge';
@@ -16,19 +16,37 @@ export type SchoolClass = {
     status_label: string;
     status: string;
     students_count: number;
+    archived_at?: string | null;
+    eligible_for_deletion_at?: string | null;
+    is_eligible_for_deletion?: boolean;
 };
 
 defineProps<{
     classes: SchoolClass[];
+    viewingArchived: boolean;
 }>();
+
+function restoreClass(schoolClass: SchoolClass): void {
+    router.delete(`/classes/${schoolClass.ulid}/archive`, { preserveScroll: true });
+}
+
+/** «YYYY-MM-DD» → «DD/MM/YYYY», sem passar por `Date`. */
+function formatDate(iso: string): string {
+    const [year, month, day] = iso.split('-');
+
+    return `${day}/${month}/${year}`;
+}
 </script>
 
 <template>
     <Head title="Turmas" />
 
     <div class="mx-auto w-full max-w-4xl space-y-6 p-4">
-        <PageHeader title="Turmas" description="As turmas que leciona neste ano letivo.">
-            <template #actions>
+        <PageHeader
+            title="Turmas"
+            :description="viewingArchived ? 'Turmas arquivadas — os dados continuam preservados.' : 'As turmas que leciona neste ano letivo.'"
+        >
+            <template v-if="!viewingArchived" #actions>
                 <Button as-child variant="outline">
                     <Link href="/classes/schedule-setup"><CalendarPlus class="size-4" /> Configurar horários</Link>
                 </Button>
@@ -38,8 +56,21 @@ defineProps<{
             </template>
         </PageHeader>
 
-        <EmptyState v-if="classes.length === 0" title="Ainda não tem turmas." :icon="Users">
-            <template #action>
+        <!-- Sem navegação nova: uma única ligação, discreta, para a lista
+             oposta — nunca separadores nem menu. -->
+        <p class="text-sm">
+            <Link v-if="!viewingArchived" href="/classes/archived" class="text-muted-foreground underline-offset-4 hover:underline">
+                Turmas arquivadas
+            </Link>
+            <Link v-else href="/classes" class="text-muted-foreground underline-offset-4 hover:underline"> Voltar às turmas </Link>
+        </p>
+
+        <EmptyState
+            v-if="classes.length === 0"
+            :title="viewingArchived ? 'Ainda não tem turmas arquivadas.' : 'Ainda não tem turmas.'"
+            :icon="Users"
+        >
+            <template v-if="!viewingArchived" #action>
                 <Button as-child>
                     <Link href="/classes/create"><Plus class="size-4" /> Criar a primeira turma</Link>
                 </Button>
@@ -60,6 +91,7 @@ defineProps<{
                     <div class="flex items-center gap-2">
                         <Badge variant="secondary" :class="statusToneClasses(schoolClass.status)">{{ schoolClass.status_label }}</Badge>
                         <Link
+                            v-if="!viewingArchived"
                             :href="`/classes/${schoolClass.ulid}/edit`"
                             title="Editar turma"
                             :aria-label="`Editar turma ${schoolClass.label}`"
@@ -67,6 +99,16 @@ defineProps<{
                         >
                             <Pencil class="size-4" />
                         </Link>
+                        <button
+                            v-else
+                            type="button"
+                            title="Restaurar turma"
+                            :aria-label="`Restaurar turma ${schoolClass.label}`"
+                            class="relative z-10 flex min-h-11 min-w-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                            @click="restoreClass(schoolClass)"
+                        >
+                            <ArchiveRestore class="size-4" />
+                        </button>
                     </div>
                 </div>
                 <p class="mt-1 text-sm text-muted-foreground">
@@ -74,6 +116,12 @@ defineProps<{
                 </p>
                 <p class="mt-3 flex items-center gap-1.5 text-sm text-muted-foreground">
                     <Users class="size-4" /> {{ schoolClass.students_count }} alunos
+                </p>
+                <p v-if="viewingArchived" class="mt-1 text-xs text-muted-foreground">
+                    <template v-if="schoolClass.is_eligible_for_deletion">Elegível para eliminação definitiva</template>
+                    <template v-else-if="schoolClass.eligible_for_deletion_at">
+                        Elegível para eliminação definitiva a partir de {{ formatDate(schoolClass.eligible_for_deletion_at) }}
+                    </template>
                 </p>
             </div>
         </div>
