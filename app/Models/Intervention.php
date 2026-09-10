@@ -31,6 +31,7 @@ use Illuminate\Support\Carbon;
  *
  * @property int $id
  * @property string $ulid
+ * @property string|null $created_batch_ulid
  * @property int $organization_id
  * @property int $class_id
  * @property int|null $enrollment_id
@@ -64,7 +65,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $created_by
  */
 #[Fillable([
-    'class_id', 'enrollment_id', 'academic_period_id', 'domain_id',
+    'created_batch_ulid', 'class_id', 'enrollment_id', 'academic_period_id', 'domain_id',
     'target_type', 'intervention_type', 'purpose', 'domain_relation',
     'motive_code', 'motive_label', 'strategy_code', 'strategy_label', 'objective',
     'title', 'description', 'description_source',
@@ -132,6 +133,20 @@ class Intervention extends Model
     public function participants(): BelongsToMany
     {
         return $this->belongsToMany(Enrollment::class, 'intervention_enrollment')->withTimestamps();
+    }
+
+    /**
+     * Legal support measures attached to this one independent intervention.
+     *
+     * `created_batch_ulid` only describes how records were introduced. It must
+     * never be used as a relationship or to propagate lifecycle, framing,
+     * completion, reviews, or reporting state between interventions.
+     *
+     * @return HasMany<InterventionSupportMeasure, $this>
+     */
+    public function supportMeasures(): HasMany
+    {
+        return $this->hasMany(InterventionSupportMeasure::class)->orderBy('id');
     }
 
     /**
@@ -408,6 +423,8 @@ class Intervention extends Model
      */
     public function scopeBySupportMeasureLevel(Builder $query, SupportMeasureLevel $level): void
     {
-        $query->where('support_measure_level', $level)->whereNotNull('legal_mapping_source');
+        $query->whereHas('supportMeasures', fn (Builder $measures) => $measures
+            ->where('support_measure_level', $level)
+            ->whereNotNull('legal_mapping_source'));
     }
 }

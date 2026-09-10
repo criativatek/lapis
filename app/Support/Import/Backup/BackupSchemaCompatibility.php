@@ -7,7 +7,8 @@ namespace App\Support\Import\Backup;
  * (§4 of the import brief). Never inferred silently — every backup is
  * classified into exactly one of these before anything else happens.
  *
- * CURRENT (6) is what GenerateDataExport writes today — Fatia "multi-grade
+ * CURRENT (7) is what GenerateDataExport writes today. Version 7 adds
+ * intervention batch provenance and multiple legal support measures. Fatia "multi-grade
  * profiles" adds `assessment_profiles[].grade_levels` (a profile may now
  * cover more than one grade level) alongside everything schema_version 5
  * already restored: the "schema v2" capability tier of Fatia 6.2
@@ -37,7 +38,7 @@ enum BackupSchemaCompatibility
     case UnsupportedNewer;
     case Invalid;
 
-    public const int CURRENT = 6;
+    public const int CURRENT = 7;
 
     public const int MINIMUM_SUPPORTED = 2;
 

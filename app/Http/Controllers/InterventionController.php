@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreInterventionRequest;
+use App\Http\Requests\UpdateInterventionRequest;
 use App\Models\AcademicPeriod;
 use App\Models\Domain;
 use App\Models\Enrollment;
@@ -14,6 +16,7 @@ use App\Models\InterventionEffectiveness;
 use App\Models\InterventionPurpose;
 use App\Models\InterventionReview;
 use App\Models\InterventionStatus;
+use App\Models\InterventionSupportMeasure;
 use App\Models\InterventionTargetType;
 use App\Models\InterventionType;
 use App\Models\LegalMappingMode;
@@ -35,6 +38,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -228,7 +232,7 @@ class InterventionController extends Controller
             // Eager-loaded in one go: the list presents participants, the
             // domain and the follow-up history for every row, and a page that
             // asked per intervention would be a query per row (§78).
-            ->with(['participants.student.identity', 'domain', 'reviews', 'creator'])
+            ->with(['participants.student.identity', 'domain', 'reviews', 'creator', 'supportMeasures'])
             ->orderByDesc('started_on')
             ->orderByDesc('id')
             ->limit(200)
@@ -377,65 +381,70 @@ class InterventionController extends Controller
         return $value === '' ? null : mb_substr($value, 0, $max);
     }
 
-    public function store(Request $request, SchoolClass $class): RedirectResponse
+    public function store(StoreInterventionRequest $request, SchoolClass $class): RedirectResponse
     {
         Gate::authorize('update', $class);
 
-        $validated = $this->validatePayload($request);
-        $type = InterventionType::from($validated['intervention_type']);
+        $validated = $this->validatePayload($request, isCreate: true);
+        /** @var list<string> $typeValues */
+        $typeValues = $validated['intervention_types'];
+        $types = array_map(InterventionType::from(...), $typeValues);
         $this->guardCrossReferences($class, $validated, isNew: true);
 
         // Resolved at the intervention's own date, not today's.
         $framework = $this->frameworkFor(Carbon::parse($validated['started_on']));
-        $framing = $this->resolveLegalFraming($framework, $type, $validated);
-
         $reasoning = $this->resolveReasoning($validated);
+        $batchUlid = count($types) > 1 ? (string) Str::ulid() : null;
 
-        $intervention = DB::transaction(function () use ($class, $validated, $type, $framing, $reasoning): Intervention {
+        $interventions = DB::transaction(function () use ($class, $validated, $types, $framework, $reasoning, $batchUlid): array {
             $participantIds = $validated['enrollment_ids'] ?? [];
+            $created = [];
 
-            $intervention = Intervention::create([
-                'class_id' => $class->id,
-                ...$reasoning,
-                'review_on' => $validated['review_on'] ?? null,
-                'purpose' => $this->resolvePurpose($validated),
-                'frequency' => $this->resolveFreeText($validated['frequency'] ?? null),
-                'tracking_indicator' => $this->resolveFreeText($validated['tracking_indicator'] ?? null),
-                // Kept in step with the pivot for the single-student case, so
-                // the pre-existing column never goes stale (see the model).
-                'enrollment_id' => $validated['target_type'] === InterventionTargetType::Student->value
-                    ? $participantIds[0]
-                    : null,
-                'domain_id' => $validated['domain_relation'] === InterventionDomainRelation::Specific->value
-                    ? $validated['domain_id']
-                    : null,
-                'target_type' => $validated['target_type'],
-                'intervention_type' => $type,
-                'domain_relation' => $validated['domain_relation'],
-                // The strategy the teacher named, when they named one; the
-                // type's own label otherwise. Either way they are never asked to
-                // invent a title (§3.1, §11).
-                'title' => $reasoning['strategy_label'] ?? $type->label(),
-                'description' => $validated['description'] ?? null,
-                'description_source' => InterventionDescriptionSource::Manual,
-                'status' => InterventionStatus::New,
-                'started_on' => $validated['started_on'],
-                'available_for_reports' => $validated['available_for_reports'] ?? true,
-                // Legacy column, kept in step so nothing that still reads it
-                // sees a different answer than the new one.
-                'include_in_report' => $validated['available_for_reports'] ?? true,
-                ...$framing,
-                'created_by' => $this->user()->getKey(),
-            ]);
+            foreach ($types as $type) {
+                $framing = $this->resolveLegalFraming($framework, $type, $validated);
+                $intervention = Intervention::create([
+                    'created_batch_ulid' => $batchUlid,
+                    'class_id' => $class->id,
+                    ...$reasoning,
+                    'review_on' => $validated['review_on'] ?? null,
+                    'purpose' => $this->resolvePurpose($validated),
+                    'frequency' => $this->resolveFreeText($validated['frequency'] ?? null),
+                    'tracking_indicator' => $this->resolveFreeText($validated['tracking_indicator'] ?? null),
+                    'enrollment_id' => $validated['target_type'] === InterventionTargetType::Student->value
+                        ? $participantIds[0]
+                        : null,
+                    'domain_id' => $validated['domain_relation'] === InterventionDomainRelation::Specific->value
+                        ? $validated['domain_id']
+                        : null,
+                    'target_type' => $validated['target_type'],
+                    'intervention_type' => $type,
+                    'domain_relation' => $validated['domain_relation'],
+                    'title' => $reasoning['strategy_label'] ?? $type->label(),
+                    'description' => $validated['description'] ?? null,
+                    'description_source' => InterventionDescriptionSource::Manual,
+                    'status' => InterventionStatus::New,
+                    'started_on' => $validated['started_on'],
+                    'available_for_reports' => $validated['available_for_reports'] ?? true,
+                    'include_in_report' => $validated['available_for_reports'] ?? true,
+                    ...$framing,
+                    'created_by' => $this->user()->getKey(),
+                ]);
 
-            $intervention->participants()->sync($participantIds);
+                $intervention->participants()->sync($participantIds);
+                $this->syncSupportMeasures($intervention, $validated, $framing);
+                $created[] = $intervention;
+            }
 
-            return $intervention;
+            return $created;
         });
 
-        $this->record('intervention.created', $intervention);
+        foreach ($interventions as $intervention) {
+            $this->record('intervention.created', $intervention, ['created_batch_ulid' => $batchUlid]);
+        }
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('Intervenção registada.')]);
+        Inertia::flash('toast', ['type' => 'success', 'message' => count($interventions) === 1
+            ? __('Intervenção registada.')
+            : __(':count medidas pedagógicas registadas.', ['count' => count($interventions)])]);
 
         return back();
     }
@@ -477,7 +486,7 @@ class InterventionController extends Controller
      * A full edit. Status changes keep their own lighter endpoint below, so the
      * quick "Concluir" action does not have to resend the whole record.
      */
-    public function update(Request $request, Intervention $intervention): RedirectResponse
+    public function update(UpdateInterventionRequest $request, Intervention $intervention): RedirectResponse
     {
         $class = $intervention->schoolClass;
         Gate::authorize('update', $class);
@@ -522,6 +531,7 @@ class InterventionController extends Controller
             ])->save();
 
             $intervention->participants()->sync($participantIds);
+            $this->syncSupportMeasures($intervention, $validated, $framing);
         });
 
         $this->record('intervention.updated', $intervention->refresh());
@@ -648,15 +658,59 @@ class InterventionController extends Controller
         return back();
     }
 
+    public function destroyBatch(Intervention $intervention): RedirectResponse
+    {
+        Gate::authorize('update', $intervention->schoolClass);
+
+        if ($intervention->created_batch_ulid === null) {
+            throw ValidationException::withMessages(['batch' => __('Este registo não pertence a um lote.')]);
+        }
+
+        DB::transaction(function () use ($intervention): void {
+            $batch = Intervention::query()
+                ->where('created_batch_ulid', $intervention->created_batch_ulid)
+                ->lockForUpdate()
+                ->get();
+
+            foreach ($batch as $batchIntervention) {
+                Gate::authorize('update', $batchIntervention->schoolClass);
+                $this->record('intervention.deleted', $batchIntervention, [
+                    'created_batch_ulid' => $intervention->created_batch_ulid,
+                ]);
+                $batchIntervention->delete();
+            }
+        });
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Lote de medidas pedagógicas removido.')]);
+
+        return back();
+    }
+
     /**
      * @return array<string, mixed>
      */
-    protected function validatePayload(Request $request): array
+    protected function validatePayload(Request $request, bool $isCreate = false): array
     {
+        // Compatibility for existing API clients while the create form moves
+        // to the plural contract. New clients always send intervention_types.
+        if ($isCreate && ! $request->has('intervention_types') && $request->filled('intervention_type')) {
+            $request->merge(['intervention_types' => [$request->input('intervention_type')]]);
+            ($request->isJson() ? $request->json() : $request->request)->remove('intervention_type');
+        }
+        if (! $request->has('support_measures')
+            && $request->filled('support_measure_level')
+            && $request->filled('support_measure_code')) {
+            $request->merge(['support_measures' => [[
+                'level' => $request->input('support_measure_level'),
+                'code' => $request->input('support_measure_code'),
+            ]]]);
+        }
+
         $domainRelation = $request->input('domain_relation');
         $type = $request->input('intervention_type');
+        $types = $request->input('intervention_types', []);
 
-        return $request->validate([
+        $validated = $request->validate([
             'target_type' => ['required', Rule::enum(InterventionTargetType::class)],
             // A class-wide intervention names nobody; a group needs at least
             // two, otherwise it is a student intervention wearing a group's
@@ -664,7 +718,9 @@ class InterventionController extends Controller
             // place.
             'enrollment_ids' => ['present', 'array'],
             'enrollment_ids.*' => ['integer'],
-            'intervention_type' => ['required', Rule::enum(InterventionType::class)],
+            'intervention_type' => $isCreate ? ['prohibited'] : ['required', Rule::enum(InterventionType::class)],
+            'intervention_types' => [$isCreate ? 'required' : 'prohibited', 'array', 'min:1', 'max:10'],
+            'intervention_types.*' => ['required', 'distinct', Rule::enum(InterventionType::class)],
             'domain_relation' => ['required', Rule::enum(InterventionDomainRelation::class)],
             'domain_id' => [
                 Rule::requiredIf($domainRelation === InterventionDomainRelation::Specific->value),
@@ -674,7 +730,8 @@ class InterventionController extends Controller
             // «Outro» says nothing on its own, so it is the one type where the
             // teacher must write what was done (§8).
             'description' => [
-                Rule::requiredIf($type === InterventionType::Other->value),
+                Rule::requiredIf($type === InterventionType::Other->value
+                    || in_array(InterventionType::Other->value, is_array($types) ? $types : [], true)),
                 'nullable', 'string', 'max:5000',
             ],
             'started_on' => ['required', 'date'],
@@ -701,12 +758,42 @@ class InterventionController extends Controller
             // source — that is the server's to decide (see resolveLegalFraming).
             'legal_framing' => ['nullable', Rule::in(['auto', 'manual', 'none'])],
             'confirm_suggested_framing' => ['boolean'],
-            'support_measure_level' => ['nullable', Rule::enum(SupportMeasureLevel::class)],
-            'support_measure_code' => ['nullable', Rule::enum(SupportMeasureCode::class)],
+            'support_measures' => ['array'],
+            'support_measures.*.level' => ['required', Rule::enum(SupportMeasureLevel::class)],
+            'support_measures.*.code' => ['required', Rule::enum(SupportMeasureCode::class)],
             'evaluation_adaptation_code' => ['nullable', Rule::enum(EvaluationAdaptationCode::class)],
         ], [], [
             'enrollment_ids' => __('alunos'),
         ]);
+
+        $supportMeasurePairs = [];
+        foreach ($validated['support_measures'] ?? [] as $index => $pair) {
+            $code = SupportMeasureCode::from($pair['code']);
+
+            if ($code->level()->value !== $pair['level']) {
+                throw ValidationException::withMessages([
+                    "support_measures.{$index}.code" => __('A medida não pertence ao nível selecionado.'),
+                ]);
+            }
+
+            $key = $pair['level'].'|'.$pair['code'];
+            if (isset($supportMeasurePairs[$key])) {
+                throw ValidationException::withMessages([
+                    "support_measures.{$index}.code" => __('Esta medida de suporte já foi adicionada.'),
+                ]);
+            }
+            $supportMeasurePairs[$key] = true;
+        }
+
+        if ($isCreate && count($validated['intervention_types']) > 1
+            && (($validated['legal_framing'] ?? 'auto') === 'manual'
+                || ($validated['confirm_suggested_framing'] ?? false))) {
+            throw ValidationException::withMessages([
+                'legal_framing' => __('Num lote, confirme o enquadramento depois em cada registo.'),
+            ]);
+        }
+
+        return $validated;
     }
 
     /**
@@ -758,14 +845,6 @@ class InterventionController extends Controller
             && ! Domain::where('subject_id', $class->subject_id)->whereKey($validated['domain_id'])->exists()) {
             throw ValidationException::withMessages([
                 'domain_id' => __('Domínio inválido para esta disciplina.'),
-            ]);
-        }
-
-        if (($validated['support_measure_code'] ?? null) !== null
-            && ($validated['support_measure_level'] ?? null) !== null
-            && SupportMeasureCode::from($validated['support_measure_code'])->level()->value !== $validated['support_measure_level']) {
-            throw ValidationException::withMessages([
-                'support_measure_code' => __('A medida não pertence ao nível selecionado.'),
             ]);
         }
     }
@@ -847,11 +926,12 @@ class InterventionController extends Controller
         }
 
         if ($decision === 'manual') {
-            $measure = ($validated['support_measure_code'] ?? null) !== null
-                ? SupportMeasureCode::from($validated['support_measure_code'])
+            $firstSupportMeasure = ($validated['support_measures'] ?? [])[0] ?? null;
+            $measure = ($firstSupportMeasure['code'] ?? null) !== null
+                ? SupportMeasureCode::from($firstSupportMeasure['code'])
                 : null;
-            $level = ($validated['support_measure_level'] ?? null) !== null
-                ? SupportMeasureLevel::from($validated['support_measure_level'])
+            $level = ($firstSupportMeasure['level'] ?? null) !== null
+                ? SupportMeasureLevel::from($firstSupportMeasure['level'])
                 : $measure?->level();
             $adaptation = ($validated['evaluation_adaptation_code'] ?? null) !== null
                 ? EvaluationAdaptationCode::from($validated['evaluation_adaptation_code'])
@@ -899,12 +979,58 @@ class InterventionController extends Controller
     }
 
     /**
+     * Replaces the canonical set while keeping the legacy first pair readable.
+     *
+     * @param  array<string, mixed>  $validated
+     * @param  array<string, mixed>  $framing
+     */
+    protected function syncSupportMeasures(Intervention $intervention, array $validated, array $framing): void
+    {
+        if (! array_key_exists('support_measures', $validated) && $intervention->supportMeasures()->exists()) {
+            return;
+        }
+
+        $pairs = $validated['support_measures'] ?? null;
+
+        if ($pairs === null || ($pairs === [] && ($validated['legal_framing'] ?? null) !== 'manual')) {
+            $pairs = ($framing['support_measure_level'] ?? null) !== null
+                && ($framing['support_measure_code'] ?? null) !== null
+                ? [[
+                    'level' => $framing['support_measure_level'] instanceof SupportMeasureLevel
+                        ? $framing['support_measure_level']->value : $framing['support_measure_level'],
+                    'code' => $framing['support_measure_code'] instanceof SupportMeasureCode
+                        ? $framing['support_measure_code']->value : $framing['support_measure_code'],
+                ]]
+                : [];
+        }
+
+        $intervention->supportMeasures()->delete();
+        foreach ($pairs as $pair) {
+            $intervention->supportMeasures()->create([
+                'support_measure_level' => $pair['level'],
+                'support_measure_code' => $pair['code'],
+                'legal_mapping_source' => $framing['legal_mapping_source'] ?? LegalMappingSource::Manual,
+            ]);
+        }
+
+        $first = $pairs[0] ?? null;
+        $intervention->forceFill([
+            'support_measure_level' => $first['level'] ?? null,
+            'support_measure_code' => $first['code'] ?? null,
+            'legal_mapping_source' => $first === null && ($framing['evaluation_adaptation_code'] ?? null) === null
+                ? null
+                : ($framing['legal_mapping_source'] ?? LegalMappingSource::Manual),
+        ])->save();
+    }
+
+    /**
      * @return array<string, mixed>
      */
     protected function presentIntervention(Intervention $intervention): array
     {
         return [
             'ulid' => $intervention->ulid,
+            'created_batch_ulid' => $intervention->created_batch_ulid,
             // NULLABLE ON PURPOSE. A row whose only name is a label an old
             // process generated has no name, and the screen renders nothing
             // rather than «Legado sem dominio» after a student's name (§1, §3).
@@ -974,6 +1100,14 @@ class InterventionController extends Controller
                 'source' => $intervention->legal_mapping_source?->value,
                 'source_label' => $intervention->legal_mapping_source?->label(),
             ] : null,
+            'support_measures' => $intervention->supportMeasures->map(fn (InterventionSupportMeasure $measure) => [
+                'ulid' => $measure->ulid,
+                'level' => $measure->support_measure_level->value,
+                'level_label' => $measure->support_measure_level->label(),
+                'code' => $measure->support_measure_code->value,
+                'code_label' => $measure->support_measure_code->label(),
+                'source' => $measure->legal_mapping_source?->value,
+            ])->all(),
             // Newest first, which is how the model orders them. The detail
             // screen reverses it to read the story forwards (§29).
             'reviews' => $intervention->reviews->map(fn (InterventionReview $review) => [

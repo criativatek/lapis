@@ -25,6 +25,25 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.142.0] — 2026-09-10
+
+### Adicionado
+
+- **Criação conjunta de medidas pedagógicas.** O formulário de Estratégias e
+  Medidas permite pesquisar e escolher até dez tipos, criando um registo
+  independente por tipo e assinalando apenas a proveniência comum para poder
+  remover o lote completo sem ligar os ciclos de vida.
+- **Vários enquadramentos pedagógicos/legais.** Cada intervenção pode guardar
+  vários pares de nível e medida de suporte, migrando sem perda o par legado e
+  mantendo as colunas anteriores compatíveis durante esta transição.
+- Os backups de esquema 7 transportam a proveniência dos lotes e todos os pares
+  de medidas de suporte.
+
+### Alterado
+
+- A criação em lote calcula o enquadramento automático separadamente para cada
+  registo; decisões manuais continuam a ser feitas na edição individual.
+
 ## [0.141.1] — 2026-09-10
 
 ### Corrigido

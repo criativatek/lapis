@@ -175,7 +175,7 @@ class WritePedagogicalRecords
 
                 $intervention = new Intervention;
                 $intervention->forceFill([
-                    'ulid' => $this->writableUlid($row), 'class_id' => $classId, 'enrollment_id' => $this->resolveId($row['enrollment_ulid'], $enrollmentsByUlid),
+                    'ulid' => $this->writableUlid($row), 'created_batch_ulid' => $row['created_batch_ulid'] ?? null, 'class_id' => $classId, 'enrollment_id' => $this->resolveId($row['enrollment_ulid'], $enrollmentsByUlid),
                     'academic_period_id' => $this->resolveId($row['academic_period_ulid'], $periodsByUlid),
                     'domain_id' => $this->resolveId($row['domain_ulid'], $domainsByUlid), 'target_type' => $row['target_type'],
                     'intervention_type' => $row['intervention_type'], 'motive_code' => $row['motive_code'], 'motive_label' => $row['motive_label'],
@@ -197,6 +197,14 @@ class WritePedagogicalRecords
 
                 if ($participantIds !== []) {
                     $intervention->participants()->attach($participantIds);
+                }
+
+                foreach ($row['support_measures'] ?? [] as $measure) {
+                    $intervention->supportMeasures()->create([
+                        'support_measure_level' => $measure['level'],
+                        'support_measure_code' => $measure['code'],
+                        'legal_mapping_source' => $measure['legal_mapping_source'] ?? null,
+                    ]);
                 }
 
                 $byUlid[$row['ulid']] = $intervention->getKey();

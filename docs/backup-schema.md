@@ -24,16 +24,17 @@ arquitetura.
 
 | `schema_version` | Estado | Capacidade |
 |---|---|---|
-| 6 (atual) | `Supported` | Como a v5, acrescentando `assessment_profiles[].grade_levels` — um perfil pode agora cobrir mais do que um ano de escolaridade |
+| 7 (atual) | `Supported` | Como a v6, acrescentando `interventions[].created_batch_ulid` e `interventions[].support_measures` |
+| 6 | `LegacyCompatible` | Como a v5, acrescentando `assessment_profiles[].grade_levels` — um perfil pode agora cobrir mais do que um ano de escolaridade |
 | 5 | `LegacyCompatible` | Como a v4, acrescentando os dados completos de anos letivos e disciplinas para os poder criar em segurança. Um perfil só transporta o antigo `grade_level` singular |
 | 4 | `LegacyCompatible` | Estrutura, avaliação e acompanhamento pedagógico completos, mas anos letivos e disciplinas continuam match-only por não terem coleção própria |
 | 3 | `LegacyCompatible` | Só turmas/alunos/inscrições com `enrolled_on`; elementos de avaliação e classificações não existiam ainda no formato — linhas que os precisassem seriam `unsupported` |
 | 2 | `LegacyCompatible` | Como a 3, mas sem `enrollments[].enrolled_on` — uma inscrição sem essa data não pode ser **criada** em segurança |
 | < 2 | `Invalid` | Ficheiro recusado por inteiro |
-| > 6 | `UnsupportedNewer` | Ficheiro recusado por inteiro — backup de uma versão do Lapispro mais recente do que este código entende |
+| > 7 | `UnsupportedNewer` | Ficheiro recusado por inteiro — backup de uma versão do Lapispro mais recente do que este código entende |
 
 `App\Support\Import\Backup\BackupSchemaCompatibility` é a única fonte desta
-tabela em código (`CURRENT = 6`, `MINIMUM_SUPPORTED = 2`). Não existe
+tabela em código (`CURRENT = 7`, `MINIMUM_SUPPORTED = 2`). Não existe
 ramificação em nenhum ponto do pipeline com base em `schema_version` — cada
 coleção nova simplesmente está ausente (`?? []`) num backup mais antigo, e o
 pipeline trata "ausente" e "vazio" da mesma forma. Um backup v2 ou v3 continua

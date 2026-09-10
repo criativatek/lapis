@@ -38,6 +38,7 @@ type LibraryEntry = { code: string | null; label: string; objective: string | nu
 
 type Intervention = {
     ulid: string;
+    created_batch_ulid: string | null;
     /**
      * Null when the row has no name of its own — an old record whose only
      * «title» was a label an old process generated. The list then names it by
@@ -98,6 +99,7 @@ type Intervention = {
         source: string | null;
         source_label: string | null;
     } | null;
+    support_measures: { ulid: string; level: string; level_label: string; code: string; code_label: string; source: string | null }[];
     reviews: Review[];
 };
 
@@ -171,6 +173,7 @@ type FormData = {
     target_type: TargetType;
     enrollment_ids: number[];
     intervention_type: string;
+    intervention_types: string[];
     domain_relation: DomainRelation;
     domain_id?: number | null;
     /**
@@ -195,6 +198,7 @@ type FormData = {
     confirm_suggested_framing: boolean;
     support_measure_level: string | null;
     support_measure_code: string | null;
+    support_measures: { level: string; code: string }[];
     evaluation_adaptation_code: string | null;
 };
 
@@ -204,6 +208,7 @@ const form = useForm<FormData>({
     target_type: props.prefill?.target_type ?? 'student',
     enrollment_ids: props.prefill?.enrollment_ids ?? (props.enrollments[0] ? [props.enrollments[0].id] : []),
     intervention_type: props.types[0]?.value ?? '',
+    intervention_types: props.types[0] ? [props.types[0].value] : [],
     domain_relation: props.prefill?.domain_relation ?? 'none',
     domain_id: props.prefill?.domain_id ?? null,
     motive_code: null,
@@ -222,6 +227,7 @@ const form = useForm<FormData>({
     confirm_suggested_framing: false,
     support_measure_level: null,
     support_measure_code: null,
+    support_measures: [],
     evaluation_adaptation_code: null,
 });
 
@@ -288,11 +294,11 @@ function chooseStrategy(entry: LibraryEntry): void {
     }
 }
 
-const selectedType = computed(() => props.types.find((type) => type.value === form.intervention_type) ?? null);
+const editingUlid = ref<string | null>(null);
+const selectedType = computed(() => props.types.find((type) => type.value === (editingUlid.value ? form.intervention_type : form.intervention_types[0])) ?? null);
 const selectedMapping = computed(() => selectedType.value?.legal_mapping ?? null);
 const selectedMeasureLevel = computed(() => props.supportMeasureLevels.find((level) => level.value === form.support_measure_level) ?? null);
 const availableMeasures = computed(() => selectedMeasureLevel.value?.measures ?? []);
-const editingUlid = ref<string | null>(null);
 /** Who the intervention being edited already names, including students who have left. */
 const editingParticipantIds = ref<number[]>([]);
 
@@ -315,6 +321,10 @@ const editingFramingSource = ref<string | null>(null);
 const framingDetails = ref<HTMLDetailsElement | null>(null);
 
 const canSubmit = computed(() => {
+    if (!editingUlid.value && form.intervention_types.length === 0) {
+        return false;
+    }
+
     if (form.target_type === 'student') {
         return form.enrollment_ids.length === 1;
     }
@@ -354,6 +364,19 @@ watch(
         // that carried "Medida universal — Diferenciação pedagógica" and
         // switching it to an assessment adaptation left both on screen at once.
         resetAutomaticFraming();
+    },
+);
+
+watch(
+    () => form.intervention_types.length,
+    (count) => {
+        if (!editingUlid.value && count > 1) {
+            form.legal_framing = 'auto';
+            form.confirm_suggested_framing = false;
+            form.support_measures = [];
+            form.support_measure_level = null;
+            form.support_measure_code = null;
+        }
     },
 );
 
@@ -451,6 +474,7 @@ function removeFraming(): void {
     form.confirm_suggested_framing = false;
     form.support_measure_level = null;
     form.support_measure_code = null;
+    form.support_measures = [];
     form.evaluation_adaptation_code = null;
     manualMeasureOpen.value = false;
     manualAdaptationOpen.value = false;
@@ -496,6 +520,7 @@ function edit(intervention: Intervention): void {
     editingParticipantIds.value = [...intervention.participant_ids];
     form.enrollment_ids = [...intervention.participant_ids];
     form.intervention_type = intervention.intervention_type ?? props.types[0]?.value ?? '';
+    form.intervention_types = intervention.intervention_type ? [intervention.intervention_type] : [];
     form.domain_relation = intervention.domain_relation;
     form.domain_id = intervention.domain_id;
     // The reasoning as it was RECORDED, not as the library reads today: what is
@@ -517,6 +542,7 @@ function edit(intervention: Intervention): void {
     form.confirm_suggested_framing = intervention.legal_framing?.source === 'system_suggested_confirmed';
     form.support_measure_level = intervention.legal_framing?.level ?? null;
     form.support_measure_code = intervention.legal_framing?.measure ?? null;
+    form.support_measures = intervention.support_measures.map((measure) => ({ level: measure.level, code: measure.code }));
     form.evaluation_adaptation_code = intervention.legal_framing?.evaluation_adaptation ?? null;
     // Reveal whichever sub-forms this intervention actually uses, so an
     // existing framing is visible and editable instead of hidden behind a
@@ -549,6 +575,12 @@ function submit(): void {
 
     form.transform((data) => {
         const payload: FormData = { ...data, description: data.description.trim() };
+
+        if (editingUlid.value) {
+            delete (payload as Partial<FormData>).intervention_types;
+        } else {
+            delete (payload as Partial<FormData>).intervention_type;
+        }
 
         if (data.domain_relation !== 'specific') {
             delete payload.domain_id;
@@ -583,6 +615,46 @@ function remove(intervention: Intervention): void {
     if (confirm('Eliminar esta intervenção?')) {
         router.delete(`/interventions/${intervention.ulid}`, { preserveScroll: true });
     }
+}
+
+function removeBatch(intervention: Intervention): void {
+    if (confirm('Eliminar todas as medidas pedagógicas registadas neste lote?')) {
+        router.delete(`/interventions/${intervention.ulid}/batch`, { preserveScroll: true });
+    }
+}
+
+const typeSearch = ref('');
+const filteredTypeGroups = computed(() => {
+    const needle = typeSearch.value.trim().toLocaleLowerCase('pt-PT');
+
+    if (!needle) {
+return typeGroups.value;
+}
+
+    return typeGroups.value
+        .map((group) => ({ ...group, types: group.types.filter((type) => type.label.toLocaleLowerCase('pt-PT').includes(needle)) }))
+        .filter((group) => group.types.length > 0);
+});
+
+function removeSelectedType(value: string): void {
+    form.intervention_types = form.intervention_types.filter((type) => type !== value);
+}
+
+function addSupportMeasure(): void {
+    if (!form.support_measure_level || !form.support_measure_code) {
+return;
+}
+
+    if (!form.support_measures.some((pair) => pair.level === form.support_measure_level && pair.code === form.support_measure_code)) {
+        form.support_measures.push({ level: form.support_measure_level, code: form.support_measure_code });
+    }
+
+    markFramingManual();
+}
+
+function removeSupportMeasure(index: number): void {
+    form.support_measures.splice(index, 1);
+    markFramingManual();
 }
 
 /**
@@ -744,8 +816,8 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
             <p v-if="form.errors.enrollment_ids" class="text-xs text-red-600">{{ form.errors.enrollment_ids }}</p>
 
             <div class="grid gap-3 sm:grid-cols-2">
-                <label class="text-sm">
-                    <span class="mb-1 block text-xs text-muted-foreground">Intervenção</span>
+                <label v-if="editingUlid" class="text-sm">
+                    <span class="mb-1 block text-xs text-muted-foreground">Medida pedagógica</span>
                     <select v-model="form.intervention_type" class="w-full rounded-md border border-border bg-background px-2 py-1.5">
                         <optgroup v-for="group in typeGroups" :key="group.label" :label="group.label">
                             <option v-for="type in group.types" :key="type.value" :value="type.value">{{ type.label }}</option>
@@ -753,6 +825,29 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
                     </select>
                     <p v-if="form.errors.intervention_type" class="mt-1 text-xs text-red-600">{{ form.errors.intervention_type }}</p>
                 </label>
+                <div v-else class="text-sm">
+                    <span class="mb-1 block text-xs text-muted-foreground">Medidas pedagógicas</span>
+                    <div class="rounded-md border border-border bg-background p-2">
+                        <div class="mb-2 flex flex-wrap gap-1.5">
+                            <span v-for="value in form.intervention_types" :key="value" class="inline-flex items-center gap-1 rounded-full bg-accent px-2 py-1 text-xs">
+                                {{ types.find((type) => type.value === value)?.label }}
+                                <button type="button" :aria-label="`Remover ${types.find((type) => type.value === value)?.label}`" @click="removeSelectedType(value)">×</button>
+                            </span>
+                        </div>
+                        <input v-model="typeSearch" type="search" class="mb-2 w-full rounded-md border border-border bg-background px-2 py-1.5" placeholder="Pesquisar e escolher várias…" />
+                        <div class="max-h-44 space-y-2 overflow-y-auto">
+                            <fieldset v-for="group in filteredTypeGroups" :key="group.label">
+                                <legend class="text-xs font-medium text-muted-foreground">{{ group.label }}</legend>
+                                <label v-for="type in group.types" :key="type.value" class="flex min-h-8 items-center gap-2 text-sm">
+                                    <input v-model="form.intervention_types" type="checkbox" :value="type.value" :disabled="form.intervention_types.length >= 10 && !form.intervention_types.includes(type.value)" />
+                                    {{ type.label }}
+                                </label>
+                            </fieldset>
+                        </div>
+                    </div>
+                    <p class="mt-1 text-xs text-muted-foreground">Escolha entre uma e dez; cada medida terá acompanhamento independente.</p>
+                    <p v-if="form.errors.intervention_types" class="mt-1 text-xs text-red-600">{{ form.errors.intervention_types }}</p>
+                </div>
                 <label class="text-sm">
                     <span class="mb-1 block text-xs text-muted-foreground">Data</span>
                     <input v-model="form.started_on" type="date" class="w-full rounded-md border border-border bg-background px-2 py-1.5" />
@@ -978,7 +1073,10 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
                 Disponível para relatórios
             </label>
 
-            <div v-if="selectedMapping?.mode === 'direct'" class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <p v-if="!editingUlid && form.intervention_types.length > 1" class="text-xs text-muted-foreground">
+                O enquadramento automático será calculado separadamente para cada medida. Pode ajustá-lo depois em cada registo.
+            </p>
+            <div v-else-if="selectedMapping?.mode === 'direct'" class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <CheckCircle2 class="size-4 text-emerald-600" />
                 <span>Enquadramento sugerido pelo sistema: {{ [selectedMapping.level_label, selectedMapping.measure_label].filter(Boolean).join(' — ') }}</span>
                 <button type="button" class="text-primary hover:underline" @click="openManualMeasure">Alterar</button>
@@ -1002,7 +1100,7 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
                 <p class="mt-1 ml-6">Nível da medida não especificado.</p>
             </div>
 
-            <details ref="framingDetails" class="rounded-md border border-border p-3">
+            <details v-if="editingUlid || form.intervention_types.length === 1" ref="framingDetails" class="rounded-md border border-border p-3">
                 <summary class="cursor-pointer text-sm font-medium">Enquadramento pedagógico/legal</summary>
 
                 <div class="mt-3 space-y-4">
@@ -1034,7 +1132,13 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
                         + Associar adaptação no processo de avaliação
                     </button>
 
-                    <p class="text-xs font-medium text-muted-foreground uppercase">Medida de suporte à aprendizagem</p>
+                    <p class="text-xs font-medium text-muted-foreground uppercase">Medidas de suporte à aprendizagem</p>
+                    <div v-if="form.support_measures.length" class="space-y-2">
+                        <div v-for="(pair, index) in form.support_measures" :key="`${pair.level}-${pair.code}`" class="flex items-center justify-between gap-2 rounded-md bg-muted/30 px-3 py-2 text-sm">
+                            <span>{{ supportMeasureLevels.find((level) => level.value === pair.level)?.label }} — {{ supportMeasureLevels.flatMap((level) => level.measures).find((measure) => measure.value === pair.code)?.label }}</span>
+                            <button type="button" class="text-xs text-muted-foreground hover:text-red-600" @click="removeSupportMeasure(index)">Remover</button>
+                        </div>
+                    </div>
                     <p v-if="!manualMeasureOpen && !selectedMappingHasMeasure" class="-mt-3 text-xs text-muted-foreground">Nenhuma medida associada.</p>
 
                     <div v-if="manualMeasureOpen" class="grid gap-3 sm:grid-cols-2">
@@ -1053,6 +1157,7 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
                             </select>
                             <p v-if="form.errors.support_measure_code" class="mt-1 text-xs text-red-600">{{ form.errors.support_measure_code }}</p>
                         </label>
+                        <button type="button" class="self-end rounded-md border border-border px-3 py-2 text-sm" :disabled="!form.support_measure_level || !form.support_measure_code" @click="addSupportMeasure">Adicionar medida de suporte</button>
                     </div>
                     <button v-else type="button" class="text-xs text-primary hover:underline" @click="openManualMeasure">
                         Associar medida de suporte à aprendizagem
@@ -1173,6 +1278,7 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
                                 Rever em {{ reviewWhen(intervention.review_on) }}
                             </span>
                             <span v-if="intervention.legal_framing" class="rounded-full bg-accent px-2 py-0.5 text-accent-foreground">{{ framingLabel(intervention) }}</span>
+                            <span v-if="intervention.created_batch_ulid" class="rounded-full bg-muted px-2 py-0.5">Registada em conjunto</span>
                             <span v-if="intervention.available_for_reports" class="inline-flex items-center gap-1"><FileText class="size-3.5 text-emerald-500" /> Disponível para relatórios</span>
                         </div>
                         <p v-if="intervention.description" class="mt-1 text-sm text-muted-foreground">{{ intervention.description }}</p>
@@ -1180,6 +1286,7 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
                     <div class="flex shrink-0 items-center gap-1">
                         <button type="button" class="rounded-md p-1.5 text-muted-foreground hover:bg-muted/40" title="Editar" @click="edit(intervention)"><Pencil class="size-4" /></button>
                         <button type="button" class="rounded-md p-1.5 text-muted-foreground hover:bg-muted/40 hover:text-red-600" title="Remover" @click="remove(intervention)"><Trash2 class="size-4" /></button>
+                        <button v-if="intervention.created_batch_ulid" type="button" class="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted/40 hover:text-red-600" @click="removeBatch(intervention)">Remover lote</button>
                     </div>
                 </div>
 

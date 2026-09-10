@@ -935,6 +935,7 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::patch('interventions/{intervention}', [InterventionController::class, 'updateStatus'])->name('interventions.status.update');
         Route::post('interventions/{intervention}/reviews', [InterventionController::class, 'addReview'])->name('interventions.reviews.store');
         Route::delete('interventions/{intervention}', [InterventionController::class, 'destroy'])->name('interventions.destroy');
+        Route::delete('interventions/{intervention}/batch', [InterventionController::class, 'destroyBatch'])->name('interventions.batch.destroy');
     });
 
     // Leaving is not an "Equipa" action — any member, on any plan, must be

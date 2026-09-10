@@ -20,6 +20,7 @@ use App\Models\InstrumentType;
 use App\Models\InterimAssessment;
 use App\Models\Intervention;
 use App\Models\InterventionReview;
+use App\Models\InterventionSupportMeasure;
 use App\Models\ItemDomainAllocation;
 use App\Models\Organization;
 use App\Models\ProfileVersionDomain;
@@ -173,7 +174,7 @@ class GenerateDataExport
             ->whereIn('id', $selfAssessments->pluck('self_assessment_template_id')->unique())
             ->get()
             ->keyBy('id');
-        $interventions = Intervention::query()->whereIn('class_id', $classIds)->with('participants')->get();
+        $interventions = Intervention::query()->whereIn('class_id', $classIds)->with(['participants', 'supportMeasures'])->get();
         $interventionReviews = InterventionReview::query()->whereIn('intervention_id', $interventions->pluck('id'))->get();
         $reports = Report::query()->whereIn('class_id', $classIds)->with(['enrollment.student'])->get();
         $itemScores = StudentItemScore::query()
@@ -1543,6 +1544,7 @@ class GenerateDataExport
     {
         return [
             'ulid' => $intervention->ulid,
+            'created_batch_ulid' => $intervention->created_batch_ulid,
             'class_ulid' => $this->classUlidRef($intervention->class_id, $refs),
             'enrollment_ulid' => $intervention->enrollment?->ulid,
             'participant_enrollment_ulids' => $intervention->participants->pluck('ulid')->values()->all(),
@@ -1569,6 +1571,11 @@ class GenerateDataExport
             'support_measure_code' => $intervention->support_measure_code,
             'evaluation_adaptation_code' => $intervention->evaluation_adaptation_code,
             'legal_mapping_source' => $intervention->legal_mapping_source,
+            'support_measures' => $intervention->supportMeasures->map(fn (InterventionSupportMeasure $measure) => [
+                'level' => $measure->support_measure_level->value,
+                'code' => $measure->support_measure_code->value,
+                'legal_mapping_source' => $measure->legal_mapping_source?->value,
+            ])->values()->all(),
             'created_by_email' => $this->authorEmail($intervention->created_by, $refs),
         ];
     }

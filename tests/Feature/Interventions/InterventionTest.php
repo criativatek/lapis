@@ -643,7 +643,7 @@ class InterventionTest extends TestCase
             'legal_framing' => 'manual',
             'support_measure_level' => 'additional',
             'support_measure_code' => 'pedagogical_differentiation', // universal
-        ])->assertJsonValidationErrors('support_measure_code');
+        ])->assertJsonValidationErrors('support_measures.0.code');
     }
 
     #[Test]
@@ -1074,5 +1074,55 @@ class InterventionTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->where('interventions.0.target_enrollment_ulid', null)
                 ->where('interventions.1.target_enrollment_ulid', $expectedUlid));
+    }
+
+    #[Test]
+    public function creation_with_multiple_types_creates_independent_records_in_one_batch(): void
+    {
+        ['class' => $class, 'enrollments' => $enrollments, 'teacher' => $teacher] = $this->seedClass();
+
+        $this->postIntervention($class->ulid, $teacher, [
+            'enrollment_ids' => [$enrollments[0]],
+            'intervention_type' => null,
+            'intervention_types' => [
+                InterventionType::PedagogicalDifferentiation->value,
+                InterventionType::PsychopedagogicalSupport->value,
+            ],
+        ])->assertRedirect();
+
+        $this->inTenant($teacher, function () use ($enrollments): void {
+            $interventions = Intervention::query()->orderBy('id')->get();
+
+            $this->assertCount(2, $interventions);
+            $this->assertNotNull($interventions[0]->created_batch_ulid);
+            $this->assertSame($interventions[0]->created_batch_ulid, $interventions[1]->created_batch_ulid);
+            $this->assertSame([$enrollments[0]], $interventions[0]->participants->pluck('id')->all());
+            $this->assertNotSame($interventions[0]->ulid, $interventions[1]->ulid);
+        });
+    }
+
+    #[Test]
+    public function multiple_support_measure_pairs_can_be_replaced_without_touching_another_intervention(): void
+    {
+        ['class' => $class, 'enrollments' => $enrollments, 'teacher' => $teacher] = $this->seedClass();
+
+        $this->postIntervention($class->ulid, $teacher, [
+            'enrollment_ids' => [$enrollments[0]],
+            'legal_framing' => 'manual',
+            'support_measures' => [
+                ['level' => 'universal', 'code' => 'pedagogical_differentiation'],
+                ['level' => 'selective', 'code' => 'psychopedagogical_support'],
+            ],
+        ])->assertRedirect();
+        $this->postIntervention($class->ulid, $teacher, ['enrollment_ids' => [$enrollments[1]]])->assertRedirect();
+
+        $this->inTenant($teacher, function (): void {
+            $first = Intervention::query()->orderBy('id')->firstOrFail();
+            $other = Intervention::query()->orderByDesc('id')->firstOrFail();
+
+            $this->assertCount(2, $first->supportMeasures);
+            $this->assertCount(0, $other->supportMeasures);
+            $this->assertSame(SupportMeasureCode::PedagogicalDifferentiation, $first->support_measure_code);
+        });
     }
 }

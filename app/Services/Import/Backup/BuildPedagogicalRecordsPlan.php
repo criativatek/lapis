@@ -287,6 +287,7 @@ class BuildPedagogicalRecordsPlan
                 'review_on' => $row['review_on'], 'available_for_reports' => $row['available_for_reports'],
                 'support_measure_level' => $row['support_measure_level'], 'support_measure_code' => $row['support_measure_code'],
                 'evaluation_adaptation_code' => $row['evaluation_adaptation_code'], 'legal_mapping_source' => $row['legal_mapping_source'],
+                'created_batch_ulid' => $row['created_batch_ulid'] ?? null, 'support_measures' => $row['support_measures'] ?? [],
                 'created_by' => $authorId,
                 'author_unresolved' => $authorId === null,
                 'notice' => $authorId === null ? $this->unresolvedAuthorNotice('desta estratégia') : null,

@@ -201,7 +201,7 @@ class ValidateBackupPayload
                 'target_type', 'intervention_type', 'motive_code', 'motive_label', 'strategy_code', 'strategy_label',
                 'objective', 'domain_relation', 'title', 'description', 'description_source', 'status', 'started_on',
                 'expected_end_on', 'concluded_on', 'review_on', 'available_for_reports', 'support_measure_level',
-                'support_measure_code', 'evaluation_adaptation_code', 'legal_mapping_source', 'created_by_email',
+                'support_measure_code', 'evaluation_adaptation_code', 'legal_mapping_source', 'created_batch_ulid', 'support_measures', 'created_by_email',
             ], function (array $row) use (&$rowIssues): ?array {
                 return $this->validInterventionRow($row, $rowIssues);
             }),
@@ -423,6 +423,7 @@ class ValidateBackupPayload
 
         return [
             'ulid' => $ulid,
+            'created_batch_ulid' => $this->nullableUlid($row['created_batch_ulid'] ?? null),
             'label' => $row['label'],
             'status' => $row['status'],
             'academic_year' => $row['academic_year'],
@@ -1288,6 +1289,7 @@ class ValidateBackupPayload
             'support_measure_code' => $this->nullableString($row['support_measure_code'] ?? null),
             'evaluation_adaptation_code' => $this->nullableString($row['evaluation_adaptation_code'] ?? null),
             'legal_mapping_source' => $this->nullableString($row['legal_mapping_source'] ?? null),
+            'support_measures' => is_array($row['support_measures'] ?? null) ? array_values($row['support_measures']) : [],
             'created_by_email' => $this->nullableString($row['created_by_email'] ?? null),
         ];
     }
