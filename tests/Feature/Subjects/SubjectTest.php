@@ -115,10 +115,14 @@ class SubjectTest extends TestCase
         // Se uma nova FK para `subjects` aparecer sem entrar em SubjectUsage, o
         // 500 volta — e isto falha primeiro.
         $schema = DB::getSchemaBuilder();
+        // Em MySQL, `getTables()` pode devolver a mesma tabela mais do que uma
+        // vez (uma por schema visível) — normaliza-se o nome e deduplica-se
+        // antes de comparar.
         $tables = collect($schema->getTables())->pluck('name')
+            ->map(fn (string $table): string => strtolower((string) last(explode('.', $table))))
             ->filter(fn (string $table): bool => collect($schema->getForeignKeys($table))
-                ->contains(fn (array $key): bool => $key['foreign_table'] === 'subjects'))
-            ->sort()->values()->all();
+                ->contains(fn (array $key): bool => strtolower((string) last(explode('.', $key['foreign_table']))) === 'subjects'))
+            ->unique()->sort()->values()->all();
 
         $this->assertSame(['assessment_profiles', 'classes', 'domains', 'lesson_sequences', 'report_library_entries'], $tables);
     }
