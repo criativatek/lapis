@@ -50,6 +50,15 @@ class Absence
         );
     }
 
+    /**
+     * No lesson was taught in the scope — there is nothing to consolidate,
+     * which is not the same as a class with only absences.
+     */
+    public static function noAttendance(): string
+    {
+        return 'Não existem aulas lecionadas no período analisado.';
+    }
+
     /** No intervention was registered. Not: none was needed. */
     public static function noInterventions(): string
     {

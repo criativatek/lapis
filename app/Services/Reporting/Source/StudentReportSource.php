@@ -5,7 +5,12 @@ namespace App\Services\Reporting\Source;
 use App\Models\EvidenceRecord;
 use App\Models\Intervention;
 use App\Models\Report;
+use App\Models\ReportScopeKind;
 use App\Models\SchoolClass;
+use App\Services\Assessment\BuildClassStatistics;
+use App\Services\Assessment\PrimaryResultScope;
+use App\Services\Lessons\ClassAttendanceSummary;
+use App\Services\Lessons\StudentAttendanceHistory;
 
 /**
  * The facts an individual report is built from.
@@ -28,6 +33,15 @@ use App\Models\SchoolClass;
  */
 class StudentReportSource extends ClassReportSource
 {
+    public function __construct(
+        BuildClassStatistics $statistics,
+        PrimaryResultScope $scope,
+        ClassAttendanceSummary $attendanceSummary,
+        protected StudentAttendanceHistory $attendanceHistory,
+    ) {
+        parent::__construct($statistics, $scope, $attendanceSummary);
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -39,6 +53,38 @@ class StudentReportSource extends ClassReportSource
             ...$facts,
             'student' => $this->studentRow($facts, (int) $report->enrollment_id),
             'enrollment' => $this->enrollmentFacts($report),
+            // A LEITURA DA TURMA NARROWED A UM ALUNO — nunca a fotografia da
+            // turma inteira que `ClassReportSource::attendanceFacts()`
+            // acabou de calcular. Um relatório individual reporta a
+            // assiduidade DESTE aluno, através da inscrição, tal como
+            // `StudentAttendanceHistory` já faz para Evolução do Aluno.
+            'attendance' => $this->studentAttendanceFacts($report),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function studentAttendanceFacts(Report $report): array
+    {
+        if ($report->scope_kind === ReportScopeKind::Interim) {
+            return ['available' => false];
+        }
+
+        $enrollment = $report->enrollment;
+
+        if ($enrollment === null) {
+            return ['available' => false];
+        }
+
+        [$from, $to] = $this->attendanceDateRange($report);
+        $history = $this->attendanceHistory->for($enrollment, $from, $to);
+
+        return [
+            'available' => true,
+            'from' => $from,
+            'to' => $to,
+            ...$history,
         ];
     }
 

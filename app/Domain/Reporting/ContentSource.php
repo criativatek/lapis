@@ -35,6 +35,9 @@ enum ContentSource: string
     /** Interventions actually registered. Never an invented measure (§19). */
     case Interventions = 'interventions';
 
+    /** Assiduidade consolidada por aula — nunca uma presença presumida (§ do briefing de assiduidade). */
+    case Attendance = 'attendance';
+
     /** A kept photograph, read instead of live data (§30). */
     case InterimSnapshot = 'interim_snapshot';
 
@@ -65,6 +68,7 @@ enum ContentSource: string
             self::SelfAssessment => __('Autoavaliação'),
             self::Records => __('Registos'),
             self::Interventions => __('Intervenções'),
+            self::Attendance => __('Assiduidade'),
             self::InterimSnapshot => __('Avaliação intercalar'),
             self::TeacherInput => __('Caracterização do professor'),
             self::Library => __('Biblioteca pedagógica'),

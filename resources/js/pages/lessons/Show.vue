@@ -5,6 +5,8 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import AlertError from '@/components/AlertError.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
+import LessonAttendanceList from '@/components/lessons/LessonAttendanceList.vue';
+import type { LessonAttendance } from '@/components/lessons/LessonAttendanceList.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -48,17 +50,40 @@ type Lesson = {
     } | null;
 };
 
-const props = defineProps<{ lesson: Lesson }>();
+const props = defineProps<{ lesson: Lesson; attendance: LessonAttendance }>();
+
+// Rascunho de faltas antes da consolidação: começa com o que o servidor já
+// sabia (linhas 'absent' gravadas) e viaja com o sumário e com o "marcar
+// lecionada" — nunca é o próprio pedido de registo.
+const initialAbsent = props.attendance.students
+    .filter((student) => student.status === 'absent')
+    .map((student) => student.student_ulid);
 
 const summaryForm = useForm({
     content: props.lesson.summary?.content ?? '',
     private_notes: props.lesson.summary?.private_notes ?? '',
     resources: props.lesson.summary?.resources ?? '',
     homework: props.lesson.summary?.homework ?? '',
+    absent: initialAbsent,
 });
-const taughtForm = useForm({});
+const taughtForm = useForm({ absent: initialAbsent });
+const recordForm = useForm({ absent: initialAbsent });
 const clearForm = useForm({});
 const deleteForm = useForm({});
+
+function updateAbsent(absent: string[]): void {
+    summaryForm.absent = absent;
+    taughtForm.absent = absent;
+    recordForm.absent = absent;
+}
+
+function recordAttendance(): void {
+    submittingFromThisPage.value = true;
+    recordForm.post(`/lessons/${props.lesson.ulid}/attendance`, {
+        preserveScroll: true,
+        onFinish: releaseSubmission,
+    });
+}
 
 // As duas ações destrutivas desta página são deliberadamente DUAS, com dois
 // diálogos e duas frases diferentes: confundir «limpar o sumário» com «eliminar
@@ -140,6 +165,7 @@ const lessonTime = computed(() => {
     return props.lesson.ends_at ? `${start}–${timeFormatter.format(new Date(props.lesson.ends_at))}` : start;
 });
 const summaryErrors = computed(() => Object.values(summaryForm.errors));
+const attendanceErrors = computed(() => [...Object.values(taughtForm.errors), ...Object.values(recordForm.errors)]);
 
 // The week to return to is derived from the lesson itself, never threaded in
 // from wherever the teacher happened to arrive from — a direct link, browser
@@ -269,6 +295,7 @@ onBeforeUnmount(() => {
 
         <form class="space-y-4" @submit.prevent="submitSummary">
             <AlertError v-if="summaryErrors.length > 0" :errors="summaryErrors" title="Não foi possível guardar o sumário." />
+            <AlertError v-if="attendanceErrors.length > 0" :errors="attendanceErrors" title="Não foi possível registar a assiduidade." />
 
             <div v-if="summaryForm.recentlySuccessful" role="status" class="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">
                 <Check class="size-4" />
@@ -285,6 +312,16 @@ onBeforeUnmount(() => {
                 <textarea id="lesson-summary" v-model="summaryForm.content" name="content" rows="10" maxlength="16000" required class="min-h-56 w-full resize-y rounded-xl border border-input bg-background px-4 py-3 text-base leading-relaxed shadow-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50" placeholder="Escreve o sumário desta aula…" :disabled="summaryForm.processing" aria-describedby="lesson-summary-error" />
                 <InputError id="lesson-summary-error" :message="summaryForm.errors.content" />
             </div>
+
+            <LessonAttendanceList
+                :lesson-ulid="lesson.ulid"
+                :attendance="attendance"
+                :class-group-label="lesson.class_group_label"
+                :lesson-taught="lesson.status === 'taught'"
+                :absent="summaryForm.absent"
+                @update:absent="updateAbsent"
+                @record="recordAttendance"
+            />
 
             <details :open="Boolean(lesson.summary?.private_notes)" class="group rounded-xl border bg-card">
                 <summary class="cursor-pointer px-4 py-3 font-semibold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:px-5">Notas do professor</summary>
@@ -325,6 +362,9 @@ onBeforeUnmount(() => {
                     Marcar como lecionada
                 </Button>
             </div>
+            <p v-if="lesson.status !== 'taught'" class="text-xs text-muted-foreground">
+                Os alunos sem falta assinalada ficam presentes.
+            </p>
         </form>
 
         <!-- As ações destrutivas vivem FORA do formulário do sumário e num bloco

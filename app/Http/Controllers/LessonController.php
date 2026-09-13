@@ -8,14 +8,18 @@ use App\Actions\Lessons\MarkLessonAsTaught;
 use App\Actions\Lessons\SaveLessonSummary;
 use App\Http\Controllers\Concerns\RefusesDuringImpersonation;
 use App\Http\Requests\Lessons\LessonSummaryRequest;
+use App\Http\Requests\Lessons\MarkLessonAsTaughtRequest;
+use App\Models\Enrollment;
 use App\Models\Lesson;
 use App\Models\LessonStatus;
 use App\Models\User;
+use App\Services\Lessons\LessonAttendanceRoster;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -28,6 +32,7 @@ class LessonController extends Controller implements HasMiddleware
         protected SaveLessonSummary $saveLessonSummary,
         protected ClearLessonSummary $clearLessonSummary,
         protected DeleteLesson $deleteLesson,
+        protected LessonAttendanceRoster $attendanceRoster,
     ) {}
 
     /**
@@ -44,6 +49,7 @@ class LessonController extends Controller implements HasMiddleware
         $lesson->load(['schoolClass.subject', 'classGroup', 'summary']);
 
         return Inertia::render('lessons/Show', [
+            'attendance' => $this->attendanceProp($lesson),
             'lesson' => [
                 'ulid' => $lesson->ulid,
                 'starts_at' => $lesson->starts_at->toIso8601String(),
@@ -94,6 +100,7 @@ class LessonController extends Controller implements HasMiddleware
                 'homework' => $this->nullableString($request, 'homework'),
             ],
             $this->user($request),
+            $request->absentStudentUlids(),
         );
 
         return back()->with('success', 'Sumário guardado.');
@@ -151,12 +158,11 @@ class LessonController extends Controller implements HasMiddleware
         ]);
     }
 
-    public function markTaught(Request $request, Lesson $lesson): RedirectResponse
+    public function markTaught(MarkLessonAsTaughtRequest $request, Lesson $lesson): RedirectResponse
     {
-        Gate::authorize('update', $lesson);
         $this->refuseDuringImpersonation($request);
 
-        $this->markLessonAsTaught->execute($lesson, $this->user($request));
+        $this->markLessonAsTaught->execute($lesson, $this->user($request), $request->absentStudentUlids());
 
         return back()->with('success', 'Aula marcada como lecionada.');
     }
@@ -220,5 +226,87 @@ class LessonController extends Controller implements HasMiddleware
             LessonStatus::Prepared => 'Preparado',
             LessonStatus::Taught => 'Lecionado',
         };
+    }
+
+    /**
+     * A prop `attendance` — o instantâneo consolidado quando existe, o roster
+     * do dia (com os rascunhos já assinalados) quando ainda não existe. O
+     * roster nunca é recalculado depois de consolidado: `RecordLessonAttendance`
+     * já o fechou, e reabri-lo aqui divergiria da fotografia que a auditoria
+     * guarda.
+     *
+     * @return array<string, mixed>
+     */
+    private function attendanceProp(Lesson $lesson): array
+    {
+        $canEdit = Gate::allows('update', $lesson);
+
+        if ($lesson->attendanceRecorded()) {
+            $rows = $lesson->attendances()
+                ->with(['student.identity', 'enrollment'])
+                ->get()
+                ->all();
+            usort($rows, function ($a, $b): int {
+                $byClassNumber = ($a->enrollment->class_number ?? PHP_INT_MAX) <=> ($b->enrollment->class_number ?? PHP_INT_MAX);
+
+                return $byClassNumber !== 0
+                    ? $byClassNumber
+                    : (optional($a->student->identity)->display_name ?? '') <=> (optional($b->student->identity)->display_name ?? '');
+            });
+            $rows = collect($rows);
+
+            return [
+                'recorded' => true,
+                'recorded_at' => $lesson->attendance_recorded_at?->toIso8601String(),
+                'can_edit' => $canEdit,
+                'excluded_without_left_on' => 0,
+                'students' => $rows->map(fn ($row): array => [
+                    'student_ulid' => $row->student->ulid,
+                    'enrollment_ulid' => $row->enrollment->ulid,
+                    'class_number' => $row->enrollment->class_number,
+                    'name' => optional($row->student->identity)->display_name ?? '(sem identidade)',
+                    'photo_url' => $row->student->photoUrl(),
+                    'status' => $row->status->value,
+                ])->values()->all(),
+                'counts' => [
+                    'present' => $rows->filter(fn ($row) => $row->status->value === 'present')->count(),
+                    'absent' => $rows->filter(fn ($row) => $row->status->value === 'absent')->count(),
+                ],
+                'roster_error' => null,
+            ];
+        }
+
+        try {
+            $roster = $this->attendanceRoster->for($lesson);
+        } catch (ValidationException $exception) {
+            return [
+                'recorded' => false,
+                'recorded_at' => null,
+                'can_edit' => $canEdit,
+                'excluded_without_left_on' => 0,
+                'students' => [],
+                'counts' => ['present' => 0, 'absent' => 0],
+                'roster_error' => collect($exception->errors())->collapse()->first(),
+            ];
+        }
+
+        $draftAbsentEnrollmentIds = $lesson->attendances()->pluck('enrollment_id')->all();
+
+        return [
+            'recorded' => false,
+            'recorded_at' => null,
+            'can_edit' => $canEdit,
+            'excluded_without_left_on' => $roster['excluded_without_left_on'],
+            'students' => $roster['students']->map(fn (Enrollment $enrollment): array => [
+                'student_ulid' => $enrollment->student->ulid,
+                'enrollment_ulid' => $enrollment->ulid,
+                'class_number' => $enrollment->class_number,
+                'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
+                'photo_url' => $enrollment->student->photoUrl(),
+                'status' => in_array($enrollment->id, $draftAbsentEnrollmentIds, true) ? 'absent' : null,
+            ])->values()->all(),
+            'counts' => ['present' => 0, 'absent' => 0],
+            'roster_error' => null,
+        ];
     }
 }

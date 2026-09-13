@@ -28,4 +28,8 @@ export type WeekLesson = {
     lesson_number: number | null;
     can_delete: boolean;
     can_clear_summary: boolean;
+    /** Se a assiduidade desta aula já está consolidada — ver Lesson::attendanceRecorded(). */
+    attendance_recorded: boolean;
+    /** Null enquanto não está consolidada (o que existe até lá é só rascunho). */
+    absent_count: number | null;
 };

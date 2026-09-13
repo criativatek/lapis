@@ -25,6 +25,57 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.145.0] — 2026-09-13
+
+### Adicionado
+
+- **Assiduidade por aula (Presente / Falta).** Na página da aula, logo a seguir
+  ao sumário, a área «Assiduidade» lista os alunos da aula (fotografia, n.º,
+  nome) com um só controlo: «Falta». O professor assinala apenas quem faltou.
+  - **Rascunho antes de lecionar.** «Guardar» grava as faltas assinaladas junto
+    com o sumário. Um aluno sem falta assinalada ainda NÃO é uma presença
+    confirmada — só existem linhas `absent` enquanto `lessons.attendance_recorded_at`
+    é NULL.
+  - **Consolidação em «Marcar como lecionada»**, na mesma transação e com o
+    mesmo lock: falta assinalada ⇒ Falta; restantes alunos elegíveis ⇒ Presente;
+    aula ⇒ Lecionada. Qualquer falha (ex.: falta em rascunho de um aluno que já
+    não pertence à aula) reverte tudo e é mostrada ao professor, nunca um 500.
+    Sem botão extra de confirmação.
+  - **Correção posterior** aluno a aluno (Presente ↔ Falta), sem reabrir a aula:
+    `updated_by` na linha e `lesson.attendance_corrected` no `audit_events`.
+  - **Quem entra na aula** (`LessonAttendanceRoster`): inscrições da turma na
+    data da aula (Lisboa); numa aula de grupo, só as pertenças em vigor nesse dia;
+    turmas de apoio pela mesma regra. Não usa `ClassRoster::on()`, que filtra o
+    estado de HOJE. Uma inscrição terminada sem `left_on` é ambígua: fica fora e
+    a página diz quantas. A lista consolidada é um instantâneo — alunos inscritos
+    depois não aparecem retroativamente.
+  - **Lote «Marcar lecionadas»** só consolida as aulas com faltas já assinaladas;
+    as outras ficam lecionadas com «Assiduidade por registar» (o diálogo diz
+    quantas) e regista-se depois na página da aula. Nunca se presume presença.
+  - **Aulas antigas** ficam «Assiduidade não registada». Nada é convertido.
+  - **Evolução do aluno:** cartão «Assiduidade» (aulas com registo, presenças,
+    faltas, sem registo, e lista cronológica). **Relatórios:** secções
+    `class_attendance` e `student_attendance` («Assiduidade»), módulo `lessons`,
+    fora da reescrita por IA. Na lista semanal, «N falta(s)» / «Sem faltas» nas
+    aulas registadas.
+  - **Não é enviada a IA.** Nenhum payload de IA lê assiduidade.
+  - Remover uma inscrição com assiduidade é recusado pela guarda existente
+    (`EnrollmentHistory`: «assiduidade»).
+- Centro de Ajuda: novo artigo «Registar faltas numa aula» (`lessons.attendance`);
+  `lessons.summary` remete para ele.
+
+### Migrations
+
+- `2026_11_10_000400_create_lesson_attendances_table` — `lessons.attendance_recorded_at`/`_by`
+  e `lesson_attendances` (único por aula × inscrição; CHECK de estado em MySQL). Reversível.
+
+### Limitações conhecidas
+
+- **Backup:** aulas, sumários e grupos não fazem parte do backup canónico
+  (`schema_version` 8), por isso a assiduidade também não. Ver `docs/status.md`.
+- Fora de âmbito: faltas justificadas/injustificadas, atrasos, comunicação a
+  encarregados, limites legais, exportação Inovar.
+
 ## [0.144.1] — 2026-09-13
 
 ### Corrigido

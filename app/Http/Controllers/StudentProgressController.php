@@ -18,6 +18,7 @@ use App\Services\Assessment\Progress\BuildStudentProgress;
 use App\Services\Assessment\Progress\BuildStudentStrengths;
 use App\Services\Assessment\Progress\StudentProgressNarrative;
 use App\Services\Interventions\Ai\InterventionStrategySuggester;
+use App\Services\Lessons\StudentAttendanceHistory;
 use App\Services\Progress\Ai\StudentFollowupSynthesist;
 use App\Services\Reporting\Narrative\Phrase;
 use App\Support\Entitlements\Entitlements;
@@ -93,6 +94,7 @@ class StudentProgressController extends Controller
         protected InterventionStrategySuggester $suggester,
         protected StudentFollowupSynthesist $synthesist,
         protected Entitlements $entitlements,
+        protected StudentAttendanceHistory $attendanceHistory,
     ) {}
 
     /**
@@ -216,6 +218,13 @@ class StudentProgressController extends Controller
             'narrative' => $this->narrative->for($progress),
             'factualAlerts' => $factualAlerts,
             'strengths' => $strengths,
+            // A assiduidade vive no módulo `lessons` (não `advanced_analytics`):
+            // uma organização Base com Aulas continua a vê-la. AUSENTE, não
+            // `null` escondido com v-if, quando o módulo não está contratado —
+            // a mesma disciplina de §8.2 de CLAUDE.md que já rege `pro`.
+            ...($this->entitlements->allows('lessons') ? [
+                'attendance' => $this->attendanceCard($enrollment),
+            ] : []),
             // GATED ON THE SERVER. A Base organization's props simply do not
             // contain this key — never computed and hidden with v-if, because
             // that would still ship the interpretation to the browser.
@@ -385,6 +394,20 @@ class StudentProgressController extends Controller
         }
 
         return $progress;
+    }
+
+    /**
+     * O cartão «Assiduidade» — o ANO LETIVO inteiro desta inscrição, não
+     * apenas o período selecionado: uma leitura de conjunto, como o resto da
+     * página, nunca uma segunda pergunta «até quando». NUNCA entra em nenhum
+     * payload de IA — `StudentFollowupSynthesist` e
+     * `InterventionStrategySuggester` recebem `$progress`, nunca este array.
+     *
+     * @return array<string, mixed>
+     */
+    protected function attendanceCard(Enrollment $enrollment): array
+    {
+        return $this->attendanceHistory->for($enrollment);
     }
 
     /**

@@ -31,6 +31,7 @@ class SectionComposerRegistry
         ClassEvolutionComposer::class,
         ClassSelfAssessmentComposer::class,
         ClassRecordsComposer::class,
+        ClassAttendanceComposer::class,
 
         // Individual — the same facts, narrowed to one student.
         StudentIdentificationComposer::class,
@@ -40,6 +41,7 @@ class SectionComposerRegistry
         StudentClassificationComposer::class,
         StudentSelfAssessmentComposer::class,
         StudentRecordsComposer::class,
+        StudentAttendanceComposer::class,
 
         // Registos — the logbook, counted. Two units, never merged.
         RecordsScopeComposer::class,

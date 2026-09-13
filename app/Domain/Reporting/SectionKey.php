@@ -26,6 +26,7 @@ enum SectionKey: string
     case ClassDistribution = 'class_distribution';
     case ClassSelfAssessment = 'class_self_assessment';
     case ClassRecords = 'class_records';
+    case ClassAttendance = 'class_attendance';
     case StudentsRequiringAttention = 'students_requiring_attention';
 
     // ------------------------------------------------------------- indivíduo
@@ -36,6 +37,7 @@ enum SectionKey: string
     case StudentClassification = 'student_classification';
     case StudentSelfAssessment = 'student_self_assessment';
     case StudentRecords = 'student_records';
+    case StudentAttendance = 'student_attendance';
 
     // --------------------------------------------------------------- registos
     case RecordsScope = 'records_scope';

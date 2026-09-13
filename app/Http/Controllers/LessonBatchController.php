@@ -7,6 +7,7 @@ use App\Http\Controllers\Concerns\RefusesDuringImpersonation;
 use App\Http\Requests\Lessons\BatchTaughtRequest;
 use App\Models\AcademicYear;
 use App\Models\Lesson;
+use App\Models\LessonAttendance;
 use App\Models\User;
 use App\Support\Retention\ResolveSelectedAcademicYear;
 use Illuminate\Database\Eloquent\Collection;
@@ -55,16 +56,32 @@ class LessonBatchController extends Controller implements HasMiddleware
     {
         $candidates = $this->candidates($request);
 
+        // Só é «rascunhada» a aula onde o professor já assinalou faltas —
+        // MarkLessonsAsTaughtInBatch usa a mesma condição para decidir o que
+        // consolida, e é a mesma pergunta feita aqui de propósito, para a
+        // pré-visualização nunca prometer o que a execução não vai fazer.
+        $drafted = $candidates['eligible']->isEmpty() ? [] : LessonAttendance::query()
+            ->whereIn('lesson_id', $candidates['eligible']->pluck('id')->all())
+            ->distinct()
+            ->pluck('lesson_id')
+            ->all();
+
         return response()->json([
             'found' => $candidates['eligible']->count() + count($candidates['ineligible']),
             'eligible' => $candidates['eligible']->count(),
             'range' => $this->rangeLabels($request),
+            // Quantas das elegíveis ficam com «Assiduidade por registar»: sem
+            // rascunho, o lote não presume presenças.
+            'attendance_pending' => $candidates['eligible']->filter(
+                fn (Lesson $lesson): bool => ! in_array($lesson->id, $drafted, true),
+            )->count(),
             'lessons' => $candidates['eligible']
                 ->map(fn (Lesson $lesson): array => [
                     'ulid' => $lesson->ulid,
                     'context_label' => $lesson->contextLabel(),
                     'lesson_number' => $lesson->lesson_number,
                     'starts_at' => $lesson->starts_at->setTimezone('Europe/Lisbon')->toIso8601String(),
+                    'attendance_drafted' => in_array($lesson->id, $drafted, true),
                 ])
                 ->values()
                 ->all(),

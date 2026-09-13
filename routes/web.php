@@ -46,6 +46,7 @@ use App\Http\Controllers\InterventionController;
 use App\Http\Controllers\InvitationAcceptanceController;
 use App\Http\Controllers\IssueReportController;
 use App\Http\Controllers\LegalController;
+use App\Http\Controllers\LessonAttendanceController;
 use App\Http\Controllers\LessonBatchController;
 use App\Http\Controllers\LessonController;
 use App\Http\Controllers\LessonInsertionController;
@@ -528,6 +529,17 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::delete('lessons/{lesson}/summary', [LessonController::class, 'clearSummary'])->name('lessons.summary.clear');
         Route::delete('lessons/{lesson}', [LessonController::class, 'destroy'])->name('lessons.destroy');
         Route::post('lessons/{lesson}/mark-taught', [LessonController::class, 'markTaught'])->name('lessons.mark-taught');
+        // Assiduidade: rascunho de faltas antes de lecionada, registo de uma
+        // aula já lecionada sem assiduidade, e correção de uma linha já
+        // consolidada — três ações distintas, ver LessonAttendanceController.
+        Route::put('lessons/{lesson}/attendance/draft', [LessonAttendanceController::class, 'draft'])->name('lessons.attendance.draft');
+        Route::post('lessons/{lesson}/attendance', [LessonAttendanceController::class, 'record'])->name('lessons.attendance.record');
+        // `withoutScopedBindings()`: `student` não é uma relação de `Lesson`,
+        // e o binding implícito do Laravel tentaria `$lesson->student()` só
+        // por o parâmetro vir a seguir a outro parâmetro Eloquent na rota.
+        Route::patch('lessons/{lesson}/attendance/{student:ulid}', [LessonAttendanceController::class, 'correct'])
+            ->name('lessons.attendance.correct')
+            ->withoutScopedBindings();
         // Read-only convenience for "Basear no sumário anterior" — never
         // writes; copies into the CURRENT lesson's still-open, unsaved form.
         Route::get('lessons/{lesson}/previous-summary', [LessonController::class, 'previousSummary'])->name('lessons.previous-summary');

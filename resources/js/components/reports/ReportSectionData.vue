@@ -90,6 +90,20 @@ const recordRows = computed<Row[]>(() =>
         ? (props.data.kinds as Row[])
         : [],
 );
+
+const classAttendanceRows = computed<Row[]>(() =>
+    props.sectionKey === 'class_attendance' && Array.isArray(props.data?.rows) ? (props.data.rows as Row[]) : [],
+);
+
+// Do mais recente para o mais antigo — a mesma ordem do cartão de Evolução do
+// Aluno e do PHP twin em SectionTables::studentAttendance().
+const studentAttendanceRows = computed<Row[]>(() =>
+    props.sectionKey === 'student_attendance' && Array.isArray(props.data?.rows) ? [...(props.data.rows as Row[])].reverse() : [],
+);
+
+function attendanceStatusLabel(status: unknown): string {
+    return status === 'present' ? 'Presente' : status === 'absent' ? 'Falta' : 'Assiduidade não registada';
+}
 </script>
 
 <template>
@@ -183,6 +197,52 @@ const recordRows = computed<Row[]>(() =>
                     <td class="py-1.5 text-right tabular-nums text-muted-foreground">
                         {{ Number(row.students_involved) > 0 ? row.students_involved : '—' }}
                     </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div v-if="classAttendanceRows.length > 0" class="mt-3 overflow-x-auto">
+        <table class="w-full min-w-[26rem] text-sm">
+            <thead>
+                <tr class="border-b border-border text-left text-xs text-muted-foreground">
+                    <th class="py-1.5 pr-3 text-right font-medium">N.º</th>
+                    <th class="py-1.5 pr-3 font-medium">Nome</th>
+                    <th class="py-1.5 pr-3 text-right font-medium">Presenças</th>
+                    <th class="py-1.5 pr-3 text-right font-medium">Faltas</th>
+                    <th class="py-1.5 text-right font-medium">Sem registo</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr v-for="(row, index) in classAttendanceRows" :key="index" class="border-b border-border/50 last:border-0">
+                    <td class="py-1.5 pr-3 text-right tabular-nums text-muted-foreground">{{ row.class_number ?? '—' }}</td>
+                    <td class="py-1.5 pr-3">{{ row.name }}</td>
+                    <td class="py-1.5 pr-3 text-right tabular-nums">{{ row.present }}</td>
+                    <td class="py-1.5 pr-3 text-right tabular-nums">{{ row.absent }}</td>
+                    <td class="py-1.5 text-right tabular-nums text-muted-foreground">{{ row.not_recorded }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div v-if="studentAttendanceRows.length > 0" class="mt-3 overflow-x-auto">
+        <table class="w-full min-w-[30rem] text-sm">
+            <thead>
+                <tr class="border-b border-border text-left text-xs text-muted-foreground">
+                    <th class="py-1.5 pr-3 font-medium">Data</th>
+                    <th class="py-1.5 pr-3 font-medium">Disciplina</th>
+                    <th class="py-1.5 pr-3 font-medium">Turma/contexto</th>
+                    <th class="py-1.5 pr-3 text-right font-medium">Aula n.º</th>
+                    <th class="py-1.5 font-medium">Estado</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr v-for="(row, index) in studentAttendanceRows" :key="index" class="border-b border-border/50 last:border-0">
+                    <td class="py-1.5 pr-3 whitespace-nowrap tabular-nums">{{ row.date }}</td>
+                    <td class="py-1.5 pr-3">{{ row.subject }}</td>
+                    <td class="py-1.5 pr-3">{{ row.context_label }}</td>
+                    <td class="py-1.5 pr-3 text-right tabular-nums text-muted-foreground">{{ row.lesson_number ?? '—' }}</td>
+                    <td class="py-1.5">{{ attendanceStatusLabel(row.status) }}</td>
                 </tr>
             </tbody>
         </table>

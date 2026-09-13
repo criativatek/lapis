@@ -9,6 +9,7 @@ use App\Models\ReportScopeKind;
 use App\Models\SchoolClass;
 use App\Services\Assessment\BuildClassStatistics;
 use App\Services\Assessment\PrimaryResultScope;
+use App\Services\Lessons\ClassAttendanceSummary;
 use Illuminate\Support\Collection;
 
 /**
@@ -37,6 +38,7 @@ class ClassReportSource implements ReportSource
     public function __construct(
         protected BuildClassStatistics $statistics,
         protected PrimaryResultScope $scope,
+        protected ClassAttendanceSummary $attendanceSummary,
     ) {}
 
     /**
@@ -60,7 +62,66 @@ class ClassReportSource implements ReportSource
             'roster' => $this->rosterFacts($class),
             'records' => $this->recordFacts($report, $class),
             'interventions' => $this->interventionFacts($report, $class),
+            'attendance' => $this->attendanceFacts($report, $class),
         ];
+    }
+
+    /**
+     * A assiduidade da turma, no âmbito temporal do relatório — nunca a
+     * consolidada com o `academic_period_id`, que é `null` para o âmbito
+     * `year`/`accumulated` (§ do briefing de assiduidade).
+     *
+     * UMA AVALIAÇÃO INTERCALAR NÃO TEM ASSIDUIDADE PRÓPRIA (§30): a
+     * fotografia não guardou nenhuma leitura de faltas, e inventar uma agora,
+     * a partir de dados de hoje, seria exatamente o erro que `fromSnapshot()`
+     * evita para todos os outros números.
+     *
+     * @return array<string, mixed>
+     */
+    protected function attendanceFacts(Report $report, SchoolClass $class): array
+    {
+        if ($report->scope_kind === ReportScopeKind::Interim) {
+            return ['available' => false];
+        }
+
+        [$from, $to] = $this->attendanceDateRange($report);
+
+        return [
+            'available' => true,
+            'from' => $from,
+            'to' => $to,
+            ...$this->attendanceSummary->for($class, $from, $to),
+        ];
+    }
+
+    /**
+     * O intervalo de datas a que a assiduidade se reporta, resolvido da
+     * mesma forma que `Scope::clause()` resolve a frase temporal — para que a
+     * tabela de assiduidade descreva exatamente o período que o cabeçalho do
+     * relatório diz descrever, nunca um período diferente escolhido aqui.
+     *
+     * @return array{0: string|null, 1: string|null}
+     */
+    protected function attendanceDateRange(Report $report): array
+    {
+        return match ($report->scope_kind) {
+            ReportScopeKind::Period => [
+                $report->academicPeriod?->starts_on?->toDateString(),
+                $report->academicPeriod?->ends_on?->toDateString(),
+            ],
+            ReportScopeKind::DateRange => [
+                $report->starts_on?->toDateString(),
+                $report->ends_on?->toDateString(),
+            ],
+            // Ano/acumulado: desde o início do ano letivo até hoje — o mesmo
+            // fim em aberto que `Scope::clause()` já expressa como «até» a
+            // data de hoje, nunca uma data futura.
+            ReportScopeKind::Year, ReportScopeKind::Accumulated => [
+                $report->academicYear?->starts_on?->toDateString(),
+                null,
+            ],
+            ReportScopeKind::Interim => [null, null],
+        };
     }
 
     // ------------------------------------------------------------------ live

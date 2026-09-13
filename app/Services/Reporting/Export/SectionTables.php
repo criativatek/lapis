@@ -40,8 +40,69 @@ class SectionTables
             SectionKey::DomainResults => self::domains($data),
             SectionKey::ClassRecords, SectionKey::StudentRecords, SectionKey::RecordsDistribution => self::records($data),
             SectionKey::RecordsTimeline => self::timeline($data),
+            SectionKey::ClassAttendance => self::classAttendance($data),
+            SectionKey::StudentAttendance => self::studentAttendance($data),
             default => [],
         };
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return list<array{caption: string|null, headers: list<string>, rows: list<list<string>>}>
+     */
+    protected static function classAttendance(array $data): array
+    {
+        $rows = [];
+
+        foreach (self::listOf($data, 'rows') as $row) {
+            $rows[] = [
+                $row['class_number'] === null ? '—' : (string) $row['class_number'],
+                (string) ($row['name'] ?? '—'),
+                (string) ($row['present'] ?? 0),
+                (string) ($row['absent'] ?? 0),
+                (string) ($row['not_recorded'] ?? 0),
+            ];
+        }
+
+        return $rows === [] ? [] : [[
+            'caption' => 'Assiduidade por aluno',
+            'headers' => ['N.º', 'Nome', 'Presenças', 'Faltas', 'Sem registo'],
+            'rows' => $rows,
+        ]];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return list<array{caption: string|null, headers: list<string>, rows: list<list<string>>}>
+     */
+    protected static function studentAttendance(array $data): array
+    {
+        $rows = [];
+
+        // Do mais recente para o mais antigo — a mesma ordem do cartão de
+        // Evolução do Aluno, para que a mesma informação nunca se leia de
+        // formas diferentes consoante o ecrã.
+        foreach (array_reverse(self::listOf($data, 'rows')) as $row) {
+            $status = (string) ($row['status'] ?? '');
+
+            $rows[] = [
+                self::readableDate((string) ($row['date'] ?? '')),
+                (string) ($row['subject'] ?? '—'),
+                (string) ($row['context_label'] ?? '—'),
+                $row['lesson_number'] === null ? '—' : (string) $row['lesson_number'],
+                match ($status) {
+                    'present' => 'Presente',
+                    'absent' => 'Falta',
+                    default => 'Assiduidade não registada',
+                },
+            ];
+        }
+
+        return $rows === [] ? [] : [[
+            'caption' => 'Assiduidade por aula',
+            'headers' => ['Data', 'Disciplina', 'Turma/contexto', 'Aula n.º', 'Estado'],
+            'rows' => $rows,
+        ]];
     }
 
     /**

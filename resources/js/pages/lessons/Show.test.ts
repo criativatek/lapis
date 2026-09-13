@@ -26,6 +26,7 @@ vi.mock('@inertiajs/vue3', () => ({
 
             return mocks.unsubscribe;
         },
+        patch: vi.fn(),
     },
     useForm: (data: Record<string, unknown>) => {
         const form = reactive({
@@ -46,7 +47,33 @@ vi.mock('@inertiajs/vue3', () => ({
 
 const wrappers: VueWrapper[] = [];
 
-function mountPage(overrides: { starts_at?: string; ends_at?: string | null } = {}) {
+const defaultAttendance = {
+    recorded: false,
+    recorded_at: null,
+    can_edit: true,
+    excluded_without_left_on: 0,
+    students: [] as Array<{
+        student_ulid: string;
+        enrollment_ulid: string | null;
+        class_number: number | null;
+        name: string;
+        photo_url: string | null;
+        status: 'present' | 'absent' | null;
+    }>,
+    counts: { present: 0, absent: 0 },
+    roster_error: null as string | null,
+};
+
+function mountPage(
+    overrides: {
+        starts_at?: string;
+        ends_at?: string | null;
+        status?: 'preparation' | 'prepared' | 'taught';
+        context_label?: string;
+        class_group_label?: string | null;
+    } = {},
+    attendanceOverrides: Partial<typeof defaultAttendance> = {},
+) {
     const wrapper = mount(Show, {
         props: {
             lesson: {
@@ -65,6 +92,7 @@ function mountPage(overrides: { starts_at?: string; ends_at?: string | null } = 
                 summary: null,
                 ...overrides,
             },
+            attendance: { ...defaultAttendance, ...attendanceOverrides },
         },
     });
 
@@ -290,5 +318,189 @@ describe('lessons/Show — saída no fundo da página', () => {
         expect(mocks.forms[0].put).not.toHaveBeenCalled();
         expect(mocks.forms[0].post).not.toHaveBeenCalled();
         expect(mocks.forms[1].post).not.toHaveBeenCalled();
+    });
+});
+
+describe('lessons/Show — assiduidade', () => {
+    const alice = {
+        student_ulid: 'student-alice',
+        enrollment_ulid: 'enrollment-alice',
+        class_number: 1,
+        name: 'Alice Andrade',
+        photo_url: null,
+        status: null as 'present' | 'absent' | null,
+    };
+    const bruno = {
+        student_ulid: 'student-bruno',
+        enrollment_ulid: 'enrollment-bruno',
+        class_number: 2,
+        name: 'Bruno Baptista',
+        photo_url: null,
+        status: null as 'present' | 'absent' | null,
+    };
+
+    it('shows the "not yet taught" help text before consolidation', () => {
+        const wrapper = mountPage({}, { students: [alice, bruno] });
+
+        expect(wrapper.text()).toContain('Assinala só quem faltou.');
+    });
+
+    it('shows "não registada" when the lesson was taught without recording attendance', () => {
+        const wrapper = mountPage({ status: 'taught' }, { students: [alice, bruno] });
+
+        expect(wrapper.text()).toContain('Assiduidade não registada.');
+    });
+
+    it('shows the consolidated counts once recorded', () => {
+        const wrapper = mountPage(
+            { status: 'taught' },
+            {
+                recorded: true,
+                students: [
+                    { ...alice, status: 'present' },
+                    { ...bruno, status: 'absent' },
+                ],
+                counts: { present: 1, absent: 1 },
+            },
+        );
+
+        expect(wrapper.text()).toContain('Registada: 1 presença · 1 falta. Podes corrigir.');
+    });
+
+    it('shows the class-group note when the lesson belongs to a group', () => {
+        const wrapper = mountPage(
+            { context_label: '7.º A · T1', class_group_label: 'T1' },
+            { students: [alice] },
+        );
+
+        expect(wrapper.text()).toContain('Só aparecem os alunos de T1 nesta data.');
+    });
+
+    it('shows the roster error instead of the list when the roster cannot be determined', () => {
+        const wrapper = mountPage({}, { roster_error: 'Não foi possível determinar os alunos desta aula.' });
+
+        expect(wrapper.text()).toContain('Não foi possível determinar os alunos desta aula.');
+    });
+
+    it('shows the excluded-without-left-on note', () => {
+        const wrapper = mountPage({}, { students: [alice], excluded_without_left_on: 2 });
+
+        expect(wrapper.text()).toContain('2 inscrição(ões) terminada(s) sem data de saída não aparecem nesta lista.');
+    });
+
+    it('shows the empty state when there are no eligible students', () => {
+        const wrapper = mountPage({}, { students: [] });
+
+        expect(wrapper.text()).toContain('Não há alunos elegíveis para esta aula.');
+    });
+
+    it('includes the toggled "absent" ulids in the sumário payload', async () => {
+        const wrapper = mountPage({}, { students: [alice, bruno] });
+
+        const faltaButtons = wrapper.findAll('button').filter((b) => b.text() === 'Falta');
+        await faltaButtons[0].trigger('click');
+
+        expect(summaryForm().absent).toEqual(['student-alice']);
+
+        await wrapper.find('form').trigger('submit');
+
+        expect(summaryForm().put).toHaveBeenCalledWith(
+            '/lessons/lesson-a/summary',
+            expect.objectContaining({ preserveScroll: true }),
+        );
+    });
+
+    it('sends the drafted "absent" ulids with "marcar lecionada"', async () => {
+        const wrapper = mountPage({}, { students: [alice, bruno] });
+
+        const faltaButtons = wrapper.findAll('button').filter((b) => b.text() === 'Falta');
+        await faltaButtons[0].trigger('click');
+
+        const markTaughtButton = wrapper
+            .findAll('button')
+            .find((b) => b.text().includes('Marcar como lecionada'));
+        await markTaughtButton!.trigger('click');
+
+        expect(mocks.forms[1].absent).toEqual(['student-alice']);
+        expect(mocks.forms[1].post).toHaveBeenCalledOnce();
+    });
+
+    it('shows a muted line near "Marcar como lecionada" while the lesson is not taught', () => {
+        const wrapper = mountPage({}, { students: [alice] });
+
+        expect(wrapper.text()).toContain('Os alunos sem falta assinalada ficam presentes.');
+    });
+
+    it('offers "Registar assiduidade" once taught without a recorded attendance, and posts it', async () => {
+        const wrapper = mountPage({ status: 'taught' }, { students: [alice, bruno] });
+
+        const faltaButtons = wrapper.findAll('button').filter((b) => b.text() === 'Falta');
+        await faltaButtons[0].trigger('click');
+
+        const recordButton = wrapper.findAll('button').find((b) => b.text().includes('Registar assiduidade'));
+        expect(recordButton).toBeTruthy();
+
+        await recordButton!.trigger('click');
+
+        // record é o terceiro useForm criado (sumário, lecionada, registar).
+        expect(mocks.forms[2].absent).toEqual(['student-alice']);
+        expect(mocks.forms[2].post).toHaveBeenCalledWith(
+            '/lessons/lesson-a/attendance',
+            expect.objectContaining({ preserveScroll: true }),
+        );
+    });
+
+    it('does not render "Registar assiduidade" without edit permission', () => {
+        const wrapper = mountPage({ status: 'taught' }, { students: [alice], can_edit: false });
+
+        expect(wrapper.findAll('button').find((b) => b.text().includes('Registar assiduidade'))).toBeUndefined();
+    });
+
+    it('renders rows as a flex column, never a table', () => {
+        const wrapper = mountPage({}, { students: [alice, bruno] });
+
+        expect(wrapper.find('table').exists()).toBe(false);
+        const list = wrapper.find('[data-testid="attendance-rows"]');
+        expect(list.classes()).toContain('flex');
+        expect(list.classes()).toContain('flex-col');
+    });
+
+    it('calls router.patch to correct attendance once consolidated', async () => {
+        const wrapper = mountPage(
+            { status: 'taught' },
+            {
+                recorded: true,
+                students: [
+                    { ...alice, status: 'present' },
+                    { ...bruno, status: 'absent' },
+                ],
+                counts: { present: 1, absent: 1 },
+            },
+        );
+
+        const presenteButton = wrapper.findAll('button').find((b) => b.text().includes('Presente'));
+        await presenteButton!.trigger('click');
+
+        const { router: mockedRouter } = await import('@inertiajs/vue3');
+        expect(mockedRouter.patch).toHaveBeenCalledWith(
+            '/lessons/lesson-a/attendance/student-alice',
+            { status: 'absent' },
+            expect.objectContaining({ preserveScroll: true }),
+        );
+
+        wrapper.unmount();
+        wrappers.pop();
+    });
+
+    it('marks the sumário form dirty when attendance drafts change', async () => {
+        const wrapper = mountPage({}, { students: [alice] });
+
+        expect(summaryForm().isDirty).toBe(false);
+
+        const faltaButton = wrapper.findAll('button').find((b) => b.text() === 'Falta');
+        await faltaButton!.trigger('click');
+        summaryForm().isDirty = true; // o mock não recalcula isDirty sozinho — ver summaryFormDirtyState.test.ts
+
+        expect(fireBeforeUnload().defaultPrevented).toBe(true);
     });
 });

@@ -437,3 +437,87 @@ describe('student-progress/Show — Pro gating on the frontend', () => {
         expect(wrapper.text()).not.toContain('Reescrita orientada');
     });
 });
+
+describe('student-progress/Show — cartão Assiduidade', () => {
+    it('não mostra o cartão quando a prop está ausente (organização sem o módulo lessons)', () => {
+        const wrapper = mount(Show, { props: baseProps() });
+
+        expect(wrapper.text()).not.toContain('Assiduidade');
+    });
+
+    it('mostra os totais e as linhas mais recentes primeiro quando a prop existe', () => {
+        const wrapper = mount(Show, {
+            props: {
+                ...baseProps(),
+                attendance: {
+                    totals: { recorded: 2, present: 1, absent: 1, not_recorded: 1 },
+                    rows: [
+                        {
+                            date: '2026-09-15',
+                            lesson_ulid: 'lesson-1',
+                            lesson_number: 1,
+                            subject: 'Português',
+                            context_label: '7.º A',
+                            status: 'present' as const,
+                        },
+                        {
+                            date: '2026-09-22',
+                            lesson_ulid: 'lesson-2',
+                            lesson_number: 2,
+                            subject: 'Português',
+                            context_label: '7.º A',
+                            status: 'absent' as const,
+                        },
+                        {
+                            date: '2026-09-29',
+                            lesson_ulid: 'lesson-3',
+                            lesson_number: 3,
+                            subject: 'Português',
+                            context_label: '7.º A',
+                            status: 'not_recorded' as const,
+                        },
+                    ],
+                },
+            },
+        });
+
+        expect(wrapper.text()).toContain('Assiduidade');
+        expect(wrapper.text()).toContain('Presenças');
+        expect(wrapper.text()).toContain('Faltas');
+        expect(wrapper.text()).toContain('Sem registo');
+
+        // Mais recente primeiro: a aula não registada (29/09) aparece antes
+        // da falta (22/09), que aparece antes da presença (15/09).
+        const statuses = wrapper
+            .findAll('li')
+            .map((li) => li.text())
+            .filter((text) => text.includes('aula n.º'));
+        const order = statuses.map((text) => {
+            if (text.includes('Assiduidade não registada')) {
+return 'not_recorded';
+}
+
+            if (text.includes('Falta')) {
+return 'absent';
+}
+
+            return 'present';
+        });
+        expect(order).toEqual(['not_recorded', 'absent', 'present']);
+    });
+
+    it('nunca conta «não registada» como presença nos totais mostrados', () => {
+        const wrapper = mount(Show, {
+            props: {
+                ...baseProps(),
+                attendance: {
+                    totals: { recorded: 0, present: 0, absent: 0, not_recorded: 3 },
+                    rows: [],
+                },
+            },
+        });
+
+        expect(wrapper.text()).toContain('Aulas com assiduidade registada');
+        expect(wrapper.text()).toContain('Sem registo');
+    });
+});

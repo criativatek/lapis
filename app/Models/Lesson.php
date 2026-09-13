@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
@@ -21,9 +22,12 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $ends_at
  * @property int|null $lesson_number
  * @property LessonStatus $status
+ * @property Carbon|null $attendance_recorded_at
+ * @property int|null $attendance_recorded_by
  * @property int $created_by
+ * @property-read int|null $absent_count carregado por `withCount()` em WeeklyLessonsQuery — não existe fora dessa consulta
  */
-#[Fillable(['class_id', 'class_group_id', 'recurring_lesson_slot_id', 'starts_at', 'ends_at', 'lesson_number', 'status', 'created_by'])]
+#[Fillable(['class_id', 'class_group_id', 'recurring_lesson_slot_id', 'starts_at', 'ends_at', 'lesson_number', 'status', 'attendance_recorded_at', 'attendance_recorded_by', 'created_by'])]
 class Lesson extends Model
 {
     use BelongsToOrganization, HasUlids;
@@ -48,6 +52,7 @@ class Lesson extends Model
             'ends_at' => 'datetime',
             'lesson_number' => 'integer',
             'status' => LessonStatus::class,
+            'attendance_recorded_at' => 'datetime',
         ];
     }
 
@@ -124,5 +129,24 @@ class Lesson extends Model
     public function summary(): HasOne
     {
         return $this->hasOne(LessonSummary::class);
+    }
+
+    /**
+     * @return HasMany<LessonAttendance, $this>
+     */
+    public function attendances(): HasMany
+    {
+        return $this->hasMany(LessonAttendance::class);
+    }
+
+    /**
+     * Se a assiduidade desta aula já está CONSOLIDADA — um instantâneo
+     * fechado, e não mais um rascunho. `attendance_recorded_at` é a única
+     * fonte desta resposta: nunca se infere pela presença de linhas, porque
+     * antes da consolidação já podem existir linhas `absent` de rascunho.
+     */
+    public function attendanceRecorded(): bool
+    {
+        return $this->attendance_recorded_at !== null;
     }
 }

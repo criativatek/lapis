@@ -10,11 +10,22 @@ use Illuminate\Support\Facades\DB;
 
 class MarkLessonAsTaught
 {
-    public function __construct(protected AuditLog $audit) {}
+    public function __construct(
+        protected AuditLog $audit,
+        protected RecordLessonAttendance $recordAttendance,
+    ) {}
 
-    public function execute(Lesson $lesson, User $actor): Lesson
-    {
-        return DB::transaction(function () use ($actor, $lesson): Lesson {
+    /**
+     * @param  list<string>|null  $absentStudentUlids  vindo do botão individual (nunca do lote — o lote não tem UI de faltas)
+     * @param  bool  $consolidateAttendance  false no lote quando a aula nunca teve um rascunho — ver MarkLessonsAsTaughtInBatch
+     */
+    public function execute(
+        Lesson $lesson,
+        User $actor,
+        ?array $absentStudentUlids = null,
+        bool $consolidateAttendance = true,
+    ): Lesson {
+        return DB::transaction(function () use ($absentStudentUlids, $consolidateAttendance, $actor, $lesson): Lesson {
             /** @var Lesson $lockedLesson */
             $lockedLesson = Lesson::query()->lockForUpdate()->findOrFail($lesson->getKey());
 
@@ -36,6 +47,14 @@ class MarkLessonAsTaught
                     'to_status' => LessonStatus::Taught->value,
                 ],
             );
+
+            // A CONSOLIDAÇÃO VIVE NA MESMA TRANSAÇÃO: se o rascunho referir um
+            // aluno que já não é elegível, RecordLessonAttendance lança e a
+            // transação inteira reverte — a aula NÃO fica lecionada, porque a
+            // assiduidade que a acompanharia falhou (§ do briefing).
+            if ($consolidateAttendance) {
+                $this->recordAttendance->consolidate($lockedLesson, $actor, $absentStudentUlids);
+            }
 
             return $lockedLesson;
         });

@@ -195,6 +195,19 @@ function lessonTime(lesson: WeekLesson): string {
 function lessonNumberLabel(lesson: WeekLesson): string | null {
     return lesson.lesson_number === null ? null : `Lição ${lesson.lesson_number}`;
 }
+
+/**
+ * «N falta(s)» ou «Sem faltas» quando a assiduidade já está consolidada;
+ * nada quando ainda não está — mostrar um número aqui seria confundir um
+ * rascunho ou a ausência de registo com um registo real.
+ */
+function attendanceLabel(lesson: WeekLesson): string | null {
+    if (!lesson.attendance_recorded || lesson.absent_count === null) {
+        return null;
+    }
+
+    return lesson.absent_count === 0 ? 'Sem faltas' : `${lesson.absent_count} falta${lesson.absent_count === 1 ? '' : 's'}`;
+}
 </script>
 
 <template>
@@ -400,6 +413,12 @@ function lessonNumberLabel(lesson: WeekLesson): string | null {
                     :class="['mt-1.5', statusToneClasses(lesson.status)]"
                     >{{ lesson.status_label }}</Badge
                 >
+                <p
+                    v-if="attendanceLabel(lesson)"
+                    class="mt-1 text-xs text-muted-foreground"
+                >
+                    {{ attendanceLabel(lesson) }}
+                </p>
             </template>
         </LessonTimetable>
 
@@ -484,6 +503,11 @@ function lessonNumberLabel(lesson: WeekLesson): string | null {
                                         v-if="lesson.has_summary"
                                         class="flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400"
                                         ><CheckCircle2 class="size-3.5" /> Sumário</span
+                                    >
+                                    <span
+                                        v-if="attendanceLabel(lesson)"
+                                        class="text-xs text-muted-foreground"
+                                        >{{ attendanceLabel(lesson) }}</span
                                     >
                                 </div>
                             </Link>

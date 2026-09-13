@@ -37,6 +37,11 @@ final class WeeklyLessonsQuery
             // dezenas de aulas — o custo de o trazer é menor do que o de um
             // pedido por cada vez que alguém quer ler o que escreveu.
             ->with(['summary' => fn (Relation $query) => $query->select(['id', 'lesson_id', 'content'])])
+            // Uma contagem por linha, não uma consulta por linha: o número de
+            // faltas é sempre pedido junto com a própria linha (`withCount`),
+            // e nunca lido por aula à parte — a mesma razão que classGroup
+            // acima é carregado com a lista inteira.
+            ->withCount(['attendances as absent_count' => fn ($query) => $query->where('status', 'absent')])
             ->orderBy('starts_at')
             ->get()
             ->map(function (Lesson $lesson): array {
@@ -72,6 +77,12 @@ final class WeeklyLessonsQuery
                     // sua conta quando o pedido lá chega na mesma.
                     'can_delete' => $lesson->status !== LessonStatus::Taught,
                     'can_clear_summary' => $lesson->status !== LessonStatus::Taught && $content !== '',
+                    'attendance_recorded' => $lesson->attendanceRecorded(),
+                    // NULL enquanto não está consolidada: antes disso o que
+                    // existe é só o rascunho de faltas, e mostrá-lo como
+                    // contagem definitiva seria confundir um rascunho com um
+                    // registo.
+                    'absent_count' => $lesson->attendanceRecorded() ? (int) $lesson->absent_count : null,
                 ];
             })->all());
     }

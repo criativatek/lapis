@@ -4,6 +4,8 @@ namespace Tests\Feature\Lessons\Concerns;
 
 use App\Models\AcademicYear;
 use App\Models\ClassGroup;
+use App\Models\ClassGroupMembership;
+use App\Models\Enrollment;
 use App\Models\Lesson;
 use App\Models\LessonStatus;
 use App\Models\Organization;
@@ -11,6 +13,8 @@ use App\Models\OrganizationSubscription;
 use App\Models\Plan;
 use App\Models\RecurringLessonSlot;
 use App\Models\SchoolClass;
+use App\Models\Student;
+use App\Models\StudentIdentity;
 use App\Models\SubscriptionStatus;
 use App\Models\User;
 use App\Support\Entitlements\Entitlements;
@@ -104,6 +108,51 @@ trait BuildsLessonFixtures
                 'ends_at' => '10:20',
             ], $attributes),
         ));
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    protected function enroll(string $name, array $attributes = [], ?SchoolClass $schoolClass = null): Enrollment
+    {
+        $schoolClass ??= $this->schoolClass;
+
+        return $this->inTenant($this->organization, function () use ($attributes, $name, $schoolClass): Enrollment {
+            $student = Student::factory()->recycle($this->organization)->create();
+
+            StudentIdentity::create([
+                'student_id' => $student->id,
+                'organization_id' => $this->organization->id,
+                'display_name' => $name,
+            ]);
+
+            $enrollment = Enrollment::create(array_merge([
+                'class_id' => $schoolClass->id,
+                'student_id' => $student->id,
+                'enrolled_on' => '2026-09-01',
+                'status' => 'active',
+                'is_late_entry' => false,
+            ], $attributes));
+
+            // Carregado já aqui, dentro do tenant: os testes lêem
+            // `$enrollment->student->ulid` fora de `inTenant()`, e a relação
+            // só responde sem uma nova query — que precisaria de tenant
+            // resolvido — se já estiver em cache.
+            return $enrollment->load('student.identity');
+        });
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    protected function addToGroup(Enrollment $enrollment, ClassGroup $group, array $attributes = []): ClassGroupMembership
+    {
+        return $this->inTenant($this->organization, fn (): ClassGroupMembership => ClassGroupMembership::create(array_merge([
+            'class_group_id' => $group->id,
+            'enrollment_id' => $enrollment->id,
+            'effective_from' => '2026-09-01',
+            'effective_until' => null,
+        ], $attributes)));
     }
 
     protected function subscribeToPro(Organization $organization): void

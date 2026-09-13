@@ -11,7 +11,10 @@ use Illuminate\Support\Facades\DB;
 
 class SaveLessonSummary
 {
-    public function __construct(protected AuditLog $audit) {}
+    public function __construct(
+        protected AuditLog $audit,
+        protected SaveLessonAttendanceDraft $saveAttendanceDraft,
+    ) {}
 
     /**
      * `content` is optional here rather than required: on the create path
@@ -22,12 +25,20 @@ class SaveLessonSummary
      * fields alone.
      *
      * @param  array{content?: string, private_notes?: string|null, resources?: string|null, homework?: string|null}  $details
+     * @param  list<string>|null  $absentStudentUlids  o rascunho de faltas, gravado na MESMA transação do sumário quando vem — nunca quando a assiduidade já está consolidada, ver SaveLessonAttendanceDraft::apply()
      */
-    public function execute(Lesson $lesson, array $details, User $actor): LessonSummary
+    public function execute(Lesson $lesson, array $details, User $actor, ?array $absentStudentUlids = null): LessonSummary
     {
-        return DB::transaction(function () use ($actor, $details, $lesson): LessonSummary {
+        return DB::transaction(function () use ($absentStudentUlids, $actor, $details, $lesson): LessonSummary {
             /** @var Lesson $lockedLesson */
             $lockedLesson = Lesson::query()->lockForUpdate()->findOrFail($lesson->getKey());
+
+            // Consolidada, a lista vem só como eco do ecrã: as correções têm rota
+            // própria, e gravar notas ou recursos não pode falhar por causa dela.
+            if ($absentStudentUlids !== null && ! $lockedLesson->attendanceRecorded()) {
+                $this->saveAttendanceDraft->apply($lockedLesson, $absentStudentUlids, $actor);
+            }
+
             $summary = $lockedLesson->summary()->first();
             $isPostTaughtEdit = $lockedLesson->status === LessonStatus::Taught;
 

@@ -107,7 +107,18 @@ class MarkLessonsAsTaughtInBatch
             $marked = 0;
 
             foreach ($lessons as $lesson) {
-                $this->markLessonAsTaught->execute($lesson, $actor);
+                // O lote NÃO TEM UI DE FALTAS, por isso não pode presumir
+                // presenças: só consolida a assiduidade de uma aula onde o
+                // professor já assinalou faltas em rascunho — teve, portanto,
+                // uma oportunidade real de o fazer. As restantes ficam
+                // lecionadas com «Assiduidade por registar»
+                // (attendance_recorded_at NULL), e o professor regista-a
+                // depois na página da própria aula (§ do briefing).
+                $this->markLessonAsTaught->execute(
+                    $lesson,
+                    $actor,
+                    consolidateAttendance: $lesson->attendances()->exists(),
+                );
                 $marked++;
             }
 

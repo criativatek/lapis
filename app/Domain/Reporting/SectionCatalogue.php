@@ -52,6 +52,13 @@ class SectionCatalogue
      *                    rows are the teacher's own words about a child, which
      *                    this module has never been allowed to rephrase.
      *
+     *   attendance       (turma e individual) is a table of counts read
+     *                    straight from `lesson_attendances` — «12 presenças,
+     *                    2 faltas, 1 aula sem registo» is not a sentence a
+     *                    writing assistant may touch, because rewording it is
+     *                    the one way a fabricated number could sneak into an
+     *                    otherwise mechanical count.
+     *
      * A key not on this list is rewritable. The list is short because the
      * question «is this prose?» has an obvious answer for everything else.
      *
@@ -63,6 +70,8 @@ class SectionCatalogue
         SectionKey::RecordsScope,
         SectionKey::SchoolScope,
         SectionKey::RecordsTimeline,
+        SectionKey::ClassAttendance,
+        SectionKey::StudentAttendance,
     ];
 
     /** Whether the writing assistant may be offered for this section at all. */
@@ -137,6 +146,18 @@ class SectionCatalogue
             new SectionDefinition(
                 SectionKey::ClassRecords,
                 'Registos do período',
+            ),
+            // Uma linha por aluno — a mesma razão que já desliga
+            // `RecordsTimeline` e `StudentsRequiringAttention` por omissão:
+            // nomear cada aluno numa tabela de turma é uma decisão do
+            // professor, não um ponto de partida (§28, §57). Requer o módulo
+            // `lessons`: a assiduidade vive nas Aulas, não na avaliação.
+            new SectionDefinition(
+                SectionKey::ClassAttendance,
+                'Assiduidade',
+                module: 'lessons',
+                defaultIncluded: false,
+                mayNameStudents: true,
             ),
             // The teacher's own statement about the planning. Descriptive, not
             // inferred — the system knows nothing about it until they say so,
@@ -222,6 +243,15 @@ class SectionCatalogue
             new SectionDefinition(
                 SectionKey::StudentRecords,
                 'Registos e intervenções',
+            ),
+            // A report about ONE student already names them (§28 does not
+            // apply here the way it does on the class report), so this stays
+            // on by default like `StudentRecords`. Still gated on `lessons`:
+            // a Base organization without Aulas has no attendance to show.
+            new SectionDefinition(
+                SectionKey::StudentAttendance,
+                'Assiduidade',
+                module: 'lessons',
             ),
             new SectionDefinition(
                 SectionKey::BehaviourAttitude,

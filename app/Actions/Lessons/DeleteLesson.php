@@ -32,6 +32,10 @@ use Illuminate\Validation\ValidationException;
  * filhas são removidas aqui, na mesma transação, porque `restrictOnDelete`
  * rebentaria de outra forma — e porque é isso que a confirmação no ecrã diz
  * que vai acontecer.
+ *
+ * `lesson_attendances` também aponta para a aula, mas com `cascadeOnDelete`:
+ * uma aula só se elimina antes de lecionada, e aí só existem rascunhos de
+ * faltas, que não são histórico e desaparecem com a ocorrência.
  */
 class DeleteLesson
 {

@@ -129,6 +129,24 @@ type RecordRow = {
     participation_level: string | null;
 };
 
+/**
+ * A LINHA NUNCA CONTA «NÃO REGISTADA» COMO PRESENÇA — o servidor já fez essa
+ * distinção (`StudentAttendanceHistory`) e esta página só a mostra.
+ */
+type AttendanceRow = {
+    date: string;
+    lesson_ulid: string;
+    lesson_number: number | null;
+    subject: string;
+    context_label: string;
+    status: 'present' | 'absent' | 'not_recorded';
+};
+
+type AttendanceCard = {
+    totals: { recorded: number; present: number; absent: number; not_recorded: number };
+    rows: AttendanceRow[];
+};
+
 type InterventionRow = {
     ulid: string;
     title: string;
@@ -305,6 +323,10 @@ const props = defineProps<{
         students_with_result: number;
         difference: string;
     } | null;
+    // Ausente (não `null` escondido com v-if) quando a organização não tem o
+    // módulo `lessons` — a assiduidade vive aí, e a página não recebe a chave
+    // quando o plano não a inclui (§8.2 de CLAUDE.md).
+    attendance?: AttendanceCard;
     records: { total: number; kinds: { value: string; label: string; count: number }[]; rows: RecordRow[] };
     interventions: { total: number; individual: number; needing_review: number; rows: InterventionRow[] };
     recentInstruments: RecentInstrument[];
@@ -355,6 +377,30 @@ const props = defineProps<{
 }>();
 
 const CARD = `${card('plain')} p-5`;
+
+// ----------------------------------------------------------- assiduidade
+const ATTENDANCE_VISIBLE_CAP = 50;
+const attendanceExpanded = ref(false);
+
+const attendanceRowsMostRecentFirst = computed(() => {
+    if (!props.attendance) {
+        return [];
+    }
+
+    // O serviço devolve as linhas por ordem cronológica; o cartão lê-as ao
+    // contrário, sem mutar o array original.
+    return [...props.attendance.rows].reverse();
+});
+
+const visibleAttendanceRows = computed(() =>
+    attendanceExpanded.value
+        ? attendanceRowsMostRecentFirst.value
+        : attendanceRowsMostRecentFirst.value.slice(0, ATTENDANCE_VISIBLE_CAP),
+);
+
+function attendanceStatusLabel(status: AttendanceRow['status']): string {
+    return status === 'present' ? 'Presente' : status === 'absent' ? 'Falta' : 'Assiduidade não registada';
+}
 
 // --------------------------------------------------------------- impressão
 
@@ -1466,6 +1512,65 @@ const PURPOSE_LABEL: Record<string, string> = {
                     </ul>
                 </section>
             </div>
+
+            <!-- ------------------------------------------------ assiduidade -->
+            <section v-if="attendance" :class="CARD" aria-labelledby="assiduidade">
+                <h2 id="assiduidade" class="flex items-center gap-2 text-sm font-semibold">
+                    <CalendarClock class="size-4" />
+                    Assiduidade
+                </h2>
+
+                <dl class="mt-3 flex flex-wrap gap-1.5" role="group" aria-label="Totais de assiduidade">
+                    <div class="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
+                        <dt class="inline">Aulas com assiduidade registada</dt>
+                        <dd class="ml-1 inline font-semibold tabular-nums text-foreground">{{ attendance.totals.recorded }}</dd>
+                    </div>
+                    <div class="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
+                        <dt class="inline">Presenças</dt>
+                        <dd class="ml-1 inline font-semibold tabular-nums text-foreground">{{ attendance.totals.present }}</dd>
+                    </div>
+                    <div class="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
+                        <dt class="inline">Faltas</dt>
+                        <dd class="ml-1 inline font-semibold tabular-nums text-foreground">{{ attendance.totals.absent }}</dd>
+                    </div>
+                    <div class="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
+                        <dt class="inline">Sem registo</dt>
+                        <dd class="ml-1 inline font-semibold tabular-nums text-foreground">{{ attendance.totals.not_recorded }}</dd>
+                    </div>
+                </dl>
+
+                <ol v-if="visibleAttendanceRows.length > 0" class="mt-4 space-y-2">
+                    <li
+                        v-for="row in visibleAttendanceRows"
+                        :key="row.lesson_ulid"
+                        class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 border-b border-border/60 pb-2 last:border-0"
+                    >
+                        <span class="text-sm">
+                            {{ shortDate(row.date) }}
+                            <span class="text-muted-foreground">· {{ row.subject }} · {{ row.context_label }}</span>
+                            <span v-if="row.lesson_number" class="text-muted-foreground">· aula n.º {{ row.lesson_number }}</span>
+                        </span>
+                        <span
+                            class="text-xs font-medium"
+                            :class="{
+                                'text-foreground': row.status === 'present',
+                                'text-destructive': row.status === 'absent',
+                                'text-muted-foreground': row.status === 'not_recorded',
+                            }"
+                        >
+                            {{ attendanceStatusLabel(row.status) }}
+                        </span>
+                    </li>
+                </ol>
+
+                <p v-else class="mt-4 text-sm text-muted-foreground">Ainda não existem aulas lecionadas nesta turma.</p>
+
+                <div v-if="attendanceRowsMostRecentFirst.length > ATTENDANCE_VISIBLE_CAP" class="mt-3">
+                    <Button variant="ghost" size="sm" @click="attendanceExpanded = !attendanceExpanded">
+                        {{ attendanceExpanded ? 'Mostrar menos' : 'Ver todas' }}
+                    </Button>
+                </div>
+            </section>
 
             <!-- ---------------------------------- 6. o que aconteceu ao longo do tempo -->
             <section :class="CARD" aria-labelledby="registos">

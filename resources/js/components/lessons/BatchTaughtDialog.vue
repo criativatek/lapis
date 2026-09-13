@@ -36,7 +36,14 @@ type Preview = {
     found: number;
     eligible: number;
     range: { from: string | null; to: string | null };
-    lessons: { ulid: string; context_label: string; lesson_number: number | null; starts_at: string }[];
+    attendance_pending: number;
+    lessons: {
+        ulid: string;
+        context_label: string;
+        lesson_number: number | null;
+        starts_at: string;
+        attendance_drafted: boolean;
+    }[];
     ineligible: { ulid: string; context_label: string; starts_at: string; reason: string }[];
 };
 
@@ -244,6 +251,14 @@ function submit(): void {
                     >
                         {{ dateFormatter.format(new Date(`${preview.range.from}T12:00:00Z`)) }} –
                         {{ dateFormatter.format(new Date(`${preview.range.to}T12:00:00Z`)) }}
+                    </p>
+                    <!-- O lote não tem UI de faltas, por isso não pode
+                         presumir presenças: quem não teve um rascunho fica
+                         lecionada com a assiduidade por registar. -->
+                    <p v-if="preview.attendance_pending > 0" class="mt-2 text-xs text-muted-foreground">
+                        {{ preview.attendance_pending }} aula{{ preview.attendance_pending === 1 ? '' : 's' }}
+                        fica{{ preview.attendance_pending === 1 ? '' : 'm' }} com a assiduidade por registar.
+                        Podes registá-la depois na página de cada aula.
                     </p>
                     <ul
                         v-if="preview.lessons.length > 0"

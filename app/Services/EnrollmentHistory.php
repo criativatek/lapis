@@ -47,6 +47,7 @@ class EnrollmentHistory
         'domain_appreciation_decisions' => 'apreciações por domínio',
         'self_assessments' => 'autoavaliações',
         'evidence_records' => 'registos',
+        'lesson_attendances' => 'assiduidade',
         'interventions' => 'estratégias e medidas',
         'intervention_enrollment' => 'estratégias e medidas',
         'reports' => 'relatórios',

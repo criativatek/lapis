@@ -41,6 +41,8 @@ function makeLesson(overrides: Partial<WeekLesson> = {}): WeekLesson {
         lesson_number: 12,
         can_delete: true,
         can_clear_summary: true,
+        attendance_recorded: false,
+        absent_count: null,
         ...overrides,
     };
 }

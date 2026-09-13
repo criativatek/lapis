@@ -18,6 +18,7 @@ describe('the sumário form dirty state', () => {
             private_notes: '',
             resources: '',
             homework: '',
+            absent: [] as string[],
         });
     }
 
@@ -55,6 +56,17 @@ describe('the sumário form dirty state', () => {
         await nextTick();
 
         expect(form.isDirty).toBe(false);
+    });
+
+    it('becomes dirty when an "absent" ulid is drafted, exactly like a text edit', async () => {
+        const form = summaryForm();
+
+        expect(form.isDirty).toBe(false);
+
+        form.absent = ['student-a'];
+        await nextTick();
+
+        expect(form.isDirty).toBe(true);
     });
 
     it('stays dirty when the save fails, so the work is still protected', async () => {
