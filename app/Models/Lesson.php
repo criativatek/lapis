@@ -24,7 +24,7 @@ use Illuminate\Support\Carbon;
  * @property LessonStatus $status
  * @property Carbon|null $attendance_recorded_at
  * @property int|null $attendance_recorded_by
- * @property int $created_by
+ * @property int|null $created_by nullable desde 2026-11-10 (importação de backup — ver 2026_11_10_000500_let_imported_lessons_keep_an_unresolved_author); nunca `null` numa aula criada pela própria aplicação
  * @property-read int|null $absent_count carregado por `withCount()` em WeeklyLessonsQuery — não existe fora dessa consulta
  */
 #[Fillable(['class_id', 'class_group_id', 'recurring_lesson_slot_id', 'starts_at', 'ends_at', 'lesson_number', 'status', 'attendance_recorded_at', 'attendance_recorded_by', 'created_by'])]

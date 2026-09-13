@@ -24,7 +24,8 @@ arquitetura.
 
 | `schema_version` | Estado | Capacidade |
 |---|---|---|
-| 8 (atual) | `Supported` | Como a v7, acrescentando `classes[].is_support_class` — ausente num backup mais antigo, lê-se como `false` (turma normal) |
+| 9 (atual) | `Supported` | Como a v8, acrescentando aulas e assiduidade — `class_groups`, `class_group_memberships`, `recurring_lesson_slots`, `cancelled_lesson_occurrences`, `lessons`, `lesson_summaries`, `lesson_plans`, `lesson_attendances`. Ausentes num backup mais antigo ⇒ zero aulas restauradas, nunca um erro |
+| 8 | `LegacyCompatible` | Como a v7, acrescentando `classes[].is_support_class` — ausente num backup mais antigo, lê-se como `false` (turma normal) |
 | 7 | `LegacyCompatible` | Como a v6, acrescentando `interventions[].created_batch_ulid` e `interventions[].support_measures` |
 | 6 | `LegacyCompatible` | Como a v5, acrescentando `assessment_profiles[].grade_levels` — um perfil pode agora cobrir mais do que um ano de escolaridade |
 | 5 | `LegacyCompatible` | Como a v4, acrescentando os dados completos de anos letivos e disciplinas para os poder criar em segurança. Um perfil só transporta o antigo `grade_level` singular |
@@ -112,6 +113,81 @@ ficam deliberadamente fora desta fatia — o `template_snapshot` de um
 relatório finalizado já congela tudo o que esse relatório precisa para se
 mostrar de novo; ver "Dívida futura" abaixo.
 
+## Aulas e assiduidade
+
+**Novo na v9.** O conjunto mínimo coerente para restaurar o horário e a
+assiduidade de uma turma sem inventar nada — nenhuma coleção calcula ou
+materializa: `App\Actions\Lessons\MaterializeLessonsForRange` continua a ser
+o único sítio onde uma aula futura nasce, mesmo depois de um restauro.
+
+| Coleção | Forma | Notas |
+|---|---|---|
+| `class_groups` | `ulid`; chave de negócio: `(turma, label)` | Os grupos fixos («T1», «T2») em que uma turma se desdobra. `lessons.class_group_id` e a elegibilidade da assiduidade dependem dele |
+| `class_group_memberships` | `ulid`; chave de negócio: `(grupo, inscrição, effective_from)` | Quem pertence a um grupo, e desde quando. Validado: o grupo e a inscrição têm de pertencer à MESMA turma |
+| `recurring_lesson_slots` | `ulid`; chave de negócio: `(turma, grupo, dia da semana, horas)` | O horário recorrente. `class_group_id` nulo = turma inteira; quando presente, tem de pertencer à MESMA turma. Necessário porque `MaterializeLessonsForRange` deduplica por `(turma, tempo, início)` — sem o tempo do horário restaurado, aulas repostas seriam duplicadas ao materializar a semana |
+| `cancelled_lesson_occurrences` | **Sem `ulid` próprio** — chave natural `(turma, tempo, instante)` | Uma ocorrência que o professor eliminou de propósito. Sem esta coleção, a materialização voltaria a criar a aula. O tempo do horário e o grupo (quando presente) têm de pertencer à MESMA turma |
+| `lessons` | `ulid`; chave de negócio: `(turma, tempo, início)` com tempo, ou `(turma, grupo, início)` sem tempo | `attendance_recorded_at` NULL é o estado de qualquer aula lecionada antes desta funcionalidade existir — nunca inferido como "todos presentes". `lesson_number` é copiado tal como estava, nunca renumerado. O grupo e o tempo do horário (quando presentes) têm de pertencer à MESMA turma |
+| `lesson_summaries`, `lesson_plans` | `ulid`; um por aula (`hasOne`, FK restrict) | Parte da mesma entidade que a aula — uma aula lecionada restaurada sem o seu sumário seria incoerente |
+| `lesson_attendances` | `ulid`; chave natural `(aula, inscrição)` | `student_id` é sempre derivado da inscrição já resolvida, **nunca** lido do ficheiro. A inscrição tem de pertencer à MESMA turma da aula. Uma linha `present` só é válida numa aula com `attendance_recorded_at` preenchido; antes da consolidação só `absent` (rascunho) é válido |
+
+### Integridade entre turmas
+
+Todo par (grupo/tempo/aula/inscrição ↔ a turma que os deveria conter)
+listado acima é verificado antes de qualquer classificação `new`: um
+`class_group_memberships` cuja inscrição pertence a outra turma, um
+`recurring_lesson_slots`/`lessons`/`cancelled_lesson_occurrences` cujo
+grupo ou tempo do horário pertence a outra turma, uma `lesson_attendances`
+cuja inscrição pertence a outra turma que a da própria aula — todos ficam
+`invalid`, nunca escritos. A comparação nunca é feita por igualdade de
+`ulid` em bruto: usa uma IDENTIDADE (`BuildLessonsPlan::classIdentityOfRow()`)
+que resolve cada lado ao seu destino REAL — o id de uma linha já `existing`
+(lido da base de dados, nunca confiado ao que o backup apenas afirma para
+ela) ou o `ulid` de origem partilhado por uma linha ainda `new`. `WriteLessons`
+repete a mesma verificação com os ids já escritos, em defesa — nunca a
+única guarda.
+
+Uma linha `present` cuja aula (no próprio backup, ou já na base de dados
+para uma aula `existing`) ainda não tem `attendance_recorded_at` também é
+`invalid` — nunca escrita como facto de uma consolidação que não aconteceu.
+
+### Uma referência opcional malformada nunca vira `null`
+
+`class_group_ulid` (em `recurring_lesson_slots`, `cancelled_lesson_occurrences`,
+`lessons`) e `recurring_lesson_slot_ulid` (em `lessons`) são opcionais —
+ausente ou `null` no JSON significa legitimamente "sem grupo"/"sem tempo do
+horário" ("a turma inteira"). Mas um valor PRESENTE que não é um `ulid`
+válido é uma coisa diferente: um erro de escrita ou corrupção do ficheiro, e
+tratá-lo como `null` reescreveria silenciosamente "a aula de T1" como "a
+aula da turma inteira". `ValidateBackupPayload::optionalUlidOrInvalidate()`
+distingue os dois casos — chave ausente/`null` passa; um valor presente mas
+malformado invalida a LINHA INTEIRA (nunca escreve o campo como vazio).
+
+### A regra que não é como as outras
+
+Uma aula já existente no destino **sem** assiduidade registada (um rascunho
+por consolidar) nunca absorve silenciosamente um backup que já traz essa
+mesma aula com assiduidade consolidada — seria reescrever um rascunho vivo
+pela fotografia de outra pessoa sem ninguém decidir isso. É sempre
+`conflict`, nunca fundido (§13.3 do CLAUDE.md — o professor decide), e as
+linhas de assiduidade dessa aula ficam `conflict`/`invalid` ao lado dela,
+nunca escritas parcialmente.
+
+Do mesmo modo, uma linha de assiduidade nunca é acrescentada a uma aula já
+`existing` no destino que não tenha essa exata linha — um instantâneo já
+consolidado não ganha linhas que ele próprio nunca escreveu.
+
+### O mapa de inscrições que `writeEnrollments()` não dá
+
+`ExecuteDataImport::writeEnrollments()` só popula o seu `byUlid` com
+inscrições `new` (dívida pré-existente e deliberadamente não alterada por
+esta fatia — mudar esse mapa mudaria o comportamento de pontuações/
+evidências já escritas por outras camadas). As aulas e as pertenças a grupo
+precisam de resolver TAMBÉM as inscrições `existing` (o caso comum de um
+restauro para uma turma que já existe no destino), por isso
+`ExecuteDataImport` constrói, só para esta fatia, um mapa próprio —
+`new ∪ existing`, lido de `$rows['enrollments']` depois de `writeEnrollments`
+correr.
+
 ## Autoria
 
 Todo campo de autoria (`assessed_by`, `confirmed_by`, `overridden_by`,
@@ -147,10 +223,16 @@ As cinco colunas que eram `NOT NULL` — `interim_assessments.created_by`,
 `evidence_records.created_by`, `interventions.created_by`,
 `intervention_reviews.reviewed_by`, `reports.created_by` — passaram a aceitar
 `null` (migração
-`2026_09_22_000100_let_an_imported_record_keep_an_unresolved_author`).
-Nenhum caminho de criação da aplicação escreve `null` nessas colunas: um
-`null` ali significa **exatamente uma coisa** — a autoria original não pôde
-ser associada e o sistema recusou-se a adivinhar.
+`2026_09_22_000100_let_an_imported_record_keep_an_unresolved_author`). A
+mesma correção estende-se, na v9, a `lessons.created_by`,
+`lesson_plans.created_by` e `cancelled_lesson_occurrences.cancelled_by`
+(migração
+`2026_11_10_000500_let_imported_lessons_keep_an_unresolved_author`) —
+`lesson_summaries.reviewed_by`, `lessons.attendance_recorded_by` e
+`lesson_attendances.updated_by` já eram nullable e não mudam. Nenhum caminho
+de criação da aplicação escreve `null` nessas colunas: um `null` ali
+significa **exatamente uma coisa** — a autoria original não pôde ser
+associada e o sistema recusou-se a adivinhar.
 
 O que continua proibido, e é o outro lado da mesma correção:
 

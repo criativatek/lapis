@@ -68,11 +68,30 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 
 - `2026_11_10_000400_create_lesson_attendances_table` — `lessons.attendance_recorded_at`/`_by`
   e `lesson_attendances` (único por aula × inscrição; CHECK de estado em MySQL). Reversível.
+- `2026_11_10_000500_let_imported_lessons_keep_an_unresolved_author` — `lessons.created_by`,
+  `lesson_plans.created_by` e `cancelled_lesson_occurrences.cancelled_by` passam a aceitar NULL
+  (autor não resolvido num restore, a mesma política de 2026_09_22). `down()` recusa se houver NULL.
+
+### Backup — `schema_version` 9
+
+- **A assiduidade não desaparece num restore.** O conjunto mínimo coerente entra no backup
+  canónico: `class_groups`, `class_group_memberships` (a audiência de uma aula de grupo),
+  `recurring_lesson_slots` e `cancelled_lesson_occurrences` (sem eles, a materialização
+  duplicava aulas restauradas e ressuscitava as canceladas), `lessons`, `lesson_summaries` e
+  `lesson_plans` (a mesma entidade), e `lesson_attendances`. `student_id` deriva da inscrição
+  resolvida, nunca do ficheiro.
+- Plano (`BuildLessonsPlan`) com as classificações de sempre. Uma aula existente nunca absorve
+  a assiduidade do backup nem ganha linhas novas num instantâneo já consolidado (`conflict`).
+  Um filho cujo pai (grupo, tempo, aula, inscrição) não se resolve ou está em conflito não é
+  escrito — uma aula de T1 nunca passa a aula da turma inteira.
+- Restore para turma existente liga a assiduidade às inscrições existentes (mapa próprio; o
+  `byUlid` de `writeEnrollments` só tem inscrições novas — dívida registada em `docs/status.md`).
+- Autores que não são quem importa ficam NULL, com aviso. Backups ≤ 8 continuam válidos e
+  restauram sem aulas.
+- Centro de Ajuda: «Exportar os seus dados» diz o que passa a ser incluído.
 
 ### Limitações conhecidas
 
-- **Backup:** aulas, sumários e grupos não fazem parte do backup canónico
-  (`schema_version` 8), por isso a assiduidade também não. Ver `docs/status.md`.
 - Fora de âmbito: faltas justificadas/injustificadas, atrasos, comunicação a
   encarregados, limites legais, exportação Inovar.
 

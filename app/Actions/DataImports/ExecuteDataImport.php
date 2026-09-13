@@ -51,6 +51,7 @@ class ExecuteDataImport
         private readonly WriteAssessmentStructure $structureWriter,
         private readonly WriteAssessmentData $dataWriter,
         private readonly WritePedagogicalRecords $recordsWriter,
+        private readonly WriteLessons $lessonsWriter,
         private readonly AuditLog $audit,
         private readonly CurrentOrganization $currentOrganization,
     ) {}
@@ -97,6 +98,28 @@ class ExecuteDataImport
                 $structure['scalesByRef'], $structure['scaleLevelsByRef'], $structure['academicYearsByUlid'],
             );
 
+            // Aulas/assiduidade usam o MESMO mapa de inscrições que as
+            // pertenças de grupo e a assiduidade precisam de resolver
+            // (new ∪ existing) — nunca o `$enrollmentSummary['byUlid']` do
+            // writeEnrollments() acima, que só contém as `new` (dívida
+            // pré-existente, deliberadamente não alterada aqui: mudar esse
+            // mapa mudaria o comportamento de pontuações/evidências já
+            // escritas por outras camadas). Ver BuildLessonsPlan.
+            $enrollmentsForLessons = $enrollmentSummary['byUlid'];
+
+            foreach ($rows['enrollments'] as $enrollmentRow) {
+                if ($enrollmentRow['classification'] === 'existing' && isset($enrollmentRow['existing_id'])) {
+                    $enrollmentsForLessons[$enrollmentRow['ulid']] = (int) $enrollmentRow['existing_id'];
+                }
+            }
+
+            $lessonCounts = $this->lessonsWriter->write(
+                $rows['class_groups'], $rows['class_group_memberships'], $rows['recurring_lesson_slots'],
+                $rows['cancelled_lesson_occurrences'], $rows['lessons'], $rows['lesson_summaries'],
+                $rows['lesson_plans'], $rows['lesson_attendances'], $organization, $classModels['byUlid'],
+                $enrollmentsForLessons,
+            );
+
             $summary = [
                 'classes' => $this->tally($rows['classes'], $classModels['createdCount']),
                 'students' => $this->tally($rows['students'], $studentModels['createdCount']),
@@ -119,8 +142,17 @@ class ExecuteDataImport
                 'evidence_records_created' => $recordCounts['evidence_records'],
                 'interventions_created' => $recordCounts['interventions'],
                 'reports_created' => $recordCounts['reports'],
+                'class_groups_created' => $lessonCounts['class_groups'],
+                'class_group_memberships_created' => $lessonCounts['class_group_memberships'],
+                'recurring_lesson_slots_created' => $lessonCounts['recurring_lesson_slots'],
+                'cancelled_lesson_occurrences_created' => $lessonCounts['cancelled_lesson_occurrences'],
+                'lessons_created' => $lessonCounts['lessons'],
+                'lesson_summaries_created' => $lessonCounts['lesson_summaries'],
+                'lesson_plans_created' => $lessonCounts['lesson_plans'],
+                'lesson_attendances_created' => $lessonCounts['lesson_attendances'],
                 'records_without_original_author' => $this->countUnresolvedAuthors($rows, [
                     'interim_assessments', 'evidence_records', 'interventions', 'intervention_reviews', 'reports',
+                    'lessons', 'lesson_plans', 'cancelled_lesson_occurrences',
                 ]),
                 'classifications_left_unconfirmed' => $this->countUnresolvedAuthors($rows, ['classifications']),
             ];

@@ -13,6 +13,7 @@ use App\Models\Plan;
 use App\Models\SchoolClass;
 use App\Models\SubscriptionStatus;
 use App\Models\User;
+use App\Support\Import\Backup\BackupSchemaCompatibility;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -400,7 +401,7 @@ class DataExportTest extends TestCase
         $zip = $this->extractZip(Storage::disk('local')->path($export->disk_path));
         $backup = json_decode((string) $zip->getFromName('backup-lapis.json'), true);
 
-        $this->assertSame(8, $backup['schema_version']);
+        $this->assertSame(BackupSchemaCompatibility::CURRENT, $backup['schema_version']);
         $this->assertNotEmpty($backup['enrollments']);
         foreach ($backup['enrollments'] as $enrollment) {
             $this->assertArrayHasKey('enrolled_on', $enrollment);

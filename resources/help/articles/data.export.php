@@ -21,12 +21,13 @@ return [
     'order' => 10,
     'content' => [
         'Pode gerar, a qualquer momento, uma exportação com os dados da sua organização — turmas, alunos, avaliações, resultados e o resto do que registou.',
+        'A partir da versão 0.145.0 a exportação inclui também as aulas das suas turmas: grupos (T1/T2), horário, aulas canceladas, sumários, planificações e a assiduidade (Presente/Falta). Uma exportação gerada antes dessa versão continua a poder ser reposta, mas não traz aulas nem assiduidade.',
         'A exportação é gerada como um ficheiro compactado (.zip) e fica disponível para transferir durante 24 horas; depois disso é eliminada automaticamente.',
         'Esta funcionalidade está disponível em qualquer plano — é uma forma de garantir que os seus dados são sempre seus e sempre portáveis, não uma funcionalidade paga.',
         'A exportação reflete apenas os dados a que já tem acesso através da sua conta — não acrescenta nem revela nada que não pudesse já consultar na aplicação.',
         'Repor esses dados mais tarde — na mesma organização ou numa nova — faz-se através da importação de dados, a partir de uma exportação gerada anteriormente. A reposição de uma cópia completa está disponível conforme o seu plano; a exportação em si não depende do plano.',
     ],
-    'keywords' => ['exportar', 'exportação', 'dados', 'backup', 'cópia de segurança', 'portabilidade'],
+    'keywords' => ['exportar', 'exportação', 'dados', 'backup', 'cópia de segurança', 'portabilidade', 'aulas', 'assiduidade'],
     'related' => ['reports.view'],
     'contexts' => ['data-exports.index'],
 ];

@@ -103,9 +103,12 @@ Desde a Fatia 6.2, todo o grafo pedagógico — anos letivos, disciplinas,
 turmas, alunos, inscrições, períodos letivos, escalas, tipos de elemento,
 domínios, perfis de avaliação e as suas versões, elementos de avaliação e
 itens, pontuações, classificações, autoavaliações, registos pedagógicos,
-estratégias e medidas, e relatórios finalizados. A referência coleção a
-coleção — o que cada uma transporta e as regras de correspondência — está
-em [docs/backup-schema.md](backup-schema.md); este documento mantém-se ao
+estratégias e medidas, e relatórios finalizados. Desde a v9 (schema_version
+9), também aulas e assiduidade — grupos da turma, pertenças, o horário
+recorrente, ocorrências canceladas, aulas, sumários, planificações e
+assiduidade lançada. A referência coleção a coleção — o que cada uma
+transporta e as regras de correspondência — está em
+[docs/backup-schema.md](backup-schema.md); este documento mantém-se ao
 nível do mecanismo.
 
 Uma exceção permanece deliberada:

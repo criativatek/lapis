@@ -6,6 +6,9 @@ use App\Models\AcademicPeriod;
 use App\Models\AcademicYear;
 use App\Models\AssessmentProfile;
 use App\Models\AssessmentProfileVersion;
+use App\Models\AttendanceStatus;
+use App\Models\ClassGroup;
+use App\Models\ClassGroupMembership;
 use App\Models\Classification;
 use App\Models\DataImport;
 use App\Models\Domain;
@@ -18,7 +21,13 @@ use App\Models\InstrumentType;
 use App\Models\InterimAssessment;
 use App\Models\Intervention;
 use App\Models\InterventionReview;
+use App\Models\Lesson;
+use App\Models\LessonAttendance;
+use App\Models\LessonPlan;
+use App\Models\LessonStatus;
+use App\Models\LessonSummary;
 use App\Models\Organization;
+use App\Models\RecurringLessonSlot;
 use App\Models\Report;
 use App\Models\Scale;
 use App\Models\SchoolClass;
@@ -92,6 +101,7 @@ class CrossOrganizationCloneTest extends PedagogicalRoundTripTest
         $teacher = $this->teacher();
         $source = $teacher->personalOrganization();
         $sourceClass = $this->completeScenario();
+        $this->addLessonData($source, $sourceClass, $teacher);
         $sourceProgression = $this->progressionFor($source, $sourceClass);
         $sourceUlids = $this->ulidsByModel($source);
         $sourceCounts = $this->countsByModel($source);
@@ -106,6 +116,8 @@ class CrossOrganizationCloneTest extends PedagogicalRoundTripTest
             'classes', 'students', 'enrollments', 'instruments', 'instrument_groups', 'instrument_items',
             'classifications', 'self_assessment_templates', 'self_assessments', 'interim_assessments',
             'evidence_records', 'interventions', 'intervention_reviews', 'reports',
+            'class_groups', 'class_group_memberships', 'recurring_lesson_slots', 'lessons',
+            'lesson_summaries', 'lesson_plans', 'lesson_attendances',
         ];
 
         $preview = $this->actingAs($teacher)->withSession(['organization_id' => $destination->id])->get("/data-imports/{$import->ulid}");
@@ -333,6 +345,43 @@ class CrossOrganizationCloneTest extends PedagogicalRoundTripTest
         return $this->inOrganization($organization, fn (): array => app(BuildResultsProgression::class)->for($class->fresh()));
     }
 
+    /**
+     * A minimal lesson-domain fixture for the clone tests — a group, a
+     * membership, a recurring slot, a lecionada lesson with CONSOLIDATED
+     * attendance (never a draft: a draft's `present` rows are invalid by
+     * construction, see `BuildLessonsPlan`), its summary and plan. Covers
+     * 7 of the 8 lesson collections — `cancelled_lesson_occurrences` is the
+     * one exception, deliberately left out (it has no `ulid` of its own and
+     * is already exercised by `LessonAttendanceRoundTripTest`).
+     */
+    private function addLessonData(Organization $organization, SchoolClass $class, User $teacher): void
+    {
+        $this->inOrganization($organization, function () use ($class, $teacher): void {
+            $enrollment = Enrollment::where('class_id', $class->id)->firstOrFail();
+
+            $group = ClassGroup::create(['class_id' => $class->id, 'label' => 'T1', 'position' => 1]);
+            ClassGroupMembership::create([
+                'class_group_id' => $group->id, 'enrollment_id' => $enrollment->id, 'effective_from' => '2025-09-01',
+            ]);
+            $slot = RecurringLessonSlot::create([
+                'class_id' => $class->id, 'class_group_id' => $group->id, 'day_of_week' => 4,
+                'starts_at' => '09:00:00', 'ends_at' => '10:00:00', 'starts_on' => '2025-09-01',
+            ]);
+            $lesson = Lesson::create([
+                'class_id' => $class->id, 'class_group_id' => $group->id, 'recurring_lesson_slot_id' => $slot->id,
+                'starts_at' => '2025-10-16 09:00:00', 'ends_at' => '2025-10-16 10:00:00', 'lesson_number' => 1,
+                'status' => LessonStatus::Taught, 'attendance_recorded_at' => '2025-10-16 10:05:00',
+                'attendance_recorded_by' => $teacher->id, 'created_by' => $teacher->id,
+            ]);
+            LessonAttendance::create([
+                'lesson_id' => $lesson->id, 'enrollment_id' => $enrollment->id, 'student_id' => $enrollment->student_id,
+                'status' => AttendanceStatus::Present, 'updated_by' => $teacher->id,
+            ]);
+            LessonSummary::create(['lesson_id' => $lesson->id, 'content' => 'Aula sobre o clone entre organizações.']);
+            LessonPlan::create(['lesson_id' => $lesson->id, 'planned_summary' => 'Planificação de teste.', 'created_by' => $teacher->id]);
+        });
+    }
+
     private function seedRequiredReferences(Organization $source, Organization $destination): void
     {
         $years = $this->inOrganization($source, fn () => AcademicYear::all());
@@ -390,6 +439,8 @@ class CrossOrganizationCloneTest extends PedagogicalRoundTripTest
         return [AcademicPeriod::class, Scale::class, InstrumentType::class, Domain::class, AssessmentProfile::class, AssessmentProfileVersion::class,
             SchoolClass::class, Student::class, Enrollment::class, Instrument::class, InstrumentGroup::class, InstrumentItem::class,
             Classification::class, SelfAssessmentTemplate::class, SelfAssessment::class, InterimAssessment::class,
-            EvidenceRecord::class, Intervention::class, InterventionReview::class, Report::class];
+            EvidenceRecord::class, Intervention::class, InterventionReview::class, Report::class,
+            ClassGroup::class, ClassGroupMembership::class, RecurringLessonSlot::class, Lesson::class,
+            LessonSummary::class, LessonPlan::class, LessonAttendance::class];
     }
 }

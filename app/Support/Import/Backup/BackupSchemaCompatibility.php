@@ -7,7 +7,12 @@ namespace App\Support\Import\Backup;
  * (§4 of the import brief). Never inferred silently — every backup is
  * classified into exactly one of these before anything else happens.
  *
- * CURRENT (8) is what GenerateDataExport writes today. Version 8 adds
+ * CURRENT (9) is what GenerateDataExport writes today. Version 9 adds
+ * lessons and attendance — `class_groups`, `class_group_memberships`,
+ * `recurring_lesson_slots`, `cancelled_lesson_occurrences`, `lessons`,
+ * `lesson_summaries`, `lesson_plans`, `lesson_attendances` — none of which
+ * existed in any earlier backup (docs/backup-schema.md, "Aulas e
+ * assiduidade"). Version 8 adds
  * `classes[].is_support_class` (absent in older backups, read as false).
  * Version 7 adds
  * intervention batch provenance and multiple legal support measures. Fatia "multi-grade
@@ -40,7 +45,7 @@ enum BackupSchemaCompatibility
     case UnsupportedNewer;
     case Invalid;
 
-    public const int CURRENT = 8;
+    public const int CURRENT = 9;
 
     public const int MINIMUM_SUPPORTED = 2;
 

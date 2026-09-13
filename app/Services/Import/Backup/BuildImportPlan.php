@@ -89,6 +89,7 @@ class BuildImportPlan
         private readonly BuildAssessmentStructurePlan $structurePlan,
         private readonly BuildAssessmentDataPlan $dataPlan,
         private readonly BuildPedagogicalRecordsPlan $recordsPlan,
+        private readonly BuildLessonsPlan $lessonsPlan,
     ) {}
 
     /**
@@ -172,6 +173,21 @@ class BuildImportPlan
             $academicYears['byLabel'],
         );
 
+        $lessons = $this->lessonsPlan->build(
+            $canonical['class_groups'] ?? [],
+            $canonical['class_group_memberships'] ?? [],
+            $canonical['recurring_lesson_slots'] ?? [],
+            $canonical['cancelled_lesson_occurrences'] ?? [],
+            $canonical['lessons'] ?? [],
+            $canonical['lesson_summaries'] ?? [],
+            $canonical['lesson_plans'] ?? [],
+            $canonical['lesson_attendances'] ?? [],
+            $destination,
+            $actor,
+            $classesByUlid,
+            $enrollmentsByUlid,
+        );
+
         $issuesByDomain = collect($rowIssues)->groupBy('domain');
 
         $rows = array_merge(
@@ -185,9 +201,10 @@ class BuildImportPlan
             $structure['rows'],
             $data['rows'],
             $records['rows'],
+            $lessons['rows'],
         );
 
-        $noIssueDomains = ['profile_version_domains', 'profile_version_periods', 'item_domain_allocations', 'student_item_scores', 'self_assessment_questions', 'self_assessment_responses'];
+        $noIssueDomains = ['profile_version_domains', 'profile_version_periods', 'item_domain_allocations', 'student_item_scores', 'self_assessment_questions', 'self_assessment_responses', 'cancelled_lesson_occurrences'];
 
         foreach ($rows as $domain => $domainRows) {
             if (! in_array($domain, $noIssueDomains, true)) {

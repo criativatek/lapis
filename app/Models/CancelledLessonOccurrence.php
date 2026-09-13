@@ -22,7 +22,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $class_group_id
  * @property int $recurring_lesson_slot_id
  * @property Carbon $occurs_at
- * @property int $cancelled_by
+ * @property int|null $cancelled_by nullable desde 2026-11-10 (importação de backup — ver 2026_11_10_000500_let_imported_lessons_keep_an_unresolved_author); nunca `null` numa ocorrência cancelada pela própria aplicação
  */
 #[Fillable(['class_id', 'class_group_id', 'recurring_lesson_slot_id', 'occurs_at', 'cancelled_by'])]
 class CancelledLessonOccurrence extends Model

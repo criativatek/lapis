@@ -104,6 +104,22 @@ const domainGroups: {
         title: 'Documentos',
         domains: [{ key: 'reports', label: 'Relatórios' }],
     },
+    {
+        title: 'Aulas e assiduidade',
+        domains: [
+            { key: 'class_groups', label: 'Grupos da turma' },
+            { key: 'class_group_memberships', label: 'Pertenças a grupos' },
+            { key: 'recurring_lesson_slots', label: 'Tempos do horário' },
+            {
+                key: 'cancelled_lesson_occurrences',
+                label: 'Aulas canceladas',
+            },
+            { key: 'lessons', label: 'Aulas' },
+            { key: 'lesson_summaries', label: 'Sumários' },
+            { key: 'lesson_plans', label: 'Planificações de aula' },
+            { key: 'lesson_attendances', label: 'Assiduidade' },
+        ],
+    },
 ];
 
 const summaryGroups: {
@@ -154,6 +170,28 @@ const summaryGroups: {
     {
         title: 'Documentos',
         items: [{ key: 'reports_created', label: 'Relatórios' }],
+    },
+    {
+        title: 'Aulas e assiduidade',
+        items: [
+            { key: 'class_groups_created', label: 'Grupos da turma' },
+            {
+                key: 'class_group_memberships_created',
+                label: 'Pertenças a grupos',
+            },
+            {
+                key: 'recurring_lesson_slots_created',
+                label: 'Tempos do horário',
+            },
+            {
+                key: 'cancelled_lesson_occurrences_created',
+                label: 'Aulas canceladas',
+            },
+            { key: 'lessons_created', label: 'Aulas' },
+            { key: 'lesson_summaries_created', label: 'Sumários' },
+            { key: 'lesson_plans_created', label: 'Planificações de aula' },
+            { key: 'lesson_attendances_created', label: 'Assiduidade' },
+        ],
     },
     {
         title: 'Autoria',

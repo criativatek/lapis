@@ -6,6 +6,7 @@ use App\Models\AcademicPeriodKind;
 use App\Models\AcademicPeriodStatus;
 use App\Models\AcademicYearStatus;
 use App\Models\ActivityEvaluation;
+use App\Models\AttendanceStatus;
 use App\Models\ClassificationScope;
 use App\Models\ClassificationStatus;
 use App\Models\ClassStatus;
@@ -17,6 +18,7 @@ use App\Models\InstrumentStatus;
 use App\Models\InterventionEffectiveness;
 use App\Models\InterventionStatus;
 use App\Models\InterventionTargetType;
+use App\Models\LessonStatus;
 use App\Models\ParticipationLevel;
 use App\Models\ProfileVersionStatus;
 use App\Models\ReportScopeKind;
@@ -217,6 +219,31 @@ class ValidateBackupPayload
             ], function (array $row) use (&$rowIssues): ?array {
                 return $this->validReportRow($row, $rowIssues);
             }),
+
+            'class_groups' => $this->whitelistRows($decoded, 'class_groups', ['ulid', 'class_ulid', 'label', 'position', 'archived_at'], function (array $row) use (&$rowIssues): ?array {
+                return $this->validClassGroupRow($row, $rowIssues);
+            }),
+            'class_group_memberships' => $this->whitelistRows($decoded, 'class_group_memberships', ['ulid', 'class_group_ulid', 'enrollment_ulid', 'effective_from', 'effective_until'], function (array $row) use (&$rowIssues): ?array {
+                return $this->validClassGroupMembershipRow($row, $rowIssues);
+            }),
+            'recurring_lesson_slots' => $this->whitelistRows($decoded, 'recurring_lesson_slots', ['ulid', 'class_ulid', 'class_group_ulid', 'day_of_week', 'starts_at', 'ends_at', 'starts_on', 'ends_on'], function (array $row) use (&$rowIssues): ?array {
+                return $this->validRecurringLessonSlotRow($row, $rowIssues);
+            }),
+            'cancelled_lesson_occurrences' => $this->whitelistRows($decoded, 'cancelled_lesson_occurrences', ['class_ulid', 'class_group_ulid', 'recurring_lesson_slot_ulid', 'occurs_at', 'cancelled_by_email'], function (array $row) use (&$rowIssues): ?array {
+                return $this->validCancelledLessonOccurrenceRow($row, $rowIssues);
+            }),
+            'lessons' => $this->whitelistRows($decoded, 'lessons', ['ulid', 'class_ulid', 'class_group_ulid', 'recurring_lesson_slot_ulid', 'starts_at', 'ends_at', 'lesson_number', 'status', 'attendance_recorded_at', 'attendance_recorded_by_email', 'created_by_email'], function (array $row) use (&$rowIssues): ?array {
+                return $this->validLessonRow($row, $rowIssues);
+            }),
+            'lesson_summaries' => $this->whitelistRows($decoded, 'lesson_summaries', ['ulid', 'lesson_ulid', 'content', 'private_notes', 'resources', 'homework', 'reviewed_at', 'reviewed_by_email'], function (array $row) use (&$rowIssues): ?array {
+                return $this->validLessonSummaryRow($row, $rowIssues);
+            }),
+            'lesson_plans' => $this->whitelistRows($decoded, 'lesson_plans', ['ulid', 'lesson_ulid', 'planned_summary', 'created_by_email'], function (array $row) use (&$rowIssues): ?array {
+                return $this->validLessonPlanRow($row, $rowIssues);
+            }),
+            'lesson_attendances' => $this->whitelistRows($decoded, 'lesson_attendances', ['ulid', 'lesson_ulid', 'enrollment_ulid', 'status', 'updated_by_email'], function (array $row) use (&$rowIssues): ?array {
+                return $this->validLessonAttendanceRow($row, $rowIssues);
+            }),
         ];
 
         return ['canonical' => $canonical, 'schemaCompatibility' => $compatibility, 'rowIssues' => $rowIssues];
@@ -304,6 +331,35 @@ class ValidateBackupPayload
     private function nullableUlid(mixed $value): ?string
     {
         return $this->isUlid($value) ? $value : null;
+    }
+
+    /**
+     * The stricter sibling of `nullableUlid()`, for a field this importer
+     * later relies on to be either genuinely absent OR a real reference —
+     * never a third, silent state. `nullableUlid()` coerces anything
+     * malformed to `null`, which is correct for a field where "we could not
+     * read it" and "there truly is none" are meant to be the same thing.
+     * They are NOT the same thing for a lesson-domain parent reference
+     * (`class_group_ulid`, `recurring_lesson_slot_ulid`, …): a `null`
+     * there means "the whole class" to `BuildLessonsPlan`/`WriteLessons`,
+     * a materially different fact than "a group was named and this
+     * importer could not read which one". Coercing the latter into the
+     * former would silently turn a T1 lesson into a whole-class one.
+     *
+     * Absent key or explicit JSON `null` → allowed, `value: null`. Present
+     * but not a valid ulid (wrong type, empty string, malformed shape) →
+     * the row is unsafe and must be dropped entirely, never partially
+     * written with this one field quietly blanked.
+     *
+     * @return array{ok: true, value: string|null}|array{ok: false}
+     */
+    private function optionalUlidOrInvalidate(mixed $value): array
+    {
+        if ($value === null) {
+            return ['ok' => true, 'value' => null];
+        }
+
+        return $this->isUlid($value) ? ['ok' => true, 'value' => $value] : ['ok' => false];
     }
 
     private function nullableString(mixed $value): ?string
@@ -1374,6 +1430,260 @@ class ValidateBackupPayload
             'based_on_report_ulid' => $this->nullableUlid($row['based_on_report_ulid'] ?? null),
             'template_key' => $this->nullableString($row['template_key'] ?? null),
             'template_snapshot' => is_array($templateSnapshot) ? $templateSnapshot : null,
+        ];
+    }
+
+    /**
+     * A time-of-day string as `RecurringLessonSlot.starts_at`/`ends_at`
+     * actually store it — a plain `time` column with no date of its own,
+     * never cast on the model (see that class's docblock). Accepts the
+     * optional seconds MySQL's `TIME` type can carry.
+     */
+    private function nullableTime(mixed $value): ?string
+    {
+        return is_string($value) && preg_match('/^\d{2}:\d{2}(:\d{2})?$/', $value) === 1 ? $value : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  list<array{domain: string, ulid: string|null, reason: string}>  $rowIssues
+     * @return array<string, mixed>|null
+     */
+    private function validClassGroupRow(array $row, array &$rowIssues): ?array
+    {
+        $ulid = $row['ulid'] ?? null;
+        $classUlid = $row['class_ulid'] ?? null;
+
+        if (! $this->isUlid($ulid) || ! $this->isUlid($classUlid)
+            || ! is_string($row['label'] ?? null) || $row['label'] === '' || mb_strlen($row['label']) > 40
+            || ! is_int($row['position'] ?? null)
+        ) {
+            $rowIssues[] = ['domain' => 'class_groups', 'ulid' => is_string($ulid) ? $ulid : null, 'reason' => $this->t('Campos obrigatórios em falta ou inválidos.')];
+
+            return null;
+        }
+
+        return [
+            'ulid' => $ulid,
+            'class_ulid' => $classUlid,
+            'label' => $row['label'],
+            'position' => $row['position'],
+            'archived_at' => $this->nullableDateTime($row['archived_at'] ?? null),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  list<array{domain: string, ulid: string|null, reason: string}>  $rowIssues
+     * @return array<string, mixed>|null
+     */
+    private function validClassGroupMembershipRow(array $row, array &$rowIssues): ?array
+    {
+        $ulid = $row['ulid'] ?? null;
+        $groupUlid = $row['class_group_ulid'] ?? null;
+        $enrollmentUlid = $row['enrollment_ulid'] ?? null;
+
+        if (! $this->isUlid($ulid) || ! $this->isUlid($groupUlid) || ! $this->isUlid($enrollmentUlid)
+            || $this->nullableDate($row['effective_from'] ?? null) === null
+        ) {
+            $rowIssues[] = ['domain' => 'class_group_memberships', 'ulid' => is_string($ulid) ? $ulid : null, 'reason' => $this->t('Campos obrigatórios em falta ou inválidos.')];
+
+            return null;
+        }
+
+        return [
+            'ulid' => $ulid,
+            'class_group_ulid' => $groupUlid,
+            'enrollment_ulid' => $enrollmentUlid,
+            'effective_from' => $row['effective_from'],
+            'effective_until' => $this->nullableDate($row['effective_until'] ?? null),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  list<array{domain: string, ulid: string|null, reason: string}>  $rowIssues
+     * @return array<string, mixed>|null
+     */
+    private function validRecurringLessonSlotRow(array $row, array &$rowIssues): ?array
+    {
+        $ulid = $row['ulid'] ?? null;
+        $classUlid = $row['class_ulid'] ?? null;
+        $startsAt = $this->nullableTime($row['starts_at'] ?? null);
+        $endsAt = $this->nullableTime($row['ends_at'] ?? null);
+
+        $groupUlid = $this->optionalUlidOrInvalidate($row['class_group_ulid'] ?? null);
+
+        if (! $this->isUlid($ulid) || ! $this->isUlid($classUlid)
+            || ! is_int($row['day_of_week'] ?? null) || ($row['day_of_week'] < 1 || $row['day_of_week'] > 7)
+            || $startsAt === null || $endsAt === null || ! $groupUlid['ok']
+        ) {
+            $rowIssues[] = ['domain' => 'recurring_lesson_slots', 'ulid' => is_string($ulid) ? $ulid : null, 'reason' => $this->t('Campos obrigatórios em falta ou inválidos.')];
+
+            return null;
+        }
+
+        return [
+            'ulid' => $ulid,
+            'class_ulid' => $classUlid,
+            'class_group_ulid' => $groupUlid['value'],
+            'day_of_week' => $row['day_of_week'],
+            'starts_at' => $startsAt,
+            'ends_at' => $endsAt,
+            'starts_on' => $this->nullableDate($row['starts_on'] ?? null),
+            'ends_on' => $this->nullableDate($row['ends_on'] ?? null),
+        ];
+    }
+
+    /**
+     * No ulid of its own (§ backup-schema.md — a child with a natural key,
+     * same shape as `profile_version_domains`).
+     *
+     * @param  array<string, mixed>  $row
+     * @param  list<array{domain: string, ulid: string|null, reason: string}>  $rowIssues
+     * @return array<string, mixed>|null
+     */
+    private function validCancelledLessonOccurrenceRow(array $row, array &$rowIssues): ?array
+    {
+        $classUlid = $row['class_ulid'] ?? null;
+        $slotUlid = $row['recurring_lesson_slot_ulid'] ?? null;
+        $groupUlid = $this->optionalUlidOrInvalidate($row['class_group_ulid'] ?? null);
+
+        if (! $this->isUlid($classUlid) || ! $this->isUlid($slotUlid)
+            || $this->nullableDateTime($row['occurs_at'] ?? null) === null || ! $groupUlid['ok']
+        ) {
+            $rowIssues[] = ['domain' => 'cancelled_lesson_occurrences', 'ulid' => null, 'reason' => $this->t('Campos obrigatórios em falta ou inválidos.')];
+
+            return null;
+        }
+
+        return [
+            'class_ulid' => $classUlid,
+            'class_group_ulid' => $groupUlid['value'],
+            'recurring_lesson_slot_ulid' => $slotUlid,
+            'occurs_at' => $row['occurs_at'],
+            'cancelled_by_email' => $this->nullableString($row['cancelled_by_email'] ?? null),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  list<array{domain: string, ulid: string|null, reason: string}>  $rowIssues
+     * @return array<string, mixed>|null
+     */
+    private function validLessonRow(array $row, array &$rowIssues): ?array
+    {
+        $ulid = $row['ulid'] ?? null;
+        $classUlid = $row['class_ulid'] ?? null;
+        $groupUlid = $this->optionalUlidOrInvalidate($row['class_group_ulid'] ?? null);
+        $slotUlid = $this->optionalUlidOrInvalidate($row['recurring_lesson_slot_ulid'] ?? null);
+
+        if (! $this->isUlid($ulid) || ! $this->isUlid($classUlid)
+            || $this->nullableDateTime($row['starts_at'] ?? null) === null
+            || LessonStatus::tryFrom((string) ($row['status'] ?? '')) === null
+            || ! $groupUlid['ok'] || ! $slotUlid['ok']
+        ) {
+            $rowIssues[] = ['domain' => 'lessons', 'ulid' => is_string($ulid) ? $ulid : null, 'reason' => $this->t('Campos obrigatórios em falta ou inválidos.')];
+
+            return null;
+        }
+
+        return [
+            'ulid' => $ulid,
+            'class_ulid' => $classUlid,
+            'class_group_ulid' => $groupUlid['value'],
+            'recurring_lesson_slot_ulid' => $slotUlid['value'],
+            'starts_at' => $row['starts_at'],
+            'ends_at' => $this->nullableDateTime($row['ends_at'] ?? null),
+            'lesson_number' => $this->nullableInt($row['lesson_number'] ?? null),
+            'status' => $row['status'],
+            'attendance_recorded_at' => $this->nullableDateTime($row['attendance_recorded_at'] ?? null),
+            'attendance_recorded_by_email' => $this->nullableString($row['attendance_recorded_by_email'] ?? null),
+            'created_by_email' => $this->nullableString($row['created_by_email'] ?? null),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  list<array{domain: string, ulid: string|null, reason: string}>  $rowIssues
+     * @return array<string, mixed>|null
+     */
+    private function validLessonSummaryRow(array $row, array &$rowIssues): ?array
+    {
+        $ulid = $row['ulid'] ?? null;
+        $lessonUlid = $row['lesson_ulid'] ?? null;
+
+        if (! $this->isUlid($ulid) || ! $this->isUlid($lessonUlid)
+            || ! is_string($row['content'] ?? null) || $row['content'] === ''
+        ) {
+            $rowIssues[] = ['domain' => 'lesson_summaries', 'ulid' => is_string($ulid) ? $ulid : null, 'reason' => $this->t('Campos obrigatórios em falta ou inválidos.')];
+
+            return null;
+        }
+
+        return [
+            'ulid' => $ulid,
+            'lesson_ulid' => $lessonUlid,
+            'content' => $row['content'],
+            'private_notes' => $this->nullableString($row['private_notes'] ?? null),
+            'resources' => $this->nullableString($row['resources'] ?? null),
+            'homework' => $this->nullableString($row['homework'] ?? null),
+            'reviewed_at' => $this->nullableDateTime($row['reviewed_at'] ?? null),
+            'reviewed_by_email' => $this->nullableString($row['reviewed_by_email'] ?? null),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  list<array{domain: string, ulid: string|null, reason: string}>  $rowIssues
+     * @return array<string, mixed>|null
+     */
+    private function validLessonPlanRow(array $row, array &$rowIssues): ?array
+    {
+        $ulid = $row['ulid'] ?? null;
+        $lessonUlid = $row['lesson_ulid'] ?? null;
+
+        if (! $this->isUlid($ulid) || ! $this->isUlid($lessonUlid)
+            || ! is_string($row['planned_summary'] ?? null) || $row['planned_summary'] === ''
+        ) {
+            $rowIssues[] = ['domain' => 'lesson_plans', 'ulid' => is_string($ulid) ? $ulid : null, 'reason' => $this->t('Campos obrigatórios em falta ou inválidos.')];
+
+            return null;
+        }
+
+        return [
+            'ulid' => $ulid,
+            'lesson_ulid' => $lessonUlid,
+            'planned_summary' => $row['planned_summary'],
+            'created_by_email' => $this->nullableString($row['created_by_email'] ?? null),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  list<array{domain: string, ulid: string|null, reason: string}>  $rowIssues
+     * @return array<string, mixed>|null
+     */
+    private function validLessonAttendanceRow(array $row, array &$rowIssues): ?array
+    {
+        $ulid = $row['ulid'] ?? null;
+        $lessonUlid = $row['lesson_ulid'] ?? null;
+        $enrollmentUlid = $row['enrollment_ulid'] ?? null;
+
+        if (! $this->isUlid($ulid) || ! $this->isUlid($lessonUlid) || ! $this->isUlid($enrollmentUlid)
+            || AttendanceStatus::tryFrom((string) ($row['status'] ?? '')) === null
+        ) {
+            $rowIssues[] = ['domain' => 'lesson_attendances', 'ulid' => is_string($ulid) ? $ulid : null, 'reason' => $this->t('Campos obrigatórios em falta ou inválidos.')];
+
+            return null;
+        }
+
+        return [
+            'ulid' => $ulid,
+            'lesson_ulid' => $lessonUlid,
+            'enrollment_ulid' => $enrollmentUlid,
+            'status' => $row['status'],
+            'updated_by_email' => $this->nullableString($row['updated_by_email'] ?? null),
         ];
     }
 }

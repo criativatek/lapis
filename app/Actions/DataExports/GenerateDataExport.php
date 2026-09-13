@@ -7,6 +7,9 @@ use App\Models\AcademicYear;
 use App\Models\AssessmentProfile;
 use App\Models\AssessmentProfileVersion;
 use App\Models\AuditEvent;
+use App\Models\CancelledLessonOccurrence;
+use App\Models\ClassGroup;
+use App\Models\ClassGroupMembership;
 use App\Models\Classification;
 use App\Models\ClassificationScope;
 use App\Models\DataExport;
@@ -22,9 +25,14 @@ use App\Models\Intervention;
 use App\Models\InterventionReview;
 use App\Models\InterventionSupportMeasure;
 use App\Models\ItemDomainAllocation;
+use App\Models\Lesson;
+use App\Models\LessonAttendance;
+use App\Models\LessonPlan;
+use App\Models\LessonSummary;
 use App\Models\Organization;
 use App\Models\ProfileVersionDomain;
 use App\Models\ProfileVersionPeriod;
+use App\Models\RecurringLessonSlot;
 use App\Models\Report;
 use App\Models\ReportStatus;
 use App\Models\Scale;
@@ -92,7 +100,7 @@ use ZipArchive;
  * called ONCE PER CLASS, not per student/row, to avoid N+1.
  *
  * @phpstan-type ClassProgression array{periods: list<array<string, mixed>>, domains: list<array{id: int, name: string}>, students: list<array<string, mixed>>, context: array{class_id: int, cutoff: string|null}}
- * @phpstan-type BackupRefs array{classesById: Collection<int, SchoolClass>, academicPeriodsById: Collection<int, AcademicPeriod>, domainsById: Collection<int, Domain>, scalesById: Collection<int, Scale>, scaleLevelIndex: array<int, array{scale: Scale, level: ScaleLevel}>, profilesById: Collection<int, AssessmentProfile>, profileVersionsById: Collection<int, AssessmentProfileVersion>, instrumentTypesById: Collection<int, InstrumentType>, instrumentGroupsById: Collection<int, InstrumentGroup>, instrumentsById: Collection<int, Instrument>, selfAssessmentTemplatesById: Collection<int, SelfAssessmentTemplate>, selfAssessmentQuestionsById: Collection<int, SelfAssessmentQuestion>, selfAssessmentsById: Collection<int, SelfAssessment>, classificationsById: Collection<int, Classification>, interventionsById: Collection<int, Intervention>, reportsById: Collection<int, Report>, authorsById: Collection<int, User>}
+ * @phpstan-type BackupRefs array{classesById: Collection<int, SchoolClass>, academicPeriodsById: Collection<int, AcademicPeriod>, domainsById: Collection<int, Domain>, scalesById: Collection<int, Scale>, scaleLevelIndex: array<int, array{scale: Scale, level: ScaleLevel}>, profilesById: Collection<int, AssessmentProfile>, profileVersionsById: Collection<int, AssessmentProfileVersion>, instrumentTypesById: Collection<int, InstrumentType>, instrumentGroupsById: Collection<int, InstrumentGroup>, instrumentsById: Collection<int, Instrument>, selfAssessmentTemplatesById: Collection<int, SelfAssessmentTemplate>, selfAssessmentQuestionsById: Collection<int, SelfAssessmentQuestion>, selfAssessmentsById: Collection<int, SelfAssessment>, classificationsById: Collection<int, Classification>, interventionsById: Collection<int, Intervention>, reportsById: Collection<int, Report>, authorsById: Collection<int, User>, classGroupsById: Collection<int, ClassGroup>, recurringLessonSlotsById: Collection<int, RecurringLessonSlot>, lessonsById: Collection<int, Lesson>}
  */
 class GenerateDataExport
 {
@@ -232,7 +240,25 @@ class GenerateDataExport
 
         $interimAssessments = InterimAssessment::query()->whereIn('class_id', $classIds)->get();
 
-        $authors = $this->loadReferencedAuthors($instruments, $itemScores, $classifications, $selfAssessments, $evidenceRecords, $interventions, $interventionReviews, $interimAssessments, $reports);
+        // Fatia "aulas e assiduidade" (schema_version 9) — factos de horário
+        // e presença, scoped pelas MESMAS turmas já carregadas acima, nunca
+        // toda a organização (§83 data minimization). `class_group_id`
+        // NULL continua a significar «turma inteira» em cada uma destas
+        // tabelas, exatamente como nos modelos.
+        $classGroups = ClassGroup::query()->whereIn('class_id', $classIds)->get();
+        $classGroupMemberships = ClassGroupMembership::query()->whereIn('class_group_id', $classGroups->pluck('id'))->with('enrollment')->get();
+        $recurringLessonSlots = RecurringLessonSlot::query()->whereIn('class_id', $classIds)->get();
+        $cancelledLessonOccurrences = CancelledLessonOccurrence::query()->whereIn('class_id', $classIds)->get();
+        $lessons = Lesson::query()->whereIn('class_id', $classIds)->get();
+        $lessonSummaries = LessonSummary::query()->whereIn('lesson_id', $lessons->pluck('id'))->get();
+        $lessonPlans = LessonPlan::query()->whereIn('lesson_id', $lessons->pluck('id'))->get();
+        $lessonAttendances = LessonAttendance::query()->whereIn('lesson_id', $lessons->pluck('id'))->with('enrollment')->get();
+
+        $authors = $this->loadReferencedAuthors(
+            $instruments, $itemScores, $classifications, $selfAssessments, $evidenceRecords, $interventions,
+            $interventionReviews, $interimAssessments, $reports, $lessons, $lessonPlans,
+            $cancelledLessonOccurrences, $lessonSummaries, $lessonAttendances,
+        );
 
         // Called ONCE per class — never inside a per-student/per-row loop —
         // and reused for both the "Média Ponderada" figures and the scale
@@ -327,6 +353,14 @@ class GenerateDataExport
             $interventionReviews,
             $reports,
             $authors,
+            $classGroups,
+            $classGroupMemberships,
+            $recurringLessonSlots,
+            $cancelledLessonOccurrences,
+            $lessons,
+            $lessonSummaries,
+            $lessonPlans,
+            $lessonAttendances,
         ));
         $zip->addFromString('README.txt', $this->readme($organization));
 
@@ -909,6 +943,11 @@ class GenerateDataExport
      * @param  Collection<int, InterventionReview>  $interventionReviews
      * @param  Collection<int, InterimAssessment>  $interimAssessments
      * @param  Collection<int, Report>  $reports
+     * @param  Collection<int, Lesson>  $lessons
+     * @param  Collection<int, LessonPlan>  $lessonPlans
+     * @param  Collection<int, CancelledLessonOccurrence>  $cancelledLessonOccurrences
+     * @param  Collection<int, LessonSummary>  $lessonSummaries
+     * @param  Collection<int, LessonAttendance>  $lessonAttendances
      * @return Collection<int, User>
      */
     protected function loadReferencedAuthors(
@@ -921,6 +960,11 @@ class GenerateDataExport
         Collection $interventionReviews,
         Collection $interimAssessments,
         Collection $reports,
+        Collection $lessons,
+        Collection $lessonPlans,
+        Collection $cancelledLessonOccurrences,
+        Collection $lessonSummaries,
+        Collection $lessonAttendances,
     ): Collection {
         $ids = $instruments->pluck('completed_by')
             ->merge($instruments->pluck('cancelled_by'))
@@ -934,6 +978,12 @@ class GenerateDataExport
             ->merge($interimAssessments->pluck('created_by'))
             ->merge($reports->pluck('created_by'))
             ->merge($reports->pluck('finalized_by'))
+            ->merge($lessons->pluck('created_by'))
+            ->merge($lessons->pluck('attendance_recorded_by'))
+            ->merge($lessonPlans->pluck('created_by'))
+            ->merge($cancelledLessonOccurrences->pluck('cancelled_by'))
+            ->merge($lessonSummaries->pluck('reviewed_by'))
+            ->merge($lessonAttendances->pluck('updated_by'))
             ->filter()->unique();
 
         return User::query()->withoutGlobalScopes()->whereIn('id', $ids)->get();
@@ -1003,6 +1053,9 @@ class GenerateDataExport
      * @param  Collection<int, Intervention>  $interventions
      * @param  Collection<int, Report>  $reports
      * @param  Collection<int, User>  $authors
+     * @param  Collection<int, ClassGroup>  $classGroups
+     * @param  Collection<int, RecurringLessonSlot>  $recurringLessonSlots
+     * @param  Collection<int, Lesson>  $lessons
      * @return BackupRefs
      */
     protected function buildBackupRefs(
@@ -1022,6 +1075,9 @@ class GenerateDataExport
         Collection $interventions,
         Collection $reports,
         Collection $authors,
+        Collection $classGroups,
+        Collection $recurringLessonSlots,
+        Collection $lessons,
     ): array {
         $scaleLevelIndex = [];
 
@@ -1049,7 +1105,34 @@ class GenerateDataExport
             'interventionsById' => $interventions->keyBy('id'),
             'reportsById' => $reports->keyBy('id'),
             'authorsById' => $authors->keyBy('id'),
+            'classGroupsById' => $classGroups->keyBy('id'),
+            'recurringLessonSlotsById' => $recurringLessonSlots->keyBy('id'),
+            'lessonsById' => $lessons->keyBy('id'),
         ];
+    }
+
+    /**
+     * @param  BackupRefs  $refs
+     */
+    protected function classGroupUlidRef(?int $classGroupId, array $refs): ?string
+    {
+        return $classGroupId === null ? null : $refs['classGroupsById']->get($classGroupId)?->ulid;
+    }
+
+    /**
+     * @param  BackupRefs  $refs
+     */
+    protected function recurringLessonSlotUlidRef(?int $slotId, array $refs): ?string
+    {
+        return $slotId === null ? null : $refs['recurringLessonSlotsById']->get($slotId)?->ulid;
+    }
+
+    /**
+     * @param  BackupRefs  $refs
+     */
+    protected function lessonUlidRef(?int $lessonId, array $refs): ?string
+    {
+        return $lessonId === null ? null : $refs['lessonsById']->get($lessonId)?->ulid;
     }
 
     /** @return array<string, mixed>|null */
@@ -1634,6 +1717,140 @@ class GenerateDataExport
     }
 
     /**
+     * @param  BackupRefs  $refs
+     * @return array<string, mixed>
+     */
+    protected function classGroupRow(ClassGroup $group, array $refs): array
+    {
+        return [
+            'ulid' => $group->ulid,
+            'class_ulid' => $this->classUlidRef($group->class_id, $refs),
+            'label' => $group->label,
+            'position' => $group->position,
+            'archived_at' => $group->archived_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * @param  BackupRefs  $refs
+     * @return array<string, mixed>
+     */
+    protected function classGroupMembershipRow(ClassGroupMembership $membership, array $refs): array
+    {
+        return [
+            'ulid' => $membership->ulid,
+            'class_group_ulid' => $this->classGroupUlidRef($membership->class_group_id, $refs),
+            'enrollment_ulid' => $membership->enrollment?->ulid,
+            'effective_from' => $membership->effective_from->toDateString(),
+            'effective_until' => $membership->effective_until?->toDateString(),
+        ];
+    }
+
+    /**
+     * @param  BackupRefs  $refs
+     * @return array<string, mixed>
+     */
+    protected function recurringLessonSlotRow(RecurringLessonSlot $slot, array $refs): array
+    {
+        return [
+            'ulid' => $slot->ulid,
+            'class_ulid' => $this->classUlidRef($slot->class_id, $refs),
+            'class_group_ulid' => $this->classGroupUlidRef($slot->class_group_id, $refs),
+            'day_of_week' => $slot->day_of_week,
+            'starts_at' => $slot->starts_at,
+            'ends_at' => $slot->ends_at,
+            'starts_on' => $slot->starts_on?->toDateString(),
+            'ends_on' => $slot->ends_on?->toDateString(),
+        ];
+    }
+
+    /**
+     * No ulid of its own — see `CancelledLessonOccurrence`'s own docblock
+     * for why: it is never reachable through a URL or a screen.
+     *
+     * @param  BackupRefs  $refs
+     * @return array<string, mixed>
+     */
+    protected function cancelledLessonOccurrenceRow(CancelledLessonOccurrence $occurrence, array $refs): array
+    {
+        return [
+            'class_ulid' => $this->classUlidRef($occurrence->class_id, $refs),
+            'class_group_ulid' => $this->classGroupUlidRef($occurrence->class_group_id, $refs),
+            'recurring_lesson_slot_ulid' => $this->recurringLessonSlotUlidRef($occurrence->recurring_lesson_slot_id, $refs),
+            'occurs_at' => $occurrence->occurs_at->toIso8601String(),
+            'cancelled_by_email' => $this->authorEmail($occurrence->cancelled_by, $refs),
+        ];
+    }
+
+    /**
+     * @param  BackupRefs  $refs
+     * @return array<string, mixed>
+     */
+    protected function lessonRow(Lesson $lesson, array $refs): array
+    {
+        return [
+            'ulid' => $lesson->ulid,
+            'class_ulid' => $this->classUlidRef($lesson->class_id, $refs),
+            'class_group_ulid' => $this->classGroupUlidRef($lesson->class_group_id, $refs),
+            'recurring_lesson_slot_ulid' => $this->recurringLessonSlotUlidRef($lesson->recurring_lesson_slot_id, $refs),
+            'starts_at' => $lesson->starts_at->toIso8601String(),
+            'ends_at' => $lesson->ends_at?->toIso8601String(),
+            'lesson_number' => $lesson->lesson_number,
+            'status' => $lesson->status->value,
+            'attendance_recorded_at' => $lesson->attendance_recorded_at?->toIso8601String(),
+            'attendance_recorded_by_email' => $this->authorEmail($lesson->attendance_recorded_by, $refs),
+            'created_by_email' => $this->authorEmail($lesson->created_by, $refs),
+        ];
+    }
+
+    /**
+     * @param  BackupRefs  $refs
+     * @return array<string, mixed>
+     */
+    protected function lessonSummaryRow(LessonSummary $summary, array $refs): array
+    {
+        return [
+            'ulid' => $summary->ulid,
+            'lesson_ulid' => $this->lessonUlidRef($summary->lesson_id, $refs),
+            'content' => $summary->content,
+            'private_notes' => $summary->private_notes,
+            'resources' => $summary->resources,
+            'homework' => $summary->homework,
+            'reviewed_at' => $summary->reviewed_at?->toIso8601String(),
+            'reviewed_by_email' => $this->authorEmail($summary->reviewed_by, $refs),
+        ];
+    }
+
+    /**
+     * @param  BackupRefs  $refs
+     * @return array<string, mixed>
+     */
+    protected function lessonPlanRow(LessonPlan $plan, array $refs): array
+    {
+        return [
+            'ulid' => $plan->ulid,
+            'lesson_ulid' => $this->lessonUlidRef($plan->lesson_id, $refs),
+            'planned_summary' => $plan->planned_summary,
+            'created_by_email' => $this->authorEmail($plan->created_by, $refs),
+        ];
+    }
+
+    /**
+     * @param  BackupRefs  $refs
+     * @return array<string, mixed>
+     */
+    protected function lessonAttendanceRow(LessonAttendance $attendance, array $refs): array
+    {
+        return [
+            'ulid' => $attendance->ulid,
+            'lesson_ulid' => $this->lessonUlidRef($attendance->lesson_id, $refs),
+            'enrollment_ulid' => $attendance->enrollment?->ulid,
+            'status' => $attendance->status->value,
+            'updated_by_email' => $this->authorEmail($attendance->updated_by, $refs),
+        ];
+    }
+
+    /**
      * The technical backup — stable ids and relations, for a future
      * import/restore. Deliberately not meant to be comfortable reading: the
      * XLSX is the document for that.
@@ -1678,6 +1895,14 @@ class GenerateDataExport
      * @param  Collection<int, InterventionReview>  $interventionReviews
      * @param  Collection<int, Report>  $reports
      * @param  Collection<int, User>  $authors
+     * @param  Collection<int, ClassGroup>  $classGroups
+     * @param  Collection<int, ClassGroupMembership>  $classGroupMemberships
+     * @param  Collection<int, RecurringLessonSlot>  $recurringLessonSlots
+     * @param  Collection<int, CancelledLessonOccurrence>  $cancelledLessonOccurrences
+     * @param  Collection<int, Lesson>  $lessons
+     * @param  Collection<int, LessonSummary>  $lessonSummaries
+     * @param  Collection<int, LessonPlan>  $lessonPlans
+     * @param  Collection<int, LessonAttendance>  $lessonAttendances
      */
     protected function technicalBackup(
         Organization $organization,
@@ -1708,11 +1933,20 @@ class GenerateDataExport
         Collection $interventionReviews,
         Collection $reports,
         Collection $authors,
+        Collection $classGroups,
+        Collection $classGroupMemberships,
+        Collection $recurringLessonSlots,
+        Collection $cancelledLessonOccurrences,
+        Collection $lessons,
+        Collection $lessonSummaries,
+        Collection $lessonPlans,
+        Collection $lessonAttendances,
     ): string {
         $refs = $this->buildBackupRefs(
             $classes, $academicPeriods, $domains, $scales, $profiles, $profileVersions,
             $instrumentTypes, $instrumentGroups, $instruments, $selfAssessmentTemplates,
             $selfAssessmentQuestions, $selfAssessments, $classifications, $interventions, $reports, $authors,
+            $classGroups, $recurringLessonSlots, $lessons,
         );
 
         return json_encode([
@@ -1728,6 +1962,8 @@ class GenerateDataExport
                 'classifications', 'self_assessment_templates', 'self_assessment_questions', 'self_assessments',
                 'self_assessment_responses', 'interim_assessments', 'evidence_records', 'interventions',
                 'intervention_reviews', 'reports',
+                'class_groups', 'class_group_memberships', 'recurring_lesson_slots', 'cancelled_lesson_occurrences',
+                'lessons', 'lesson_summaries', 'lesson_plans', 'lesson_attendances',
             ],
 
             'academic_years' => $academicYears->map(fn (AcademicYear $year): array => $this->academicYearRow($year))->values(),
@@ -1782,6 +2018,20 @@ class GenerateDataExport
             // (§28 of the import brief). Its own PDF still travels via
             // addReportPdfs(), unchanged.
             'reports' => $reports->where('status', ReportStatus::Finalized)->map(fn (Report $report): array => $this->reportRow($report, $refs))->values(),
+
+            // Aulas e assiduidade (schema_version 9) — mesmo princípio: só
+            // factos já escritos (o horário recorrente, a aula, a
+            // assiduidade lançada), nunca a materialização em si
+            // (MaterializeLessonsForRange volta a criar as aulas futuras a
+            // partir do horário restaurado).
+            'class_groups' => $classGroups->map(fn (ClassGroup $group): array => $this->classGroupRow($group, $refs))->values(),
+            'class_group_memberships' => $classGroupMemberships->map(fn (ClassGroupMembership $membership): array => $this->classGroupMembershipRow($membership, $refs))->values(),
+            'recurring_lesson_slots' => $recurringLessonSlots->map(fn (RecurringLessonSlot $slot): array => $this->recurringLessonSlotRow($slot, $refs))->values(),
+            'cancelled_lesson_occurrences' => $cancelledLessonOccurrences->map(fn (CancelledLessonOccurrence $occurrence): array => $this->cancelledLessonOccurrenceRow($occurrence, $refs))->values(),
+            'lessons' => $lessons->map(fn (Lesson $lesson): array => $this->lessonRow($lesson, $refs))->values(),
+            'lesson_summaries' => $lessonSummaries->map(fn (LessonSummary $summary): array => $this->lessonSummaryRow($summary, $refs))->values(),
+            'lesson_plans' => $lessonPlans->map(fn (LessonPlan $plan): array => $this->lessonPlanRow($plan, $refs))->values(),
+            'lesson_attendances' => $lessonAttendances->map(fn (LessonAttendance $attendance): array => $this->lessonAttendanceRow($attendance, $refs))->values(),
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) ?: '{}';
     }
 
