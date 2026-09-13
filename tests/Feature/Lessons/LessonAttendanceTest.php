@@ -53,7 +53,8 @@ class LessonAttendanceTest extends TestCase
             $this->assertDatabaseCount('lesson_attendances', 2);
 
             $event = AuditEvent::where('event', 'lesson.attendance_recorded')->where('subject_id', $lesson->id)->sole();
-            $this->assertSame(['present' => 1, 'absent' => 1], $event->properties);
+            // A coluna JSON do MySQL reordena as chaves: compara-se o conteúdo.
+            $this->assertEqualsCanonicalizing(['present' => 1, 'absent' => 1], $event->properties);
         });
     }
 

@@ -75,6 +75,13 @@ trait BuildsLessonFixtures
      */
     protected function makeLesson(array $attributes = []): Lesson
     {
+        // Uma aula noutro dia sem `ends_at` explícito herdava o fim de 8 de
+        // outubro e acabava antes de começar — o SQLite não o vê, e o CHECK
+        // `lessons_times_check` do MySQL recusa-o. O fim segue o início.
+        if (isset($attributes['starts_at']) && ! array_key_exists('ends_at', $attributes)) {
+            $attributes['ends_at'] = Carbon::parse($attributes['starts_at'])->addMinutes(50)->toDateTimeString();
+        }
+
         return $this->inTenant($this->organization, fn (): Lesson => Lesson::create(array_merge([
             'class_id' => $this->schoolClass->id,
             'starts_at' => '2026-10-08 09:30:00',
