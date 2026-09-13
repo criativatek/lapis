@@ -27,6 +27,14 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 
 ## [0.145.0] — 2026-09-13
 
+### Documentos legais
+
+- **Política de Privacidade e Acordo de Tratamento de Dados:** a lista de dados
+  pedagógicos passa a nomear «aulas e sumários, assiduidade por aula
+  (presente/falta)». Alteração de transparência, sem nova finalidade, prazo,
+  fundamento ou subcontratante; Termos sem alteração. Datas de entrada em vigor
+  por decidir antes do deploy.
+
 ### Adicionado
 
 - **Assiduidade por aula (Presente / Falta).** Na página da aula, logo a seguir
