@@ -137,7 +137,7 @@ class ClassController extends Controller
         Gate::authorize('create', SchoolClass::class);
 
         $class = $this->service->create(
-            [...$request->safe()->only(['label', 'academic_year_id', 'subject_id', 'grade_level', 'assessment_profile_version_id']), 'status' => 'preparation'],
+            [...$request->safe()->only(['label', 'academic_year_id', 'subject_id', 'grade_level', 'assessment_profile_version_id']), 'is_support_class' => $request->boolean('is_support_class'), 'status' => 'preparation'],
             $this->user(),
         );
 
@@ -184,6 +184,7 @@ class ClassController extends Controller
                 'ulid' => $class->ulid,
                 'id' => $class->id,
                 'label' => $class->label,
+                'is_support_class' => $class->is_support_class,
                 'subject' => $class->subject->name,
                 'academic_year' => $class->academicYear->label,
                 'grade_level' => $class->grade_level,
@@ -334,6 +335,7 @@ class ClassController extends Controller
             'schoolClass' => [
                 'ulid' => $class->ulid,
                 'label' => $class->label,
+                'is_support_class' => $class->is_support_class,
                 // Shown for context, not editable here (§10.2 — year, subject
                 // and grade feed reporting/profile-matching and are not safe
                 // to change once a class has enrollments or instruments).
@@ -352,7 +354,15 @@ class ClassController extends Controller
         // subject_id and grade_level are deliberately never read from the
         // request here, regardless of what ClassRequest validated, so a
         // crafted payload cannot move a class between years/subjects.
-        $class->update(['label' => $request->validated('label')]);
+        // «Turma de apoio» também se edita aqui: desligá-la não mexe em nenhuma
+        // inscrição — só esconde a pesquisa de alunos existentes. Ausente do
+        // pedido, fica como estava.
+        $class->update([
+            'label' => $request->validated('label'),
+            'is_support_class' => $request->has('is_support_class')
+                ? $request->boolean('is_support_class')
+                : $class->is_support_class,
+        ]);
 
         return to_route('classes.show', $class->ulid);
     }

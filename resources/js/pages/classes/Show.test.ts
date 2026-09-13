@@ -54,6 +54,7 @@ function baseProps() {
             id: 1,
             ulid: 'class-1',
             label: '7.º A',
+            is_support_class: false,
             subject: 'Matemática',
             academic_year: '2026/2027',
             grade_level: '7.º',

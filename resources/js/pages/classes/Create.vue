@@ -4,6 +4,7 @@ import { computed } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
@@ -22,7 +23,9 @@ const form = useForm<{
     subject_id: number | null;
     grade_level: string;
     assessment_profile_version_id: number | null;
+    is_support_class: boolean;
 }>({
+    is_support_class: false,
     label: '',
     academic_year_id: null,
     subject_id: null,
@@ -88,6 +91,21 @@ function submit(): void {
                     <InputError :message="form.errors.assessment_profile_version_id" />
                     <p v-if="form.subject_id && availableProfiles.length === 0" class="text-xs text-muted-foreground">
                         Não há perfis ativos para esta disciplina. Pode criar a turma e associar depois.
+                    </p>
+                </div>
+            </div>
+
+            <div class="flex items-start gap-3 rounded-lg border border-border p-3">
+                <Checkbox
+                    id="is_support_class"
+                    :model-value="form.is_support_class"
+                    class="mt-0.5"
+                    @update:model-value="form.is_support_class = $event === true"
+                />
+                <div class="grid gap-1">
+                    <Label for="is_support_class">Turma de apoio</Label>
+                    <p class="text-xs text-muted-foreground">
+                        Pode reunir alunos de várias turmas. Os alunos que já estão nas suas turmas são adicionados sem serem criados de novo.
                     </p>
                 </div>
             </div>

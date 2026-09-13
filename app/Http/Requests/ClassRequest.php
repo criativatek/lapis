@@ -46,6 +46,9 @@ class ClassRequest extends FormRequest
             'academic_year_id' => [$classId !== null ? 'sometimes' : 'required', new BelongsToCurrentOrganization(AcademicYear::class)],
             'subject_id' => [$classId !== null ? 'sometimes' : 'required', new BelongsToCurrentOrganization(Subject::class)],
             'grade_level' => ['nullable', 'string', 'max:16'],
+            // «Turma de apoio». Opcional e falso por omissão: sem ele a turma é
+            // exatamente o que sempre foi.
+            'is_support_class' => ['sometimes', 'boolean'],
             // The active profile version this class is assessed by. Optional at
             // creation; a class can be set up before its profile is chosen.
             'assessment_profile_version_id' => ['nullable', new BelongsToCurrentOrganization(AssessmentProfileVersion::class)],

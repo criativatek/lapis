@@ -75,6 +75,7 @@ use App\Http\Controllers\StudentDirectoryController;
 use App\Http\Controllers\StudentPhotoController;
 use App\Http\Controllers\StudentProgressController;
 use App\Http\Controllers\SubjectController;
+use App\Http\Controllers\SupportClassStudentController;
 use App\Http\Controllers\SupportController;
 use App\Http\Controllers\TeacherTimetableController;
 use App\Http\Controllers\TeamController;
@@ -430,6 +431,13 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::post('classes/{class}/profile-migration', [ClassProfileMigrationController::class, 'store'])->name('classes.profile-migration.store');
 
         Route::post('classes/{class}/students', [EnrollmentController::class, 'store'])->name('classes.students.store');
+        // Turma de apoio: inscrever um aluno que já existe, sem o criar de novo.
+        // Antes de `classes/{class}/students/{enrollment}` não é preciso — o
+        // segmento é outro —, mas fica ao lado do fluxo manual de propósito.
+        Route::get('classes/{class}/existing-students', [SupportClassStudentController::class, 'search'])
+            ->middleware('throttle:60,1')
+            ->name('classes.existing-students.search');
+        Route::post('classes/{class}/existing-students', [SupportClassStudentController::class, 'store'])->name('classes.existing-students.store');
         Route::put('classes/{class}/students/{enrollment}', [EnrollmentController::class, 'update'])->name('classes.students.update');
         // The school's own identifiers, saved as the teacher has them: a column.
         Route::put('classes/{class}/process-numbers', [EnrollmentController::class, 'updateProcessNumbers'])->name('classes.process-numbers.update');

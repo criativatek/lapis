@@ -391,7 +391,8 @@ class BuildImportPlan
             $profileVersion = $profileVersionUlid !== null ? $profileVersionsByUlid->get($profileVersionUlid) : null;
 
             if ($existing !== null) {
-                $diverges = $existing->label !== $row['label'] || $existing->status->value !== $row['status'];
+                $diverges = $existing->label !== $row['label'] || $existing->status->value !== $row['status']
+                    || $existing->is_support_class !== ($row['is_support_class'] ?? false);
 
                 return [
                     'ulid' => $row['ulid'],
@@ -426,7 +427,8 @@ class BuildImportPlan
 
             if ($businessKeyConflict !== null) {
                 if ($elsewhere->has($row['ulid'])) {
-                    $diverges = $businessKeyConflict->label !== $row['label'] || $businessKeyConflict->status->value !== $row['status'];
+                    $diverges = $businessKeyConflict->label !== $row['label'] || $businessKeyConflict->status->value !== $row['status']
+                        || $businessKeyConflict->is_support_class !== ($row['is_support_class'] ?? false);
 
                     return [
                         'ulid' => $row['ulid'], 'label' => $row['label'],
@@ -463,6 +465,7 @@ class BuildImportPlan
                 'academic_year_id' => $academicYearId,
                 'subject_ulid' => $subject['ulid'] ?? null,
                 'subject_id' => $subjectId,
+                'is_support_class' => $row['is_support_class'] ?? false,
                 'status' => $row['status'],
                 'assessment_profile_version_ulid' => $profileVersionId === null ? $profileVersionUlid : null,
                 'assessment_profile_version_id' => $profileVersionId,

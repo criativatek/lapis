@@ -24,17 +24,18 @@ arquitetura.
 
 | `schema_version` | Estado | Capacidade |
 |---|---|---|
-| 7 (atual) | `Supported` | Como a v6, acrescentando `interventions[].created_batch_ulid` e `interventions[].support_measures` |
+| 8 (atual) | `Supported` | Como a v7, acrescentando `classes[].is_support_class` — ausente num backup mais antigo, lê-se como `false` (turma normal) |
+| 7 | `LegacyCompatible` | Como a v6, acrescentando `interventions[].created_batch_ulid` e `interventions[].support_measures` |
 | 6 | `LegacyCompatible` | Como a v5, acrescentando `assessment_profiles[].grade_levels` — um perfil pode agora cobrir mais do que um ano de escolaridade |
 | 5 | `LegacyCompatible` | Como a v4, acrescentando os dados completos de anos letivos e disciplinas para os poder criar em segurança. Um perfil só transporta o antigo `grade_level` singular |
 | 4 | `LegacyCompatible` | Estrutura, avaliação e acompanhamento pedagógico completos, mas anos letivos e disciplinas continuam match-only por não terem coleção própria |
 | 3 | `LegacyCompatible` | Só turmas/alunos/inscrições com `enrolled_on`; elementos de avaliação e classificações não existiam ainda no formato — linhas que os precisassem seriam `unsupported` |
 | 2 | `LegacyCompatible` | Como a 3, mas sem `enrollments[].enrolled_on` — uma inscrição sem essa data não pode ser **criada** em segurança |
 | < 2 | `Invalid` | Ficheiro recusado por inteiro |
-| > 7 | `UnsupportedNewer` | Ficheiro recusado por inteiro — backup de uma versão do Lapispro mais recente do que este código entende |
+| > 8 | `UnsupportedNewer` | Ficheiro recusado por inteiro — backup de uma versão do Lapispro mais recente do que este código entende |
 
 `App\Support\Import\Backup\BackupSchemaCompatibility` é a única fonte desta
-tabela em código (`CURRENT = 7`, `MINIMUM_SUPPORTED = 2`). Não existe
+tabela em código (`CURRENT = 8`, `MINIMUM_SUPPORTED = 2`). Não existe
 ramificação em nenhum ponto do pipeline com base em `schema_version` — cada
 coleção nova simplesmente está ausente (`?? []`) num backup mais antigo, e o
 pipeline trata "ausente" e "vazio" da mesma forma. Um backup v2 ou v3 continua
@@ -71,7 +72,7 @@ aqui em vez de repetidos em cada linha da tabela:
 |---|---|---|
 | `academic_years` | `ulid`; chave de negócio: rótulo | **Novo na v5.** Transporta `label`, `starts_on`, `ends_on`, `status`, `country_code` e `region_code`; nunca transporta o estado de encerramento (`closed_at`/`closed_by`) |
 | `subjects` | `ulid`; chave de negócio: código | **Novo na v5.** Transporta `name` e `code`; as referências nas restantes coleções continuam a usar o nome |
-| `classes` | `ulid` | Referencia `assessment_profile_version_ulid` opcionalmente — se a versão não for restaurável, a turma continua a restaurar-se sem perfil (um estado legítimo; o professor atribui um perfil depois) |
+| `classes` | `ulid` | **`is_support_class` novo na v8** (ausente ⇒ `false`; um valor diferente do da turma já existente no destino é `conflict`, nunca sobrescrito). Referencia `assessment_profile_version_ulid` opcionalmente — se a versão não for restaurável, a turma continua a restaurar-se sem perfil (um estado legítimo; o professor atribui um perfil depois) |
 | `students`, `enrollments` | `ulid` | Inalterado desde a Fatia 6 |
 | `academic_periods` | `ulid` | **Novo na v4.** Ao contrário de anos letivos/disciplinas, um período é criado, não só correspondido — tem `label`, `sequence`, `kind`, `starts_on`/`ends_on` próprios |
 | `scales` (+ `levels` aninhados) | Sistema: nome · Custom: `ulid` | Uma escala de sistema (`kind = level`, `organization_id` nulo) nunca é criada, só correspondida; uma escala customizada e os seus níveis são restaurados por inteiro |

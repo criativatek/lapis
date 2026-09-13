@@ -7,6 +7,7 @@ use App\Models\EnrollmentStatus;
 use App\Models\Organization;
 use App\Models\SchoolClass;
 use App\Models\Student;
+use App\Services\Classes\StudentAlreadyEnrolled;
 use App\Support\Limits\LimitKey;
 use App\Support\Limits\Limits;
 use App\Support\Tenancy\CurrentOrganization;
@@ -76,6 +77,62 @@ class StudentEnrollmentService
                 'status_reason' => $data['status_reason'] ?? null,
                 'is_late_entry' => $isLate,
                 'import_note' => $data['import_note'] ?? null,
+            ]);
+        });
+    }
+
+    /**
+     * Inscreve numa turma um aluno QUE JÁ EXISTE — a turma de apoio.
+     *
+     * NADA É CRIADO ALÉM DA INSCRIÇÃO. O Student, o pseudonym_code, a
+     * identidade cifrada, o n.º de processo e a fotografia são os mesmos: a
+     * fotografia aparece na turma de apoio porque pertence ao aluno, não à
+     * inscrição. As inscrições noutras turmas ficam exatamente como estavam.
+     *
+     * O QUE O CHAMADOR JÁ GARANTIU: que este professor pode reutilizar este
+     * aluno (ReusableStudents::find()). O que se garante aqui, sob bloqueio da
+     * turma, é que não fica duas vezes ativo na mesma turma.
+     *
+     * A QUOTA DE ALUNOS ATIVOS só é consultada se o aluno não estiver já ativo
+     * noutra turma — a mesma pergunta que fillFromRoster() faz. Uma pessoa
+     * numa turma normal e numa de apoio é um aluno, não dois.
+     *
+     * @throws StudentAlreadyEnrolled
+     */
+    public function enrollExisting(SchoolClass $class, Student $student, ?string $enrolledOn = null): Enrollment
+    {
+        return DB::transaction(function () use ($class, $student, $enrolledOn): Enrollment {
+            SchoolClass::query()->whereKey($class->getKey())->lockForUpdate()->first();
+
+            if ($class->activeEnrollments()->where('student_id', $student->getKey())->exists()) {
+                throw StudentAlreadyEnrolled::inThisClass();
+            }
+
+            $enrolledOn ??= $class->academicYear->starts_on->toDateString();
+
+            if ($class->enrollments()->where('student_id', $student->getKey())->whereDate('enrolled_on', $enrolledOn)->exists()) {
+                throw StudentAlreadyEnrolled::onThisDate();
+            }
+
+            $alreadyActiveElsewhere = Enrollment::query()
+                ->where('student_id', $student->getKey())
+                ->active()
+                ->exists();
+
+            if (! $alreadyActiveElsewhere) {
+                $organization = Organization::query()
+                    ->whereKey($this->currentOrganization->id())
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                $this->limits->assertCanIncreaseFor($organization, LimitKey::ActiveStudents);
+            }
+
+            return $class->enrollments()->create([
+                'student_id' => $student->getKey(),
+                'enrolled_on' => $enrolledOn,
+                'status' => EnrollmentStatus::Active->value,
+                'is_late_entry' => Carbon::parse($enrolledOn)->greaterThan($class->academicYear->starts_on),
             ]);
         });
     }

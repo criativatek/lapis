@@ -174,6 +174,7 @@ class ExecuteDataImport
                     'academic_year_id' => $row['academic_year_id'] ?? $this->resolveId($row['academic_year_ulid'] ?? null, $academicYearsByUlid),
                     'subject_id' => $row['subject_id'] ?? $this->resolveId($row['subject_ulid'] ?? null, $subjectsByUlid),
                     'label' => $row['label'],
+                    'is_support_class' => ($row['is_support_class'] ?? false) === true,
                     'status' => $row['status'],
                     'assessment_profile_version_id' => $profileVersionId,
                 ]);

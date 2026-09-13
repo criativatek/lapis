@@ -29,4 +29,9 @@ class SchoolClassFactory extends Factory
             'status' => 'preparation',
         ];
     }
+
+    public function support(): static
+    {
+        return $this->state(['is_support_class' => true]);
+    }
 }

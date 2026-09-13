@@ -1293,6 +1293,9 @@ class GenerateDataExport
         return [
             'ulid' => $class->ulid,
             'label' => $class->label,
+            // Novo na v8. Sem ele uma turma de apoio restaurada voltava
+            // silenciosamente a ser uma turma normal.
+            'is_support_class' => $class->is_support_class,
             'status' => $class->status->value,
             'academic_year' => $class->academicYear->label,
             'subject' => $class->subject?->name,

@@ -137,7 +137,7 @@ class ValidateBackupPayload
                 return $this->validProfileVersionPeriodRow($row, $rowIssues);
             }),
 
-            'classes' => $this->whitelistRows($decoded, 'classes', ['ulid', 'label', 'status', 'academic_year', 'subject', 'assessment_profile_version_ulid'], function (array $row) use (&$rowIssues): ?array {
+            'classes' => $this->whitelistRows($decoded, 'classes', ['ulid', 'label', 'is_support_class', 'status', 'academic_year', 'subject', 'assessment_profile_version_ulid'], function (array $row) use (&$rowIssues): ?array {
                 return $this->validClassRow($row, $rowIssues);
             }),
             'students' => $this->whitelistRows($decoded, 'students', ['ulid', 'pseudonym_code', 'display_name'], function (array $row) use (&$rowIssues): ?array {
@@ -425,6 +425,10 @@ class ValidateBackupPayload
             'ulid' => $ulid,
             'created_batch_ulid' => $this->nullableUlid($row['created_batch_ulid'] ?? null),
             'label' => $row['label'],
+            // Ausente num backup anterior à v8 — e aí a turma era, por
+            // definição, uma turma normal. Qualquer valor que não seja o
+            // booleano true também o é.
+            'is_support_class' => ($row['is_support_class'] ?? false) === true,
             'status' => $row['status'],
             'academic_year' => $row['academic_year'],
             'subject' => $this->nullableString($row['subject'] ?? null),

@@ -25,6 +25,52 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.144.0] — 2026-09-13
+
+### Adicionado
+
+- **Turmas de apoio (Fase 1).** Ao criar ou editar uma turma há uma opção
+  facultativa, «Turma de apoio», desligada por omissão — sem ela nada muda. Uma
+  turma de apoio é uma turma como as outras (aulas, horário, sumários,
+  inscrições próprias) que pode reunir alunos de várias turmas, sem turma-base.
+- **«Adicionar aluno existente».** Na turma de apoio, o professor pesquisa pelo
+  nome (sem acentos nem maiúsculas) ou pelo n.º de processo entre os alunos das
+  turmas que leciona no mesmo ano letivo, e inscreve-o. É o **mesmo aluno**:
+  nome, n.º de processo, pseudónimo e fotografia não são copiados nem criados
+  de novo — só nasce a inscrição. A turma de origem fica exatamente como estava.
+  Homónimos aparecem separados, cada um com a sua turma, n.º e processo.
+  Adicionar e importar alunos novos continua disponível logo abaixo.
+
+### Segurança e privacidade
+
+- A pesquisa nunca sai de «só as minhas turmas»: alunos com inscrição ativa em
+  turmas não arquivadas do próprio professor, no ano letivo da turma de apoio.
+  Outras organizações e turmas de colegas nunca aparecem, e o servidor volta a
+  verificar o aluno escolhido. No máximo 20 resultados, só com nome, turma, n.º
+  e processo.
+- O mesmo aluno não pode ficar duas vezes ativo na mesma turma — recusado no
+  servidor com «Este aluno já pertence a esta turma.».
+
+### Notas técnicas
+
+- Migration aditiva `classes.is_support_class` (boolean, default false, sem
+  backfill, reversível).
+- A inscrição de apoio entra com a data de hoje (limitada ao ano letivo), para
+  que instrumentos e aulas anteriores não passem a contar ao aluno (§11.4).
+- Remover da turma de apoio usa as regras de sempre (`EnrollmentHistory`): nada
+  do aluno nem das outras inscrições é apagado.
+- **Cópia de segurança, `schema_version` 8.** `classes[].is_support_class`
+  passa a viajar no backup e é restaurado tal como estava. Um backup antigo,
+  sem o campo, continua válido e restaura as turmas como normais; uma turma já
+  existente no destino com o valor diferente fica em conflito e nunca é
+  sobrescrita. Um backup v8 é recusado por uma versão anterior do Lapispro,
+  como sempre acontece a um esquema mais recente.
+- Migration `2026_11_10_000300`, a seguir à última existente.
+- Centro de Ajuda: «Criar uma turma» e «Inscrever um aluno numa turma»
+  explicam a turma de apoio, o aluno existente e a diferença para T1/T2.
+- Fora de âmbito: presenças, integração com Estratégias e Medidas, IA. A
+  avaliação não muda.
+
 ## [0.143.0] — 2026-09-13
 
 ### Adicionado

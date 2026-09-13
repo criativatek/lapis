@@ -26,12 +26,13 @@ use Illuminate\Support\Carbon;
  * @property int $subject_id
  * @property string|null $grade_level
  * @property string $label
+ * @property bool $is_support_class
  * @property int|null $assessment_profile_version_id
  * @property ClassStatus $status
  * @property bool $include_evidence_in_report
  * @property Carbon|null $archived_at
  */
-#[Fillable(['academic_year_id', 'subject_id', 'grade_level', 'course_code', 'label', 'assessment_profile_version_id', 'status', 'include_evidence_in_report', 'archived_at'])]
+#[Fillable(['academic_year_id', 'subject_id', 'grade_level', 'course_code', 'label', 'is_support_class', 'assessment_profile_version_id', 'status', 'include_evidence_in_report', 'archived_at'])]
 class SchoolClass extends Model
 {
     /** @use HasFactory<SchoolClassFactory> */
@@ -56,6 +57,7 @@ class SchoolClass extends Model
     {
         return [
             'status' => ClassStatus::class,
+            'is_support_class' => 'boolean',
             'include_evidence_in_report' => 'boolean',
             'archived_at' => 'datetime',
         ];

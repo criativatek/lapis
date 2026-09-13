@@ -4,6 +4,7 @@ import { Archive, ArchiveRestore, FileUp, Footprints, Pencil, Trash2, UserPlus }
 import { computed, onMounted, ref } from 'vue';
 import ClassGroupsSection from '@/components/classes/ClassGroupsSection.vue';
 import type { ClassGroup } from '@/components/classes/ClassGroupsSection.vue';
+import ExistingStudentPicker from '@/components/classes/ExistingStudentPicker.vue';
 import FileInput from '@/components/FileInput.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
@@ -63,6 +64,7 @@ const props = defineProps<{
         id: number;
         ulid: string;
         label: string;
+        is_support_class: boolean;
         subject: string;
         academic_year: string;
         grade_level: string | null;
@@ -510,6 +512,9 @@ function submitPhotos(): void {
                             <Trash2 class="size-4" /> Eliminar definitivamente
                         </Button>
                     </template>
+                    <Badge v-if="schoolClass.is_support_class" variant="outline">
+                        Turma de apoio
+                    </Badge>
                     <Badge variant="secondary" :class="statusToneClasses(schoolClass.status)">{{
                         schoolClass.status_label
                     }}</Badge>
@@ -631,6 +636,19 @@ function submitPhotos(): void {
                     </Button>
                 </div>
             </div>
+            <!-- Turma de apoio: primeiro o aluno que já existe; o formulário
+                 manual e a importação continuam logo abaixo para quem ainda
+                 não está no Lapispro. -->
+            <ExistingStudentPicker
+                v-if="schoolClass.is_support_class && !schoolClass.archived"
+                :class-ulid="schoolClass.ulid"
+            />
+            <p
+                v-if="schoolClass.is_support_class && !schoolClass.archived"
+                class="text-xs font-medium text-muted-foreground"
+            >
+                Aluno ainda não existe no Lapispro? Adicione-o como novo:
+            </p>
             <p class="text-xs text-muted-foreground">
                 Ficheiros exportados do Intuitivo (ou compatível): modelo
                 <strong>EB058e</strong> para a lista de alunos (Excel) e modelo

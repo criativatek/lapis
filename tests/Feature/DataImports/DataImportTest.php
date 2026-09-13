@@ -30,6 +30,7 @@ use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Concerns\SubscribesOrganizations;
 use Tests\TestCase;
+use ZipArchive;
 
 class DataImportTest extends TestCase
 {
@@ -570,5 +571,160 @@ class DataImportTest extends TestCase
             fn () => AssessmentProfile::with('gradeLevels')->where('name', 'Perfil Multi-Ano')->sole(),
         );
         $this->assertSame(['7.º'], $profile->gradeLevels->pluck('grade_level')->all());
+    }
+
+    // ------------------------------------------------ turmas de apoio (v8)
+
+    /**
+     * The backup's own JSON, read straight out of the generated ZIP — what a
+     * future restore will actually see, not what the database says.
+     *
+     * @return array<string, mixed>
+     */
+    private function backupJson(UploadedFile $file): array
+    {
+        $zip = new ZipArchive;
+        $this->assertTrue($zip->open($file->getPathname()));
+        $json = json_decode((string) $zip->getFromName('backup-lapis.json'), true);
+        $zip->close();
+
+        return $json;
+    }
+
+    /**
+     * Rewrites the backup JSON inside a copy of the ZIP — the only honest way
+     * to produce a backup written BEFORE a field existed, because the
+     * validator normalizes whatever it reads.
+     *
+     * @param  callable(array<string, mixed>): array<string, mixed>  $mutate
+     */
+    private function rewriteBackup(UploadedFile $file, callable $mutate): UploadedFile
+    {
+        $copy = tempnam(sys_get_temp_dir(), 'lapis-backup-').'.zip';
+        copy($file->getPathname(), $copy);
+
+        $zip = new ZipArchive;
+        $this->assertTrue($zip->open($copy));
+        $json = $mutate(json_decode((string) $zip->getFromName('backup-lapis.json'), true));
+        $zip->addFromString('backup-lapis.json', (string) json_encode($json));
+        $zip->close();
+
+        return new UploadedFile($copy, 'backup.zip', 'application/zip', null, true);
+    }
+
+    /** @return array{SchoolClass, SchoolClass} [normal, support] */
+    private function normalAndSupportClasses(Organization $organization, User $teacher): array
+    {
+        $normal = $this->classWithEnrollment($organization, $teacher, classLabel: '8.º F');
+        $support = app(CurrentOrganization::class)->runFor($organization, function () use ($organization, $teacher, $normal): SchoolClass {
+            $class = SchoolClass::factory()->recycle($organization)->create([
+                'academic_year_id' => $normal->academic_year_id,
+                'subject_id' => $normal->subject_id,
+                'label' => 'Apoio 8.º',
+                'is_support_class' => true,
+            ]);
+            $class->teachers()->attach($teacher, ['role' => 'owner']);
+
+            return $class;
+        });
+
+        return [$normal, $support];
+    }
+
+    private function classIn(Organization $organization, string $label): SchoolClass
+    {
+        return SchoolClass::withoutGlobalScope('organization')
+            ->where('organization_id', $organization->id)
+            ->where('label', $label)
+            ->sole();
+    }
+
+    #[Test]
+    public function a_new_backup_carries_is_support_class_for_both_kinds_of_class(): void
+    {
+        Storage::fake('local');
+        [$sourceOrg, $sourceOwner] = $this->institutionalOrganization();
+        $this->normalAndSupportClasses($sourceOrg, $sourceOwner);
+
+        $json = $this->backupJson($this->backupUpload($sourceOrg, $sourceOwner));
+
+        $this->assertSame(BackupSchemaCompatibility::CURRENT, $json['schema_version']);
+        $flags = collect($json['classes'])->mapWithKeys(fn (array $row) => [$row['label'] => $row['is_support_class']])->all();
+        $this->assertSame(false, $flags['8.º F']);
+        $this->assertSame(true, $flags['Apoio 8.º']);
+    }
+
+    #[Test]
+    public function a_support_class_round_trips_as_a_support_class_and_a_normal_class_as_normal(): void
+    {
+        Storage::fake('local');
+        [$sourceOrg, $sourceOwner] = $this->institutionalOrganization();
+        $this->normalAndSupportClasses($sourceOrg, $sourceOwner);
+        $file = $this->backupUpload($sourceOrg, $sourceOwner);
+
+        $destinationOwner = User::factory()->create();
+        $destinationOrg = $destinationOwner->personalOrganization();
+        $import = $this->uploadInto($destinationOrg, $destinationOwner, $file);
+
+        $this->actingAs($destinationOwner)->withSession(['organization_id' => $destinationOrg->id])
+            ->post("/data-imports/{$import->ulid}/confirm")->assertRedirect();
+
+        $this->assertTrue($this->classIn($destinationOrg, 'Apoio 8.º')->is_support_class);
+        $this->assertFalse($this->classIn($destinationOrg, '8.º F')->is_support_class);
+    }
+
+    #[Test]
+    public function a_legacy_backup_without_the_field_restores_every_class_as_normal(): void
+    {
+        Storage::fake('local');
+        [$sourceOrg, $sourceOwner] = $this->institutionalOrganization();
+        $this->normalAndSupportClasses($sourceOrg, $sourceOwner);
+
+        // A schema_version 7 backup: written before `is_support_class`
+        // existed, so the key is simply not there on any class.
+        $file = $this->rewriteBackup($this->backupUpload($sourceOrg, $sourceOwner), function (array $json): array {
+            $json['schema_version'] = 7;
+            $json['classes'] = array_map(function (array $row): array {
+                unset($row['is_support_class']);
+
+                return $row;
+            }, $json['classes']);
+
+            return $json;
+        });
+
+        $destinationOwner = User::factory()->create();
+        $destinationOrg = $destinationOwner->personalOrganization();
+        $import = $this->uploadInto($destinationOrg, $destinationOwner, $file);
+
+        $this->actingAs($destinationOwner)->withSession(['organization_id' => $destinationOrg->id])
+            ->post("/data-imports/{$import->ulid}/confirm")->assertRedirect();
+
+        $this->assertSame(2, $this->classCount($destinationOrg));
+        $this->assertFalse($this->classIn($destinationOrg, 'Apoio 8.º')->is_support_class);
+        $this->assertFalse($this->classIn($destinationOrg, '8.º F')->is_support_class);
+    }
+
+    #[Test]
+    public function an_existing_class_whose_support_flag_differs_is_a_conflict_and_is_never_overwritten(): void
+    {
+        Storage::fake('local');
+        [$sourceOrg, $sourceOwner] = $this->institutionalOrganization();
+        [, $support] = $this->normalAndSupportClasses($sourceOrg, $sourceOwner);
+        $file = $this->backupUpload($sourceOrg, $sourceOwner);
+
+        // Switched off locally after the backup was taken.
+        $support->forceFill(['is_support_class' => false])->save();
+
+        $import = $this->uploadInto($sourceOrg, $sourceOwner, $file);
+
+        $this->actingAs($sourceOwner)->withSession(['organization_id' => $sourceOrg->id])
+            ->get("/data-imports/{$import->ulid}")
+            ->assertInertia(fn ($page) => $page->where('plan.counts.classes.conflict', 1));
+
+        $this->actingAs($sourceOwner)->withSession(['organization_id' => $sourceOrg->id])
+            ->post("/data-imports/{$import->ulid}/confirm")->assertRedirect();
+
+        $this->assertFalse($this->classIn($sourceOrg, 'Apoio 8.º')->is_support_class);
     }
 }
