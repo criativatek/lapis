@@ -1,12 +1,21 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { ArrowLeft, Check, Copy, Save } from '@lucide/vue';
+import { ArrowLeft, Check, Copy, Eraser, Save, Trash2 } from '@lucide/vue';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import AlertError from '@/components/AlertError.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { statusToneClasses } from '@/lib/statusTone';
@@ -18,6 +27,10 @@ type Lesson = {
     ends_at: string | null;
     status: 'preparation' | 'prepared' | 'taught';
     status_label: string;
+    lesson_number: number | null;
+    /** Decididos no servidor — ver LessonController::show(). */
+    can_delete: boolean;
+    can_clear_summary: boolean;
     /** «8.º F», ou «8.º F · T1» numa aula de um grupo. Composto no servidor. */
     context_label: string;
     class_group_label: string | null;
@@ -44,6 +57,34 @@ const summaryForm = useForm({
     homework: props.lesson.summary?.homework ?? '',
 });
 const taughtForm = useForm({});
+const clearForm = useForm({});
+const deleteForm = useForm({});
+
+// As duas ações destrutivas desta página são deliberadamente DUAS, com dois
+// diálogos e duas frases diferentes: confundir «limpar o sumário» com «eliminar
+// a aula» é exatamente o engano que esta funcionalidade existe para desfazer.
+const clearDialogOpen = ref(false);
+const deleteDialogOpen = ref(false);
+
+function clearSummary(): void {
+    submittingFromThisPage.value = true;
+    clearForm.delete(`/lessons/${props.lesson.ulid}/summary`, {
+        preserveScroll: true,
+        onSuccess: () => {
+            clearDialogOpen.value = false;
+            summaryForm.content = '';
+            summaryForm.defaults({ ...summaryForm.data(), content: '' });
+        },
+        onFinish: releaseSubmission,
+    });
+}
+
+function deleteLesson(): void {
+    submittingFromThisPage.value = true;
+    deleteForm.delete(`/lessons/${props.lesson.ulid}`, {
+        onFinish: releaseSubmission,
+    });
+}
 
 // "Basear no sumário anterior" — a read-only convenience (never a write) that
 // offers the same class's most recent earlier sumário as an editable
@@ -204,7 +245,14 @@ onBeforeUnmount(() => {
         <div class="space-y-3">
             <div class="flex flex-wrap items-start justify-between gap-3">
                 <Heading :title="lesson.context_label" :description="lesson.school_class.subject" />
-                <Badge variant="secondary" :class="statusToneClasses(lesson.status)">{{ lesson.status_label }}</Badge>
+                <div class="flex items-center gap-2">
+                    <!-- O mesmo número que a lista e o horário mostram: é o
+                         mesmo campo da mesma aula, e não um contador de ecrã. -->
+                    <Badge v-if="lesson.lesson_number !== null" variant="outline" class="tabular-nums"
+                        >Lição {{ lesson.lesson_number }}</Badge
+                    >
+                    <Badge variant="secondary" :class="statusToneClasses(lesson.status)">{{ lesson.status_label }}</Badge>
+                </div>
             </div>
 
             <dl class="grid gap-3 rounded-xl border bg-card p-4 text-sm sm:grid-cols-2">
@@ -278,5 +326,90 @@ onBeforeUnmount(() => {
                 </Button>
             </div>
         </form>
+
+        <!-- As ações destrutivas vivem FORA do formulário do sumário e num bloco
+             próprio, separadas do «Guardar» por uma fronteira visível: são as
+             únicas desta página que não se desfazem. -->
+        <section
+            v-if="lesson.can_clear_summary || lesson.can_delete"
+            class="space-y-3 rounded-xl border border-destructive/30 p-4"
+        >
+            <h2 class="text-sm font-semibold">Corrigir esta aula</h2>
+            <div class="flex flex-col gap-3 sm:flex-row">
+                <Dialog v-if="lesson.can_clear_summary" v-model:open="clearDialogOpen">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        class="min-h-11 flex-1"
+                        @click="clearDialogOpen = true"
+                    >
+                        <Eraser class="size-4" /> Limpar sumário
+                    </Button>
+                    <DialogContent class="sm:max-w-md">
+                        <DialogHeader class="space-y-2">
+                            <DialogTitle>Limpar este sumário?</DialogTitle>
+                            <DialogDescription>
+                                A aula será mantida, mas o texto do sumário será removido.
+                                As notas do professor, os recursos e o TPC não são
+                                apagados.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <DialogFooter class="gap-2">
+                            <DialogClose as-child>
+                                <Button type="button" variant="outline" class="min-h-11"
+                                    >Cancelar</Button
+                                >
+                            </DialogClose>
+                            <Button
+                                type="button"
+                                variant="destructive"
+                                class="min-h-11"
+                                :disabled="clearForm.processing"
+                                @click="clearSummary"
+                            >
+                                Limpar sumário
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                <Dialog v-if="lesson.can_delete" v-model:open="deleteDialogOpen">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        class="min-h-11 flex-1 text-destructive"
+                        @click="deleteDialogOpen = true"
+                    >
+                        <Trash2 class="size-4" /> Eliminar aula
+                    </Button>
+                    <DialogContent class="sm:max-w-md">
+                        <DialogHeader class="space-y-2">
+                            <DialogTitle>Eliminar esta aula?</DialogTitle>
+                            <DialogDescription>
+                                Os dados associados a esta ocorrência serão eliminados. O
+                                horário recorrente da turma não será alterado, e as
+                                restantes aulas mantêm-se.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <DialogFooter class="gap-2">
+                            <DialogClose as-child>
+                                <Button type="button" variant="outline" class="min-h-11"
+                                    >Cancelar</Button
+                                >
+                            </DialogClose>
+                            <Button
+                                type="button"
+                                variant="destructive"
+                                class="min-h-11"
+                                :disabled="deleteForm.processing"
+                                @click="deleteLesson"
+                            >
+                                Eliminar aula
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            </div>
+        </section>
     </main>
 </template>

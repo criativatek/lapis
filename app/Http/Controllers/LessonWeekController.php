@@ -6,6 +6,7 @@ use App\Actions\Lessons\MaterializeLessonsForWeek;
 use App\Http\Controllers\Concerns\RefusesDuringImpersonation;
 use App\Http\Requests\Lessons\WeeklyLessonsRequest;
 use App\Models\AcademicYear;
+use App\Models\ClassGroup;
 use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Lessons\WeeklyLessonsQuery;
@@ -75,6 +76,15 @@ class LessonWeekController extends Controller implements HasMiddleware
                 ->whereHas('teachers', fn ($query) => $query->whereKey($this->user($request)->getKey()))
                 ->whereHas('recurringLessonSlots')
                 ->count(),
+            // «Hoje» vem do SERVIDOR, no fuso da organização, e não do relógio
+            // do portátil do professor: é o mesmo dia que o lote de «Hoje» vai
+            // usar do lado de lá, e um botão que diga um dia e marque outro é
+            // pior do que não existir.
+            'today' => CarbonImmutable::now('Europe/Lisbon')->toDateString(),
+            // As turmas onde é possível inserir uma aula, com os seus grupos:
+            // a sequência em que se insere é (turma, grupo), e sem os grupos o
+            // formulário não conseguiria distinguir T1 de T2.
+            'insertableClasses' => $academicYear === null ? [] : $this->insertableClasses($request, $academicYear),
         ]);
     }
 
@@ -108,6 +118,40 @@ class LessonWeekController extends Controller implements HasMiddleware
         );
 
         return back();
+    }
+
+    /**
+     * @return list<array{ulid: string, label: string, subject: string, groups: list<array{id: int, label: string}>}>
+     */
+    private function insertableClasses(Request $request, AcademicYear $academicYear): array
+    {
+        return array_values(SchoolClass::query()
+            ->where('academic_year_id', $academicYear->getKey())
+            ->whereHas('teachers', fn ($query) => $query->whereKey($this->user($request)->getKey()))
+            // Só turmas COM horário configurado: inserir uma aula é ocupar a
+            // próxima ocorrência válida do horário, e numa turma sem horário
+            // não existe nenhuma para ocupar.
+            ->whereHas('recurringLessonSlots')
+            // `active()` e não a relação inteira: `classGroups()` devolve
+            // também os arquivados, de propósito (uma aula de novembro continua
+            // a dizer o grupo que tinha), mas oferecer um grupo arquivado para
+            // uma aula NOVA seria o mesmo beco que RecurringLessonSlotRequest
+            // já recusa abrir.
+            ->with(['subject', 'classGroups' => fn ($query) => $query->active()])
+            ->orderBy('label')
+            ->get()
+            ->map(fn (SchoolClass $class): array => [
+                'ulid' => $class->ulid,
+                'label' => $class->label,
+                'subject' => $class->subject->name,
+                'groups' => array_values($class->classGroups
+                    ->map(fn (ClassGroup $group): array => [
+                        'id' => (int) $group->getKey(),
+                        'label' => (string) $group->label,
+                    ])
+                    ->all()),
+            ])
+            ->all());
     }
 
     private function selectedAcademicYear(Request $request): ?AcademicYear

@@ -46,7 +46,9 @@ use App\Http\Controllers\InterventionController;
 use App\Http\Controllers\InvitationAcceptanceController;
 use App\Http\Controllers\IssueReportController;
 use App\Http\Controllers\LegalController;
+use App\Http\Controllers\LessonBatchController;
 use App\Http\Controllers\LessonController;
+use App\Http\Controllers\LessonInsertionController;
 use App\Http\Controllers\LessonScheduleController;
 use App\Http\Controllers\LessonSequenceController;
 use App\Http\Controllers\LessonWeekController;
@@ -488,6 +490,15 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::get('lessons', [LessonWeekController::class, 'index'])->name('lessons.index');
         Route::post('lessons/materialize-week', [LessonWeekController::class, 'materialize'])->name('lessons.materialize-week');
 
+        // Inserção intermédia e lote — ANTES do wildcard `lessons/{lesson}`
+        // mais abaixo, pela mesma razão que `lessons/sequences` lá está: o
+        // wildcard de um só segmento engoliria «insert» e «batch-taught»
+        // tratando-os como ulids de aulas.
+        Route::post('lessons/insert/preview', [LessonInsertionController::class, 'preview'])->name('lessons.insert.preview');
+        Route::post('lessons/insert', [LessonInsertionController::class, 'store'])->name('lessons.insert');
+        Route::post('lessons/batch-taught/preview', [LessonBatchController::class, 'preview'])->name('lessons.batch-taught.preview');
+        Route::post('lessons/batch-taught', [LessonBatchController::class, 'store'])->name('lessons.batch-taught');
+
         // Reusable lesson sequences (Fatia 4) — secondary to the weekly view
         // above, never a replacement for it. Registered before the
         // single-segment lessons/{lesson} wildcard below, which would
@@ -501,6 +512,13 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
 
         Route::get('lessons/{lesson}', [LessonController::class, 'show'])->name('lessons.show');
         Route::put('lessons/{lesson}/summary', [LessonController::class, 'updateSummary'])->name('lessons.summary.update');
+        // Limpar o sumário e eliminar a aula são DUAS rotas, e não uma com um
+        // parâmetro: são duas decisões diferentes do professor, com duas
+        // confirmações diferentes e duas consequências diferentes. Uma só rota
+        // com um `?keep_lesson=` seria a mesma confusão que esta fatia existe
+        // para desfazer.
+        Route::delete('lessons/{lesson}/summary', [LessonController::class, 'clearSummary'])->name('lessons.summary.clear');
+        Route::delete('lessons/{lesson}', [LessonController::class, 'destroy'])->name('lessons.destroy');
         Route::post('lessons/{lesson}/mark-taught', [LessonController::class, 'markTaught'])->name('lessons.mark-taught');
         // Read-only convenience for "Basear no sumário anterior" — never
         // writes; copies into the CURRENT lesson's still-open, unsaved form.

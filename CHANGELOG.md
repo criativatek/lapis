@@ -25,6 +25,64 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.143.0] — 2026-09-13
+
+### Adicionado
+
+- **Numeração sequencial das lições.** Cada aula passa a ter o seu número —
+  «Lição 12» — atribuído pela ordem cronológica real dentro da sequência a que
+  pertence, e mostrado na lista, no horário e na página da aula. O âmbito da
+  sequência é (turma, grupo): numa turma desdobrada, T1 e T2 avançam a ritmos
+  diferentes e cada uma conta a partir de 1, tal como o «sumário anterior» já
+  fazia. Uma aula já lecionada nunca muda de número: qualquer operação que o
+  exigisse é recusada por inteiro, com a data da aula em causa.
+- **Vista Horário, a par da Vista Lista.** Um alternador em cima da semana
+  desenha as mesmas aulas como grelha — dias em coluna, blocos por aula, com
+  número da lição, turma, grupo, hora e estado. As duas vistas leem exatamente
+  as mesmas aulas da mesma consulta, alternar entre elas não vai ao servidor e
+  não muda a semana apresentada. No telemóvel a grelha mostra um dia de cada
+  vez, com seletor de dia, em vez de cinco colunas ilegíveis.
+- **Inserir uma aula no meio de uma sequência.** Quando falta uma aula antes das
+  que já estão preparadas, a nova ocupa a próxima ocorrência do horário e as
+  seguintes deslocam-se para as ocorrências seguintes — as reais, saltando
+  feriados e interrupções letivas, e nunca «mais um dia». Antes de confirmar, o
+  professor vê o impacto linha a linha: de que dia para que dia, e de que lição
+  para que lição. A operação é atómica e recusa-se por inteiro se tivesse de
+  atravessar uma aula já lecionada.
+- **Marcar aulas como lecionadas em lote**, por quatro modos: hoje, a semana
+  apresentada, as aulas selecionadas na lista ou no horário, ou outro intervalo
+  de datas. A confirmação diz quantas vão ser marcadas, quantas foram
+  encontradas e quais ficam de fora e porquê. O lote usa a mesma regra de
+  domínio do botão individual, e nada é alterado parcialmente em silêncio.
+- **«Eliminar aula» e «Limpar sumário»**, como duas ações distintas com duas
+  confirmações distintas. Eliminar remove aquela ocorrência e os seus dados sem
+  tocar no horário recorrente nem nas restantes aulas; limpar apaga o texto do
+  sumário e mantém a aula, as notas do professor, os recursos e o TPC. Nenhuma
+  das duas atua sobre uma aula já lecionada.
+- **Ler o sumário completo sem sair da lista.** Um «Ver sumário completo» abre o
+  texto inteiro no sítio, sem ir ao servidor e sem depender do rato.
+
+### Corrigido
+
+- **Aulas duplicadas por horários sobrepostos.** A chave que protegia as aulas
+  inclui o tempo do horário que as gerou, pelo que dois tempos distintos da
+  mesma turma à mesma hora produziam duas aulas que ela nunca via — e nada, em
+  nenhum caminho, verificava a sobreposição. Passa a haver uma regra única
+  (`LessonConflicts`) que compara intervalos, e não igualdade de horas
+  (14:10–15:00 e 14:30–15:20 sobrepõem-se), e que sabe quem participa em cada
+  um: a turma inteira colide com qualquer grupo seu, um grupo colide consigo
+  próprio, e dois grupos diferentes continuam a poder ter aula à mesma hora. O
+  horário recusa o tempo sobreposto ao ser gravado, com a mensagem a dizer qual
+  é o tempo em conflito; a materialização, que corre sozinha ao abrir a semana,
+  salta a ocorrência em vez de rebentar a página.
+- **A aula eliminada renascia ao recarregar a semana.** Abrir a semana
+  materializa-a a partir do horário, pelo que a ocorrência eliminada voltava a
+  ser criada no instante seguinte. Passa a ficar registada como cancelada — só
+  aquela ocorrência, nunca a rotina, que continua a produzir todas as outras.
+- **Rever um tempo do horário que adquiriu histórico durante a gravação**
+  devolvia um erro de tipo em vez da pergunta que faltava responder. O ramo sem
+  bloqueio passa a fazer a mesma reverificação que o ramo com bloqueio já fazia.
+
 ## [0.142.0] — 2026-09-10
 
 ### Adicionado

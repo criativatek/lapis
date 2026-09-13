@@ -306,7 +306,17 @@ class LessonScheduleTest extends TestCase
         $session = ['organization_id' => $this->organization->id, 'impersonator_id' => 999];
 
         $this->actingAs($this->teacher)->withSession($session)
-            ->post('/_test/lesson-slots', $this->slotPayload($schoolClass))
+            // NUM TEMPO LIVRE, e não por cima do slot que acabou de ser criado:
+            // o horário de uma turma já não aceita dois tempos sobrepostos
+            // (LessonConflicts), e a validação corre antes de
+            // `refuseDuringImpersonation()`. Um payload em conflito devolveria o
+            // erro de validação e este caso deixaria de conseguir dizer o que
+            // quer dizer — que a personificação não escreve.
+            ->post('/_test/lesson-slots', $this->slotPayload($schoolClass, [
+                'day_of_week' => 3,
+                'starts_at' => '14:10',
+                'ends_at' => '15:00',
+            ]))
             ->assertForbidden();
         $this->actingAs($this->teacher)->withSession($session)
             ->put("/_test/lesson-slots/{$slot->ulid}", $this->slotPayload($schoolClass, ['day_of_week' => 2]))
@@ -626,7 +636,7 @@ class LessonScheduleTest extends TestCase
             'status' => LessonStatus::Taught,
             'created_by' => $this->teacher->id,
         ]));
-        $beforeRelevant = $this->byColumn($relevant->getAttributes());
+        $beforeRelevant = $this->lessonRow($relevant->id);
         $group = $this->groupFor($schoolClass);
 
         $this->putSlot($slot, $schoolClass, [
@@ -847,7 +857,7 @@ class LessonScheduleTest extends TestCase
             'status' => LessonStatus::Taught,
             'created_by' => $this->teacher->id,
         ]));
-        $before = $this->byColumn($lesson->getAttributes());
+        $before = $this->lessonRow($lesson->id);
         $tomorrow = $this->inDays(1);
 
         $this->actingAs($this->teacher)
@@ -1034,7 +1044,7 @@ class LessonScheduleTest extends TestCase
             'status' => LessonStatus::Preparation,
             'created_by' => $this->teacher->id,
         ]));
-        $before = $this->byColumn($lesson->getAttributes());
+        $before = $this->lessonRow($lesson->id);
 
         $this->actingAs($this->teacher)
             ->withSession(['organization_id' => $this->organization->id])
@@ -1103,7 +1113,7 @@ class LessonScheduleTest extends TestCase
             'status' => LessonStatus::Preparation,
             'created_by' => $this->teacher->id,
         ]));
-        $before = $this->byColumn($lesson->getAttributes());
+        $before = $this->lessonRow($lesson->id);
 
         $this->actingAs($this->teacher)
             ->withSession(['organization_id' => $this->organization->id])
@@ -1134,7 +1144,7 @@ class LessonScheduleTest extends TestCase
             $this->teacher,
         ));
         $lesson = $this->inTenant($this->organization, fn (): Lesson => Lesson::query()->sole());
-        $before = $this->byColumn($lesson->getAttributes());
+        $before = $this->lessonRow($lesson->id);
 
         $this->actingAs($this->teacher)
             ->withSession(['organization_id' => $this->organization->id])
@@ -1165,7 +1175,7 @@ class LessonScheduleTest extends TestCase
             $this->teacher,
         ));
         $lesson = $this->inTenant($this->organization, fn (): Lesson => Lesson::query()->sole());
-        $before = $this->byColumn($lesson->getAttributes());
+        $before = $this->lessonRow($lesson->id);
 
         $this->actingAs($this->teacher)
             ->withSession(['organization_id' => $this->organization->id])
@@ -1539,6 +1549,27 @@ class LessonScheduleTest extends TestCase
         ksort($attributes);
 
         return $attributes;
+    }
+
+    /**
+     * O retrato de uma aula LIDO DA BASE DE DADOS, e não dos atributos que o
+     * modelo tem em memória depois de um `create()`.
+     *
+     * A diferença importa: um `create()` que não mencione uma coluna deixa-a
+     * fora do array em memória, mas a linha gravada tem-na (a NULL). Comparar
+     * um com o outro fazia estes casos — que só querem dizer «esta aula não foi
+     * tocada» — falhar por cada coluna acrescentada à tabela, e foi
+     * exatamente o que `lesson_number` provocou. Lidos os dois lados da mesma
+     * maneira, a comparação volta a ser sobre o que mudou.
+     *
+     * @return array<string, mixed>
+     */
+    private function lessonRow(int $lessonId): array
+    {
+        return $this->inTenant(
+            $this->organization,
+            fn (): array => $this->byColumn(Lesson::query()->findOrFail($lessonId)->getAttributes()),
+        );
     }
 
     /**

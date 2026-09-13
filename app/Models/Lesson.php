@@ -19,10 +19,11 @@ use Illuminate\Support\Carbon;
  * @property int|null $recurring_lesson_slot_id
  * @property Carbon $starts_at
  * @property Carbon|null $ends_at
+ * @property int|null $lesson_number
  * @property LessonStatus $status
  * @property int $created_by
  */
-#[Fillable(['class_id', 'class_group_id', 'recurring_lesson_slot_id', 'starts_at', 'ends_at', 'status', 'created_by'])]
+#[Fillable(['class_id', 'class_group_id', 'recurring_lesson_slot_id', 'starts_at', 'ends_at', 'lesson_number', 'status', 'created_by'])]
 class Lesson extends Model
 {
     use BelongsToOrganization, HasUlids;
@@ -45,6 +46,7 @@ class Lesson extends Model
         return [
             'starts_at' => 'datetime',
             'ends_at' => 'datetime',
+            'lesson_number' => 'integer',
             'status' => LessonStatus::class,
         ];
     }

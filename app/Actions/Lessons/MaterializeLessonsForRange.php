@@ -3,11 +3,14 @@
 namespace App\Actions\Lessons;
 
 use App\Models\AcademicCalendarException;
+use App\Models\CancelledLessonOccurrence;
 use App\Models\Lesson;
 use App\Models\LessonStatus;
 use App\Models\RecurringLessonSlot;
 use App\Models\SchoolClass;
 use App\Models\User;
+use App\Services\Lessons\LessonConflicts;
+use App\Services\Lessons\LessonNumbering;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +27,11 @@ use Illuminate\Validation\ValidationException;
 class MaterializeLessonsForRange
 {
     private const TIMEZONE = 'Europe/Lisbon';
+
+    public function __construct(
+        private readonly LessonConflicts $conflicts,
+        private readonly LessonNumbering $numbering,
+    ) {}
 
     /**
      * @return Collection<int, Lesson>
@@ -56,6 +64,9 @@ class MaterializeLessonsForRange
 
             $lessons = collect();
 
+            /** @var array<string, int|null> $touchedSequences */
+            $touchedSequences = [];
+
             // As exceções letivas DESTE ano que cruzam o intervalo — os feriados,
             // as interrupções letivas e os dias não letivos (Fase 5.4). Lidas UMA
             // vez, aqui fora, e nunca uma consulta por cada data candidata lá
@@ -79,6 +90,21 @@ class MaterializeLessonsForRange
                 ->whereDate('starts_on', '<=', $to->toDateString())
                 ->whereDate('ends_on', '>=', $from->toDateString())
                 ->get();
+
+            // As ocorrências que o professor eliminou de propósito
+            // (CancelledLessonOccurrence). Lidas de uma vez, como as exceções
+            // acima e pela mesma razão: são poucas por intervalo, e uma consulta
+            // por cada data candidata trocaria uma varredura em memória por
+            // dezenas de idas à base de dados. A chave é a mesma que identifica
+            // uma aula — (tempo do horário, início) —, pelo que eliminar a aula
+            // de uma quinta-feira não impede a de quinta-feira seguinte.
+            $cancelled = CancelledLessonOccurrence::query()
+                ->where('class_id', $lockedClass->id)
+                ->whereBetween('occurs_at', [$from->startOfDay(), $to->endOfDay()])
+                ->get()
+                ->map(fn (CancelledLessonOccurrence $occurrence): string => $occurrence->recurring_lesson_slot_id
+                    .'@'.$occurrence->occurs_at->format('Y-m-d H:i:s'))
+                ->flip();
 
             /** @var RecurringLessonSlot $slot */
             foreach ($lockedClass->recurringLessonSlots()->orderBy('id')->get() as $slot) {
@@ -140,20 +166,65 @@ class MaterializeLessonsForRange
                     // atualização, uma aula que JÁ exista fica com o grupo com
                     // que nasceu ainda que o slot tenha mudado entretanto. É o
                     // que faz do instantâneo um instantâneo.
-                    $lessons->push(Lesson::query()->firstOrCreate(
-                        [
-                            'class_id' => $lockedClass->id,
-                            'recurring_lesson_slot_id' => $slot->id,
-                            'starts_at' => $startsAt,
-                        ],
-                        [
-                            'class_group_id' => $slot->class_group_id,
-                            'ends_at' => $endsAt,
-                            'status' => LessonStatus::Preparation,
-                            'created_by' => $actor->id,
-                        ],
-                    ));
+                    // Eliminada de propósito: não renasce. A verificação vem
+                    // ANTES da consulta por uma aula existente porque, se a
+                    // ocorrência está cancelada, não há aula nenhuma para
+                    // encontrar — e ir procurá-la seria uma consulta por
+                    // ocorrência cancelada, todas as semanas, para sempre.
+                    if ($cancelled->has($slot->id.'@'.$startsAt->format('Y-m-d H:i:s'))) {
+                        continue;
+                    }
+
+                    $identity = [
+                        'class_id' => $lockedClass->id,
+                        'recurring_lesson_slot_id' => $slot->id,
+                        'starts_at' => $startsAt,
+                    ];
+                    $existing = Lesson::query()->where($identity)->first();
+
+                    if ($existing !== null) {
+                        $lessons->push($existing);
+
+                        continue;
+                    }
+
+                    // O MESMO PÚBLICO NÃO TEM DUAS AULAS AO MESMO TEMPO.
+                    // `lessons_class_slot_start_unique` inclui o tempo do
+                    // horário e por isso nunca vê uma colisão entre DOIS tempos
+                    // distintos da mesma turma — é esse o buraco por onde as
+                    // aulas duplicadas entravam. A materialização não é sítio
+                    // para levantar um erro: corre sozinha ao abrir a semana, e
+                    // um horário mal configurado faria da página um 500. Salta
+                    // a ocorrência e deixa ficar a que já lá está; quem tem de
+                    // RECUSAR o horário sobreposto, com mensagem e antes de o
+                    // gravar, é LessonScheduleController.
+                    if ($this->conflicts->conflictingLesson(
+                        $lockedClass->id,
+                        $slot->class_group_id,
+                        $startsAt,
+                        $endsAt,
+                    ) !== null) {
+                        continue;
+                    }
+
+                    $lessons->push(Lesson::query()->create($identity + [
+                        'class_group_id' => $slot->class_group_id,
+                        'ends_at' => $endsAt,
+                        'status' => LessonStatus::Preparation,
+                        'created_by' => $actor->id,
+                    ]));
+                    $touchedSequences[$slot->class_group_id === null ? 'all' : (string) $slot->class_group_id]
+                        = $slot->class_group_id;
                 }
+            }
+
+            // A numeração é recalculada UMA vez por sequência tocada, no fim, e
+            // nunca aula a aula durante o ciclo: LessonNumbering deriva os
+            // números da ordem cronológica de toda a sequência, pelo que
+            // chamá-lo por cada aula criada repetiria N vezes o mesmo trabalho
+            // para chegar ao mesmo resultado.
+            foreach ($touchedSequences as $classGroupId) {
+                $this->numbering->numberMaterializedLessons($lockedClass->id, $classGroupId);
             }
 
             return $lessons->sortBy('starts_at')->values();

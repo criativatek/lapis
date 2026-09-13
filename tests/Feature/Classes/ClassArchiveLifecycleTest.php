@@ -376,7 +376,14 @@ class ClassArchiveLifecycleTest extends TestCase
         $known = (fn (): array => array_keys(static::RELATIONS))
             ->call(new SchoolClassHistory);
 
-        $cascadeAllowlist = ['class_teachers', 'calendar_event_school_class', 'correction_imports'];
+        $cascadeAllowlist = [
+            'class_teachers',
+            'calendar_event_school_class',
+            'correction_imports',
+            // A marca de «esta ocorrência foi eliminada de propósito»: a
+            // ausência de uma aula, e não história a proteger.
+            'cancelled_lesson_occurrences',
+        ];
 
         $pointingAtClasses = [];
 

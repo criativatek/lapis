@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Lessons\ClearLessonSummary;
+use App\Actions\Lessons\DeleteLesson;
 use App\Actions\Lessons\MarkLessonAsTaught;
 use App\Actions\Lessons\SaveLessonSummary;
 use App\Http\Controllers\Concerns\RefusesDuringImpersonation;
@@ -24,6 +26,8 @@ class LessonController extends Controller implements HasMiddleware
     public function __construct(
         protected MarkLessonAsTaught $markLessonAsTaught,
         protected SaveLessonSummary $saveLessonSummary,
+        protected ClearLessonSummary $clearLessonSummary,
+        protected DeleteLesson $deleteLesson,
     ) {}
 
     /**
@@ -46,6 +50,15 @@ class LessonController extends Controller implements HasMiddleware
                 'ends_at' => $lesson->ends_at?->toIso8601String(),
                 'status' => $lesson->status->value,
                 'status_label' => $this->statusLabel($lesson->status),
+                'lesson_number' => $lesson->lesson_number,
+                // As duas ações destrutivas desta página decidem-se no
+                // servidor e chegam ao ecrã já decididas: esconder um botão é
+                // apresentação, e a recusa real vive em DeleteLesson e em
+                // ClearLessonSummary, que a repetem por sua conta.
+                'can_delete' => $lesson->status !== LessonStatus::Taught,
+                'can_clear_summary' => $lesson->status !== LessonStatus::Taught
+                    && $lesson->summary !== null
+                    && trim($lesson->summary->content) !== '',
                 // «8.º F» ou «8.º F · T1» — composto no servidor para que o
                 // título, o cabeçalho e o `<Head>` digam todos a mesma coisa.
                 'context_label' => $lesson->contextLabel(),
@@ -146,6 +159,43 @@ class LessonController extends Controller implements HasMiddleware
         $this->markLessonAsTaught->execute($lesson, $this->user($request));
 
         return back()->with('success', 'Aula marcada como lecionada.');
+    }
+
+    /**
+     * «Limpar sumário» — apaga o TEXTO, mantém a aula. A ação distinta de
+     * «Eliminar aula», e é por isso que tem rota própria: as duas confundidas
+     * num só botão foi exatamente o que levou professores a apagar a aula para
+     * corrigir um sumário.
+     */
+    public function clearSummary(Request $request, Lesson $lesson): RedirectResponse
+    {
+        Gate::authorize('update', $lesson);
+        $this->refuseDuringImpersonation($request);
+
+        $this->clearLessonSummary->execute($lesson, $this->user($request));
+
+        return back()->with('success', 'Sumário limpo. A aula foi mantida.');
+    }
+
+    /**
+     * Eliminar a ocorrência criada por engano. O tempo do horário recorrente
+     * que a gerou não é tocado — ver DeleteLesson.
+     *
+     * Redireciona para a semana da aula, e não `back()`: a página da aula que
+     * se acabou de eliminar deixou de existir.
+     */
+    public function destroy(Request $request, Lesson $lesson): RedirectResponse
+    {
+        Gate::authorize('delete', $lesson);
+        $this->refuseDuringImpersonation($request);
+
+        $week = $lesson->starts_at->copy()->setTimezone('Europe/Lisbon')->startOfWeek()->toDateString();
+
+        $this->deleteLesson->execute($lesson, $this->user($request));
+
+        return redirect()
+            ->to('/lessons?week='.$week)
+            ->with('success', 'Aula eliminada. O horário da turma não foi alterado.');
     }
 
     protected function user(Request $request): User

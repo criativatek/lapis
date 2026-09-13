@@ -6,6 +6,7 @@ use App\Models\ClassGroup;
 use App\Models\RecurringLessonSlot;
 use App\Models\SchoolClass;
 use App\Rules\BelongsToCurrentOrganization;
+use App\Services\Lessons\LessonConflicts;
 use App\Support\Tenancy\CurrentOrganization;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Http\FormRequest;
@@ -118,6 +119,7 @@ class RecurringLessonSlotRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after($this->validateClassGroup(...));
+        $validator->after($this->validateNoOverlappingSlot(...));
 
         $validator->after(function (Validator $validator): void {
             $recurringLessonSlot = $this->route('recurringLessonSlot');
@@ -222,6 +224,74 @@ class RecurringLessonSlotRequest extends FormRequest
                 ]),
             );
         }
+    }
+
+    /**
+     * O horário da turma não pode pisar-se a si próprio.
+     *
+     * ESTA É A VALIDAÇÃO QUE FALTAVA, e a razão pela qual apareciam aulas
+     * duplicadas: o pedido validava horas, datas, grupo e versionamento, mas
+     * nunca perguntava se já existia outro tempo desta turma naquele bocado de
+     * segunda-feira. A chave `lessons_class_slot_start_unique` também não o
+     * apanhava, porque INCLUI o tempo do horário — dois tempos distintos à
+     * mesma hora produzem duas aulas que, para a chave, são diferentes.
+     *
+     * A regra é de participantes e de sobreposição de intervalos, não de
+     * igualdade de horas (LessonConflicts): 14:10–15:00 e 14:30–15:20 pisam-se.
+     * Dois grupos diferentes da mesma turma à mesma hora continuam permitidos —
+     * é para isso que as turmas desdobradas existem.
+     *
+     * NUNCA CONTRA A PRÓPRIA LINHA, nem contra versões suas já fechadas: o
+     * `ignoreSlotId` trata da primeira, e a comparação das janelas de vigência
+     * dentro de LessonConflicts trata da segunda, sem a qual rever um tempo
+     * passaria a colidir com a versão que a revisão acabou de fechar.
+     */
+    private function validateNoOverlappingSlot(Validator $validator): void
+    {
+        if ($validator->errors()->isNotEmpty()) {
+            return;
+        }
+
+        $schoolClass = SchoolClass::query()->find($this->integer('class_id'));
+
+        if ($schoolClass === null) {
+            return;
+        }
+
+        $routeSlot = $this->route('recurringLessonSlot');
+        $classGroupId = $this->input('class_group_id');
+
+        // Uma revisão abre a versão nova em `effective_from`, e é essa a data a
+        // partir da qual ela existe — não o `starts_on` que o formulário
+        // continua a mostrar da versão que vai fechar.
+        $startsOn = $this->routeSlotRequiresVersioning()
+            ? $this->stringOrNull('effective_from')
+            : $this->stringOrNull('starts_on');
+
+        $conflict = app(LessonConflicts::class)->conflictingSlot(
+            $schoolClass,
+            $classGroupId === null || $classGroupId === '' ? null : (int) $classGroupId,
+            $this->integer('day_of_week'),
+            $this->string('starts_at')->toString(),
+            $this->string('ends_at')->toString(),
+            $startsOn,
+            $this->stringOrNull('ends_on'),
+            $routeSlot instanceof RecurringLessonSlot ? (int) $routeSlot->getKey() : null,
+        );
+
+        if ($conflict !== null) {
+            $validator->errors()->add(
+                'starts_at',
+                app(LessonConflicts::class)->slotConflictMessage($conflict),
+            );
+        }
+    }
+
+    private function stringOrNull(string $key): ?string
+    {
+        $value = $this->input($key);
+
+        return is_string($value) && trim($value) !== '' ? trim($value) : null;
     }
 
     private function routeSlotRequiresVersioning(): bool

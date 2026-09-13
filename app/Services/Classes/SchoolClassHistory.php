@@ -20,11 +20,14 @@ use Illuminate\Support\Facades\DB;
  * (ver a filosofia de EnrollmentHistory: "NÃO APAGA NADA EM CASCATA"). Eliminar
  * definitivamente recusa nesse caso, com uma frase que diz o que fica.
  *
- * TRÊS TABELAS SÃO `cascadeOnDelete()` e ficam DE FORA desta lista, de
- * propósito: `class_teachers`, `calendar_event_school_class` e
- * `correction_imports` são arrumação organizativa/pivô sem conteúdo
- * pedagógico próprio — a base de dados já as limpa sozinha, e não há nada
- * aqui para o professor decidir.
+ * QUATRO TABELAS SÃO `cascadeOnDelete()` e ficam DE FORA desta lista, de
+ * propósito: `class_teachers`, `calendar_event_school_class`,
+ * `correction_imports` e `cancelled_lesson_occurrences` são arrumação
+ * organizativa/pivô sem conteúdo pedagógico próprio — a base de dados já as
+ * limpa sozinha, e não há nada aqui para o professor decidir. A última é a
+ * marca de «esta ocorrência do horário foi eliminada de propósito»: diz à
+ * materialização para não criar uma aula, e a ausência de uma aula não é
+ * história que se proteja.
  */
 class SchoolClassHistory
 {

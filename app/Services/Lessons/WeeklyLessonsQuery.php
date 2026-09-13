@@ -8,7 +8,6 @@ use App\Models\LessonStatus;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Relations\Relation;
-use Illuminate\Support\Facades\DB;
 
 final class WeeklyLessonsQuery
 {
@@ -31,15 +30,18 @@ final class WeeklyLessonsQuery
             // de dados só para escrever «T1» trinta vezes.
             ->with('schoolClass.subject')
             ->with('classGroup')
-            ->with([
-                'summary' => fn (Relation $query) => $query->select([
-                    'id', 'lesson_id', DB::raw('SUBSTR(content, 1, 180) as content_excerpt'),
-                ]),
-            ])
+            // O sumário INTEIRO, e já não só os primeiros 180 caracteres: a
+            // lista continua a mostrar o excerto truncado, mas «Ver mais»
+            // passa a abrir o texto completo sem uma segunda ida ao servidor
+            // (§21). Um sumário são poucos kB de texto e a semana são poucas
+            // dezenas de aulas — o custo de o trazer é menor do que o de um
+            // pedido por cada vez que alguém quer ler o que escreveu.
+            ->with(['summary' => fn (Relation $query) => $query->select(['id', 'lesson_id', 'content'])])
             ->orderBy('starts_at')
             ->get()
             ->map(function (Lesson $lesson): array {
-                $excerpt = $lesson->summary?->getAttribute('content_excerpt');
+                $content = trim((string) $lesson->summary?->content);
+                $excerpt = $content === '' ? null : mb_substr($content, 0, 180);
 
                 return [
                     'ulid' => $lesson->ulid,
@@ -55,8 +57,21 @@ final class WeeklyLessonsQuery
                     'subject' => $lesson->schoolClass->subject->name,
                     'status' => $lesson->status->value,
                     'status_label' => $this->statusLabel($lesson->status),
-                    'has_summary' => $lesson->summary !== null && trim((string) $excerpt) !== '',
-                    'summary_excerpt' => $excerpt === null ? null : trim((string) $excerpt),
+                    'has_summary' => $content !== '',
+                    'summary_excerpt' => $excerpt,
+                    // O texto completo só viaja quando é MAIOR do que o
+                    // excerto: repetir os mesmos 40 caracteres em dois campos
+                    // duplicaria a resposta sem dar nada a ler ao professor, e
+                    // é o `null` aqui que diz ao ecrã que não há «Ver mais»
+                    // nenhum para mostrar.
+                    'summary_full' => $content !== '' && mb_strlen($content) > 180 ? $content : null,
+                    'lesson_number' => $lesson->lesson_number,
+                    'class_group_id' => $lesson->class_group_id,
+                    // Decidido no servidor e enviado já decidido — esconder o
+                    // botão é apresentação, e DeleteLesson repete a recusa por
+                    // sua conta quando o pedido lá chega na mesma.
+                    'can_delete' => $lesson->status !== LessonStatus::Taught,
+                    'can_clear_summary' => $lesson->status !== LessonStatus::Taught && $content !== '',
                 ];
             })->all());
     }

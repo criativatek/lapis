@@ -116,7 +116,24 @@ class LessonScheduleController extends Controller implements HasMiddleware
             });
         }
 
-        $this->reviseRecurringLessonSlot->execute($recurringLessonSlot, $validated['effective_from'], [
+        // A MESMA REVERIFICAÇÃO QUE O RAMO COM BLOQUEIO JÁ FAZIA, e que faltava
+        // aqui. `effective_from` é exigido por `rules()`, que corre antes das
+        // regras `after()`; entre esse instante e este, o slot pode ter
+        // adquirido histórico (uma aula gravada noutro separador) e passado a
+        // exigir versionamento sem que o pedido traga a data. Sem esta guarda, o
+        // que o professor via era um TypeError — «Argument #2 must be of type
+        // string, null given» — em vez da pergunta que falta responder.
+        $effectiveFrom = $validated['effective_from'] ?? null;
+
+        if (! is_string($effectiveFrom) || trim($effectiveFrom) === '') {
+            throw ValidationException::withMessages([
+                'effective_from' => __(
+                    'Este tempo adquiriu histórico durante a gravação; indique a partir de quando a alteração passa a vigorar.',
+                ),
+            ]);
+        }
+
+        $this->reviseRecurringLessonSlot->execute($recurringLessonSlot, $effectiveFrom, [
             // `?? null` e não a chave a seco: um cliente antigo — ou o
             // formulário de uma turma sem grupos, que nem desenha o campo — não
             // envia `class_group_id` de todo, e a ausência quer dizer

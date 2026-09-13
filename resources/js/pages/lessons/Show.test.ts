@@ -55,6 +55,9 @@ function mountPage(overrides: { starts_at?: string; ends_at?: string | null } = 
                 ends_at: '2026-09-09T09:50:00+01:00',
                 status: 'preparation' as const,
                 status_label: 'Por preparar',
+                lesson_number: 3,
+                can_delete: true,
+                can_clear_summary: false,
                 school_class: { ulid: 'class-a', label: '7.º A', subject: 'Matemática' },
                 // Aula da turma inteira: o rótulo é o da turma, sem sufixo.
                 context_label: '7.º A',
