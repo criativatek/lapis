@@ -511,4 +511,55 @@ class SupportClassTest extends TestCase
         $this->assertDatabaseHas('enrollments', ['id' => $supportEnrollment->id]);
         $this->assertSame([$student->id], $this->activeStudentIdsIn($support));
     }
+
+    #[Test]
+    public function the_support_roll_shows_every_origin_class_and_number_without_copying_it(): void
+    {
+        $support = $this->makeClass('Apoio', support: true);
+        $originF = $this->makeClass('8.º F');
+        $originG = $this->makeClass('8.º G');
+        $joao = $this->studentOf($this->enrol($originF, 'João Silva', number: 12));
+        // O mesmo aluno com duas origens regulares — mostram-se as duas.
+        $secondOrigin = $this->enrolExisting($originG, $joao, 3);
+        // Outra turma de apoio não é origem; a turma de um colega nem aparece.
+        $this->enrolExisting($this->makeClass('Apoio B', support: true), $joao, 1);
+        $colleague = User::factory()->create();
+        $colleague->organizations()->attach($this->organization, ['joined_at' => now()]);
+        $this->enrolExisting($this->makeClass('9.º Colega', teacher: $colleague), $joao, 99);
+
+        $this->addExisting($support, $joao->ulid)->assertSessionHasNoErrors();
+        $supportEnrollment = Enrollment::withoutGlobalScopes()->where('class_id', $support->getKey())->firstOrFail();
+
+        $this->actingAs($this->teacher)->get("/classes/{$support->ulid}")
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('students.0.name', 'João Silva')
+                ->where('students.0.origins', [
+                    ['label' => '8.º F', 'class_number' => 12],
+                    ['label' => '8.º G', 'class_number' => 3],
+                ]));
+
+        // Só mostrado: a inscrição de apoio não herda o n.º de origem.
+        $this->assertNotSame(12, $supportEnrollment->class_number);
+        $this->assertSame(3, $secondOrigin->fresh()->class_number);
+    }
+
+    #[Test]
+    public function a_normal_class_carries_no_origins(): void
+    {
+        $class = $this->makeClass('8.º F');
+        $this->enrol($class, 'Ana', number: 1);
+
+        $this->actingAs($this->teacher)->get("/classes/{$class->ulid}")
+            ->assertInertia(fn (AssertableInertia $page) => $page->where('students.0.origins', []));
+    }
+
+    protected function enrolExisting(SchoolClass $class, Student $student, int $number): Enrollment
+    {
+        return app(CurrentOrganization::class)->runFor($this->organization, fn (): Enrollment => Enrollment::factory()->recycle($this->organization)->create([
+            'class_id' => $class->getKey(),
+            'student_id' => $student->getKey(),
+            'class_number' => $number,
+            'enrolled_on' => '2026-09-14',
+        ]));
+    }
 }

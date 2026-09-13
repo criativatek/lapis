@@ -264,3 +264,31 @@ describe('lessons/Show — unsaved changes warning', () => {
         expect(fireBeforeUnload().defaultPrevented).toBe(false);
     });
 });
+
+describe('lessons/Show — saída no fundo da página', () => {
+    it('repeats «Voltar às aulas da semana» at the bottom, to the same week', () => {
+        const links = mountPage()
+            .findAll('a')
+            .filter((a) => a.text().includes('Voltar às aulas da semana'));
+
+        expect(links).toHaveLength(2);
+        expect(links.map((link) => link.attributes('href'))).toEqual([
+            '/lessons?week=2026-09-07',
+            '/lessons?week=2026-09-07',
+        ]);
+    });
+
+    it('never submits, saves or marks the lesson as taught', () => {
+        const wrapper = mountPage();
+        const bottom = wrapper
+            .findAll('a')
+            .filter((a) => a.text().includes('Voltar às aulas da semana'))
+            .at(-1)!;
+
+        expect(bottom.element.closest('form')).toBeNull();
+        expect(bottom.attributes('type')).toBeUndefined();
+        expect(mocks.forms[0].put).not.toHaveBeenCalled();
+        expect(mocks.forms[0].post).not.toHaveBeenCalled();
+        expect(mocks.forms[1].post).not.toHaveBeenCalled();
+    });
+});

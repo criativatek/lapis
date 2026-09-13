@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
-import { ArchiveRestore, CalendarPlus, Pencil, Plus, Users } from '@lucide/vue';
+import { Archive, ArchiveRestore, ArrowLeft, CalendarPlus, Pencil, Plus, Users } from '@lucide/vue';
 import EmptyState from '@/components/EmptyState.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import { Badge } from '@/components/ui/badge';
@@ -43,27 +43,35 @@ function formatDate(iso: string): string {
 
     <div class="mx-auto w-full max-w-4xl space-y-6 p-4">
         <PageHeader
-            title="Turmas"
+            :title="viewingArchived ? 'Turmas arquivadas' : 'Turmas'"
             :description="viewingArchived ? 'Turmas arquivadas — os dados continuam preservados.' : 'As turmas que leciona neste ano letivo.'"
         >
-            <template v-if="!viewingArchived" #actions>
-                <Button as-child variant="outline">
-                    <Link href="/classes/schedule-setup"><CalendarPlus class="size-4" /> Configurar horários</Link>
+            <template #actions>
+                <!-- A saída da lista de arquivadas é um botão, no mesmo sítio
+                     das ações — nunca só texto discreto ou o «voltar» do
+                     browser. -->
+                <Button v-if="viewingArchived" as-child variant="outline">
+                    <Link href="/classes"><ArrowLeft class="size-4" /> Voltar às turmas</Link>
                 </Button>
-                <Button as-child>
-                    <Link href="/classes/create"><Plus class="size-4" /> Nova turma</Link>
-                </Button>
+                <template v-else>
+                    <Button as-child variant="outline">
+                        <Link href="/classes/schedule-setup"><CalendarPlus class="size-4" /> Configurar horários</Link>
+                    </Button>
+                    <Button as-child>
+                        <Link href="/classes/create"><Plus class="size-4" /> Nova turma</Link>
+                    </Button>
+                </template>
             </template>
         </PageHeader>
 
-        <!-- Sem navegação nova: uma única ligação, discreta, para a lista
-             oposta — nunca separadores nem menu. -->
-        <p class="text-sm">
-            <Link v-if="!viewingArchived" href="/classes/archived" class="text-muted-foreground underline-offset-4 hover:underline">
-                Turmas arquivadas
-            </Link>
-            <Link v-else href="/classes" class="text-muted-foreground underline-offset-4 hover:underline"> Voltar às turmas </Link>
-        </p>
+        <!-- Numa linha própria e não nas ações do cabeçalho: lá não há wrap, e
+             um terceiro botão empurrava «Nova turma» para fora do ecrã em
+             mobile. -->
+        <div v-if="!viewingArchived">
+            <Button as-child variant="outline" size="sm">
+                <Link href="/classes/archived"><Archive class="size-4" /> Ver turmas arquivadas</Link>
+            </Button>
+        </div>
 
         <EmptyState
             v-if="classes.length === 0"
@@ -124,6 +132,13 @@ function formatDate(iso: string): string {
                     </template>
                 </p>
             </div>
+        </div>
+
+        <!-- Uma lista longa de arquivadas não deixa o botão do topo à vista. -->
+        <div v-if="viewingArchived && classes.length > 6" class="flex justify-center">
+            <Button as-child variant="outline">
+                <Link href="/classes"><ArrowLeft class="size-4" /> Voltar às turmas</Link>
+            </Button>
         </div>
     </div>
 </template>

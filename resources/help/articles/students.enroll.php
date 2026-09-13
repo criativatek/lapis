@@ -17,6 +17,8 @@ return [
         'Se tiver uma lista inteira de alunos para inscrever de uma vez, em vez de os adicionar um a um veja o artigo sobre importar uma pauta.',
         'Numa turma de apoio aparece também «Adicionar aluno existente». Escreva parte do nome ou o n.º de processo: a pesquisa mostra só alunos das turmas que leciona neste ano letivo, cada um com a sua turma e número, para distinguir alunos com o mesmo nome. Ao escolher, o aluno entra na turma de apoio sem ser criado de novo — é o mesmo aluno, com o mesmo nome e fotografia, e continua na turma de origem.',
         'Se o aluno ainda não está no Lapispro, adicione-o como aluno novo pelo formulário habitual. Um aluno que já pertence à turma não pode ser adicionado duas vezes. Remover um aluno da turma de apoio não o apaga nem o tira da turma de origem.',
+        'Na lista de alunos de uma turma de apoio, por baixo do nome, aparece a turma de origem e o n.º do aluno nessa turma (por exemplo, «8.º F, n.º 12»). Se o aluno estiver em mais do que uma das suas turmas, aparecem todas. É só informação: o n.º na turma de apoio não é alterado.',
+        'Quando terminar de adicionar alunos, importar a lista ou corrigir fotos, use «Concluir» — está no topo da secção e repetido no fim da lista de alunos, para não ter de subir numa turma grande. É só uma saída: os alunos já ficaram inscritos antes.',
         'Um aluno inscrito só entra nas classificações e resultados calculados a partir da data em que foi inscrito — resultados de elementos de avaliação anteriores a essa data não contam para ele.',
     ],
     'keywords' => ['aluno', 'inscrever', 'inscrição', 'novo aluno', 'adicionar aluno', 'turma de apoio', 'apoio'],

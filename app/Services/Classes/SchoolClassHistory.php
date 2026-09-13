@@ -2,7 +2,10 @@
 
 namespace App\Services\Classes;
 
+use App\Models\LessonStatus;
 use App\Models\SchoolClass;
+use App\Services\EnrollmentHistory;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -56,6 +59,21 @@ class SchoolClassHistory
     ];
 
     /**
+     * O que, numa turma em preparação, é configuração e não história — e sai
+     * com ela (§ blockingInPreparation). As aulas estão aqui porque a vista
+     * semanal as materializa a partir do horário; as que têm conteúdo são
+     * apanhadas à parte, por `lessonsWithContent()`.
+     *
+     * @var list<string>
+     */
+    protected const PREPARATORY_TABLES = [
+        'enrollments',
+        'class_groups',
+        'recurring_lesson_slots',
+        'lessons',
+    ];
+
+    /**
      * O que impede esta turma de ser eliminada em definitivo, por palavras.
      *
      * Lista vazia significa «pode ser eliminada»: uma turma arquivada, sem uma
@@ -87,6 +105,109 @@ class SchoolClassHistory
         // Já é uma lista — só se acrescenta a `$found`, nunca se atribui por
         // chave — pelo que `array_values()` seria redundante.
         return $found;
+    }
+
+    /**
+     * O que impede uma turma EM PREPARAÇÃO de ser eliminada já — sem arquivar
+     * e sem esperar pelos três anos de retenção.
+     *
+     * UMA TURMA CRIADA POR ENGANO não tem história nenhuma a proteger, mas
+     * raramente está vazia: o professor já lhe pôs alunos, dividiu-a em T1/T2,
+     * configurou o horário, e a vista semanal já materializou as aulas desse
+     * horário. Nada disso é história pedagógica — é preparação — e está em
+     * PREPARATORY_TABLES. Mandar arquivar e esperar três anos por uma turma
+     * que nunca existiu seria a irreversibilidade que a aplicação evita.
+     *
+     * O QUE CONTINUA A BLOQUEAR é tudo o resto de RELATIONS (elementos de
+     * avaliação, registos, medidas, intercalares, autoavaliações, relatórios,
+     * exportações da pauta, migrações de perfil) e ainda:
+     *   - uma inscrição com história (EnrollmentHistory::RELATIONS);
+     *   - uma aula que já não é só uma ocorrência do horário — lecionada,
+     *     preparada, ou com sumário ou planificação escritos.
+     *
+     * «Nunca ativada» é o próprio estado: não existe caminho de «Ativa» de
+     * volta a «Em preparação» (ClassController::activate só avança, e o
+     * ClassRequest não aceita `status`). Uma turma arquivada segue a regra de
+     * retenção de `blocking()`, nunca esta.
+     *
+     * @return list<string>
+     */
+    public function blockingInPreparation(SchoolClass $class): array
+    {
+        $found = [];
+
+        foreach (self::RELATIONS as $table => $label) {
+            if (in_array($table, self::PREPARATORY_TABLES, true) || in_array($label, $found, true)) {
+                continue;
+            }
+
+            if (DB::table($table)->where('class_id', $class->getKey())->exists()) {
+                $found[] = $label;
+            }
+        }
+
+        if (app(EnrollmentHistory::class)->idsWithHistoryIn($class) !== []) {
+            $found[] = 'alunos com registos pedagógicos';
+        }
+
+        if ($this->lessonsWithContent($class)->exists()) {
+            $found[] = 'aulas lecionadas, preparadas ou com sumário';
+        }
+
+        return $found;
+    }
+
+    /**
+     * Apaga a preparação de uma turma, imediatamente antes de a apagar.
+     *
+     * SÓ É CHAMADO DEPOIS DE `blockingInPreparation()` TER DEVOLVIDO VAZIO, e
+     * dentro da mesma transação que apaga a turma. Apaga apenas linhas que
+     * pertencem a ESTA turma: nunca um `Student`, uma identidade, uma
+     * fotografia, nem a inscrição do mesmo aluno noutra turma — o aluno de uma
+     * turma de apoio continua inteiro na sua turma de origem.
+     *
+     * A ordem é a das chaves estrangeiras RESTRICT: aulas → pertenças a grupos
+     * → inscrições → tempos do horário → grupos. As ocorrências canceladas, os
+     * professores da turma e o pivô dos eventos saem sozinhos (cascade).
+     */
+    public function clearPreparation(SchoolClass $class): void
+    {
+        $classId = $class->getKey();
+        $enrollmentIds = DB::table('enrollments')->where('class_id', $classId)->pluck('id');
+
+        // Só as aulas ainda por preparar. Uma que passe a lecionada entre a
+        // verificação e este DELETE fica, e é a chave estrangeira da turma que
+        // recusa — a transação desfaz tudo. Sumários e planificações têm a
+        // sua própria RESTRICT.
+        DB::table('lessons')->where('class_id', $classId)->where('status', LessonStatus::Preparation->value)->delete();
+        DB::table('class_group_memberships')->whereIn('enrollment_id', $enrollmentIds)->delete();
+        DB::table('enrollments')->where('class_id', $classId)->delete();
+        DB::table('recurring_lesson_slots')->where('class_id', $classId)->delete();
+        DB::table('class_groups')->where('class_id', $classId)->delete();
+    }
+
+    /**
+     * @param  list<string>  $blocking
+     */
+    public function explainInPreparation(string $className, array $blocking): string
+    {
+        return "Não é possível eliminar {$className}: a turma já tem "
+            .$this->enumerate($blocking)
+            .'. Estes dados são preservados — pode arquivar a turma em vez de a eliminar.';
+    }
+
+    /**
+     * Aulas que são mais do que uma ocorrência do horário. `DB::table()` pela
+     * mesma razão que `blocking()`.
+     */
+    protected function lessonsWithContent(SchoolClass $class): Builder
+    {
+        return DB::table('lessons')
+            ->where('class_id', $class->getKey())
+            ->where(fn (Builder $query) => $query
+                ->where('status', '!=', LessonStatus::Preparation->value)
+                ->orWhereExists(fn (Builder $summaries) => $summaries->from('lesson_summaries')->whereColumn('lesson_summaries.lesson_id', 'lessons.id'))
+                ->orWhereExists(fn (Builder $plans) => $plans->from('lesson_plans')->whereColumn('lesson_plans.lesson_id', 'lessons.id')));
     }
 
     /**

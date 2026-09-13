@@ -25,6 +25,53 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.144.1] — 2026-09-13
+
+### Corrigido
+
+- **Eliminar uma disciplina em uso dava 500.** `classes`, `assessment_profiles`,
+  `domains` e `lesson_sequences` chegam a `subjects.id` com chaves estrangeiras
+  RESTRICT, e o `SubjectController::destroy` apagava sem perguntar. Passa a
+  perguntar primeiro (`SubjectUsage`): uma disciplina em uso é recusada com uma
+  mensagem que diz onde está a ser utilizada, sem SQL e sem cascata. A
+  `report_library_entries` (`nullOnDelete`) também bloqueia — apagar tiraria em
+  silêncio a restrição de disciplina a estratégias escritas por alguém. O
+  botão fica desativado na lista; o servidor continua a ser a autoridade, e uma
+  corrida entre verificação e DELETE dá a mesma mensagem, não um 500.
+- **Uma turma criada por engano obrigava a arquivar e esperar três anos.** Uma
+  turma **em preparação** (nunca ativada — não há caminho de volta de «Ativa»)
+  pode ser eliminada logo, com confirmação forte, quando só tem preparação:
+  inscrições sem história, grupos T1/T2, horário e as aulas materializadas desse
+  horário ainda sem conteúdo. Sai tudo na mesma transação
+  (`SchoolClassHistory::clearPreparation`). Bloqueiam elementos de avaliação,
+  registos, medidas, intercalares, autoavaliações, relatórios, exportações da
+  pauta, migrações de perfil, alunos com história e aulas lecionadas,
+  preparadas ou com sumário/planificação. Nunca apaga um `Student`, identidade,
+  fotografia ou a inscrição do aluno noutra turma. Turmas ativas e arquivadas
+  seguem a regra de retenção de sempre.
+- **«Turmas arquivadas» parecia um título sobre as turmas ativas.** Era só a
+  ligação discreta para a outra lista; o filtro já estava certo. Passa a botão
+  «Ver turmas arquivadas»; a vista de arquivadas tem título próprio e o botão
+  «Voltar às turmas» no topo (e no fim, numa lista longa).
+- **«Concluir» saía do ecrã numa lista longa de alunos.** Repetido no fim da
+  lista, com o mesmo destino e sem mutação.
+- **«Voltar às aulas da semana» só existia no topo do sumário.** Repetido no fundo
+  da página; leva à semana da própria aula, não guarda nem muda o estado, e
+  passa pela mesma guarda de alterações por guardar.
+
+### Adicionado
+
+- **Origem e n.º na turma de apoio.** Por baixo do nome aparece a turma de
+  origem e o n.º do aluno nela («8.º F, n.º 12»); com várias origens aparecem
+  todas. Só leitura — a inscrição de apoio não herda o número. Âmbito de
+  `ReusableStudents` (inscrição ativa, mesmo ano, turma não arquivada que o
+  professor leciona), só turmas regulares.
+- **Centro de Ajuda.** Novos artigos «Arquivar, restaurar ou eliminar», «Gerir
+  disciplinas» e «Escrever o sumário de uma aula»; «Inscrever um aluno numa
+  turma» explica a origem na turma de apoio e o «Concluir».
+
+Sem migrations. Termos, Política de Privacidade e DPA sem alteração.
+
 ## [0.144.0] — 2026-09-13
 
 ### Adicionado

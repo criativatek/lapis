@@ -53,3 +53,39 @@ describe('classes/Index header actions', () => {
         expect(link!.attributes('href')).toBe('/classes/create');
     });
 });
+
+describe('classes/Index — ativas e arquivadas', () => {
+    it('offers «Ver turmas arquivadas» as a button, never a heading over active classes', () => {
+        const wrapper = mountIndex();
+
+        const link = wrapper.findAll('a').find((a) => a.text().includes('Ver turmas arquivadas'));
+
+        expect(link!.attributes('href')).toBe('/classes/archived');
+        expect(wrapper.find('h1, h2').text()).toBe('Turmas');
+    });
+
+    it('offers «Voltar às turmas» at the top of the archived list, and again at the end of a long one', () => {
+        const archived = (index: number): SchoolClass => ({
+            ulid: `c${index}`,
+            label: `7.º ${index}`,
+            subject: 'Matemática',
+            academic_year: '2024/2025',
+            grade_level: null,
+            status_label: 'Arquivada',
+            status: 'archived',
+            students_count: 0,
+        });
+
+        const short = mountIndex([archived(1)], true);
+        const shortBack = short.findAll('a').filter((a) => a.text().includes('Voltar às turmas'));
+
+        expect(shortBack).toHaveLength(1);
+        expect(shortBack[0].attributes('href')).toBe('/classes');
+        expect(short.text()).not.toContain('Nova turma');
+        expect(short.text()).not.toContain('Ver turmas arquivadas');
+
+        const long = mountIndex(Array.from({ length: 7 }, (_, index) => archived(index)), true);
+
+        expect(long.findAll('a').filter((a) => a.text().includes('Voltar às turmas'))).toHaveLength(2);
+    });
+});

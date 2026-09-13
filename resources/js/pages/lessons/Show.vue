@@ -411,5 +411,16 @@ onBeforeUnmount(() => {
                 </Dialog>
             </div>
         </section>
+
+        <!-- A mesma saída do topo, no fundo da página: um sumário longo tira a
+             de cima do ecrã. Um `Link` e não um botão do formulário — não
+             guarda, não marca como lecionada, e passa pela mesma guarda de
+             alterações por guardar que a de cima. -->
+        <Button as-child variant="outline" class="min-h-11 w-full sm:w-auto">
+            <Link :href="originWeekHref">
+                <ArrowLeft class="size-4" />
+                Voltar às aulas da semana
+            </Link>
+        </Button>
     </main>
 </template>

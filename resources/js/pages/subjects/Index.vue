@@ -19,7 +19,13 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-type Subject = { ulid: string; name: string; code: string };
+type Subject = {
+    ulid: string;
+    name: string;
+    code: string;
+    /** Usada por turmas, perfis, domínios, sequências ou biblioteca. Apresentação — o servidor volta a verificar. */
+    in_use: boolean;
+};
 
 defineProps<{
     subjects: Subject[];
@@ -103,7 +109,15 @@ function destroy(subject: Subject): void {
                                 <Button variant="ghost" size="icon" aria-label="Editar" @click="openEdit(subject)">
                                     <Pencil class="size-4" />
                                 </Button>
-                                <Button variant="ghost" size="icon" aria-label="Eliminar" @click="destroy(subject)">
+                                <!-- Desativado e não escondido: o título diz porquê. -->
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    :disabled="subject.in_use"
+                                    :aria-label="subject.in_use ? `${subject.name} não pode ser eliminada: está a ser utilizada` : `Eliminar ${subject.name}`"
+                                    :title="subject.in_use ? 'Não é possível eliminar: está a ser utilizada por turmas ou outros registos' : 'Eliminar'"
+                                    @click="destroy(subject)"
+                                >
                                     <Trash2 class="size-4" />
                                 </Button>
                             </div>
@@ -111,6 +125,10 @@ function destroy(subject: Subject): void {
                     </tr>
             </template>
         </TableShell>
+
+        <p v-if="canManage && subjects.some((subject) => subject.in_use)" class="text-xs text-muted-foreground">
+            Uma disciplina que já está a ser utilizada por turmas, perfis de avaliação ou outros registos não pode ser eliminada.
+        </p>
 
         <Dialog v-model:open="open">
             <DialogContent>

@@ -123,6 +123,43 @@ class ReusableStudents
     }
 
     /**
+     * DE ONDE VEM CADA ALUNO DE UMA TURMA DE APOIO — a turma e o n.º dele lá.
+     *
+     * O mesmo âmbito da pesquisa (`authorizingEnrollments`): inscrição ativa,
+     * mesmo ano letivo, turma não arquivada e lecionada por este professor. Uma
+     * turma de um colega nunca aparece, nem sequer pelo nome. E só turmas
+     * regulares: outra turma de apoio onde o aluno também está não é «origem».
+     *
+     * SÓ LEITURA. O n.º mostrado é o da inscrição de origem e fica lá; a
+     * inscrição na turma de apoio tem o seu, que não é tocado. Um aluno com
+     * duas origens mostra as duas — escolher uma seria inventar.
+     *
+     * @param  list<int>  $studentIds
+     * @return array<int, list<array{label: string, class_number: int|null}>>
+     */
+    public function originsFor(SchoolClass $supportClass, User $teacher, array $studentIds): array
+    {
+        if ($studentIds === []) {
+            return [];
+        }
+
+        return $this->authorizingEnrollments($supportClass, $teacher)
+            ->whereIn('student_id', $studentIds)
+            ->whereHas('schoolClass', fn (Builder $classes) => $classes->where('is_support_class', false))
+            ->with('schoolClass:id,label')
+            ->get()
+            ->groupBy('student_id')
+            ->map(fn (Collection $enrollments): array => array_values($enrollments
+                ->map(fn (Enrollment $enrollment): array => [
+                    'label' => $enrollment->schoolClass->label,
+                    'class_number' => $enrollment->class_number,
+                ])
+                ->sortBy('label')
+                ->all()))
+            ->all();
+    }
+
+    /**
      * «João» encontra «joao» e vice-versa: sem acentos, minúsculas, espaços
      * comprimidos.
      */

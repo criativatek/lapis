@@ -40,6 +40,11 @@ type Student = {
     status_label: string;
     photo_url: string | null;
     /**
+     * Só numa turma de apoio: a turma de origem e o n.º do aluno lá — lidos da
+     * inscrição de origem, nunca copiados. Pode haver mais do que uma.
+     */
+    origins: { label: string; class_number: number | null }[];
+    /**
      * Falso quando já existe história pedagógica presa a esta inscrição —
      * avaliações, classificações, registos, medidas. Serve para explicar o
      * botão, nunca para autorizar o que quer que seja: quem recusa é
@@ -75,6 +80,8 @@ const props = defineProps<{
         archived_at: string | null;
         eligible_for_deletion_at: string | null;
         is_eligible_for_deletion: boolean;
+        /** Em preparação e sem história: pode ser eliminada já. */
+        can_delete_in_preparation: boolean;
     };
     students: Student[];
     /** Students who were on this roll and are no longer part of the class. */
@@ -192,16 +199,20 @@ function restoreClass(): void {
     router.delete(`/classes/${props.schoolClass.ulid}/archive`, { preserveScroll: true });
 }
 
-function deleteClassPermanently(): void {
-    if (
-        !confirm(
-            'Eliminar definitivamente esta turma?\n\nEsta ação é irreversível e não pode ser desfeita.',
-        )
-    ) {
-        return;
-    }
+const deleteClassDialogOpen = ref(false);
+const deletingClass = ref(false);
 
-    router.delete(`/classes/${props.schoolClass.ulid}`);
+/** Confirmada no diálogo — o servidor volta a verificar tudo. */
+function deleteClassPermanently(): void {
+    router.delete(`/classes/${props.schoolClass.ulid}`, {
+        onStart: () => {
+            deletingClass.value = true;
+        },
+        onFinish: () => {
+            deletingClass.value = false;
+            deleteClassDialogOpen.value = false;
+        },
+    });
 }
 
 /** «YYYY-MM-DD» → «DD/MM/YYYY», sem passar por `Date` — uma data sem hora não
@@ -497,6 +508,15 @@ function submitPhotos(): void {
                         >
                             <Archive class="size-4" /> Arquivar turma
                         </Button>
+                        <Button
+                            v-if="schoolClass.can_delete_in_preparation"
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            @click="deleteClassDialogOpen = true"
+                        >
+                            <Trash2 class="size-4" /> Eliminar definitivamente
+                        </Button>
                     </template>
                     <template v-else>
                         <Button type="button" variant="outline" size="sm" @click="restoreClass">
@@ -507,7 +527,7 @@ function submitPhotos(): void {
                             type="button"
                             variant="destructive"
                             size="sm"
-                            @click="deleteClassPermanently"
+                            @click="deleteClassDialogOpen = true"
                         >
                             <Trash2 class="size-4" /> Eliminar definitivamente
                         </Button>
@@ -797,7 +817,19 @@ function submitPhotos(): void {
                         <td class="px-4 py-3 font-medium">
                             <div class="flex items-center gap-2">
                                 <StudentAvatar :photo-url="student.photo_url" :student-name="student.name" zoomable />
-                                <span>{{ student.name }}</span>
+                                <div class="min-w-0">
+                                    <span>{{ student.name }}</span>
+                                    <!-- Turma de apoio: de onde vem o aluno.
+                                         Todas as origens, nunca uma escolhida. -->
+                                    <p
+                                        v-if="schoolClass.is_support_class && student.origins.length"
+                                        class="text-xs font-normal text-muted-foreground"
+                                    >
+                                        <template v-for="(origin, index) in student.origins" :key="`${origin.label}-${index}`">
+                                            <template v-if="index > 0"> · </template>{{ origin.label }}<template v-if="origin.class_number != null">, n.º {{ origin.class_number }}</template>
+                                        </template>
+                                    </p>
+                                </div>
                                 <Badge
                                     v-if="student.is_late_entry"
                                     variant="outline"
@@ -917,6 +949,32 @@ function submitPhotos(): void {
                 </ul>
             </div>
         </details>
+
+        <!-- O mesmo «Concluir» do topo, no fim da lista: numa turma de trinta
+             alunos o de cima já saiu do ecrã. Navegação pura, mesmo destino. -->
+        <div v-if="students.length" class="flex justify-end">
+            <Button as-child size="sm" class="min-h-11 w-full sm:w-auto">
+                <Link :href="`/classes/${schoolClass.ulid}`">Concluir</Link>
+            </Button>
+        </div>
+
+        <Dialog v-model:open="deleteClassDialogOpen">
+            <DialogContent class="sm:max-w-md">
+                <DialogHeader class="space-y-2">
+                    <DialogTitle>Eliminar definitivamente esta turma?</DialogTitle>
+                    <DialogDescription>
+                        Esta ação não pode ser anulada. Os alunos partilhados
+                        noutras turmas não serão eliminados.
+                    </DialogDescription>
+                </DialogHeader>
+                <DialogFooter class="gap-2">
+                    <Button type="button" variant="outline" class="min-h-11" @click="deleteClassDialogOpen = false">Cancelar</Button>
+                    <Button type="button" variant="destructive" class="min-h-11" :disabled="deletingClass" @click="deleteClassPermanently">
+                        Eliminar definitivamente
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
 
         <Dialog v-model:open="editDialogOpen">
             <DialogContent>

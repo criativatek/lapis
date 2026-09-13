@@ -19,6 +19,7 @@ use App\Models\Subject;
 use App\Models\User;
 use App\Rules\BelongsToCurrentOrganization;
 use App\Services\Classes\ClassRoster;
+use App\Services\Classes\ReusableStudents;
 use App\Services\Classes\SchoolClassHistory;
 use App\Services\ClassService;
 use App\Services\EnrollmentHistory;
@@ -26,6 +27,7 @@ use App\Support\Entitlements\Entitlements;
 use App\Support\Tenancy\CurrentOrganization;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -144,7 +146,7 @@ class ClassController extends Controller
         return to_route('classes.show', $class->ulid);
     }
 
-    public function show(SchoolClass $class, EnrollmentHistory $history, ClassRoster $roster): Response
+    public function show(SchoolClass $class, EnrollmentHistory $history, ClassRoster $roster, SchoolClassHistory $classHistory, ReusableStudents $reusableStudents): Response
     {
         Gate::authorize('view', $class);
 
@@ -179,6 +181,14 @@ class ClassController extends Controller
         $groupSince = $composition['since'];
         $groupLabelsById = $classGroups->pluck('label', 'id');
 
+        $origins = $class->is_support_class
+            ? $reusableStudents->originsFor(
+                $class,
+                $this->user(),
+                array_values(array_map(intval(...), $class->activeEnrollments()->pluck('student_id')->all())),
+            )
+            : [];
+
         return Inertia::render('classes/Show', [
             'schoolClass' => [
                 'ulid' => $class->ulid,
@@ -196,6 +206,12 @@ class ClassController extends Controller
                 'archived_at' => $class->archived_at?->toDateString(),
                 'eligible_for_deletion_at' => $class->eligibleForPermanentDeletionAt()?->toDateString(),
                 'is_eligible_for_deletion' => $class->isEligibleForPermanentDeletion(),
+                // «Eliminar definitivamente» já, sem arquivar: só uma turma em
+                // preparação sem história. Apresentação — ClassController::destroy
+                // volta a perguntar.
+                'can_delete_in_preparation' => ! $class->isArchived()
+                    && $class->status === ClassStatus::Preparation
+                    && $classHistory->blockingInPreparation($class) === [],
             ],
             // Active profiles for this subject, so a class created without one can
             // be assigned later without going back to the profile screen.
@@ -303,6 +319,9 @@ class ClassController extends Controller
                     'is_late_entry' => $enrollment->is_late_entry,
                     'status_label' => $enrollment->status->label(),
                     'photo_url' => $enrollment->student->photoUrl(),
+                    // Só numa turma de apoio: a turma de origem e o n.º lá,
+                    // lidos — nunca copiados — da inscrição de origem.
+                    'origins' => $origins[$enrollment->student_id] ?? [],
                 ]),
 
             // NOT DELETED, JUST NOT HERE ANY MORE. Kept visible so a teacher
@@ -452,6 +471,43 @@ class ClassController extends Controller
     public function destroy(SchoolClass $class, SchoolClassHistory $history): RedirectResponse
     {
         Gate::authorize('delete', $class);
+
+        // Uma turma criada por engano, ainda em preparação: sai já, sem arquivar
+        // nem esperar pela retenção — desde que só tenha preparação e nenhuma
+        // história (§ SchoolClassHistory::blockingInPreparation).
+        if (! $class->isArchived() && $class->status === ClassStatus::Preparation) {
+            $blocking = $history->blockingInPreparation($class);
+
+            if ($blocking !== []) {
+                Inertia::flash('toast', [
+                    'type' => 'error',
+                    'message' => $history->explainInPreparation($class->label, $blocking),
+                ]);
+
+                return back();
+            }
+
+            try {
+                DB::transaction(function () use ($class, $history): void {
+                    $history->clearPreparation($class);
+                    $class->delete();
+                });
+            } catch (QueryException) {
+                // Alguém escreveu história na turma entre a verificação e o
+                // DELETE: a chave estrangeira recusa, e o professor lê isso
+                // em vez de um erro 500. A transação já desfez tudo.
+                Inertia::flash('toast', [
+                    'type' => 'error',
+                    'message' => "Não foi possível eliminar {$class->label}: a turma tem dados que têm de ser preservados.",
+                ]);
+
+                return back();
+            }
+
+            Inertia::flash('toast', ['type' => 'success', 'message' => "Turma {$class->label} eliminada."]);
+
+            return to_route('classes.index');
+        }
 
         if (! $class->isArchived()) {
             Inertia::flash('toast', [

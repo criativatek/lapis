@@ -68,6 +68,7 @@ function baseProps() {
             archived_at: null,
             eligible_for_deletion_at: null,
             is_eligible_for_deletion: false,
+            can_delete_in_preparation: false,
         },
         students: [],
         former_students: [],
@@ -161,6 +162,7 @@ function student(overrides: Record<string, unknown> = {}) {
         status_label: 'Inscrito',
         photo_url: null,
         can_be_removed: true,
+        origins: [],
         ...overrides,
     };
 }
@@ -246,5 +248,80 @@ describe('classes/Show — o regresso da pré-visualização da importação', (
         // E o marcador sai do URL, para que uma atualização da página não
         // reabra um diálogo que o professor entretanto fechou.
         expect(window.location.search).toBe('');
+    });
+});
+
+/**
+ * «CONCLUIR» NOS DOIS SÍTIOS. Numa turma de trinta alunos o botão do topo sai
+ * do ecrã; o do fim da lista é o mesmo gesto — um link, sem mutação.
+ */
+describe('classes/Show — Concluir no topo e no fim', () => {
+    it('offers Concluir twice, with the same destination, only when there are students', () => {
+        const withStudents = mount(Show, { props: { ...baseProps(), students: [student()] } });
+        wrappers.push(withStudents);
+
+        const concluir = withStudents.findAll('a').filter((a) => a.text() === 'Concluir');
+
+        expect(concluir).toHaveLength(2);
+        expect(concluir.map((a) => a.attributes('href'))).toEqual(['/classes/class-1', '/classes/class-1']);
+        // Largura total em mobile, sem ficar fixo por cima da lista.
+        expect(concluir[1].attributes('class') ?? '').toContain('w-full');
+
+        const empty = mountPage();
+
+        expect(empty.findAll('a').filter((a) => a.text() === 'Concluir')).toHaveLength(1);
+    });
+});
+
+describe('classes/Show — turma de apoio', () => {
+    it('shows every origin class and number under the name', () => {
+        const props = baseProps();
+        const wrapper = mount(Show, {
+            props: {
+                ...props,
+                schoolClass: { ...props.schoolClass, is_support_class: true },
+                students: [
+                    student({
+                        origins: [
+                            { label: '8.º F', class_number: 12 },
+                            { label: '8.º G', class_number: null },
+                        ],
+                    }),
+                ],
+            },
+        });
+        wrappers.push(wrapper);
+
+        expect(wrapper.text()).toContain('8.º F, n.º 12 · 8.º G');
+        expect(wrapper.text()).not.toContain('8.º G, n.º');
+    });
+
+    it('shows no origin line in a normal class', () => {
+        const wrapper = mount(Show, {
+            props: { ...baseProps(), students: [student({ origins: [{ label: '8.º F', class_number: 12 }] })] },
+        });
+        wrappers.push(wrapper);
+
+        expect(wrapper.text()).not.toContain('8.º F, n.º 12');
+    });
+});
+
+describe('classes/Show — eliminar turma em preparação', () => {
+    function deleteButton(wrapper: VueWrapper) {
+        return wrapper.findAll('button').find((button) => button.text().includes('Eliminar definitivamente'));
+    }
+
+    it('offers it only when the server says the class is eligible', () => {
+        const props = baseProps();
+        const eligible = mount(Show, {
+            props: { ...props, schoolClass: { ...props.schoolClass, status: 'preparation', can_delete_in_preparation: true } },
+        });
+        const notEligible = mount(Show, {
+            props: { ...props, schoolClass: { ...props.schoolClass, status: 'preparation' } },
+        });
+        wrappers.push(eligible, notEligible);
+
+        expect(deleteButton(eligible)).toBeDefined();
+        expect(deleteButton(notEligible)).toBeUndefined();
     });
 });

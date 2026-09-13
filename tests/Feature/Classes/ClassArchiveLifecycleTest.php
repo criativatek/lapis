@@ -106,7 +106,10 @@ class ClassArchiveLifecycleTest extends TestCase
     #[Test]
     public function a_class_must_be_archived_before_it_can_be_permanently_deleted(): void
     {
+        // Ativa: uma turma ainda em preparação e sem história sai já, sem
+        // arquivar (ClassPreparationDeletionTest).
         $class = $this->createClass();
+        $this->actingAs($this->user)->post("/classes/{$class->ulid}/activate");
 
         // O DELETE direto, em bruto — não interessa o que a interface
         // escondia, o servidor tem de recusar sozinho.
