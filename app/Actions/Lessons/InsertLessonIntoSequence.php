@@ -32,8 +32,9 @@ use Illuminate\Validation\ValidationException;
  * que seja (§18) — nunca metade das aulas movidas e a outra metade no sítio.
  * É também por isso que tudo isto vive numa transação só.
  *
- * A SEQUÊNCIA É (turma, grupo). Inserir uma aula em T1 desloca aulas de T1 e
- * ocupa tempos de T1. A sequência de T2 e a da turma inteira não são olhadas.
+ * O DESLOCAMENTO É (turma, grupo): inserir uma aula em T1 desloca aulas de T1 e
+ * ocupa tempos de T1. A NUMERAÇÃO é da turma (0.145.2): T1 e T2 da mesma lição
+ * continuam com o mesmo número depois da inserção.
  */
 class InsertLessonIntoSequence
 {
@@ -57,7 +58,7 @@ class InsertLessonIntoSequence
      *
      * @return array{
      *     moves: list<array{ulid: string, context_label: string, from: string, to: string,
-     *                       lesson_number: int|null}>,
+     *                       lesson_number: int|null, lesson_number_to: int|null}>,
      *     inserted_at: string,
      *     shifted_count: int,
      * }
@@ -69,6 +70,16 @@ class InsertLessonIntoSequence
     ): array {
         $plan = $this->plan($class, $classGroupId, $insertAt);
 
+        // A NUMERAÇÃO É DA TURMA (0.145.2): a inserção pode ser recusada por
+        // mudar o número de uma aula lecionada de OUTRO grupo ou da turma
+        // inteira, o que `plan()` não vê. Para que a pré-visualização não
+        // prometa o que a execução recusa, a mesma verificação corre aqui
+        // sobre o estado hipotético EM MEMÓRIA — sem escrita, sem transação,
+        // sem eventos nem auditoria. A recusa sobe como as de `plan()`.
+        $renumbered = $this->numbering->previewHypotheticalSequence(
+            $this->hypotheticalSequence($class, $classGroupId, $plan),
+        );
+
         return [
             'inserted_at' => $plan['insertion']['starts_at']->toIso8601String(),
             'shifted_count' => count($plan['moves']),
@@ -79,6 +90,7 @@ class InsertLessonIntoSequence
                     'from' => $move['lesson']->starts_at->setTimezone('Europe/Lisbon')->toIso8601String(),
                     'to' => $move['occurrence']['starts_at']->toIso8601String(),
                     'lesson_number' => $move['lesson']->lesson_number,
+                    'lesson_number_to' => $renumbered[(int) $move['lesson']->getKey()] ?? $move['lesson']->lesson_number,
                 ],
                 $plan['moves'],
             ),
@@ -106,35 +118,7 @@ class InsertLessonIntoSequence
                 ->firstOrFail();
 
             $plan = $this->plan($lockedClass, $classGroupId, $insertAt);
-
-            // DE TRÁS PARA A FRENTE. A aula que vai para a última ocorrência
-            // move-se primeiro; só depois a que vai ocupar o lugar que ela
-            // deixou. Pela ordem inversa, cada UPDATE tentaria pousar numa
-            // ocorrência ainda ocupada pela aula seguinte, e a chave
-            // `lessons_class_slot_start_unique` recusaria a meio da operação.
-            foreach (array_reverse($plan['moves']) as $move) {
-                /** @var Lesson $lesson */
-                $lesson = $move['lesson'];
-                // `Carbon::instance()` e não o CarbonImmutable directo: os casts
-                // de `Lesson` declaram `Illuminate\Support\Carbon`, e é essa a
-                // classe que o modelo devolve a quem ler o atributo a seguir.
-                $lesson->starts_at = Carbon::instance($move['occurrence']['starts_at']);
-                $lesson->ends_at = Carbon::instance($move['occurrence']['ends_at']);
-                $lesson->recurring_lesson_slot_id = $move['occurrence']['slot_id'];
-                $lesson->save();
-            }
-
-            $inserted = Lesson::query()->create([
-                'class_id' => $lockedClass->getKey(),
-                'class_group_id' => $classGroupId,
-                'recurring_lesson_slot_id' => $plan['insertion']['slot_id'],
-                'starts_at' => $plan['insertion']['starts_at'],
-                'ends_at' => $plan['insertion']['ends_at'],
-                'status' => LessonStatus::Preparation,
-                'created_by' => $actor->getKey(),
-            ]);
-
-            $renumbered = $this->numbering->resequence($lockedClass->getKey(), $classGroupId);
+            ['lesson' => $inserted, 'renumbered' => $renumbered] = $this->apply($lockedClass, $classGroupId, $plan, $actor);
 
             $this->audit->record(
                 'lesson.inserted',
@@ -157,7 +141,91 @@ class InsertLessonIntoSequence
     }
 
     /**
-     * O plano: que ocorrência recebe a aula nova, e para que ocorrência vai
+     * A turma inteira como ficaria depois da inserção, só em memória: as aulas
+     * deslocadas como CÓPIAS com a data nova, e a aula nova como um modelo que
+     * nunca é gravado.
+     *
+     * @param  array{
+     *     insertion: array{starts_at: CarbonImmutable, ends_at: CarbonImmutable, slot_id: int},
+     *     moves: list<array{lesson: Lesson, occurrence: array{starts_at: CarbonImmutable, ends_at: CarbonImmutable, slot_id: int}}>,
+     * }  $plan
+     * @return list<Lesson>
+     */
+    private function hypotheticalSequence(SchoolClass $class, ?int $classGroupId, array $plan): array
+    {
+        $movedTo = [];
+
+        foreach ($plan['moves'] as $move) {
+            $movedTo[(int) $move['lesson']->getKey()] = $move['occurrence']['starts_at'];
+        }
+
+        $lessons = [];
+
+        foreach (Lesson::query()->where('class_id', $class->getKey())->get() as $lesson) {
+            if (isset($movedTo[(int) $lesson->getKey()])) {
+                $lesson = clone $lesson;
+                $lesson->starts_at = Carbon::instance($movedTo[(int) $lesson->getKey()]);
+            }
+
+            $lessons[] = $lesson;
+        }
+
+        $lessons[] = (new Lesson)->forceFill([
+            'class_id' => $class->getKey(),
+            'class_group_id' => $classGroupId,
+            'starts_at' => Carbon::instance($plan['insertion']['starts_at']),
+            'status' => LessonStatus::Preparation,
+        ]);
+
+        return $lessons;
+    }
+
+    /**
+     * As escritas da inserção: deslocar, criar e renumerar a turma.
+     *
+     * @param  array{
+     *     insertion: array{starts_at: CarbonImmutable, ends_at: CarbonImmutable, slot_id: int},
+     *     moves: list<array{lesson: Lesson, occurrence: array{starts_at: CarbonImmutable, ends_at: CarbonImmutable, slot_id: int}}>,
+     * }  $plan
+     * @return array{lesson: Lesson, renumbered: array<int, int>}
+     */
+    private function apply(SchoolClass $class, ?int $classGroupId, array $plan, User $actor): array
+    {
+        // DE TRÁS PARA A FRENTE. A aula que vai para a última ocorrência
+        // move-se primeiro; só depois a que vai ocupar o lugar que ela
+        // deixou. Pela ordem inversa, cada UPDATE tentaria pousar numa
+        // ocorrência ainda ocupada pela aula seguinte, e a chave
+        // `lessons_class_slot_start_unique` recusaria a meio da operação.
+        foreach (array_reverse($plan['moves']) as $move) {
+            /** @var Lesson $lesson */
+            $lesson = $move['lesson'];
+            // `Carbon::instance()` e não o CarbonImmutable directo: os casts
+            // de `Lesson` declaram `Illuminate\Support\Carbon`, e é essa a
+            // classe que o modelo devolve a quem ler o atributo a seguir.
+            $lesson->starts_at = Carbon::instance($move['occurrence']['starts_at']);
+            $lesson->ends_at = Carbon::instance($move['occurrence']['ends_at']);
+            $lesson->recurring_lesson_slot_id = $move['occurrence']['slot_id'];
+            $lesson->save();
+        }
+
+        $inserted = Lesson::query()->create([
+            'class_id' => $class->getKey(),
+            'class_group_id' => $classGroupId,
+            'recurring_lesson_slot_id' => $plan['insertion']['slot_id'],
+            'starts_at' => $plan['insertion']['starts_at'],
+            'ends_at' => $plan['insertion']['ends_at'],
+            'status' => LessonStatus::Preparation,
+            'created_by' => $actor->getKey(),
+        ]);
+
+        return [
+            'lesson' => $inserted,
+            'renumbered' => $this->numbering->resequence((int) $class->getKey()),
+        ];
+    }
+
+    /**
+     * O plano:que ocorrência recebe a aula nova, e para que ocorrência vai
      * cada uma das que lá estavam.
      *
      * Todas as recusas acontecem AQUI, antes de qualquer escrita — é isto que

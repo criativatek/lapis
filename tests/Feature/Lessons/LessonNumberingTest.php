@@ -12,7 +12,7 @@ use Tests\Feature\Lessons\Concerns\BuildsLessonFixtures;
 use Tests\TestCase;
 
 /**
- * §44 — a numeração sequencial: cronológica, única, por (turma, grupo), e nunca
+ * §44 — a numeração sequencial: cronológica, única, por turma (T1/T2 partilham o número), e nunca
  * a renumerar o que já foi lecionado.
  */
 class LessonNumberingTest extends TestCase
@@ -48,7 +48,7 @@ class LessonNumberingTest extends TestCase
         $later = $this->makeLesson(['starts_at' => '2026-10-15 09:30:00', 'ends_at' => '2026-10-15 10:20:00']);
         $earlier = $this->makeLesson(['starts_at' => '2026-10-01 09:30:00', 'ends_at' => '2026-10-01 10:20:00']);
 
-        $this->resequence(null);
+        $this->resequence();
 
         $this->inTenant($this->organization, function () use ($earlier, $later): void {
             $this->assertSame(1, $earlier->refresh()->lesson_number);
@@ -63,39 +63,12 @@ class LessonNumberingTest extends TestCase
         $this->makeLesson(['starts_at' => '2026-10-08 09:30:00', 'ends_at' => '2026-10-08 10:20:00']);
         $this->makeLesson(['starts_at' => '2026-10-15 09:30:00', 'ends_at' => '2026-10-15 10:20:00']);
 
-        $this->resequence(null);
+        $this->resequence();
 
         $this->inTenant($this->organization, function (): void {
             $numbers = Lesson::query()->pluck('lesson_number')->all();
             $this->assertSame([1, 2, 3], collect($numbers)->sort()->values()->all());
             $this->assertCount(3, array_unique($numbers));
-        });
-    }
-
-    /**
-     * §10, §17: T1 e T2 são duas sequências pedagógicas distintas. Cada uma
-     * começa em 1, e uma aula de T1 nunca conta para o número da seguinte de T2.
-     */
-    #[Test]
-    public function each_group_keeps_its_own_sequence(): void
-    {
-        $first = $this->makeGroup('T1');
-        $second = $this->makeGroup('T2');
-
-        $t1a = $this->makeLesson(['class_group_id' => $first->id, 'starts_at' => '2026-10-01 09:30:00', 'ends_at' => '2026-10-01 10:20:00']);
-        $t2a = $this->makeLesson(['class_group_id' => $second->id, 'starts_at' => '2026-10-02 09:30:00', 'ends_at' => '2026-10-02 10:20:00']);
-        $t1b = $this->makeLesson(['class_group_id' => $first->id, 'starts_at' => '2026-10-08 09:30:00', 'ends_at' => '2026-10-08 10:20:00']);
-        $whole = $this->makeLesson(['starts_at' => '2026-10-09 09:30:00', 'ends_at' => '2026-10-09 10:20:00']);
-
-        $this->resequence($first->id);
-        $this->resequence($second->id);
-        $this->resequence(null);
-
-        $this->inTenant($this->organization, function () use ($t1a, $t1b, $t2a, $whole): void {
-            $this->assertSame(1, $t1a->refresh()->lesson_number);
-            $this->assertSame(2, $t1b->refresh()->lesson_number);
-            $this->assertSame(1, $t2a->refresh()->lesson_number);
-            $this->assertSame(1, $whole->refresh()->lesson_number);
         });
     }
 
@@ -108,7 +81,7 @@ class LessonNumberingTest extends TestCase
 
         $inserted = $this->makeLesson(['starts_at' => '2026-10-08 09:30:00', 'ends_at' => '2026-10-08 10:20:00']);
 
-        $this->resequence(null);
+        $this->resequence();
 
         $this->inTenant($this->organization, function () use ($tenth, $inserted, $eleventh): void {
             $this->assertSame(1, $tenth->refresh()->lesson_number);
@@ -129,7 +102,7 @@ class LessonNumberingTest extends TestCase
 
         $this->expectException(ValidationException::class);
 
-        $this->resequence(null);
+        $this->resequence();
     }
 
     #[Test]
@@ -142,7 +115,7 @@ class LessonNumberingTest extends TestCase
         $newcomer = $this->makeLesson(['starts_at' => '2026-10-01 09:30:00', 'ends_at' => '2026-10-01 10:20:00']);
 
         try {
-            $this->resequence(null);
+            $this->resequence();
         } catch (ValidationException) {
             // Esperado.
         }
@@ -194,11 +167,11 @@ class LessonNumberingTest extends TestCase
                 ->etc());
     }
 
-    private function resequence(?int $classGroupId): void
+    private function resequence(): void
     {
         $this->inTenant(
             $this->organization,
-            fn () => app(LessonNumbering::class)->resequence((int) $this->schoolClass->id, $classGroupId),
+            fn () => app(LessonNumbering::class)->resequence((int) $this->schoolClass->id),
         );
     }
 

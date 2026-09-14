@@ -5,6 +5,7 @@ namespace App\Actions\Lessons;
 use App\Models\CancelledLessonOccurrence;
 use App\Models\Lesson;
 use App\Models\LessonStatus;
+use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Audit\AuditLog;
 use App\Services\Lessons\LessonNumbering;
@@ -50,6 +51,11 @@ class DeleteLesson
     public function execute(Lesson $lesson, User $actor): array
     {
         return DB::transaction(function () use ($actor, $lesson): array {
+            // A renumeração é da turma inteira (0.145.2): o mesmo bloqueio de
+            // turma que a materialização e a inserção tomam, para que uma
+            // eliminação em T1 não corra em paralelo com uma renumeração de T2.
+            SchoolClass::query()->whereKey($lesson->class_id)->lockForUpdate()->first();
+
             /** @var Lesson $locked */
             $locked = Lesson::query()->lockForUpdate()->findOrFail($lesson->getKey());
 
@@ -60,7 +66,6 @@ class DeleteLesson
             }
 
             $classId = $locked->class_id;
-            $classGroupId = $locked->class_group_id;
 
             $this->audit->record(
                 'lesson.deleted',
@@ -102,7 +107,7 @@ class DeleteLesson
             // Fecha o buraco que a eliminação deixou. Recusa-se por inteiro se
             // isso exigisse renumerar uma aula já lecionada — caso em que a
             // transação reverte e a aula não chega a ser eliminada.
-            return $this->numbering->resequence($classId, $classGroupId);
+            return $this->numbering->resequence($classId);
         });
     }
 }

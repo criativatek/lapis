@@ -64,8 +64,7 @@ class MaterializeLessonsForRange
 
             $lessons = collect();
 
-            /** @var array<string, int|null> $touchedSequences */
-            $touchedSequences = [];
+            $createdAny = false;
 
             // As exceções letivas DESTE ano que cruzam o intervalo — os feriados,
             // as interrupções letivas e os dias não letivos (Fase 5.4). Lidas UMA
@@ -213,18 +212,15 @@ class MaterializeLessonsForRange
                         'status' => LessonStatus::Preparation,
                         'created_by' => $actor->id,
                     ]));
-                    $touchedSequences[$slot->class_group_id === null ? 'all' : (string) $slot->class_group_id]
-                        = $slot->class_group_id;
+                    $createdAny = true;
                 }
             }
 
-            // A numeração é recalculada UMA vez por sequência tocada, no fim, e
-            // nunca aula a aula durante o ciclo: LessonNumbering deriva os
-            // números da ordem cronológica de toda a sequência, pelo que
-            // chamá-lo por cada aula criada repetiria N vezes o mesmo trabalho
-            // para chegar ao mesmo resultado.
-            foreach ($touchedSequences as $classGroupId) {
-                $this->numbering->numberMaterializedLessons($lockedClass->id, $classGroupId);
+            // A numeração é recalculada UMA vez, no fim, e nunca aula a aula:
+            // LessonNumbering deriva os números da turma inteira (T1 e T2
+            // incluídos, que partilham o número da mesma lição).
+            if ($createdAny) {
+                $this->numbering->numberMaterializedLessons($lockedClass->id);
             }
 
             return $lessons->sortBy('starts_at')->values();

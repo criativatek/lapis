@@ -48,6 +48,7 @@ type Preview = {
         from: string;
         to: string;
         lesson_number: number | null;
+        lesson_number_to: number | null;
     }[];
 };
 
@@ -240,7 +241,7 @@ function submit(): void {
                         >
                             <span v-if="move.lesson_number" class="shrink-0"
                                 >Lição {{ move.lesson_number }} →
-                                {{ move.lesson_number + 1 }}</span
+                                {{ move.lesson_number_to ?? move.lesson_number }}</span
                             >
                             <span class="shrink-0">{{
                                 dayFormatter.format(new Date(move.from))

@@ -25,6 +25,20 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.145.2] — 2026-09-14
+
+### Corrigido
+- **T1 e T2 recomeçavam a numeração das aulas.** Uma turma com Lições 1, 2 e 3 via a primeira aula de T1 e a de T2 aparecerem as duas como «Lição 1». Causa: `LessonNumbering` numerava por (turma, grupo), como se cada desdobramento fosse uma turma. A numeração pertence agora à **turma**: uma aula da turma inteira consome um número; as aulas de T1 e T2 que correspondem à mesma lição partilham um número; a aula seguinte da turma continua no número a seguir (1, 2, 3, T1 4, T2 4, 5).
+- **Emparelhamento T1/T2 determinístico.** Não existe vínculo gravado entre um tempo de T1 e um de T2, e o horário é semanal: dentro da mesma semana (segunda a domingo, Europe/Lisbon), a k-ésima aula de cada grupo forma a mesma lição, ordenada pela sua primeira aula (`starts_at`, depois `id`). Funciona com T1 e T2 à mesma hora ou em dias diferentes; um feriado que só apanhe um grupo desalinha apenas essa semana. Turmas de apoio são outra `SchoolClass` e mantêm sequência própria.
+- Materialização, «Inserir aula» e eliminação renumeram a turma inteira pela nova regra. O deslocamento de «Inserir aula» continua por (turma, grupo). No funcionamento normal uma aula lecionada continua a nunca mudar de número.
+
+### Adicionado
+- **`php artisan lapis:renumber-lessons [--apply]`** — correção histórica controlada: sem `--apply` só lista «Lição X → Lição Y» (ids e datas, sem nomes); com `--apply` reescreve só `lessons.lesson_number`, **aulas lecionadas incluídas** (autorizado para esta correção). Idempotente: uma segunda execução não encontra nada. **Correr uma vez depois do deploy**, antes de inserir ou eliminar aulas (até lá, essas operações podem ser recusadas por colidirem com números lecionados antigos).
+- Centro de Ajuda: «Escrever o sumário de uma aula» explica a numeração das turmas desdobradas.
+
+### Sem alteração
+- Sem migrations. Backup `schema_version` 9 inalterado (`lesson_number` continua copiado tal como está). Composição comercial, Termos, Privacidade e DPA sem alteração.
+
 ## [0.145.1] — 2026-09-14
 
 ### Corrigido

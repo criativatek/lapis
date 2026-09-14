@@ -816,6 +816,13 @@ php artisan storage:link
 chmod -R ug+rw storage bootstrap/cache
 ```
 
+### Correções de dados pontuais pós-deploy
+
+- **0.145.2 — numeração das aulas por turma.** Depois do deploy, no servidor:
+  `php artisan lapis:renumber-lessons` (simulação; rever o resumo) e depois
+  `php artisan lapis:renumber-lessons --apply`. Reexecutar deve reportar
+  `Renumeradas: 0 turma(s), 0 aula(s).`
+
 ## Cloudflare / TLS
 
 - Cloudflare já está à frente do domínio. Emitir certificado no CloudPanel
