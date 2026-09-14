@@ -268,8 +268,8 @@ class SupportPrivacyAlignmentTest extends TestCase
         );
 
         $this->assertSame('2026-09-03', config('lapis.legal.terms_effective_from'));
-        $this->assertSame('2026-09-03', config('lapis.legal.privacy_effective_from'));
-        $this->assertSame('2026-09-03', config('lapis.legal.processing_effective_from'));
+        $this->assertSame('2026-09-14', config('lapis.legal.privacy_effective_from'));
+        $this->assertSame('2026-09-14', config('lapis.legal.processing_effective_from'));
     }
 
     // ------------------------------------------------- o aviso a quem já usa

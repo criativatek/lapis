@@ -109,11 +109,11 @@ return [
         // que deva mover-se sozinho a cada deploy.
         'terms_effective_from' => env('LAPIS_LEGAL_TERMS_DATE', '2026-09-03'),
 
-        'privacy_effective_from' => env('LAPIS_LEGAL_PRIVACY_DATE', '2026-09-03'),
+        'privacy_effective_from' => env('LAPIS_LEGAL_PRIVACY_DATE', '2026-09-14'),
 
         // O Acordo de Tratamento de Dados — o professor como responsável, o
         // Lapispro como subcontratante dos dados dos alunos.
-        'processing_effective_from' => env('LAPIS_LEGAL_PROCESSING_DATE', '2026-09-03'),
+        'processing_effective_from' => env('LAPIS_LEGAL_PROCESSING_DATE', '2026-09-14'),
 
     ],
 
