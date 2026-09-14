@@ -235,7 +235,7 @@ class ReadOnlyNavigationTest extends TestCase
             array_values(array_diff($menus['pro'], $menus['base'])),
         );
         $this->assertSame(
-            ['team', 'class-reassignment', 'institution'],
+            ['team', 'class-reassignment', 'organization-audit', 'institution'],
             array_values(array_diff($menus['institutional'], $menus['pro'])),
         );
     }

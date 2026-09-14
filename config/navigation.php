@@ -185,6 +185,11 @@ return [
                 // an orphaned class is a governance action, not something a
                 // regular member needs (or is authorized) to see.
                 ['key' => 'class-reassignment', 'label' => 'Turmas a Reatribuir', 'icon' => 'Shuffle', 'module' => 'institution_admin', 'owner_only' => true, 'phase' => 4, 'route' => 'classes.reassignment.index', 'built' => true, 'description' => 'Atribuir um novo professor a turmas que ficaram sem nenhum.'],
+                // 0.145.1. The transversal audit view (audit_log). owner_only
+                // in the menu because a member's view of it is exactly their
+                // own «Minha atividade» — the route still serves a member that
+                // own-only view, never more.
+                ['key' => 'organization-audit', 'label' => 'Auditoria da organização', 'icon' => 'ShieldCheck', 'module' => 'audit_log', 'owner_only' => true, 'phase' => 3, 'route' => 'activity.organization', 'built' => true, 'description' => 'Consultar a atividade registada de todos os membros.'],
                 ['key' => 'institution', 'label' => 'Administração Institucional', 'icon' => 'Building2', 'module' => 'institution_admin', 'owner_only' => true, 'phase' => 7, 'route' => 'institution.index', 'built' => true, 'description' => 'Gerir a instituição.'],
             ],
         ],

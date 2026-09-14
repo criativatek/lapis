@@ -134,7 +134,7 @@ class AuditTrailTest extends TestCase
         $this->seed(DemoDataSeeder::class);
 
         // audit_log (Lote 1) is Institucional-only — the Base plan this factory
-        // creates by default would 403 on /activity before ever reaching the
+        // creates by default would 403 on /activity/organization before ever reaching the
         // assertions this test actually cares about.
         OrganizationSubscription::withoutGlobalScope('organization')
             ->where('organization_id', $teacher->personalOrganization()->getKey())
@@ -154,7 +154,7 @@ class AuditTrailTest extends TestCase
             app(ConfirmClassification::class)->confirm($this->classificationFor($period, 'Carolina Nunes'), $teacher);
         });
 
-        $this->actingAs($teacher)->get('/activity')->assertInertia(
+        $this->actingAs($teacher)->get('/activity/organization')->assertInertia(
             fn ($page) => $page->component('Activity')->where('events', fn ($events) => count($events) > 0),
         );
     }

@@ -113,7 +113,7 @@ class AuditVisibilityTest extends TestCase
 
         $this->actingAs($owner)
             ->withSession(['organization_id' => $organization->id])
-            ->get('/activity')
+            ->get('/activity/organization')
             ->assertInertia(fn ($page) => $page
                 ->component('Activity')
                 ->where('scope', 'organization')
@@ -149,7 +149,7 @@ class AuditVisibilityTest extends TestCase
 
         $this->actingAs($member)
             ->withSession(['organization_id' => $organization->id])
-            ->get('/activity')
+            ->get('/activity/organization')
             ->assertInertia(fn ($page) => $page
                 ->component('Activity')
                 ->where('scope', 'own')
@@ -181,7 +181,7 @@ class AuditVisibilityTest extends TestCase
         // The HTTP route confirms the same for B's owner: A's events never leak in.
         $this->actingAs($ownerB)
             ->withSession(['organization_id' => $organizationB->id])
-            ->get('/activity')
+            ->get('/activity/organization')
             ->assertInertia(fn ($page) => $page
                 ->has('events', 1)
                 ->where('events.0.event', 'b.owner_action'));
@@ -200,7 +200,7 @@ class AuditVisibilityTest extends TestCase
 
         $this->actingAs($memberA)
             ->withSession(['organization_id' => $organizationB->id])
-            ->get('/activity')
+            ->get('/activity/organization')
             ->assertInertia(fn ($page) => $page->missing('events.0.event'));
     }
 
@@ -221,7 +221,7 @@ class AuditVisibilityTest extends TestCase
         $this->recordEvent($organization, $admin, 'admin.own_action');
 
         $this->actingAs($admin)
-            ->get('/activity')
+            ->get('/activity/organization')
             ->assertInertia(fn ($page) => $page
                 ->where('scope', 'organization')
                 ->has('events', 1));
@@ -265,7 +265,7 @@ class AuditVisibilityTest extends TestCase
         $this->recordEvent($organization, $teacher, 'teacher.own_action');
 
         $this->actingAs($teacher)
-            ->get('/activity')
+            ->get('/activity/organization')
             ->assertInertia(fn ($page) => $page
                 ->where('scope', 'organization')
                 ->has('events', 1));
@@ -274,17 +274,17 @@ class AuditVisibilityTest extends TestCase
     // ------------------------------------------------------- F: plan gating (Lote 1)
 
     #[Test]
-    public function a_base_organization_is_blocked_from_the_activity_page(): void
+    public function a_base_organization_is_blocked_from_the_organization_audit(): void
     {
         // A brand-new personal organization is on the Base plan by default
         // (CreatePersonalOrganization) — audit_log is Institucional-only.
         $teacher = User::factory()->create();
 
-        $this->actingAs($teacher)->get('/activity')->assertForbidden();
+        $this->actingAs($teacher)->get('/activity/organization')->assertForbidden();
     }
 
     #[Test]
-    public function a_pro_organization_is_also_blocked_from_the_activity_page(): void
+    public function a_pro_organization_is_also_blocked_from_the_organization_audit(): void
     {
         // audit_log sits above Pro too — only the Institucional plan carries it.
         $teacher = User::factory()->create();
@@ -300,6 +300,6 @@ class AuditVisibilityTest extends TestCase
         ]);
         app(Entitlements::class)->flush();
 
-        $this->actingAs($teacher)->get('/activity')->assertForbidden();
+        $this->actingAs($teacher)->get('/activity/organization')->assertForbidden();
     }
 }

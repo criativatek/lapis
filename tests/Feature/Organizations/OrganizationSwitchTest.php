@@ -225,12 +225,12 @@ class OrganizationSwitchTest extends TestCase
 
         // In their own personal organization, the teacher is the owner and sees
         // the whole (their own) trail — unchanged from Fatia 1.
-        $this->actingAs($teacher)->get('/activity')->assertInertia(fn ($page) => $page->where('scope', 'organization'));
+        $this->actingAs($teacher)->get('/activity/organization')->assertInertia(fn ($page) => $page->where('scope', 'organization'));
 
         // After switching into a school they do NOT own, they are a member —
         // Fatia 1's member-scoped rule applies in the new context too.
         $this->actingAs($teacher)->post('/organizations/switch', ['organization' => $school->ulid]);
-        $this->actingAs($teacher)->get('/activity')->assertInertia(fn ($page) => $page->where('scope', 'own'));
+        $this->actingAs($teacher)->get('/activity/organization')->assertInertia(fn ($page) => $page->where('scope', 'own'));
     }
 
     private function subscribeToInstitutionalPlan(Organization $organization): void

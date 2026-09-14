@@ -79,7 +79,7 @@ class InvitationRegressionTest extends TestCase
         $member = $this->inviteAndAccept($organization, $owner, 'colega@escola.pt');
 
         $this->actingAs($member)->withSession(['organization_id' => $organization->id])
-            ->get('/activity')
+            ->get('/activity/organization')
             ->assertInertia(fn ($page) => $page->where('scope', 'own'));
     }
 

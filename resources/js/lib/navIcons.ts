@@ -18,6 +18,7 @@ import {
     PieChart,
     Settings,
     Share2,
+    ShieldCheck,
     SlidersHorizontal,
     Table2,
     TrendingUp,
@@ -60,6 +61,8 @@ const icons: Record<string, LucideIcon> = {
     CalendarClock,
     BookOpen,
     Building2,
+    // «Auditoria da organização» — the same shield the activity page uses.
+    ShieldCheck,
     Settings,
     Share2,
     CircleHelp,

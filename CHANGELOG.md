@@ -25,6 +25,21 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.145.1] — 2026-09-14
+
+### Corrigido
+- **«Registo de atividade» abria um 403 numa conta Pro.** A causa não era o Pro sem um direito: `audit_log` é Institucional por composição (EntitlementsSeeder, comparação pública de planos). O Painel mostrava o link a todos os planos, e o bloqueio chegava como HTML de erro, que o Inertia desenha no seu modal técnico.
+- **Módulo não incluído no plano** — uma visita de página a um módulo bloqueado responde 403 com uma página amigável («Esta funcionalidade não está incluída no plano atual.», «Voltar ao painel», «Ver planos» para o responsável) em vez do modal «403». Pedidos JSON e escritas continuam a receber o 403 simples.
+
+### Adicionado
+- **«Minha atividade»** (`/activity`) — as ações do próprio professor na organização atual, em todos os planos. Propriedade da plataforma, como a exportação dos próprios dados: sem chave de módulo, sem nova PlanVersion, sem migration. Filtra sempre por `causer_id`, também para o responsável.
+- **«Auditoria da organização»** (`/activity/organization`) — a vista transversal que existia em `/activity`, com o mesmo gate `module:audit_log` (Institucional) e a mesma visibilidade. Aparece no Painel e no menu Instituição (responsável) só a quem tem `audit_log`.
+- Nomes em português para os eventos do registo; um evento sem nome mostra «Ação registada», nunca a chave técnica.
+- Centro de Ajuda: artigo «Minha atividade e auditoria da organização».
+
+### Composição comercial
+- **Sem alteração.** Base, Pro e Institucional mantêm as mesmas PlanVersions; `audit_log` continua só no Institucional.
+
 ## [0.145.0] — 2026-09-13
 
 ### Documentos legais

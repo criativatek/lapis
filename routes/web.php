@@ -234,13 +234,16 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     Route::post('academic-years/{academic_year}/select', [AcademicYearContextController::class, 'select'])
         ->name('academic-years.select');
 
-    // Audit trail (§22.4) — read-only view of the organization's recorded events.
-    // Institucional-only capability: the visibility scoping inside AuditEvent
-    // (owner sees all, member sees only their own) is a layer on top of this
-    // gate, not a substitute for it.
-    Route::get('activity', [ActivityController::class, 'index'])
+    // Audit trail (§22.4), two readings of the same immutable audit_events.
+    // «Minha atividade» — only what the user themself did; every plan, no
+    // module key (a platform property, like the personal data export).
+    Route::get('activity', [ActivityController::class, 'index'])->name('activity.index');
+    // «Auditoria da organização» — Institucional-only capability: the
+    // visibility scoping inside AuditEvent (owner sees all, member sees only
+    // their own) is a layer on top of this gate, not a substitute for it.
+    Route::get('activity/organization', [ActivityController::class, 'organization'])
         ->middleware('module:audit_log')
-        ->name('activity.index');
+        ->name('activity.organization');
 
     // Academic years are the temporal foundation (§9). Reached from the header
     // year selector, not the sidebar — the year is a context, not a menu item.

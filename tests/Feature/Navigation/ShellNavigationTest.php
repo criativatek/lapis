@@ -404,7 +404,7 @@ class ShellNavigationTest extends TestCase
         // personal organization's owner (this helper never creates an
         // institutional-type one) always trivially satisfies over their own
         // organization.
-        $this->assertSame(['team', 'class-reassignment', 'institution'], array_values($gained));
+        $this->assertSame(['team', 'class-reassignment', 'organization-audit', 'institution'], array_values($gained));
     }
 
     #[Test]

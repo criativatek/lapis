@@ -62,6 +62,7 @@ const canOpenAssessments = computed(() => canRead('assessments'));
 const canOpenReports = computed(() => canRead('reports'));
 const canOpenRecords = computed(() => canRead('records'));
 const canOpenCalendar = computed(() => canRead('calendar'));
+const canOpenOrganizationAudit = computed(() => canRead('audit_log'));
 
 // Never a modal, never blocking: an old, fully-adopted account already shows
 // nothing (all_done), the same way readiness() shows nothing once configured.
@@ -183,7 +184,13 @@ function pendingLabel(schoolClass: ClassCard): string {
                 <h1 class="font-serif text-[1.75rem] leading-snug text-foreground">{{ greeting }}, {{ firstName }}.</h1>
                 <p class="mt-0.5 font-serif text-lg text-muted-foreground">{{ statusPhrase }}</p>
             </div>
-            <Link href="/activity" class="text-sm text-muted-foreground hover:underline">Registo de atividade</Link>
+            <!-- «Minha atividade» é de todos os planos. A auditoria transversal
+                 (audit_log) é do Institucional: sem ela o link não aparece, como
+                 no menu, e o servidor volta a verificar. -->
+            <div class="flex shrink-0 flex-col items-end gap-1 text-sm text-muted-foreground">
+                <Link href="/activity" class="hover:underline">Minha atividade</Link>
+                <Link v-if="canOpenOrganizationAudit" href="/activity/organization" class="hover:underline">Auditoria da organização</Link>
+            </div>
         </div>
 
         <!-- "Primeiros passos" (A1a) — a separate, dismissible adoption

@@ -7,6 +7,7 @@ use App\Support\Entitlements\AccessState;
 use App\Support\Entitlements\Entitlements;
 use Closure;
 use Illuminate\Http\Request;
+use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -35,6 +36,18 @@ class RequireModule
         $state = $this->entitlements->accessState($module);
 
         if ($state === AccessState::Locked) {
+            // A page visit from the app gets a real page — still a 403. Inertia
+            // renders an Inertia response whatever its status, but shows a plain
+            // HTML error inside its technical modal, which is what a teacher
+            // following a link used to see. A plan boundary is a business
+            // situation, not a malfunction. Writes and JSON keep the bare abort:
+            // they are never a link someone followed.
+            if ($this->requestIsSafe($request) && ! $request->expectsJson()) {
+                return Inertia::render('ModuleUnavailable', [
+                    'canManagePlan' => $request->user()?->ownsCurrentOrganization() ?? false,
+                ])->toResponse($request)->setStatusCode(Response::HTTP_FORBIDDEN);
+            }
+
             abort(403, __('O seu plano não inclui este módulo.'));
         }
 
