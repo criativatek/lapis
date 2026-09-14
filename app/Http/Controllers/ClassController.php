@@ -254,6 +254,9 @@ class ClassController extends Controller
                             // existentes dizem. O id vai a par do rótulo porque o
                             // seletor do editor de horário casa por id.
                             'class_group_id' => $slot->class_group_id,
+                            // Os tempos com a mesma chave são a mesma lição
+                            // (0.145.2); o editor só a usa para agrupar.
+                            'split_lesson_key' => $slot->split_lesson_key,
                             'class_group_label' => $slot->class_group_id === null
                                 ? null
                                 : $groupLabelsById[$slot->class_group_id] ?? null,

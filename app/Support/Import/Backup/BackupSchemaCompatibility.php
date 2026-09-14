@@ -7,7 +7,9 @@ namespace App\Support\Import\Backup;
  * (§4 of the import brief). Never inferred silently — every backup is
  * classified into exactly one of these before anything else happens.
  *
- * CURRENT (9) is what GenerateDataExport writes today. Version 9 adds
+ * CURRENT (10) is what GenerateDataExport writes today. Version 10 adds
+ * `recurring_lesson_slots[].split_lesson_key` and `lessons[].lesson_unit_key`
+ * (absent in older backups, read as null). Version 9 adds
  * lessons and attendance — `class_groups`, `class_group_memberships`,
  * `recurring_lesson_slots`, `cancelled_lesson_occurrences`, `lessons`,
  * `lesson_summaries`, `lesson_plans`, `lesson_attendances` — none of which
@@ -45,7 +47,7 @@ enum BackupSchemaCompatibility
     case UnsupportedNewer;
     case Invalid;
 
-    public const int CURRENT = 9;
+    public const int CURRENT = 10;
 
     public const int MINIMUM_SUPPORTED = 2;
 

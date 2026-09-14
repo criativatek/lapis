@@ -226,13 +226,13 @@ class ValidateBackupPayload
             'class_group_memberships' => $this->whitelistRows($decoded, 'class_group_memberships', ['ulid', 'class_group_ulid', 'enrollment_ulid', 'effective_from', 'effective_until'], function (array $row) use (&$rowIssues): ?array {
                 return $this->validClassGroupMembershipRow($row, $rowIssues);
             }),
-            'recurring_lesson_slots' => $this->whitelistRows($decoded, 'recurring_lesson_slots', ['ulid', 'class_ulid', 'class_group_ulid', 'day_of_week', 'starts_at', 'ends_at', 'starts_on', 'ends_on'], function (array $row) use (&$rowIssues): ?array {
+            'recurring_lesson_slots' => $this->whitelistRows($decoded, 'recurring_lesson_slots', ['ulid', 'class_ulid', 'class_group_ulid', 'day_of_week', 'starts_at', 'ends_at', 'starts_on', 'ends_on', 'split_lesson_key'], function (array $row) use (&$rowIssues): ?array {
                 return $this->validRecurringLessonSlotRow($row, $rowIssues);
             }),
             'cancelled_lesson_occurrences' => $this->whitelistRows($decoded, 'cancelled_lesson_occurrences', ['class_ulid', 'class_group_ulid', 'recurring_lesson_slot_ulid', 'occurs_at', 'cancelled_by_email'], function (array $row) use (&$rowIssues): ?array {
                 return $this->validCancelledLessonOccurrenceRow($row, $rowIssues);
             }),
-            'lessons' => $this->whitelistRows($decoded, 'lessons', ['ulid', 'class_ulid', 'class_group_ulid', 'recurring_lesson_slot_ulid', 'starts_at', 'ends_at', 'lesson_number', 'status', 'attendance_recorded_at', 'attendance_recorded_by_email', 'created_by_email'], function (array $row) use (&$rowIssues): ?array {
+            'lessons' => $this->whitelistRows($decoded, 'lessons', ['ulid', 'class_ulid', 'class_group_ulid', 'recurring_lesson_slot_ulid', 'starts_at', 'ends_at', 'lesson_number', 'lesson_unit_key', 'status', 'attendance_recorded_at', 'attendance_recorded_by_email', 'created_by_email'], function (array $row) use (&$rowIssues): ?array {
                 return $this->validLessonRow($row, $rowIssues);
             }),
             'lesson_summaries' => $this->whitelistRows($decoded, 'lesson_summaries', ['ulid', 'lesson_ulid', 'content', 'private_notes', 'resources', 'homework', 'reviewed_at', 'reviewed_by_email'], function (array $row) use (&$rowIssues): ?array {
@@ -1513,10 +1513,14 @@ class ValidateBackupPayload
         $endsAt = $this->nullableTime($row['ends_at'] ?? null);
 
         $groupUlid = $this->optionalUlidOrInvalidate($row['class_group_ulid'] ?? null);
+        // v10: opaque key linking T1/T2 slots that are the same lesson.
+        // Absent ⇒ null; present but malformed ⇒ the row is dropped (never
+        // silently unlinked).
+        $splitLessonKey = $this->optionalUlidOrInvalidate($row['split_lesson_key'] ?? null);
 
         if (! $this->isUlid($ulid) || ! $this->isUlid($classUlid)
             || ! is_int($row['day_of_week'] ?? null) || ($row['day_of_week'] < 1 || $row['day_of_week'] > 7)
-            || $startsAt === null || $endsAt === null || ! $groupUlid['ok']
+            || $startsAt === null || $endsAt === null || ! $groupUlid['ok'] || ! $splitLessonKey['ok']
         ) {
             $rowIssues[] = ['domain' => 'recurring_lesson_slots', 'ulid' => is_string($ulid) ? $ulid : null, 'reason' => $this->t('Campos obrigatórios em falta ou inválidos.')];
 
@@ -1532,6 +1536,7 @@ class ValidateBackupPayload
             'ends_at' => $endsAt,
             'starts_on' => $this->nullableDate($row['starts_on'] ?? null),
             'ends_on' => $this->nullableDate($row['ends_on'] ?? null),
+            'split_lesson_key' => $splitLessonKey['value'],
         ];
     }
 
@@ -1577,11 +1582,13 @@ class ValidateBackupPayload
         $classUlid = $row['class_ulid'] ?? null;
         $groupUlid = $this->optionalUlidOrInvalidate($row['class_group_ulid'] ?? null);
         $slotUlid = $this->optionalUlidOrInvalidate($row['recurring_lesson_slot_ulid'] ?? null);
+        // v10: opaque key linking lessons that are the same lesson unit.
+        $lessonUnitKey = $this->optionalUlidOrInvalidate($row['lesson_unit_key'] ?? null);
 
         if (! $this->isUlid($ulid) || ! $this->isUlid($classUlid)
             || $this->nullableDateTime($row['starts_at'] ?? null) === null
             || LessonStatus::tryFrom((string) ($row['status'] ?? '')) === null
-            || ! $groupUlid['ok'] || ! $slotUlid['ok']
+            || ! $groupUlid['ok'] || ! $slotUlid['ok'] || ! $lessonUnitKey['ok']
         ) {
             $rowIssues[] = ['domain' => 'lessons', 'ulid' => is_string($ulid) ? $ulid : null, 'reason' => $this->t('Campos obrigatórios em falta ou inválidos.')];
 
@@ -1596,6 +1603,7 @@ class ValidateBackupPayload
             'starts_at' => $row['starts_at'],
             'ends_at' => $this->nullableDateTime($row['ends_at'] ?? null),
             'lesson_number' => $this->nullableInt($row['lesson_number'] ?? null),
+            'lesson_unit_key' => $lessonUnitKey['value'],
             'status' => $row['status'],
             'attendance_recorded_at' => $this->nullableDateTime($row['attendance_recorded_at'] ?? null),
             'attendance_recorded_by_email' => $this->nullableString($row['attendance_recorded_by_email'] ?? null),

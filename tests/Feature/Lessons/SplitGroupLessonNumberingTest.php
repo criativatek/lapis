@@ -6,6 +6,7 @@ use App\Actions\Lessons\DeleteLesson;
 use App\Models\ClassGroup;
 use App\Models\Lesson;
 use App\Models\LessonStatus;
+use App\Models\RecurringLessonSlot;
 use App\Models\SchoolClass;
 use App\Services\Lessons\LessonNumbering;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -13,17 +14,18 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
-use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Feature\Lessons\Concerns\BuildsLessonFixtures;
 use Tests\TestCase;
 
 /**
- * 0.145.2 — a numeração pertence à TURMA. T1 e T2 da mesma lição partilham um
- * número; a turma inteira continua a sequência a seguir.
+ * 0.145.2 — a numeração pertence à TURMA, e a equivalência entre aulas de
+ * grupos é EXPLÍCITA: tempos com o mesmo `split_lesson_key` são a mesma lição,
+ * e cada aula fica ligada a uma lição (`lesson_unit_key`) uma vez e para sempre.
  *
- * Calendário de outubro de 2026 usado aqui: segunda 05, terça 06, quarta 07,
- * quinta 08, sexta 09; segunda 12, terça 13, quinta 15.
+ * Calendário de outubro de 2026: segunda 05, terça 06, quarta 07, quinta 08;
+ * segunda 12, terça 13; segunda 19, terça 20.
  */
 class SplitGroupLessonNumberingTest extends TestCase
 {
@@ -33,25 +35,33 @@ class SplitGroupLessonNumberingTest extends TestCase
 
     private ClassGroup $t2;
 
+    private RecurringLessonSlot $t1Slot;
+
+    private RecurringLessonSlot $t2Slot;
+
     protected function setUp(): void
     {
         parent::setUp();
         $this->bootLessonFixtures();
         $this->t1 = $this->makeGroup('T1');
         $this->t2 = $this->makeGroup('T2');
+
+        $key = (string) Str::ulid();
+        $this->t1Slot = $this->makeSlot(['class_group_id' => $this->t1->id, 'day_of_week' => 1, 'split_lesson_key' => $key]);
+        $this->t2Slot = $this->makeSlot(['class_group_id' => $this->t2->id, 'day_of_week' => 2, 'split_lesson_key' => $key]);
     }
 
-    /** A) inteiro 1,2,3 · T1/T2 4,4 · inteiro 5. */
+    /** A) + H) inteiro 1,2,3 · T1/T2 ligados 4,4 · inteiro 5. */
     #[Test]
-    public function a_split_pair_consumes_one_number_of_the_class_sequence(): void
+    public function linked_group_lessons_share_one_number_of_the_class_sequence(): void
     {
         $lessons = [
-            $this->whole('2026-10-05 09:30:00'),
-            $this->whole('2026-10-06 09:30:00'),
+            $this->whole('2026-10-01 09:30:00'),
+            $this->whole('2026-10-02 09:30:00'),
+            $this->whole('2026-10-03 09:30:00'),
+            $this->onSlot($this->t1Slot, '2026-10-05'),
+            $this->onSlot($this->t2Slot, '2026-10-06'),
             $this->whole('2026-10-07 09:30:00'),
-            $this->group($this->t1, '2026-10-08 09:30:00'),
-            $this->group($this->t2, '2026-10-08 11:00:00'),
-            $this->whole('2026-10-09 09:30:00'),
         ];
 
         $this->resequence();
@@ -59,41 +69,119 @@ class SplitGroupLessonNumberingTest extends TestCase
         $this->assertNumbers([1, 2, 3, 4, 4, 5], $lessons);
     }
 
-    /** B) T1 à terça e T2 à quinta — horários diferentes, a mesma lição. */
+    /** B) T1 à segunda e T2 à quinta — dias diferentes, o mesmo vínculo. */
     #[Test]
-    public function groups_at_different_times_of_the_same_week_share_the_number(): void
+    public function linked_slots_on_different_days_share_the_number(): void
     {
+        $key = $this->t1Slot->split_lesson_key;
+        $this->inTenant($this->organization, fn () => $this->t2Slot->update(['split_lesson_key' => null]));
+        $thursday = $this->makeSlot(['class_group_id' => $this->t2->id, 'day_of_week' => 4, 'starts_at' => '14:00', 'ends_at' => '14:50', 'split_lesson_key' => $key]);
+
         $lessons = [
-            $this->whole('2026-10-05 09:30:00'),
-            $this->group($this->t1, '2026-10-06 09:30:00'),
-            $this->group($this->t2, '2026-10-08 14:00:00'),
-            $this->whole('2026-10-09 09:30:00'),
+            $this->onSlot($this->t1Slot, '2026-10-05'),
+            $this->whole('2026-10-06 15:00:00'),
+            $this->onSlot($thursday, '2026-10-08', '14:00'),
         ];
 
         $this->resequence();
 
-        $this->assertNumbers([1, 2, 2, 3], $lessons);
+        $this->assertNumbers([1, 2, 1], $lessons);
     }
 
-    /** C) dois pares seguidos: 4,4 · 5,5 — na mesma semana e em semanas seguidas. */
+    /**
+     * C) + D) feriado de T2 na primeira semana: a T2 seguinte é a lição que
+     * ficou por dar, e não a da semana em que acontece.
+     */
     #[Test]
-    public function consecutive_pairs_get_consecutive_shared_numbers(): void
+    public function a_holiday_in_one_group_does_not_break_the_lesson_identity(): void
     {
+        $t1First = $this->onSlot($this->t1Slot, '2026-10-05');
+        $t1Second = $this->onSlot($this->t1Slot, '2026-10-12');
+        $t2First = $this->onSlot($this->t2Slot, '2026-10-13');
+
+        $this->resequence();
+        $this->assertNumbers([1, 2, 1], [$t1First, $t1Second, $t2First]);
+
+        $t2Second = $this->onSlot($this->t2Slot, '2026-10-20');
+        $this->resequence();
+        $this->assertNumbers([1, 2, 1, 2], [$t1First, $t1Second, $t2First, $t2Second]);
+
+        $this->inTenant($this->organization, function () use ($t1First, $t2First): void {
+            $this->assertNotNull($t1First->refresh()->lesson_unit_key);
+            $this->assertSame($t1First->lesson_unit_key, $t2First->refresh()->lesson_unit_key);
+        });
+    }
+
+    /** C) cancelar a T2 não tira a T1 da sua lição. */
+    #[Test]
+    public function cancelling_one_group_keeps_the_other_in_its_lesson(): void
+    {
+        $t1 = $this->onSlot($this->t1Slot, '2026-10-05');
+        $t2 = $this->onSlot($this->t2Slot, '2026-10-06');
+        $whole = $this->whole('2026-10-08 09:30:00');
+        $this->resequence();
+
+        $unit = $this->inTenant($this->organization, fn () => $t1->refresh()->lesson_unit_key);
+
+        $this->inTenant($this->organization, fn () => app(DeleteLesson::class)->execute($t2, $this->teacher));
+
+        $this->assertNumbers([1, 2], [$t1, $whole]);
+        $this->inTenant($this->organization, fn () => $this->assertSame($unit, $t1->refresh()->lesson_unit_key));
+    }
+
+    /** E) duas aulas de T1 e uma de T2: só as dos tempos ligados partilham. */
+    #[Test]
+    public function an_extra_unlinked_group_lesson_is_its_own_lesson(): void
+    {
+        $extra = $this->makeSlot(['class_group_id' => $this->t1->id, 'day_of_week' => 4]);
+
         $lessons = [
-            $this->group($this->t1, '2026-10-05 09:30:00'),
-            $this->group($this->t2, '2026-10-06 09:30:00'),
-            $this->group($this->t1, '2026-10-07 09:30:00'),
-            $this->group($this->t2, '2026-10-08 09:30:00'),
-            $this->group($this->t1, '2026-10-12 09:30:00'),
-            $this->group($this->t2, '2026-10-13 09:30:00'),
+            $this->onSlot($this->t1Slot, '2026-10-05'),
+            $this->onSlot($this->t2Slot, '2026-10-06'),
+            $this->onSlot($extra, '2026-10-08'),
         ];
 
         $this->resequence();
 
-        $this->assertNumbers([1, 1, 2, 2, 3, 3], $lessons);
+        $this->assertNumbers([1, 1, 2], $lessons);
     }
 
-    /** D) uma turma de apoio é outra SchoolClass e tem sequência própria. */
+    /** F) três grupos ligados partilham o mesmo número. */
+    #[Test]
+    public function three_linked_groups_share_the_number(): void
+    {
+        $t3 = $this->makeGroup('T3');
+        $t3Slot = $this->makeSlot(['class_group_id' => $t3->id, 'day_of_week' => 3, 'split_lesson_key' => $this->t1Slot->split_lesson_key]);
+
+        $lessons = [
+            $this->onSlot($this->t1Slot, '2026-10-05'),
+            $this->onSlot($this->t2Slot, '2026-10-06'),
+            $this->onSlot($t3Slot, '2026-10-07'),
+            $this->whole('2026-10-08 09:30:00'),
+        ];
+
+        $this->resequence();
+
+        $this->assertNumbers([1, 1, 1, 2], $lessons);
+    }
+
+    /** G) sem vínculo, a mesma semana NÃO emparelha nada. */
+    #[Test]
+    public function unlinked_group_lessons_never_share_a_number(): void
+    {
+        $this->inTenant($this->organization, fn () => RecurringLessonSlot::query()->update(['split_lesson_key' => null]));
+
+        $lessons = [
+            $this->onSlot($this->t1Slot, '2026-10-05'),
+            $this->onSlot($this->t2Slot, '2026-10-06'),
+        ];
+
+        $this->resequence();
+
+        $this->assertNumbers([1, 2], $lessons);
+    }
+
+    /** I) uma turma de apoio é outra SchoolClass e tem sequência própria. */
     #[Test]
     public function a_support_class_keeps_an_independent_sequence(): void
     {
@@ -102,10 +190,10 @@ class SplitGroupLessonNumberingTest extends TestCase
             ->support()
             ->create(['academic_year_id' => $this->schoolClass->academic_year_id]));
 
-        $main = [$this->whole('2026-10-05 09:30:00'), $this->whole('2026-10-06 09:30:00')];
+        $main = [$this->whole('2026-10-05 15:00:00'), $this->whole('2026-10-06 15:00:00')];
         $supportLessons = [
-            $this->makeLesson(['class_id' => $support->id, 'starts_at' => '2026-10-05 15:00:00']),
-            $this->makeLesson(['class_id' => $support->id, 'starts_at' => '2026-10-07 15:00:00']),
+            $this->makeLesson(['class_id' => $support->id, 'starts_at' => '2026-10-05 16:00:00']),
+            $this->makeLesson(['class_id' => $support->id, 'starts_at' => '2026-10-07 16:00:00']),
         ];
 
         $this->resequence();
@@ -115,33 +203,15 @@ class SplitGroupLessonNumberingTest extends TestCase
         $this->assertNumbers([1, 2], $supportLessons);
     }
 
-    /** E) inserir uma aula da turma inteira antes do par desloca os dois por igual. */
+    /** Inserir em T1 pelo fluxo real: cada aula leva a sua lição consigo. */
     #[Test]
-    public function inserting_before_a_pair_moves_both_groups_together(): void
+    public function inserting_into_one_group_keeps_each_lesson_identity(): void
     {
-        $pair = [
-            $this->group($this->t1, '2026-10-06 09:30:00', ['lesson_number' => 1]),
-            $this->group($this->t2, '2026-10-07 09:30:00', ['lesson_number' => 1]),
-        ];
-        $after = $this->whole('2026-10-08 09:30:00', ['lesson_number' => 2]);
-
-        $inserted = $this->whole('2026-10-05 09:30:00');
+        $t1a = $this->onSlot($this->t1Slot, '2026-10-05');
+        $t2a = $this->onSlot($this->t2Slot, '2026-10-06');
+        $t1b = $this->onSlot($this->t1Slot, '2026-10-12');
+        $t2b = $this->onSlot($this->t2Slot, '2026-10-13');
         $this->resequence();
-
-        $this->assertNumbers([1, 2, 2, 3], [$inserted, ...$pair, $after]);
-    }
-
-    /** E) inserir em T1 pelo fluxo real: T1 e T2 continuam alinhados. */
-    #[Test]
-    public function inserting_into_one_group_keeps_the_pairs_aligned(): void
-    {
-        $t1Slot = $this->makeSlot(['class_group_id' => $this->t1->id, 'day_of_week' => 1]);
-        $t2Slot = $this->makeSlot(['class_group_id' => $this->t2->id, 'day_of_week' => 2]);
-
-        $t1a = $this->group($this->t1, '2026-10-05 09:30:00', ['recurring_lesson_slot_id' => $t1Slot->id, 'lesson_number' => 1]);
-        $t2a = $this->group($this->t2, '2026-10-06 09:30:00', ['recurring_lesson_slot_id' => $t2Slot->id, 'lesson_number' => 1]);
-        $t1b = $this->group($this->t1, '2026-10-12 09:30:00', ['recurring_lesson_slot_id' => $t1Slot->id, 'lesson_number' => 2]);
-        $t2b = $this->group($this->t2, '2026-10-13 09:30:00', ['recurring_lesson_slot_id' => $t2Slot->id, 'lesson_number' => 2]);
 
         $this->asTeacher()
             ->from('/lessons')
@@ -156,29 +226,32 @@ class SplitGroupLessonNumberingTest extends TestCase
         $this->inTenant($this->organization, function () use ($t1a, $t1b, $t2a, $t2b): void {
             $new = Lesson::query()->where('class_group_id', $this->t1->id)->whereDate('starts_at', '2026-10-05')->sole();
 
+            // A aula nova é uma lição nova; a T1 deslocada continua a lição da T2a.
             $this->assertSame(1, $new->lesson_number);
-            $this->assertSame(1, $t2a->refresh()->lesson_number);
             $this->assertSame('2026-10-12', $t1a->refresh()->starts_at->toDateString());
+            $this->assertSame($t2a->refresh()->lesson_unit_key, $t1a->lesson_unit_key);
             $this->assertSame(2, $t1a->lesson_number);
-            $this->assertSame(2, $t2b->refresh()->lesson_number);
+            $this->assertSame(2, $t2a->lesson_number);
             $this->assertSame(3, $t1b->refresh()->lesson_number);
+            $this->assertSame(3, $t2b->refresh()->lesson_number);
         });
     }
 
-    /**
-     * A pré-visualização não pode prometer o que a execução recusa: inserir em
-     * T2 antes de aulas lecionadas de T1 mudaria os números delas.
-     */
+    /** A pré-visualização recusa o que a execução recusaria (caso entre grupos). */
     #[Test]
     public function the_insert_preview_refuses_what_the_class_numbering_would_refuse(): void
     {
-        $this->makeSlot(['class_group_id' => $this->t2->id, 'day_of_week' => 1]);
-        $taught = $this->group($this->t1, '2026-10-13 09:30:00', ['lesson_number' => 1, 'status' => LessonStatus::Taught]);
+        $taught = $this->makeLesson([
+            'class_group_id' => $this->t1->id,
+            'starts_at' => '2026-10-14 09:30:00',
+            'lesson_number' => 1,
+            'status' => LessonStatus::Taught,
+        ]);
 
         $payload = [
             'class' => $this->schoolClass->ulid,
             'class_group_id' => $this->t2->id,
-            'insert_at' => '2026-10-05',
+            'insert_at' => '2026-10-06',
         ];
 
         $this->asTeacher()->postJson('/lessons/insert/preview', $payload)
@@ -192,23 +265,20 @@ class SplitGroupLessonNumberingTest extends TestCase
         });
     }
 
-    /**
-     * A pré-visualização é só leitura: nem aulas, nem datas, nem números, nem
-     * auditoria, nem jobs ou notificações — e nem sequer um id consumido.
-     */
+    /** A pré-visualização é só leitura: nada gravado, auditado, enfileirado. */
     #[Test]
     public function the_insert_preview_leaves_no_persistent_trace(): void
     {
         Queue::fake();
         Notification::fake();
 
-        $t1Slot = $this->makeSlot(['class_group_id' => $this->t1->id, 'day_of_week' => 1]);
-        $t2Slot = $this->makeSlot(['class_group_id' => $this->t2->id, 'day_of_week' => 2]);
         $lessons = [
-            $this->group($this->t1, '2026-10-05 09:30:00', ['recurring_lesson_slot_id' => $t1Slot->id, 'lesson_number' => 1]),
-            $this->group($this->t2, '2026-10-06 09:30:00', ['recurring_lesson_slot_id' => $t2Slot->id, 'lesson_number' => 1]),
+            $this->onSlot($this->t1Slot, '2026-10-05'),
+            $this->onSlot($this->t2Slot, '2026-10-06'),
         ];
-        $snapshot = fn (): string => DB::table('lessons')->orderBy('id')->get(['id', 'starts_at', 'lesson_number', 'status', 'updated_at'])->toJson();
+        $this->resequence();
+
+        $snapshot = fn (): string => DB::table('lessons')->orderBy('id')->get(['id', 'starts_at', 'lesson_number', 'lesson_unit_key', 'status', 'updated_at'])->toJson();
         $before = $snapshot();
         $auditBefore = DB::table('audit_events')->count();
         $maxIdBefore = DB::table('lessons')->max('id');
@@ -230,13 +300,12 @@ class SplitGroupLessonNumberingTest extends TestCase
         $this->assertSame($auditBefore, DB::table('audit_events')->count());
         $this->assertSame([], array_values(array_filter(
             $queries,
-            fn (string $sql): bool => (bool) preg_match('/^\s*(insert|update|delete)\b.*\b(lessons|audit_events)\b/', $sql),
+            fn (string $sql): bool => (bool) preg_match('/^\s*(insert|update|delete)\b/', $sql),
         )));
         Queue::assertNothingPushed();
         Notification::assertNothingSent();
 
-        // O id seguinte continua a ser o seguinte: nada foi inserido e desfeito.
-        $next = $this->group($this->t1, '2026-10-19 09:30:00');
+        $next = $this->onSlot($this->t1Slot, '2026-10-19');
         $this->assertSame($maxIdBefore + 1, $next->id);
         $this->assertNumbers([1, 1], $lessons);
     }
@@ -245,8 +314,9 @@ class SplitGroupLessonNumberingTest extends TestCase
     #[Test]
     public function deleting_locks_the_class_before_resequencing(): void
     {
-        $lesson = $this->group($this->t1, '2026-10-05 09:30:00', ['lesson_number' => 1]);
-        $this->group($this->t2, '2026-10-06 09:30:00', ['lesson_number' => 1]);
+        $lesson = $this->onSlot($this->t1Slot, '2026-10-05');
+        $this->onSlot($this->t2Slot, '2026-10-06');
+        $this->resequence();
 
         $queries = [];
         DB::listen(function ($query) use (&$queries): void {
@@ -269,17 +339,14 @@ class SplitGroupLessonNumberingTest extends TestCase
 
     /**
      * Plano B documentado: materializar uma semana ANTERIOR a aulas lecionadas
-     * não renumera o histórico — o par novo recebe o número a seguir ao maior,
-     * T1 e T2 continuam juntos, e o desvio fica registado (não é silencioso).
+     * não renumera o histórico, mantém o par ligado e fica registado.
      */
     #[Test]
     public function the_out_of_order_materialization_fallback_is_logged_and_keeps_pairs(): void
     {
         Log::spy();
 
-        $this->makeSlot(['class_group_id' => $this->t1->id, 'day_of_week' => 1]);
-        $this->makeSlot(['class_group_id' => $this->t2->id, 'day_of_week' => 2]);
-        $taught = $this->whole('2026-10-15 09:30:00', ['lesson_number' => 1, 'status' => LessonStatus::Taught]);
+        $taught = $this->whole('2026-10-15 15:00:00', ['lesson_number' => 1, 'status' => LessonStatus::Taught]);
 
         $this->materialize('2026-10-05', '2026-10-11');
 
@@ -296,6 +363,168 @@ class SplitGroupLessonNumberingTest extends TestCase
             ->once();
     }
 
+    /** Materializar semanas novas continua a sequência e os pares. */
+    #[Test]
+    public function materializing_new_weeks_continues_the_class_sequence(): void
+    {
+        $this->makeSlot(['day_of_week' => 4, 'starts_at' => '15:00', 'ends_at' => '15:50']);
+
+        $this->materialize('2026-10-05', '2026-10-11');
+        $this->materialize('2026-10-12', '2026-10-18');
+        // K) reabrir as mesmas semanas não mexe em nada.
+        $this->materialize('2026-10-05', '2026-10-18');
+
+        $this->inTenant($this->organization, function (): void {
+            $numbers = Lesson::query()->orderBy('starts_at')->pluck('lesson_number')->all();
+            $this->assertSame([1, 1, 2, 3, 3, 4], $numbers);
+        });
+    }
+
+    /**
+     * 8.º F / J) o caso real: 1,2,3 lecionadas; T1 e T2 (um tempo cada, sem
+     * vínculo) ambos em «Lição 1». O comando reconhece o emparelhamento como
+     * inequívoco, só escreve com --apply, e reexecutar não muda nada.
+     */
+    #[Test]
+    public function the_command_fixes_the_production_case_only_with_apply(): void
+    {
+        $this->inTenant($this->organization, fn () => RecurringLessonSlot::query()->update(['split_lesson_key' => null]));
+        $taught = ['status' => LessonStatus::Taught];
+        $lessons = [
+            $this->whole('2026-10-01 09:30:00', $taught + ['lesson_number' => 1]),
+            $this->whole('2026-10-02 09:30:00', $taught + ['lesson_number' => 2]),
+            $this->whole('2026-10-03 09:30:00', $taught + ['lesson_number' => 3]),
+            $this->onSlot($this->t1Slot, '2026-10-05', '09:30', $taught + ['lesson_number' => 1]),
+            $this->onSlot($this->t2Slot, '2026-10-06', '09:30', ['lesson_number' => 1]),
+        ];
+
+        $this->artisan('lapis:renumber-lessons')
+            ->expectsOutputToContain('EMPARELHAMENTO INEQUÍVOCO')
+            ->expectsOutputToContain('Lição 1 -> Lição 4')
+            ->assertSuccessful();
+        $this->assertNumbers([1, 2, 3, 1, 1], $lessons);
+        $this->inTenant($this->organization, fn () => $this->assertSame(0, RecurringLessonSlot::query()->whereNotNull('split_lesson_key')->count()));
+
+        $this->artisan('lapis:renumber-lessons', ['--apply' => true])
+            ->expectsOutputToContain('Renumeradas: 1 turma(s), 2 aula(s).')
+            ->assertSuccessful();
+        $this->assertNumbers([1, 2, 3, 4, 4], $lessons);
+
+        // K) reexecutar é idempotente.
+        $this->artisan('lapis:renumber-lessons', ['--apply' => true])
+            ->expectsOutputToContain('Renumeradas: 0 turma(s), 0 aula(s).')
+            ->assertSuccessful();
+
+        // A próxima aula da turma inteira é a 5.
+        $next = $this->whole('2026-10-07 09:30:00');
+        $this->resequence();
+        $this->assertNumbers([5], [$next]);
+    }
+
+    /** J) um grupo com dois tempos semanais é ambíguo: nada é escrito. */
+    #[Test]
+    public function the_command_never_writes_an_ambiguous_class(): void
+    {
+        $this->inTenant($this->organization, fn () => RecurringLessonSlot::query()->update(['split_lesson_key' => null]));
+        $secondT1 = $this->makeSlot(['class_group_id' => $this->t1->id, 'day_of_week' => 4]);
+
+        $lessons = [
+            $this->onSlot($this->t1Slot, '2026-10-05', '09:30', ['lesson_number' => 1]),
+            $this->onSlot($this->t2Slot, '2026-10-06', '09:30', ['lesson_number' => 1]),
+            $this->onSlot($secondT1, '2026-10-08', '09:30', ['lesson_number' => 2]),
+        ];
+
+        $this->artisan('lapis:renumber-lessons', ['--apply' => true])
+            ->expectsOutputToContain('AMBÍGUO')
+            ->expectsOutputToContain('Ambíguas (não tocadas): 1.')
+            ->assertSuccessful();
+
+        $this->assertNumbers([1, 1, 2], $lessons);
+        $this->inTenant($this->organization, function (): void {
+            $this->assertSame(0, RecurringLessonSlot::query()->whereNotNull('split_lesson_key')->count());
+            $this->assertSame(0, Lesson::query()->whereNotNull('lesson_unit_key')->count());
+        });
+    }
+
+    /** K) a correção histórica é idempotente, vínculos incluídos. */
+    #[Test]
+    public function the_rebuild_is_idempotent(): void
+    {
+        $this->whole('2026-10-01 09:30:00', ['lesson_number' => 7]);
+        $this->onSlot($this->t1Slot, '2026-10-05', '09:30', ['lesson_number' => 1]);
+        $this->onSlot($this->t2Slot, '2026-10-06', '09:30', ['lesson_number' => 1]);
+
+        $first = $this->rebuild();
+        $this->assertNotSame([], $first['numbers']);
+        $this->assertCount(2, $first['links']);
+
+        $second = $this->rebuild();
+        $this->assertSame([], $second['numbers']);
+        $this->assertSame([], $second['links']);
+    }
+
+    /** O horário: «Mesma lição que…» liga os tempos sem o professor ver chaves. */
+    #[Test]
+    public function the_schedule_form_links_and_refuses_same_group_links(): void
+    {
+        $this->inTenant($this->organization, fn () => RecurringLessonSlot::query()->update(['split_lesson_key' => null]));
+
+        $this->asTeacher()->post('/lesson-slots', [
+            'class_id' => $this->schoolClass->id,
+            'class_group_id' => $this->t2->id,
+            'day_of_week' => 3,
+            'starts_at' => '11:00',
+            'ends_at' => '11:50',
+            'same_lesson_as' => $this->t1Slot->ulid,
+        ])->assertSessionHasNoErrors();
+
+        $this->inTenant($this->organization, function (): void {
+            $created = RecurringLessonSlot::query()->where('day_of_week', 3)->sole();
+            $this->assertNotNull($created->split_lesson_key);
+            $this->assertSame($created->split_lesson_key, $this->t1Slot->refresh()->split_lesson_key);
+        });
+
+        $this->asTeacher()->post('/lesson-slots', [
+            'class_id' => $this->schoolClass->id,
+            'class_group_id' => $this->t1->id,
+            'day_of_week' => 5,
+            'starts_at' => '11:00',
+            'ends_at' => '11:50',
+            'same_lesson_as' => $this->t1Slot->ulid,
+        ])->assertSessionHasErrors('same_lesson_as');
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function whole(string $startsAt, array $attributes = []): Lesson
+    {
+        return $this->makeLesson(['starts_at' => $startsAt] + $attributes);
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function onSlot(RecurringLessonSlot $slot, string $date, string $time = '09:30', array $attributes = []): Lesson
+    {
+        return $this->makeLesson([
+            'class_group_id' => $slot->class_group_id,
+            'recurring_lesson_slot_id' => $slot->id,
+            'starts_at' => "{$date} {$time}:00",
+        ] + $attributes);
+    }
+
+    /**
+     * @param  list<int>  $expected
+     * @param  list<Lesson>  $lessons
+     */
+    private function assertNumbers(array $expected, array $lessons): void
+    {
+        $this->inTenant($this->organization, function () use ($expected, $lessons): void {
+            $this->assertSame($expected, array_map(fn (Lesson $lesson): ?int => $lesson->fresh()?->lesson_number, $lessons));
+        });
+    }
+
     /**
      * @param  list<string>  $queries
      */
@@ -310,147 +539,6 @@ class SplitGroupLessonNumberingTest extends TestCase
         return null;
     }
 
-    /** F) eliminar a aula de T1 de um par não duplica nem salta números. */
-    #[Test]
-    public function deleting_half_of_a_pair_neither_duplicates_nor_skips(): void
-    {
-        $t1 = $this->group($this->t1, '2026-10-05 09:30:00', ['lesson_number' => 1]);
-        $t2 = $this->group($this->t2, '2026-10-06 09:30:00', ['lesson_number' => 1]);
-        $whole = $this->whole('2026-10-08 09:30:00', ['lesson_number' => 2]);
-        $next = [
-            $this->group($this->t1, '2026-10-12 09:30:00', ['lesson_number' => 3]),
-            $this->group($this->t2, '2026-10-13 09:30:00', ['lesson_number' => 3]),
-        ];
-
-        $this->inTenant($this->organization, fn () => app(DeleteLesson::class)->execute($t1, $this->teacher));
-
-        $this->assertNumbers([1, 2, 3, 3], [$t2, $whole, ...$next]);
-    }
-
-    /** G) materializar semanas novas continua a sequência da turma. */
-    #[Test]
-    public function materializing_new_weeks_continues_the_class_sequence(): void
-    {
-        $this->makeSlot(['class_group_id' => $this->t1->id, 'day_of_week' => 1]);
-        $this->makeSlot(['class_group_id' => $this->t2->id, 'day_of_week' => 2]);
-        $this->makeSlot(['day_of_week' => 4]);
-
-        $this->materialize('2026-10-05', '2026-10-11');
-        $this->materialize('2026-10-12', '2026-10-18');
-
-        $this->inTenant($this->organization, function (): void {
-            $numbers = Lesson::query()->orderBy('starts_at')->pluck('lesson_number')->all();
-            $this->assertSame([1, 1, 2, 3, 3, 4], $numbers);
-        });
-    }
-
-    /**
-     * 16/H) o caso real da 8.º F: 1,2,3 lecionadas, T1 e T2 ambos em «Lição 1».
-     * A renumeração normal recusa (histórico); a correção histórica acerta.
-     */
-    #[Test]
-    public function the_historical_rebuild_fixes_the_production_case(): void
-    {
-        $taught = ['status' => LessonStatus::Taught];
-        $lessons = [
-            $this->whole('2026-10-05 09:30:00', $taught + ['lesson_number' => 1]),
-            $this->whole('2026-10-06 09:30:00', $taught + ['lesson_number' => 2]),
-            $this->whole('2026-10-07 09:30:00', $taught + ['lesson_number' => 3]),
-            $this->group($this->t1, '2026-10-08 09:30:00', $taught + ['lesson_number' => 1]),
-            $this->group($this->t2, '2026-10-08 11:00:00', $taught + ['lesson_number' => 1]),
-        ];
-
-        try {
-            $this->resequence();
-            $this->fail('A renumeração normal não pode mexer em aulas lecionadas.');
-        } catch (ValidationException) {
-            // Esperado: o funcionamento normal não renumera histórico.
-        }
-        $this->assertNumbers([1, 2, 3, 1, 1], $lessons);
-
-        $changes = $this->rebuild();
-
-        $this->assertCount(2, $changes);
-        $this->assertNumbers([1, 2, 3, 4, 4], $lessons);
-
-        // A próxima aula da turma inteira é a 5.
-        $next = $this->whole('2026-10-09 09:30:00');
-        $this->resequence();
-        $this->assertNumbers([5], [$next]);
-
-        // Nada além do número mudou.
-        $this->inTenant($this->organization, function () use ($lessons): void {
-            foreach ($lessons as $lesson) {
-                $fresh = $lesson->fresh();
-                $this->assertSame(LessonStatus::Taught, $fresh?->status);
-                $this->assertSame($lesson->class_group_id, $fresh?->class_group_id);
-                $this->assertTrue($lesson->starts_at->equalTo($fresh?->starts_at));
-            }
-        });
-    }
-
-    /** I) reexecutar a correção não muda nada. */
-    #[Test]
-    public function the_rebuild_is_idempotent(): void
-    {
-        $this->whole('2026-10-05 09:30:00', ['lesson_number' => 7]);
-        $this->group($this->t1, '2026-10-06 09:30:00', ['lesson_number' => 1]);
-        $this->group($this->t2, '2026-10-07 09:30:00', ['lesson_number' => 1]);
-
-        $this->assertNotSame([], $this->rebuild());
-        $this->assertSame([], $this->rebuild());
-    }
-
-    #[Test]
-    public function the_command_reports_by_default_and_writes_only_with_apply(): void
-    {
-        $taught = ['status' => LessonStatus::Taught];
-        $lessons = [
-            $this->whole('2026-10-05 09:30:00', $taught + ['lesson_number' => 1]),
-            $this->group($this->t1, '2026-10-06 09:30:00', $taught + ['lesson_number' => 1]),
-            $this->group($this->t2, '2026-10-07 09:30:00', $taught + ['lesson_number' => 1]),
-        ];
-
-        $this->artisan('lapis:renumber-lessons')->assertSuccessful();
-        $this->assertNumbers([1, 1, 1], $lessons);
-
-        $this->artisan('lapis:renumber-lessons', ['--apply' => true])
-            ->expectsOutputToContain('Renumeradas: 1 turma(s), 2 aula(s).')
-            ->assertSuccessful();
-        $this->assertNumbers([1, 2, 2], $lessons);
-
-        $this->artisan('lapis:renumber-lessons', ['--apply' => true])
-            ->expectsOutputToContain('Renumeradas: 0 turma(s), 0 aula(s).')
-            ->assertSuccessful();
-    }
-
-    /**
-     * @param  array<string, mixed>  $attributes
-     */
-    private function whole(string $startsAt, array $attributes = []): Lesson
-    {
-        return $this->makeLesson(['starts_at' => $startsAt] + $attributes);
-    }
-
-    /**
-     * @param  array<string, mixed>  $attributes
-     */
-    private function group(ClassGroup $group, string $startsAt, array $attributes = []): Lesson
-    {
-        return $this->makeLesson(['class_group_id' => $group->id, 'starts_at' => $startsAt] + $attributes);
-    }
-
-    /**
-     * @param  list<int>  $expected
-     * @param  list<Lesson>  $lessons
-     */
-    private function assertNumbers(array $expected, array $lessons): void
-    {
-        $this->inTenant($this->organization, function () use ($expected, $lessons): void {
-            $this->assertSame($expected, array_map(fn (Lesson $lesson): ?int => $lesson->fresh()?->lesson_number, $lessons));
-        });
-    }
-
     private function resequence(): void
     {
         $this->inTenant(
@@ -460,7 +548,7 @@ class SplitGroupLessonNumberingTest extends TestCase
     }
 
     /**
-     * @return array<int, mixed>
+     * @return array{numbers: array<int, mixed>, links: array<int, string>}
      */
     private function rebuild(): array
     {

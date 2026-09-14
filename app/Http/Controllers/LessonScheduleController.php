@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Lessons\LinkSplitLessonSlot;
 use App\Actions\Lessons\MaterializeLessonsForRange;
 use App\Actions\Lessons\ReviseRecurringLessonSlot;
 use App\Http\Controllers\Concerns\RefusesDuringImpersonation;
@@ -27,6 +28,7 @@ class LessonScheduleController extends Controller implements HasMiddleware
     public function __construct(
         protected MaterializeLessonsForRange $materializeLessonsForRange,
         protected ReviseRecurringLessonSlot $reviseRecurringLessonSlot,
+        protected LinkSplitLessonSlot $linkSplitLessonSlot,
         protected CurrentOrganization $currentOrganization,
     ) {}
 
@@ -46,9 +48,23 @@ class LessonScheduleController extends Controller implements HasMiddleware
         // drive the revision below, and a create() has no route-bound slot for
         // it to apply to. Stripped here rather than left for
         // preventSilentlyDiscardingAttributes() to reject.
-        RecurringLessonSlot::create($request->safe()->except('effective_from'));
+        DB::transaction(function () use ($request): void {
+            $slot = RecurringLessonSlot::create($request->safe()->except('effective_from', 'same_lesson_as'));
+            $this->linkIfRequested($request, $slot);
+        });
 
         return back();
+    }
+
+    /**
+     * «Mesma lição que…»: só quando o pedido traz o campo. Um cliente que não o
+     * envia não mexe no vínculo que o tempo já tinha.
+     */
+    private function linkIfRequested(RecurringLessonSlotRequest $request, RecurringLessonSlot $slot): void
+    {
+        if ($request->has('same_lesson_as')) {
+            $this->linkSplitLessonSlot->execute($slot, $request->sameLessonAsSlot());
+        }
     }
 
     /**
@@ -74,6 +90,7 @@ class LessonScheduleController extends Controller implements HasMiddleware
         if (! $recurringLessonSlot->requiresVersioning($timezone)) {
             return DB::transaction(function () use (
                 $recurringLessonSlot,
+                $request,
                 $timezone,
                 $validated,
             ): RedirectResponse {
@@ -94,18 +111,20 @@ class LessonScheduleController extends Controller implements HasMiddleware
                         ]);
                     }
 
-                    $this->reviseRecurringLessonSlot->execute($locked, $effectiveFrom, [
+                    $revised = $this->reviseRecurringLessonSlot->execute($locked, $effectiveFrom, [
                         'class_group_id' => $validated['class_group_id'] ?? null,
                         'day_of_week' => $validated['day_of_week'],
                         'starts_at' => $validated['starts_at'],
                         'ends_at' => $validated['ends_at'],
                         'ends_on' => $validated['ends_on'],
                     ]);
+                    $this->linkIfRequested($request, $revised);
 
                     return back();
                 }
 
-                $locked->update($validated->except('class_id', 'effective_from'));
+                $locked->update($validated->except('class_id', 'effective_from', 'same_lesson_as'));
+                $this->linkIfRequested($request, $locked);
                 $locked->lessons()
                     ->where('status', LessonStatus::Preparation)
                     ->whereDoesntHave('summary')
@@ -133,7 +152,7 @@ class LessonScheduleController extends Controller implements HasMiddleware
             ]);
         }
 
-        $this->reviseRecurringLessonSlot->execute($recurringLessonSlot, $effectiveFrom, [
+        $revised = $this->reviseRecurringLessonSlot->execute($recurringLessonSlot, $effectiveFrom, [
             // `?? null` e não a chave a seco: um cliente antigo — ou o
             // formulário de uma turma sem grupos, que nem desenha o campo — não
             // envia `class_group_id` de todo, e a ausência quer dizer
@@ -144,6 +163,7 @@ class LessonScheduleController extends Controller implements HasMiddleware
             'ends_at' => $validated['ends_at'],
             'ends_on' => $validated['ends_on'],
         ]);
+        $this->linkIfRequested($request, $revised);
 
         return back();
     }

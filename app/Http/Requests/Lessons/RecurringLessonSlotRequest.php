@@ -59,6 +59,11 @@ class RecurringLessonSlotRequest extends FormRequest
             'class_group_id' => [
                 'nullable', 'integer', new BelongsToCurrentOrganization(ClassGroup::class),
             ],
+            // «Mesma lição que…» (0.145.2): o ulid de um tempo de OUTRO grupo
+            // desta turma. Ausente = não mexer no vínculo; null = sem vínculo.
+            // Que o tempo seja desta turma e de outro grupo é verificado em
+            // `validateSameLessonAs()`.
+            'same_lesson_as' => ['nullable', 'string', 'size:26'],
             'day_of_week' => ['required', 'integer', 'between:1,7'],
             'starts_at' => ['required', 'date_format:H:i'],
             'ends_at' => ['required', 'date_format:H:i', 'after:starts_at'],
@@ -119,6 +124,7 @@ class RecurringLessonSlotRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after($this->validateClassGroup(...));
+        $validator->after($this->validateSameLessonAs(...));
         $validator->after($this->validateNoOverlappingSlot(...));
 
         $validator->after(function (Validator $validator): void {
@@ -189,6 +195,50 @@ class RecurringLessonSlotRequest extends FormRequest
      * seria desarquivar o grupo para poder mexer no horário — o beco que
      * ArchiveClassGroup existe para não abrir.
      */
+    /**
+     * O tempo indicado em «Mesma lição que…», dentro da organização atual (o
+     * global scope exclui tempos de outra escola).
+     */
+    public function sameLessonAsSlot(): ?RecurringLessonSlot
+    {
+        $ulid = $this->input('same_lesson_as');
+
+        return is_string($ulid) && $ulid !== ''
+            ? RecurringLessonSlot::query()->where('ulid', $ulid)->first()
+            : null;
+    }
+
+    /**
+     * O tempo ligado tem de ser DESTA turma, de um grupo, e de um grupo
+     * diferente: T1 não é «a mesma lição» que outro tempo de T1.
+     */
+    private function validateSameLessonAs(Validator $validator): void
+    {
+        $ulid = $this->input('same_lesson_as');
+
+        if (! is_string($ulid) || $ulid === '') {
+            return;
+        }
+
+        $partner = $this->sameLessonAsSlot();
+        $classGroupId = $this->input('class_group_id');
+        $routeSlot = $this->route('recurringLessonSlot');
+
+        $invalid = $partner === null
+            || $partner->class_id !== $this->integer('class_id')
+            || $partner->class_group_id === null
+            || $classGroupId === null || $classGroupId === ''
+            || $partner->class_group_id === (int) $classGroupId
+            || ($routeSlot instanceof RecurringLessonSlot && $routeSlot->is($partner));
+
+        if ($invalid) {
+            $validator->errors()->add(
+                'same_lesson_as',
+                __('Só é possível ligar este tempo a um tempo de outro grupo da mesma turma.'),
+            );
+        }
+    }
+
     private function validateClassGroup(Validator $validator): void
     {
         $classGroupId = $this->input('class_group_id');

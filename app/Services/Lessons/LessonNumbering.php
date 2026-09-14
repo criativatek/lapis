@@ -4,10 +4,11 @@ namespace App\Services\Lessons;
 
 use App\Models\Lesson;
 use App\Models\LessonStatus;
-use Carbon\CarbonImmutable;
+use App\Models\RecurringLessonSlot;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -21,25 +22,26 @@ use Illuminate\Validation\ValidationException;
  * cronológica real, e não mantida em paralelo com ela.
  *
  * O ÂMBITO É A TURMA (0.145.2). T1 e T2 não são turmas: são desdobramentos da
- * mesma turma, e a aula de T1 e a de T2 que correspondem ao mesmo momento
- * curricular partilham UM número. Até à 0.145.1 o âmbito era (turma, grupo), e
- * uma turma com Lições 1–3 via T1 e T2 recomeçarem cada um em «Lição 1».
- * Uma turma de apoio é uma SchoolClass própria e tem, por isso, sequência própria.
+ * mesma turma. Uma turma de apoio é uma SchoolClass própria e tem, por isso,
+ * sequência própria.
  *
- * A UNIDADE DE LIÇÃO. Uma aula da turma inteira é, sozinha, uma unidade. As
- * aulas de grupos agrupam-se assim: dentro da mesma semana letiva (segunda a
- * domingo, Europe/Lisbon), a k-ésima aula de T1 e a k-ésima aula de T2 são a
- * mesma unidade. O horário é semanal (RecurringLessonSlot::day_of_week) e não
- * existe nenhum vínculo gravado entre um tempo de T1 e um de T2 — a posição na
- * semana é a única origem comum que o modelo tem. Funciona com T1 e T2 à mesma
- * hora e com T1 à segunda e T2 à quarta; um feriado que só apanhe um dos grupos
- * desalinha apenas essa semana, nunca o resto do ano. Nada em código conhece
- * «T1»: todos os grupos de uma turma são desdobramentos dela (ClassGroup não tem
- * outro tipo).
+ * A UNIDADE DE LIÇÃO É EXPLÍCITA, NUNCA INFERIDA DA DATA:
+ *  - uma aula da turma inteira é, sozinha, uma unidade;
+ *  - uma aula de grupo cujo tempo do horário não tem `split_lesson_key` é,
+ *    sozinha, uma unidade;
+ *  - aulas de grupo com o mesmo `lesson_unit_key` são a mesma lição e partilham
+ *    o número.
  *
- * A ORDEM DAS UNIDADES é a da sua primeira aula (`starts_at`, depois `id`), e
- * nunca `created_at`. O `id` é só desempate estável, para que duas passagens
- * seguidas nunca produzam numerações diferentes.
+ * A LIGAÇÃO É GRAVADA UMA VEZ E NUNCA RECALCULADA. Uma aula de grupo ainda sem
+ * `lesson_unit_key`, vinda de um tempo com `split_lesson_key` K, junta-se à
+ * lição mais antiga de K a que falte o seu grupo (e que não seja anterior ao
+ * início desse tempo); se não houver, abre uma lição nova. É uma fila por grupo
+ * dentro dos tempos ligados: se T2 perde uma aula por feriado, a T2 seguinte
+ * continua a ser a lição que ficou por dar, e não a da semana em que acontece.
+ * Uma aula já ligada nunca muda de lição — nem ao reabrir a semana, nem ao
+ * reexecutar a renumeração.
+ *
+ * A ORDEM DAS UNIDADES é a da sua primeira aula (`starts_at`, depois `id`).
  *
  * O HISTÓRICO LECIONADO É INTOCÁVEL (§14) no funcionamento normal: se uma
  * operação exigisse mudar o número de uma aula lecionada, é recusada antes de
@@ -49,56 +51,56 @@ use Illuminate\Validation\ValidationException;
 final class LessonNumbering
 {
     /**
-     * Renumera a turma pela ordem cronológica real.
+     * Liga e renumera a turma pela ordem cronológica real.
      *
-     * Devolve o mapa `lesson_id => numero_novo` apenas das aulas que mudaram,
-     * para que quem chama possa mostrar o impacto antes de confirmar (§20).
+     * SEMPRE DENTRO DE UMA TRANSAÇÃO DE QUEM CHAMA.
      *
-     * SEMPRE DENTRO DE UMA TRANSAÇÃO DE QUEM CHAMA: a renumeração é a última
-     * metade de operações como «inserir e deslocar».
-     *
-     * @return array<int, int>
+     * @return array<int, int> lesson_id => número novo, só das aulas que mudaram
      *
      * @throws ValidationException quando fechar a sequência exigiria mudar o
      *                             número de uma aula já lecionada.
      */
     public function resequence(int $classId): array
     {
-        $preview = $this->previewResequence($classId);
+        $lessons = $this->sequence($classId);
+        $links = $this->link($lessons, $this->slotKeys($classId));
+        $preview = $this->changesFor($lessons);
+
+        // A recusa acontece antes de qualquer escrita, ligações incluídas.
         $this->guardTaughtHistory($preview);
 
         $changes = array_map(fn (array $change): int => $change['to'], $preview);
-        $this->write($changes);
+        $this->writeLinks($links);
+        $this->writeNumbers($changes);
 
         return $changes;
     }
 
     /**
      * A mesma recusa de `resequence()`, calculada sobre um estado HIPOTÉTICO da
-     * turma e sem escrever nada — nem sequer dentro de uma transação desfeita.
-     *
-     * É o que a pré-visualização de «Inserir aula» usa: as aulas deslocadas
-     * chegam aqui como cópias em memória com a data nova, e a aula a inserir
-     * como um modelo nunca gravado. Nenhum evento, id ou registo nasce disto.
+     * turma e sem escrever nada. É o que a pré-visualização de «Inserir aula»
+     * usa: as aulas deslocadas chegam como cópias em memória com a data nova, e
+     * a aula a inserir como um modelo nunca gravado.
      *
      * @param  iterable<Lesson>  $lessons  todas as aulas da turma, no estado hipotético
      * @return array<int, int> lesson_id => número novo, só das aulas gravadas que mudariam
      *
      * @throws ValidationException
      */
-    public function previewHypotheticalSequence(iterable $lessons): array
+    public function previewHypotheticalSequence(int $classId, iterable $lessons): array
     {
-        $sorted = collect($lessons)
+        $sorted = new Collection(collect($lessons)
             ->sort(function (Lesson $left, Lesson $right): int {
                 $byTime = $left->starts_at->getTimestamp() <=> $right->starts_at->getTimestamp();
 
-                // Uma aula ainda sem id é a mais recente a nascer: fica depois
-                // das do mesmo instante, como ficaria depois de gravada.
+                // Uma aula ainda sem id é a mais recente a nascer.
                 return $byTime !== 0 ? $byTime : ($left->getKey() ?? PHP_INT_MAX) <=> ($right->getKey() ?? PHP_INT_MAX);
             })
-            ->values();
+            ->values()
+            ->all());
 
-        $changes = $this->changesFor(new Collection($sorted->all()));
+        $this->link($sorted, $this->slotKeys($classId));
+        $changes = $this->changesFor($sorted);
         $this->guardTaughtHistory($changes);
 
         return array_map(fn (array $change): int => $change['to'], array_filter(
@@ -108,24 +110,36 @@ final class LessonNumbering
     }
 
     /**
-     * A correção histórica: renumera TUDO, lecionadas incluídas, pela regra das
-     * unidades. Nunca é chamada por um caminho normal da aplicação.
+     * A correção histórica: liga e renumera TUDO, lecionadas incluídas. Nunca é
+     * chamada por um caminho normal da aplicação.
      *
-     * Idempotente por construção: os números são uma função pura da cronologia
-     * e dos grupos, e uma segunda passagem não encontra nada para mudar. Só
-     * `lesson_number` é escrito — datas, estado, sumários, faltas e grupos não.
+     * `$slotKeys` permite simular chaves de tempos ainda não gravadas (a
+     * simulação do comando). Idempotente: as ligações gravadas não mudam e os
+     * números são função delas e da cronologia.
      *
-     * @return array<int, array{lesson: Lesson, from: int|null, to: int}>
+     * @param  array<int, string>  $slotKeyOverrides  slot_id => split_lesson_key
+     * @return array{numbers: array<int, array{lesson: Lesson, from: int|null, to: int}>, links: array<int, string>}
      */
-    public function rebuild(int $classId, bool $write = true): array
+    public function rebuild(int $classId, bool $write = true, array $slotKeyOverrides = []): array
     {
-        $changes = $this->previewResequence($classId);
+        $lessons = $this->sequence($classId);
+        $slotKeys = $this->slotKeys($classId);
 
-        if ($write) {
-            $this->write(array_map(fn (array $change): int => $change['to'], $changes));
+        foreach ($slotKeyOverrides as $slotId => $key) {
+            if (isset($slotKeys[$slotId])) {
+                $slotKeys[$slotId]['key'] = $key;
+            }
         }
 
-        return $changes;
+        $links = $this->link($lessons, $slotKeys);
+        $numbers = $this->changesFor($lessons);
+
+        if ($write) {
+            $this->writeLinks($links);
+            $this->writeNumbers(array_map(fn (array $change): int => $change['to'], $numbers));
+        }
+
+        return ['numbers' => $numbers, 'links' => $links];
     }
 
     /**
@@ -133,9 +147,10 @@ final class LessonNumbering
      * sempre que alguém abre a semana, e por isso não pode falhar.
      *
      * Tenta primeiro a renumeração normal. Se ela colidir com o histórico, cai
-     * no plano B: cada aula ainda sem número recebe o número da sua unidade se
-     * outra aula dessa unidade já o tiver (o par T1/T2 mantém-se), ou o número
-     * seguinte ao maior já atribuído. Nenhum número já escrito muda.
+     * no plano B: as aulas novas são ligadas na mesma, e cada aula ainda sem
+     * número recebe o número da sua lição se outra aula dela já o tiver, ou o
+     * número seguinte ao maior já atribuído. Nenhum número já escrito muda, e o
+     * desvio fica registado.
      *
      * @return array<int, int>
      */
@@ -148,6 +163,8 @@ final class LessonNumbering
         }
 
         $lessons = $this->sequence($classId);
+        $this->writeLinks($this->link($lessons, $this->slotKeys($classId)));
+
         $next = (int) $lessons->max('lesson_number');
         $changes = [];
 
@@ -166,14 +183,10 @@ final class LessonNumbering
             }
         }
 
-        $this->write($changes);
+        $this->writeNumbers($changes);
 
-        // NÃO SILENCIOSO. Chegar aqui quer dizer que a ordem cronológica não
-        // pôde ser respeitada sem renumerar histórico lecionado: estas aulas
-        // ficam com números fora de ordem face às lecionadas. Não há corrupção
-        // (números únicos por unidade, nada lecionado mudou), mas fica
-        // registado — só ids e números, nunca dados de alunos — para que se
-        // possa corrigir com `lapis:renumber-lessons` se o professor quiser.
+        // NÃO SILENCIOSO: estas aulas ficam com números fora de ordem face às
+        // lecionadas. Só ids e números, nunca dados de alunos.
         if ($changes !== []) {
             Log::warning('lessons.numbering.out_of_order_fallback', [
                 'class_id' => $classId,
@@ -191,7 +204,112 @@ final class LessonNumbering
      */
     public function previewResequence(int $classId): array
     {
-        return $this->changesFor($this->sequence($classId));
+        $lessons = $this->sequence($classId);
+        $this->link($lessons, $this->slotKeys($classId));
+
+        return $this->changesFor($lessons);
+    }
+
+    /**
+     * Liga, EM MEMÓRIA, as aulas de grupo ainda sem lição. Devolve as ligações
+     * novas das aulas gravadas, para quem as quiser escrever.
+     *
+     * @param  Collection<int, Lesson>  $lessons  ordenadas por starts_at, id
+     * @param  array<int, array{key: string|null, from: int|null}>  $slotKeys
+     * @return array<int, string> lesson_id => lesson_unit_key
+     */
+    private function link(Collection $lessons, array $slotKeys): array
+    {
+        // Por vínculo, as lições pela ordem em que apareceram; por lição, os
+        // grupos que já têm aula nela e o instante da sua primeira aula.
+        /** @var array<string, list<string>> $unitsBySplitKey */
+        $unitsBySplitKey = [];
+        /** @var array<string, array<int, true>> $groupsByUnit */
+        $groupsByUnit = [];
+        /** @var array<string, int> $firstByUnit */
+        $firstByUnit = [];
+        $links = [];
+
+        foreach ($lessons as $lesson) {
+            if ($lesson->class_group_id === null) {
+                continue;
+            }
+
+            $slot = $lesson->recurring_lesson_slot_id === null ? null : ($slotKeys[$lesson->recurring_lesson_slot_id] ?? null);
+            $splitKey = $slot['key'] ?? null;
+            $groupId = $lesson->class_group_id;
+
+            if ($lesson->lesson_unit_key !== null) {
+                $unitKey = $lesson->lesson_unit_key;
+
+                if (isset($groupsByUnit[$unitKey])) {
+                    $groupsByUnit[$unitKey][$groupId] = true;
+                } elseif ($splitKey !== null) {
+                    $unitsBySplitKey[$splitKey][] = $unitKey;
+                    $groupsByUnit[$unitKey] = [$groupId => true];
+                    $firstByUnit[$unitKey] = $lesson->starts_at->getTimestamp();
+                }
+
+                continue;
+            }
+
+            if ($slot === null || $splitKey === null) {
+                continue;
+            }
+
+            $unitKey = null;
+
+            foreach ($unitsBySplitKey[$splitKey] ?? [] as $candidate) {
+                if (isset($groupsByUnit[$candidate][$groupId])) {
+                    continue;
+                }
+
+                // Uma lição anterior ao início do tempo desta aula não é dela:
+                // um T2 criado em novembro não fica com a lição de setembro.
+                if ($slot['from'] !== null && $firstByUnit[$candidate] < $slot['from']) {
+                    continue;
+                }
+
+                $unitKey = $candidate;
+
+                break;
+            }
+
+            if ($unitKey === null) {
+                $unitKey = (string) Str::ulid();
+                $unitsBySplitKey[$splitKey][] = $unitKey;
+                $groupsByUnit[$unitKey] = [];
+                $firstByUnit[$unitKey] = $lesson->starts_at->getTimestamp();
+            }
+
+            $groupsByUnit[$unitKey][$groupId] = true;
+            $lesson->lesson_unit_key = $unitKey;
+
+            if ($lesson->exists) {
+                $links[(int) $lesson->getKey()] = $unitKey;
+            }
+        }
+
+        return $links;
+    }
+
+    /**
+     * @return array<int, array{key: string|null, from: int|null}>
+     */
+    private function slotKeys(int $classId): array
+    {
+        $keys = [];
+
+        foreach (RecurringLessonSlot::query()->where('class_id', $classId)->get() as $slot) {
+            $from = $slot->starts_on ?? $slot->created_at;
+
+            $keys[(int) $slot->getKey()] = [
+                'key' => $slot->split_lesson_key,
+                'from' => $from?->copy()->setTimezone('Europe/Lisbon')->startOfDay()->getTimestamp(),
+            ];
+        }
+
+        return $keys;
     }
 
     /**
@@ -234,7 +352,7 @@ final class LessonNumbering
             $number++;
 
             foreach ($unit as $lesson) {
-                if ($lesson->lesson_number !== $number) {
+                if ($lesson->exists && $lesson->lesson_number !== $number) {
                     $preview[(int) $lesson->getKey()] = [
                         'lesson' => $lesson,
                         'from' => $lesson->lesson_number,
@@ -257,35 +375,34 @@ final class LessonNumbering
     {
         /** @var array<string, list<Lesson>> $units */
         $units = [];
-        /** @var array<string, int> $seen "semana:grupo" => aulas já vistas */
-        $seen = [];
 
         foreach ($lessons as $lesson) {
-            if ($lesson->class_group_id === null) {
-                $units['whole:'.($lesson->getKey() ?? 'new-'.spl_object_id($lesson))] = [$lesson];
-
-                continue;
-            }
-
-            $week = CarbonImmutable::instance($lesson->starts_at)
-                ->setTimezone('Europe/Lisbon')
-                ->startOfWeek()
-                ->format('Y-m-d');
-            $groupKey = $week.':'.$lesson->class_group_id;
-            $seen[$groupKey] = ($seen[$groupKey] ?? 0) + 1;
+            $key = $lesson->class_group_id !== null && $lesson->lesson_unit_key !== null
+                ? 'unit:'.$lesson->lesson_unit_key
+                : 'lesson:'.($lesson->getKey() ?? 'new-'.spl_object_id($lesson));
 
             // Um array PHP preserva a ordem de inserção: a unidade ocupa o seu
-            // lugar quando aparece a PRIMEIRA aula dela, que é a mais antiga.
-            $units['split:'.$week.':'.$seen[$groupKey]][] = $lesson;
+            // lugar quando aparece a PRIMEIRA aula dela.
+            $units[$key][] = $lesson;
         }
 
         return array_values($units);
     }
 
     /**
+     * @param  array<int, string>  $links
+     */
+    private function writeLinks(array $links): void
+    {
+        foreach ($links as $lessonId => $unitKey) {
+            DB::table('lessons')->where('id', $lessonId)->whereNull('lesson_unit_key')->update(['lesson_unit_key' => $unitKey]);
+        }
+    }
+
+    /**
      * @param  array<int, int>  $changes
      */
-    private function write(array $changes): void
+    private function writeNumbers(array $changes): void
     {
         foreach ($changes as $lessonId => $assigned) {
             DB::table('lessons')->where('id', $lessonId)->update(['lesson_number' => $assigned]);

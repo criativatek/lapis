@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { router, useForm } from '@inertiajs/vue3';
 import { Pencil, Plus, Trash2, X } from '@lucide/vue';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,6 +20,8 @@ export type RecurringLessonSlot = {
     /** `null` = turma inteira. É o que todos os tempos já existentes dizem. */
     class_group_id: number | null;
     class_group_label: string | null;
+    /** Tempos de grupos com a mesma chave são a mesma lição (partilham o número). */
+    split_lesson_key: string | null;
 };
 
 const props = defineProps<{
@@ -59,6 +61,7 @@ const form = useForm<{
     starts_on: string;
     ends_on: string;
     effective_from: string;
+    same_lesson_as: string | null;
 }>({
     class_id: props.classId,
     class_group_id: null,
@@ -68,7 +71,54 @@ const form = useForm<{
     starts_on: '',
     ends_on: '',
     effective_from: '',
+    same_lesson_as: null,
 });
+
+/**
+ * «Mesma lição que…» — os tempos de OUTROS grupos a que este pode ficar ligado.
+ * O professor escolhe um tempo; a chave técnica nunca aparece.
+ */
+const sameLessonCandidates = computed(() =>
+    form.class_group_id === null
+        ? []
+        : props.slots.filter(
+              (slot) =>
+                  slot.class_group_id !== null &&
+                  slot.class_group_id !== form.class_group_id &&
+                  slot.ulid !== editingUlid.value,
+          ),
+);
+
+function slotLabel(slot: RecurringLessonSlot): string {
+    return `${slot.class_group_label ?? 'Grupo'} · ${weekdays[slot.day_of_week - 1]} ${slot.starts_at}`;
+}
+
+function partnersOf(slot: RecurringLessonSlot): RecurringLessonSlot[] {
+    return slot.split_lesson_key === null
+        ? []
+        : props.slots.filter(
+              (other) =>
+                  other.ulid !== slot.ulid &&
+                  other.split_lesson_key === slot.split_lesson_key,
+          );
+}
+
+// Sugestão num tempo NOVO de grupo: se houver exatamente um tempo de outro
+// grupo ainda sem par, é quase certamente o correspondente. Fica só
+// pré-selecionado — o professor confirma ao guardar ou escolhe «Não».
+watch(
+    () => form.class_group_id,
+    () => {
+        if (editingUlid.value !== null) {
+            return;
+        }
+
+        const unpaired = sameLessonCandidates.value.filter(
+            (slot) => partnersOf(slot).length === 0,
+        );
+        form.same_lesson_as = unpaired.length === 1 ? unpaired[0].ulid : null;
+    },
+);
 
 const editingSlotRequiresVersioning = computed(
     () =>
@@ -90,6 +140,7 @@ function resetForm(): void {
     form.class_id = props.classId;
     form.class_group_id = null;
     form.effective_from = '';
+    form.same_lesson_as = null;
     form.clearErrors();
 }
 
@@ -106,6 +157,7 @@ function edit(slot: RecurringLessonSlot): void {
     // against "today" in the organization's own timezone regardless of what
     // the browser's clock defaulted it to.
     form.effective_from = slot.requires_versioning ? todayIsoDate() : '';
+    form.same_lesson_as = partnersOf(slot)[0]?.ulid ?? null;
     form.clearErrors();
 }
 
@@ -117,10 +169,23 @@ function submit(): void {
     const includeEffectiveFrom =
         editingUlid.value !== null && editingSlotRequiresVersioning.value;
 
-    form.transform((data) =>
-        includeEffectiveFrom
-            ? data
+    // «Mesma lição que…» só existe numa turma desdobrada: sem grupos o campo
+    // não é enviado, e o servidor não mexe no vínculo do tempo.
+    const hasGroups = props.groups.length > 0;
+
+    form.transform((data) => {
+        const { same_lesson_as: sameLessonAs, ...rest } = data;
+        const link = hasGroups
+            ? {
+                  same_lesson_as:
+                      rest.class_group_id === null ? null : sameLessonAs,
+              }
+            : {};
+
+        return includeEffectiveFrom
+            ? { ...rest, ...link }
             : {
+                  ...link,
                   class_id: data.class_id,
                   class_group_id: data.class_group_id,
                   day_of_week: data.day_of_week,
@@ -128,8 +193,8 @@ function submit(): void {
                   ends_at: data.ends_at,
                   starts_on: data.starts_on,
                   ends_on: data.ends_on,
-              },
-    );
+              };
+    });
 
     const options = { preserveScroll: true, onSuccess: resetForm };
 
@@ -184,6 +249,13 @@ function remove(slot: RecurringLessonSlot): void {
                             class="ml-1 rounded-full bg-secondary px-2 py-0.5 text-xs font-normal"
                             >{{ slot.class_group_label }}</span
                         >
+                    </p>
+                    <p
+                        v-if="partnersOf(slot).length"
+                        class="mt-1 text-xs text-muted-foreground"
+                    >
+                        Mesma lição que
+                        {{ partnersOf(slot).map(slotLabel).join(', ') }}
                     </p>
                     <p
                         v-if="slot.starts_on || slot.ends_on"
@@ -306,7 +378,9 @@ function remove(slot: RecurringLessonSlot): void {
                 uma configuração em falta.
             -->
             <fieldset v-if="selectableGroups.length" class="grid gap-1.5">
-                <legend class="mb-1.5 text-sm font-medium">Participantes</legend>
+                <legend class="mb-1.5 text-sm font-medium">
+                    Participantes
+                </legend>
                 <label
                     class="flex min-h-10 items-center gap-2 text-sm"
                     :for="`slot-participants-all`"
@@ -340,6 +414,31 @@ function remove(slot: RecurringLessonSlot): void {
                 <InputError :message="form.errors.class_group_id" />
             </fieldset>
 
+            <div v-if="sameLessonCandidates.length" class="grid gap-1.5">
+                <Label for="slot-same-lesson-as">Mesma lição que…</Label>
+                <select
+                    id="slot-same-lesson-as"
+                    v-model="form.same_lesson_as"
+                    class="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                >
+                    <option :value="null">
+                        Não — é uma lição própria deste grupo
+                    </option>
+                    <option
+                        v-for="slot in sameLessonCandidates"
+                        :key="slot.ulid"
+                        :value="slot.ulid"
+                    >
+                        {{ slotLabel(slot) }}
+                    </option>
+                </select>
+                <p class="text-xs text-muted-foreground">
+                    As aulas destes tempos são a mesma lição da turma e têm o
+                    mesmo número, mesmo que aconteçam em dias diferentes.
+                </p>
+                <InputError :message="form.errors.same_lesson_as" />
+            </div>
+
             <div
                 v-if="editingSlotRequiresVersioning"
                 class="grid gap-1.5 rounded-md border border-dashed p-3"
@@ -353,9 +452,9 @@ function remove(slot: RecurringLessonSlot): void {
                     required
                 /><InputError :message="form.errors.effective_from" />
                 <p class="text-xs text-muted-foreground">
-                    Este horário já está em vigor. As aulas até ao dia
-                    anterior mantêm a configuração atual; a partir desta data
-                    passa a vigorar a nova.
+                    Este horário já está em vigor. As aulas até ao dia anterior
+                    mantêm a configuração atual; a partir desta data passa a
+                    vigorar a nova.
                 </p>
             </div>
             <InputError :message="form.errors.class_id" />

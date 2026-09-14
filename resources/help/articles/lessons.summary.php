@@ -14,7 +14,7 @@ return [
         'Em «Aulas», escolha a semana e abra a aula. Na página da aula escreve o sumário e, se quiser, notas, recursos e TPC.',
         '«Guardar» grava o sumário; «Marcar como lecionada» regista que a aula foi dada e, com ela, a assiduidade (ver «Registar faltas numa aula»). São ações separadas, e nenhuma acontece sozinha.',
         '«Voltar às aulas da semana» existe no topo e no fundo da página e leva à semana dessa aula. Não guarda nem muda o estado da aula: se tiver alterações por guardar, o Lapispro avisa antes de sair.',
-        'Cada aula tem um número de lição («Lição 12») que segue a ordem das aulas da turma. Em turmas desdobradas, T1 e T2 partilham o mesmo número de lição quando correspondem à mesma lição da turma (a primeira aula de T1 e a primeira de T2 da mesma semana, e assim por diante); a aula seguinte da turma inteira continua no número seguinte. Uma turma de apoio tem a sua própria numeração.',
+        'Cada aula tem um número de lição («Lição 12») que segue a ordem das aulas da turma. Em turmas desdobradas, T1 e T2 partilham o mesmo número de lição quando correspondem à mesma lição da turma: no horário da turma, ao configurar o tempo de um grupo, indique em «Mesma lição que…» o tempo do outro grupo. Se um grupo perder uma aula (feriado, cancelamento), a aula seguinte desse grupo continua a ser a lição que ficou por dar. A aula seguinte da turma inteira continua no número seguinte. Uma turma de apoio tem a sua própria numeração.',
     ],
     'keywords' => ['sumário', 'aula', 'aulas', 'lecionada', 'voltar', 'semana', 'tpc', 'lição', 'número', 'numeração', 't1', 't2', 'desdobramento'],
     'related' => ['lessons.attendance', 'classes.create'],

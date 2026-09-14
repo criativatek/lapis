@@ -27,18 +27,20 @@ use App\Services\Lessons\ClassAttendanceSummary;
 use App\Services\Lessons\LessonAttendanceRoster;
 use App\Services\Lessons\StudentAttendanceHistory;
 use App\Support\Entitlements\Entitlements;
+use App\Support\Import\Backup\BackupSchemaCompatibility;
 use App\Support\Tenancy\CurrentOrganization;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Concerns\SubscribesOrganizations;
 use Tests\TestCase;
 use ZipArchive;
 
 /**
- * Fatia "aulas e assiduidade no backup" (schema_version 9). Round-trips the
+ * Fatia "aulas e assiduidade no backup" (schema_version 9; v10 adds the split keys). Round-trips the
  * whole minimal coherent set docs/backup-schema.md now describes: class
  * groups, memberships, the recurring schedule, a cancelled occurrence,
  * several lessons in different states, their summary/plan, and consolidated
@@ -70,6 +72,89 @@ class LessonAttendanceRoundTripTest extends TestCase
     private function inOrganization(Organization $organization, callable $callback): mixed
     {
         return app(CurrentOrganization::class)->runFor($organization, $callback);
+    }
+
+    /**
+     * Schema v10: the opaque `split_lesson_key` (T1/T2 slots that are the
+     * same lesson) and `lesson_unit_key` (lessons that are the same lesson)
+     * travel verbatim into another organization.
+     */
+    #[Test]
+    public function split_lesson_and_lesson_unit_keys_survive_a_restore_into_another_organization(): void
+    {
+        $class = $this->scenario();
+        $splitLessonKey = (string) Str::ulid();
+        $lessonUnitKey = (string) Str::ulid();
+
+        $this->inTenant(function () use ($class, $splitLessonKey, $lessonUnitKey): void {
+            $slotT1 = RecurringLessonSlot::where('class_id', $class->id)->firstOrFail();
+            $slotT1->forceFill(['split_lesson_key' => $splitLessonKey])->save();
+            $groupT2 = ClassGroup::create(['class_id' => $class->id, 'label' => 'T2', 'position' => 2]);
+            RecurringLessonSlot::create([
+                'class_id' => $class->id, 'class_group_id' => $groupT2->id, 'day_of_week' => 4,
+                'starts_at' => '10:00:00', 'ends_at' => '11:00:00', 'starts_on' => '2025-09-01',
+                'split_lesson_key' => $splitLessonKey,
+            ]);
+            Lesson::where('class_id', $class->id)->whereIn('lesson_number', [1])
+                ->each(fn (Lesson $lesson) => $lesson->forceFill(['lesson_unit_key' => $lessonUnitKey])->save());
+        });
+
+        $backup = $this->backupUpload();
+        $json = $this->backupJson($backup);
+        $this->assertSame(BackupSchemaCompatibility::CURRENT, $json['schema_version']);
+
+        $colleague = User::factory()->create(['email' => 'colega-chaves@example.test']);
+        $destination = $colleague->personalOrganization();
+        $import = $this->uploadIntoAs($destination, $colleague, $backup);
+        $this->confirmAs($destination, $colleague, $import);
+
+        $this->inOrganization($destination, function () use ($splitLessonKey, $lessonUnitKey): void {
+            $restoredClass = SchoolClass::firstOrFail();
+            $slots = RecurringLessonSlot::where('class_id', $restoredClass->id)->with('classGroup')->get();
+            $this->assertCount(2, $slots);
+            $this->assertEqualsCanonicalizing(['T1', 'T2'], $slots->map(fn (RecurringLessonSlot $slot): ?string => $slot->classGroup?->label)->all());
+            foreach ($slots as $slot) {
+                $this->assertSame($splitLessonKey, $slot->split_lesson_key);
+            }
+
+            $linked = Lesson::where('class_id', $restoredClass->id)->where('lesson_unit_key', $lessonUnitKey)->count();
+            $this->assertSame(2, $linked);
+            $this->assertSame(2, Lesson::where('class_id', $restoredClass->id)->whereNull('lesson_unit_key')->count());
+        });
+    }
+
+    #[Test]
+    public function a_v9_backup_without_the_keys_restores_them_as_null(): void
+    {
+        $this->scenario();
+        $backup = $this->backupUpload();
+        $legacy = $this->rewriteBackup($backup, function (array $json): array {
+            $json['schema_version'] = 9;
+            foreach ($json['recurring_lesson_slots'] as $index => $row) {
+                unset($json['recurring_lesson_slots'][$index]['split_lesson_key']);
+            }
+            foreach ($json['lessons'] as $index => $row) {
+                unset($json['lessons'][$index]['lesson_unit_key']);
+            }
+
+            return $json;
+        });
+
+        $colleague = User::factory()->create(['email' => 'colega-v9@example.test']);
+        $destination = $colleague->personalOrganization();
+        $import = $this->uploadIntoAs($destination, $colleague, $legacy);
+        $this->assertSame(9, $import->source_schema_version);
+        $this->confirmAs($destination, $colleague, $import);
+
+        $this->inOrganization($destination, function (): void {
+            $restoredClass = SchoolClass::firstOrFail();
+            $slots = RecurringLessonSlot::where('class_id', $restoredClass->id)->get();
+            $lessons = Lesson::where('class_id', $restoredClass->id)->get();
+            $this->assertNotEmpty($slots);
+            $this->assertCount(4, $lessons);
+            $this->assertTrue($slots->every(fn (RecurringLessonSlot $slot): bool => $slot->split_lesson_key === null));
+            $this->assertTrue($lessons->every(fn (Lesson $lesson): bool => $lesson->lesson_unit_key === null));
+        });
     }
 
     #[Test]

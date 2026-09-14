@@ -256,6 +256,7 @@ class WriteLessons
                     'class_group_id' => $groupResolution['id'],
                     'day_of_week' => $row['day_of_week'], 'starts_at' => $row['starts_at'], 'ends_at' => $row['ends_at'],
                     'starts_on' => $row['starts_on'], 'ends_on' => $row['ends_on'],
+                    'split_lesson_key' => $row['split_lesson_key'],
                 ]);
                 $slot->save();
                 $byUlid[$row['ulid']] = $slot->getKey();
@@ -356,6 +357,7 @@ class WriteLessons
                     'class_group_id' => $groupResolution['id'],
                     'recurring_lesson_slot_id' => $slotResolution['id'],
                     'starts_at' => $row['starts_at'], 'ends_at' => $row['ends_at'], 'lesson_number' => $row['lesson_number'],
+                    'lesson_unit_key' => $row['lesson_unit_key'],
                     'status' => $row['status'], 'attendance_recorded_at' => $row['attendance_recorded_at'],
                     'attendance_recorded_by' => $row['attendance_recorded_by'], 'created_by' => $row['created_by'],
                 ]);

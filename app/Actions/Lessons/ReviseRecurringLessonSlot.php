@@ -58,6 +58,8 @@ class ReviseRecurringLessonSlot
             return RecurringLessonSlot::create([
                 'class_id' => $current->class_id,
                 'class_group_id' => $newAttributes['class_group_id'],
+                // O vínculo «mesma lição» é da linhagem do tempo, não da versão.
+                'split_lesson_key' => $newAttributes['class_group_id'] === null ? null : $current->split_lesson_key,
                 'day_of_week' => $newAttributes['day_of_week'],
                 'starts_at' => $newAttributes['starts_at'],
                 'ends_at' => $newAttributes['ends_at'],

@@ -77,6 +77,7 @@ class InsertLessonIntoSequence
         // sobre o estado hipotético EM MEMÓRIA — sem escrita, sem transação,
         // sem eventos nem auditoria. A recusa sobe como as de `plan()`.
         $renumbered = $this->numbering->previewHypotheticalSequence(
+            (int) $class->getKey(),
             $this->hypotheticalSequence($class, $classGroupId, $plan),
         );
 
@@ -173,6 +174,7 @@ class InsertLessonIntoSequence
         $lessons[] = (new Lesson)->forceFill([
             'class_id' => $class->getKey(),
             'class_group_id' => $classGroupId,
+            'recurring_lesson_slot_id' => $plan['insertion']['slot_id'],
             'starts_at' => Carbon::instance($plan['insertion']['starts_at']),
             'status' => LessonStatus::Preparation,
         ]);

@@ -29,15 +29,20 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 
 ### Corrigido
 - **T1 e T2 recomeçavam a numeração das aulas.** Uma turma com Lições 1, 2 e 3 via a primeira aula de T1 e a de T2 aparecerem as duas como «Lição 1». Causa: `LessonNumbering` numerava por (turma, grupo), como se cada desdobramento fosse uma turma. A numeração pertence agora à **turma**: uma aula da turma inteira consome um número; as aulas de T1 e T2 que correspondem à mesma lição partilham um número; a aula seguinte da turma continua no número a seguir (1, 2, 3, T1 4, T2 4, 5).
-- **Emparelhamento T1/T2 determinístico.** Não existe vínculo gravado entre um tempo de T1 e um de T2, e o horário é semanal: dentro da mesma semana (segunda a domingo, Europe/Lisbon), a k-ésima aula de cada grupo forma a mesma lição, ordenada pela sua primeira aula (`starts_at`, depois `id`). Funciona com T1 e T2 à mesma hora ou em dias diferentes; um feriado que só apanhe um grupo desalinha apenas essa semana. Turmas de apoio são outra `SchoolClass` e mantêm sequência própria.
-- Materialização, «Inserir aula» e eliminação renumeram a turma inteira pela nova regra. O deslocamento de «Inserir aula» continua por (turma, grupo). No funcionamento normal uma aula lecionada continua a nunca mudar de número.
+- **Equivalência T1/T2 explícita, nunca inferida da data.** Tempos do horário de grupos com o mesmo `recurring_lesson_slots.split_lesson_key` são a mesma lição. Cada aula de grupo desses tempos fica ligada UMA vez a uma lição (`lessons.lesson_unit_key`): junta-se à lição mais antiga do vínculo a que falte o seu grupo, ou abre uma nova. Um feriado ou cancelamento que só apanhe um grupo não quebra a identidade — a aula seguinte desse grupo é a lição que ficou por dar. Uma aula extra de um tempo sem vínculo é uma lição própria. Suporta T1+T2+T3. Uma aula já ligada nunca muda de lição. Turmas de apoio são outra `SchoolClass` e mantêm sequência própria.
+- Materialização, «Inserir aula» e eliminação ligam e renumeram a turma inteira. O deslocamento de «Inserir aula» continua por (turma, grupo) e cada aula deslocada leva a sua lição consigo. A pré-visualização recusa, sem escrever nada, o que a execução recusaria, e mostra o número real de destino. `DeleteLesson` bloqueia a turma antes de renumerar. O plano B da materialização (semana antiga depois de aulas lecionadas) fica registado em `lessons.numbering.out_of_order_fallback`. No funcionamento normal uma aula lecionada continua a nunca mudar de número.
 
 ### Adicionado
-- **`php artisan lapis:renumber-lessons [--apply]`** — correção histórica controlada: sem `--apply` só lista «Lição X → Lição Y» (ids e datas, sem nomes); com `--apply` reescreve só `lessons.lesson_number`, **aulas lecionadas incluídas** (autorizado para esta correção). Idempotente: uma segunda execução não encontra nada. **Correr uma vez depois do deploy**, antes de inserir ou eliminar aulas (até lá, essas operações podem ser recusadas por colidirem com números lecionados antigos).
-- Centro de Ajuda: «Escrever o sumário de uma aula» explica a numeração das turmas desdobradas.
+- **Horário — «Mesma lição que…»**: ao configurar um tempo de grupo, escolhe-se o tempo do outro grupo que é a mesma lição (sugestão pré-selecionada quando há exatamente um tempo de outro grupo sem par). A lista do horário mostra «Mesma lição que T2 · terça-feira 11:00». Desligar só vale para o futuro.
+- **`php artisan lapis:renumber-lessons [--apply] [--class=ID]`** — correção histórica controlada. Por turma classifica **SEM GRUPO**, **JÁ LIGADO**, **EMPARELHAMENTO INEQUÍVOCO** (cada grupo com uma só linhagem de tempo e pelo menos dois grupos) ou **AMBÍGUO**. Nas ambíguas não escreve nada — nem vínculos nem números — e reporta. Sem `--apply` só lista «Lição X -> Lição Y» (ids, datas, grupo por id — sem nomes); com `--apply` grava vínculos e números, **aulas lecionadas incluídas** (autorizado para esta correção). Idempotente. **Correr uma vez depois do deploy**, primeiro sem `--apply`.
+- Centro de Ajuda: «Escrever o sumário de uma aula» explica a numeração das turmas desdobradas e o vínculo no horário.
+
+### Migrations e backup
+- `2026_11_10_000600_add_split_lesson_keys`: duas colunas nullable e dois índices, sem backfill; reversível.
+- Backup **`schema_version` 10**: `recurring_lesson_slots[].split_lesson_key` e `lessons[].lesson_unit_key` (ausentes em backups antigos ⇒ null). Round-trip testado.
 
 ### Sem alteração
-- Sem migrations. Backup `schema_version` 9 inalterado (`lesson_number` continua copiado tal como está). Composição comercial, Termos, Privacidade e DPA sem alteração.
+- Composição comercial, Termos, Privacidade e DPA sem alteração. Chaves opacas, sem dados pessoais.
 
 ## [0.145.1] — 2026-09-14
 

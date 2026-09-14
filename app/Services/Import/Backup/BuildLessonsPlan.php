@@ -400,6 +400,7 @@ class BuildLessonsPlan
                 'class_ulid' => $row['class_ulid'], 'class_group_ulid' => $row['class_group_ulid'],
                 'day_of_week' => $row['day_of_week'], 'starts_at' => $row['starts_at'], 'ends_at' => $row['ends_at'],
                 'starts_on' => $row['starts_on'], 'ends_on' => $row['ends_on'],
+                'split_lesson_key' => $row['split_lesson_key'],
             ];
         })->values()->all();
     }
@@ -533,6 +534,7 @@ class BuildLessonsPlan
                 'class_ulid' => $row['class_ulid'], 'class_group_ulid' => $row['class_group_ulid'],
                 'recurring_lesson_slot_ulid' => $row['recurring_lesson_slot_ulid'],
                 'starts_at' => $row['starts_at'], 'ends_at' => $row['ends_at'], 'lesson_number' => $row['lesson_number'],
+                'lesson_unit_key' => $row['lesson_unit_key'],
                 'status' => $row['status'], 'attendance_recorded_at' => $row['attendance_recorded_at'],
                 'attendance_recorded_by' => $attendanceAuthorId,
                 'created_by' => $authorId,

@@ -818,10 +818,16 @@ chmod -R ug+rw storage bootstrap/cache
 
 ### Correções de dados pontuais pós-deploy
 
-- **0.145.2 — numeração das aulas por turma.** Depois do deploy, no servidor:
-  `php artisan lapis:renumber-lessons` (simulação; rever o resumo) e depois
-  `php artisan lapis:renumber-lessons --apply`. Reexecutar deve reportar
-  `Renumeradas: 0 turma(s), 0 aula(s).`
+- **0.145.2 — numeração das aulas por turma.** Depois do deploy e do `migrate`
+  (uma migration: `2026_11_10_000600_add_split_lesson_keys`), no servidor:
+  1. `php artisan lapis:renumber-lessons` — simulação. Rever cada turma:
+     EMPARELHAMENTO INEQUÍVOCO / JÁ LIGADO / SEM GRUPO / AMBÍGUO, e confirmar
+     visualmente o plano das turmas desdobradas (ex.: `1, 2, 3, 4, 4, 5`).
+     `--class=ID` limita a uma turma.
+  2. Só depois de confirmado: `php artisan lapis:renumber-lessons --apply`.
+  3. Reexecutar deve reportar `Renumeradas: 0 turma(s), 0 aula(s).`
+  As turmas AMBÍGUAS não são tocadas: ligar os tempos no horário
+  («Mesma lição que…») e correr outra vez.
 
 ## Cloudflare / TLS
 

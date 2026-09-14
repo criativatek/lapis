@@ -18,13 +18,14 @@ use Illuminate\Support\Carbon;
  * @property int $organization_id
  * @property int $class_id
  * @property int|null $class_group_id
+ * @property string|null $split_lesson_key
  * @property int $day_of_week
  * @property string $starts_at
  * @property string $ends_at
  * @property Carbon|null $starts_on
  * @property Carbon|null $ends_on
  */
-#[Fillable(['class_id', 'class_group_id', 'day_of_week', 'starts_at', 'ends_at', 'starts_on', 'ends_on'])]
+#[Fillable(['class_id', 'class_group_id', 'split_lesson_key', 'day_of_week', 'starts_at', 'ends_at', 'starts_on', 'ends_on'])]
 class RecurringLessonSlot extends Model
 {
     use BelongsToOrganization, HasUlids;

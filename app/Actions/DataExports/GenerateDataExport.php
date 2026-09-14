@@ -1761,6 +1761,7 @@ class GenerateDataExport
             'ends_at' => $slot->ends_at,
             'starts_on' => $slot->starts_on?->toDateString(),
             'ends_on' => $slot->ends_on?->toDateString(),
+            'split_lesson_key' => $slot->split_lesson_key,
         ];
     }
 
@@ -1796,6 +1797,7 @@ class GenerateDataExport
             'starts_at' => $lesson->starts_at->toIso8601String(),
             'ends_at' => $lesson->ends_at?->toIso8601String(),
             'lesson_number' => $lesson->lesson_number,
+            'lesson_unit_key' => $lesson->lesson_unit_key,
             'status' => $lesson->status->value,
             'attendance_recorded_at' => $lesson->attendance_recorded_at?->toIso8601String(),
             'attendance_recorded_by_email' => $this->authorEmail($lesson->attendance_recorded_by, $refs),
