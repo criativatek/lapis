@@ -14,6 +14,7 @@ use App\Http\Requests\ClassGroups\ClassGroupSwapRequest;
 use App\Models\ClassGroup;
 use App\Models\Enrollment;
 use App\Models\SchoolClass;
+use App\Services\Audit\AuditLog;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
@@ -44,6 +45,7 @@ class ClassGroupController extends Controller implements HasMiddleware
         protected MoveClassGroupMembership $moveMembership,
         protected SwapClassGroupMembership $swapMemberships,
         protected ArchiveClassGroup $archiveClassGroup,
+        protected AuditLog $audit,
     ) {}
 
     /**
@@ -62,11 +64,19 @@ class ClassGroupController extends Controller implements HasMiddleware
         // não se mete entre os que o professor já ordenou.
         $position = (int) $class->classGroups()->max('position') + 1;
 
-        ClassGroup::create([
+        $classGroup = ClassGroup::create([
             'class_id' => $class->getKey(),
             'label' => $request->validated('label'),
             'position' => $position,
         ]);
+
+        $this->audit->record(
+            'class_group.created',
+            $classGroup,
+            $request->user(),
+            "Grupo «{$classGroup->label}» criado — {$class->label}.",
+            ['class_id' => $class->id, 'class_group_id' => $classGroup->id],
+        );
 
         return back();
     }
@@ -80,6 +90,16 @@ class ClassGroupController extends Controller implements HasMiddleware
         // gralha num rótulo que já aparece em aulas antigas melhora a leitura
         // dessas aulas, e não altera nenhuma pertença nem nenhum instantâneo.
         $classGroup->update(['label' => $request->validated('label')]);
+
+        if ($classGroup->wasChanged()) {
+            $this->audit->record(
+                'class_group.updated',
+                $classGroup,
+                $request->user(),
+                "Grupo «{$classGroup->label}» alterado — {$class->label}.",
+                ['class_id' => $class->id, 'class_group_id' => $classGroup->id],
+            );
+        }
 
         return back();
     }
@@ -144,7 +164,18 @@ class ClassGroupController extends Controller implements HasMiddleware
             return back();
         }
 
+        $classGroupId = $classGroup->id;
+        $label = $classGroup->label;
+
         $classGroup->delete();
+
+        $this->audit->record(
+            'class_group.deleted',
+            $classGroup,
+            $request->user(),
+            "Grupo «{$label}» eliminado — {$class->label}.",
+            ['class_id' => $class->id, 'class_group_id' => $classGroupId],
+        );
 
         return back();
     }
@@ -155,9 +186,23 @@ class ClassGroupController extends Controller implements HasMiddleware
         $this->refuseDuringImpersonation($request);
         $this->assertBelongsTo($class, $classGroup);
 
-        return $this->reportingValidationErrors(
+        $wasArchived = $classGroup->isArchived();
+
+        $response = $this->reportingValidationErrors(
             fn () => $this->archiveClassGroup->execute($classGroup),
         );
+
+        if (! $wasArchived && $classGroup->fresh()?->isArchived()) {
+            $this->audit->record(
+                'class_group.archived',
+                $classGroup,
+                $request->user(),
+                "Grupo «{$classGroup->label}» arquivado — {$class->label}.",
+                ['class_id' => $class->id, 'class_group_id' => $classGroup->id],
+            );
+        }
+
+        return $response;
     }
 
     public function restore(Request $request, SchoolClass $class, ClassGroup $classGroup): RedirectResponse
@@ -166,7 +211,19 @@ class ClassGroupController extends Controller implements HasMiddleware
         $this->refuseDuringImpersonation($request);
         $this->assertBelongsTo($class, $classGroup);
 
+        $wasArchived = $classGroup->isArchived();
+
         $this->archiveClassGroup->restore($classGroup);
+
+        if ($wasArchived) {
+            $this->audit->record(
+                'class_group.restored',
+                $classGroup,
+                $request->user(),
+                "Grupo «{$classGroup->label}» restaurado — {$class->label}.",
+                ['class_id' => $class->id, 'class_group_id' => $classGroup->id],
+            );
+        }
 
         return back();
     }
@@ -175,7 +232,17 @@ class ClassGroupController extends Controller implements HasMiddleware
     {
         $this->refuseDuringImpersonation($request);
 
-        $this->assignMemberships->execute($class, $request->assignmentMap());
+        $assignmentMap = $request->assignmentMap();
+
+        $this->assignMemberships->execute($class, $assignmentMap);
+
+        $this->audit->record(
+            'class_group.students_assigned',
+            $class,
+            $request->user(),
+            "Alunos distribuídos por grupos — {$class->label}.",
+            ['class_id' => $class->id, 'count' => count($assignmentMap)],
+        );
 
         return back();
     }
@@ -193,6 +260,14 @@ class ClassGroupController extends Controller implements HasMiddleware
             (string) $request->validated('effective_from'),
         );
 
+        $this->audit->record(
+            'class_group.students_assigned',
+            $class,
+            $request->user(),
+            "Aluno movido de grupo — {$class->label}.",
+            ['class_id' => $class->id, 'count' => 1],
+        );
+
         return back();
     }
 
@@ -204,6 +279,14 @@ class ClassGroupController extends Controller implements HasMiddleware
             $this->enrollmentOf($class, $request->integer('first_enrollment_id')),
             $this->enrollmentOf($class, $request->integer('second_enrollment_id')),
             (string) $request->validated('effective_from'),
+        );
+
+        $this->audit->record(
+            'class_group.students_assigned',
+            $class,
+            $request->user(),
+            "Alunos permutados entre grupos — {$class->label}.",
+            ['class_id' => $class->id, 'count' => 2],
         );
 
         return back();

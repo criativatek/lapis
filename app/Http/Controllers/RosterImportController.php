@@ -9,6 +9,7 @@ use App\Domain\Import\PhotoMatch;
 use App\Models\Enrollment;
 use App\Models\EnrollmentStatus;
 use App\Models\SchoolClass;
+use App\Services\Audit\AuditLog;
 use App\Services\Import\MatchRosterToEnrollments;
 use App\Services\Import\PhotoFileParser;
 use App\Services\Import\RosterFileParseException;
@@ -40,6 +41,7 @@ class RosterImportController extends Controller
         protected MatchRosterToEnrollments $matcher,
         protected CurrentOrganization $currentOrganization,
         protected HelpCenter $helpCenter,
+        protected AuditLog $audit,
     ) {}
 
     /**
@@ -513,6 +515,21 @@ class RosterImportController extends Controller
                 }
 
                 $created++;
+            }
+
+            if ($created > 0 || $updated > 0) {
+                $this->audit->record(
+                    'roster_import.confirmed',
+                    $class,
+                    $request->user(),
+                    "Lista de turma importada — {$class->label}.",
+                    [
+                        'class_id' => $class->id,
+                        'created' => $created,
+                        'updated' => $updated,
+                        'photos_written' => $photosWritten,
+                    ],
+                );
             }
 
             Inertia::flash('toast', [

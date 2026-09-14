@@ -18,6 +18,7 @@ use App\Models\SchoolClass;
 use App\Models\Subject;
 use App\Models\User;
 use App\Rules\BelongsToCurrentOrganization;
+use App\Services\Audit\AuditLog;
 use App\Services\Classes\ClassRoster;
 use App\Services\Classes\ReusableStudents;
 use App\Services\Classes\SchoolClassHistory;
@@ -42,6 +43,7 @@ class ClassController extends Controller
         protected Entitlements $entitlements,
         protected CurrentOrganization $currentOrganization,
         protected ArchiveSchoolClass $archiveSchoolClass,
+        protected AuditLog $audit,
     ) {}
 
     public function index(): Response
@@ -141,6 +143,14 @@ class ClassController extends Controller
         $class = $this->service->create(
             [...$request->safe()->only(['label', 'academic_year_id', 'subject_id', 'grade_level', 'assessment_profile_version_id']), 'is_support_class' => $request->boolean('is_support_class'), 'status' => 'preparation'],
             $this->user(),
+        );
+
+        $this->audit->record(
+            'class.created',
+            $class,
+            $this->user(),
+            "Turma {$class->label} criada.",
+            ['class_id' => $class->id],
         );
 
         return to_route('classes.show', $class->ulid);
@@ -383,6 +393,16 @@ class ClassController extends Controller
                 : $class->is_support_class,
         ]);
 
+        if ($class->wasChanged()) {
+            $this->audit->record(
+                'class.updated',
+                $class,
+                $this->user(),
+                "Turma {$class->label} atualizada.",
+                ['class_id' => $class->id, 'changed' => array_keys($class->getChanges())],
+            );
+        }
+
         return to_route('classes.show', $class->ulid);
     }
 
@@ -427,7 +447,19 @@ class ClassController extends Controller
             ]);
         }
 
+        $fromVersionId = $class->assessment_profile_version_id;
+
         $class->update(['assessment_profile_version_id' => $version->id]);
+
+        if ((int) $fromVersionId !== (int) $version->id) {
+            $this->audit->record(
+                'class.updated',
+                $class,
+                $this->user(),
+                "Perfil de avaliação da turma {$class->label} alterado.",
+                ['class_id' => $class->id, 'from_profile_version_id' => $fromVersionId, 'to_profile_version_id' => $version->id],
+            );
+        }
 
         return back();
     }
@@ -436,7 +468,19 @@ class ClassController extends Controller
     {
         Gate::authorize('update', $class);
 
+        $wasActive = $class->status === ClassStatus::Active;
+
         $class->update(['status' => ClassStatus::Active]);
+
+        if (! $wasActive) {
+            $this->audit->record(
+                'class.activated',
+                $class,
+                $this->user(),
+                "Turma {$class->label} ativada.",
+                ['class_id' => $class->id],
+            );
+        }
 
         return back();
     }
@@ -447,6 +491,14 @@ class ClassController extends Controller
 
         $this->archiveSchoolClass->execute($class);
 
+        $this->audit->record(
+            'class.archived',
+            $class,
+            $this->user(),
+            "Turma {$class->label} arquivada.",
+            ['class_id' => $class->id],
+        );
+
         return back();
     }
 
@@ -455,6 +507,14 @@ class ClassController extends Controller
         Gate::authorize('restore', $class);
 
         $this->archiveSchoolClass->restore($class);
+
+        $this->audit->record(
+            'class.restored',
+            $class,
+            $this->user(),
+            "Turma {$class->label} restaurada.",
+            ['class_id' => $class->id],
+        );
 
         return back();
     }
@@ -491,6 +551,14 @@ class ClassController extends Controller
                 DB::transaction(function () use ($class, $history): void {
                     $history->clearPreparation($class);
                     $class->delete();
+
+                    $this->audit->record(
+                        'class.deleted',
+                        $class,
+                        $this->user(),
+                        "Turma {$class->label} eliminada.",
+                        ['class_id' => $class->id],
+                    );
                 });
             } catch (QueryException) {
                 // Alguém escreveu história na turma entre a verificação e o
@@ -542,6 +610,14 @@ class ClassController extends Controller
 
         DB::transaction(function () use ($class): void {
             $class->delete();
+
+            $this->audit->record(
+                'class.deleted',
+                $class,
+                $this->user(),
+                "Turma {$class->label} eliminada.",
+                ['class_id' => $class->id],
+            );
         });
 
         return to_route('classes.index');

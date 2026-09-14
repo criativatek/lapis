@@ -74,6 +74,17 @@ class SaveLessonSummary
                         'to_status' => LessonStatus::Prepared->value,
                     ],
                 );
+            } elseif ($lockedLesson->status === LessonStatus::Prepared) {
+                // Já preparada, sem transição de estado — o que
+                // `lesson.prepared` acima não cobre: um segundo (ou terceiro)
+                // guardar do mesmo sumário, sem que nada mais mude.
+                $this->audit->record(
+                    'lesson.summary_saved',
+                    $lockedLesson,
+                    $actor,
+                    'Sumário de aula guardado.',
+                    ['summary_id' => $summary->getKey()],
+                );
             }
 
             if ($isPostTaughtEdit) {

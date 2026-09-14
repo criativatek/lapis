@@ -82,4 +82,28 @@ describe('Activity', () => {
             true,
         );
     });
+
+    it('os novos eventos da 0.145.1 resolvem para um rótulo pt-PT real, não para a alternativa genérica', () => {
+        const newEventKeys = [
+            'class.created',
+            'enrollment.created',
+            'instrument.created',
+            'scores.recorded',
+            'record.created',
+        ];
+
+        const text = mount(Activity, {
+            props: {
+                events: newEventKeys.map((key) => event({ event: key })),
+                scope: 'mine',
+            },
+        }).text();
+
+        expect(text).toContain('Turma criada');
+        expect(text).toContain('Aluno inscrito');
+        expect(text).toContain('Elemento de avaliação criado');
+        expect(text).toContain('Notas lançadas');
+        expect(text).toContain('Registo criado');
+        expect(text).not.toContain('Ação registada');
+    });
 });

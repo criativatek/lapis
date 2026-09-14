@@ -8,6 +8,7 @@ use App\Models\SchoolClass;
 use App\Rules\BelongsToCurrentOrganization;
 use App\Services\Assessment\CaptureInterimAssessment;
 use App\Services\Assessment\CompareInterimToPeriodFinal;
+use App\Services\Audit\AuditLog;
 use App\Support\Assessment\DecisionScale;
 use App\Support\Assessment\InterimAssessmentException;
 use App\Support\Entitlements\Entitlements;
@@ -29,7 +30,7 @@ use Inertia\Response;
  */
 class InterimAssessmentController extends Controller
 {
-    public function __construct(protected CaptureInterimAssessment $capture) {}
+    public function __construct(protected CaptureInterimAssessment $capture, protected AuditLog $audit) {}
 
     public function store(Request $request, SchoolClass $class): RedirectResponse
     {
@@ -66,6 +67,14 @@ class InterimAssessmentController extends Controller
             // different date, and the teacher needs to know which one.
             throw ValidationException::withMessages(['reference_date' => $exception->getMessage()]);
         }
+
+        $this->audit->record(
+            'interim_assessment.created',
+            $interim,
+            $request->user(),
+            "Avaliação intercalar «{$interim->name}» guardada — {$class->label}.",
+            ['class_id' => $class->id, 'interim_assessment_id' => $interim->id],
+        );
 
         return redirect()
             ->route('interim-assessments.show', [$class->ulid, $interim->ulid])
@@ -134,6 +143,14 @@ class InterimAssessmentController extends Controller
             'note' => $validated['note'] ?? null,
         ]);
 
+        $this->audit->record(
+            'interim_assessment.updated',
+            $interimAssessment,
+            $request->user(),
+            "Avaliação intercalar «{$interimAssessment->name}» atualizada — {$class->label}.",
+            ['class_id' => $class->id, 'interim_assessment_id' => $interimAssessment->id],
+        );
+
         return back()->with('success', 'Nome atualizado. A fotografia não mudou.');
     }
 
@@ -171,7 +188,18 @@ class InterimAssessmentController extends Controller
         // only itself. The day Relatórios cite them, this becomes a revocation
         // rather than a delete — the model is already immutable, which is the
         // half that would be hard to add later (§44).
+        $interimAssessmentId = $interimAssessment->id;
+        $name = $interimAssessment->name;
+
         $interimAssessment->delete();
+
+        $this->audit->record(
+            'interim_assessment.deleted',
+            $interimAssessment,
+            request()->user(),
+            "Avaliação intercalar «{$name}» eliminada — {$class->label}.",
+            ['class_id' => $class->id, 'interim_assessment_id' => $interimAssessmentId],
+        );
 
         return redirect()
             ->route('results.statistics', [$class->ulid])

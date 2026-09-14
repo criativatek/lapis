@@ -12,6 +12,7 @@ use App\Models\HomeworkStatus;
 use App\Models\ParticipationLevel;
 use App\Models\SchoolClass;
 use App\Models\User;
+use App\Services\Audit\AuditLog;
 use App\Services\Evidence\Ai\IncidentDescriptionAssistant;
 use App\Services\Evidence\DetectEvidenceAccumulationWarnings;
 use Illuminate\Http\JsonResponse;
@@ -31,6 +32,8 @@ use Inertia\Response;
  */
 class EvidenceController extends Controller
 {
+    public function __construct(protected AuditLog $audit) {}
+
     public function index(): Response
     {
         $classes = SchoolClass::query()
@@ -158,7 +161,9 @@ class EvidenceController extends Controller
 
         $targets = $validated['enrollment_ids'] === [] ? [null] : $validated['enrollment_ids'];
 
-        DB::transaction(function () use ($class, $validated, $targets): void {
+        $createdEnrollmentIds = [];
+
+        DB::transaction(function () use ($class, $validated, $targets, &$createdEnrollmentIds): void {
             foreach ($targets as $enrollmentId) {
                 EvidenceRecord::create([
                     'class_id' => $class->id,
@@ -176,8 +181,20 @@ class EvidenceController extends Controller
                     'description' => $validated['description'] ?? '',
                     'created_by' => $this->user()->getKey(),
                 ]);
+                $createdEnrollmentIds[] = $enrollmentId;
             }
         });
+
+        // Um evento por pedido, nunca um por aluno: o grelha multi-aluno é um
+        // atalho de autoria, não vários registos partilhados — os ids das
+        // inscrições (nunca nomes) identificam quem foi visado.
+        $this->audit->record(
+            'record.created',
+            $class,
+            $this->user(),
+            count($targets) === 1 ? 'Registo criado.' : count($targets).' registos criados.',
+            ['class_id' => $class->id, 'kind' => $validated['kind'], 'count' => count($targets), 'enrollment_ids' => $createdEnrollmentIds],
+        );
 
         $message = count($targets) === 1
             ? __('Registo adicionado.')
@@ -255,7 +272,9 @@ class EvidenceController extends Controller
         $enrollmentIds = array_column($validated['rows'], 'enrollment_id');
         $this->guardCrossReferences($class, ['enrollment_ids' => $enrollmentIds], isNew: true);
 
-        DB::transaction(function () use ($class, $validated, $enrollmentIds): void {
+        $touched = 0;
+
+        DB::transaction(function () use ($class, $validated, $enrollmentIds, &$touched): void {
             // There is deliberately no batch table or uniqueness constraint.
             // Locking the existing parent serializes two first saves, where no
             // EvidenceRecord row exists yet for lockForUpdate() to lock.
@@ -275,7 +294,9 @@ class EvidenceController extends Controller
                 $record = $existingRecords->get($row['enrollment_id']);
 
                 if (($row['homework_status'] ?? null) === null) {
-                    $record?->delete();
+                    if ($record?->delete() === true) {
+                        $touched++;
+                    }
 
                     continue;
                 }
@@ -288,6 +309,7 @@ class EvidenceController extends Controller
 
                 if ($record !== null) {
                     $record->update($values);
+                    $touched++;
 
                     continue;
                 }
@@ -298,8 +320,19 @@ class EvidenceController extends Controller
                     'kind' => EvidenceKind::Homework->value,
                     'created_by' => $this->user()->getKey(),
                 ]));
+                $touched++;
             }
         });
+
+        if ($touched > 0) {
+            $this->audit->record(
+                'record.homework_batch_updated',
+                $class,
+                $this->user(),
+                "Trabalho de casa guardado — {$class->label}.",
+                ['class_id' => $class->id, 'occurred_at' => $validated['occurred_at'], 'count' => $touched],
+            );
+        }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Trabalho de casa guardado.')]);
 
@@ -314,16 +347,30 @@ class EvidenceController extends Controller
             'occurred_at' => ['required', 'date_format:Y-m-d'],
         ]);
 
-        DB::transaction(function () use ($class, $validated): void {
-            EvidenceRecord::query()
+        $deleted = 0;
+
+        DB::transaction(function () use ($class, $validated, &$deleted): void {
+            $rows = EvidenceRecord::query()
                 ->forClass($class->id)
                 ->where('kind', EvidenceKind::Homework->value)
                 ->whereDate('occurred_at', $validated['occurred_at'])
                 ->whereNotNull('enrollment_id')
                 ->lockForUpdate()
-                ->get()
-                ->each->delete();
+                ->get();
+
+            $deleted = $rows->count();
+            $rows->each->delete();
         });
+
+        if ($deleted > 0) {
+            $this->audit->record(
+                'record.homework_batch_deleted',
+                $class,
+                $this->user(),
+                "Trabalho de casa eliminado — {$class->label}.",
+                ['class_id' => $class->id, 'occurred_at' => $validated['occurred_at'], 'count' => $deleted],
+            );
+        }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Trabalho de casa eliminado.')]);
 
@@ -354,6 +401,14 @@ class EvidenceController extends Controller
             'description' => $validated['description'] ?? '',
         ]);
 
+        $this->audit->record(
+            'record.updated',
+            $record,
+            $this->user(),
+            'Registo atualizado.',
+            ['class_id' => $class->id, 'evidence_record_id' => $record->id, 'kind' => $record->kind->value],
+        );
+
         $message = __('Registo atualizado.');
 
         // An edit can change which kind a record is — e.g. correcting it into
@@ -376,7 +431,19 @@ class EvidenceController extends Controller
     {
         Gate::authorize('update', $record->schoolClass);
 
+        $class = $record->schoolClass;
+        $recordId = $record->id;
+        $kind = $record->kind->value;
+
         $record->delete();
+
+        $this->audit->record(
+            'record.deleted',
+            $record,
+            $this->user(),
+            'Registo eliminado.',
+            ['class_id' => $class->id, 'evidence_record_id' => $recordId, 'kind' => $kind],
+        );
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Registo removido.')]);
 

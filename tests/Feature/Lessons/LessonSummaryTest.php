@@ -79,7 +79,15 @@ class LessonSummaryTest extends TestCase
                 ->where('lesson.summary.content', 'Versão final do sumário.'));
 
         $this->assertDatabaseCount('lesson_summaries', 1);
-        $this->assertDatabaseCount('audit_events', 1);
+        // One event for the first save (Preparation -> Prepared,
+        // lesson.prepared) and one for the second, same-status save — the
+        // gap `lesson.summary_saved` exists to close (0.145.1 «Minha
+        // atividade»): a second "guardar" used to leave no trace at all.
+        $this->assertDatabaseCount('audit_events', 2);
+        $this->assertDatabaseHas('audit_events', [
+            'event' => 'lesson.summary_saved',
+            'subject_id' => $lesson->id,
+        ]);
     }
 
     #[Test]

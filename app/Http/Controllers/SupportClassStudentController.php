@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\SchoolClass;
 use App\Models\User;
+use App\Services\Audit\AuditLog;
 use App\Services\Classes\ReusableStudents;
 use App\Services\Classes\StudentAlreadyEnrolled;
 use App\Services\StudentEnrollmentService;
@@ -32,6 +33,7 @@ class SupportClassStudentController extends Controller
         protected ReusableStudents $students,
         protected StudentEnrollmentService $service,
         protected CurrentOrganization $currentOrganization,
+        protected AuditLog $audit,
     ) {}
 
     public function search(Request $request, SchoolClass $class): JsonResponse
@@ -69,10 +71,18 @@ class SupportClassStudentController extends Controller
             // de setembro, os instrumentos e as aulas anteriores passariam a
             // contar-lhe (§11.4). Limitada ao ano letivo da turma, e corrigível
             // depois em «Corrigir dados», como qualquer outra inscrição.
-            $this->service->enrollExisting($class, $student, $this->entryDateFor($class));
+            $enrollment = $this->service->enrollExisting($class, $student, $this->entryDateFor($class));
         } catch (StudentAlreadyEnrolled $refusal) {
             return back()->withErrors(['student_ulid' => $refusal->getMessage()]);
         }
+
+        $this->audit->record(
+            'enrollment.support_reused',
+            $enrollment,
+            $this->user($request),
+            "Aluno existente adicionado à turma de apoio — {$class->label}.",
+            ['class_id' => $class->id, 'enrollment_id' => $enrollment->id, 'count' => 1],
+        );
 
         // SEM TOAST, de propósito: a confirmação é dada no próprio campo de
         // pesquisa (ExistingStudentPicker). No telemóvel o toast caía em cima

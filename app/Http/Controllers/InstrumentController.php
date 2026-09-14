@@ -18,6 +18,7 @@ use App\Services\Assessment\CompleteCorrection;
 use App\Services\Assessment\InstrumentBuilder;
 use App\Services\Assessment\InstrumentCompleteness;
 use App\Services\Assessment\RecordScores;
+use App\Services\Audit\AuditLog;
 use App\Services\Import\Correction\WriteLapisGrid;
 use App\Support\Assessment\CorrectionWorkflowException;
 use App\Support\Assessment\InstrumentValidationException;
@@ -35,7 +36,7 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class InstrumentController extends Controller
 {
-    public function __construct(protected InstrumentBuilder $builder, protected HelpCenter $helpCenter) {}
+    public function __construct(protected InstrumentBuilder $builder, protected HelpCenter $helpCenter, protected AuditLog $audit) {}
 
     public function index(): Response
     {
@@ -139,6 +140,14 @@ class InstrumentController extends Controller
             return back()->withErrors(['items' => $exception->getMessage()])->withInput();
         }
 
+        $this->audit->record(
+            'instrument.created',
+            $instrument,
+            $this->user(),
+            "Elemento de avaliação «{$instrument->title}» criado — {$class->label}.",
+            ['class_id' => $class->id, 'instrument_id' => $instrument->id],
+        );
+
         $prepared = $instrument->status === InstrumentStatus::Prepared;
         Inertia::flash('toast', ['type' => 'success', 'message' => $prepared
             ? 'Grelha de correção preparada para lançar resultados.'
@@ -236,6 +245,15 @@ class InstrumentController extends Controller
         }
 
         $instrument->refresh();
+
+        $this->audit->record(
+            'instrument.updated',
+            $instrument,
+            $this->user(),
+            "Elemento de avaliação «{$instrument->title}» alterado — {$instrument->schoolClass->label}.",
+            ['class_id' => $instrument->class_id, 'instrument_id' => $instrument->id],
+        );
+
         $prepared = $instrument->status === InstrumentStatus::Prepared;
         Inertia::flash('toast', ['type' => 'success', 'message' => $prepared
             ? 'Grelha de correção preparada para lançar resultados.'
@@ -285,6 +303,14 @@ class InstrumentController extends Controller
             'cancelled_by' => $this->user()->id,
             'cancellation_reason' => $data['reason'],
         ]);
+
+        $this->audit->record(
+            'instrument.cancelled',
+            $instrument,
+            $this->user(),
+            "Elemento de avaliação «{$instrument->title}» anulado — {$instrument->schoolClass->label}.",
+            ['class_id' => $instrument->class_id, 'instrument_id' => $instrument->id],
+        );
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Elemento de avaliação anulado.']);
 
@@ -359,6 +385,14 @@ class InstrumentController extends Controller
             return back()->withErrors(['status' => $exception->getMessage()]);
         }
 
+        $this->audit->record(
+            'instrument.correction_completed',
+            $instrument,
+            $this->user(),
+            "Correção de «{$instrument->title}» concluída — {$instrument->schoolClass->label}.",
+            ['class_id' => $instrument->class_id, 'instrument_id' => $instrument->id],
+        );
+
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Correção concluída.']);
 
         return back();
@@ -373,6 +407,14 @@ class InstrumentController extends Controller
         } catch (CorrectionWorkflowException $exception) {
             return back()->withErrors(['status' => $exception->getMessage()]);
         }
+
+        $this->audit->record(
+            'instrument.correction_reopened',
+            $instrument,
+            $this->user(),
+            "Correção de «{$instrument->title}» reaberta — {$instrument->schoolClass->label}.",
+            ['class_id' => $instrument->class_id, 'instrument_id' => $instrument->id],
+        );
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Correção reaberta.']);
 
@@ -394,6 +436,14 @@ class InstrumentController extends Controller
             'cancelled_by' => null,
             'cancellation_reason' => null,
         ]);
+
+        $this->audit->record(
+            'instrument.cancellation_reverted',
+            $instrument,
+            $this->user(),
+            "Anulação de «{$instrument->title}» revertida — {$instrument->schoolClass->label}.",
+            ['class_id' => $instrument->class_id, 'instrument_id' => $instrument->id],
+        );
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Anulação revertida.']);
 
@@ -579,7 +629,20 @@ class InstrumentController extends Controller
     {
         Gate::authorize('update', $instrument->schoolClass);
 
+        $classId = $instrument->class_id;
+        $classLabel = $instrument->schoolClass->label;
+        $title = $instrument->title;
+        $instrumentId = $instrument->id;
+
         $instrument->delete();
+
+        $this->audit->record(
+            'instrument.deleted',
+            $instrument,
+            $this->user(),
+            "Elemento de avaliação «{$title}» eliminado — {$classLabel}.",
+            ['class_id' => $classId, 'instrument_id' => $instrumentId],
+        );
 
         return to_route('instruments.index');
     }

@@ -53,6 +53,9 @@ class RecordScores
 
         return DB::transaction(function () use ($instrument, $cells, $actor): RecordScoresResult {
             $written = 0;
+            $created = 0;
+            $updated = 0;
+            $cleared = 0;
             $versions = [];
             $stale = [];
 
@@ -90,6 +93,7 @@ class RecordScores
                     $deleted = $score?->delete() === true ? 1 : 0;
 
                     $written += $deleted;
+                    $cleared += $deleted;
                     $versions[] = [
                         'enrollment_id' => $cell['enrollment_id'],
                         'instrument_item_id' => $cell['instrument_item_id'],
@@ -103,6 +107,8 @@ class RecordScores
                 // database CHECK both refuse otherwise; this keeps the payload honest
                 // so a stale client cannot smuggle a value onto an absence.
                 $carries = $state->carriesValue();
+
+                $existedBefore = $score !== null;
 
                 $score ??= new StudentItemScore([
                     'instrument_item_id' => $cell['instrument_item_id'],
@@ -120,6 +126,7 @@ class RecordScores
                 ])->save();
 
                 $written++;
+                $existedBefore ? $updated++ : $created++;
                 $versions[] = [
                     'enrollment_id' => $cell['enrollment_id'],
                     'instrument_item_id' => $cell['instrument_item_id'],
@@ -145,6 +152,22 @@ class RecordScores
                             'enrollment_id' => $cell['enrollment_id'],
                             'instrument_item_id' => $cell['instrument_item_id'],
                         ], $stale),
+                    ],
+                );
+            }
+
+            if ($written > 0) {
+                $this->audit->record(
+                    'scores.recorded',
+                    $instrument,
+                    $actor,
+                    "Notas lançadas em «{$instrument->title}».",
+                    [
+                        'instrument_id' => $instrument->id,
+                        'class_id' => $instrument->class_id,
+                        'created' => $created,
+                        'updated' => $updated,
+                        'cleared' => $cleared,
                     ],
                 );
             }

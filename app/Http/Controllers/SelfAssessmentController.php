@@ -9,6 +9,7 @@ use App\Models\SelfAssessment;
 use App\Models\SelfAssessmentFilledBy;
 use App\Models\User;
 use App\Services\Assessment\SelfAssessmentRecorder;
+use App\Services\Audit\AuditLog;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -29,7 +30,7 @@ class SelfAssessmentController extends Controller
      *  cover a homework-style task shared via Teams, short enough not to linger. */
     protected const LINK_LIFETIME_DAYS = 7;
 
-    public function __construct(protected SelfAssessmentRecorder $recorder) {}
+    public function __construct(protected SelfAssessmentRecorder $recorder, protected AuditLog $audit) {}
 
     public function index(): Response
     {
@@ -115,6 +116,14 @@ class SelfAssessmentController extends Controller
         ]);
 
         $this->recorder->save($class, $selected, $enrollment, $validated, SelfAssessmentFilledBy::TeacherInterview);
+
+        $this->audit->record(
+            'self_assessment.recorded',
+            $enrollment,
+            $this->user(),
+            "Autoavaliação registada — {$class->label}.",
+            ['class_id' => $class->id, 'academic_period_id' => $selected->id, 'enrollment_id' => $enrollment->id],
+        );
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Autoavaliação guardada.')]);
 

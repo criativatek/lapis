@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Enrollment;
 use App\Models\SchoolClass;
+use App\Services\Audit\AuditLog;
 use App\Services\EnrollmentHistory;
 use App\Services\StudentEnrollmentService;
 use Closure;
@@ -15,7 +16,7 @@ use Inertia\Inertia;
 
 class EnrollmentController extends Controller
 {
-    public function __construct(protected StudentEnrollmentService $service) {}
+    public function __construct(protected StudentEnrollmentService $service, protected AuditLog $audit) {}
 
     public function store(Request $request, SchoolClass $class): RedirectResponse
     {
@@ -29,7 +30,23 @@ class EnrollmentController extends Controller
             'school_number' => ['nullable', 'string', 'max:64'],
         ]);
 
-        $this->service->enrollNew($class, $data);
+        $enrollment = $this->service->enrollNew($class, $data);
+
+        $this->audit->record(
+            'enrollment.created',
+            $enrollment,
+            $request->user(),
+            "Aluno inscrito — {$class->label}.",
+            [
+                'class_id' => $class->id,
+                'enrollment_id' => $enrollment->id,
+                'student_id' => $enrollment->student_id,
+                // enrollNew() always creates a brand-new Student for this
+                // enrollment — a single event covers both writes rather than
+                // a separate student.created (§ instructions).
+                'student_created' => true,
+            ],
+        );
 
         return back();
     }
@@ -71,6 +88,16 @@ class EnrollmentController extends Controller
 
             $this->service->setProcessNumber($enrollment, $row['process_number'] ?? null);
             $saved++;
+        }
+
+        if ($saved > 0) {
+            $this->audit->record(
+                'enrollment.process_numbers_updated',
+                $class,
+                $request->user(),
+                "N.º de processo atualizado — {$class->label}.",
+                ['class_id' => $class->id, 'count' => $saved],
+            );
         }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => "N.º de processo guardado para {$saved} aluno(s)."]);
@@ -123,6 +150,14 @@ class EnrollmentController extends Controller
         ]);
 
         $this->service->updateExisting($enrollment, $data);
+
+        $this->audit->record(
+            'enrollment.updated',
+            $enrollment,
+            $request->user(),
+            "Dados do aluno corrigidos — {$class->label}.",
+            ['class_id' => $class->id, 'enrollment_id' => $enrollment->id],
+        );
 
         return back();
     }
@@ -210,10 +245,30 @@ class EnrollmentController extends Controller
         // história pedagógica (§ EnrollmentHistory::CLEARED_WITH_ENROLLMENT).
         // Chegar aqui já significa que `blocking()` respondeu vazio — não há
         // uma única avaliação, evidência ou classificação a proteger.
+        $enrollmentId = $onTheRoll->id;
+        $studentId = $onTheRoll->student_id;
+
         DB::transaction(function () use ($onTheRoll, $history): void {
             $history->clearAccompanying($onTheRoll);
             $onTheRoll->delete();
         });
+
+        $this->audit->record(
+            'enrollment.removed',
+            $onTheRoll,
+            request()->user(),
+            "Aluno removido — {$class->label}.",
+            [
+                'class_id' => $class->id,
+                'enrollment_id' => $enrollmentId,
+                'student_id' => $studentId,
+                // enrollments has no soft delete (§ EnrollmentController
+                // docblock above): this is always a real, hard removal —
+                // reached only once EnrollmentHistory::blocking() found no
+                // history at all to protect.
+                'mode' => 'deleted',
+            ],
+        );
 
         return back();
     }
