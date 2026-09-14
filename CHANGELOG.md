@@ -38,7 +38,7 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 - Centro de Ajuda: «Escrever o sumário de uma aula» explica a numeração das turmas desdobradas e o vínculo no horário.
 
 ### Migrations e backup
-- `2026_11_10_000600_add_split_lesson_keys`: duas colunas nullable e dois índices, sem backfill; reversível.
+- `2026_11_10_000600_add_split_lesson_keys`: duas colunas nullable e dois índices só da chave (um índice `(class_id, …)` passaria a servir a FK e o rollback em MySQL falharia com 1553), sem backfill; reversível.
 - Backup **`schema_version` 10**: `recurring_lesson_slots[].split_lesson_key` e `lessons[].lesson_unit_key` (ausentes em backups antigos ⇒ null). Round-trip testado.
 
 ### Sem alteração

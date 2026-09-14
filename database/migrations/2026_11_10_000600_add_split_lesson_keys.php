@@ -22,23 +22,30 @@ use Illuminate\Support\Facades\Schema;
  */
 return new class extends Migration
 {
+    /*
+     * ÍNDICES SÓ DA CHAVE, NUNCA `(class_id, chave)`. Em MySQL um índice que
+     * começa por `class_id` passa a servir a FK `class_id` quando é o mais
+     * adequado, e o `down()` rebentaria com 1553 («needed in a foreign key
+     * constraint») — a mesma armadilha que já deixou duas migrações por
+     * reverter (0.139.1). As leituras filtram por turma de qualquer forma.
+     */
     public function up(): void
     {
         Schema::table('recurring_lesson_slots', function (Blueprint $table): void {
             $table->char('split_lesson_key', 26)->nullable()->after('class_group_id');
-            $table->index(['class_id', 'split_lesson_key'], 'recurring_lesson_slots_split_key_idx');
+            $table->index('split_lesson_key', 'recurring_lesson_slots_split_key_idx');
         });
 
         Schema::table('lessons', function (Blueprint $table): void {
             $table->char('lesson_unit_key', 26)->nullable()->after('lesson_number');
-            $table->index(['class_id', 'lesson_unit_key'], 'lessons_class_unit_key_idx');
+            $table->index('lesson_unit_key', 'lessons_unit_key_idx');
         });
     }
 
     public function down(): void
     {
         Schema::table('lessons', function (Blueprint $table): void {
-            $table->dropIndex('lessons_class_unit_key_idx');
+            $table->dropIndex('lessons_unit_key_idx');
             $table->dropColumn('lesson_unit_key');
         });
 
