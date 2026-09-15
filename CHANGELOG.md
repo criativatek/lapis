@@ -25,6 +25,18 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.145.4] — 2026-09-15
+
+### Corrigido
+- **O Horário do Professor mostrava blocos de turmas arquivadas e versões ainda por entrar em vigor.** Caso reportado: «AE 8.º F Experiência para arquivo», sexta 12:20–13:10, aparecia no horário atual (os dados de produção do registo #23 ficam por confirmar). Causa no código: `TeacherTimetableController` escolhia as turmas só por `taughtBy()`, sem olhar ao arquivamento, e dos blocos só filtrava `ends_on >= hoje`, ignorando `starts_on`. Arquivar uma turma não fecha os seus blocos (nem deve, o histórico fica), por isso o bloco aberto continuava a aparecer. A cor vermelha era só o tom `rose` da paleta por posição, sem relação com o estado.
+- **A regra passou a ser temporal e por ocorrência.** Um bloco aparece numa semana se, no dia da sua ocorrência nessa semana, `starts_on ≤ dia ≤ ends_on` (NULL = aberto, a mesma regra da materialização) **e** a turma ainda não estava arquivada nesse dia (`archived_at`, no fuso da organização). Uma versão substituída e a sua substituta nunca aparecem juntas; uma versão futura só aparece a partir da semana em que entra em vigor; turmas de apoio válidas aparecem como qualquer outra. A decisão é pelos dados, nunca pelo rótulo nem pela cor.
+
+### Adicionado
+- **Navegação por semana no Horário do Professor** (`/timetable?week=AAAA-MM-DD`, qualquer dia normaliza para segunda; por omissão a semana atual): «Semana anterior», «Semana atual», «Semana seguinte», e a data em cada coluna. Uma semana histórica mostra o que vigorava então — incluindo turmas depois arquivadas. Uma semana sem blocos diz «Sem aulas nesta semana».
+
+### Sem alteração
+- Nada é apagado: turmas, blocos, aulas, sumários e assiduidade ficam intactos; a correção é só de projeção. A página continua a não escrever nada. Sem migrations, backup `schema_version` 10, legal, IA e comercial.
+
 ## [0.145.3] — 2026-09-15
 
 ### Corrigido

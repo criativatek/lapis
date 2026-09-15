@@ -1,6 +1,14 @@
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3';
-import { CalendarClock, CalendarX2, FileUp, Plus } from '@lucide/vue';
+import { Head, Link, router } from '@inertiajs/vue3';
+import {
+    CalendarClock,
+    CalendarDays,
+    CalendarX2,
+    ChevronLeft,
+    ChevronRight,
+    FileUp,
+    Plus,
+} from '@lucide/vue';
 import { computed } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
@@ -19,6 +27,7 @@ type TimetableSlot = {
     day_of_week: number;
     starts_at: string;
     ends_at: string;
+    occurs_on?: string;
     starts_on: string | null;
     ends_on: string | null;
     school_class: { ulid: string; label: string };
@@ -31,10 +40,75 @@ type ClassOption = {
     subject: string;
 };
 
+type ConsultedWeek = { start: string; end: string; is_current: boolean };
+
 const props = defineProps<{
     slots: TimetableSlot[];
     classes: ClassOption[];
+    week?: ConsultedWeek;
+    today?: string;
 }>();
+
+// ------------------------------------------------------ a semana consultada
+
+/**
+ * O HORÁRIO É DE UMA SEMANA CONCRETA. O servidor só envia os blocos em vigor
+ * nessa semana — de turmas ainda não arquivadas no dia de cada ocorrência —,
+ * por isso uma semana passada mostra o que vigorava então e a atual já não
+ * mostra configurações obsoletas. Navegar é só pedir outra semana: nada é
+ * criado nem alterado.
+ */
+const shortDate = new Intl.DateTimeFormat('pt-PT', {
+    day: '2-digit',
+    month: '2-digit',
+    timeZone: 'UTC',
+});
+
+function formatShort(date: string): string {
+    return shortDate.format(new Date(`${date}T00:00:00Z`));
+}
+
+const weekLabel = computed(() =>
+    props.week
+        ? `${formatShort(props.week.start)} – ${formatShort(props.week.end)}`
+        : null,
+);
+
+function goToWeek(week: string): void {
+    router.get(
+        '/timetable',
+        { week },
+        { preserveState: true, preserveScroll: true },
+    );
+}
+
+function navigate(offsetDays: number): void {
+    if (!props.week) {
+        return;
+    }
+
+    const date = new Date(`${props.week.start}T12:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + offsetDays);
+    goToWeek(date.toISOString().slice(0, 10));
+}
+
+function goToCurrentWeek(): void {
+    if (props.today) {
+        goToWeek(props.today);
+    }
+}
+
+/** A data de cada dia da semana consultada, para o cabeçalho da coluna. */
+function dateOfDay(dayOfWeek: number): string | null {
+    if (!props.week) {
+        return null;
+    }
+
+    const date = new Date(`${props.week.start}T12:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + dayOfWeek - 1);
+
+    return formatShort(date.toISOString().slice(0, 10));
+}
 
 /**
  * Written out rather than derived from Intl: a recurring slot has a weekday
@@ -77,9 +151,12 @@ const slotsByDay = computed(() => {
  * há bloco nenhum por trás dele, nem passa a haver por ser mostrado.
  */
 function dayColumn(dayOfWeek: number) {
+    const name = capitalizeFirst(weekdays[dayOfWeek - 1] ?? `Dia ${dayOfWeek}`);
+    const date = dateOfDay(dayOfWeek);
+
     return {
         dayOfWeek,
-        label: capitalizeFirst(weekdays[dayOfWeek - 1] ?? `Dia ${dayOfWeek}`),
+        label: date ? `${name}, ${date}` : name,
         slots: slotsByDay.value.get(dayOfWeek) ?? [],
     };
 }
@@ -121,8 +198,9 @@ const days = computed(() =>
 
 const summary = computed(() => {
     const blocks = props.slots.length;
-    const classCount = new Set(props.slots.map((slot) => slot.school_class.ulid))
-        .size;
+    const classCount = new Set(
+        props.slots.map((slot) => slot.school_class.ulid),
+    ).size;
 
     return `${blocks} ${blocks === 1 ? 'aula' : 'aulas'} por semana · ${classCount} ${classCount === 1 ? 'turma' : 'turmas'}`;
 });
@@ -171,14 +249,52 @@ function validity(slot: TimetableSlot): string | null {
     <Head title="Horário do Professor" />
 
     <main class="mx-auto w-full max-w-6xl space-y-8 p-4 pb-24 sm:p-6">
-        <Heading
-            title="Horário do Professor"
-            :description="
-                slots.length
-                    ? `A tua semana, de todas as turmas juntas — ${summary}.`
-                    : 'A tua semana, de todas as turmas juntas.'
-            "
-        />
+        <div class="space-y-4">
+            <Heading
+                title="Horário do Professor"
+                :description="
+                    slots.length
+                        ? `A tua semana, de todas as turmas juntas — ${summary}.`
+                        : 'A tua semana, de todas as turmas juntas.'
+                "
+            />
+
+            <nav
+                v-if="week"
+                class="flex flex-wrap items-center gap-2"
+                aria-label="Navegação entre semanas"
+            >
+                <Button
+                    variant="outline"
+                    size="sm"
+                    class="min-h-10"
+                    @click="navigate(-7)"
+                    ><ChevronLeft class="size-4" /> Semana anterior</Button
+                >
+                <Button
+                    variant="outline"
+                    size="sm"
+                    class="min-h-10"
+                    :disabled="week.is_current"
+                    @click="goToCurrentWeek"
+                    ><CalendarDays class="size-4" /> Semana atual</Button
+                >
+                <Button
+                    variant="outline"
+                    size="sm"
+                    class="min-h-10"
+                    @click="navigate(7)"
+                    >Semana seguinte <ChevronRight class="size-4"
+                /></Button>
+                <p
+                    class="w-full text-sm text-muted-foreground sm:ml-auto sm:w-auto"
+                    aria-live="polite"
+                >
+                    Semana de {{ weekLabel
+                    }}<span v-if="week.is_current"> · semana atual</span>
+                </p>
+            </nav>
+        </div>
 
         <!--
             NOTHING IS CREATED BY OPENING ESTA PÁGINA. Ao contrário da vista
@@ -187,7 +303,13 @@ function validity(slot: TimetableSlot): string | null {
             se lê o que já existe.
         -->
         <EmptyState
-            v-if="slots.length === 0"
+            v-if="slots.length === 0 && week && !week.is_current"
+            title="Sem aulas nesta semana"
+            description="Nenhum bloco do teu horário estava em vigor nesta semana para turmas ativas."
+            :icon="CalendarX2"
+        />
+        <EmptyState
+            v-else-if="slots.length === 0"
             title="Ainda não tens horário configurado"
             description="Assim que as aulas recorrentes das tuas turmas estiverem definidas, a tua semana aparece aqui. Podes importar o PDF do horário da escola ou definir os blocos à mão, turma a turma."
             :icon="CalendarX2"
@@ -365,7 +487,10 @@ function validity(slot: TimetableSlot): string | null {
         -->
         <section class="space-y-3" aria-labelledby="timetable-setup-heading">
             <div>
-                <h2 id="timetable-setup-heading" class="text-base font-semibold">
+                <h2
+                    id="timetable-setup-heading"
+                    class="text-base font-semibold"
+                >
                     Configurar o horário
                 </h2>
                 <p class="mt-1 text-sm text-muted-foreground">
@@ -408,7 +533,10 @@ function validity(slot: TimetableSlot): string | null {
                         </p>
                     </div>
 
-                    <EmptyState v-if="classes.length === 0" title="Ainda não existem turmas para configurar.">
+                    <EmptyState
+                        v-if="classes.length === 0"
+                        title="Ainda não existem turmas para configurar."
+                    >
                         <template #action>
                             <Button as-child>
                                 <Link href="/classes/create"

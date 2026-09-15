@@ -7,7 +7,6 @@ use App\Models\SchoolClass;
 use App\Models\User;
 use App\Support\Tenancy\CurrentOrganization;
 use Carbon\CarbonImmutable;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Support\Facades\Gate;
@@ -68,24 +67,40 @@ class TeacherTimetableController extends Controller implements HasMiddleware
             ->get();
 
         $timezone = $this->currentOrganization->get()->timezone;
-        $today = CarbonImmutable::now($timezone)->toDateString();
+        $today = CarbonImmutable::now($timezone)->startOfDay();
+
+        // A SEMANA CONSULTADA, e não «de hoje em diante». `?week=` aceita
+        // qualquer dia da semana (o mesmo contrato de «Aulas e Sumários») e,
+        // por omissão, é a semana de hoje.
+        $week = $request->validate(['week' => ['sometimes', 'date_format:Y-m-d']])['week'] ?? null;
+        $weekStart = (is_string($week) ? CarbonImmutable::parse($week, $timezone) : $today)->startOfWeek();
 
         // Every recurring block of those turmas, and of no others. Narrowed by
         // class_id over the list already in hand, the same way
         // GenerateDataExport already reaches a teacher's dependent rows.
         //
-        // Only the currently-active-or-future slot per schedule line: a
-        // revision (ReviseRecurringLessonSlot) leaves the old, now-closed row
-        // in place for Lessons already materialized from it to keep pointing
-        // at, and without this filter it would show up here alongside the
-        // version that replaced it.
+        // A REGRA É TEMPORAL E POR OCORRÊNCIA. Um bloco recorrente tem uma só
+        // ocorrência por semana — o seu `day_of_week` na semana consultada — e
+        // aparece se, NESSE dia:
+        //
+        //   · a vigência o cobre (starts_on ≤ dia ≤ ends_on, NULL = aberto), a
+        //     mesma regra de MaterializeLessonsForRange. A linha fechada por
+        //     uma revisão (ReviseRecurringLessonSlot) e a que a substituiu
+        //     nunca aparecem juntas, e uma versão futura só aparece a partir
+        //     da semana em que entra em vigor;
+        //   · a turma ainda não estava arquivada (archived_at depois do dia).
+        //     Arquivar uma turma não fecha os seus blocos — nem deve: o
+        //     histórico fica —, por isso decide-se aqui, na projeção.
+        //
+        // NUNCA `archived_at IS NULL` global: numa semana anterior ao
+        // arquivamento a turma estava viva, e o horário dessa semana mostra-a.
         $slots = RecurringLessonSlot::query()
             ->whereIn('class_id', $schoolClasses->modelKeys())
-            ->where(fn (Builder $query) => $query->whereNull('ends_on')->orWhereDate('ends_on', '>=', $today))
             ->with('schoolClass.subject')
             ->orderBy('day_of_week')
             ->orderBy('starts_at')
             ->get()
+            ->filter(fn (RecurringLessonSlot $slot): bool => $this->occursInWeek($slot, $weekStart, $timezone))
             ->map(fn (RecurringLessonSlot $slot) => [
                 'ulid' => $slot->ulid,
                 'day_of_week' => $slot->day_of_week,
@@ -94,6 +109,7 @@ class TeacherTimetableController extends Controller implements HasMiddleware
                 // for the turma's own editor, so both read «09:30».
                 'starts_at' => substr($slot->starts_at, 0, 5),
                 'ends_at' => substr($slot->ends_at, 0, 5),
+                'occurs_on' => $this->occurrenceInWeek($slot, $weekStart),
                 'starts_on' => $slot->starts_on?->toDateString(),
                 'ends_on' => $slot->ends_on?->toDateString(),
                 'already_in_vigor' => $slot->isAlreadyInVigor($timezone),
@@ -119,7 +135,40 @@ class TeacherTimetableController extends Controller implements HasMiddleware
         return Inertia::render('timetable/Index', [
             'slots' => $slots,
             'classes' => $classes,
+            'week' => [
+                'start' => $weekStart->toDateString(),
+                'end' => $weekStart->endOfWeek()->toDateString(),
+                'is_current' => $weekStart->equalTo($today->startOfWeek()),
+            ],
+            'today' => $today->toDateString(),
         ]);
+    }
+
+    /**
+     * Is this block in force on its one occurrence inside the consulted week,
+     * for a turma that was not yet archived on that day?
+     */
+    protected function occursInWeek(RecurringLessonSlot $slot, CarbonImmutable $weekStart, string $timezone): bool
+    {
+        $occurrence = $this->occurrenceInWeek($slot, $weekStart);
+
+        if ($slot->starts_on !== null && $slot->starts_on->toDateString() > $occurrence) {
+            return false;
+        }
+
+        if ($slot->ends_on !== null && $slot->ends_on->toDateString() < $occurrence) {
+            return false;
+        }
+
+        $archivedAt = $slot->schoolClass->archived_at;
+
+        return $archivedAt === null
+            || CarbonImmutable::instance($archivedAt)->setTimezone($timezone)->toDateString() > $occurrence;
+    }
+
+    protected function occurrenceInWeek(RecurringLessonSlot $slot, CarbonImmutable $weekStart): string
+    {
+        return $weekStart->addDays($slot->day_of_week - 1)->toDateString();
     }
 
     protected function user(Request $request): User

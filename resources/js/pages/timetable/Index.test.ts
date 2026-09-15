@@ -9,9 +9,23 @@ import {
     TURMA_TONES,
 } from './timetable';
 
+const routerGet = vi.hoisted(() => vi.fn());
+
 vi.mock('@inertiajs/vue3', () => ({
-    Head: defineComponent({ setup: (_, { slots }) => () => h('div', slots.default?.()) }),
-    Link: defineComponent({ inheritAttrs: false, setup: (_, { attrs, slots }) => () => h('a', attrs, slots.default?.()) }),
+    router: { get: routerGet },
+    Head: defineComponent({
+        setup:
+            (_, { slots }) =>
+            () =>
+                h('div', slots.default?.()),
+    }),
+    Link: defineComponent({
+        inheritAttrs: false,
+        setup:
+            (_, { attrs, slots }) =>
+            () =>
+                h('a', attrs, slots.default?.()),
+    }),
 }));
 
 type TimetableSlot = {
@@ -145,7 +159,12 @@ describe('timetable/Index', () => {
     it('groups the week by weekday, in Portuguese, only for the days actually taught', () => {
         const wrapper = mountPage([
             slot({ ulid: 'a', day_of_week: 1 }),
-            slot({ ulid: 'b', day_of_week: 3, starts_at: '11:00', ends_at: '11:50' }),
+            slot({
+                ulid: 'b',
+                day_of_week: 3,
+                starts_at: '11:00',
+                ends_at: '11:50',
+            }),
         ]);
 
         const headings = agenda(wrapper)
@@ -199,7 +218,9 @@ describe('timetable/Index', () => {
             slot({ ulid: 'e', day_of_week: 5 }),
         ]);
 
-        const thursday = week(wrapper).find('section[aria-label="Quinta-feira"]');
+        const thursday = week(wrapper).find(
+            'section[aria-label="Quinta-feira"]',
+        );
 
         expect(thursday.exists()).toBe(true);
         expect(thursday.text()).toContain('Sem aulas');
@@ -220,7 +241,9 @@ describe('timetable/Index', () => {
         // Four blocks sent, four blocks drawn — the fifth column adds none.
         expect(week(wrapper).findAll('li')).toHaveLength(4);
 
-        const thursday = week(wrapper).find('section[aria-label="Quinta-feira"]');
+        const thursday = week(wrapper).find(
+            'section[aria-label="Quinta-feira"]',
+        );
 
         expect(thursday.findAll('li')).toHaveLength(0);
         expect(thursday.findAll('a')).toHaveLength(0);
@@ -231,7 +254,12 @@ describe('timetable/Index', () => {
     it('keeps a rare sábado visible, in a row of its own, and never a column reserved for it', () => {
         const withSaturday = mountPage([
             slot({ ulid: 'a', day_of_week: 1 }),
-            slot({ ulid: 's', day_of_week: 6, starts_at: '09:00', ends_at: '09:50' }),
+            slot({
+                ulid: 's',
+                day_of_week: 6,
+                starts_at: '09:00',
+                ends_at: '09:50',
+            }),
         ]);
 
         expect(labelsOf(week(withSaturday))).toEqual([
@@ -243,7 +271,9 @@ describe('timetable/Index', () => {
             'Sábado',
         ]);
         expect(
-            week(withSaturday).find('section[aria-label="Sábado"]').findAll('li'),
+            week(withSaturday)
+                .find('section[aria-label="Sábado"]')
+                .findAll('li'),
         ).toHaveLength(1);
         // The weekend never shares the guaranteed five-column row.
         expect(week(withSaturday).findAll('div.grid')).toHaveLength(2);
@@ -274,7 +304,12 @@ describe('timetable/Index', () => {
 
     it('keeps every block of a day together, in the order the server sent them', () => {
         const wrapper = mountPage([
-            slot({ ulid: 'a', day_of_week: 1, starts_at: '08:30', ends_at: '09:20' }),
+            slot({
+                ulid: 'a',
+                day_of_week: 1,
+                starts_at: '08:30',
+                ends_at: '09:20',
+            }),
             slot({
                 ulid: 'b',
                 day_of_week: 1,
@@ -282,7 +317,12 @@ describe('timetable/Index', () => {
                 ends_at: '11:20',
                 school_class: { ulid: 'class-b', label: '8.º A' },
             }),
-            slot({ ulid: 'c', day_of_week: 5, starts_at: '14:00', ends_at: '14:50' }),
+            slot({
+                ulid: 'c',
+                day_of_week: 5,
+                starts_at: '14:00',
+                ends_at: '14:50',
+            }),
         ]);
 
         const monday = wrapper.find('section[aria-label="Segunda-feira"]');
@@ -294,7 +334,9 @@ describe('timetable/Index', () => {
         expect(monday.text()).toContain('7.º C');
         expect(monday.text()).toContain('8.º A');
 
-        expect(wrapper.find('section[aria-label="Sexta-feira"]').findAll('li')).toHaveLength(1);
+        expect(
+            wrapper.find('section[aria-label="Sexta-feira"]').findAll('li'),
+        ).toHaveLength(1);
     });
 
     it('shows the turma and the disciplina of each block, and never a sala', () => {
@@ -317,7 +359,9 @@ describe('timetable/Index', () => {
      * não servia para o que o sinal existe: separar turmas.
      */
     it('gives five turmas that used to collide five tones of their own', () => {
-        const blocks = blocksOf(week(weekOfTurmas(COLLIDING_UNDER_THE_OLD_HASH)));
+        const blocks = blocksOf(
+            week(weekOfTurmas(COLLIDING_UNDER_THE_OLD_HASH)),
+        );
 
         expect(blocks).toHaveLength(5);
 
@@ -369,7 +413,9 @@ describe('timetable/Index', () => {
      * turmas todas trocarem de cor.
      */
     it('decides the same tones for the same turmas, however the blocks arrive', () => {
-        const forward = tonesByTurma(weekOfTurmas(COLLIDING_UNDER_THE_OLD_HASH));
+        const forward = tonesByTurma(
+            weekOfTurmas(COLLIDING_UNDER_THE_OLD_HASH),
+        );
         const backward = tonesByTurma(
             weekOfTurmas([...COLLIDING_UNDER_THE_OLD_HASH].reverse()),
         );
@@ -475,7 +521,7 @@ describe('timetable/Index', () => {
      * dentro da própria cápsula: quem não distingue estes tons não perde
      * informação nenhuma.
      */
-    it('keeps the turma\'s name written out inside the accent, never replaced by it', () => {
+    it("keeps the turma's name written out inside the accent, never replaced by it", () => {
         const wrapper = mountPage([slot()]);
 
         const badge = (blocksOf(week(wrapper))[0] as Block).find('span');
@@ -490,7 +536,7 @@ describe('timetable/Index', () => {
      * do cartão ficam tão neutros como sempre foram — o bloco leva a barra e
      * nada mais.
      */
-    it('leaves the hora, the disciplina and the block\'s own ground untinted', () => {
+    it("leaves the hora, the disciplina and the block's own ground untinted", () => {
         const wrapper = mountPage([slot()]);
 
         const block = blocksOf(week(wrapper))[0] as Block;
@@ -508,7 +554,11 @@ describe('timetable/Index', () => {
 
         expectNoAccent(block.find('time').classes());
         expectNoAccent(
-            block.findAll('span').map((s) => s.classes()).slice(1).flat(),
+            block
+                .findAll('span')
+                .map((s) => s.classes())
+                .slice(1)
+                .flat(),
         );
     });
 
@@ -522,14 +572,16 @@ describe('timetable/Index', () => {
             slot({ ulid: 'e', day_of_week: 5 }),
         ]);
 
-        const thursday = week(wrapper).find('section[aria-label="Quinta-feira"]');
+        const thursday = week(wrapper).find(
+            'section[aria-label="Quinta-feira"]',
+        );
         const placeholder = thursday.find('p');
 
         expect(placeholder.text()).toBe('Sem aulas');
         expectNoAccent(placeholder.classes());
     });
 
-    it('derives the accent from the ulid, not from the turma\'s editable label', () => {
+    it("derives the accent from the ulid, not from the turma's editable label", () => {
         // O mesmo `ulid` com dois rótulos diferentes é a mesma turma, e o tom
         // não se move; rótulos iguais com `ulid` diferente são duas turmas.
         const sameTurma = mountPage([
@@ -591,7 +643,7 @@ describe('timetable/Index', () => {
         expect(tonesByTurma(wrapper).size).toBe(1);
     });
 
-    it('shows a block\'s optional validity window only when it has one', () => {
+    it("shows a block's optional validity window only when it has one", () => {
         expect(mountPage([slot()]).text()).not.toContain('Vigência');
 
         const limited = mountPage([
@@ -616,15 +668,18 @@ describe('timetable/Index', () => {
     });
 
     it('explains both ways forward, instead of an empty grid, when there is no horário yet', () => {
-        const wrapper = mountPage([], [
-            { ulid: 'class-a', label: '7.º C', subject: 'Matemática' },
-        ]);
+        const wrapper = mountPage(
+            [],
+            [{ ulid: 'class-a', label: '7.º C', subject: 'Matemática' }],
+        );
 
         expect(wrapper.text()).toContain('Ainda não tens horário configurado');
         expect(wrapper.text()).toContain('importar o PDF');
         expect(wrapper.text()).toContain('definir os blocos à mão');
         // Never a bare, wordless grid.
-        expect(wrapper.findAll('section[aria-label="Horário semanal"]')).toHaveLength(0);
+        expect(
+            wrapper.findAll('section[aria-label="Horário semanal"]'),
+        ).toHaveLength(0);
     });
 
     it('offers both configuration paths whether or not a horário already exists', () => {
@@ -637,17 +692,22 @@ describe('timetable/Index', () => {
     it('the "Importar PDF" link points at the real, unmodified import route', () => {
         const wrapper = mountPage([slot()]);
 
-        const link = wrapper.findAll('a').find((a) => a.text().includes('Importar PDF'));
+        const link = wrapper
+            .findAll('a')
+            .find((a) => a.text().includes('Importar PDF'));
 
         expect(link).toBeTruthy();
         expect(link!.attributes('href')).toBe('/timetable-imports/create');
     });
 
-    it('the manual path lists the teacher\'s own turmas, each linking to its own horário', () => {
-        const wrapper = mountPage([], [
-            { ulid: 'class-a', label: '7.º C', subject: 'Matemática' },
-            { ulid: 'class-b', label: '8.º A', subject: 'Matemática' },
-        ]);
+    it("the manual path lists the teacher's own turmas, each linking to its own horário", () => {
+        const wrapper = mountPage(
+            [],
+            [
+                { ulid: 'class-a', label: '7.º C', subject: 'Matemática' },
+                { ulid: 'class-b', label: '8.º A', subject: 'Matemática' },
+            ],
+        );
 
         const hrefs = wrapper.findAll('a').map((a) => a.attributes('href'));
 
@@ -655,32 +715,102 @@ describe('timetable/Index', () => {
         expect(hrefs).toContain('/classes/class-b#horario');
     });
 
-    it('a block links to its own turma\'s schedule editor, so the week is a way in and not a dead end', () => {
+    it("a block links to its own turma's schedule editor, so the week is a way in and not a dead end", () => {
         const wrapper = mountPage([slot()]);
 
         const monday = wrapper.find('section[aria-label="Segunda-feira"]');
 
-        expect(monday.find('a').attributes('href')).toBe('/classes/class-a#horario');
+        expect(monday.find('a').attributes('href')).toBe(
+            '/classes/class-a#horario',
+        );
     });
 
     it('offers a way to create a turma when there is not even one to configure', () => {
         const wrapper = mountPage([], []);
 
-        expect(wrapper.text()).toContain('Ainda não existem turmas para configurar.');
+        expect(wrapper.text()).toContain(
+            'Ainda não existem turmas para configurar.',
+        );
 
-        const link = wrapper.findAll('a').find((a) => a.text().includes('Nova turma'));
+        const link = wrapper
+            .findAll('a')
+            .find((a) => a.text().includes('Nova turma'));
 
         expect(link).toBeTruthy();
         expect(link!.attributes('href')).toBe('/classes/create');
     });
 
     it('never renders a form or a mutating control: the page is a reading', () => {
-        const wrapper = mountPage([slot()], [
-            { ulid: 'class-a', label: '7.º C', subject: 'Matemática' },
-        ]);
+        const wrapper = mountPage(
+            [slot()],
+            [{ ulid: 'class-a', label: '7.º C', subject: 'Matemática' }],
+        );
 
         expect(wrapper.findAll('form')).toHaveLength(0);
         expect(wrapper.findAll('input')).toHaveLength(0);
         expect(wrapper.findAll('button')).toHaveLength(0);
+    });
+});
+
+describe('Horário do Professor — a semana consultada', () => {
+    const currentWeek = {
+        start: '2026-10-12',
+        end: '2026-10-18',
+        is_current: true,
+    };
+
+    function mountWeek(
+        slots: TimetableSlot[],
+        week: { start: string; end: string; is_current: boolean } = currentWeek,
+    ) {
+        return mount(Index, {
+            props: { slots, classes: [], week, today: '2026-10-14' },
+        });
+    }
+
+    it('dates each weekday column with the day of the consulted week', () => {
+        const wrapper = mountWeek([slot({ day_of_week: 5 })]);
+
+        expect(
+            wrapper.find('section[aria-label="Sexta-feira, 16/10"]').exists(),
+        ).toBe(true);
+        expect(wrapper.text()).toContain('Semana de 12/10 – 18/10');
+    });
+
+    it('asks the server for the previous, current and next week — and changes nothing', async () => {
+        routerGet.mockClear();
+        const wrapper = mountWeek([slot()], {
+            start: '2026-10-19',
+            end: '2026-10-25',
+            is_current: false,
+        });
+        const button = (label: string) =>
+            wrapper
+                .findAll('button')
+                .find((candidate) => candidate.text().includes(label))!;
+
+        await button('Semana anterior').trigger('click');
+        await button('Semana atual').trigger('click');
+        await button('Semana seguinte').trigger('click');
+
+        expect(routerGet.mock.calls.map((call) => [call[0], call[1]])).toEqual([
+            ['/timetable', { week: '2026-10-12' }],
+            ['/timetable', { week: '2026-10-14' }],
+            ['/timetable', { week: '2026-10-26' }],
+        ]);
+        expect(wrapper.findAll('form')).toHaveLength(0);
+    });
+
+    it('says a past or future week had no classes instead of claiming there is no timetable', () => {
+        const wrapper = mountWeek([], {
+            start: '2026-08-03',
+            end: '2026-08-09',
+            is_current: false,
+        });
+
+        expect(wrapper.text()).toContain('Sem aulas nesta semana');
+        expect(wrapper.text()).not.toContain(
+            'Ainda não tens horário configurado',
+        );
     });
 });

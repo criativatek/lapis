@@ -3,6 +3,7 @@
 namespace Tests\Feature\Lessons;
 
 use App\Models\AcademicYear;
+use App\Models\ClassStatus;
 use App\Models\Organization;
 use App\Models\OrganizationSubscription;
 use App\Models\Plan;
@@ -17,6 +18,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -342,47 +344,192 @@ class TeacherTimetableTest extends TestCase
     #[Test]
     public function a_closed_slot_from_an_earlier_revision_never_appears_while_its_replacement_does(): void
     {
+        $this->freezeOnWednesday();
         $schoolClass = $this->schoolClassFor($this->teacher, '7.º C');
-        $today = CarbonImmutable::now('Europe/Lisbon');
 
-        $this->slot($schoolClass, 1, '08:30', '09:20', [
+        $previous = $this->slot($schoolClass, 1, '08:30', '09:20', [
             'starts_on' => null,
-            'ends_on' => $today->subDay()->toDateString(),
+            'ends_on' => '2026-10-11',
         ]);
         $replacement = $this->slot($schoolClass, 1, '09:30', '10:20', [
-            'starts_on' => $today->toDateString(),
+            'starts_on' => '2026-10-12',
             'ends_on' => null,
         ]);
 
-        $this->actingAs($this->teacher)
-            ->withSession($this->tenantSession())
-            ->get('/timetable')
+        $this->timetable()
             ->assertInertia(fn (AssertableInertia $page) => $page
                 ->has('slots', 1)
                 ->where('slots.0.ulid', $replacement->ulid)
+                ->where('slots.0.occurs_on', '2026-10-12')
                 ->where('slots.0.already_in_vigor', true)
                 ->where('slots.0.requires_versioning', false)
+                ->etc());
+
+        // A semana anterior à revisão mostra a versão que vigorava então.
+        $this->timetable('2026-10-05')
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->has('slots', 1)
+                ->where('slots.0.ulid', $previous->ulid)
                 ->etc());
     }
 
     #[Test]
-    public function a_not_yet_started_slot_is_reported_as_not_yet_in_vigor(): void
+    public function a_not_yet_started_slot_only_appears_from_the_week_it_enters_into_force(): void
     {
+        $this->freezeOnWednesday();
         $schoolClass = $this->schoolClassFor($this->teacher, '7.º C');
-        $this->slot($schoolClass, 2, '10:00', '10:50', [
-            'starts_on' => CarbonImmutable::now('Europe/Lisbon')->addMonth()->toDateString(),
-        ]);
+        $future = $this->slot($schoolClass, 2, '10:00', '10:50', ['starts_on' => '2026-11-10']);
 
-        $this->actingAs($this->teacher)
-            ->withSession($this->tenantSession())
-            ->get('/timetable')
+        $this->timetable()->assertInertia(fn (AssertableInertia $page) => $page->has('slots', 0)->etc());
+        $this->timetable('2026-11-03')->assertInertia(fn (AssertableInertia $page) => $page->has('slots', 0)->etc());
+
+        $this->timetable('2026-11-12')
             ->assertInertia(fn (AssertableInertia $page) => $page
+                ->has('slots', 1)
+                ->where('slots.0.ulid', $future->ulid)
+                ->where('slots.0.occurs_on', '2026-11-10')
                 ->where('slots.0.already_in_vigor', false)
-                ->where('slots.0.requires_versioning', false)
                 ->etc());
     }
 
+    #[Test]
+    public function an_expired_slot_disappears_after_its_end_but_stays_in_the_weeks_it_covered(): void
+    {
+        $this->freezeOnWednesday();
+        $schoolClass = $this->schoolClassFor($this->teacher, '7.º C');
+        $expired = $this->slot($schoolClass, 3, '11:00', '11:50', ['ends_on' => '2026-10-01']);
+
+        $this->timetable()->assertInertia(fn (AssertableInertia $page) => $page->has('slots', 0)->etc());
+
+        $this->timetable('2026-09-28')
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->has('slots', 1)
+                ->where('slots.0.ulid', $expired->ulid)
+                ->etc());
+    }
+
+    #[Test]
+    public function an_archived_turma_leaves_the_current_week_but_not_the_weeks_before_it_was_archived(): void
+    {
+        $this->freezeOnWednesday();
+        $archived = $this->schoolClassFor($this->teacher, '9.º B');
+        $monday = $this->slot($archived, 1, '08:30', '09:20');
+        $this->slot($archived, 5, '12:20', '13:10');
+        $this->archive($archived, '2026-10-01 18:00:00');
+
+        $this->timetable()->assertInertia(fn (AssertableInertia $page) => $page->has('slots', 0)->etc());
+
+        // Semana de 28/09: a segunda (28/09) ainda era antes do arquivamento;
+        // a sexta (02/10) já não.
+        $this->timetable('2026-09-28')
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->has('slots', 1)
+                ->where('slots.0.ulid', $monday->ulid)
+                ->etc());
+    }
+
+    /**
+     * O caso visto em produção: «AE 8.º F Experiência para arquivo», sexta
+     * 12:20–13:10, um bloco sem vigência numa turma arquivada. O que o esconde
+     * é o arquivamento — nunca o rótulo nem a cor —, e uma turma com o mesmo
+     * rótulo mas viva continua a aparecer.
+     */
+    #[Test]
+    public function the_production_case_is_decided_by_the_data_and_not_by_the_label(): void
+    {
+        $this->freezeOnWednesday();
+        $archived = $this->schoolClassFor($this->teacher, 'AE 8.º F Experiência para arquivo');
+        $this->slot($archived, 5, '12:20', '13:10');
+        $this->archive($archived, '2026-09-14 10:00:00');
+
+        $alive = $this->schoolClassFor($this->teacher, 'AE 8.º F Experiência para arquivo (ativa)');
+        $aliveSlot = $this->slot($alive, 5, '12:20', '13:10');
+
+        $this->timetable()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->has('slots', 1)
+                ->where('slots.0.ulid', $aliveSlot->ulid)
+                ->etc());
+    }
+
+    #[Test]
+    public function a_valid_support_class_appears_like_any_other_turma(): void
+    {
+        $this->freezeOnWednesday();
+        $support = $this->schoolClassFor($this->teacher, 'Apoio 8.º F');
+        $this->inTenant(fn () => $support->forceFill(['is_support_class' => true])->save());
+        $slot = $this->slot($support, 4, '14:00', '14:50', ['starts_on' => '2026-09-14']);
+
+        $this->timetable()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->has('slots', 1)
+                ->where('slots.0.ulid', $slot->ulid)
+                ->etc());
+    }
+
+    #[Test]
+    public function the_consulted_week_is_normalized_to_monday_and_says_whether_it_is_the_current_one(): void
+    {
+        $this->freezeOnWednesday();
+
+        $this->timetable()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('week.start', '2026-10-12')
+                ->where('week.end', '2026-10-18')
+                ->where('week.is_current', true)
+                ->where('today', '2026-10-14')
+                ->etc());
+
+        $this->timetable('2026-10-23')
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('week.start', '2026-10-19')
+                ->where('week.is_current', false)
+                ->etc());
+
+        $this->actingAs($this->teacher)
+            ->withSession($this->tenantSession())
+            ->get('/timetable?week=ontem')
+            ->assertSessionHasErrors('week');
+    }
+
+    #[Test]
+    public function consulting_a_week_creates_nothing_and_changes_no_turma(): void
+    {
+        $this->freezeOnWednesday();
+        $schoolClass = $this->schoolClassFor($this->teacher, '7.º C');
+        $this->slot($schoolClass, 1, '08:30', '09:20');
+        $this->archive($schoolClass, '2026-10-01 18:00:00');
+
+        $this->timetable('2026-09-28')->assertOk();
+
+        $this->assertSame(1, RecurringLessonSlot::withoutGlobalScopes()->count());
+        $this->assertDatabaseCount('lessons', 0);
+        $this->assertNotNull(SchoolClass::withoutGlobalScopes()->find($schoolClass->id)?->archived_at);
+    }
+
     // --------------------------------------------------------------- helpers
+
+    /** Quarta-feira, 14/10/2026 — a meio de uma semana, para as regras por dia terem com que se medir. */
+    private function freezeOnWednesday(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-14 10:00:00', 'Europe/Lisbon'));
+    }
+
+    private function timetable(?string $week = null): TestResponse
+    {
+        return $this->actingAs($this->teacher)
+            ->withSession($this->tenantSession())
+            ->get($week === null ? '/timetable' : '/timetable?week='.$week)
+            ->assertOk();
+    }
+
+    private function archive(SchoolClass $schoolClass, string $archivedAt): void
+    {
+        $this->inTenant(fn () => $schoolClass->forceFill([
+            'status' => ClassStatus::Archived,
+            'archived_at' => CarbonImmutable::parse($archivedAt, 'Europe/Lisbon'),
+        ])->save());
+    }
 
     /**
      * @return array<string, mixed>
