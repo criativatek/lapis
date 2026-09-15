@@ -46,7 +46,14 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 - Backup **`schema_version` 11**: `lessons[].outcome`, `outcome_reason`, `outcome_note`, `outcome_recorded_at` e `outcome_recorded_by_email`. Um backup v≤10 lê `status = taught` como `outcome = taught`. As combinações inválidas (motivo em texto livre, motivo ou nota no resultado errado, assiduidade consolidada sem assiduidade aplicável) tornam a linha `invalid`. Round-trip, compatibilidade v10 e restauro noutra organização testados.
 
 ### Sem alteração
-- Composição comercial, IA e fórmulas de avaliação. **Legal**: foram auditados Termos, Privacidade e Acordo de Tratamento, e nenhum foi alterado nesta versão (ver a descrição da PR).
+### Legal
+- **Política de Privacidade (em vigor a 2026-09-15)**: em «Dados do professor», informação operacional da atividade letiva — o resultado de cada aula e, quando aplicável, a categoria de ausência, escolhida entre opções fechadas e sem texto livre sobre o motivo pessoal. Em «Dados dos alunos», os dados pedagógicos incluem o resultado de cada aula e a indicação e descrição curta opcional de atividade letiva da turma.
+- **Acordo de Tratamento de Dados (em vigor a 2026-09-15)**: as categorias de dados incluem o resultado da ocorrência da aula e a atividade letiva da turma, e referem a categoria operacional de ausência do professor como não constituindo categoria especial. Finalidade, duração, instruções, subcontratantes e retenção sem alteração.
+- **Termos**: sem alteração (2026-09-03), protegidos por hash em teste.
+- UI: junto à descrição da atividade, «Evite incluir dados pessoais desnecessários.»
+
+### Sem alteração
+- Composição comercial, IA e fórmulas de avaliação.
 
 ## [0.145.4] — 2026-09-15
 

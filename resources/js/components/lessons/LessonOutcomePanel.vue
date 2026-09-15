@@ -142,7 +142,9 @@ function submit(): void {
                         maxlength="160"
                         class="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
                         placeholder="Ex.: visita de estudo"
+                        aria-describedby="outcome-note-hint"
                     />
+                    <p id="outcome-note-hint" class="text-xs text-muted-foreground">Evite incluir dados pessoais desnecessários.</p>
                     <InputError :message="form.errors.note" />
                 </div>
 

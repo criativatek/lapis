@@ -305,6 +305,7 @@ class LegalDocuments
                         'A organização pessoal a que pertence, as suas configurações de avaliação e as suas preferências de interface.',
                         'O estado da sua conta e do seu plano, incluindo pedidos de encerramento e períodos experimentais.',
                         'A versão dos Termos que aceitou e a data em que o fez.',
+                        'Informação operacional relativa à atividade letiva que regista: o resultado de cada aula (dada, não dada por ausência do professor, ou turma em outra atividade letiva) e, quando aplicável, a categoria de ausência que indicar. Essa categoria é escolhida entre opções operacionais fechadas (formação, serviço oficial, outro); não é pedido nem guardado texto livre sobre o motivo pessoal da ausência.',
                     ],
                 ],
                 [
@@ -315,7 +316,7 @@ class LegalDocuments
                         'Isto é pseudonimização, não anonimização: o professor continua a poder ver quem é cada aluno, porque precisa disso para trabalhar. O que se reduz é a exposição da identidade em tudo o resto. A anonimização — a remoção efetiva da relação com a pessoa — acontece no encerramento da conta, descrito mais abaixo.',
                         'Não é necessário anonimizar os alunos antes de os introduzir: a proteção é aplicada pelo Lapispro.',
                         'Podem ainda existir data de nascimento e fotografia, quando são introduzidas.',
-                        'Dados pedagógicos: turmas e inscrições, classificações e resultados por domínio, instrumentos de avaliação, registos de acompanhamento, autoavaliações, estratégias e medidas, aulas e sumários, assiduidade por aula (presente/falta), e relatórios.',
+                        'Dados pedagógicos: turmas e inscrições, classificações e resultados por domínio, instrumentos de avaliação, registos de acompanhamento, autoavaliações, estratégias e medidas, aulas e sumários, o resultado de cada aula (incluindo a indicação de que a turma esteve em outra atividade letiva e uma descrição curta opcional dessa atividade), assiduidade por aula (presente/falta), e relatórios.',
                         'O aluno não tem conta, sessão nem acesso próprio ao Lapispro. Os seus dados são introduzidos e geridos através da conta do professor.',
                     ],
                 ],
@@ -578,7 +579,8 @@ class LegalDocuments
                         'Quando as funcionalidades assistidas por inteligência artificial estiverem ativas e forem utilizadas, isso inclui ainda transmitir a um subcontratante de IA um subconjunto pseudonimizado e minimizado desses dados, apenas o necessário ao pedido feito e apenas no momento em que o professor o faz. O que pode e não pode integrar esse subconjunto está descrito na secção «Inteligência artificial» da Política de Privacidade, que faz parte deste enquadramento. Nesta data não está configurado qualquer fornecedor de IA e nenhum dado é transmitido por essa via.',
                         'Duração: enquanto a conta existir, e depois durante o período de recuperação previsto nos Termos.',
                         'Titulares dos dados: os alunos cujos dados sejam registados através da conta.',
-                        'Categorias de dados: identificação do aluno (nome e, quando indicado, número de processo), eventualmente data de nascimento e fotografia, e dados pedagógicos — turmas e inscrições, classificações e resultados, instrumentos de avaliação, registos de acompanhamento, autoavaliações, estratégias e medidas, aulas e sumários, assiduidade por aula (presente/falta), e relatórios.',
+                        'Categorias de dados: identificação do aluno (nome e, quando indicado, número de processo), eventualmente data de nascimento e fotografia, e dados pedagógicos — turmas e inscrições, classificações e resultados, instrumentos de avaliação, registos de acompanhamento, autoavaliações, estratégias e medidas, aulas e sumários, o resultado da ocorrência de cada aula, a indicação e descrição curta opcional de atividade letiva da turma fora da aula, assiduidade por aula (presente/falta), e relatórios.',
+                        'Associada aos registos de aula pode existir ainda a categoria operacional de ausência do professor (formação, serviço oficial, outro), quando registada. É escolhida entre opções fechadas, sem texto livre sobre o motivo, e não constitui categoria especial de dados.',
                     ],
                 ],
                 [
