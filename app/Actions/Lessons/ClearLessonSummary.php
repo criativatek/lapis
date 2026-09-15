@@ -33,6 +33,13 @@ use Illuminate\Validation\ValidationException;
  * continua a ser possível pelo caminho que sempre foi (SaveLessonSummary, que
  * regista a revisão), mas esvaziá-lo é outra coisa: seria apagar o registo do
  * que aconteceu.
+ *
+ * PROFESSOR AUSENTE OU TURMA EM OUTRAS ATIVIDADES SÃO A EXCEÇÃO: a aula está
+ * fechada (Lesson::isClosed()), mas não foi lecionada
+ * (Lesson::isTaught() é falso), e um sumário que ainda lá esteja — de uma
+ * aula histórica anterior a esta distinção, ou de importação — não é registo
+ * de nada que tenha acontecido. Por isso limpa-se mesmo fechada; só uma aula
+ * `isTaught()` continua a recusar.
  */
 class ClearLessonSummary
 {
@@ -44,7 +51,7 @@ class ClearLessonSummary
             /** @var Lesson $locked */
             $locked = Lesson::query()->lockForUpdate()->findOrFail($lesson->getKey());
 
-            if ($locked->isClosed()) {
+            if ($locked->isTaught()) {
                 throw ValidationException::withMessages([
                     'summary' => __('O sumário de uma aula já lecionada não pode ser limpo.'),
                 ]);

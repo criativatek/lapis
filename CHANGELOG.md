@@ -25,6 +25,21 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.146.2] — 2026-09-15
+
+### Corrigido
+- **Sumário órfão numa aula fechada por «Professor ausente» ou «Turma em
+  outras atividades letivas» já não fica preso.** `RecordLessonOutcome` limpa
+  agora o sumário da própria ocorrência na mesma transação, mesmo quando
+  `ShiftLessonPlanning` não tinha nada para deslocar (uma linha totalmente em
+  branco ficava para trás). E `ClearLessonSummary` — que recusava sempre uma
+  aula fechada — passa a distinguir `Lesson::isClosed()` de
+  `Lesson::isTaught()` (novo método): só uma aula efetivamente lecionada
+  continua a recusar; uma aula histórica nesse estado com um sumário
+  remanescente (anterior à distinção, ou de importação) pode limpá-lo mesmo
+  fechada. O planeamento, o motivo, a numeração e a data/hora da ocorrência
+  não são tocados.
+
 ## [0.146.1] — 2026-09-15
 
 ### Corrigido

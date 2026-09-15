@@ -374,6 +374,24 @@ class LessonOutcomeTest extends TestCase
         });
     }
 
+    /**
+     * ShiftLessonPlanning só desloca um sumário com algum campo preenchido; um
+     * sumário totalmente em branco (linha residual, sem texto nenhum) fica
+     * para trás por não ter nada que valha a pena mover. A regra canónica não
+     * abre exceção: nenhum resultado que não seja «lecionada» mantém sumário,
+     * nem em branco.
+     */
+    #[Test]
+    public function a_blank_summary_left_behind_by_planning_is_still_removed(): void
+    {
+        $lesson = $this->thursdays($this->makeSlot(), ['08'])[0];
+        $this->inTenant($this->organization, fn () => $lesson->summary()->create(['content' => '']));
+
+        $this->record($lesson, LessonOutcome::TeacherAbsent, TeacherAbsenceReason::Training);
+
+        $this->inTenant($this->organization, fn () => $this->assertNull($lesson->refresh()->summary()->first()));
+    }
+
     #[Test]
     public function the_action_refuses_taught_as_a_special_outcome(): void
     {
