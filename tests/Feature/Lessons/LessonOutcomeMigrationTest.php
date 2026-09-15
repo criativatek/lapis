@@ -22,6 +22,13 @@ class LessonOutcomeMigrationTest extends TestCase
     #[Test]
     public function the_migration_backfills_only_taught_lessons_and_rolls_back(): void
     {
+        // Em MySQL o DDL faz commit implícito e parte a transação do
+        // RefreshDatabase, contaminando os testes seguintes. O rollback em
+        // MySQL é verificado no gate com migrate:rollback.
+        if (DB::connection()->getDriverName() !== 'sqlite') {
+            $this->markTestSkipped('Só em SQLite; em MySQL verifica-se com migrate:rollback.');
+        }
+
         $this->bootLessonFixtures();
         $taught = $this->makeLesson(['starts_at' => '2026-10-01 09:30:00', 'status' => LessonStatus::Taught]);
         $prepared = $this->makeLesson(['starts_at' => '2026-10-02 09:30:00', 'status' => LessonStatus::Prepared]);

@@ -101,7 +101,8 @@ class ReportLessonsTest extends TestCase
         $section = $this->asTenant(fn () => $report->sections()->where('key', SectionKey::ClassLessons->value)->first());
 
         $this->assertNotNull($section);
-        $this->assertSame([
+        // A coluna JSON do MySQL reordena as chaves.
+        $this->assertEqualsCanonicalizing([
             'planned' => 5,
             'counted_as_taught' => 3,
             'subject_development' => 2,
@@ -109,6 +110,8 @@ class ReportLessonsTest extends TestCase
             'class_external_activity' => 1,
             'not_recorded' => 1,
         ], $section->data['totals']);
+        $this->assertSame(5, $section->data['totals']['planned']);
+        $this->assertSame(1, $section->data['totals']['not_recorded']);
         $this->assertSame(
             ['taught', 'teacher_absent', 'class_external_activity', 'taught', 'not_recorded'],
             array_column($section->data['rows'], 'outcome'),
