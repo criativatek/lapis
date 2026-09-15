@@ -65,6 +65,27 @@ class LessonOutcomeTest extends TestCase
         });
     }
 
+    /**
+     * «Lecionada» não é um resultado especial (RecordLessonOutcome recusa-o)
+     * — passa por MarkLessonAsTaught, que nunca mexe no sumário: ao contrário
+     * de professor ausente / atividade da turma, uma aula lecionada É o
+     * registo do que aconteceu.
+     */
+    #[Test]
+    public function marking_a_lesson_as_taught_never_touches_its_summary(): void
+    {
+        $lesson = $this->thursdays($this->makeSlot(), ['08'])[0];
+        $this->summary($lesson, 'Sumário da aula.');
+
+        $this->inTenant($this->organization, fn () => app(MarkLessonAsTaught::class)->execute($lesson, $this->teacher, consolidateAttendance: false));
+
+        $this->inTenant($this->organization, function () use ($lesson): void {
+            $lesson->refresh();
+            $this->assertTrue($lesson->isTaught());
+            $this->assertSame('Sumário da aula.', $lesson->summary()->first()?->content);
+        });
+    }
+
     #[Test]
     public function a_class_external_activity_is_numbered_and_keeps_only_a_short_note(): void
     {

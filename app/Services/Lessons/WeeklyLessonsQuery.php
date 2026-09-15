@@ -76,7 +76,7 @@ final class WeeklyLessonsQuery
                     // botão é apresentação, e DeleteLesson repete a recusa por
                     // sua conta quando o pedido lá chega na mesma.
                     'can_delete' => ! $lesson->isClosed(),
-                    'can_clear_summary' => ! $lesson->isClosed() && $content !== '',
+                    'can_clear_summary' => ! $lesson->isTaught() && $content !== '',
                     // Como a ocorrência fechou (0.146.0) — NULL enquanto aberta.
                     'outcome' => $lesson->outcome?->value,
                     'outcome_label' => $lesson->outcome?->label(),

@@ -38,7 +38,11 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   continua a recusar; uma aula histórica nesse estado com um sumário
   remanescente (anterior à distinção, ou de importação) pode limpá-lo mesmo
   fechada. O planeamento, o motivo, a numeração e a data/hora da ocorrência
-  não são tocados.
+  não são tocados. A Lista/Horário (`WeeklyLessonsQuery`) seguia ainda a
+  regra antiga (`isClosed()`) em `can_clear_summary`, divergindo do que a
+  página da aula e o backend já permitiam — corrigido para `isTaught()`
+  também aí, e coberto por teste que marca lecionada e confirma que o
+  sumário nunca é tocado nesse caminho.
 
 ## [0.146.1] — 2026-09-15
 
