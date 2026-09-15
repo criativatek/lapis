@@ -25,7 +25,7 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
-## [0.146.2] — 2026-09-15
+## [0.146.3] — 2026-09-15
 
 ### Corrigido
 - **Aulas materializadas fora da vigência do horário deixam de ficar stale.**
