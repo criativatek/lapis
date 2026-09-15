@@ -69,6 +69,10 @@ function mountPage(
         starts_at?: string;
         ends_at?: string | null;
         status?: 'preparation' | 'prepared' | 'taught';
+        status_label?: string;
+        outcome?: 'taught' | 'teacher_absent' | 'class_external_activity' | null;
+        outcome_label?: string | null;
+        can_record_outcome?: boolean;
         context_label?: string;
         class_group_label?: string | null;
     } = {},
@@ -509,5 +513,27 @@ describe('lessons/Show — assiduidade', () => {
         summaryForm().isDirty = true; // o mock não recalcula isDirty sozinho — ver summaryFormDirtyState.test.ts
 
         expect(fireBeforeUnload().defaultPrevented).toBe(true);
+    });
+});
+
+describe('lessons/Show — resultado registado (0.146.1)', () => {
+    it('o cabeçalho mostra o resultado e não «Preparado», sem ação de lecionar', () => {
+        const wrapper = mountPage({
+            status: 'prepared',
+            status_label: 'Preparado',
+            outcome: 'teacher_absent',
+            outcome_label: 'Professor ausente',
+            can_record_outcome: false,
+        });
+
+        expect(wrapper.get('[data-testid="lesson-state"]').text()).toBe('Professor ausente');
+        expect(wrapper.text()).not.toContain('Preparado');
+        expect(wrapper.findAll('button').some((button) => button.text().includes('Marcar como lecionada'))).toBe(false);
+    });
+
+    it('sem resultado mantém o estado de preparação', () => {
+        const wrapper = mountPage({ status: 'prepared', status_label: 'Preparado' });
+
+        expect(wrapper.get('[data-testid="lesson-state"]').text()).toBe('Preparado');
     });
 });

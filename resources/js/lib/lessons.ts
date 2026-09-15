@@ -36,3 +36,31 @@ export type WeekLesson = {
     /** Null enquanto não está consolidada (o que existe até lá é só rascunho). */
     absent_count: number | null;
 };
+
+/**
+ * O ÚNICO estado que o cartão de uma aula mostra (0.146.1).
+ *
+ * Preparação (por preparar / preparado) e resultado da ocorrência (lecionada /
+ * professor ausente / turma noutra atividade) são eixos diferentes, mas o
+ * cartão mostra um só: uma aula com resultado registado está fechada, e
+ * «Preparado» ao lado de «Professor ausente» fazia-a parecer pendente. O
+ * resultado ganha; sem resultado, fica a preparação. Escrito uma vez para a
+ * Lista, o Horário e a página da aula não voltarem a divergir.
+ */
+export type LessonStateSource = {
+    status: LessonStatus;
+    status_label: string;
+    outcome: WeekLesson['outcome'];
+    outcome_label: string | null;
+};
+
+export function lessonDisplayState(lesson: LessonStateSource): { value: string; label: string } {
+    // Sem rótulo não se inventa um: cai na preparação. Todas as origens enviam
+    // `outcome` e `outcome_label` juntos (`?->label()`); quem acrescentar uma
+    // nova tem de manter o par, ou o cartão volta a mostrar a preparação.
+    if (lesson.outcome !== null && lesson.outcome !== 'taught' && lesson.outcome_label !== null) {
+        return { value: lesson.outcome, label: lesson.outcome_label };
+    }
+
+    return { value: lesson.status, label: lesson.status_label };
+}

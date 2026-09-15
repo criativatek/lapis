@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
+import { lessonDisplayState } from '@/lib/lessons';
 import { statusToneClasses } from '@/lib/statusTone';
 import { capitalizeFirst } from '@/lib/text';
 
@@ -287,7 +288,9 @@ onBeforeUnmount(() => {
                     <Badge v-if="lesson.lesson_number !== null" variant="outline" class="tabular-nums"
                         >Lição {{ lesson.lesson_number }}</Badge
                     >
-                    <Badge variant="secondary" :class="statusToneClasses(lesson.status)">{{ lesson.status_label }}</Badge>
+                    <Badge variant="secondary" data-testid="lesson-state" :class="statusToneClasses(lessonDisplayState(lesson).value)">{{
+                        lessonDisplayState(lesson).label
+                    }}</Badge>
                 </div>
             </div>
 

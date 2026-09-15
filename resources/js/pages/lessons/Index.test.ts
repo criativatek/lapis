@@ -115,6 +115,48 @@ describe('vista de aulas da semana', () => {
         expect(wrapper.findAll('a[href="/lessons/lesson-a"]').length).toBeGreaterThan(0);
     });
 
+    /** 0.146.1 — o resultado final substitui a preparação, nas duas vistas. */
+    it('uma aula com resultado registado mostra só o resultado, na lista e no horário', async () => {
+        const wrapper = mountPage([
+            makeLesson({ outcome: 'teacher_absent', outcome_label: 'Professor ausente' }),
+            makeLesson({
+                ulid: 'lesson-b',
+                status: 'preparation',
+                status_label: 'Por preparar',
+                outcome: 'class_external_activity',
+                outcome_label: 'Turma em outras atividades letivas',
+            }),
+        ]);
+        const states = () => wrapper.findAll('[data-testid="lesson-state"]').map((badge) => badge.text());
+
+        expect(states()).toEqual(['Professor ausente', 'Turma em outras atividades letivas']);
+        expect(wrapper.text()).not.toContain('Preparado');
+        expect(wrapper.text()).not.toContain('Por preparar');
+        const listStates = states();
+        const listClasses = wrapper.findAll('[data-testid="lesson-state"]').map((badge) => badge.classes().join(' '));
+        expect(listClasses[0]).toContain('bg-amber-100');
+        expect(listClasses[1]).toContain('bg-violet-100');
+
+        await wrapper.findAll('button').find((button) => button.text().trim() === 'Horário')!.trigger('click');
+
+        // O horário desenha cada aula duas vezes (grelha e vista de dia, para mobile).
+        expect([...new Set(states())]).toEqual(listStates);
+        expect(wrapper.text()).not.toContain('Preparado');
+        expect(wrapper.findAll('[data-testid="lesson-state"]')[0].classes()).toContain('bg-amber-100');
+    });
+
+    it('a seleção em lote exclui aulas com resultado registado', async () => {
+        const wrapper = mountPage([
+            makeLesson(),
+            makeLesson({ ulid: 'lesson-b', outcome: 'teacher_absent', outcome_label: 'Professor ausente' }),
+            makeLesson({ ulid: 'lesson-c', outcome: 'class_external_activity', outcome_label: 'Turma em outras atividades letivas' }),
+        ]);
+
+        await wrapper.findAll('button').find((button) => button.text().includes('Selecionar aulas'))!.trigger('click');
+
+        expect(wrapper.text()).toContain('0 de 1 aulas selecionadas.');
+    });
+
     it('a seleção em lote só aceita aulas ainda não lecionadas', async () => {
         const wrapper = mountPage([
             makeLesson(),

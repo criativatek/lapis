@@ -17,7 +17,7 @@ export type ToneableScaleBand = {
     is_negative: boolean;
 };
 
-export type QualitativeTone = 'green' | 'blue' | 'amber' | 'red' | 'neutral';
+export type QualitativeTone = 'green' | 'blue' | 'amber' | 'red' | 'violet' | 'neutral';
 
 /**
  * is_negative alone settles "failing" — always red, regardless of how many
@@ -71,5 +71,7 @@ export const qualitativeToneClasses: Record<QualitativeTone, string> = {
     blue: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300',
     amber: 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300',
     red: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300',
+    // Nunca devolvido por qualitativeToneFor: só estados sem leitura de «melhor/pior» (0.146.1).
+    violet: 'bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300',
     neutral: 'bg-muted text-muted-foreground',
 };

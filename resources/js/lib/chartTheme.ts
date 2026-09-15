@@ -83,6 +83,7 @@ export const TONE_COLOURS: Record<QualitativeTone, { fill: string; border: strin
     blue: { fill: 'rgba(59,130,246,0.82)', border: 'rgb(37,99,235)', soft: 'rgba(59,130,246,0.18)' },
     amber: { fill: 'rgba(245,158,11,0.82)', border: 'rgb(217,119,6)', soft: 'rgba(245,158,11,0.18)' },
     red: { fill: 'rgba(244,63,94,0.82)', border: 'rgb(225,29,72)', soft: 'rgba(244,63,94,0.18)' },
+    violet: { fill: 'rgba(139,92,246,0.82)', border: 'rgb(124,58,237)', soft: 'rgba(139,92,246,0.18)' },
     neutral: { fill: 'rgba(148,163,184,0.6)', border: 'rgb(100,116,139)', soft: 'rgba(148,163,184,0.16)' },
 };
 

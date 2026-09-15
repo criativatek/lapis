@@ -34,8 +34,12 @@ const TONES: Record<string, QualitativeTone> = {
     active: 'green',
     closed: 'neutral',
 
-    // Aulas (LessonStatus)
+    // Aulas (LessonStatus) e resultado da ocorrência (LessonOutcome, 0.146.1).
+    // Ausência do professor âmbar — não é erro, é «não aconteceu»; a turma
+    // noutra atividade violeta, distinta de preparado, lecionada e ausência.
     taught: 'green',
+    teacher_absent: 'amber',
+    class_external_activity: 'violet',
 
     // Relatórios (ReportStatus)
     finalized: 'green',

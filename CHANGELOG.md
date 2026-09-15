@@ -25,6 +25,34 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.146.1] — 2026-09-15
+
+### Corrigido
+- **Aula com resultado registado deixa de parecer pendente.** Depois de registar
+  «Professor ausente» ou «Turma em outras atividades letivas», o cartão mostrava
+  ao mesmo tempo «Preparado» e o resultado. O domínio já fechava a ocorrência
+  numa só operação (`Lesson::isClosed()`, rascunhos de falta descartados,
+  planeamento deslocado, lote e «lecionada» recusados) — o defeito era só de
+  apresentação: `status` (preparação) e `outcome` (resultado) eram pintados
+  lado a lado. Agora há um único estado por aula, derivado uma vez em
+  `lessonDisplayState` (`resources/js/lib/lessons.ts`): o resultado da
+  ocorrência, se existir; senão a preparação. Aplicado na Lista, no Horário
+  (grelha e vista de dia móvel) e no cabeçalho da página da aula.
+- **Cor própria para cada resultado**, pela paleta da casa (`statusTone`):
+  professor ausente âmbar, turma noutra atividade violeta (novo tom `violet`
+  em `qualitativeToneClasses` e `TONE_COLOURS`, nunca devolvido por
+  `qualitativeToneFor`). O painel do resultado na página da aula segue a mesma
+  cor. O rótulo continua por extenso — a cor é reforço.
+
+### Testes
+- `LessonOutcomeTest::a_prepared_lesson_closed_as_external_activity_is_final_in_one_step`
+  (rascunhos, assiduidade, planeamento sem sobrescrever, «lecionada» e lote
+  recusados, payload semanal).
+- Vitest: `lessons.test.ts`, `statusTone.test.ts`, `lessons/Index.test.ts`
+  (Lista = Horário, seleção em lote), `lessons/Show.test.ts`.
+
+Sem migrations. Privacidade, DPA e Termos sem alteração.
+
 ## [0.146.0] — 2026-09-15
 
 ### Adicionado

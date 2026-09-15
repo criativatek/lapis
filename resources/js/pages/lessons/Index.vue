@@ -23,6 +23,7 @@ import LessonTimetable from '@/components/lessons/LessonTimetable.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { lessonDisplayState } from '@/lib/lessons';
 import type { WeekLesson } from '@/lib/lessons';
 import { statusToneClasses } from '@/lib/statusTone';
 import { capitalizeFirst } from '@/lib/text';
@@ -410,14 +411,9 @@ function attendanceLabel(lesson: WeekLesson): string | null {
                 </p>
                 <Badge
                     variant="secondary"
-                    :class="['mt-1.5', statusToneClasses(lesson.status)]"
-                    >{{ lesson.status_label }}</Badge
-                >
-                <Badge
-                    v-if="lesson.outcome !== null && lesson.outcome !== 'taught'"
-                    variant="outline"
-                    class="mt-1.5"
-                    >{{ lesson.outcome_label }}</Badge
+                    data-testid="lesson-state"
+                    :class="['mt-1.5 max-w-full whitespace-normal text-left', statusToneClasses(lessonDisplayState(lesson).value)]"
+                    >{{ lessonDisplayState(lesson).label }}</Badge
                 >
                 <p
                     v-if="attendanceLabel(lesson)"
@@ -461,7 +457,7 @@ function attendanceLabel(lesson: WeekLesson): string | null {
                                 >
                                 <div class="min-w-0 flex-1">
                                     <div class="flex flex-wrap items-center gap-2">
-                                        <span class="font-medium">{{
+                                        <span class="font-medium whitespace-nowrap">{{
                                             lesson.context_label
                                         }}</span>
                                         <span class="text-sm text-muted-foreground">{{
@@ -500,15 +496,12 @@ function attendanceLabel(lesson: WeekLesson): string | null {
                                 </div>
                                 <div class="flex shrink-0 flex-col items-end gap-2">
                                     <!-- Tom pela paleta da casa (SUP-UEVAH4): dada verde, preparada azul. -->
+                                    <!-- Um só estado: o resultado da ocorrência, se existir; senão a preparação (0.146.1). -->
                                     <Badge
                                         variant="secondary"
-                                        :class="statusToneClasses(lesson.status)"
-                                        >{{ lesson.status_label }}</Badge
-                                    >
-                                    <Badge
-                                        v-if="lesson.outcome !== null && lesson.outcome !== 'taught'"
-                                        variant="outline"
-                                        >{{ lesson.outcome_label }}</Badge
+                                        data-testid="lesson-state"
+                                        :class="['max-w-[7.5rem] whitespace-normal text-right sm:max-w-[11rem]', statusToneClasses(lessonDisplayState(lesson).value)]"
+                                        >{{ lessonDisplayState(lesson).label }}</Badge
                                     >
                                     <span
                                         v-if="lesson.has_summary"

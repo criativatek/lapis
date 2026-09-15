@@ -68,7 +68,12 @@ function submit(): void {
 <template>
     <section
         v-if="outcome !== null && outcome !== 'taught'"
-        class="space-y-1 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100"
+        :class="[
+            'space-y-1 rounded-xl border p-4',
+            outcome === 'teacher_absent'
+                ? 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100'
+                : 'border-violet-300 bg-violet-50 text-violet-900 dark:border-violet-900 dark:bg-violet-950 dark:text-violet-100',
+        ]"
         data-testid="lesson-outcome"
     >
         <p class="font-semibold">{{ outcomeLabel }}</p>

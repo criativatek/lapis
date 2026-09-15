@@ -411,6 +411,61 @@ class LessonOutcomeTest extends TestCase
     }
 
     /**
+     * 0.146.1 — uma aula PREPARADA que fecha como «turma em outras atividades
+     * letivas» fica fechada numa só operação: sem rascunhos, sem assiduidade
+     * simulada, o planeamento desce sem apagar o da seguinte, e o lote não a
+     * transforma em lecionada.
+     */
+    #[Test]
+    public function a_prepared_lesson_closed_as_external_activity_is_final_in_one_step(): void
+    {
+        $student = $this->enroll('Alice');
+        $slot = $this->makeSlot();
+        [$a, $b, $c] = $this->thursdays($slot, ['08', '15', '22']);
+        $this->summary($a, 'Plano A');
+        $this->summary($b, 'Plano B');
+        $this->inTenant($this->organization, fn () => Lesson::query()->whereKey($a->id)->update(['status' => LessonStatus::Prepared->value]));
+
+        $this->asTeacher()->put("/lessons/{$a->ulid}/attendance/draft", ['absent' => [$student->student->ulid]])->assertSessionHasNoErrors();
+        $this->asTeacher()
+            ->post("/lessons/{$a->ulid}/outcome", ['outcome' => 'class_external_activity'])
+            ->assertSessionHasNoErrors();
+
+        $this->inTenant($this->organization, function () use ($a, $b, $c): void {
+            $a->refresh();
+            $this->assertTrue($a->isClosed());
+            $this->assertSame(LessonOutcome::ClassExternalActivity, $a->outcome);
+            $this->assertNull($a->attendance_recorded_at);
+            $this->assertSame(0, LessonAttendance::query()->count());
+            $this->assertNull($a->summary()->first());
+            $this->assertSame('Plano A', $b->summary()->first()?->content);
+            $this->assertSame('Plano B', $c->summary()->first()?->content);
+        });
+
+        // Não há segundo passo, e nenhum caminho de «lecionada» escreve por cima.
+        $this->asTeacher()->post("/lessons/{$a->ulid}/mark-taught")->assertSessionHasErrors('outcome');
+        $candidates = $this->inTenant($this->organization, fn (): array => app(MarkLessonsAsTaughtInBatch::class)->candidates(
+            $this->teacher,
+            AcademicYear::query()->findOrFail($this->schoolClass->academic_year_id),
+            ulids: [$a->ulid],
+        ));
+        $this->assertCount(0, $candidates['eligible']);
+        $this->inTenant($this->organization, fn () => $this->assertSame(LessonOutcome::ClassExternalActivity, $a->refresh()->outcome));
+
+        // O payload semanal leva o resultado: é dele que a Lista e o Horário
+        // derivam o único estado do cartão.
+        $this->asTeacher()
+            ->get('/lessons?week=2026-10-05')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('lessons.0.ulid', $a->ulid)
+                ->where('lessons.0.outcome', 'class_external_activity')
+                ->where('lessons.0.outcome_label', 'Turma em outras atividades letivas')
+                ->where('lessons.0.attendance_recorded', false)
+                ->etc());
+    }
+
+    /**
      * @param  list<string>  $days
      * @return list<Lesson>
      */

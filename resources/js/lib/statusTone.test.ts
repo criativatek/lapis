@@ -45,6 +45,13 @@ describe('statusTone', () => {
         expect(statusTone('imported')).toBe('green');
     });
 
+    it('resultado da aula: ausência âmbar, outra atividade violeta — distintos de preparado e lecionada', () => {
+        expect(statusTone('teacher_absent')).toBe('amber');
+        expect(statusTone('class_external_activity')).toBe('violet');
+        const lessonTones = ['preparation', 'prepared', 'taught', 'teacher_absent', 'class_external_activity'].map(statusTone);
+        expect(new Set(lessonTones).size).toBe(lessonTones.length);
+    });
+
     it('um estado desconhecido fica neutro — nunca inventa cor', () => {
         expect(statusTone('estado_que_ainda_nao_existe')).toBe('neutral');
     });
