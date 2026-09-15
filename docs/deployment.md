@@ -828,6 +828,19 @@ chmod -R ug+rw storage bootstrap/cache
   3. Reexecutar deve reportar `Renumeradas: 0 turma(s), 0 aula(s).`
   As turmas AMBÍGUAS não são tocadas: ligar os tempos no horário
   («Mesma lição que…») e correr outra vez.
+- **0.145.4 — horário por vigência (turma #23).** Sem migrations nem escritas.
+  **Antes do deploy**, quando houver acesso SSH ao servidor, correr só esta
+  leitura (read-only) para confirmar que combinação real de dados causou o caso
+  observado («AE 8.º F Experiência para arquivo»). O resultado serve só para
+  confirmação; a correção não depende dele.
+  ```sql
+  SELECT c.id, c.label, c.status, c.archived_at,
+         s.id AS slot, s.day_of_week, s.starts_at, s.starts_on, s.ends_on
+  FROM classes c
+  JOIN recurring_lesson_slots s ON s.class_id = c.id
+  WHERE c.id = 23;
+  ```
+  Nenhum `UPDATE`/`DELETE` associado a esta release.
 
 ## Cloudflare / TLS
 

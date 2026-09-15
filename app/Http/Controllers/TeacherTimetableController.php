@@ -89,6 +89,10 @@ class TeacherTimetableController extends Controller implements HasMiddleware
         //     nunca aparecem juntas, e uma versão futura só aparece a partir
         //     da semana em que entra em vigor;
         //   · a turma ainda não estava arquivada (archived_at depois do dia).
+        //     FRONTEIRAS: datas locais da organização; starts_on e ends_on são
+        //     inclusivos. Arquivar grava `now()` (ArchiveSchoolClass), por isso
+        //     a turma arquivada num dia já NÃO aparece na ocorrência desse
+        //     mesmo dia — aparece até à véspera.
         //     Arquivar uma turma não fecha os seus blocos — nem deve: o
         //     histórico fica —, por isso decide-se aqui, na projeção.
         //
@@ -122,9 +126,13 @@ class TeacherTimetableController extends Controller implements HasMiddleware
             ])
             ->values();
 
-        // The manual path's list, identical to the one classes.schedule-setup
-        // offers because it is the same query, not a second copy of it.
+        // «Configurar manualmente» é CONFIGURAÇÃO OPERACIONAL ATUAL, não uma
+        // projeção temporal: só turmas hoje não arquivadas (o eixo `archived_at`
+        // de SchoolClass::scopeNotArchived). O horário acima pode mostrar uma
+        // turma arquivada numa semana em que ainda estava viva; esta lista
+        // nunca a oferece como configurável. Nada é apagado nem escondido.
         $classes = $schoolClasses
+            ->filter(fn (SchoolClass $schoolClass): bool => $schoolClass->archived_at === null)
             ->map(fn (SchoolClass $schoolClass) => [
                 'ulid' => $schoolClass->ulid,
                 'label' => $schoolClass->label,

@@ -296,12 +296,13 @@ class TeacherTimetableTest extends TestCase
     }
 
     /**
-     * The manual entry point offers the same list, scoped the same way, as
-     * classes.schedule-setup's own — because both call
-     * SchoolClass::scopeTaughtBy rather than each building the query again.
+     * The manual entry point is scoped by SchoolClass::scopeTaughtBy, like
+     * classes.schedule-setup — whose turmas. It no longer has to EQUAL the
+     * week's turmas: the week is a temporal projection, this list is the
+     * current operational configuration (see the archived case below).
      */
     #[Test]
-    public function the_manual_entry_point_offers_the_same_class_list_as_the_existing_picker(): void
+    public function the_manual_entry_point_offers_only_the_teachers_own_turmas(): void
     {
         $this->schoolClassFor($this->teacher, '8.º A');
         $this->schoolClassFor($this->teacher, '7.º C');
@@ -310,15 +311,89 @@ class TeacherTimetableTest extends TestCase
         $this->organization->members()->attach($colleague, ['joined_at' => now()]);
         $this->schoolClassFor($colleague, 'Turma do colega');
 
-        $session = $this->tenantSession();
+        $this->assertSame(['7.º C', '8.º A'], $this->manualLabels());
+    }
 
-        $fromTimetable = $this->actingAs($this->teacher)->withSession($session)
-            ->get('/timetable')->assertOk()->viewData('page')['props']['classes'];
-        $fromPicker = $this->actingAs($this->teacher)->withSession($session)
-            ->get('/classes/schedule-setup')->assertOk()->viewData('page')['props']['classes'];
+    #[Test]
+    public function the_manual_list_is_current_configuration_and_never_offers_an_archived_turma(): void
+    {
+        $this->freezeOnWednesday();
+        $this->schoolClassFor($this->teacher, '7.º C');
+        $support = $this->schoolClassFor($this->teacher, 'Apoio 8.º F');
+        $this->inTenant(fn () => $support->forceFill(['is_support_class' => true])->save());
 
-        $this->assertSame($fromPicker, $fromTimetable);
-        $this->assertSame(['7.º C', '8.º A'], array_column($fromTimetable, 'label'));
+        $archived = $this->schoolClassFor($this->teacher, '9.º B');
+        $archivedSlot = $this->slot($archived, 1, '08:30', '09:20');
+        $this->archive($archived, '2026-10-01 18:00:00');
+
+        $this->assertSame(['7.º C', 'Apoio 8.º F'], $this->manualLabels());
+
+        // O histórico não é escondido: na semana em que ainda vivia, o bloco
+        // aparece — mas nem aí a turma volta a ser configurável.
+        $historical = $this->timetable('2026-09-28')->viewData('page')['props'];
+        $this->assertSame([$archivedSlot->ulid], array_column($historical['slots'], 'ulid'));
+        $this->assertSame(['7.º C', 'Apoio 8.º F'], array_column($historical['classes'], 'label'));
+    }
+
+    #[Test]
+    public function the_production_label_leaves_both_the_current_week_and_the_manual_list_once_archived(): void
+    {
+        $this->freezeOnWednesday();
+        $archived = $this->schoolClassFor($this->teacher, 'AE 8.º F Experiência para arquivo');
+        $this->slot($archived, 5, '12:20', '13:10');
+        $this->archive($archived, '2026-09-14 10:00:00');
+
+        $props = $this->timetable()->viewData('page')['props'];
+        $this->assertSame([], $props['slots']);
+        $this->assertSame([], $props['classes']);
+
+        // Desarquivada (mesmo rótulo, mesma turma), volta a ser configurável:
+        // decide o dado `archived_at`, não o rótulo.
+        $this->inTenant(fn () => $archived->forceFill(['status' => ClassStatus::Active, 'archived_at' => null])->save());
+        $this->assertSame(['AE 8.º F Experiência para arquivo'], $this->manualLabels());
+    }
+
+    #[Test]
+    public function validity_boundaries_are_inclusive_and_archiving_hides_that_same_day(): void
+    {
+        $this->freezeOnWednesday();
+        $schoolClass = $this->schoolClassFor($this->teacher, '7.º C');
+        // Quarta 2026-10-14 é a ocorrência de day_of_week 3 nesta semana.
+        $startsThatDay = $this->slot($schoolClass, 3, '08:30', '09:20', ['starts_on' => '2026-10-14']);
+        $endsThatDay = $this->slot($schoolClass, 3, '09:30', '10:20', ['ends_on' => '2026-10-14']);
+        $this->slot($schoolClass, 3, '10:30', '11:20', ['ends_on' => '2026-10-13']);
+
+        $this->assertSame(
+            [$startsThatDay->ulid, $endsThatDay->ulid],
+            array_column($this->timetable()->viewData('page')['props']['slots'], 'ulid'),
+        );
+
+        // Dia seguinte a ends_on (quarta 21/10 > 14/10): já não aparece.
+        $this->assertSame(
+            [$startsThatDay->ulid],
+            array_column($this->timetable('2026-10-21')->viewData('page')['props']['slots'], 'ulid'),
+        );
+
+        // Arquivada na terça 06/10 às 00:30 locais: a ocorrência de terça já
+        // não aparece; a de segunda (véspera) aparece.
+        $archived = $this->schoolClassFor($this->teacher, '9.º B');
+        $monday = $this->slot($archived, 1, '08:30', '09:20');
+        $this->slot($archived, 2, '08:30', '09:20');
+        $this->archive($archived, '2026-10-06 00:30:00');
+
+        $ninthB = array_filter(
+            $this->timetable('2026-10-05')->viewData('page')['props']['slots'],
+            fn (array $slot): bool => $slot['school_class']['label'] === '9.º B',
+        );
+        $this->assertSame([$monday->ulid], array_values(array_column($ninthB, 'ulid')));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function manualLabels(): array
+    {
+        return array_column($this->timetable()->viewData('page')['props']['classes'], 'label');
     }
 
     /**
