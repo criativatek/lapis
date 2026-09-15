@@ -65,6 +65,15 @@ class DeleteLesson
                 ]);
             }
 
+            // Uma ocorrência fechada com outro resultado (0.146.0) é histórico
+            // como uma lecionada: o registo de que o professor faltou não se
+            // apaga eliminando a aula.
+            if ($locked->isClosed()) {
+                throw ValidationException::withMessages([
+                    'lesson' => __('Uma aula com resultado registado não pode ser eliminada.'),
+                ]);
+            }
+
             $classId = $locked->class_id;
 
             $this->audit->record(

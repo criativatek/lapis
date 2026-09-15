@@ -18,6 +18,7 @@ use App\Models\InstrumentStatus;
 use App\Models\InterventionEffectiveness;
 use App\Models\InterventionStatus;
 use App\Models\InterventionTargetType;
+use App\Models\LessonOutcome;
 use App\Models\LessonStatus;
 use App\Models\ParticipationLevel;
 use App\Models\ProfileVersionStatus;
@@ -27,6 +28,7 @@ use App\Models\ReportType;
 use App\Models\ResultState;
 use App\Models\SelfAssessmentFilledBy;
 use App\Models\SelfAssessmentStatus;
+use App\Models\TeacherAbsenceReason;
 use App\Support\Assessment\SupportedCalculationRules;
 use App\Support\Import\Backup\BackupSchemaCompatibility;
 use App\Support\Import\Backup\BackupValidationException;
@@ -232,7 +234,7 @@ class ValidateBackupPayload
             'cancelled_lesson_occurrences' => $this->whitelistRows($decoded, 'cancelled_lesson_occurrences', ['class_ulid', 'class_group_ulid', 'recurring_lesson_slot_ulid', 'occurs_at', 'cancelled_by_email'], function (array $row) use (&$rowIssues): ?array {
                 return $this->validCancelledLessonOccurrenceRow($row, $rowIssues);
             }),
-            'lessons' => $this->whitelistRows($decoded, 'lessons', ['ulid', 'class_ulid', 'class_group_ulid', 'recurring_lesson_slot_ulid', 'starts_at', 'ends_at', 'lesson_number', 'lesson_unit_key', 'status', 'attendance_recorded_at', 'attendance_recorded_by_email', 'created_by_email'], function (array $row) use (&$rowIssues): ?array {
+            'lessons' => $this->whitelistRows($decoded, 'lessons', ['ulid', 'class_ulid', 'class_group_ulid', 'recurring_lesson_slot_ulid', 'starts_at', 'ends_at', 'lesson_number', 'lesson_unit_key', 'status', 'outcome', 'outcome_reason', 'outcome_note', 'outcome_recorded_at', 'outcome_recorded_by_email', 'attendance_recorded_at', 'attendance_recorded_by_email', 'created_by_email'], function (array $row) use (&$rowIssues): ?array {
                 return $this->validLessonRow($row, $rowIssues);
             }),
             'lesson_summaries' => $this->whitelistRows($decoded, 'lesson_summaries', ['ulid', 'lesson_ulid', 'content', 'private_notes', 'resources', 'homework', 'reviewed_at', 'reviewed_by_email'], function (array $row) use (&$rowIssues): ?array {
@@ -1585,9 +1587,31 @@ class ValidateBackupPayload
         // v10: opaque key linking lessons that are the same lesson unit.
         $lessonUnitKey = $this->optionalUlidOrInvalidate($row['lesson_unit_key'] ?? null);
 
+        // v11: o resultado real. Ausente num backup anterior ⇒ lido do estado
+        // (`taught` fecha como `taught`, o resto fica em aberto) — o mesmo
+        // backfill que a migração faz. Um motivo só numa ausência do
+        // professor, e só como categoria; uma nota só numa atividade da
+        // turma; e nunca assiduidade consolidada numa ocorrência onde ela
+        // não se aplica.
+        $status = LessonStatus::tryFrom((string) ($row['status'] ?? ''));
+        $outcomeRaw = $row['outcome'] ?? null;
+        $outcome = $outcomeRaw === null
+            ? ($status === LessonStatus::Taught ? LessonOutcome::Taught : null)
+            : LessonOutcome::tryFrom((string) $outcomeRaw);
+        $reasonRaw = $row['outcome_reason'] ?? null;
+        $reason = $reasonRaw === null ? null : TeacherAbsenceReason::tryFrom((string) $reasonRaw);
+        $note = $row['outcome_note'] ?? null;
+        $outcomeValid = ($outcomeRaw === null || $outcome !== null)
+            && ($reasonRaw === null || ($reason !== null && $outcome === LessonOutcome::TeacherAbsent))
+            && ($outcome !== LessonOutcome::TeacherAbsent || $reason !== null)
+            && ($note === null || (is_string($note) && mb_strlen($note) <= 160 && $outcome === LessonOutcome::ClassExternalActivity))
+            && ($outcome === null || $outcome->takesAttendance() || ($row['attendance_recorded_at'] ?? null) === null)
+            && ($outcome === null || $outcome === LessonOutcome::Taught || $status !== LessonStatus::Taught);
+
         if (! $this->isUlid($ulid) || ! $this->isUlid($classUlid)
             || $this->nullableDateTime($row['starts_at'] ?? null) === null
-            || LessonStatus::tryFrom((string) ($row['status'] ?? '')) === null
+            || $status === null
+            || ! $outcomeValid
             || ! $groupUlid['ok'] || ! $slotUlid['ok'] || ! $lessonUnitKey['ok']
         ) {
             $rowIssues[] = ['domain' => 'lessons', 'ulid' => is_string($ulid) ? $ulid : null, 'reason' => $this->t('Campos obrigatórios em falta ou inválidos.')];
@@ -1602,9 +1626,16 @@ class ValidateBackupPayload
             'recurring_lesson_slot_ulid' => $slotUlid['value'],
             'starts_at' => $row['starts_at'],
             'ends_at' => $this->nullableDateTime($row['ends_at'] ?? null),
-            'lesson_number' => $this->nullableInt($row['lesson_number'] ?? null),
-            'lesson_unit_key' => $lessonUnitKey['value'],
+            // Uma ausência do professor não numera nem pertence a uma lição —
+            // a mesma invariante que RecordLessonOutcome grava.
+            'lesson_number' => $outcome === LessonOutcome::TeacherAbsent ? null : $this->nullableInt($row['lesson_number'] ?? null),
+            'lesson_unit_key' => $outcome === LessonOutcome::TeacherAbsent ? null : $lessonUnitKey['value'],
             'status' => $row['status'],
+            'outcome' => $outcome?->value,
+            'outcome_reason' => $reason?->value,
+            'outcome_note' => $this->nullableString($note),
+            'outcome_recorded_at' => $this->nullableDateTime($row['outcome_recorded_at'] ?? null),
+            'outcome_recorded_by_email' => $this->nullableString($row['outcome_recorded_by_email'] ?? null),
             'attendance_recorded_at' => $this->nullableDateTime($row['attendance_recorded_at'] ?? null),
             'attendance_recorded_by_email' => $this->nullableString($row['attendance_recorded_by_email'] ?? null),
             'created_by_email' => $this->nullableString($row['created_by_email'] ?? null),

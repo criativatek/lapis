@@ -44,7 +44,7 @@ class ClearLessonSummary
             /** @var Lesson $locked */
             $locked = Lesson::query()->lockForUpdate()->findOrFail($lesson->getKey());
 
-            if ($locked->status === LessonStatus::Taught) {
+            if ($locked->isClosed()) {
                 throw ValidationException::withMessages([
                     'summary' => __('O sumário de uma aula já lecionada não pode ser limpo.'),
                 ]);

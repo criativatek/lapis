@@ -32,6 +32,7 @@ class SectionComposerRegistry
         ClassSelfAssessmentComposer::class,
         ClassRecordsComposer::class,
         ClassAttendanceComposer::class,
+        ClassLessonsComposer::class,
 
         // Individual — the same facts, narrowed to one student.
         StudentIdentificationComposer::class,

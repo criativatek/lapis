@@ -38,6 +38,9 @@ enum ContentSource: string
     /** Assiduidade consolidada por aula — nunca uma presença presumida (§ do briefing de assiduidade). */
     case Attendance = 'attendance';
 
+    /** O resultado real de cada ocorrência de aula (0.146.0). */
+    case Lessons = 'lessons';
+
     /** A kept photograph, read instead of live data (§30). */
     case InterimSnapshot = 'interim_snapshot';
 
@@ -69,6 +72,7 @@ enum ContentSource: string
             self::Records => __('Registos'),
             self::Interventions => __('Intervenções'),
             self::Attendance => __('Assiduidade'),
+            self::Lessons => __('Aulas'),
             self::InterimSnapshot => __('Avaliação intercalar'),
             self::TeacherInput => __('Caracterização do professor'),
             self::Library => __('Biblioteca pedagógica'),

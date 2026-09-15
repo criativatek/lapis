@@ -35,7 +35,7 @@ class SaveLessonSummary
 
             // Consolidada, a lista vem só como eco do ecrã: as correções têm rota
             // própria, e gravar notas ou recursos não pode falhar por causa dela.
-            if ($absentStudentUlids !== null && ! $lockedLesson->attendanceRecorded()) {
+            if ($absentStudentUlids !== null && ! $lockedLesson->attendanceRecorded() && ! $lockedLesson->attendanceNotApplicable()) {
                 $this->saveAttendanceDraft->apply($lockedLesson, $absentStudentUlids, $actor);
             }
 

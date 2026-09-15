@@ -1799,6 +1799,12 @@ class GenerateDataExport
             'lesson_number' => $lesson->lesson_number,
             'lesson_unit_key' => $lesson->lesson_unit_key,
             'status' => $lesson->status->value,
+            // v11 (0.146.0): o resultado real da ocorrência.
+            'outcome' => $lesson->outcome?->value,
+            'outcome_reason' => $lesson->outcome_reason?->value,
+            'outcome_note' => $lesson->outcome_note,
+            'outcome_recorded_at' => $lesson->outcome_recorded_at?->toIso8601String(),
+            'outcome_recorded_by_email' => $this->authorEmail($lesson->outcome_recorded_by, $refs),
             'attendance_recorded_at' => $lesson->attendance_recorded_at?->toIso8601String(),
             'attendance_recorded_by_email' => $this->authorEmail($lesson->attendance_recorded_by, $refs),
             'created_by_email' => $this->authorEmail($lesson->created_by, $refs),

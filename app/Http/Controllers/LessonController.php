@@ -5,15 +5,20 @@ namespace App\Http\Controllers;
 use App\Actions\Lessons\ClearLessonSummary;
 use App\Actions\Lessons\DeleteLesson;
 use App\Actions\Lessons\MarkLessonAsTaught;
+use App\Actions\Lessons\RecordLessonOutcome;
 use App\Actions\Lessons\SaveLessonSummary;
 use App\Http\Controllers\Concerns\RefusesDuringImpersonation;
 use App\Http\Requests\Lessons\LessonSummaryRequest;
 use App\Http\Requests\Lessons\MarkLessonAsTaughtRequest;
+use App\Http\Requests\Lessons\RecordLessonOutcomeRequest;
 use App\Models\Enrollment;
 use App\Models\Lesson;
+use App\Models\LessonOutcome;
 use App\Models\LessonStatus;
+use App\Models\TeacherAbsenceReason;
 use App\Models\User;
 use App\Services\Lessons\LessonAttendanceRoster;
+use App\Services\Lessons\ShiftLessonPlanning;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -33,6 +38,8 @@ class LessonController extends Controller implements HasMiddleware
         protected ClearLessonSummary $clearLessonSummary,
         protected DeleteLesson $deleteLesson,
         protected LessonAttendanceRoster $attendanceRoster,
+        protected RecordLessonOutcome $recordLessonOutcome,
+        protected ShiftLessonPlanning $lessonPlanning,
     ) {}
 
     /**
@@ -46,7 +53,7 @@ class LessonController extends Controller implements HasMiddleware
     public function show(Lesson $lesson): Response
     {
         Gate::authorize('view', $lesson);
-        $lesson->load(['schoolClass.subject', 'classGroup', 'summary']);
+        $lesson->load(['schoolClass.subject', 'classGroup', 'summary', 'plan']);
 
         return Inertia::render('lessons/Show', [
             'attendance' => $this->attendanceProp($lesson),
@@ -57,12 +64,29 @@ class LessonController extends Controller implements HasMiddleware
                 'status' => $lesson->status->value,
                 'status_label' => $this->statusLabel($lesson->status),
                 'lesson_number' => $lesson->lesson_number,
+                // O resultado real da ocorrência (0.146.0) — NULL enquanto aberta.
+                'outcome' => $lesson->outcome?->value,
+                'outcome_label' => $lesson->outcome?->label(),
+                'outcome_reason_label' => $lesson->outcome_reason?->label(),
+                'outcome_note' => $lesson->outcome_note,
+                // As mesmas três recusas de RecordLessonOutcome::guard(), para
+                // que o botão não prometa o que o servidor recusa.
+                'can_record_outcome' => ! $lesson->isClosed()
+                    && ! $lesson->attendanceRecorded()
+                    && $this->lessonPlanning->closedLessonAfter($lesson) === null,
+                'absence_reasons' => array_map(
+                    fn (TeacherAbsenceReason $reason): array => ['value' => $reason->value, 'label' => $reason->label()],
+                    TeacherAbsenceReason::cases(),
+                ),
+                // Planeamento que desceu até aqui e já não coube em nenhuma
+                // ocorrência até ao fim do ano (ShiftLessonPlanning).
+                'pending_plan' => $lesson->plan?->planned_summary,
                 // As duas ações destrutivas desta página decidem-se no
                 // servidor e chegam ao ecrã já decididas: esconder um botão é
                 // apresentação, e a recusa real vive em DeleteLesson e em
                 // ClearLessonSummary, que a repetem por sua conta.
-                'can_delete' => $lesson->status !== LessonStatus::Taught,
-                'can_clear_summary' => $lesson->status !== LessonStatus::Taught
+                'can_delete' => ! $lesson->isClosed(),
+                'can_clear_summary' => ! $lesson->isClosed()
                     && $lesson->summary !== null
                     && trim($lesson->summary->content) !== '',
                 // «8.º F» ou «8.º F · T1» — composto no servidor para que o
@@ -165,6 +189,26 @@ class LessonController extends Controller implements HasMiddleware
         $this->markLessonAsTaught->execute($lesson, $this->user($request), $request->absentStudentUlids());
 
         return back()->with('success', 'Aula marcada como lecionada.');
+    }
+
+    /**
+     * «Professor ausente» / «Turma em outras atividades letivas» (0.146.0).
+     */
+    public function recordOutcome(RecordLessonOutcomeRequest $request, Lesson $lesson): RedirectResponse
+    {
+        $this->refuseDuringImpersonation($request);
+
+        $this->recordLessonOutcome->execute(
+            $lesson,
+            $request->outcome(),
+            $this->user($request),
+            $request->reason(),
+            $request->note(),
+        );
+
+        return back()->with('success', $request->outcome() === LessonOutcome::TeacherAbsent
+            ? 'Ausência registada. O planeamento passou para a aula seguinte.'
+            : 'Atividade registada. O planeamento passou para a aula seguinte.');
     }
 
     /**

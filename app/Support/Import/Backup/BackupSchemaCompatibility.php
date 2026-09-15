@@ -7,7 +7,10 @@ namespace App\Support\Import\Backup;
  * (§4 of the import brief). Never inferred silently — every backup is
  * classified into exactly one of these before anything else happens.
  *
- * CURRENT (10) is what GenerateDataExport writes today. Version 10 adds
+ * CURRENT (11) is what GenerateDataExport writes today (0.146.0). Version 11 adds
+ * `lessons[].outcome`, `outcome_reason`, `outcome_note`, `outcome_recorded_at`
+ * and `outcome_recorded_by_email` (absent in older backups: a `taught` status
+ * reads as outcome `taught`, anything else as not yet closed). Version 10 adds
  * `recurring_lesson_slots[].split_lesson_key` and `lessons[].lesson_unit_key`
  * (absent in older backups, read as null). Version 9 adds
  * lessons and attendance — `class_groups`, `class_group_memberships`,
@@ -47,7 +50,7 @@ enum BackupSchemaCompatibility
     case UnsupportedNewer;
     case Invalid;
 
-    public const int CURRENT = 10;
+    public const int CURRENT = 11;
 
     public const int MINIMUM_SUPPORTED = 2;
 

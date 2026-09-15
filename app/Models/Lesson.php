@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -23,12 +24,17 @@ use Illuminate\Support\Carbon;
  * @property int|null $lesson_number
  * @property string|null $lesson_unit_key
  * @property LessonStatus $status
+ * @property LessonOutcome|null $outcome NULL = ocorrência ainda não fechada (0.146.0)
+ * @property TeacherAbsenceReason|null $outcome_reason só numa ausência do professor, só categoria
+ * @property string|null $outcome_note descrição curta, opcional, de uma atividade da turma
+ * @property Carbon|null $outcome_recorded_at
+ * @property int|null $outcome_recorded_by
  * @property Carbon|null $attendance_recorded_at
  * @property int|null $attendance_recorded_by
  * @property int|null $created_by nullable desde 2026-11-10 (importação de backup — ver 2026_11_10_000500_let_imported_lessons_keep_an_unresolved_author); nunca `null` numa aula criada pela própria aplicação
  * @property-read int|null $absent_count carregado por `withCount()` em WeeklyLessonsQuery — não existe fora dessa consulta
  */
-#[Fillable(['class_id', 'class_group_id', 'recurring_lesson_slot_id', 'starts_at', 'ends_at', 'lesson_number', 'lesson_unit_key', 'status', 'attendance_recorded_at', 'attendance_recorded_by', 'created_by'])]
+#[Fillable(['class_id', 'class_group_id', 'recurring_lesson_slot_id', 'starts_at', 'ends_at', 'lesson_number', 'lesson_unit_key', 'status', 'outcome', 'outcome_reason', 'outcome_note', 'outcome_recorded_at', 'outcome_recorded_by', 'attendance_recorded_at', 'attendance_recorded_by', 'created_by'])]
 class Lesson extends Model
 {
     use BelongsToOrganization, HasUlids;
@@ -53,6 +59,9 @@ class Lesson extends Model
             'ends_at' => 'datetime',
             'lesson_number' => 'integer',
             'status' => LessonStatus::class,
+            'outcome' => LessonOutcome::class,
+            'outcome_reason' => TeacherAbsenceReason::class,
+            'outcome_recorded_at' => 'datetime',
             'attendance_recorded_at' => 'datetime',
         ];
     }
@@ -149,5 +158,45 @@ class Lesson extends Model
     public function attendanceRecorded(): bool
     {
         return $this->attendance_recorded_at !== null;
+    }
+
+    /**
+     * A ocorrência já fechou — com qualquer resultado. Uma aula `taught` de
+     * antes da 0.146.0 fica fechada pelo backfill; o `status` é lido também
+     * para que um modelo em memória nunca pareça aberto por engano.
+     */
+    public function isClosed(): bool
+    {
+        return $this->outcome !== null || $this->status === LessonStatus::Taught;
+    }
+
+    /**
+     * Fechada e com número próprio na sequência (lecionada ou atividade da
+     * turma). É o histórico que a renumeração não pode mudar.
+     */
+    public function isClosedAndNumbered(): bool
+    {
+        return $this->isClosed() && $this->outcome !== LessonOutcome::TeacherAbsent;
+    }
+
+    /**
+     * «Lecionada», na base de dados: `outcome = taught`, ou — numa linha que
+     * ainda não tem resultado mas tem o estado antigo (importação, fixture) —
+     * `status = taught`. É a única ocorrência onde a assiduidade se aplica.
+     *
+     * @param  Builder<Lesson>|\Illuminate\Database\Query\Builder  $query
+     */
+    public static function whereCountsAsTaughtWithAttendance($query): void
+    {
+        $query->where('outcome', LessonOutcome::Taught->value)
+            ->orWhere(fn ($legacy) => $legacy->whereNull('outcome')->where('status', LessonStatus::Taught->value));
+    }
+
+    /**
+     * A assiduidade dos alunos não se aplica a esta ocorrência.
+     */
+    public function attendanceNotApplicable(): bool
+    {
+        return $this->outcome !== null && ! $this->outcome->takesAttendance();
     }
 }

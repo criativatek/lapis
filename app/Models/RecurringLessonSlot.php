@@ -132,6 +132,7 @@ class RecurringLessonSlot extends Model
             ->where(function (Builder $query): void {
                 $query
                     ->where('status', LessonStatus::Taught)
+                    ->orWhereNotNull('outcome')
                     ->orWhereHas('summary')
                     ->orWhereHas('plan');
             })

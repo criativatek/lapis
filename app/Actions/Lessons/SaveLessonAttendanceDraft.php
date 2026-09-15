@@ -44,6 +44,12 @@ class SaveLessonAttendanceDraft
      */
     public function apply(Lesson $lockedLesson, array $absentStudentUlids, User $actor): void
     {
+        if ($lockedLesson->attendanceNotApplicable()) {
+            throw ValidationException::withMessages([
+                'absent' => __('A assiduidade não se aplica a esta aula (:outcome).', ['outcome' => (string) $lockedLesson->outcome?->label()]),
+            ]);
+        }
+
         if ($lockedLesson->attendanceRecorded()) {
             throw ValidationException::withMessages([
                 'absent' => __('A assiduidade desta aula já foi registada — usa a correção em vez do rascunho.'),

@@ -76,6 +76,14 @@ class MarkLessonsAsTaughtInBatch
                 continue;
             }
 
+            // Fechada com outro resultado (professor ausente, turma noutra
+            // atividade): o lote nunca a transforma em lecionada.
+            if ($lesson->outcome !== null) {
+                $ineligible[] = ['lesson' => $lesson, 'reason' => __('Já tem resultado registado: :outcome.', ['outcome' => $lesson->outcome->label()])];
+
+                continue;
+            }
+
             // A autorização por aula, e não só a do ecrã: a seleção pode vir do
             // browser, e um ulid de outra turma num array não pode passar só
             // por estar na mesma organização. `whereHas('teachers')` acima já

@@ -7,6 +7,8 @@ import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import LessonAttendanceList from '@/components/lessons/LessonAttendanceList.vue';
 import type { LessonAttendance } from '@/components/lessons/LessonAttendanceList.vue';
+import LessonOutcomePanel from '@/components/lessons/LessonOutcomePanel.vue';
+import type { LessonOutcomeValue } from '@/components/lessons/LessonOutcomePanel.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -30,6 +32,14 @@ type Lesson = {
     status: 'preparation' | 'prepared' | 'taught';
     status_label: string;
     lesson_number: number | null;
+    /** Como a ocorrência fechou (0.146.0) — NULL enquanto aberta. */
+    outcome: LessonOutcomeValue | null;
+    outcome_label: string | null;
+    outcome_reason_label: string | null;
+    outcome_note: string | null;
+    can_record_outcome: boolean;
+    absence_reasons: { value: string; label: string }[];
+    pending_plan: string | null;
     /** Decididos no servidor — ver LessonController::show(). */
     can_delete: boolean;
     can_clear_summary: boolean;
@@ -293,6 +303,18 @@ onBeforeUnmount(() => {
             </dl>
         </div>
 
+        <LessonOutcomePanel
+            :lesson-ulid="lesson.ulid"
+            :outcome="lesson.outcome"
+            :outcome-label="lesson.outcome_label"
+            :outcome-reason-label="lesson.outcome_reason_label"
+            :outcome-note="lesson.outcome_note"
+            :can-record="lesson.can_record_outcome"
+            :reasons="lesson.absence_reasons"
+            :pending-plan="lesson.pending_plan"
+            @submitting="(value) => (submittingFromThisPage = value)"
+        />
+
         <form class="space-y-4" @submit.prevent="submitSummary">
             <AlertError v-if="summaryErrors.length > 0" :errors="summaryErrors" title="Não foi possível guardar o sumário." />
             <AlertError v-if="attendanceErrors.length > 0" :errors="attendanceErrors" title="Não foi possível registar a assiduidade." />
@@ -314,6 +336,7 @@ onBeforeUnmount(() => {
             </div>
 
             <LessonAttendanceList
+                v-if="lesson.outcome === null || lesson.outcome === 'taught'"
                 :lesson-ulid="lesson.ulid"
                 :attendance="attendance"
                 :class-group-label="lesson.class_group_label"
@@ -356,13 +379,13 @@ onBeforeUnmount(() => {
                     <Save v-else class="size-5" />
                     {{ summaryForm.processing ? 'A guardar…' : 'Guardar' }}
                 </Button>
-                <Button v-if="lesson.status !== 'taught'" type="button" size="lg" variant="secondary" class="min-h-12" :disabled="taughtForm.processing" @click="markTaught">
+                <Button v-if="lesson.status !== 'taught' && lesson.outcome === null" type="button" size="lg" variant="secondary" class="min-h-12" :disabled="taughtForm.processing" @click="markTaught">
                     <Spinner v-if="taughtForm.processing" />
                     <Check v-else class="size-5" />
                     Marcar como lecionada
                 </Button>
             </div>
-            <p v-if="lesson.status !== 'taught'" class="text-xs text-muted-foreground">
+            <p v-if="lesson.status !== 'taught' && lesson.outcome === null" class="text-xs text-muted-foreground">
                 Os alunos sem falta assinalada ficam presentes.
             </p>
         </form>

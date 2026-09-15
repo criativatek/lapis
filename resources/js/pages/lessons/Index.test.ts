@@ -39,6 +39,8 @@ function makeLesson(overrides: Partial<WeekLesson> = {}): WeekLesson {
         summary_excerpt: longSummary.slice(0, 180),
         summary_full: longSummary,
         lesson_number: 12,
+        outcome: null,
+        outcome_label: null,
         can_delete: true,
         can_clear_summary: true,
         attendance_recorded: false,

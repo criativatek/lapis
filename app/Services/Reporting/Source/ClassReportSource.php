@@ -10,6 +10,7 @@ use App\Models\SchoolClass;
 use App\Services\Assessment\BuildClassStatistics;
 use App\Services\Assessment\PrimaryResultScope;
 use App\Services\Lessons\ClassAttendanceSummary;
+use App\Services\Lessons\ClassLessonRecord;
 use Illuminate\Support\Collection;
 
 /**
@@ -63,6 +64,28 @@ class ClassReportSource implements ReportSource
             'records' => $this->recordFacts($report, $class),
             'interventions' => $this->interventionFacts($report, $class),
             'attendance' => $this->attendanceFacts($report, $class),
+            'lessons' => $this->lessonFacts($report, $class),
+        ];
+    }
+
+    /**
+     * As contagens de aulas no âmbito temporal do relatório (0.146.0), com o
+     * mesmo intervalo da assiduidade. Uma avaliação intercalar não as tem,
+     * pela mesma razão que não tem assiduidade.
+     *
+     * @return array<string, mixed>
+     */
+    protected function lessonFacts(Report $report, SchoolClass $class): array
+    {
+        if ($report->scope_kind === ReportScopeKind::Interim) {
+            return ['available' => false];
+        }
+
+        [$from, $to] = $this->attendanceDateRange($report);
+
+        return [
+            'available' => true,
+            ...app(ClassLessonRecord::class)->for($class, $from, $to),
         ];
     }
 

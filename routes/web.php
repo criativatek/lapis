@@ -532,6 +532,7 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::delete('lessons/{lesson}/summary', [LessonController::class, 'clearSummary'])->name('lessons.summary.clear');
         Route::delete('lessons/{lesson}', [LessonController::class, 'destroy'])->name('lessons.destroy');
         Route::post('lessons/{lesson}/mark-taught', [LessonController::class, 'markTaught'])->name('lessons.mark-taught');
+        Route::post('lessons/{lesson}/outcome', [LessonController::class, 'recordOutcome'])->name('lessons.outcome');
         // Assiduidade: rascunho de faltas antes de lecionada, registo de uma
         // aula já lecionada sem assiduidade, e correção de uma linha já
         // consolidada — três ações distintas, ver LessonAttendanceController.

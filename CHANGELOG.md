@@ -25,6 +25,28 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.146.0] — 2026-09-15
+
+### Adicionado
+- **Resultado real da aula.** `lessons.outcome` separado de `status`: `null` (ocorrência ainda não fechada), `taught`, `teacher_absent` e `class_external_activity`. Na página da aula, «Não houve aula» regista **Professor ausente** (motivo só por categoria: Formação, Serviço oficial, Outro; sem texto livre) ou **Turma em outras atividades letivas** (descrição curta opcional, até 160 caracteres). «Marcar como lecionada» passa a gravar também `outcome = taught`.
+- **Professor ausente**: não numera, não conta como lecionada, a assiduidade não se aplica (os rascunhos de falta são descartados e o registo é recusado). **Turma em outras atividades letivas**: numera e conta como lecionada para o serviço docente, mas não como desenvolvimento efetivo da disciplina; a assiduidade também não se aplica.
+- **Planeamento desloca-se A→B→C** (`ShiftLessonPlanning`), numa só transação e com a turma bloqueada: o planeamento (sumário previsto, recursos, TPC, notas) desce uma posição na sequência do mesmo público (turma inteira ou grupo) até à primeira aula sem planeamento. Cada planeamento existe no fim exatamente uma vez. Sem aula seguinte gravada, materializa a próxima ocorrência do horário; sem ocorrência até ao fim do ano letivo, fica como **Planeamento pendente** em `lesson_plans.planned_summary` da última aula da cadeia, e aparece na página da aula.
+- **T1/T2 parcial**: se T2 fica sem aula por ausência do professor, a lição (`lesson_unit_key`) passa à ocorrência aberta seguinte de T2 e cada uma das seguintes recua uma. T1 mantém a sua lição e os grupos podem ficar temporariamente dessincronizados, sem nenhum alinhamento por data.
+- **Relatório de turma, secção «Aulas previstas e lecionadas»** (`class_lessons`, módulo `lessons`, não reescrevível): aulas previstas, contabilizadas como lecionadas, com desenvolvimento efetivo da disciplina, professor ausente, turma em outras atividades letivas e por registar, com detalhe cronológico. O motivo da ausência nunca entra no relatório.
+- Auditoria: `lesson.outcome_recorded` guarda o resultado, a categoria do motivo, booleanos e contagens. Nunca guarda a nota nem outro texto.
+
+### Corrigido
+- **Os rascunhos de falta contavam nos totais de assiduidade.** `ClassAttendanceSummary` e `StudentAttendanceHistory` passam a contar só linhas de aulas com `attendance_recorded_at` e com a assiduidade aplicável. «Por registar» só inclui aulas lecionadas.
+
+### Regras
+- Os resultados registam-se por ordem: se uma aula posterior do mesmo público já está fechada, o pedido é recusado antes de qualquer escrita. Uma aula com assiduidade consolidada não pode ficar sem assiduidade aplicável. Uma aula fechada com qualquer resultado não pode ser eliminada nem ter o sumário limpo, não entra no lote «marcar como lecionadas», bloqueia «Inserir aula» e não recebe sequências aplicadas. Se a renumeração mexesse no número de uma aula lecionada, a operação inteira reverte.
+
+### Migrations e backup
+- `2026_11_10_000700_add_outcome_to_lessons_table`: cinco colunas nullable (`outcome_recorded_by` com FK `nullOnDelete`), sem CHECK constraints. Backfill `status = taught` → `outcome = taught`. Reversível.
+- Backup **`schema_version` 11**: `lessons[].outcome`, `outcome_reason`, `outcome_note`, `outcome_recorded_at` e `outcome_recorded_by_email`. Um backup v≤10 lê `status = taught` como `outcome = taught`. As combinações inválidas (motivo em texto livre, motivo ou nota no resultado errado, assiduidade consolidada sem assiduidade aplicável) tornam a linha `invalid`. Round-trip, compatibilidade v10 e restauro noutra organização testados.
+
+### Sem alteração
+- Composição comercial, IA e fórmulas de avaliação. **Legal**: foram auditados Termos, Privacidade e Acordo de Tratamento, e nenhum foi alterado nesta versão (ver a descrição da PR).
 ## [0.145.4] — 2026-09-15
 
 ### Corrigido

@@ -83,6 +83,7 @@ const labels: Record<string, string> = {
     'help.ai_answer_requested': 'Pergunta ao assistente do Centro de Ajuda',
     'lesson.prepared': 'Aula preparada',
     'lesson.taught': 'Aula marcada como lecionada',
+    'lesson.outcome_recorded': 'Resultado da aula registado',
     'lesson.summary_saved': 'Sumário guardado',
     'lesson.summary_reviewed': 'Sumário revisto',
     'lesson.summary_cleared': 'Sumário apagado',

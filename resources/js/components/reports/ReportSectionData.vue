@@ -101,6 +101,42 @@ const studentAttendanceRows = computed<Row[]>(() =>
     props.sectionKey === 'student_attendance' && Array.isArray(props.data?.rows) ? [...(props.data.rows as Row[])].reverse() : [],
 );
 
+// «Aulas previstas e lecionadas» (0.146.0) — o twin de SectionTables::classLessons().
+const classLessonTotals = computed<Row | null>(() =>
+    props.sectionKey === 'class_lessons' && props.data?.totals && typeof props.data.totals === 'object'
+        ? (props.data.totals as Row)
+        : null,
+);
+
+const classLessonRows = computed<Row[]>(() =>
+    props.sectionKey === 'class_lessons' && Array.isArray(props.data?.rows) ? (props.data.rows as Row[]) : [],
+);
+
+const classLessonTotalLines = computed(() => {
+    const totals = classLessonTotals.value;
+
+    return totals === null
+        ? []
+        : [
+              ['Aulas previstas', totals.planned],
+              ['Contabilizadas como lecionadas', totals.counted_as_taught],
+              ['Com desenvolvimento efetivo da disciplina', totals.subject_development],
+              ['Professor ausente', totals.teacher_absent],
+              ['Turma em outras atividades letivas', totals.class_external_activity],
+              ['Por registar', totals.not_recorded],
+          ];
+});
+
+function lessonOutcomeLabel(outcome: unknown): string {
+    return outcome === 'taught'
+        ? 'Lecionada'
+        : outcome === 'teacher_absent'
+          ? 'Professor ausente'
+          : outcome === 'class_external_activity'
+            ? 'Turma em outras atividades letivas'
+            : 'Por registar';
+}
+
 function attendanceStatusLabel(status: unknown): string {
     return status === 'present' ? 'Presente' : status === 'absent' ? 'Falta' : 'Assiduidade não registada';
 }
@@ -196,6 +232,37 @@ function attendanceStatusLabel(status: unknown): string {
                     <td class="py-1.5 pr-3 text-right tabular-nums">{{ row.records }}</td>
                     <td class="py-1.5 text-right tabular-nums text-muted-foreground">
                         {{ Number(row.students_involved) > 0 ? row.students_involved : '—' }}
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div v-if="classLessonTotalLines.length > 0" class="mt-3 space-y-3 overflow-x-auto" data-testid="class-lessons">
+        <table class="w-full min-w-[20rem] text-sm">
+            <tbody>
+                <tr v-for="[label, value] in classLessonTotalLines" :key="String(label)" class="border-b border-border/50 last:border-0">
+                    <td class="py-1.5 pr-3">{{ label }}</td>
+                    <td class="py-1.5 text-right tabular-nums">{{ value ?? 0 }}</td>
+                </tr>
+            </tbody>
+        </table>
+        <table v-if="classLessonRows.length > 0" class="w-full min-w-[30rem] text-sm">
+            <thead>
+                <tr class="border-b border-border text-left text-xs text-muted-foreground">
+                    <th class="py-1.5 pr-3 font-medium">Data</th>
+                    <th class="py-1.5 pr-3 font-medium">Turma/contexto</th>
+                    <th class="py-1.5 pr-3 text-right font-medium">Aula n.º</th>
+                    <th class="py-1.5 font-medium">Resultado</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr v-for="(row, index) in classLessonRows" :key="index" class="border-b border-border/50 last:border-0">
+                    <td class="py-1.5 pr-3 whitespace-nowrap tabular-nums">{{ row.date }}</td>
+                    <td class="py-1.5 pr-3">{{ row.context_label }}</td>
+                    <td class="py-1.5 pr-3 text-right tabular-nums text-muted-foreground">{{ row.lesson_number ?? '—' }}</td>
+                    <td class="py-1.5">
+                        {{ lessonOutcomeLabel(row.outcome) }}<template v-if="row.note"> — {{ row.note }}</template>
                     </td>
                 </tr>
             </tbody>

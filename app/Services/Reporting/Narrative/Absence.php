@@ -54,6 +54,11 @@ class Absence
      * No lesson was taught in the scope — there is nothing to consolidate,
      * which is not the same as a class with only absences.
      */
+    public static function noLessons(): string
+    {
+        return 'Não existem aulas previstas no período analisado.';
+    }
+
     public static function noAttendance(): string
     {
         return 'Não existem aulas lecionadas no período analisado.';

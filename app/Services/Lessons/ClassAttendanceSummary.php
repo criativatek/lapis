@@ -5,7 +5,7 @@ namespace App\Services\Lessons;
 use App\Models\Enrollment;
 use App\Models\Lesson;
 use App\Models\LessonAttendance;
-use App\Models\LessonStatus;
+use App\Models\LessonOutcome;
 use App\Models\SchoolClass;
 use Illuminate\Validation\ValidationException;
 
@@ -53,7 +53,12 @@ class ClassAttendanceSummary
 
         $consolidated = LessonAttendance::query()
             ->whereHas('lesson', function ($query) use ($class, $from, $to): void {
-                $query->where('class_id', $class->id);
+                // SÓ CONSOLIDADAS (0.146.0). Uma linha `absent` numa aula ainda
+                // por consolidar é um RASCUNHO e não entra em total nenhum; e
+                // numa ocorrência sem assiduidade aplicável não conta nada.
+                $query->where('class_id', $class->id)
+                    ->whereNotNull('attendance_recorded_at')
+                    ->where(fn ($outcome) => $outcome->whereNull('outcome')->orWhere('outcome', LessonOutcome::Taught->value));
 
                 if ($from !== null) {
                     $query->whereDate('starts_at', '>=', $from);
@@ -78,7 +83,7 @@ class ClassAttendanceSummary
 
         $notRecordedLessons = Lesson::query()
             ->where('class_id', $class->id)
-            ->where('status', LessonStatus::Taught)
+            ->where(fn ($query) => Lesson::whereCountsAsTaughtWithAttendance($query))
             ->whereNull('attendance_recorded_at')
             ->when($from !== null, fn ($query) => $query->whereDate('starts_at', '>=', $from))
             ->when($to !== null, fn ($query) => $query->whereDate('starts_at', '<=', $to))

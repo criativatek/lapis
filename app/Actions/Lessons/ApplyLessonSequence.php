@@ -45,6 +45,7 @@ class ApplyLessonSequence
                 ->where('class_id', $class->getKey())
                 ->where('starts_at', '>=', now())
                 ->where('status', '!=', LessonStatus::Taught)
+                ->whereNull('outcome')
                 ->orderBy('starts_at')
                 ->limit($items->count())
                 ->lockForUpdate()

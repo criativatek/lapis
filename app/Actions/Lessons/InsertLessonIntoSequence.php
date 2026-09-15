@@ -275,7 +275,9 @@ class InsertLessonIntoSequence
         $insertion = $occurrences[$slotIndex];
         $toShift = $this->lessonsFrom($class, $classGroupId, $insertion['starts_at']);
 
-        $taught = $toShift->first(fn (Lesson $lesson): bool => $lesson->status === LessonStatus::Taught);
+        // Fechada com qualquer resultado (0.146.0) conta como lecionada aqui:
+        // uma ausência registada também é histórico que não se desloca.
+        $taught = $toShift->first(fn (Lesson $lesson): bool => $lesson->isClosed());
 
         if ($taught !== null) {
             throw ValidationException::withMessages([

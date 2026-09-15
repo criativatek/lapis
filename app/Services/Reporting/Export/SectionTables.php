@@ -41,6 +41,7 @@ class SectionTables
             SectionKey::ClassRecords, SectionKey::StudentRecords, SectionKey::RecordsDistribution => self::records($data),
             SectionKey::RecordsTimeline => self::timeline($data),
             SectionKey::ClassAttendance => self::classAttendance($data),
+            SectionKey::ClassLessons => self::classLessons($data),
             SectionKey::StudentAttendance => self::studentAttendance($data),
             default => [],
         };
@@ -69,6 +70,66 @@ class SectionTables
             'headers' => ['N.º', 'Nome', 'Presenças', 'Faltas', 'Sem registo'],
             'rows' => $rows,
         ]];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return list<array{caption: string|null, headers: list<string>, rows: list<list<string>>}>
+     */
+    protected static function classLessons(array $data): array
+    {
+        $totals = is_array($data['totals'] ?? null) ? $data['totals'] : [];
+
+        if ($totals === []) {
+            return [];
+        }
+
+        $tables = [[
+            'caption' => 'Aulas',
+            'headers' => ['Aulas', 'N.º'],
+            'rows' => [
+                ['Aulas previstas', (string) ($totals['planned'] ?? 0)],
+                ['Contabilizadas como lecionadas', (string) ($totals['counted_as_taught'] ?? 0)],
+                ['Com desenvolvimento efetivo da disciplina', (string) ($totals['subject_development'] ?? 0)],
+                ['Professor ausente', (string) ($totals['teacher_absent'] ?? 0)],
+                ['Turma em outras atividades letivas', (string) ($totals['class_external_activity'] ?? 0)],
+                ['Por registar', (string) ($totals['not_recorded'] ?? 0)],
+            ],
+        ]];
+
+        $rows = [];
+
+        foreach (self::listOf($data, 'rows') as $row) {
+            $note = $row['note'] ?? null;
+
+            $rows[] = [
+                self::readableDate((string) ($row['date'] ?? '')),
+                (string) ($row['context_label'] ?? '—'),
+                $row['lesson_number'] === null ? '—' : (string) $row['lesson_number'],
+                self::lessonOutcomeLabel((string) ($row['outcome'] ?? ''))
+                    .(is_string($note) && $note !== '' ? ' — '.$note : ''),
+            ];
+        }
+
+        if ($rows !== []) {
+            $tables[] = [
+                'caption' => 'Detalhe cronológico',
+                'headers' => ['Data', 'Turma/contexto', 'Aula n.º', 'Resultado'],
+                'rows' => $rows,
+            ];
+        }
+
+        return $tables;
+    }
+
+    public static function lessonOutcomeLabel(string $outcome): string
+    {
+        return match ($outcome) {
+            'taught' => 'Lecionada',
+            'teacher_absent' => 'Professor ausente',
+            'class_external_activity' => 'Turma em outras atividades letivas',
+            default => 'Por registar',
+        };
     }
 
     /**

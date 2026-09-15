@@ -49,6 +49,12 @@ class RecordLessonAttendance
      */
     public function consolidate(Lesson $lockedLesson, User $actor, ?array $absentStudentUlids = null): Lesson
     {
+        if ($lockedLesson->attendanceNotApplicable()) {
+            throw ValidationException::withMessages([
+                'absent' => __('A assiduidade não se aplica a esta aula (:outcome).', ['outcome' => (string) $lockedLesson->outcome?->label()]),
+            ]);
+        }
+
         if ($lockedLesson->attendanceRecorded()) {
             return $lockedLesson;
         }

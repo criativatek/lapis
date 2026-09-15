@@ -19,8 +19,9 @@ return [
         'O relatório é um documento — tem secções, um autor, pode ser editado, regenerado a partir dos dados mais recentes, e só depois de finalizado é exportado em PDF ou Word. Enquanto não é finalizado, continua a poder ser ajustado.',
         'Em resumo: abra a Pauta de Avaliação para ver classificações; consulte ou crie um relatório quando precisar de um documento — para uma reunião, para os encarregados de educação, ou para arquivo.',
         'Ambos dependem de resultados já registados e de classificações já decididas nas turmas a que se referem. O relatório vive no menu Relatórios; a pauta vive no menu Avaliação.',
+        'O relatório de turma tem uma secção «Aulas previstas e lecionadas», com seis contagens do período — aulas previstas, contabilizadas como lecionadas, com desenvolvimento efetivo da disciplina, professor ausente, turma em outras atividades letivas e por registar (aulas passadas sem resultado) — e uma tabela cronológica com o resultado de cada aula. O motivo de uma ausência do professor nunca aparece no relatório.',
     ],
-    'keywords' => ['relatório', 'pauta', 'pauta de avaliação', 'documento', 'classificações', 'exportar relatório', 'csv', 'pdf', 'word'],
-    'related' => ['results.record', 'data.export'],
+    'keywords' => ['relatório', 'pauta', 'pauta de avaliação', 'documento', 'classificações', 'exportar relatório', 'csv', 'pdf', 'word', 'aulas previstas e lecionadas', 'professor ausente'],
+    'related' => ['results.record', 'data.export', 'lessons.summary'],
     'contexts' => ['reports.index', 'evaluation-sheets.index', 'evaluation-sheets.show'],
 ];

@@ -132,7 +132,7 @@ watch(selectionMode, (active) => {
 });
 
 const selectableLessons = computed(() =>
-    props.lessons.filter((lesson) => lesson.status !== 'taught'),
+    props.lessons.filter((lesson) => lesson.status !== 'taught' && lesson.outcome === null),
 );
 
 /** Ver LessonTimetable: «indeterminate» conta como não selecionada. */
@@ -413,6 +413,12 @@ function attendanceLabel(lesson: WeekLesson): string | null {
                     :class="['mt-1.5', statusToneClasses(lesson.status)]"
                     >{{ lesson.status_label }}</Badge
                 >
+                <Badge
+                    v-if="lesson.outcome !== null && lesson.outcome !== 'taught'"
+                    variant="outline"
+                    class="mt-1.5"
+                    >{{ lesson.outcome_label }}</Badge
+                >
                 <p
                     v-if="attendanceLabel(lesson)"
                     class="mt-1 text-xs text-muted-foreground"
@@ -437,7 +443,7 @@ function attendanceLabel(lesson: WeekLesson): string | null {
                         <div v-if="selectionMode" class="py-6 pl-4">
                             <Checkbox
                                 :model-value="selected.includes(lesson.ulid)"
-                                :disabled="lesson.status === 'taught'"
+                                :disabled="lesson.status === 'taught' || lesson.outcome !== null"
                                 :aria-label="`Selecionar a aula de ${lesson.context_label}`"
                                 @update:model-value="
                                     (value: boolean | 'indeterminate') => toggle(lesson.ulid, value)
@@ -498,6 +504,11 @@ function attendanceLabel(lesson: WeekLesson): string | null {
                                         variant="secondary"
                                         :class="statusToneClasses(lesson.status)"
                                         >{{ lesson.status_label }}</Badge
+                                    >
+                                    <Badge
+                                        v-if="lesson.outcome !== null && lesson.outcome !== 'taught'"
+                                        variant="outline"
+                                        >{{ lesson.outcome_label }}</Badge
                                     >
                                     <span
                                         v-if="lesson.has_summary"

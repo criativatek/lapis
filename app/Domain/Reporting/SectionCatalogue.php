@@ -71,6 +71,7 @@ class SectionCatalogue
         SectionKey::SchoolScope,
         SectionKey::RecordsTimeline,
         SectionKey::ClassAttendance,
+        SectionKey::ClassLessons,
         SectionKey::StudentAttendance,
     ];
 
@@ -158,6 +159,13 @@ class SectionCatalogue
                 module: 'lessons',
                 defaultIncluded: false,
                 mayNameStudents: true,
+            ),
+            // Contagens de aulas e detalhe cronológico (0.146.0). Não nomeia
+            // alunos nem traz o motivo de uma ausência do professor.
+            new SectionDefinition(
+                SectionKey::ClassLessons,
+                'Aulas previstas e lecionadas',
+                module: 'lessons',
             ),
             // The teacher's own statement about the planning. Descriptive, not
             // inferred — the system knows nothing about it until they say so,

@@ -3,7 +3,7 @@
 namespace App\Services\Lessons;
 
 use App\Models\Lesson;
-use App\Models\LessonStatus;
+use App\Models\LessonOutcome;
 use App\Models\RecurringLessonSlot;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -42,6 +42,10 @@ use Illuminate\Validation\ValidationException;
  * reexecutar a renumeração.
  *
  * A ORDEM DAS UNIDADES é a da sua primeira aula (`starts_at`, depois `id`).
+ *
+ * UMA AUSÊNCIA DO PROFESSOR NÃO NUMERA (0.146.0): não entra na sequência. Uma
+ * atividade da turma noutra atividade letiva numera como uma lecionada, e é
+ * tão intocável como ela.
  *
  * O HISTÓRICO LECIONADO É INTOCÁVEL (§14) no funcionamento normal: se uma
  * operação exigisse mudar o número de uma aula lecionada, é recusada antes de
@@ -324,7 +328,7 @@ final class LessonNumbering
 
             // Uma aula lecionada ainda sem número está a receber o primeiro,
             // não a mudar de número.
-            if ($lesson->status === LessonStatus::Taught && $lesson->lesson_number !== null) {
+            if ($lesson->isClosedAndNumbered() && $lesson->lesson_number !== null) {
                 throw ValidationException::withMessages([
                     'lesson_number' => __(
                         'Esta operação mudaria o número da aula de :date, que já foi lecionada (Lição :from → Lição :to). O histórico não é renumerado.',
@@ -414,8 +418,11 @@ final class LessonNumbering
      */
     private function sequence(int $classId): Collection
     {
+        // UMA AUSÊNCIA DO PROFESSOR NÃO É LIÇÃO (0.146.0): fica fora da
+        // sequência, sem número e sem unidade.
         return Lesson::query()
             ->where('class_id', $classId)
+            ->where(fn ($query) => $query->whereNull('outcome')->orWhere('outcome', '!=', LessonOutcome::TeacherAbsent->value))
             ->orderBy('starts_at')
             ->orderBy('id')
             ->get();

@@ -13,6 +13,7 @@ use App\Models\DataImport;
 use App\Models\Enrollment;
 use App\Models\Lesson;
 use App\Models\LessonAttendance;
+use App\Models\LessonOutcome;
 use App\Models\LessonPlan;
 use App\Models\LessonStatus;
 use App\Models\LessonSummary;
@@ -22,6 +23,7 @@ use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\StudentIdentity;
 use App\Models\Subject;
+use App\Models\TeacherAbsenceReason;
 use App\Models\User;
 use App\Services\Lessons\ClassAttendanceSummary;
 use App\Services\Lessons\LessonAttendanceRoster;
@@ -120,6 +122,119 @@ class LessonAttendanceRoundTripTest extends TestCase
             $linked = Lesson::where('class_id', $restoredClass->id)->where('lesson_unit_key', $lessonUnitKey)->count();
             $this->assertSame(2, $linked);
             $this->assertSame(2, Lesson::where('class_id', $restoredClass->id)->whereNull('lesson_unit_key')->count());
+        });
+    }
+
+    /**
+     * Schema v11 (0.146.0): o resultado real da aula viaja para outra
+     * organização — a categoria do motivo, a nota curta e o autor por email.
+     */
+    #[Test]
+    public function lesson_outcomes_survive_a_restore_into_another_organization(): void
+    {
+        $class = $this->scenario();
+
+        $this->inTenant(function () use ($class): void {
+            Lesson::create([
+                'class_id' => $class->id, 'starts_at' => '2025-10-30 09:00:00', 'ends_at' => '2025-10-30 10:00:00',
+                'status' => LessonStatus::Prepared, 'outcome' => LessonOutcome::TeacherAbsent,
+                'outcome_reason' => TeacherAbsenceReason::OfficialDuty, 'outcome_recorded_at' => '2025-10-30 10:00:00',
+                'outcome_recorded_by' => $this->teacher->id, 'created_by' => $this->teacher->id,
+            ]);
+            Lesson::create([
+                'class_id' => $class->id, 'starts_at' => '2025-11-06 09:00:00', 'ends_at' => '2025-11-06 10:00:00',
+                'lesson_number' => 4, 'status' => LessonStatus::Preparation, 'outcome' => LessonOutcome::ClassExternalActivity,
+                'outcome_note' => 'Visita de estudo', 'outcome_recorded_at' => '2025-11-06 10:00:00',
+                'outcome_recorded_by' => $this->teacher->id, 'created_by' => $this->teacher->id,
+            ]);
+        });
+
+        $backup = $this->backupUpload();
+        $json = $this->backupJson($backup);
+        $this->assertSame(11, $json['schema_version']);
+        $this->assertSame('official_duty', collect($json['lessons'])->firstWhere('outcome', 'teacher_absent')['outcome_reason']);
+
+        $colleague = User::factory()->create(['email' => 'colega-outcomes@example.test']);
+        $destination = $colleague->personalOrganization();
+        $import = $this->uploadIntoAs($destination, $colleague, $backup);
+        $this->confirmAs($destination, $colleague, $import);
+
+        $this->inOrganization($destination, function () use ($destination): void {
+            $restoredClass = SchoolClass::firstOrFail();
+            $this->assertSame($destination->id, $restoredClass->organization_id);
+            $lessons = Lesson::where('class_id', $restoredClass->id)->get();
+
+            $absent = $lessons->firstWhere('outcome', LessonOutcome::TeacherAbsent);
+            $this->assertNotNull($absent);
+            $this->assertSame(TeacherAbsenceReason::OfficialDuty, $absent->outcome_reason);
+            $this->assertNull($absent->lesson_number);
+
+            $external = $lessons->firstWhere('outcome', LessonOutcome::ClassExternalActivity);
+            $this->assertNotNull($external);
+            $this->assertSame('Visita de estudo', $external->outcome_note);
+
+            // Nada escapou para a organização de origem nem ficou sem dono.
+            $this->assertSame(3, $lessons->where('outcome', LessonOutcome::Taught)->count());
+        });
+
+        // A origem continua intacta e isolada.
+        $this->inTenant(fn () => $this->assertSame(1, Lesson::where('outcome', LessonOutcome::TeacherAbsent->value)->count()));
+    }
+
+    #[Test]
+    public function a_v10_backup_without_outcomes_closes_taught_lessons_as_taught(): void
+    {
+        $this->scenario();
+        $backup = $this->backupUpload();
+        $legacy = $this->rewriteBackup($backup, function (array $json): array {
+            $json['schema_version'] = 10;
+            foreach ($json['lessons'] as $index => $row) {
+                unset(
+                    $json['lessons'][$index]['outcome'], $json['lessons'][$index]['outcome_reason'],
+                    $json['lessons'][$index]['outcome_note'], $json['lessons'][$index]['outcome_recorded_at'],
+                    $json['lessons'][$index]['outcome_recorded_by_email'],
+                );
+            }
+
+            return $json;
+        });
+
+        $colleague = User::factory()->create(['email' => 'colega-v10@example.test']);
+        $destination = $colleague->personalOrganization();
+        $import = $this->uploadIntoAs($destination, $colleague, $legacy);
+        $this->assertSame(10, $import->source_schema_version);
+        $this->confirmAs($destination, $colleague, $import);
+
+        $this->inOrganization($destination, function (): void {
+            $lessons = Lesson::where('class_id', SchoolClass::firstOrFail()->id)->get();
+            $this->assertCount(4, $lessons);
+            $this->assertSame(3, $lessons->where('outcome', LessonOutcome::Taught)->count());
+            $this->assertTrue($lessons->where('status', LessonStatus::Preparation)->every(fn (Lesson $lesson): bool => $lesson->outcome === null));
+        });
+    }
+
+    #[Test]
+    public function a_lesson_with_a_free_text_absence_reason_is_invalid_and_never_written(): void
+    {
+        $this->scenario();
+        $backup = $this->backupUpload();
+        $tampered = $this->rewriteBackup($backup, function (array $json): array {
+            $json['lessons'][0]['status'] = 'prepared';
+            $json['lessons'][0]['outcome'] = 'teacher_absent';
+            $json['lessons'][0]['outcome_reason'] = 'Consulta médica';
+            $json['lessons'][0]['attendance_recorded_at'] = null;
+
+            return $json;
+        });
+
+        $colleague = User::factory()->create(['email' => 'colega-motivo@example.test']);
+        $destination = $colleague->personalOrganization();
+        $import = $this->uploadIntoAs($destination, $colleague, $tampered);
+        $this->confirmAs($destination, $colleague, $import);
+
+        $this->inOrganization($destination, function (): void {
+            $this->assertSame(0, Lesson::where('outcome', LessonOutcome::TeacherAbsent->value)->count());
+            $this->assertSame(0, Lesson::where('outcome_reason', 'Consulta médica')->count());
         });
     }
 

@@ -501,6 +501,7 @@ class BuildLessonsPlan
             $slotResolvable = $row['recurring_lesson_slot_ulid'] === null || ($slot !== null && in_array($slot['classification'], ['new', 'existing'], true));
             $authorId = $this->resolveAuthor($row['created_by_email'], $actor);
             $attendanceAuthorId = $this->resolveAuthor($row['attendance_recorded_by_email'], $actor);
+            $outcomeAuthorId = $this->resolveAuthor($row['outcome_recorded_by_email'] ?? null, $actor);
 
             if (! $classResolvable || ! $groupResolvable || ! $slotResolvable) {
                 return ['ulid' => $row['ulid'], 'classification' => 'invalid', 'reason' => $this->t('A turma, o grupo ou o tempo do horário desta aula não podem ser restaurados.')];
@@ -536,6 +537,9 @@ class BuildLessonsPlan
                 'starts_at' => $row['starts_at'], 'ends_at' => $row['ends_at'], 'lesson_number' => $row['lesson_number'],
                 'lesson_unit_key' => $row['lesson_unit_key'],
                 'status' => $row['status'], 'attendance_recorded_at' => $row['attendance_recorded_at'],
+                'outcome' => $row['outcome'] ?? null, 'outcome_reason' => $row['outcome_reason'] ?? null,
+                'outcome_note' => $row['outcome_note'] ?? null, 'outcome_recorded_at' => $row['outcome_recorded_at'] ?? null,
+                'outcome_recorded_by' => $outcomeAuthorId,
                 'attendance_recorded_by' => $attendanceAuthorId,
                 'created_by' => $authorId,
                 'author_unresolved' => $authorId === null,
@@ -568,7 +572,8 @@ class BuildLessonsPlan
             ];
         }
 
-        $diverges = $match->starts_at->toIso8601String() !== $row['starts_at'] || $match->status->value !== $row['status'];
+        $diverges = $match->starts_at->toIso8601String() !== $row['starts_at'] || $match->status->value !== $row['status']
+            || ($match->outcome->value ?? ($match->status->value === 'taught' ? 'taught' : null)) !== ($row['outcome'] ?? null);
 
         return [
             'ulid' => $row['ulid'], 'classification' => $diverges ? 'conflict' : 'existing',

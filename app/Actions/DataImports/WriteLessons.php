@@ -359,6 +359,9 @@ class WriteLessons
                     'starts_at' => $row['starts_at'], 'ends_at' => $row['ends_at'], 'lesson_number' => $row['lesson_number'],
                     'lesson_unit_key' => $row['lesson_unit_key'],
                     'status' => $row['status'], 'attendance_recorded_at' => $row['attendance_recorded_at'],
+                    'outcome' => $row['outcome'] ?? null, 'outcome_reason' => $row['outcome_reason'] ?? null,
+                    'outcome_note' => $row['outcome_note'] ?? null, 'outcome_recorded_at' => $row['outcome_recorded_at'] ?? null,
+                    'outcome_recorded_by' => $row['outcome_recorded_by'] ?? null,
                     'attendance_recorded_by' => $row['attendance_recorded_by'], 'created_by' => $row['created_by'],
                 ]);
                 $lesson->save();

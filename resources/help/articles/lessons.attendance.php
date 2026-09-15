@@ -24,9 +24,11 @@ return [
         '«Marcar lecionadas» em lote regista a assiduidade apenas das aulas onde já assinalou faltas. As outras ficam lecionadas com «Assiduidade por registar» — abra cada uma e use «Registar assiduidade». O Lapispro não presume que todos estiveram presentes.',
         'Aulas lecionadas antes de existir esta funcionalidade aparecem como «Assiduidade não registada». Não são convertidas em presenças.',
         'A assiduidade de cada aluno aparece em «Evolução», na página do aluno, na secção «Assiduidade», com a data, a disciplina, a turma e a aula. Aparece também nos relatórios da turma e do aluno, na secção «Assiduidade», para o período do relatório. Em todo o lado distingue-se Presente, Falta e Assiduidade não registada.',
+        'Só conta assiduidade consolidada — a que ficou registada ao marcar a aula como lecionada. Um rascunho de faltas numa aula ainda não fechada nunca conta nos totais.',
+        'Numa aula marcada como «Não houve aula — Professor ausente», a assiduidade não se aplica: um rascunho de faltas que já existisse é descartado, e deixa de se poder registar assiduidade nessa aula. Numa aula marcada como «Turma em outras atividades letivas» a assiduidade também não se aplica (ver «Escrever o sumário de uma aula»).',
         'Nesta versão regista-se só Presente ou Falta: não há faltas justificadas, atrasos nem comunicação a encarregados de educação. A assiduidade não é enviada a nenhum serviço de inteligência artificial.',
     ],
-    'keywords' => ['faltas', 'falta', 'assiduidade', 'presenças', 'presente', 'ausência', 'faltou', 'lecionada', 'aula', 't1', 't2', 'grupo', 'apoio'],
+    'keywords' => ['faltas', 'falta', 'assiduidade', 'presenças', 'presente', 'ausência', 'faltou', 'lecionada', 'aula', 't1', 't2', 'grupo', 'apoio', 'não houve aula', 'professor ausente'],
     'related' => ['lessons.summary', 'classes.create'],
     'contexts' => ['lessons.show', 'lessons.index', 'student-progress.student'],
 ];

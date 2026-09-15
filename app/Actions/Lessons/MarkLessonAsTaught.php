@@ -3,10 +3,13 @@
 namespace App\Actions\Lessons;
 
 use App\Models\Lesson;
+use App\Models\LessonOutcome;
 use App\Models\LessonStatus;
 use App\Models\User;
 use App\Services\Audit\AuditLog;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class MarkLessonAsTaught
 {
@@ -33,8 +36,19 @@ class MarkLessonAsTaught
                 return $lockedLesson;
             }
 
+            // Já fechada com outro resultado (0.146.0): «lecionada» não se
+            // escreve por cima de «professor ausente» sem que ninguém o note.
+            if ($lockedLesson->outcome !== null) {
+                throw ValidationException::withMessages([
+                    'outcome' => __('Esta aula já tem resultado registado: :outcome.', ['outcome' => $lockedLesson->outcome->label()]),
+                ]);
+            }
+
             $fromStatus = $lockedLesson->status;
             $lockedLesson->status = LessonStatus::Taught;
+            $lockedLesson->outcome = LessonOutcome::Taught;
+            $lockedLesson->outcome_recorded_at = Carbon::now();
+            $lockedLesson->outcome_recorded_by = $actor->getKey();
             $lockedLesson->save();
 
             $this->audit->record(

@@ -26,6 +26,9 @@ export type WeekLesson = {
     /** Só vem preenchido quando é MAIOR do que o excerto — ver WeeklyLessonsQuery. */
     summary_full: string | null;
     lesson_number: number | null;
+    /** Como a ocorrência fechou (0.146.0) — NULL enquanto aberta. */
+    outcome: 'taught' | 'teacher_absent' | 'class_external_activity' | null;
+    outcome_label: string | null;
     can_delete: boolean;
     can_clear_summary: boolean;
     /** Se a assiduidade desta aula já está consolidada — ver Lesson::attendanceRecorded(). */
