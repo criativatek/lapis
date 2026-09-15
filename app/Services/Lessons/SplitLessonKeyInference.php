@@ -16,7 +16,8 @@ use Illuminate\Support\Str;
  * possível: são todos a mesma lição.
  *
  * AMBÍGUO em tudo o resto — um grupo com dois tempos semanais, tempos já
- * parcialmente ligados à mão, um único grupo. Nesses casos não se escreve
+ * parcialmente ligados à mão, um único grupo. Tempos expirados, sem aulas e
+ * sem vínculo não entram na conta (0.145.3). Nesses casos não se escreve
  * vínculo nenhum; reporta-se, e o professor liga os tempos no horário.
  */
 final class SplitLessonKeyInference
@@ -34,13 +35,17 @@ final class SplitLessonKeyInference
      */
     public function infer(int $classId): array
     {
+        $today = now('Europe/Lisbon')->toDateString();
+
         /** @var Collection<int, RecurringLessonSlot> $slots */
         $slots = RecurringLessonSlot::query()
             ->where('class_id', $classId)
             ->whereNotNull('class_group_id')
             ->orderBy('starts_on')
             ->orderBy('id')
-            ->get();
+            ->get()
+            ->reject(fn (RecurringLessonSlot $slot): bool => $this->isStaleAndEmpty($slot, $today))
+            ->values();
 
         if ($slots->isEmpty()) {
             return ['status' => self::NoGroups, 'reason' => null, 'keys' => []];
@@ -75,6 +80,23 @@ final class SplitLessonKeyInference
             'reason' => null,
             'keys' => $slots->mapWithKeys(fn (RecurringLessonSlot $slot): array => [(int) $slot->getKey() => $key])->all(),
         ];
+    }
+
+    /**
+     * 0.145.3 — um tempo que já acabou, nunca teve aulas e não tem vínculo é
+     * só rasto de um horário substituído: não há nada para ligar nele, e
+     * contá-lo tornava ambígua a turma (8.º F: o tempo de sexta de T1 terminou
+     * a 08/09 e o de quarta que o substituiu foi criado sem `starts_on`).
+     *
+     * Um tempo expirado COM aulas continua a contar — essas aulas precisam da
+     * linhagem — e um tempo com vínculo explícito também, para o preservar.
+     */
+    private function isStaleAndEmpty(RecurringLessonSlot $slot, string $today): bool
+    {
+        return $slot->split_lesson_key === null
+            && $slot->ends_on !== null
+            && $slot->ends_on->toDateString() < $today
+            && ! $slot->lessons()->exists();
     }
 
     /**

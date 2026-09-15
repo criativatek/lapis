@@ -25,6 +25,14 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.145.3] — 2026-09-15
+
+### Corrigido
+- **`lapis:renumber-lessons` classificava como AMBÍGUA uma turma com um tempo de horário obsoleto.** Caso real: no 8.º F, o tempo de sexta de T1 terminou a 08/09 e nunca teve aulas, e o de quarta que o substituiu foi criado sem `starts_on`. Causa: `SplitLessonKeyInference` contava todos os tempos de grupo da turma. A verificação de versões sucessivas exige que o sucessor tenha `starts_on`, por isso o tempo antigo contava como segundo tempo semanal de T1. Agora um tempo **expirado** (`ends_on` antes de hoje, em Lisboa), **sem aulas** e **sem vínculo** fica fora da inferência: não é ligado, não cria ambiguidade e continua no histórico. Um tempo expirado com aulas continua a contar, porque essas aulas precisam da linhagem, e um tempo com `split_lesson_key` explícito também, para o vínculo ser preservado. Dois tempos do mesmo grupo em vigor ao mesmo tempo continuam a ser AMBÍGUO.
+
+### Sem alteração
+- Regra de `split_lesson_key`/`lesson_unit_key`, numeração normal, horário, backup `schema_version` 10, legal, IA e comercial. Sem migrations. **Depois do deploy**, repetir `lapis:renumber-lessons --class=ID` sem `--apply`.
+
 ## [0.145.2] — 2026-09-14
 
 ### Corrigido
