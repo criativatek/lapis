@@ -25,6 +25,25 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.146.2] — 2026-09-15
+
+### Corrigido
+- **Aulas materializadas fora da vigência do horário deixam de ficar stale.**
+  Alterar `starts_on`/`ends_on` de um tempo do horário (edição no lugar,
+  revisão versionada ou fecho do tempo) só mexia no tempo — uma aula já
+  materializada e agora fora da vigência ficava para sempre na semana,
+  como aconteceu com a 8F-AP (sexta 12:20–13:10): a "Lição 2" de 18/09
+  continuava em «Aulas e Sumários» depois de a vigência passar a 21/09.
+  `ReconcileLessonsWithSlotValidity` remove as aulas do tempo que ficaram
+  fora da nova vigência, abertas e sem conteúdo pedagógico (sem resultado,
+  sem sumário, sem plano, sem assiduidade), e renumera a turma; uma aula
+  fechada, ou com sumário/plano/faltas, nunca é tocada. Corre dentro da
+  transação de `LessonScheduleController::update()`/`destroy()` e de
+  `MaterializeLessonsForRange`, com a turma bloqueada como qualquer outra
+  operação que renumera — reabrir a semana também não recria a ocorrência.
+  Não é um cancelamento: a ocorrência deixou de pertencer ao horário, e por
+  isso nenhuma `CancelledLessonOccurrence` é criada.
+
 ## [0.146.1] — 2026-09-15
 
 ### Corrigido

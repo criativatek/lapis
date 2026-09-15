@@ -31,6 +31,7 @@ class MaterializeLessonsForRange
     public function __construct(
         private readonly LessonConflicts $conflicts,
         private readonly LessonNumbering $numbering,
+        private readonly ReconcileLessonsWithSlotValidity $reconcile,
     ) {}
 
     /**
@@ -62,9 +63,21 @@ class MaterializeLessonsForRange
                 ]);
             }
 
+            // AULAS QUE JÁ NÃO PERTENCEM AO HORÁRIO SAEM ANTES DE NASCEREM AS
+            // NOVAS (0.146.2): uma aula aberta e vazia materializada antes de a
+            // vigência do tempo mudar ficava, sem isto, presa na semana como
+            // uma ocorrência stale — e, numa revisão, competiria pelo mesmo
+            // instante com a aula da versão nova. `strict: false`: este
+            // caminho corre sozinho ao abrir a semana e não pode falhar —
+            // usa o mesmo plano B não-recusante de
+            // `LessonNumbering::numberMaterializedLessons()`, e nunca lança.
+            // A recusa estrita é só do editor do horário (LessonScheduleController),
+            // onde há um professor à espera a decidir o que fazer.
+            $reconciled = $this->reconcile->execute($lockedClass->id, strict: false);
+
             $lessons = collect();
 
-            $createdAny = false;
+            $createdAny = $reconciled['removed'] > 0;
 
             // As exceções letivas DESTE ano que cruzam o intervalo — os feriados,
             // as interrupções letivas e os dias não letivos (Fase 5.4). Lidas UMA
