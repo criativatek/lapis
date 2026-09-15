@@ -47,6 +47,7 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 
 ### Sem alteração
 - Composição comercial, IA e fórmulas de avaliação. **Legal**: foram auditados Termos, Privacidade e Acordo de Tratamento, e nenhum foi alterado nesta versão (ver a descrição da PR).
+
 ## [0.145.4] — 2026-09-15
 
 ### Corrigido
