@@ -1161,8 +1161,15 @@ class LessonScheduleTest extends TestCase
         ));
     }
 
+    /**
+     * 0.146.2 — remover um tempo já em vigor (sem `starts_on`) fecha-o de
+     * facto: a aula futura, ainda vazia, que ele tinha materializado deixa
+     * de pertencer à vigência e é reconciliada. Uma aula com conteúdo, ou já
+     * fechada, continuaria intocada — coberto em
+     * ScheduleValidityReconciliationTest.
+     */
     #[Test]
-    public function removing_an_already_in_vigor_slot_never_touches_its_existing_materialized_lessons(): void
+    public function removing_an_already_in_vigor_slot_reconciles_its_future_empty_materialized_lesson(): void
     {
         $schoolClass = $this->schoolClassFor($this->teacher);
         $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
@@ -1175,7 +1182,6 @@ class LessonScheduleTest extends TestCase
             $this->teacher,
         ));
         $lesson = $this->inTenant($this->organization, fn (): Lesson => Lesson::query()->sole());
-        $before = $this->lessonRow($lesson->id);
 
         $this->actingAs($this->teacher)
             ->withSession(['organization_id' => $this->organization->id])
@@ -1183,10 +1189,9 @@ class LessonScheduleTest extends TestCase
             ->assertRedirect();
 
         $this->assertDatabaseCount('recurring_lesson_slots', 1);
-        $this->assertSame($before, $this->inTenant(
-            $this->organization,
-            fn (): array => $this->byColumn(Lesson::query()->findOrFail($lesson->id)->getAttributes()),
-        ));
+        $this->inTenant($this->organization, function () use ($lesson): void {
+            $this->assertModelMissing($lesson);
+        });
     }
 
     /**
