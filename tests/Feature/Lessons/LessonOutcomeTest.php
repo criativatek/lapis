@@ -65,6 +65,27 @@ class LessonOutcomeTest extends TestCase
         });
     }
 
+    /**
+     * «Lecionada» não é um resultado especial (RecordLessonOutcome recusa-o)
+     * — passa por MarkLessonAsTaught, que nunca mexe no sumário: ao contrário
+     * de professor ausente / atividade da turma, uma aula lecionada É o
+     * registo do que aconteceu.
+     */
+    #[Test]
+    public function marking_a_lesson_as_taught_never_touches_its_summary(): void
+    {
+        $lesson = $this->thursdays($this->makeSlot(), ['08'])[0];
+        $this->summary($lesson, 'Sumário da aula.');
+
+        $this->inTenant($this->organization, fn () => app(MarkLessonAsTaught::class)->execute($lesson, $this->teacher, consolidateAttendance: false));
+
+        $this->inTenant($this->organization, function () use ($lesson): void {
+            $lesson->refresh();
+            $this->assertTrue($lesson->isTaught());
+            $this->assertSame('Sumário da aula.', $lesson->summary()->first()?->content);
+        });
+    }
+
     #[Test]
     public function a_class_external_activity_is_numbered_and_keeps_only_a_short_note(): void
     {
@@ -372,6 +393,24 @@ class LessonOutcomeTest extends TestCase
             $this->assertSame(['recorded' => 1, 'present' => 0, 'absent' => 1, 'not_recorded' => 0], $history['totals']);
             $this->assertSame(1, LessonAttendance::query()->where('status', AttendanceStatus::Absent)->whereHas('lesson', fn ($query) => $query->whereNull('attendance_recorded_at'))->count());
         });
+    }
+
+    /**
+     * ShiftLessonPlanning só desloca um sumário com algum campo preenchido; um
+     * sumário totalmente em branco (linha residual, sem texto nenhum) fica
+     * para trás por não ter nada que valha a pena mover. A regra canónica não
+     * abre exceção: nenhum resultado que não seja «lecionada» mantém sumário,
+     * nem em branco.
+     */
+    #[Test]
+    public function a_blank_summary_left_behind_by_planning_is_still_removed(): void
+    {
+        $lesson = $this->thursdays($this->makeSlot(), ['08'])[0];
+        $this->inTenant($this->organization, fn () => $lesson->summary()->create(['content' => '']));
+
+        $this->record($lesson, LessonOutcome::TeacherAbsent, TeacherAbsenceReason::Training);
+
+        $this->inTenant($this->organization, fn () => $this->assertNull($lesson->refresh()->summary()->first()));
     }
 
     #[Test]

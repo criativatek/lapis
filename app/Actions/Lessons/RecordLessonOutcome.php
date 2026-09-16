@@ -81,6 +81,12 @@ class RecordLessonOutcome
             $planning = $this->planning->from($locked, $actor);
             $renumbered = $this->renumber($locked->class_id, $planning['materialized']);
 
+            // ShiftLessonPlanning só retira o sumário da aula fechada quando
+            // algum campo tem texto — uma linha totalmente em branco fica
+            // para trás. Regra canónica: nenhum resultado que não seja
+            // «lecionada» mantém sumário, nem em branco.
+            $locked->summary()->delete();
+
             // SEM TEXTO: nem a nota da atividade nem nada sobre a pessoa. A
             // categoria do motivo é um código fechado.
             $this->audit->record(

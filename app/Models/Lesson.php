@@ -180,6 +180,19 @@ class Lesson extends Model
     }
 
     /**
+     * «Lecionada», nos mesmos termos de `whereCountsAsTaughtWithAttendance`:
+     * `outcome = taught`, ou — sem resultado ainda, com o estado antigo — `status
+     * = taught`. Professor ausente e atividade da turma NÃO são lecionadas,
+     * mesmo estando fechadas: é a distinção de que ClearLessonSummary precisa
+     * para saber que sumário nunca é registo do que aconteceu na aula.
+     */
+    public function isTaught(): bool
+    {
+        return $this->outcome === LessonOutcome::Taught
+            || ($this->outcome === null && $this->status === LessonStatus::Taught);
+    }
+
+    /**
      * «Lecionada», na base de dados: `outcome = taught`, ou — numa linha que
      * ainda não tem resultado mas tem o estado antigo (importação, fixture) —
      * `status = taught`. É a única ocorrência onde a assiduidade se aplica.

@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Lessons;
 
+use App\Models\LessonOutcome;
 use App\Models\LessonStatus;
+use App\Models\TeacherAbsenceReason;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
@@ -116,6 +118,38 @@ class ClearLessonSummaryTest extends TestCase
             'O que aconteceu.',
             $lesson->refresh()->summary->content,
         ));
+    }
+
+    /**
+     * Regra canónica: professor ausente / turma noutra atividade nunca mantém
+     * sumário de aula lecionada. Uma aula histórica nesse estado, com um
+     * sumário que ficou para trás (anterior à distinção, ou de importação),
+     * tem de poder limpar-se mesmo estando fechada — a aula não voltou a estar
+     * aberta, só perdeu o sumário órfão.
+     */
+    #[Test]
+    public function a_closed_non_taught_lesson_can_still_clear_a_leftover_summary(): void
+    {
+        $lesson = $this->makeLesson([
+            'status' => LessonStatus::Prepared,
+            'outcome' => LessonOutcome::TeacherAbsent,
+            'outcome_reason' => TeacherAbsenceReason::Training,
+            'outcome_recorded_at' => now(),
+            'outcome_recorded_by' => $this->teacher->id,
+        ]);
+        $this->inTenant(
+            $this->organization,
+            fn () => $lesson->summary()->create(['content' => 'Sumário órfão.']),
+        );
+
+        $this->asTeacher()->delete("/lessons/{$lesson->ulid}/summary")->assertSessionHasNoErrors();
+
+        $this->inTenant($this->organization, function () use ($lesson): void {
+            $lesson->refresh();
+            $this->assertNull($lesson->summary);
+            $this->assertTrue($lesson->isClosed());
+            $this->assertSame(LessonOutcome::TeacherAbsent, $lesson->outcome);
+        });
     }
 
     /** Editar o sumário de uma aula dada continua a ser possível — não mudou. */

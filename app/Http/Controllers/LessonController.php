@@ -86,7 +86,7 @@ class LessonController extends Controller implements HasMiddleware
                 // apresentação, e a recusa real vive em DeleteLesson e em
                 // ClearLessonSummary, que a repetem por sua conta.
                 'can_delete' => ! $lesson->isClosed(),
-                'can_clear_summary' => ! $lesson->isClosed()
+                'can_clear_summary' => ! $lesson->isTaught()
                     && $lesson->summary !== null
                     && trim($lesson->summary->content) !== '',
                 // «8.º F» ou «8.º F · T1» — composto no servidor para que o
