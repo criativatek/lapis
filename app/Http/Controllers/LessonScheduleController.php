@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Actions\Lessons\LinkSplitLessonSlot;
 use App\Actions\Lessons\MaterializeLessonsForRange;
+use App\Actions\Lessons\ReconcileLessonsWithSlotValidity;
 use App\Actions\Lessons\ReviseRecurringLessonSlot;
 use App\Http\Controllers\Concerns\RefusesDuringImpersonation;
 use App\Http\Requests\Lessons\RecurringLessonSlotRequest;
@@ -19,6 +20,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\ValidatedInput;
 use Illuminate\Validation\ValidationException;
 
 class LessonScheduleController extends Controller implements HasMiddleware
@@ -29,6 +31,7 @@ class LessonScheduleController extends Controller implements HasMiddleware
         protected MaterializeLessonsForRange $materializeLessonsForRange,
         protected ReviseRecurringLessonSlot $reviseRecurringLessonSlot,
         protected LinkSplitLessonSlot $linkSplitLessonSlot,
+        protected ReconcileLessonsWithSlotValidity $reconcileLessons,
         protected CurrentOrganization $currentOrganization,
     ) {}
 
@@ -87,13 +90,34 @@ class LessonScheduleController extends Controller implements HasMiddleware
 
         $validated = $request->safe();
 
+        // A VIGÊNCIA MANDA TAMBÉM NAS AULAS JÁ MATERIALIZADAS (0.146.2): a
+        // edição e a reconciliação correm na mesma transação, e se a
+        // reconciliação tiver de recusar (renumeraria histórico lecionado) a
+        // edição reverte com ela.
+        return DB::transaction(function () use ($request, $recurringLessonSlot, $timezone, $validated): RedirectResponse {
+            // Turma primeiro, tempo depois: uma materialização da mesma turma
+            // espera por esta edição em vez de ler a vigência a meio.
+            SchoolClass::query()->whereKey($recurringLessonSlot->class_id)->lockForUpdate()->firstOrFail();
+
+            $this->applyUpdate($request, $recurringLessonSlot, $timezone, $validated);
+
+            return $this->reconciled(back(), $recurringLessonSlot->class_id);
+        });
+    }
+
+    private function applyUpdate(
+        RecurringLessonSlotRequest $request,
+        RecurringLessonSlot $recurringLessonSlot,
+        string $timezone,
+        ValidatedInput $validated,
+    ): void {
         if (! $recurringLessonSlot->requiresVersioning($timezone)) {
-            return DB::transaction(function () use (
+            DB::transaction(function () use (
                 $recurringLessonSlot,
                 $request,
                 $timezone,
                 $validated,
-            ): RedirectResponse {
+            ): void {
                 /** @var RecurringLessonSlot $locked */
                 $locked = RecurringLessonSlot::query()
                     ->whereKey($recurringLessonSlot->getKey())
@@ -120,7 +144,7 @@ class LessonScheduleController extends Controller implements HasMiddleware
                     ]);
                     $this->linkIfRequested($request, $revised);
 
-                    return back();
+                    return;
                 }
 
                 $locked->update($validated->except('class_id', 'effective_from', 'same_lesson_as'));
@@ -130,9 +154,9 @@ class LessonScheduleController extends Controller implements HasMiddleware
                     ->whereDoesntHave('summary')
                     ->whereDoesntHave('plan')
                     ->update(['class_group_id' => $locked->class_group_id]);
-
-                return back();
             });
+
+            return;
         }
 
         // A MESMA REVERIFICAÇÃO QUE O RAMO COM BLOQUEIO JÁ FAZIA, e que faltava
@@ -164,8 +188,33 @@ class LessonScheduleController extends Controller implements HasMiddleware
             'ends_on' => $validated['ends_on'],
         ]);
         $this->linkIfRequested($request, $revised);
+    }
 
-        return back();
+    /**
+     * Retira as aulas abertas e vazias que ficaram fora da vigência e diz-o ao
+     * professor, sem detalhes técnicos. Corre dentro da transação de quem
+     * edita, com a turma bloqueada antes — a mesma disciplina da materialização
+     * e da eliminação.
+     */
+    private function reconciled(RedirectResponse $response, int $classId): RedirectResponse
+    {
+        SchoolClass::query()->whereKey($classId)->lockForUpdate()->firstOrFail();
+
+        $result = $this->reconcileLessons->execute($classId);
+
+        if ($result['removed'] > 0 && $result['preserved'] > 0) {
+            return $response->with('success', 'Horário atualizado. As aulas futuras fora da nova vigência foram ajustadas; as que já têm registos foram mantidas.');
+        }
+
+        if ($result['removed'] > 0) {
+            return $response->with('success', 'Horário atualizado. As aulas futuras fora da nova vigência foram ajustadas.');
+        }
+
+        if ($result['preserved'] > 0) {
+            return $response->with('success', 'Horário atualizado. As aulas fora da nova vigência que já têm registos foram mantidas.');
+        }
+
+        return $response;
     }
 
     /**
@@ -193,43 +242,76 @@ class LessonScheduleController extends Controller implements HasMiddleware
                 return back();
             }
 
-            // A future slot that already has Lessons materialized ahead of
-            // time (materialize() called for a future range): hard-deleting
-            // it would either hit the FK's nullOnDelete/restrict behaviour or,
-            // worse, silently orphan materialized data. Close it at its own
-            // starts_on instead — the earliest value that still satisfies the
-            // table's `ends_on >= starts_on` check, since today < starts_on
-            // here rules out today - 1.
-            $recurringLessonSlot->update(['ends_on' => $recurringLessonSlot->starts_on]);
+            // A slot that already has Lessons materialized under it — future
+            // ones materialized ahead of time, or a not-yet-started slot with
+            // no RELEVANT history but that already produced empty preparation
+            // Lessons — never hard-deletes: that would either hit the FK's
+            // nullOnDelete/restrict behaviour or, worse, silently orphan
+            // materialized data. Close it instead, and LOCK THE CLASS FIRST
+            // (same order `update()` and `reconciled()` already use) so a
+            // concurrent edit of the same slot cannot form the opposite
+            // waits-for edge and deadlock.
+            return DB::transaction(function () use ($recurringLessonSlot, $timezone): RedirectResponse {
+                SchoolClass::query()->whereKey($recurringLessonSlot->class_id)->lockForUpdate()->firstOrFail();
 
-            return back();
+                /** @var RecurringLessonSlot $locked */
+                $locked = RecurringLessonSlot::query()
+                    ->whereKey($recurringLessonSlot->getKey())
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                $locked->update(['ends_on' => $this->closesOnForHardStop($locked, $timezone)]);
+
+                return $this->reconciled(back(), $locked->class_id);
+            });
         }
 
         // Requires versioning: never delete. Close it as of today, locked
         // the same way ReviseRecurringLessonSlot locks a revise, so a
-        // concurrent edit and a concurrent removal cannot race.
+        // concurrent edit and a concurrent removal cannot race. The class is
+        // locked FIRST, matching update()'s order, to avoid the deadlock
+        // above.
         return DB::transaction(function () use ($recurringLessonSlot, $timezone): RedirectResponse {
+            SchoolClass::query()->whereKey($recurringLessonSlot->class_id)->lockForUpdate()->firstOrFail();
+
             /** @var RecurringLessonSlot $locked */
             $locked = RecurringLessonSlot::query()
                 ->whereKey($recurringLessonSlot->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            // The only way to reach this branch with starts_on exactly today
-            // is with at least one Lesson already under it (requiresVersioning()
-            // routed the Lesson-free case to the hard-delete branch above) —
-            // so closing "today" itself is always correct here, and always
-            // satisfies ends_on >= starts_on since the two are equal. Every
-            // other in-vigor starts_on is strictly in the past, where
-            // "yesterday" is the usual close.
-            $closesOn = $locked->startedExactlyToday($timezone)
-                ? CarbonImmutable::now($timezone)->startOfDay()->toDateString()
-                : CarbonImmutable::now($timezone)->startOfDay()->subDay()->toDateString();
+            $locked->update(['ends_on' => $this->closesOnForHardStop($locked, $timezone)]);
 
-            $locked->update(['ends_on' => $closesOn]);
-
-            return back();
+            return $this->reconciled(back(), $locked->class_id);
         });
+    }
+
+    /**
+     * The `ends_on` that stops a slot from producing anything new from now
+     * on, without ever moving it BEFORE its own `starts_on` (the table's
+     * `ends_on >= starts_on` CHECK, and the same "clamp, never extend" spirit
+     * as `ReviseRecurringLessonSlot`).
+     *
+     * - `starts_on` strictly in the future: closing exactly on `starts_on`
+     *   is the earliest legal value and lets that single already-materialized
+     *   day stand — nothing PAST it is ever produced.
+     * - `starts_on` null (always in vigor) or already today/in the past:
+     *   the slot is live RIGHT NOW, so `starts_on` itself cannot be the
+     *   close date — that would either violate the CHECK (`starts_on` is
+     *   null) or reopen a boundary that already produced real occurrences.
+     *   "Today" (if it started exactly today) or "yesterday" — the same
+     *   closesOn the requires-versioning branch already uses — stops future
+     *   production while leaving what already happened alone.
+     */
+    private function closesOnForHardStop(RecurringLessonSlot $slot, string $timezone): string
+    {
+        if ($slot->starts_on !== null && ! $slot->isAlreadyInVigor($timezone)) {
+            return $slot->starts_on->toDateString();
+        }
+
+        return $slot->startedExactlyToday($timezone)
+            ? CarbonImmutable::now($timezone)->startOfDay()->toDateString()
+            : CarbonImmutable::now($timezone)->startOfDay()->subDay()->toDateString();
     }
 
     public function materialize(Request $request, SchoolClass $class): RedirectResponse
