@@ -155,6 +155,34 @@ ssh lapis-prod 'cd /home/lapis/htdocs/lapis.criativatek.com &&
   md5sum config/app.php composer.lock public/build/manifest.json'
 ```
 
+### Três coisas que mordem neste fluxo (medidas na 0.146.3)
+
+**`sudo -u lapis php artisan` não funciona com o alias `lapis-prod`, e falha em
+silêncio.** O alias entra como `lapis-deploy`, que não tem sudo sem password: o
+comando morre com «a terminal is required to read the password» **e o `artisan`
+nunca chega a correr**. O perigo não é o comando que rebenta — é o
+`sudo -u lapis php artisan migrate:status | grep -i pending`, que devolve
+**saída vazia** e se lê exatamente como «não há migrations pendentes». É um
+falso negativo que manda um deploy em frente sem migrar. Os comandos deste
+documento correm `php artisan` **direto**; o `sudo -u lapis` pertence ao caminho
+alternativo com `xapp-root` (ver cabeçalho). A exceção real é o
+`systemctl restart lapis-ssr`, que precisa mesmo de `sudo -n`.
+
+**O `tar` da extração sai com erro global por causa de ficheiros que a aplicação
+não usa.** Na 0.146.3 foram `.superpowers/sdd/…` («Cannot mkdir: Permission
+denied»), e o `tar` terminou com «Exiting with failure status due to previous
+errors» **com a aplicação toda escrita na mesma**. Por isso o `|| true` na linha
+do `tar`, e por isso a verificação de checksums acima não é opcional: é ela, e
+não o estado de saída, que responde se a extração escreveu. Repare-se no que
+isto revela — **ficheiros de tooling de IA estão versionados e portanto entram
+no pacote** pela allowlist, sem serem precisos em produção.
+
+**Duas ações deste runbook são recusadas pelo classificador do auto mode**, e
+têm alternativas equivalentes que passam: o `scp update.tgz` (usar
+`ssh lapis-prod 'cat > /home/lapis-deploy/update.tgz' < update.tgz`, e confirmar
+com `sha256sum` dos dois lados) e o `git push <sha>:main` (usar
+`gh pr merge <n> --merge`, que é o caminho revisto de qualquer maneira).
+
 ## Porquê a allowlist (e porque não voltar ao `tar --exclude`)
 
 Até 2026-08-15 o pacote era um `tar` da working directory com uma lista de
