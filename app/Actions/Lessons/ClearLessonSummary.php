@@ -26,7 +26,7 @@ use Illuminate\Validation\ValidationException;
  *
  * O ESTADO REGRESSA A «Por preparar» porque é exatamente a transição inversa
  * da que SaveLessonSummary faz ao gravar (preparation → prepared). O estado
- * «Preparado» nesta aplicação quer dizer «tem sumário escrito»; sem sumário,
+ * «Preparada» nesta aplicação quer dizer «tem sumário escrito»; sem sumário,
  * dizê-lo seria falso.
  *
  * UMA AULA LECIONADA NÃO É LIMPA POR AQUI. Editar o sumário de uma aula dada

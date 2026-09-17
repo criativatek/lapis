@@ -517,23 +517,23 @@ describe('lessons/Show — assiduidade', () => {
 });
 
 describe('lessons/Show — resultado registado (0.146.1)', () => {
-    it('o cabeçalho mostra o resultado e não «Preparado», sem ação de lecionar', () => {
+    it('o cabeçalho mostra o resultado e não «Preparada», sem ação de lecionar', () => {
         const wrapper = mountPage({
             status: 'prepared',
-            status_label: 'Preparado',
+            status_label: 'Preparada',
             outcome: 'teacher_absent',
             outcome_label: 'Professor ausente',
             can_record_outcome: false,
         });
 
         expect(wrapper.get('[data-testid="lesson-state"]').text()).toBe('Professor ausente');
-        expect(wrapper.text()).not.toContain('Preparado');
+        expect(wrapper.text()).not.toContain('Preparada');
         expect(wrapper.findAll('button').some((button) => button.text().includes('Marcar como lecionada'))).toBe(false);
     });
 
     it('sem resultado mantém o estado de preparação', () => {
-        const wrapper = mountPage({ status: 'prepared', status_label: 'Preparado' });
+        const wrapper = mountPage({ status: 'prepared', status_label: 'Preparada' });
 
-        expect(wrapper.get('[data-testid="lesson-state"]').text()).toBe('Preparado');
+        expect(wrapper.get('[data-testid="lesson-state"]').text()).toBe('Preparada');
     });
 });

@@ -33,9 +33,16 @@ const props = defineProps<{
     today: string;
     selectable: boolean;
     selected: string[];
+    /** Fecho rápido (0.147.0): só as aulas abertas que já começaram entram no lote. */
+    isSelectable?: (lesson: WeekLesson) => boolean;
 }>();
 
 const emit = defineEmits<{ (event: 'update:selected', value: string[]): void }>();
+
+defineSlots<{
+    block(props: { lesson: WeekLesson; time: string }): unknown;
+    actions(props: { lesson: WeekLesson; time: string; variant: 'mobile' | 'desktop' }): unknown;
+}>();
 
 const timeFormatter = new Intl.DateTimeFormat('pt-PT', {
     hour: '2-digit',
@@ -115,6 +122,10 @@ function lessonTime(lesson: WeekLesson): string {
  * ignorado, para que um estado inesperado signifique «não selecionada» em vez de
  * entrar na lista como verdadeiro por ser uma string não vazia.
  */
+function canSelect(lesson: WeekLesson): boolean {
+    return props.isSelectable ? props.isSelectable(lesson) : true;
+}
+
 function toggle(ulid: string, checked: boolean | 'indeterminate'): void {
     emit(
         'update:selected',
@@ -162,18 +173,21 @@ function toggle(ulid: string, checked: boolean | 'indeterminate'): void {
                     class="flex items-start gap-3 rounded-xl border bg-card p-3"
                 >
                     <Checkbox
-                        v-if="selectable"
+                        v-if="selectable && canSelect(lesson)"
                         :model-value="selected.includes(lesson.ulid)"
                         :aria-label="`Selecionar a aula de ${lesson.context_label}`"
                         class="mt-1"
                         @update:model-value="(value: boolean | 'indeterminate') => toggle(lesson.ulid, value)"
                     />
+                    <div class="min-w-0 flex-1 space-y-2">
                     <Link
                         :href="`/lessons/${lesson.ulid}`"
                         class="min-h-11 min-w-0 flex-1 outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                         <slot name="block" :lesson="lesson" :time="lessonTime(lesson)" />
                     </Link>
+                        <slot name="actions" :lesson="lesson" :time="lessonTime(lesson)" variant="mobile" />
+                    </div>
                 </div>
             </div>
         </div>
@@ -207,21 +221,24 @@ function toggle(ulid: string, checked: boolean | 'indeterminate'): void {
                     <div
                         v-for="lesson in day.lessons"
                         :key="lesson.ulid"
-                        class="flex items-start gap-2 rounded-lg border bg-card p-2"
+                        class="group flex items-start gap-2 rounded-lg border bg-card p-2"
                     >
                         <Checkbox
-                            v-if="selectable"
+                            v-if="selectable && canSelect(lesson)"
                             :model-value="selected.includes(lesson.ulid)"
                             :aria-label="`Selecionar a aula de ${lesson.context_label}`"
                             class="mt-0.5"
                             @update:model-value="(value: boolean | 'indeterminate') => toggle(lesson.ulid, value)"
                         />
+                        <div class="min-w-0 flex-1 space-y-1.5">
                         <Link
                             :href="`/lessons/${lesson.ulid}`"
                             class="min-w-0 flex-1 outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                             <slot name="block" :lesson="lesson" :time="lessonTime(lesson)" />
                         </Link>
+                            <slot name="actions" :lesson="lesson" :time="lessonTime(lesson)" variant="desktop" />
+                        </div>
                     </div>
                 </section>
             </div>

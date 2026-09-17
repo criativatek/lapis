@@ -8,6 +8,7 @@ use App\Http\Requests\Lessons\WeeklyLessonsRequest;
 use App\Models\AcademicYear;
 use App\Models\ClassGroup;
 use App\Models\SchoolClass;
+use App\Models\TeacherAbsenceReason;
 use App\Models\User;
 use App\Services\Lessons\WeeklyLessonsQuery;
 use App\Support\Entitlements\AccessState;
@@ -85,6 +86,12 @@ class LessonWeekController extends Controller implements HasMiddleware
             // a sequência em que se insere é (turma, grupo), e sem os grupos o
             // formulário não conseguiria distinguir T1 de T2.
             'insertableClasses' => $academicYear === null ? [] : $this->insertableClasses($request, $academicYear),
+            // Fecho rápido (0.147.0): as categorias de «Professor ausente» vão UMA
+            // vez com a semana, e não por cartão — o diálogo é um só na página.
+            'absenceReasons' => array_map(
+                fn (TeacherAbsenceReason $reason): array => ['value' => $reason->value, 'label' => $reason->label()],
+                TeacherAbsenceReason::cases(),
+            ),
         ]);
     }
 

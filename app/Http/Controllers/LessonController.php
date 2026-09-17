@@ -267,8 +267,8 @@ class LessonController extends Controller implements HasMiddleware
     {
         return match ($status) {
             LessonStatus::Preparation => 'Por preparar',
-            LessonStatus::Prepared => 'Preparado',
-            LessonStatus::Taught => 'Lecionado',
+            LessonStatus::Prepared => 'Preparada',
+            LessonStatus::Taught => 'Lecionada',
         };
     }
 

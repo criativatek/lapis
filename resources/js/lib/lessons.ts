@@ -43,7 +43,7 @@ export type WeekLesson = {
  * Preparação (por preparar / preparado) e resultado da ocorrência (lecionada /
  * professor ausente / turma noutra atividade) são eixos diferentes, mas o
  * cartão mostra um só: uma aula com resultado registado está fechada, e
- * «Preparado» ao lado de «Professor ausente» fazia-a parecer pendente. O
+ * «Preparada» ao lado de «Professor ausente» fazia-a parecer pendente. O
  * resultado ganha; sem resultado, fica a preparação. Escrito uma vez para a
  * Lista, o Horário e a página da aula não voltarem a divergir.
  */
@@ -63,4 +63,66 @@ export function lessonDisplayState(lesson: LessonStateSource): { value: string; 
     }
 
     return { value: lesson.status, label: lesson.status_label };
+}
+
+/**
+ * Fecho rápido (0.147.0) — em que ponto do tempo está uma aula ABERTA.
+ *
+ * O sistema sugere; o professor confirma. Nada aqui marca uma aula como
+ * lecionada por ter passado a hora: esta função só decide o que o cartão
+ * OFERECE, e o servidor continua a aceitar (ou recusar) exatamente o que
+ * aceitava antes. É apresentação, não regra de domínio.
+ *
+ * - `closed`      — já lecionada ou com resultado registado: nada a oferecer.
+ * - `future`      — ainda não começou: sem «✓ Lecionada» e fora do lote rápido.
+ * - `in_progress` — começou e ainda não terminou: estado normal + «✓ Lecionada».
+ * - `ended`       — terminou e continua aberta: «Aula terminada · Confirmar estado».
+ *
+ * `now` entra como argumento, e não é lido do relógio aqui dentro, para que a
+ * mesma aula dê a mesma resposta num teste de outubro e noutro de março.
+ * Sem `ends_at`, só se sabe que terminou quando o DIA (em Lisboa) já passou.
+ */
+export type LessonQuickCloseState = 'closed' | 'future' | 'in_progress' | 'ended';
+
+export type LessonTimingSource = {
+    status: LessonStatus;
+    outcome: WeekLesson['outcome'];
+    starts_at: string;
+    ends_at: string | null;
+};
+
+const lisbonDateFormatter = new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    timeZone: 'Europe/Lisbon',
+});
+
+function lisbonDate(value: Date): string {
+    return lisbonDateFormatter.format(value);
+}
+
+export function lessonQuickCloseState(lesson: LessonTimingSource, now: Date): LessonQuickCloseState {
+    if (lesson.status === 'taught' || lesson.outcome !== null) {
+        return 'closed';
+    }
+
+    const startsAt = new Date(lesson.starts_at);
+
+    if (startsAt.getTime() > now.getTime()) {
+        return 'future';
+    }
+
+    if (lesson.ends_at !== null) {
+        return new Date(lesson.ends_at).getTime() < now.getTime() ? 'ended' : 'in_progress';
+    }
+
+    return lisbonDate(startsAt) < lisbonDate(now) ? 'ended' : 'in_progress';
+}
+
+/** Uma aula aberta que já começou — a única que o fecho rápido oferece. */
+export function isQuickClosable(lesson: LessonTimingSource, now: Date): boolean {
+    const state = lessonQuickCloseState(lesson, now);
+
+    return state === 'in_progress' || state === 'ended';
 }

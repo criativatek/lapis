@@ -57,7 +57,7 @@ function assessment(overrides: Partial<CalendarAssessment> = {}): CalendarAssess
         subject: 'Matemática',
         type: 'Teste',
         status: 'prepared',
-        status_label: 'Preparado',
+        status_label: 'Preparada',
         href: '/instruments/inst-a',
         ...overrides,
     };

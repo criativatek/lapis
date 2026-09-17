@@ -66,7 +66,7 @@ class ClearLessonSummaryTest extends TestCase
         $this->assertDatabaseHas('recurring_lesson_slots', ['id' => $slot->id]);
         $this->inTenant($this->organization, function () use ($lesson): void {
             $this->assertNull($lesson->refresh()->summary);
-            // §7: sem sumário, «Preparado» seria falso.
+            // §7: sem sumário, «Preparada» seria falso.
             $this->assertSame(LessonStatus::Preparation, $lesson->status);
         });
     }

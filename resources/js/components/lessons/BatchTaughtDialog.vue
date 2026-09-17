@@ -60,6 +60,20 @@ const to = ref(props.weekStart);
 const preview = ref<Preview | null>(null);
 const loading = ref(false);
 const failure = ref<string | null>(null);
+/**
+ * Aberto a partir da barra do fecho rápido (0.147.0): o diálogo fica preso ao
+ * modo «Aulas selecionadas» e não mostra os outros — quem escolheu as aulas no
+ * ecrã não deve ter de voltar a escolher «quais».
+ */
+const selectionOnly = ref(false);
+
+function openForSelection(): void {
+    selectionOnly.value = true;
+    mode.value = 'selection';
+    open.value = true;
+}
+
+defineExpose({ openForSelection });
 
 const form = useForm({
     mode: 'today' as Mode,
@@ -127,7 +141,16 @@ function payload(): Record<string, unknown> {
 /** Recarregada sempre que o modo ou as datas mudam: o número na confirmação
  *  nunca pode ser o de uma pergunta anterior. */
 async function loadPreview(): Promise<void> {
-    if (!open.value) {
+    if (!open.value || form.processing) {
+        return;
+    }
+
+    // Sem aulas selecionadas não há pergunta a fazer ao servidor — acontece,
+    // por exemplo, quando o próprio lote acabou de fechar a seleção.
+    if (mode.value === 'selection' && props.selected.length === 0) {
+        preview.value = null;
+        failure.value = null;
+
         return;
     }
 
@@ -169,6 +192,9 @@ watch(open, (value) => {
     if (value) {
         from.value = props.weekStart;
         to.value = props.weekStart;
+    } else if (selectionOnly.value) {
+        selectionOnly.value = false;
+        mode.value = 'today';
     }
 });
 
@@ -197,13 +223,13 @@ function submit(): void {
         </DialogTrigger>
         <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-lg">
             <DialogHeader class="space-y-2">
-                <DialogTitle>Marcar aulas como lecionadas</DialogTitle>
+                <DialogTitle>{{ selectionOnly ? 'Marcar selecionadas como lecionadas' : 'Marcar aulas como lecionadas' }}</DialogTitle>
                 <DialogDescription>
-                    Escolhe quais. Nada é alterado antes de confirmares.
+                    {{ selectionOnly ? 'Confirma o resumo abaixo. Nada é alterado antes de confirmares.' : 'Escolhe quais. Nada é alterado antes de confirmares.' }}
                 </DialogDescription>
             </DialogHeader>
 
-            <fieldset class="space-y-2">
+            <fieldset v-if="!selectionOnly" class="space-y-2">
                 <legend class="sr-only">Que aulas marcar</legend>
                 <label
                     v-for="option in modes"
@@ -257,7 +283,7 @@ function submit(): void {
                          lecionada com a assiduidade por registar. -->
                     <p v-if="preview.attendance_pending > 0" class="mt-2 text-xs text-muted-foreground">
                         {{ preview.attendance_pending }} aula{{ preview.attendance_pending === 1 ? '' : 's' }}
-                        fica{{ preview.attendance_pending === 1 ? '' : 'm' }} com a assiduidade por registar.
+                        sem rascunho de faltas fica{{ preview.attendance_pending === 1 ? '' : 'm' }} com «Assiduidade por registar».
                         Podes registá-la depois na página de cada aula.
                     </p>
                     <ul

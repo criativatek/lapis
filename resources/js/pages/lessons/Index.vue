@@ -5,6 +5,7 @@ import {
     CalendarDays,
     CheckCircle2,
     CheckSquare,
+    CircleAlert,
     ChevronLeft,
     ChevronRight,
     FileText,
@@ -13,17 +14,20 @@ import {
     ListOrdered,
     RefreshCw,
 } from '@lucide/vue';
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import BatchTaughtDialog from '@/components/lessons/BatchTaughtDialog.vue';
 import InsertLessonDialog from '@/components/lessons/InsertLessonDialog.vue';
+import LessonOutcomeDialog from '@/components/lessons/LessonOutcomeDialog.vue';
+import type { SpecialLessonOutcome } from '@/components/lessons/LessonOutcomeDialog.vue';
+import LessonQuickActions from '@/components/lessons/LessonQuickActions.vue';
 import LessonTimetable from '@/components/lessons/LessonTimetable.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { lessonDisplayState } from '@/lib/lessons';
+import { isQuickClosable, lessonDisplayState, lessonQuickCloseState } from '@/lib/lessons';
 import type { WeekLesson } from '@/lib/lessons';
 import { statusToneClasses } from '@/lib/statusTone';
 import { capitalizeFirst } from '@/lib/text';
@@ -42,6 +46,8 @@ const props = defineProps<{
     configuredClassesCount: number;
     today: string;
     insertableClasses: InsertableClass[];
+    /** As categorias de «Professor ausente» — uma lista para a página, não uma por cartão. */
+    absenceReasons: { value: string; label: string }[];
 }>();
 
 const dateFormatter = new Intl.DateTimeFormat('pt-PT', {
@@ -132,9 +138,44 @@ watch(selectionMode, (active) => {
     }
 });
 
-const selectableLessons = computed(() =>
-    props.lessons.filter((lesson) => lesson.status !== 'taught' && lesson.outcome === null),
-);
+/**
+ * «Agora», reativo (0.147.0). Atualizado a cada minuto para que uma aula que
+ * termina com a página aberta passe a pedir confirmação sem recarregar. É só
+ * apresentação: o servidor não lê este relógio para nada.
+ */
+const now = ref(new Date());
+let clock: ReturnType<typeof setInterval> | null = null;
+
+onMounted(() => {
+    clock = setInterval(() => {
+        now.value = new Date();
+    }, 60_000);
+});
+
+onBeforeUnmount(() => {
+    if (clock !== null) {
+        clearInterval(clock);
+    }
+});
+
+function quickState(lesson: WeekLesson) {
+    return lessonQuickCloseState(lesson, now.value);
+}
+
+function canQuickClose(lesson: WeekLesson): boolean {
+    return isQuickClosable(lesson, now.value);
+}
+
+// Só aulas abertas que já começaram entram no lote rápido: uma aula futura
+// não é selecionável, e não existe «selecionar todas» às cegas.
+const selectableLessons = computed(() => props.lessons.filter((lesson) => canQuickClose(lesson)));
+
+// Depois de fechar aulas (cartão ou lote) as props recarregam: o que deixou de
+// ser elegível sai da seleção em vez de ficar lá escondido.
+watch(selectableLessons, (lessons) => {
+    const eligible = new Set(lessons.map((lesson) => lesson.ulid));
+    selected.value = selected.value.filter((ulid) => eligible.has(ulid));
+});
 
 /** Ver LessonTimetable: «indeterminate» conta como não selecionada. */
 function toggle(ulid: string, checked: boolean | 'indeterminate'): void {
@@ -144,8 +185,21 @@ function toggle(ulid: string, checked: boolean | 'indeterminate'): void {
             : selected.value.filter((value) => value !== ulid);
 }
 
-function selectAll(): void {
-    selected.value = selectableLessons.value.map((lesson) => lesson.ulid);
+const batchDialog = ref<InstanceType<typeof BatchTaughtDialog> | null>(null);
+
+function confirmSelection(): void {
+    batchDialog.value?.openForSelection();
+}
+
+// Um só diálogo de resultado para a página inteira, apontado à aula escolhida.
+const outcomeDialogOpen = ref(false);
+const outcomeLesson = ref<WeekLesson | null>(null);
+const outcomeKind = ref<SpecialLessonOutcome>('teacher_absent');
+
+function openOutcome(lesson: WeekLesson, outcome: SpecialLessonOutcome): void {
+    outcomeLesson.value = lesson;
+    outcomeKind.value = outcome;
+    outcomeDialogOpen.value = true;
 }
 
 // «Ver sumário completo»: expansão inline, um clique, sem hover e sem ir ao
@@ -320,6 +374,7 @@ function attendanceLabel(lesson: WeekLesson): string | null {
             </Button>
 
             <BatchTaughtDialog
+                ref="batchDialog"
                 :week-start="week.start"
                 :today="today"
                 :selected="selected"
@@ -332,35 +387,9 @@ function attendanceLabel(lesson: WeekLesson): string | null {
             />
         </div>
 
-        <div
-            v-if="selectionMode"
-            class="flex flex-wrap items-center gap-3 rounded-xl border bg-muted/40 p-3 text-sm"
-            role="status"
-        >
-            <span
-                >{{ selected.length }} de
-                {{ selectableLessons.length }} aulas selecionadas.</span
-            >
-            <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                class="min-h-9"
-                @click="selectAll"
-            >
-                Selecionar todas
-            </Button>
-            <Button
-                v-if="selected.length > 0"
-                type="button"
-                variant="ghost"
-                size="sm"
-                class="min-h-9"
-                @click="selected = []"
-            >
-                Limpar seleção
-            </Button>
-        </div>
+        <p v-if="selectionMode" class="text-sm text-muted-foreground">
+            Só é possível selecionar aulas por fechar que já começaram.
+        </p>
 
         <EmptyState
             v-if="!academicYear"
@@ -387,6 +416,7 @@ function attendanceLabel(lesson: WeekLesson): string | null {
             :week-start="week.start"
             :today="today"
             :selectable="selectionMode"
+            :is-selectable="canQuickClose"
             :selected="selected"
             @update:selected="selected = $event"
         >
@@ -421,6 +451,23 @@ function attendanceLabel(lesson: WeekLesson): string | null {
                 >
                     {{ attendanceLabel(lesson) }}
                 </p>
+                <p
+                    v-if="quickState(lesson) === 'ended'"
+                    class="mt-1 flex items-start gap-1 text-xs font-medium text-amber-700 dark:text-amber-400"
+                    data-testid="lesson-attention"
+                >
+                    <CircleAlert class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" /> Aula terminada · Confirmar estado
+                </p>
+            </template>
+            <template #actions="{ lesson, time, variant }">
+                <LessonQuickActions
+                    v-if="canQuickClose(lesson)"
+                    :lesson-ulid="lesson.ulid"
+                    :context-label="lesson.context_label"
+                    :time="time"
+                    :variant="variant"
+                    @outcome="(outcome) => openOutcome(lesson, outcome)"
+                />
             </template>
         </LessonTimetable>
 
@@ -434,12 +481,12 @@ function attendanceLabel(lesson: WeekLesson): string | null {
                     <li
                         v-for="lesson in day.lessons"
                         :key="lesson.ulid"
-                        class="flex items-start"
+                        class="group flex items-start"
                     >
-                        <div v-if="selectionMode" class="py-6 pl-4">
+                        <div v-if="selectionMode" class="w-8 shrink-0 py-6 pl-4">
                             <Checkbox
+                                v-if="canQuickClose(lesson)"
                                 :model-value="selected.includes(lesson.ulid)"
-                                :disabled="lesson.status === 'taught' || lesson.outcome !== null"
                                 :aria-label="`Selecionar a aula de ${lesson.context_label}`"
                                 @update:model-value="
                                     (value: boolean | 'indeterminate') => toggle(lesson.ulid, value)
@@ -513,13 +560,23 @@ function attendanceLabel(lesson: WeekLesson): string | null {
                                         class="text-xs text-muted-foreground"
                                         >{{ attendanceLabel(lesson) }}</span
                                     >
+                                    <span
+                                        v-if="quickState(lesson) === 'ended'"
+                                        class="flex max-w-[7.5rem] items-start justify-end gap-1 text-right text-xs font-medium text-amber-700 sm:max-w-[11rem] sm:items-center dark:text-amber-400"
+                                        data-testid="lesson-attention"
+                                        ><CircleAlert class="mt-0.5 size-3.5 shrink-0 sm:mt-0" aria-hidden="true" /> Aula terminada · Confirmar estado</span
+                                    >
                                 </div>
                             </Link>
                             <!-- FORA do <Link>: um botão dentro de uma ligação
                                  navegaria ao ser ativado pelo teclado, e o que
                                  este faz é abrir texto, não mudar de página. -->
-                            <div v-if="lesson.summary_full" class="px-4 pb-3">
+                            <div
+                                v-if="lesson.summary_full || canQuickClose(lesson)"
+                                class="flex flex-wrap items-center justify-between gap-2 px-4 pb-3"
+                            >
                                 <Button
+                                    v-if="lesson.summary_full"
                                     type="button"
                                     variant="ghost"
                                     size="sm"
@@ -533,11 +590,59 @@ function attendanceLabel(lesson: WeekLesson): string | null {
                                             : 'Ver sumário completo'
                                     }}
                                 </Button>
+                                <!-- Fecho rápido (0.147.0): só aulas abertas que já começaram. -->
+                                <LessonQuickActions
+                                    v-if="canQuickClose(lesson)"
+                                    class="ml-auto w-full sm:w-auto"
+                                    :lesson-ulid="lesson.ulid"
+                                    :context-label="lesson.context_label"
+                                    :time="lessonTime(lesson)"
+                                    @outcome="(outcome) => openOutcome(lesson, outcome)"
+                                />
                             </div>
                         </div>
                     </li>
                 </ul>
             </section>
         </div>
+
+        <!-- Barra do lote rápido: fixa no fundo enquanto se seleciona. -->
+        <div
+            v-if="selectionMode && academicYear"
+            class="sticky bottom-4 z-10 flex flex-wrap items-center gap-3 rounded-xl border bg-card p-3 text-sm shadow-lg"
+            data-testid="quick-batch-bar"
+        >
+            <span role="status" aria-live="polite" class="font-medium">
+                {{ selected.length }} aula{{ selected.length === 1 ? '' : 's' }} selecionada{{ selected.length === 1 ? '' : 's' }}
+            </span>
+            <Button
+                v-if="selected.length > 0"
+                type="button"
+                variant="ghost"
+                size="sm"
+                class="min-h-9"
+                @click="selected = []"
+            >
+                Limpar seleção
+            </Button>
+            <Button
+                type="button"
+                size="sm"
+                class="ml-auto min-h-11 sm:min-h-9"
+                :disabled="selected.length === 0"
+                data-testid="quick-batch-confirm"
+                @click="confirmSelection"
+            >
+                <CheckSquare class="size-4" /> Marcar selecionadas como lecionadas
+            </Button>
+        </div>
+
+        <LessonOutcomeDialog
+            v-model:open="outcomeDialogOpen"
+            :lesson-ulid="outcomeLesson?.ulid ?? null"
+            :reasons="absenceReasons"
+            :initial-outcome="outcomeKind"
+            :lesson-context="outcomeLesson ? `${outcomeLesson.context_label} · ${lessonTime(outcomeLesson)}` : null"
+        />
     </main>
 </template>

@@ -25,6 +25,49 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.147.0] — 2026-09-17
+
+### Adicionado
+- **Fecho rápido de aulas na semana.** Fechar a aula deixou de obrigar a abrir
+  cada aula. Na Lista e no Horário, uma aula **aberta que já começou** mostra um
+  botão discreto **«✓ Lecionada»** e um menu **«•••»** com **«Professor
+  ausente»** e **«Turma em outras atividades letivas»**. O sistema sugere; o
+  professor confirma — **nada é marcado por ter passado a hora**.
+  - «✓ Lecionada» usa o mesmo pedido da página da aula: **sem rascunho de
+    faltas fica «Sem faltas»**; com rascunho, consolida-o.
+  - Os dois resultados abrem o mesmo diálogo da página da aula, agora um
+    componente partilhado (`LessonOutcomeDialog`) e um só por página.
+  - Aula futura: estado normal, sem ação. Aula em curso: estado normal +
+    «✓ Lecionada». Aula **terminada e ainda aberta** (hoje ou num dia anterior):
+    aviso âmbar com ícone **«Aula terminada · Confirmar estado»**.
+  - No telemóvel há um só botão de 44px, **«Fechar aula»**, que abre um menu
+    com as três ações em itens de 44px.
+- **Lote rápido.** No modo de seleção só as aulas fecháveis têm caixa (nas duas
+  vistas — o Horário aceitava qualquer aula); uma barra fixa mostra **«N aulas
+  selecionadas»** e **«Marcar selecionadas como lecionadas»**, que abre a
+  pré-visualização existente com a lista, as não elegíveis e o motivo, e quantas
+  ficam com **«Assiduidade por registar»** (o lote não presume presenças).
+
+### Alterado
+- **O estado da aula concorda com «aula».** «Preparado» → **«Preparada»** e
+  «Lecionado» → **«Lecionada»** na semana e na página da aula. O estado dos
+  instrumentos («Preparado») não muda.
+- Sai o botão **«Selecionar todas»**: selecionar tudo às cegas era o contrário
+  de confirmar aula a aula.
+
+### Notas técnicas
+- A regra de tempo é apresentação pura e testável:
+  `lessonQuickCloseState(lesson, now)` / `isQuickClosable` em `lib/lessons.ts`,
+  com um `now` reativo atualizado a cada minuto. O servidor mantém exatamente as
+  permissões e recusas que já tinha.
+- Sem migrations, sem endpoints nem eventos de auditoria novos, sem pedidos por
+  cartão: as categorias de ausência chegam uma vez com a semana
+  (`absenceReasons`).
+- Testes: `QuickCloseLessonsTest` fixa as duas semânticas de assiduidade
+  (cartão vs. lote), autorização, resultados e lote sem escrita em aulas alheias
+  ou fechadas; Vitest para a derivação temporal e para a página da semana, com
+  relógio congelado.
+
 ## [0.146.5] — 2026-09-17
 
 > **Número reservado.** A 0.146.4 fica para o hotfix mobile/login preparado em

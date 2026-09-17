@@ -94,8 +94,8 @@ final class WeeklyLessonsQuery
     {
         return match ($status) {
             LessonStatus::Preparation => __('Por preparar'),
-            LessonStatus::Prepared => __('Preparado'),
-            LessonStatus::Taught => __('Lecionado'),
+            LessonStatus::Prepared => __('Preparada'),
+            LessonStatus::Taught => __('Lecionada'),
         };
     }
 }
