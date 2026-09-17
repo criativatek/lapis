@@ -53,6 +53,7 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   no painel.
 
 Sem migrations. Legal e comercial sem alteração.
+
 ## [0.146.4] — 2026-09-17
 
 ### Corrigido
