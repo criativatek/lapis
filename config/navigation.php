@@ -169,7 +169,14 @@ return [
                 // placeholder route — away from organizations that have the
                 // capability today. Changing what a plan sees is the one thing
                 // this reorganization must not do (§23, §41).
-                ['key' => 'lessons', 'label' => 'Aulas e Sumários', 'icon' => 'BookOpen', 'module' => 'lessons', 'phase' => 5, 'description' => 'Registar aulas e sumários.', 'route' => 'lessons.index', 'built' => true],
+                //
+                // PRIORITY, NOT SELECTION (0.146.5). The teacher's most repeated
+                // destination was the hardest to spot: a generic open book (the
+                // same icon the context bar uses for «Disciplina») in a list of
+                // equals. `priority` gives it a quiet, persistent mark in the
+                // sidebar — presentation only, nothing about who may see it —
+                // and the board icon says «aula» before the label is read.
+                ['key' => 'lessons', 'label' => 'Aulas e Sumários', 'icon' => 'Presentation', 'module' => 'lessons', 'phase' => 5, 'description' => 'Registar aulas e sumários.', 'route' => 'lessons.index', 'built' => true, 'priority' => true],
             ],
         ],
 

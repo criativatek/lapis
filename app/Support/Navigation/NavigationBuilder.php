@@ -86,6 +86,9 @@ class NavigationBuilder
                 // synthesis — and all three should light it up (§36).
                 'match' => $item['match'] ?? [],
                 'icon' => $item['icon'],
+                // A destination the teacher returns to all day. Presentation
+                // only: it changes how the entry looks, never who sees it.
+                'priority' => ! empty($item['priority']),
                 'phase' => $item['phase'],
                 // Not-yet-built pages still resolve — routes/app.php registers a
                 // placeholder route per item — so the menu never links to a 404.

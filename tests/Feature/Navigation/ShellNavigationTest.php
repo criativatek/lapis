@@ -782,6 +782,36 @@ class ShellNavigationTest extends TestCase
             ->assertInertia(fn (AssertableInertia $page) => $page->component('classes/Index'));
     }
 
+    /**
+     * 0.146.5 — «Aulas e Sumários» is the one priority entry, marked by config
+     * and carried in the payload, never by a plan check in the client. Base,
+     * which has no `lessons`, receives neither the entry nor a link to it.
+     */
+    #[Test]
+    public function lessons_is_the_only_priority_entry_and_only_where_the_module_is_entitled(): void
+    {
+        $pro = User::factory()->create();
+        $this->upgrade($pro, 'pro');
+
+        $this->actingAs($pro)->get('/dashboard')->assertInertia(function (AssertableInertia $page): void {
+            $items = collect($this->navItems($page))->keyBy('key');
+
+            $this->assertTrue($items['lessons']['priority']);
+            $this->assertSame('Presentation', $items['lessons']['icon']);
+            $this->assertSame(route('lessons.index'), $items['lessons']['href']);
+            $this->assertSame(['lessons'], $items->where('priority', true)->keys()->all());
+            $this->assertContains('lessons', $page->toArray()['props']['modules']);
+        });
+
+        $base = User::factory()->create();
+
+        $this->actingAs($base)->get('/dashboard')->assertInertia(function (AssertableInertia $page): void {
+            $this->assertNotContains('lessons', $this->navKeys($page));
+            $this->assertNotContains('lessons', $page->toArray()['props']['modules']);
+            $this->assertSame([], collect($this->navItems($page))->where('priority', true)->all());
+        });
+    }
+
     #[Test]
     public function the_scope_selectors_are_shared_but_empty_until_the_academic_model_exists(): void
     {

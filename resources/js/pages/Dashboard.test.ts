@@ -21,11 +21,11 @@ vi.mock('@inertiajs/vue3', async () => {
     };
 });
 
-function dashboard() {
+function dashboard(classes: unknown[] = []) {
     return mount(Dashboard, {
         props: {
             teacherName: 'Ana Teste',
-            classes: [],
+            classes,
             readiness: { is_ready: true, items: [] },
             firstSteps: { dismissed: true, all_done: true, items: [] },
             totals: {
@@ -71,5 +71,52 @@ describe('Dashboard — atividade', () => {
         expect(
             dashboard().find('a[href="/activity/organization"]').exists(),
         ).toBe(true);
+    });
+});
+
+const oneClass = [
+    {
+        ulid: '01TESTCLASS',
+        label: '8.º F',
+        subject: 'Matemática',
+        academic_year: '2026/2027',
+        has_profile: true,
+        pending_confirmation: 0,
+        pending_publication: 0,
+    },
+];
+
+describe('Dashboard — «Aulas de hoje» com turmas', () => {
+    beforeEach(() => {
+        pageProps.modules = [];
+        pageProps.readOnlyModules = [];
+    });
+
+    it('aparece uma só vez, para /lessons, com o módulo lessons e uma turma', () => {
+        pageProps.modules = ['lessons', 'assessments', 'calendar'];
+        const wrapper = dashboard(oneClass);
+        const quickAction = wrapper.find('[data-testid="lessons-today"]');
+
+        expect(quickAction.attributes('href')).toBe('/lessons');
+        expect(quickAction.text()).toContain('Aulas de hoje');
+        expect(quickAction.element.tagName).toBe('A');
+        expect(quickAction.attributes('tabindex')).toBeUndefined();
+        expect(quickAction.classes()).toContain('focus-visible:ring-2');
+        expect(wrapper.findAll('a[href="/lessons"]')).toHaveLength(1);
+    });
+
+    it('sem turmas não compete com os primeiros passos', () => {
+        pageProps.modules = ['lessons'];
+
+        expect(dashboard().find('a[href="/lessons"]').exists()).toBe(false);
+    });
+
+    it('sem o módulo, ou só em consulta, não há link para as aulas', () => {
+        pageProps.modules = ['reports', 'records', 'calendar'];
+        expect(dashboard(oneClass).find('a[href="/lessons"]').exists()).toBe(false);
+
+        pageProps.modules = [];
+        pageProps.readOnlyModules = ['lessons'];
+        expect(dashboard(oneClass).find('a[href="/lessons"]').exists()).toBe(false);
     });
 });

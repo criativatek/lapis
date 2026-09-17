@@ -16,6 +16,7 @@ import {
     NotebookPen,
     PenLine,
     PieChart,
+    Presentation,
     Settings,
     Share2,
     ShieldCheck,
@@ -60,6 +61,9 @@ const icons: Record<string, LucideIcon> = {
     // spans). The three sit together and must not read as the same thing.
     CalendarClock,
     BookOpen,
+    // A board in front of a class: «Aulas e Sumários». Not the open book, which
+    // the context bar already uses for «Disciplina».
+    Presentation,
     Building2,
     // «Auditoria da organização» — the same shield the activity page uses.
     ShieldCheck,

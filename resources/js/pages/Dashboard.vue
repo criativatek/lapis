@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
-import { ArrowRight, CalendarDays, CheckCircle2, Circle, FileText, NotebookPen, PenLine, X } from '@lucide/vue';
+import { ArrowRight, CalendarDays, CheckCircle2, Circle, FileText, NotebookPen, PenLine, Presentation, X } from '@lucide/vue';
 import { computed } from 'vue';
 import { Button } from '@/components/ui/button';
 import { qualitativeToneClasses } from '@/lib/qualitativeTone';
@@ -63,6 +63,11 @@ const canOpenReports = computed(() => canRead('reports'));
 const canOpenRecords = computed(() => canRead('records'));
 const canOpenCalendar = computed(() => canRead('calendar'));
 const canOpenOrganizationAudit = computed(() => canRead('audit_log'));
+// Write access, not read: «Aulas de hoje» invites registering a summary, which a
+// read-only organization cannot do. Same `modules` list the server enforces.
+// And only once there is a class: a brand-new account has no lesson for today,
+// and the first-steps checklist is the one thing that screen should ask for.
+const canRegisterLessons = computed(() => page.props.modules.includes('lessons') && props.classes.length > 0);
 
 // Never a modal, never blocking: an old, fully-adopted account already shows
 // nothing (all_done), the same way readiness() shows nothing once configured.
@@ -192,6 +197,30 @@ function pendingLabel(schoolClass: ClassCard): string {
                 <Link v-if="canOpenOrganizationAudit" href="/activity/organization" class="hover:underline">Auditoria da organização</Link>
             </div>
         </div>
+
+        <!-- «AULAS DE HOJE» — o destino a que o professor volta todos os dias,
+             logo abaixo da saudação e sem scroll. /lessons já abre a semana
+             corrente com o dia de hoje selecionado, por isso a copy é verdade
+             sem rota nova. Só com o módulo `lessons` com escrita: numa
+             organização em consulta não há sumário a registar, e o menu
+             continua a oferecer a leitura. É o único link para as aulas nesta
+             página — nada a duplicar. -->
+        <Link
+            v-if="canRegisterLessons"
+            href="/lessons"
+            :class="[
+                card('plain'),
+                'flex w-full items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:w-fit sm:min-w-80',
+            ]"
+            data-testid="lessons-today"
+        >
+            <Presentation class="size-5 shrink-0 text-blue-600 dark:text-blue-400" aria-hidden="true" />
+            <span class="min-w-0 flex-1">
+                <span class="block font-medium">Aulas de hoje</span>
+                <span class="block text-sm text-muted-foreground">Sumários e assiduidade</span>
+            </span>
+            <ArrowRight class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        </Link>
 
         <!-- "Primeiros passos" (A1a) — a separate, dismissible adoption
              checklist. Never a modal, never blocks navigation, and shown

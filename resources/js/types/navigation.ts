@@ -26,6 +26,8 @@ export type SharedNavItem = {
     /** Extra path fragments that should mark this entry as the current one. */
     match: string[];
     icon: string;
+    /** A frequent destination, marked quietly in the sidebar — never the same look as the active entry. */
+    priority: boolean;
     phase: number;
     href: string | null;
     built: boolean;

@@ -48,6 +48,21 @@ function isActive(item: SharedNavItem): boolean {
 function hint(item: SharedNavItem): string {
     return item.description ? `${item.label} — ${item.description}` : item.label;
 }
+
+/**
+ * The quiet mark on a destination the teacher returns to all day.
+ *
+ * PRIORITY IS NOT SELECTION. It is a thin blue bar on the leading edge and a
+ * faint tint — structure first, colour second — so the entry is found at a
+ * glance without looking like the page being read. The active state keeps its
+ * full fill, weight and amber text, and turns the bar amber too, so being there
+ * always reads stronger than being important. The bar is a pseudo-element on
+ * the button itself, so it survives the collapsed icon-only sidebar and the
+ * mobile sheet unchanged. Blue-400 rather than blue-600: on the navy panel the
+ * darker blue falls under 3:1 (WCAG 1.4.11).
+ */
+const priorityClasses =
+    'relative bg-sidebar-accent/40 text-sidebar-accent-foreground before:pointer-events-none before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-blue-400 data-[active=true]:bg-sidebar-accent data-[active=true]:before:bg-sidebar-primary';
 </script>
 
 <template>
@@ -79,6 +94,8 @@ function hint(item: SharedNavItem): string {
                     as-child
                     :is-active="isActive(item)"
                     :tooltip="hint(item)"
+                    :class="item.priority ? priorityClasses : undefined"
+                    :data-priority="item.priority ? 'true' : undefined"
                 >
                     <!-- The accessible name carries the description too, so a
                          screen reader hears what the page is for without the

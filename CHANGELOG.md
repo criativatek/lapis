@@ -25,6 +25,34 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.146.5] — 2026-09-17
+
+> **Número reservado.** A 0.146.4 fica para o hotfix mobile/login preparado em
+> paralelo; esta release não a reivindica.
+
+### Alterado
+- **«Aulas e Sumários» encontra-se à primeira.** O destino mais repetido do dia
+  era um item igual aos outros, com um livro aberto genérico — o mesmo ícone que
+  a barra de contexto usa para «Disciplina». Passa a ter um **estado de
+  prioridade** distinto do estado ativo: barra fina azul na margem esquerda e um
+  fundo ligeiramente mais claro, sem animação, badge nem cor de alerta. Quando o
+  professor está em Aulas, o **ativo sobrepõe-se** — preenchimento, peso e texto
+  âmbar, e a barra passa a âmbar. A marca é um pseudo-elemento do próprio botão,
+  por isso sobrevive ao menu colapsado (só ícone) e à folha móvel. A prioridade
+  é um dado de `config/navigation.php` (`priority`), transportado pelo
+  `NavigationBuilder`; não há verificação de plano no cliente e a visibilidade
+  continua decidida pelo módulo `lessons`. Posição no menu inalterada.
+- **Ícone `Presentation`** (quadro de aula, da mesma biblioteca Lucide) em vez de
+  `BookOpen`.
+
+### Adicionado
+- **«Aulas de hoje» no Painel do Professor**, logo abaixo da saudação: um
+  acesso pequeno para `/lessons`, que já abre a semana corrente com o dia de
+  hoje selecionado — sem rota nova. Só aparece com o módulo `lessons` com
+  escrita (em consulta não há sumário a registar). É o único link para as aulas
+  no painel.
+
+Sem migrations. Legal e comercial sem alteração.
 ## [0.146.4] — 2026-09-17
 
 ### Corrigido
