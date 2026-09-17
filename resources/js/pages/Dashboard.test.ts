@@ -21,7 +21,7 @@ vi.mock('@inertiajs/vue3', async () => {
     };
 });
 
-function dashboard(classes: unknown[] = []) {
+function dashboard(classes: InstanceType<typeof Dashboard>["$props"]["classes"] = []) {
     return mount(Dashboard, {
         props: {
             teacherName: 'Ana Teste',
