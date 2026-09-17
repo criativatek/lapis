@@ -25,6 +25,20 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.146.4] — 2026-09-17
+
+### Corrigido
+- **No telemóvel, quem já tem conta entra sem passar pelo registo.** Abaixo de
+  640px a barra só mostrava «Experimentar»; o «Entrar» era o último link do
+  menu e, com sessão iniciada, o menu não tinha painel nenhum — o caminho
+  natural era Experimentar → Criar conta → «Já tem conta? Entrar». O menu
+  abre agora com a ação de conta no topo: **«Entrar»** para visitantes,
+  **«Ir para o painel»** para quem tem sessão (nunca os dois), com 44px de
+  toque, fecha ao navegar e faz scroll em ecrãs baixos. O desktop fica igual.
+- **«Já tem conta? Entrar» no registo** fica separado do texto legal, com mais
+  contraste e área de toque de 44px, sem competir com «Criar conta». Copy legal
+  sem alteração.
+
 ## [0.146.3] — 2026-09-16
 
 ### Corrigido

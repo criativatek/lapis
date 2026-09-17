@@ -129,12 +129,17 @@ defineOptions({
             >.
         </p>
 
-        <div class="text-center text-sm text-muted-foreground">
+        <!-- O caminho de quem já tem conta: separado do texto legal e com área
+             de toque de 44px, sem competir com «Criar conta». -->
+        <div
+            class="flex items-center justify-center gap-1 border-t border-border pt-4 text-sm text-muted-foreground"
+        >
             Já tem conta?
             <TextLink
                 :href="login()"
-                class="underline underline-offset-4"
+                class="inline-flex min-h-11 items-center px-1 font-medium text-foreground underline underline-offset-4"
                 :tabindex="6"
+                data-test="register-login-link"
                 >Entrar</TextLink
             >
         </div>

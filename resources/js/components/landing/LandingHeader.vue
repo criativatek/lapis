@@ -130,7 +130,11 @@ const current = computed(() => new URL(page.url, 'http://x').pathname);
             <div class="ml-auto flex items-center gap-2 lg:ml-0">
                 <template v-if="authenticated">
                     <Button as-child size="sm">
-                        <Link :href="dashboard()">Ir para o painel</Link>
+                        <Link
+                            :href="dashboard()"
+                            data-test="landing-header-dashboard"
+                            >Ir para o painel</Link
+                        >
                     </Button>
                 </template>
                 <template v-else>
@@ -141,7 +145,9 @@ const current = computed(() => new URL(page.url, 'http://x').pathname);
                         class="hidden sm:inline-flex"
                         :class="[CHROME_LINK, CHROME_GHOST_HOVER]"
                     >
-                        <Link :href="login()">Entrar</Link>
+                        <Link :href="login()" data-test="landing-header-login"
+                            >Entrar</Link
+                        >
                     </Button>
                     <Button as-child size="sm" :class="LANDING_PRIMARY">
                         <!-- At 375px the full label plus the logo and the menu
@@ -167,11 +173,51 @@ const current = computed(() => new URL(page.url, 'http://x').pathname);
                             <Menu class="size-5" />
                         </Button>
                     </SheetTrigger>
-                    <SheetContent side="right" class="w-[280px] p-6">
+                    <SheetContent
+                        side="right"
+                        class="w-[280px] overflow-y-auto p-6"
+                        data-test="landing-mobile-menu"
+                    >
                         <SheetHeader class="p-0 text-left">
                             <SheetTitle class="text-base">Navegação</SheetTitle>
                         </SheetHeader>
-                        <nav class="mt-6 flex flex-col gap-1">
+                        <!--
+                            A conta vem primeiro. Até à 0.146.3 o «Entrar» era
+                            o último de nove links e quem já tinha sessão não
+                            via painel nenhum — no telemóvel, quem tinha conta
+                            acabava a passar pelo registo para chegar ao login.
+                        -->
+                        <div>
+                            <Button
+                                v-if="authenticated"
+                                as-child
+                                class="h-11 w-full"
+                            >
+                                <Link
+                                    :href="dashboard()"
+                                    data-test="landing-mobile-dashboard"
+                                    @click="mobileOpen = false"
+                                    >Ir para o painel</Link
+                                >
+                            </Button>
+                            <Button
+                                v-else
+                                as-child
+                                variant="outline"
+                                class="h-11 w-full"
+                            >
+                                <Link
+                                    :href="login()"
+                                    data-test="landing-mobile-login"
+                                    @click="mobileOpen = false"
+                                    >Entrar</Link
+                                >
+                            </Button>
+                        </div>
+                        <nav
+                            class="flex flex-col gap-1 border-t border-border pt-4"
+                            aria-label="Páginas do site"
+                        >
                             <Link
                                 v-for="item in sheetItems"
                                 :key="item.href"
@@ -182,16 +228,12 @@ const current = computed(() => new URL(page.url, 'http://x').pathname);
                                         ? 'bg-blue-50 text-blue-700'
                                         : ''
                                 "
+                                :aria-current="
+                                    current === item.href ? 'page' : undefined
+                                "
                                 @click="mobileOpen = false"
                             >
                                 {{ item.label }}
-                            </Link>
-                            <Link
-                                v-if="!authenticated"
-                                :href="login()"
-                                class="mt-3 rounded-md border border-border px-3 py-2.5 text-center text-sm font-medium transition-colors hover:bg-muted"
-                            >
-                                Entrar
                             </Link>
                         </nav>
                     </SheetContent>
