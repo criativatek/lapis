@@ -77,7 +77,7 @@ const current = computed(() => new URL(page.url, 'http://x').pathname);
         ]"
     >
         <div
-            class="mx-auto flex w-full max-w-6xl items-center gap-2 px-4 py-3.5 sm:gap-3 sm:px-8"
+            class="mx-auto flex w-full max-w-6xl items-center gap-1.5 px-4 py-3.5 sm:gap-3 sm:px-8"
         >
             <Link
                 href="/"
@@ -97,7 +97,7 @@ const current = computed(() => new URL(page.url, 'http://x').pathname);
                     hero diz o mesmo duas linhas abaixo.
                 -->
                 <AppLogoWordmark
-                    class="h-7 w-auto shrink-0 text-[#11223d] sm:h-8 dark:text-white"
+                    class="h-6 w-auto shrink-0 text-[#11223d] min-[380px]:h-7 sm:h-8 dark:text-white"
                 />
             </Link>
 
@@ -127,7 +127,7 @@ const current = computed(() => new URL(page.url, 'http://x').pathname);
                 </Link>
             </nav>
 
-            <div class="ml-auto flex items-center gap-2 lg:ml-0">
+            <div class="ml-auto flex items-center gap-1 sm:gap-2 lg:ml-0">
                 <template v-if="authenticated">
                     <Button as-child size="sm">
                         <Link
@@ -151,7 +151,9 @@ const current = computed(() => new URL(page.url, 'http://x').pathname);
                     </Button>
                     <Button as-child size="sm" :class="LANDING_PRIMARY">
                         <!-- At 375px the full label plus the logo and the menu
-                             button ran 49px past the viewport. -->
+                             button ran 49px past the viewport; at 360px the short
+                             one still ran 13px past, hence the smaller logo
+                             and tighter gaps below 380px (0.146.4). -->
                         <Link :href="register()">
                             <span class="sm:hidden">Experimentar</span>
                             <span class="hidden sm:inline"

@@ -34,7 +34,9 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   natural era Experimentar → Criar conta → «Já tem conta? Entrar». O menu
   abre agora com a ação de conta no topo: **«Entrar»** para visitantes,
   **«Ir para o painel»** para quem tem sessão (nunca os dois), com 44px de
-  toque, fecha ao navegar e faz scroll em ecrãs baixos. O desktop fica igual.
+  toque, fecha ao navegar e faz scroll em ecrãs baixos. A 360px a barra
+  passava 13px além do ecrã (logótipo + «Experimentar» + menu): abaixo de
+  380px o logótipo desce para h-6 e os espaços apertam. O desktop fica igual.
 - **«Já tem conta? Entrar» no registo** fica separado do texto legal, com mais
   contraste e área de toque de 44px, sem competir com «Criar conta». Copy legal
   sem alteração.
