@@ -20,11 +20,20 @@ namespace App\Models;
  */
 enum CatalogueFamily: string
 {
+    // The wire values match the vocabulary the presentation layer already
+    // fixed (`MeasureFamily` in resources/js/lib/interventionPresentation.ts),
+    // so the two fronts compose without a translation layer. `support_measure`
+    // rather than `legal_measure` is also the more faithful name: the diploma
+    // calls these «medidas de suporte à aprendizagem e à inclusão».
+    //
+    // Nothing persists a family — it is a reading, recomputed per request — so
+    // these values are a payload contract and not an identity.
+
     /**
      * A measure named by the law in force, at a level the law defines. This is
      * the only family that may ever carry a SupportMeasureLevel.
      */
-    case LegalMeasure = 'legal_measure';
+    case LegalMeasure = 'support_measure';
 
     /**
      * Ordinary teaching. It may be mobilised in support of a measure, but it is
@@ -52,7 +61,7 @@ enum CatalogueFamily: string
      * must be representable the day such an item is added, and is exercised by
      * the fictitious framework in the tests.
      */
-    case SupportResource = 'support_resource';
+    case SupportResource = 'resource_support';
 
     public function label(): string
     {

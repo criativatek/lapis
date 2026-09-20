@@ -205,6 +205,8 @@ enum InterventionType: string
     {
         return array_map(function (self $type) use ($framework) {
             $family = $framework->familyFor($type);
+            $mapping = $framework->mappingFor($type);
+            $reference = $mapping->measure !== null ? $framework->legalReferenceFor($mapping->measure) : null;
 
             return [
                 'value' => $type->value,
@@ -218,7 +220,28 @@ enum InterventionType: string
                 'family' => $family->value,
                 'family_label' => $family->label(),
                 'may_carry_measure_level' => $family->mayCarryMeasureLevel(),
-                'legal_mapping' => $framework->mappingFor($type)->toPayload(),
+                'legal_mapping' => $mapping->toPayload(),
+                // The contract the presentation layer declares and prefers
+                // over deriving these itself. The taxonomy is domain and
+                // belongs to the server; the page groups, colours and labels
+                // from what arrives here and decides none of it.
+                //
+                // Every field is null when there is nothing true to put in it.
+                // A page that omits an element is correct; a page showing an
+                // invented category is not.
+                'presentation' => [
+                    'family' => $family->value,
+                    'legal_level' => $family->mayCarryMeasureLevel() ? $mapping->level()?->value : null,
+                    'legal_level_label' => $family->mayCarryMeasureLevel() ? $mapping->level()?->label() : null,
+                    'legal_framework' => $framework->hasLegalTaxonomy() ? $framework->legalReference() : null,
+                    'article' => $reference?->citation(),
+                    'status' => $reference?->status->value,
+                    // Only when the diploma's own wording differs from the
+                    // label this catalogue shows.
+                    'display_label' => $reference !== null && $reference->designation !== $type->label()
+                        ? $reference->designation
+                        : null,
+                ],
             ];
         }, self::cases());
     }

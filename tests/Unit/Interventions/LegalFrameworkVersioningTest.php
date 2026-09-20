@@ -185,6 +185,66 @@ class LegalFrameworkVersioningTest extends TestCase
         $this->assertSame('learning_reinforcement', InterventionType::LearningReinforcement->value);
     }
 
+    // ------------------------------------------- the presentation contract
+
+    #[Test]
+    public function every_type_carries_the_presentation_metadata_the_page_expects(): void
+    {
+        // The contract declared by resources/js/lib/interventionPresentation.ts:
+        // the taxonomy is domain and belongs to the server, so the page groups,
+        // colours and labels from these fields and decides none of it. Asserted
+        // here so the two fronts cannot drift apart silently.
+        $catalogue = InterventionType::catalogue($this->portugal());
+
+        $families = array_column(CatalogueFamily::cases(), 'value');
+        $this->assertSame(
+            ['support_measure', 'pedagogical_strategy', 'evaluation_adaptation', 'resource_support'],
+            $families,
+            'O vocabulário das famílias é partilhado com a camada de apresentação.',
+        );
+
+        foreach ($catalogue as $entry) {
+            $presentation = $entry['presentation'];
+
+            $this->assertContains($presentation['family'], $families, $entry['value']);
+            $this->assertArrayHasKey('legal_level', $presentation, $entry['value']);
+            $this->assertArrayHasKey('legal_level_label', $presentation, $entry['value']);
+            $this->assertArrayHasKey('article', $presentation, $entry['value']);
+            $this->assertArrayHasKey('status', $presentation, $entry['value']);
+            $this->assertArrayHasKey('display_label', $presentation, $entry['value']);
+
+            // Only a legal measure may ever announce a level.
+            if ($presentation['family'] !== CatalogueFamily::LegalMeasure->value) {
+                $this->assertNull($presentation['legal_level'], $entry['value']);
+                $this->assertNull($presentation['legal_level_label'], $entry['value']);
+            }
+        }
+
+        $byValue = array_column($catalogue, null, 'value');
+
+        $this->assertSame('support_measure', $byValue['tutorial_support']['presentation']['family']);
+        $this->assertSame('selective', $byValue['tutorial_support']['presentation']['legal_level']);
+        $this->assertStringContainsString('9.º', (string) $byValue['tutorial_support']['presentation']['article']);
+        $this->assertSame('active', $byValue['tutorial_support']['presentation']['status']);
+
+        $this->assertSame('evaluation_adaptation', $byValue['classification_support_instruments']['presentation']['family']);
+        $this->assertNull($byValue['classification_support_instruments']['presentation']['legal_level']);
+
+        $this->assertSame('pedagogical_strategy', $byValue['text_planning_support']['presentation']['family']);
+        $this->assertNull($byValue['text_planning_support']['presentation']['article']);
+    }
+
+    #[Test]
+    public function without_a_framework_the_presentation_announces_no_law_at_all(): void
+    {
+        foreach (InterventionType::catalogue(new NullLegalFramework) as $entry) {
+            $this->assertSame('pedagogical_strategy', $entry['presentation']['family'], $entry['value']);
+            $this->assertNull($entry['presentation']['legal_level'], $entry['value']);
+            $this->assertNull($entry['presentation']['legal_framework'], $entry['value']);
+            $this->assertNull($entry['presentation']['article'], $entry['value']);
+        }
+    }
+
     // ----------------------------------------------------- cumulative levels
 
     #[Test]

@@ -28,10 +28,10 @@ Um item do catálogo pertence a uma de quatro famílias (`App\Models\CatalogueFa
 
 | Família | O que é | Pode ter nível? |
 |---|---|---|
-| `legal_measure` | Medida nomeada pelo diploma em vigor | **Sim** — só esta |
+| `support_measure` | Medida nomeada pelo diploma em vigor | **Sim** — só esta |
 | `pedagogical_strategy` | Ensino corrente | Não |
 | `evaluation_adaptation` | Adaptação ao processo de avaliação | Não |
-| `support_resource` | Apoio ou recurso mobilizado (CRI, técnico especializado) | Não |
+| `resource_support` | Apoio ou recurso mobilizado (CRI, técnico especializado) | Não |
 
 A família **não é propriedade do item** — é propriedade do item *lido por um
 framework*. `InterventionLegalFramework::familyFor()` é quem responde. Sob
@@ -42,7 +42,7 @@ Uma sugestão (`LegalMappingMode::Contextual`) é **estratégia pedagógica** at
 professor confirmar. Chamar-lhe medida antes disso seria a aplicação a decidir um
 facto jurídico sobre uma criança.
 
-> **Dívida conhecida:** nenhum item do catálogo atual é `support_resource`. O
+> **Dívida conhecida:** nenhum item do catálogo atual é `resource_support`. O
 > Lapispro nunca ofereceu CRI nem recursos especializados como itens próprios, e
 > inventá-los é precisamente o que o projeto proíbe (§1). A família existe para
 > que a distinção seja representável no dia em que um desses itens for
@@ -197,5 +197,5 @@ reformulação visual da página.
   lista literal dentro do `CHECK` de `intervention_support_measures`. Uma medida
   nova custa uma migration. É o preço de ter a garantia no motor de base de
   dados, e o CI (MySQL) é quem a verifica — o SQLite local ignora `CHECK`.
-- **Sem itens `support_resource`.** CRI e apoios especializados não existem hoje
+- **Sem itens `resource_support`.** CRI e apoios especializados não existem hoje
   no catálogo; acrescentá-los é uma decisão pedagógica, não técnica.
