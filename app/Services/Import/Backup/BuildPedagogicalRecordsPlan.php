@@ -287,6 +287,11 @@ class BuildPedagogicalRecordsPlan
                 'review_on' => $row['review_on'], 'available_for_reports' => $row['available_for_reports'],
                 'support_measure_level' => $row['support_measure_level'], 'support_measure_code' => $row['support_measure_code'],
                 'evaluation_adaptation_code' => $row['evaluation_adaptation_code'], 'legal_mapping_source' => $row['legal_mapping_source'],
+                // Carried through the plan or the write never sees it: the
+                // writer reads the PLAN row, not the validated row, so a field
+                // that stops here is silently null on restore — which left the
+                // pivot stamped and the intervention itself not.
+                'legal_framework_code' => $row['legal_framework_code'] ?? null,
                 'created_batch_ulid' => $row['created_batch_ulid'] ?? null, 'support_measures' => $row['support_measures'] ?? [],
                 'created_by' => $authorId,
                 'author_unresolved' => $authorId === null,

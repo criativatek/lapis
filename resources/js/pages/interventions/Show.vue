@@ -22,6 +22,15 @@ type InterventionType = {
     context: string;
     context_label: string;
     requires_description: boolean;
+    /**
+     * What KIND of thing this is under the applicable law: a named legal
+     * measure, ordinary teaching, an adaptation to the assessment process, or
+     * a resource. The framework's reading, not the item's own property — under
+     * no framework everything is a pedagogical strategy.
+     */
+    family: string;
+    family_label: string;
+    may_carry_measure_level: boolean;
     legal_mapping: LegalMapping | null;
 };
 
@@ -118,8 +127,17 @@ const props = defineProps<{
     contexts: { value: string; label: string }[];
     domainRelations: { value: string; label: string }[];
     targetTypes: { value: string; label: string }[];
-    supportMeasureLevels: { value: string; label: string; measures: { value: string; label: string }[] }[];
+    supportMeasureLevels: { value: string; label: string; measures: { value: string; label: string; article?: string | null; citation?: string | null; designation?: string | null }[] }[];
     evaluationAdaptations: { value: string; label: string }[];
+    /** The version of the law this page is speaking in, or null where none applies. */
+    legalFramework?: {
+        code: string;
+        title: string;
+        legal_reference: string;
+        status: string;
+        valid_from: string | null;
+        valid_until: string | null;
+    } | null;
     effectivenessOptions: { value: string; label: string; short_label: string }[];
     statusOptions: { value: string; label: string }[];
     /** Recuperação / Consolidação / Melhoria (§8) — three, equally weighted. */
@@ -198,7 +216,8 @@ type FormData = {
     confirm_suggested_framing: boolean;
     support_measure_level: string | null;
     support_measure_code: string | null;
-    support_measures: { level: string; code: string }[];
+    /** The level is derived from the code; it travels only so the summary can name it without a lookup. */
+    support_measures: { level: string | null; code: string }[];
     evaluation_adaptation_code: string | null;
 };
 
@@ -297,8 +316,21 @@ function chooseStrategy(entry: LibraryEntry): void {
 const editingUlid = ref<string | null>(null);
 const selectedType = computed(() => props.types.find((type) => type.value === (editingUlid.value ? form.intervention_type : form.intervention_types[0])) ?? null);
 const selectedMapping = computed(() => selectedType.value?.legal_mapping ?? null);
+/**
+ * THE LEVEL IS DERIVED, NEVER CHOSEN.
+ *
+ * A measure's level is fixed by the diploma that names it, so asking a teacher
+ * to pick «Seletiva» and then pick «Apoio tutorial» is asking them to restate
+ * something the law already settled — and it lets the two disagree. The form
+ * offers the measures, grouped by level so the grouping is still visible, and
+ * reads the level back off whichever measure was picked. The server derives it
+ * again from the framework in force on the intervention's date and does not
+ * trust this value.
+ */
+const levelForMeasure = (code: string | null): string | null =>
+    props.supportMeasureLevels.find((level) => level.measures.some((measure) => measure.value === code))?.value ?? null;
+
 const selectedMeasureLevel = computed(() => props.supportMeasureLevels.find((level) => level.value === form.support_measure_level) ?? null);
-const availableMeasures = computed(() => selectedMeasureLevel.value?.measures ?? []);
 /** Who the intervention being edited already names, including students who have left. */
 const editingParticipantIds = ref<number[]>([]);
 
@@ -381,11 +413,12 @@ watch(
 );
 
 watch(
-    () => form.support_measure_level,
-    () => {
-        if (form.support_measure_code && !availableMeasures.value.some((measure) => measure.value === form.support_measure_code)) {
-            form.support_measure_code = null;
-        }
+    () => form.support_measure_code,
+    (code) => {
+        // One direction only: the measure decides the level. The reverse watch
+        // this replaces cleared the measure whenever the level changed, which
+        // only existed because the level was an input.
+        form.support_measure_level = levelForMeasure(code);
     },
 );
 
@@ -450,9 +483,9 @@ function openFramingDetails(): void {
 function openManualMeasure(): void {
     manualMeasureOpen.value = true;
 
-    if (form.support_measure_level === null && selectedMapping.value?.level) {
-        form.support_measure_level = selectedMapping.value.level;
+    if (form.support_measure_code === null && selectedMapping.value?.measure) {
         form.support_measure_code = selectedMapping.value.measure;
+        form.support_measure_level = levelForMeasure(selectedMapping.value.measure);
     }
 
     markFramingManual();
@@ -641,12 +674,16 @@ function removeSelectedType(value: string): void {
 }
 
 function addSupportMeasure(): void {
-    if (!form.support_measure_level || !form.support_measure_code) {
-return;
-}
+    if (!form.support_measure_code) {
+        return;
+    }
 
-    if (!form.support_measures.some((pair) => pair.level === form.support_measure_level && pair.code === form.support_measure_code)) {
-        form.support_measures.push({ level: form.support_measure_level, code: form.support_measure_code });
+    const level = levelForMeasure(form.support_measure_code);
+
+    // Compared by code alone: the level is a function of the code, so the same
+    // measure twice is a duplicate however its level was spelled.
+    if (!form.support_measures.some((pair) => pair.code === form.support_measure_code)) {
+        form.support_measures.push({ level, code: form.support_measure_code });
     }
 
     markFramingManual();
@@ -840,7 +877,12 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
                                 <legend class="text-xs font-medium text-muted-foreground">{{ group.label }}</legend>
                                 <label v-for="type in group.types" :key="type.value" class="flex min-h-8 items-center gap-2 text-sm">
                                     <input v-model="form.intervention_types" type="checkbox" :value="type.value" :disabled="form.intervention_types.length >= 10 && !form.intervention_types.includes(type.value)" />
-                                    {{ type.label }}
+                                    <span>{{ type.label }}</span>
+                                    <span
+                                        v-if="type.family !== 'pedagogical_strategy'"
+                                        class="rounded-sm bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+                                        :title="type.family_label"
+                                    >{{ type.family_label }}</span>
                                 </label>
                             </fieldset>
                         </div>
@@ -1142,22 +1184,18 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
                     <p v-if="!manualMeasureOpen && !selectedMappingHasMeasure" class="-mt-3 text-xs text-muted-foreground">Nenhuma medida associada.</p>
 
                     <div v-if="manualMeasureOpen" class="grid gap-3 sm:grid-cols-2">
-                        <label class="text-sm">
-                            <span class="mb-1 block text-xs text-muted-foreground">Nível da medida</span>
-                            <select v-model="form.support_measure_level" class="w-full rounded-md border border-border bg-background px-2 py-1.5" @change="markFramingManual">
-                                <option :value="null">Não especificado</option>
-                                <option v-for="level in supportMeasureLevels" :key="level.value" :value="level.value">{{ level.label }}</option>
-                            </select>
-                        </label>
-                        <label class="text-sm">
+                        <label class="text-sm sm:col-span-2">
                             <span class="mb-1 block text-xs text-muted-foreground">Medida</span>
-                            <select v-model="form.support_measure_code" class="w-full rounded-md border border-border bg-background px-2 py-1.5" :disabled="!form.support_measure_level" @change="markFramingManual">
+                            <select v-model="form.support_measure_code" class="w-full rounded-md border border-border bg-background px-2 py-1.5" @change="markFramingManual">
                                 <option :value="null">Não especificada</option>
-                                <option v-for="measure in availableMeasures" :key="measure.value" :value="measure.value">{{ measure.label }}</option>
+                                <optgroup v-for="level in supportMeasureLevels" :key="level.value" :label="level.label">
+                                    <option v-for="measure in level.measures" :key="measure.value" :value="measure.value">{{ measure.label }}</option>
+                                </optgroup>
                             </select>
+                            <p v-if="selectedMeasureLevel" class="mt-1 text-xs text-muted-foreground">{{ selectedMeasureLevel.label }}<span v-if="legalFramework"> · {{ legalFramework.title }}</span></p>
                             <p v-if="form.errors.support_measure_code" class="mt-1 text-xs text-red-600">{{ form.errors.support_measure_code }}</p>
                         </label>
-                        <button type="button" class="self-end rounded-md border border-border px-3 py-2 text-sm" :disabled="!form.support_measure_level || !form.support_measure_code" @click="addSupportMeasure">Adicionar medida de suporte</button>
+                        <button type="button" class="self-end rounded-md border border-border px-3 py-2 text-sm sm:col-span-2 sm:justify-self-start" :disabled="!form.support_measure_code" @click="addSupportMeasure">Adicionar medida de suporte</button>
                     </div>
                     <button v-else type="button" class="text-xs text-primary hover:underline" @click="openManualMeasure">
                         Associar medida de suporte à aprendizagem

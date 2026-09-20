@@ -151,7 +151,11 @@ class InterventionCatalogueTest extends TestCase
             fn (InterventionType $type) => $this->framework()->mappingFor($type)->mode === LegalMappingMode::EvaluationOnly,
         );
 
-        $this->assertCount(5, $evaluationTypes);
+        // Six since «Instrumentos de apoio à classificação — dislexia e
+        // perturbação da linguagem» joined them. The number is asserted, not
+        // derived, so an item slipping into or out of this family is a test
+        // failure rather than a silent change of legal meaning.
+        $this->assertCount(6, $evaluationTypes);
 
         foreach ($evaluationTypes as $type) {
             $mapping = $this->framework()->mappingFor($type);
@@ -169,7 +173,8 @@ class InterventionCatalogueTest extends TestCase
         $expected = [
             'statement_reading', 'test_reading', 'instruction_comprehension_support',
             'simplified_wording', 'response_format_adaptation', 'instrument_adaptation',
-            'extra_time', 'separate_room', 'direct_answer_questions', 'other',
+            'extra_time', 'separate_room', 'direct_answer_questions',
+            'classification_support_instruments', 'other',
         ];
 
         $this->assertSame($expected, array_column(EvaluationAdaptationCode::cases(), 'value'));

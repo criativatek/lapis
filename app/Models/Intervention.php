@@ -62,6 +62,7 @@ use Illuminate\Support\Carbon;
  * @property SupportMeasureCode|null $support_measure_code
  * @property EvaluationAdaptationCode|null $evaluation_adaptation_code
  * @property LegalMappingSource|null $legal_mapping_source
+ * @property string|null $legal_framework_code
  * @property int|null $created_by
  */
 #[Fillable([
@@ -73,7 +74,7 @@ use Illuminate\Support\Carbon;
     'frequency', 'tracking_indicator',
     'include_in_report', 'available_for_reports',
     'support_measure_level', 'support_measure_code', 'evaluation_adaptation_code',
-    'legal_mapping_source', 'created_by',
+    'legal_mapping_source', 'legal_framework_code', 'created_by',
 ])]
 class Intervention extends Model
 {

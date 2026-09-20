@@ -15,10 +15,17 @@ use App\Models\SupportMeasureLevel;
  */
 final readonly class LegalMapping
 {
+    /**
+     * @param  SupportMeasureLevel|null  $levelOverride  the level THIS framework
+     *                                                   version puts the measure at, when it differs from the level in force
+     *                                                   today. A framework that reclassifies a measure passes it; the one
+     *                                                   encoded today never needs to, because it IS today.
+     */
     private function __construct(
         public LegalMappingMode $mode,
         public ?SupportMeasureCode $measure = null,
         public ?EvaluationAdaptationCode $evaluationAdaptation = null,
+        private ?SupportMeasureLevel $levelOverride = null,
     ) {}
 
     /** Ordinary practice: nothing to propose. */
@@ -28,15 +35,15 @@ final readonly class LegalMapping
     }
 
     /** Unambiguous: the app fills this in without asking. */
-    public static function direct(SupportMeasureCode $measure): self
+    public static function direct(SupportMeasureCode $measure, ?SupportMeasureLevel $level = null): self
     {
-        return new self(LegalMappingMode::Direct, measure: $measure);
+        return new self(LegalMappingMode::Direct, measure: $measure, levelOverride: $level);
     }
 
     /** Plausible but not certain: offered as a suggestion, never stored unconfirmed. */
-    public static function contextual(SupportMeasureCode $measure): self
+    public static function contextual(SupportMeasureCode $measure, ?SupportMeasureLevel $level = null): self
     {
-        return new self(LegalMappingMode::Contextual, measure: $measure);
+        return new self(LegalMappingMode::Contextual, measure: $measure, levelOverride: $level);
     }
 
     /** An assessment adaptation, deliberately without a measure level. */
@@ -52,7 +59,7 @@ final readonly class LegalMapping
      */
     public function level(): ?SupportMeasureLevel
     {
-        return $this->measure?->level();
+        return $this->levelOverride ?? $this->measure?->currentPortugueseLevel();
     }
 
     /**

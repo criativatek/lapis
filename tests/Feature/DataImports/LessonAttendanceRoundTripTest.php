@@ -151,7 +151,11 @@ class LessonAttendanceRoundTripTest extends TestCase
 
         $backup = $this->backupUpload();
         $json = $this->backupJson($backup);
-        $this->assertSame(11, $json['schema_version']);
+        // Against the constant, not a literal: this test is about the lesson
+        // outcome surviving a restore, and a later additive bump was breaking
+        // it for a reason that has nothing to do with what it checks. The
+        // sibling assertion above already reads it this way.
+        $this->assertSame(BackupSchemaCompatibility::CURRENT, $json['schema_version']);
         $this->assertSame('official_duty', collect($json['lessons'])->firstWhere('outcome', 'teacher_absent')['outcome_reason']);
 
         $colleague = User::factory()->create(['email' => 'colega-outcomes@example.test']);

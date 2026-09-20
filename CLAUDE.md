@@ -13,6 +13,7 @@ Modular web app for Portuguese basic/secondary schoolteachers: assessment profil
 | `G:\...\PROJETOS EM CURSO\LAPIS\Prompt_base_LAPIS_Claude.md` | The 2101-line spec. **Requirements authority.** Section refs below (§n) point here. |
 | `docs/domain-model.md` | The assessment data model. Read before any assessment migration. |
 | `docs/adr/` | Decisions and their reasoning. Read before contradicting one. |
+| `docs/legal-frameworks.md` | How the pedagogical catalogue and the legal framework are kept apart, and how a change in legislation is absorbed. Read before touching Estratégias e Medidas. |
 | `G:\...\LAPIS\Estrutura de menus e submenus da aplicação.docx` | **Canonical navigation.** The `.png` mockups are exploratory and disagree with each other — the doc wins. |
 
 ## Stack as actually installed

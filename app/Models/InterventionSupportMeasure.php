@@ -11,8 +11,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property SupportMeasureLevel $support_measure_level
  * @property SupportMeasureCode $support_measure_code
  * @property LegalMappingSource|null $legal_mapping_source
+ * @property string|null $legal_framework_code
  */
-#[Fillable(['intervention_id', 'support_measure_level', 'support_measure_code', 'legal_mapping_source'])]
+#[Fillable(['intervention_id', 'support_measure_level', 'support_measure_code', 'legal_mapping_source', 'legal_framework_code'])]
 class InterventionSupportMeasure extends Model
 {
     use HasUlids;

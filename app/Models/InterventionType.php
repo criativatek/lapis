@@ -51,6 +51,7 @@ enum InterventionType: string
     case ExtraTime = 'extra_time';
     case SeparateRoomAssessment = 'separate_room_assessment';
     case DirectAnswerQuestions = 'direct_answer_questions';
+    case ClassificationSupportInstruments = 'classification_support_instruments';
 
     // Métodos de estudo e autonomia.
     case StudyOrganizationSupport = 'study_organization_support';
@@ -77,7 +78,23 @@ enum InterventionType: string
     public function label(): string
     {
         return match ($this) {
-            self::LearningReinforcement => __('Reforço das aprendizagens'),
+            // Renamed to the designation Decreto-Lei n.º 54/2018 actually uses
+            // for the selective measure this type maps onto (artigo 9.º,
+            // alínea d)). The code stays `learning_reinforcement`: history is
+            // anchored to the code, never to the wording (§13.2).
+            //
+            // What the rename does and does not touch, precisely. A stored
+            // `title` is a snapshot taken at write time, so a record made
+            // before this keeps saying «Reforço das aprendizagens». Anything
+            // that reads the enum LIVE does not: StudentReportSource groups by
+            // type and labels the group from here, so a report REGENERATED
+            // over an old record now reads «Antecipação e reforço das
+            // aprendizagens». That is the intended outcome of a decided
+            // correction — the measure always was artigo 9.º, alínea d) — but
+            // it is a change to how old records are described, not merely to
+            // new ones, and it is written down here so nobody discovers it
+            // from a report.
+            self::LearningReinforcement => __('Antecipação e reforço das aprendizagens'),
             self::IndividualSupport => __('Apoio individualizado'),
             self::SmallGroupSupport => __('Apoio em pequeno grupo'),
             self::PedagogicalDifferentiation => __('Diferenciação pedagógica'),
@@ -106,6 +123,10 @@ enum InterventionType: string
             self::ExtraTime => __('Tempo suplementar em situação de avaliação'),
             self::SeparateRoomAssessment => __('Realização de prova em sala à parte'),
             self::DirectAnswerQuestions => __('Questões de resposta direta'),
+            // An adaptation to the assessment PROCESS, deliberately recorded as
+            // its own type so a teacher can register it at all. It carries no
+            // measure level, here or anywhere: see EvaluationAdaptationCode.
+            self::ClassificationSupportInstruments => __('Instrumentos de apoio à classificação — dislexia e perturbação da linguagem'),
 
             self::StudyOrganizationSupport => __('Apoio à organização do estudo'),
             self::TimeManagementSupport => __('Apoio à gestão do tempo'),
@@ -146,7 +167,8 @@ enum InterventionType: string
             self::AssessmentInstrumentAdaptation,
             self::ExtraTime,
             self::SeparateRoomAssessment,
-            self::DirectAnswerQuestions => InterventionContext::Evaluation,
+            self::DirectAnswerQuestions,
+            self::ClassificationSupportInstruments => InterventionContext::Evaluation,
 
             self::StudyOrganizationSupport,
             self::TimeManagementSupport,
@@ -181,13 +203,23 @@ enum InterventionType: string
      */
     public static function catalogue(InterventionLegalFramework $framework): array
     {
-        return array_map(fn (self $type) => [
-            'value' => $type->value,
-            'label' => $type->label(),
-            'context' => $type->context()->value,
-            'context_label' => $type->context()->label(),
-            'requires_description' => $type->requiresDescription(),
-            'legal_mapping' => $framework->mappingFor($type)->toPayload(),
-        ], self::cases());
+        return array_map(function (self $type) use ($framework) {
+            $family = $framework->familyFor($type);
+
+            return [
+                'value' => $type->value,
+                'label' => $type->label(),
+                'context' => $type->context()->value,
+                'context_label' => $type->context()->label(),
+                'requires_description' => $type->requiresDescription(),
+                // The family is the framework's reading, not the type's own:
+                // under NullLegalFramework nothing is a legal measure, because
+                // there is no law to make one.
+                'family' => $family->value,
+                'family_label' => $family->label(),
+                'may_carry_measure_level' => $family->mayCarryMeasureLevel(),
+                'legal_mapping' => $framework->mappingFor($type)->toPayload(),
+            ];
+        }, self::cases());
     }
 }

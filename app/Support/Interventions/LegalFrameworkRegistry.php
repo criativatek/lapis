@@ -46,6 +46,17 @@ final class LegalFrameworkRegistry
         }
 
         foreach ($this->frameworks as $framework) {
+            // The status check comes first and is not negotiable. A draft or a
+            // published-but-not-yet-in-force version may legitimately sit in
+            // this list — so it can be tested, inspected, and be ready on the
+            // day it commences — and must never be handed to a teacher as the
+            // law. Putting the guard here rather than at the call sites means a
+            // future version cannot leak into the UI because somebody forgot an
+            // `if` in a controller.
+            if (! $framework->status()->isApplicable()) {
+                continue;
+            }
+
             if ($framework->jurisdiction() === $normalised && $framework->coversDate($date)) {
                 return $framework;
             }

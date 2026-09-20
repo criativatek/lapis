@@ -1657,10 +1657,15 @@ class GenerateDataExport
             'support_measure_code' => $intervention->support_measure_code,
             'evaluation_adaptation_code' => $intervention->evaluation_adaptation_code,
             'legal_mapping_source' => $intervention->legal_mapping_source,
+            // The version of the law the framing was decided under. Exported
+            // because a backup that loses it turns a stamped record back into
+            // one that can only be dated — which is the safeguard, gone.
+            'legal_framework_code' => $intervention->legal_framework_code,
             'support_measures' => $intervention->supportMeasures->map(fn (InterventionSupportMeasure $measure) => [
                 'level' => $measure->support_measure_level->value,
                 'code' => $measure->support_measure_code->value,
                 'legal_mapping_source' => $measure->legal_mapping_source?->value,
+                'legal_framework_code' => $measure->legal_framework_code,
             ])->values()->all(),
             'created_by_email' => $this->authorEmail($intervention->created_by, $refs),
         ];

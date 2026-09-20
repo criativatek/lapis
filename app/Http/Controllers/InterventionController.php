@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreInterventionRequest;
 use App\Http\Requests\UpdateInterventionRequest;
 use App\Models\AcademicPeriod;
+use App\Models\CatalogueFamily;
 use App\Models\Domain;
 use App\Models\Enrollment;
 use App\Models\EvaluationAdaptationCode;
@@ -274,7 +275,25 @@ class InterventionController extends Controller
             // shape in every jurisdiction, so a page never breaks over a
             // missing property — with no framework it simply has nothing to
             // render, and never borrows another country's taxonomy.
-            'legalFramework' => $framework->hasLegalTaxonomy() ? ['code' => $framework->code()] : null,
+            // The version of the law the page is speaking in, named on screen
+            // so a teacher can see which regime framed what they are reading —
+            // and so the day a second version exists, the page says which.
+            'legalFramework' => $framework->hasLegalTaxonomy() ? [
+                'code' => $framework->code(),
+                'title' => $framework->title(),
+                'legal_reference' => $framework->legalReference(),
+                'status' => $framework->status()->value,
+                'valid_from' => $framework->validFrom()?->toDateString(),
+                'valid_until' => $framework->validUntil()?->toDateString(),
+            ] : null,
+            'catalogueFamilies' => array_map(
+                fn (CatalogueFamily $family) => [
+                    'value' => $family->value,
+                    'label' => $family->label(),
+                    'may_carry_measure_level' => $family->mayCarryMeasureLevel(),
+                ],
+                CatalogueFamily::cases(),
+            ),
             'supportMeasureLevels' => $framework->supportMeasureLevels(),
             'evaluationAdaptations' => $framework->evaluationAdaptations(),
             'effectivenessOptions' => InterventionEffectiveness::options(),
@@ -759,30 +778,98 @@ class InterventionController extends Controller
             'legal_framing' => ['nullable', Rule::in(['auto', 'manual', 'none'])],
             'confirm_suggested_framing' => ['boolean'],
             'support_measures' => ['array'],
-            'support_measures.*.level' => ['required', Rule::enum(SupportMeasureLevel::class)],
+            // Nullable, not required: the level is DERIVED from the measure by
+            // the framework in force on the intervention's own date, so asking
+            // for it again is asking the teacher to restate something the law
+            // already settled — and creates a second source of truth that can
+            // disagree with the first (§13). Still accepted when sent, so older
+            // clients and the import path keep working, and still checked for
+            // coherence below rather than trusted.
+            'support_measures.*.level' => ['nullable', Rule::enum(SupportMeasureLevel::class)],
             'support_measures.*.code' => ['required', Rule::enum(SupportMeasureCode::class)],
             'evaluation_adaptation_code' => ['nullable', Rule::enum(EvaluationAdaptationCode::class)],
         ], [], [
             'enrollment_ids' => __('alunos'),
         ]);
 
+        // The framework that applies on the intervention's own date — the same
+        // one that will frame it — so an inferred level is the level the law
+        // gave that measure THEN, never the level it happens to have today.
+        $framework = $this->frameworkFor(Carbon::parse($validated['started_on']));
+
+        // Laravel builds validated() by walking the RULES, not the input, so a
+        // nested array comes back keyed in the order its rule paths matched:
+        // an entry carrying a `level` lands before one that omits it. Left
+        // alone, that reorders the measures — and `$pairs[0]`, which becomes
+        // the legacy first pair written back onto `interventions`, would stop
+        // being the measure the teacher listed first. Sorting by key restores
+        // the submitted order before anything reads it.
+        if (isset($validated['support_measures'])) {
+            ksort($validated['support_measures']);
+            $validated['support_measures'] = array_values($validated['support_measures']);
+        }
+
         $supportMeasurePairs = [];
         foreach ($validated['support_measures'] ?? [] as $index => $pair) {
             $code = SupportMeasureCode::from($pair['code']);
 
-            if ($code->level()->value !== $pair['level']) {
+            // Keyed by code alone: the level is a function of the code, so two
+            // entries with the same code are the same measure twice however
+            // their levels were spelled. Checked first, so it still fires on a
+            // measure whose level this regime cannot place.
+            if (isset($supportMeasurePairs[$pair['code']])) {
+                throw ValidationException::withMessages([
+                    "support_measures.{$index}.code" => __('Esta medida de suporte já foi adicionada.'),
+                ]);
+            }
+            $supportMeasurePairs[$pair['code']] = true;
+
+            $level = $framework->hasLegalTaxonomy() ? $framework->levelFor($code) : null;
+
+            if ($level === null) {
+                // Two different silences, and neither may become a rejection
+                // the teacher cannot act on.
+                //
+                // With no legal taxonomy — an organization in a jurisdiction
+                // Lapispro has no framework for — there is no law to place the
+                // measure, so whatever level the record already carried is
+                // kept as-is. Refusing here would make every EDIT of an
+                // existing intervention impossible for those organizations:
+                // the form resends the measures it loaded, and the page offers
+                // no measures to remove them with.
+                //
+                // With a taxonomy that simply does not name this measure (it
+                // was revoked, or belongs to a later regime), the level is
+                // likewise left as submitted rather than invented. The measure
+                // stays readable and editable; what the app must not do is
+                // assert a classification the applicable law does not make.
+                // `intervention_support_measures.support_measure_level` is NOT
+                // NULL, so a submitted level is required here — and there
+                // always is one in practice, because the only way to reach
+                // this branch is by resending a measure a record already
+                // holds, and the form resends its stored level with it. A
+                // bare code with no level and no law to place it is a client
+                // error, and says so rather than failing at the database.
+                if (($pair['level'] ?? null) === null) {
+                    throw ValidationException::withMessages([
+                        "support_measures.{$index}.code" => __('Esta medida não tem nível no enquadramento legal aplicável à data de início. Indique o nível ou remova a medida.'),
+                    ]);
+                }
+
+                $validated['support_measures'][$index]['level'] = $pair['level'];
+
+                continue;
+            }
+
+            if (($pair['level'] ?? null) !== null && $level->value !== $pair['level']) {
                 throw ValidationException::withMessages([
                     "support_measures.{$index}.code" => __('A medida não pertence ao nível selecionado.'),
                 ]);
             }
 
-            $key = $pair['level'].'|'.$pair['code'];
-            if (isset($supportMeasurePairs[$key])) {
-                throw ValidationException::withMessages([
-                    "support_measures.{$index}.code" => __('Esta medida de suporte já foi adicionada.'),
-                ]);
-            }
-            $supportMeasurePairs[$key] = true;
+            // Derived once, here, so everything downstream reads one value.
+            $validated['support_measures'][$index]['level'] = $level->value;
+
         }
 
         if ($isCreate && count($validated['intervention_types']) > 1
@@ -894,7 +981,13 @@ class InterventionController extends Controller
             'support_measure_code' => null,
             'evaluation_adaptation_code' => null,
             'legal_mapping_source' => null,
+            'legal_framework_code' => null,
         ];
+
+        // Stamped on every framing this method produces. Reading still resolves
+        // the framework from started_on; the stamp is what makes a resolution
+        // that drifts detectable rather than silent (§12).
+        $frameworkCode = $framework->hasLegalTaxonomy() ? $framework->code() : null;
 
         $decision = $validated['legal_framing'] ?? null;
 
@@ -917,6 +1010,11 @@ class InterventionController extends Controller
                     'support_measure_code' => $existing->support_measure_code,
                     'evaluation_adaptation_code' => $existing->evaluation_adaptation_code,
                     'legal_mapping_source' => $existing->legal_mapping_source,
+                    // The stamp the framing was decided under, kept as it was.
+                    // Re-stamping a preserved framing with today's framework
+                    // would be precisely the retroactive reinterpretation the
+                    // stamp exists to prevent.
+                    'legal_framework_code' => $existing->legal_framework_code,
                 ];
             }
         }
@@ -930,9 +1028,14 @@ class InterventionController extends Controller
             $measure = ($firstSupportMeasure['code'] ?? null) !== null
                 ? SupportMeasureCode::from($firstSupportMeasure['code'])
                 : null;
-            $level = ($firstSupportMeasure['level'] ?? null) !== null
-                ? SupportMeasureLevel::from($firstSupportMeasure['level'])
-                : $measure?->level();
+            // The framework's answer first: validatePayload() has already
+            // filled the level in from it, and the client's value — when there
+            // was one — has already been checked against it.
+            $level = $measure !== null
+                ? $framework->levelFor($measure)
+                : (($firstSupportMeasure['level'] ?? null) !== null
+                    ? SupportMeasureLevel::from($firstSupportMeasure['level'])
+                    : null);
             $adaptation = ($validated['evaluation_adaptation_code'] ?? null) !== null
                 ? EvaluationAdaptationCode::from($validated['evaluation_adaptation_code'])
                 : null;
@@ -946,6 +1049,7 @@ class InterventionController extends Controller
                 'support_measure_code' => $measure,
                 'evaluation_adaptation_code' => $adaptation,
                 'legal_mapping_source' => LegalMappingSource::Manual,
+                'legal_framework_code' => $frameworkCode,
             ];
         }
 
@@ -962,6 +1066,7 @@ class InterventionController extends Controller
                 'support_measure_code' => $mapping->measure,
                 'evaluation_adaptation_code' => $mapping->evaluationAdaptation,
                 'legal_mapping_source' => LegalMappingSource::SystemDirect,
+                'legal_framework_code' => $frameworkCode,
             ];
         }
 
@@ -972,6 +1077,7 @@ class InterventionController extends Controller
                 'support_measure_code' => $mapping->measure,
                 'evaluation_adaptation_code' => null,
                 'legal_mapping_source' => LegalMappingSource::SystemSuggestedConfirmed,
+                'legal_framework_code' => $frameworkCode,
             ];
         }
 
@@ -986,6 +1092,9 @@ class InterventionController extends Controller
      */
     protected function syncSupportMeasures(Intervention $intervention, array $validated, array $framing): void
     {
+        $framework = $this->frameworkFor($intervention->started_on);
+        $stampForMeasures = $framework->hasLegalTaxonomy() ? $framework->code() : null;
+
         if (! array_key_exists('support_measures', $validated) && $intervention->supportMeasures()->exists()) {
             return;
         }
@@ -1010,6 +1119,13 @@ class InterventionController extends Controller
                 'support_measure_level' => $pair['level'],
                 'support_measure_code' => $pair['code'],
                 'legal_mapping_source' => $framing['legal_mapping_source'] ?? LegalMappingSource::Manual,
+                // A measure row always carries a stamp when there is a regime
+                // to name. `legal_framing: 'none'` clears the intervention's
+                // own framing but does NOT discard measures the teacher
+                // submitted, so without this fallback the one row that does
+                // hold a legal classification would be the one without a
+                // stamp.
+                'legal_framework_code' => $framing['legal_framework_code'] ?? $stampForMeasures,
             ]);
         }
 
@@ -1090,6 +1206,10 @@ class InterventionController extends Controller
             'expected_end_on' => $intervention->expected_end_on?->toDateString(),
             'concluded_on' => $intervention->concluded_on?->toDateString(),
             'available_for_reports' => $intervention->available_for_reports,
+            // Readable, not just written: a record can now say which version of
+            // the law framed it, which is what makes a resolution that drifts
+            // from the stamp visible instead of silent.
+            'legal_framework_code' => $intervention->legal_framework_code,
             'legal_framing' => $intervention->hasConfirmedLegalFraming() ? [
                 'level' => $intervention->support_measure_level?->value,
                 'level_label' => $intervention->support_measure_level?->label(),

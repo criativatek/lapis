@@ -2,7 +2,11 @@
 
 namespace App\Support\Interventions;
 
+use App\Models\CatalogueFamily;
 use App\Models\InterventionType;
+use App\Models\LegalFrameworkStatus;
+use App\Models\SupportMeasureCode;
+use App\Models\SupportMeasureLevel;
 use Carbon\CarbonInterface;
 
 /**
@@ -27,6 +31,36 @@ final class NullLegalFramework implements InterventionLegalFramework
         return 'none';
     }
 
+    public function title(): string
+    {
+        return __('Sem enquadramento legal');
+    }
+
+    public function legalReference(): string
+    {
+        return '';
+    }
+
+    public function validFrom(): ?CarbonInterface
+    {
+        return null;
+    }
+
+    public function validUntil(): ?CarbonInterface
+    {
+        return null;
+    }
+
+    /**
+     * Active, not Draft. "No framework applies here" is a correct and current
+     * answer, not an unfinished one — marking it Draft would make the registry
+     * refuse to apply it and leave callers with nothing at all.
+     */
+    public function status(): LegalFrameworkStatus
+    {
+        return LegalFrameworkStatus::Active;
+    }
+
     public function jurisdiction(): ?string
     {
         return null;
@@ -45,6 +79,27 @@ final class NullLegalFramework implements InterventionLegalFramework
     public function mappingFor(InterventionType $type): LegalMapping
     {
         return LegalMapping::none();
+    }
+
+    /**
+     * Everything is a pedagogical strategy, because with no law nothing can be
+     * a legal measure. This is the assertion the whole family concept rests on:
+     * a family is a reading, and where there is no law there is no reading that
+     * makes an act legally significant.
+     */
+    public function familyFor(InterventionType $type): CatalogueFamily
+    {
+        return CatalogueFamily::PedagogicalStrategy;
+    }
+
+    public function levelFor(SupportMeasureCode $measure): ?SupportMeasureLevel
+    {
+        return null;
+    }
+
+    public function legalReferenceFor(SupportMeasureCode $measure): ?LegalReference
+    {
+        return null;
     }
 
     /**

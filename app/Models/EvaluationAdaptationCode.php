@@ -25,6 +25,20 @@ enum EvaluationAdaptationCode: string
     case ExtraTime = 'extra_time';
     case SeparateRoom = 'separate_room';
     case DirectAnswerQuestions = 'direct_answer_questions';
+
+    /**
+     * Instruments that support the classification of a student with dyslexia or
+     * a language disorder — the specific grids and criteria a teacher applies
+     * when classifying, so that the disorder is not itself what is graded.
+     *
+     * It is an adaptation to the assessment PROCESS and nothing else. It is not
+     * universal, not selective and not additional, and using it says nothing
+     * about the student's formal status: a teacher may apply it to a student
+     * under no measure at all. Its existence does not depend on any future
+     * diploma — it describes something teachers do under the regime in force.
+     */
+    case ClassificationSupportInstruments = 'classification_support_instruments';
+
     case Other = 'other';
 
     public function label(): string
@@ -39,6 +53,7 @@ enum EvaluationAdaptationCode: string
             self::ExtraTime => __('Tempo suplementar'),
             self::SeparateRoom => __('Realização da prova em sala à parte'),
             self::DirectAnswerQuestions => __('Questões de resposta direta'),
+            self::ClassificationSupportInstruments => __('Instrumentos de apoio à classificação — dislexia e perturbação da linguagem'),
             self::Other => __('Outra'),
         };
     }

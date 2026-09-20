@@ -186,6 +186,7 @@ class WritePedagogicalRecords
                     'review_on' => $row['review_on'], 'available_for_reports' => $row['available_for_reports'],
                     'support_measure_level' => $row['support_measure_level'], 'support_measure_code' => $row['support_measure_code'],
                     'evaluation_adaptation_code' => $row['evaluation_adaptation_code'], 'legal_mapping_source' => $row['legal_mapping_source'],
+                    'legal_framework_code' => $row['legal_framework_code'] ?? null,
                     'created_by' => $row['created_by'],
                 ]);
                 $intervention->save();
@@ -204,6 +205,7 @@ class WritePedagogicalRecords
                         'support_measure_level' => $measure['level'],
                         'support_measure_code' => $measure['code'],
                         'legal_mapping_source' => $measure['legal_mapping_source'] ?? null,
+                        'legal_framework_code' => $measure['legal_framework_code'] ?? null,
                     ]);
                 }
 

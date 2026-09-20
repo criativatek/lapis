@@ -5,15 +5,13 @@ namespace Tests\Unit\Interventions;
 use App\Models\InterventionType;
 use App\Models\LegalMappingMode;
 use App\Models\Organization;
-use App\Support\Interventions\InterventionLegalFramework;
 use App\Support\Interventions\LegalFrameworkRegistry;
 use App\Support\Interventions\LegalFrameworkResolver;
-use App\Support\Interventions\LegalMapping;
 use App\Support\Interventions\NullLegalFramework;
 use App\Support\Interventions\PortugalInclusiveEducationFramework;
-use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Support\Interventions\FictitiousLegalFramework;
 use Tests\TestCase;
 
 /**
@@ -140,43 +138,11 @@ class LegalFrameworkResolverTest extends TestCase
         // A second, later version of the same jurisdiction's law. It is
         // fictitious and lives only in this test — no speculative framework
         // ships with the application.
-        $future = new class implements InterventionLegalFramework
-        {
-            public function code(): string
-            {
-                return 'pt-test-future';
-            }
-
-            public function jurisdiction(): string
-            {
-                return 'PT';
-            }
-
-            public function coversDate(CarbonInterface $date): bool
-            {
-                return $date->greaterThanOrEqualTo(Carbon::parse('2027-09-01'));
-            }
-
-            public function mappingFor(InterventionType $type): LegalMapping
-            {
-                return LegalMapping::none();
-            }
-
-            public function hasLegalTaxonomy(): bool
-            {
-                return true;
-            }
-
-            public function supportMeasureLevels(): array
-            {
-                return [];
-            }
-
-            public function evaluationAdaptations(): array
-            {
-                return [];
-            }
-        };
+        $future = new FictitiousLegalFramework(
+            code: 'pt-test-future',
+            jurisdiction: 'PT',
+            validFrom: Carbon::parse('2027-09-01'),
+        );
 
         $registry = new LegalFrameworkRegistry([$future, new PortugalInclusiveEducationFramework]);
         $resolver = $this->resolver($registry);

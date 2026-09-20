@@ -24,7 +24,8 @@ arquitetura.
 
 | `schema_version` | Estado | Capacidade |
 |---|---|---|
-| 11 (atual) | `Supported` | Como a v10, acrescentando o resultado real da aula (0.146.0): `lessons[].outcome` (`taught`, `teacher_absent`, `class_external_activity` ou `null` = ainda não fechada), `outcome_reason` (só categoria — `training`, `official_duty`, `other` — e só numa ausência do professor), `outcome_note` (≤160 caracteres, só numa atividade da turma), `outcome_recorded_at` e `outcome_recorded_by_email`. Ausentes num backup v≤10 ⇒ uma aula `status = taught` fecha como `taught` e as restantes ficam em aberto (o mesmo backfill da migração). Motivo em texto livre, motivo fora de uma ausência, nota fora de uma atividade ou assiduidade consolidada numa ocorrência sem assiduidade aplicável ⇒ a linha é `invalid` |
+| 12 (atual) | `Supported` | Como a v11, acrescentando a estampa do enquadramento legal: `interventions[].legal_framework_code` e `interventions[].support_measures[].legal_framework_code` — a versão da lei sob a qual o enquadramento foi decidido. Ausentes num backup v≤11 ⇒ `null`, que significa o mesmo que significava antes de a estampa existir: o regime aplicável resolve-se pelo `started_on` da intervenção. Copiada tal como está, nunca recalculada no restauro |
+| 11 | `LegacyCompatible` | Como a v10, acrescentando o resultado real da aula (0.146.0): `lessons[].outcome` (`taught`, `teacher_absent`, `class_external_activity` ou `null` = ainda não fechada), `outcome_reason` (só categoria — `training`, `official_duty`, `other` — e só numa ausência do professor), `outcome_note` (≤160 caracteres, só numa atividade da turma), `outcome_recorded_at` e `outcome_recorded_by_email`. Ausentes num backup v≤10 ⇒ uma aula `status = taught` fecha como `taught` e as restantes ficam em aberto (o mesmo backfill da migração). Motivo em texto livre, motivo fora de uma ausência, nota fora de uma atividade ou assiduidade consolidada numa ocorrência sem assiduidade aplicável ⇒ a linha é `invalid` |
 | 10 | `LegacyCompatible` | Como a v9, acrescentando `recurring_lesson_slots[].split_lesson_key` e `lessons[].lesson_unit_key` — chaves opacas (ULID, não são dados pessoais) que ligam tempos T1/T2 que são a mesma lição e aulas que são a mesma lição. Ausentes num backup mais antigo ⇒ `null`; presentes mas malformadas ⇒ a linha é `invalid` (nunca desligada em silêncio). Copiadas tal como estão |
 | 9 | `LegacyCompatible` | Como a v8, acrescentando aulas e assiduidade — `class_groups`, `class_group_memberships`, `recurring_lesson_slots`, `cancelled_lesson_occurrences`, `lessons`, `lesson_summaries`, `lesson_plans`, `lesson_attendances`. Ausentes num backup mais antigo ⇒ zero aulas restauradas, nunca um erro |
 | 8 | `LegacyCompatible` | Como a v7, acrescentando `classes[].is_support_class` — ausente num backup mais antigo, lê-se como `false` (turma normal) |
@@ -35,10 +36,10 @@ arquitetura.
 | 3 | `LegacyCompatible` | Só turmas/alunos/inscrições com `enrolled_on`; elementos de avaliação e classificações não existiam ainda no formato — linhas que os precisassem seriam `unsupported` |
 | 2 | `LegacyCompatible` | Como a 3, mas sem `enrollments[].enrolled_on` — uma inscrição sem essa data não pode ser **criada** em segurança |
 | < 2 | `Invalid` | Ficheiro recusado por inteiro |
-| > 8 | `UnsupportedNewer` | Ficheiro recusado por inteiro — backup de uma versão do Lapispro mais recente do que este código entende |
+| > 12 | `UnsupportedNewer` | Ficheiro recusado por inteiro — backup de uma versão do Lapispro mais recente do que este código entende |
 
 `App\Support\Import\Backup\BackupSchemaCompatibility` é a única fonte desta
-tabela em código (`CURRENT = 8`, `MINIMUM_SUPPORTED = 2`). Não existe
+tabela em código (`CURRENT = 12`, `MINIMUM_SUPPORTED = 2`). Não existe
 ramificação em nenhum ponto do pipeline com base em `schema_version` — cada
 coleção nova simplesmente está ausente (`?? []`) num backup mais antigo, e o
 pipeline trata "ausente" e "vazio" da mesma forma. Um backup v2 ou v3 continua

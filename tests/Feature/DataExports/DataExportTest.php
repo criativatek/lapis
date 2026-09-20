@@ -7,11 +7,20 @@ use App\Models\DataExport;
 use App\Models\Enrollment;
 use App\Models\EvidenceKind;
 use App\Models\EvidenceRecord;
+use App\Models\Intervention;
+use App\Models\InterventionDescriptionSource;
+use App\Models\InterventionDomainRelation;
+use App\Models\InterventionStatus;
+use App\Models\InterventionTargetType;
+use App\Models\InterventionType;
+use App\Models\LegalMappingSource;
 use App\Models\Organization;
 use App\Models\OrganizationSubscription;
 use App\Models\Plan;
 use App\Models\SchoolClass;
 use App\Models\SubscriptionStatus;
+use App\Models\SupportMeasureCode;
+use App\Models\SupportMeasureLevel;
 use App\Models\User;
 use App\Support\Import\Backup\BackupSchemaCompatibility;
 use App\Support\Tenancy\CurrentOrganization;
@@ -388,6 +397,57 @@ class DataExportTest extends TestCase
      * either bump, so this test's assertions stay the same shape, just
      * against the new current version.
      */
+    /**
+     * Schema v12: the legal-framework stamp travels with the backup.
+     *
+     * Without this, exporting and restoring turns a stamped intervention back
+     * into one that can only be dated — the safeguard against a future diploma
+     * reinterpreting it, quietly gone in a round trip.
+     */
+    #[Test]
+    public function the_backup_json_carries_the_legal_framework_stamp(): void
+    {
+        Storage::fake('local');
+        [$organization, $owner] = $this->institutionalOrganization();
+        $class = $this->classWithEvidence($organization, $owner);
+
+        app(CurrentOrganization::class)->runFor($organization, function () use ($class, $owner): void {
+            Intervention::create([
+                'class_id' => $class->id,
+                'target_type' => InterventionTargetType::SchoolClass,
+                'intervention_type' => InterventionType::TutorialSupport,
+                'domain_relation' => InterventionDomainRelation::None,
+                'title' => 'Apoio tutorial',
+                'description_source' => InterventionDescriptionSource::Manual,
+                'status' => InterventionStatus::New,
+                'started_on' => '2026-09-10',
+                'support_measure_level' => SupportMeasureLevel::Selective,
+                'support_measure_code' => SupportMeasureCode::TutorialSupport,
+                'legal_mapping_source' => LegalMappingSource::SystemDirect,
+                'legal_framework_code' => 'pt-inclusive-education-2018',
+                'created_by' => $owner->id,
+            ])->supportMeasures()->create([
+                'support_measure_level' => SupportMeasureLevel::Selective,
+                'support_measure_code' => SupportMeasureCode::TutorialSupport,
+                'legal_mapping_source' => LegalMappingSource::SystemDirect,
+                'legal_framework_code' => 'pt-inclusive-education-2018',
+            ]);
+        });
+
+        $this->actingAs($owner)->withSession(['organization_id' => $organization->id])
+            ->post('/data-exports')->assertRedirect();
+        $export = DataExport::withoutGlobalScope('organization')->where('requested_by', $owner->id)->firstOrFail();
+        $zip = $this->extractZip(Storage::disk('local')->path($export->disk_path));
+        $backup = json_decode((string) $zip->getFromName('backup-lapis.json'), true);
+
+        $this->assertSame(12, BackupSchemaCompatibility::CURRENT);
+        $this->assertNotEmpty($backup['interventions']);
+
+        $intervention = $backup['interventions'][0];
+        $this->assertSame('pt-inclusive-education-2018', $intervention['legal_framework_code']);
+        $this->assertSame('pt-inclusive-education-2018', $intervention['support_measures'][0]['legal_framework_code']);
+    }
+
     #[Test]
     public function the_backup_json_carries_enrollment_dates_for_restore(): void
     {

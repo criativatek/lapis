@@ -205,7 +205,7 @@ class ValidateBackupPayload
                 'target_type', 'intervention_type', 'motive_code', 'motive_label', 'strategy_code', 'strategy_label',
                 'objective', 'domain_relation', 'title', 'description', 'description_source', 'status', 'started_on',
                 'expected_end_on', 'concluded_on', 'review_on', 'available_for_reports', 'support_measure_level',
-                'support_measure_code', 'evaluation_adaptation_code', 'legal_mapping_source', 'created_batch_ulid', 'support_measures', 'created_by_email',
+                'support_measure_code', 'evaluation_adaptation_code', 'legal_mapping_source', 'legal_framework_code', 'created_batch_ulid', 'support_measures', 'created_by_email',
             ], function (array $row) use (&$rowIssues): ?array {
                 return $this->validInterventionRow($row, $rowIssues);
             }),
@@ -1351,6 +1351,10 @@ class ValidateBackupPayload
             'support_measure_code' => $this->nullableString($row['support_measure_code'] ?? null),
             'evaluation_adaptation_code' => $this->nullableString($row['evaluation_adaptation_code'] ?? null),
             'legal_mapping_source' => $this->nullableString($row['legal_mapping_source'] ?? null),
+            // Absent in every backup written before the stamp existed. Null is
+            // the honest answer for those: it means "never stamped", and
+            // reading falls back to the date exactly as it always did.
+            'legal_framework_code' => $this->nullableString($row['legal_framework_code'] ?? null),
             'support_measures' => is_array($row['support_measures'] ?? null) ? array_values($row['support_measures']) : [],
             'created_by_email' => $this->nullableString($row['created_by_email'] ?? null),
         ];
