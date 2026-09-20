@@ -47,6 +47,23 @@ type Resolution = {
     has_structured_destination: boolean;
 };
 
+// Só as medidas (destino B) trazem `already_active` — é o servidor a repetir,
+// na pré-visualização, a MESMA verificação que o caminho de escrita faz ao
+// confirmar (PreviewRow::toArray(), §29/§30): uma medida já ativa para o
+// aluno não é reimportada como duplicada.
+type MeasureResolution = Resolution & { already_active: boolean };
+
+// Espelha SectionMergeResult::toArray() (app/Services/Characterisation/Import) —
+// `action_label` já vem traduzido do servidor, não se reinventa aqui.
+type SectionMergeResult = {
+    section: string;
+    action: 'add' | 'already_present' | 'review_required' | 'no_destination' | 'ignore';
+    action_label: string;
+    current_value: string | null;
+    incoming_value: string | null;
+    merged_value: string | null;
+};
+
 type RowMatch = {
     state: string;
     state_label: string;
@@ -63,7 +80,8 @@ type PreviewRow = {
     raw_process_number: string | null;
     match: RowMatch;
     sections: Record<string, string>;
-    measures: Resolution[];
+    section_merges: Record<string, SectionMergeResult>;
+    measures: MeasureResolution[];
     resources: Resolution[];
     unresolved: Resolution[];
 };
@@ -137,20 +155,39 @@ watch(
     },
 );
 
+// Todo o estado derivado de UMA pré-visualização, num único sítio (F5). Sem
+// isto, trocar de ficheiro a meio ("Escolher outro ficheiro") deixava
+// `rowStates` com as chaves da tabela anterior por cima das novas sempre que
+// a tabela nova tinha menos linhas — a diferença ficava lá, marcável e
+// submetível, sem nunca ter vindo da tabela que está agora em ecrã.
+function clearPreviewState(): void {
+    previewData.value = null;
+    Object.keys(rowStates).forEach((key) => delete rowStates[Number(key)]);
+}
+
 function resetToInput(): void {
     step.value = 'input';
     pastedText.value = '';
     pastedHtml.value = '';
     file.value = null;
     loadError.value = null;
-    previewData.value = null;
     imageDetected.value = null;
     ocrProgress.value = null;
     ocrExtractedTable.value = null;
     ocrAbortController?.abort();
     ocrAbortController = null;
     tableChoices.value = null;
-    Object.keys(rowStates).forEach((key) => delete rowStates[Number(key)]);
+    clearPreviewState();
+}
+
+// Usada pelo "Escolher outro ficheiro" e pelo "Voltar" do seletor de tabelas
+// — volta ao passo de entrada SEM apagar o que já foi colado/escolhido (essa
+// é a diferença com resetToInput(), que só corre à abertura do diálogo), mas
+// sempre a limpar o estado da pré-visualização anterior (F5).
+function backToInputStep(): void {
+    step.value = 'input';
+    tableChoices.value = null;
+    clearPreviewState();
 }
 
 function onFileChange(event: Event): void {
@@ -210,6 +247,13 @@ function onPaste(event: ClipboardEvent): void {
         pastedHtml.value = '';
         handleImage(payload.file, 'pasted_image');
     }
+}
+
+// F10: a saída explícita da tabela rica — nunca uma segunda forma silenciosa
+// de o fazer (ver o comentário junto ao textarea sobre porque não se escolheu
+// limpar `pastedHtml` ao primeiro carácter escrito).
+function discardPastedHtml(): void {
+    pastedHtml.value = '';
 }
 
 function handleImage(imageFile: File | Blob, sourceKind: 'pasted_image' | 'image_upload'): void {
@@ -324,6 +368,11 @@ async function loadPreview(tableIndex: number | null = null): Promise<void> {
             return;
         }
 
+        // Limpa ANTES de repovoar (F5) — uma pré-visualização nova nunca deve
+        // herdar linhas da anterior, mesmo que esta chamada não tenha passado
+        // por resetToInput()/backToInputStep() (ex.: escolher uma tabela
+        // diferente no seletor do .docx chama loadPreview() diretamente).
+        clearPreviewState();
         previewData.value = payload as PreviewResponse;
 
         payload.preview.rows.forEach((row: PreviewRow) => {
@@ -455,17 +504,30 @@ function closeDialog(): void {
                         <!-- Alcançável pelo teclado (§51): é o próprio campo de
                              texto que recebe o Ctrl+V, sem depender de um
                              clique numa div sem foco. -->
+                        <!-- F10: quando a cola trouxe HTML com tabela, o
+                             textarea fica desativado em vez de ficar vazio e
+                             editável por baixo de um aviso — uma tabela rica
+                             tem estrutura (linhas/colunas) que este campo de
+                             texto simples não pode representar, por isso
+                             "escrever por cima" não existe: ou se usa a
+                             tabela reconhecida, ou descarta-se e escreve-se de
+                             novo em texto simples. Nunca os dois em
+                             simultâneo — era exatamente essa ambiguidade que
+                             fazia uma edição desaparecer sem aviso. -->
                         <Textarea
                             id="characterisation-paste"
                             v-model="pastedText"
                             rows="6"
                             placeholder="Cole aqui a tabela…"
-                            :disabled="file !== null"
+                            :disabled="file !== null || pastedHtml !== ''"
                             @paste="onPaste"
                         />
-                        <p v-if="pastedHtml !== ''" class="text-xs text-muted-foreground">
-                            Tabela reconhecida na cola — pronta a pré-visualizar.
-                        </p>
+                        <div v-if="pastedHtml !== ''" class="flex items-center justify-between gap-2 rounded-md border p-2 text-xs text-muted-foreground">
+                            <p>Tabela reconhecida na cola (com formatação) — pronta a pré-visualizar.</p>
+                            <Button type="button" variant="outline" size="sm" @click="discardPastedHtml">
+                                Descartar formatação / usar texto
+                            </Button>
+                        </div>
                     </div>
                     <div v-if="ocrProgress" class="flex items-center gap-2 rounded-md border p-2 text-sm">
                         <Loader2 class="size-4 shrink-0 animate-spin" />
@@ -525,7 +587,7 @@ function closeDialog(): void {
                     </ul>
                 </div>
                 <DialogFooter>
-                    <Button type="button" variant="outline" @click="step = 'input'">Voltar</Button>
+                    <Button type="button" variant="outline" @click="backToInputStep">Voltar</Button>
                 </DialogFooter>
             </template>
 
@@ -546,9 +608,25 @@ function closeDialog(): void {
                         </li>
                     </ul>
 
+                    <!-- F9: 0 linhas não é "sem nada a mostrar" — é um estado
+                         próprio, que explica porquê e dá para onde ir a
+                         seguir. Os avisos (`warnings`) continuam visíveis
+                         acima mesmo aqui, porque é precisamente aqui que eles
+                         mais interessam: são normalmente a razão de 0 linhas
+                         terem sobrevivido. -->
+                    <div v-if="rows.length === 0" class="space-y-3 rounded-md border p-4 text-center">
+                        <p class="text-sm font-medium">Nenhuma linha ficou pronta a importar.</p>
+                        <p class="text-xs text-muted-foreground">
+                            Ou o ficheiro não tinha linhas de dados reconhecíveis, ou todas foram ignoradas — veja os
+                            avisos acima, se os houver. Pode tentar outro formato, escolher outra tabela do mesmo
+                            documento ou carregar outro ficheiro.
+                        </p>
+                        <Button type="button" variant="outline" @click="backToInputStep">Escolher outro ficheiro</Button>
+                    </div>
+
                     <!-- Empilhado em cartões a toda a largura, para caber sem scroll
                          horizontal a 390px (o requisito da spec §7). -->
-                    <div class="space-y-3">
+                    <div v-else class="space-y-3">
                         <div
                             v-for="state in rows"
                             :key="state.row.row_number"
@@ -604,6 +682,33 @@ function closeDialog(): void {
                                     <Label class="text-xs">
                                         {{ previewData.sections.find((s) => s.key === sectionKey)?.label ?? sectionKey }}
                                     </Label>
+                                    <!-- F6: o que a importação faria a esta secção já
+                                         registada — nunca uma substituição (não há
+                                         essa opção no enum, ver SectionMergeAction).
+                                         ALREADY_PRESENT (reimportar a mesma tabela)
+                                         fica explícito para não parecer que nada
+                                         aconteceu por engano. -->
+                                    <template v-if="state.row.section_merges[sectionKey]">
+                                        <p
+                                            v-if="state.row.section_merges[sectionKey].action === 'already_present'"
+                                            class="text-xs text-muted-foreground"
+                                        >
+                                            Já registado — esta reimportação não acrescenta nada de novo.
+                                        </p>
+                                        <template v-else-if="state.row.section_merges[sectionKey].current_value">
+                                            <p class="text-xs text-muted-foreground">
+                                                <span class="font-medium">JÁ REGISTADO:</span>
+                                                {{ state.row.section_merges[sectionKey].current_value }}
+                                            </p>
+                                            <p class="text-xs text-muted-foreground">
+                                                <span class="font-medium">A ACRESCENTAR:</span>
+                                                {{ state.row.section_merges[sectionKey].incoming_value }}
+                                            </p>
+                                            <p class="text-xs text-muted-foreground italic">
+                                                Será acrescentado à caracterização existente.
+                                            </p>
+                                        </template>
+                                    </template>
                                     <Textarea v-model="state.sections[sectionKey]" rows="2" />
                                 </div>
                             </div>
@@ -614,6 +719,15 @@ function closeDialog(): void {
                                     {{ [measure.level_label, measure.code_label].filter(Boolean).join(' · ') }}
                                     <span class="text-muted-foreground italic">
                                         — o ficheiro indicava: {{ measure.raw_token }}
+                                    </span>
+                                    <!-- F6: idem às secções — o servidor já sabe se
+                                         esta medida está ativa para o aluno; o
+                                         cliente só lê, nunca decide (§29/§30). -->
+                                    <span v-if="measure.already_active" class="block text-muted-foreground">
+                                        Já registada — não será duplicada.
+                                    </span>
+                                    <span v-else class="block text-muted-foreground">
+                                        Será adicionada a Estratégias e Medidas.
                                     </span>
                                 </p>
                             </div>
@@ -652,7 +766,7 @@ function closeDialog(): void {
                         {{ confirmableCount }} de {{ rows.length }} linhas serão importadas.
                     </p>
                     <div class="flex gap-2">
-                        <Button type="button" variant="outline" @click="step = 'input'">Escolher outro ficheiro</Button>
+                        <Button type="button" variant="outline" @click="backToInputStep">Escolher outro ficheiro</Button>
                         <Button type="button" :disabled="submitting || confirmableCount === 0" @click="submitImport">
                             <Loader2 v-if="submitting" class="size-4 animate-spin" />
                             Confirmar importação
