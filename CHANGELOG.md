@@ -25,6 +25,90 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.152.0] — 2026-09-20
+
+Foi testada em produção uma tabela verdadeira, vinda do Word, com cabeçalhos a
+dois níveis, células fundidas, RTP/PEI, MU, MS, MA, coadjuvação, apoios,
+tutoria, ATE, educação especial, psicologia e uma legenda no fim. O print colado
+não era interpretado. A tabela copiada do Word chegava achatada em texto linear
+e o preview devolvia zero linhas. Passar pelo Excel, em certos casos, levava a
+tabela como objeto visual e não como células.
+
+Nada disto era culpa do professor, e nenhuma das três coisas se resolve pedindo
+a alguém que converta o documento à mão.
+
+### Adicionado
+- **Importação multimodal.** Word (.docx), Excel (.xlsx), CSV, colagem do Word,
+  do Excel e do Google Sheets, colagem de imagem e carregamento de imagem. Todas
+  as origens convergem numa só representação tabular e daí para o parser que já
+  existia — matching, confidence, preview e confirmação não souberam que isto
+  aconteceu. O importador não foi reescrito; ganhou uma camada à frente.
+- **Leitura de .docx** por `ZipArchive` sobre `word/document.xml`, com
+  `gridSpan` e `vMerge`, validada por magic bytes antes de se acreditar na
+  extensão. Um documento com várias tabelas pergunta qual; assumir a primeira
+  estaria certo a maior parte das vezes, e as outras seriam indetectáveis.
+- **OCR de imagens no próprio browser.** A imagem pode ter nomes de menores e
+  **não sai da máquina**: sem Gemini, sem serviço de OCR, sem API de terceiros,
+  sem sequer chegar ao servidor. O reconhecimento não se fica pelo texto — usa
+  as coordenadas de cada palavra para reconstruir linhas, colunas e células,
+  porque texto linear de uma tabela é texto sem a tabela.
+- **Rever a tabela reconhecida** antes de rever os alunos, para origens
+  complexas, com as linhas descartadas à vista e não apenas contadas. E corrigir:
+  o texto de uma célula, o tipo de uma linha, ignorar uma coluna. A partir daí a
+  classificação é da professora, e o servidor honra-a em vez de voltar a
+  adivinhar.
+- **Sugestão de correção de siglas**, nunca aplicada sozinha. Um `ACN5` lido de
+  uma imagem com pouca confiança pode ser `ACNS`; quem decide é quem conhece a
+  turma. Uma sigla que a escola escreveu à mão não recebe sugestão nenhuma —
+  corrigir um engano de leitura e corrigir o que a escola escreveu são actos
+  diferentes.
+- **Saída dos dois fluxos.** A Caracterização e as Estratégias e Medidas
+  terminavam sem forma de voltar. Passam a ter «Voltar» e «Concluir», com o
+  mesmo padrão nas duas, e o destino resolvido no servidor a partir do contexto
+  — não por `history.back()`.
+
+### Alterado
+- **Importar acrescenta; nunca substitui.** O merge acontece no servidor, dentro
+  da transacção, contra o valor lido da base de dados — não contra um texto que
+  o browser envie. Se viesse do cliente, um pedido forjado com uma secção vazia
+  apagava o que uma professora escreveu à mão, e o servidor obedecia a achar que
+  estava a importar. Não existe substituição automática, nem como opção.
+- **Reimportar a mesma tabela não duplica texto.** A normalização é só para
+  comparar e nunca toca no que fica gravado; e é deliberadamente pouco esperta,
+  porque «Dificuldade na leitura» e «Apresenta dificuldade na leitura» não são a
+  mesma frase.
+- **Uma medida reconhecida passa a criar uma intervenção** em Estratégias e
+  Medidas. O código dizia, em comentário, que não o fazia — «deduzir uma medida a
+  partir de uma célula seria inventar uma medida que ninguém decidiu». O
+  raciocínio estava certo e a premissa deixou de estar: a medida só lá chega
+  depois de uma pessoa a confirmar, linha a linha. Sem catálogo novo: reutiliza o
+  canónico, a família, o nível legal e o enquadramento datado.
+- **O preview diz o que já está registado** e o que vai ser acrescentado, por
+  secção, e se uma medida já está activa. Isto era calculado no servidor e não
+  aparecia em lado nenhum.
+
+### Corrigido
+- A tabela do Word deixa de chegar achatada: a área de transferência traz uma
+  tabela HTML a sério ao lado do texto simples, e era o texto simples que estava
+  a ser lido.
+- Células fundidas deixam de deslocar colunas, e a segunda linha de um cabeçalho
+  a dois níveis deixa de ser oferecida como aluna — aparecia no preview com um
+  selector «Associar a aluno» ao lado.
+- «Alunos com RTP» e a legenda do fim deixam de poder ser gravadas como alunos,
+  e um aluno que só tenha nome deixa de poder ser descartado como agrupamento ou
+  como legenda.
+- XLSX, CSV e texto colado passam finalmente pela mesma camada que o Word e o
+  .docx. Existiam dois extractores testados e sem um único chamador em produção.
+- «0 de 0 linhas» ganha causa, e o que foi descartado é dito com a contagem certa
+  e pelo nome certo.
+- O texto do diálogo deixa de ser cortado no telemóvel. A verificação de overflow
+  passava porque o diálogo cortava o conteúdo em vez de alargar a página: medir
+  se a página alarga não é medir se o texto se lê.
+- A migration que alargava os tipos de origem corria antes da que cria a tabela,
+  porque o Laravel ordena por nome de ficheiro. Numa base de dados nova o deploy
+  abortava. Não aparecia em testes porque a suite corre em SQLite e ambas as
+  migrations só actuam em MySQL.
+
 ## [0.151.0] — 2026-09-20
 
 Um aluno pode pertencer à turma e não frequentar uma das disciplinas — no 8.º F
