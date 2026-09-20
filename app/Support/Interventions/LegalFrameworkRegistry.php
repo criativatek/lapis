@@ -7,13 +7,19 @@ use Carbon\CarbonInterface;
 /**
  * Every legal framework Lapispro knows how to apply.
  *
- * One entry today. A second Portuguese version (the revision approved in 2026
- * with effect announced for 2027) becomes a second entry with its own effective
- * dates once the final text exists — not a rewrite of anything here. Another
- * country becomes an entry too. Neither touches the pedagogical catalogue.
+ * One entry today. The announced revision of the Portuguese regime becomes a
+ * second entry, with its own effective dates, once its final text exists — not
+ * a rewrite of anything here. No date for it is written down anywhere in this
+ * codebase: a proposal has no commencement until it has one, and guessing at
+ * one is how speculative law ends up in front of a teacher. Another country
+ * becomes an entry too. Neither touches the pedagogical catalogue.
  *
  * No fictitious frameworks: a jurisdiction is only listed once its rules have
  * actually been read and encoded.
+ *
+ * Being listed is not the same as being applied. find() skips any version whose
+ * status is not applicable, so a draft may be registered — and tested — long
+ * before it is law, without ever reaching a teacher.
  */
 final class LegalFrameworkRegistry
 {

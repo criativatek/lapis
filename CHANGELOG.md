@@ -25,6 +25,104 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.148.0] — 2026-09-20
+
+Fundação de «Estratégias e Medidas»: separa o **conceito pedagógico** do
+**enquadramento legal**, para que a lei possa mudar sem reescrever registos
+antigos. Não é ainda a reformulação visual da página.
+
+### Adicionado
+- **Catálogo legal completo do regime em vigor.** O catálogo representava 9 das
+  15 medidas do Decreto-Lei n.º 54/2018 (na redação dada pela Lei n.º 116/2019 e
+  pelo Decreto-Lei n.º 62/2023). As seis em falta não eram opcionais: eram
+  **irregistáveis** — enriquecimento curricular e promoção do comportamento
+  pró-social (artigo 8.º), percursos curriculares diferenciados (artigo 9.º),
+  frequência do ano de escolaridade por disciplinas, plano individual de
+  transição e desenvolvimento de metodologias e estratégias de ensino
+  estruturado (artigo 10.º). Cada medida passa a citar o artigo, o número, a
+  alínea e a designação literal do diploma.
+- **Famílias de intervenção** (`CatalogueFamily`): medida de suporte ·
+  estratégia pedagógica · adaptação ao processo de avaliação · apoio ou recurso.
+  A página mostrava as quatro lado a lado como se fossem a mesma coisa —
+  «Apoio à planificação textual» não é medida sob diploma nenhum. A família é a
+  **leitura de um enquadramento**, não uma propriedade do item: sem lei
+  aplicável nada é medida legal. Uma sugestão continua estratégia até o
+  professor a confirmar.
+- **Enquadramento legal versionado.** Cada versão declara título, diploma,
+  vigência e estado (proposta · publicada e ainda não em vigor · em vigor ·
+  histórica), e diz ela própria em que nível põe cada medida e onde a nomeia.
+  Uma versão que não esteja em vigor **nunca é aplicada**, mesmo que esteja
+  registada — o guarda está no registo de enquadramentos e não em cada chamada.
+- **Adaptação ao processo de avaliação: «Instrumentos de apoio à classificação
+  — dislexia e perturbação da linguagem».** Deliberadamente **sem nível**:
+  aplicá-la não diz nada sobre se o aluno está abrangido por medidas
+  universais, seletivas ou adicionais.
+
+### Alterado
+- **«Reforço das aprendizagens» → «Antecipação e reforço das aprendizagens»**, a
+  designação que o artigo 9.º, alínea d) usa. O código com que o registo é
+  guardado **não mudou**.
+- **O nível da medida deixa de ser escolhido à mão.** Era pedido ao professor
+  que escolhesse «Seletiva» e depois «Apoio tutorial» — repetir algo que a lei
+  já decidiu, e deixar os dois discordarem. Passa a ser derivado da medida, na
+  página e no servidor. O nível enviado por um cliente antigo continua aceite,
+  mas é verificado.
+- **Vigência temporal real.** Um enquadramento vigorava «desde sempre»; passa a
+  responder pelos seus limites, ambos **inclusivos** (`validUntil` é o último
+  dia de vigência, não o primeiro de não-vigência). Uma intervenção datada antes
+  de 2018-07-07 resolve para **nenhum** enquadramento — o regime não existia — e
+  o registo continua editável.
+- **Duas versões a reclamar a mesma data falham alto** em vez de se escolher a
+  primeira da lista. Uma data é regida por exatamente um regime; responder pela
+  ordem de um array faria a leitura jurídica de um registo depender da ordem por
+  que alguém escreveu código.
+
+### Preservação histórica
+- **O nível fica guardado** — não é redundância, é o retrato de como a lei lia
+  aquela medida naquela data. Recalculá-lo na leitura reclassificaria registos
+  antigos no dia em que a lei mudasse.
+- **A versão aplicável fica carimbada** no registo (`legal_framework_code`). A
+  leitura continua a resolver pela data da intervenção, **nunca por hoje**; o
+  carimbo é o que torna uma resolução errada detetável em vez de silenciosa. Um
+  enquadramento preservado nunca é re-carimbado.
+- **A designação do tipo fica carimbada** (`intervention_type_label`). O rótulo
+  de um grupo num relatório vinha do catálogo ao vivo, por isso renomear uma
+  designação reescrevia a forma como registos feitos anos antes eram descritos,
+  na primeira vez que alguém regerasse o relatório. Passa a ser retrato
+  primeiro, catálogo atual como recurso — que é o que todos os relatórios
+  fizeram para todos os registos até agora, por isso nada regride num registo
+  anterior à coluna. O **agrupamento continua a ser pelo código**: dois registos
+  do mesmo tipo não se separam por terem sido escritos em momentos diferentes.
+
+### Notas técnicas
+- Migrations **aditivas**: `interventions.legal_framework_code`,
+  `intervention_support_measures.legal_framework_code` e
+  `interventions.intervention_type_label`, todas nullable; o `CHECK` do catálogo
+  alargado de 9 para 15 códigos. Nada é apagado, renomeado ou reescrito.
+- O `down()` **recusa-se** quando existem medidas registadas com os códigos que
+  a versão anterior do catálogo não conhece, e nomeia-os. Apagar registos reais
+  para desfazer uma alteração de esquema não é opção.
+- A recuperação do retrato da designação só toca em linhas onde ele está
+  provavelmente lá (o `title` é exatamente uma designação que esta aplicação
+  gerou para aquele tipo). Texto do professor e marcadores de importação ficam
+  a null: um retrato errado é pior do que nenhum — nenhum recorre ao catálogo,
+  um errado imprime uma categoria que o registo nunca teve. Foi assim que
+  «Legado sem dominio» chegou uma vez a um documento impresso.
+- `ValidityWindow::covers()` é a única implementação da vigência, e uma função
+  pura em vez de um *trait*: um *trait* herda as assinaturas estreitadas da
+  classe que o usa, e o ramo do nulo ficaria morto num sítio e vivo noutro.
+- Backup sobe a `schema_version` **12** para transportar o carimbo do
+  enquadramento. Ausente num backup mais antigo ⇒ null, que significa o mesmo
+  que significava antes de o carimbo existir.
+- O catálogo passa a enviar um bloco `presentation` por item (família, nível,
+  diploma, artigo, vigência, designação legal) — o contrato que a camada de
+  apresentação declara e prefere à derivação que faz hoje.
+- **Sem alterações** em IA/Gemini, documentos legais públicos ou composição
+  comercial. A proposta de revisão do regime **não** está codificada e nenhuma
+  data lhe é atribuída em lado nenhum: continua a ser uma proposta, não
+  legislação em vigor.
+- Documentação: [docs/legal-frameworks.md](docs/legal-frameworks.md).
+
 ## [0.147.0] — 2026-09-17
 
 ### Adicionado
