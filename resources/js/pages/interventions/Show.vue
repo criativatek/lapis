@@ -695,6 +695,11 @@ const detailedMustStayOpen = computed(
         || form.frequency.trim() !== ''
         || form.tracking_indicator.trim() !== ''
         || form.description.trim() !== ''
+        // «Disponível para relatórios» está ligado por omissão. Desligado é
+        // uma decisão do professor, e uma decisão não pode ficar atrás de um
+        // triângulo fechado: quem abre a edição de uma intervenção que NÃO
+        // vai para os relatórios tem de o ver sem ter de procurar.
+        || form.available_for_reports === false
         || form.errors.purpose !== undefined
         || form.errors.frequency !== undefined
         || form.errors.tracking_indicator !== undefined

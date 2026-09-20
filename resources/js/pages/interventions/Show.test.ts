@@ -415,6 +415,22 @@ describe('Estratégias e Medidas — modo simples e detalhado', () => {
         expect(wrapper.findAll('button').find((button) => button.text().includes('Acompanhamento detalhado'))?.attributes('aria-expanded')).toBe('true');
     });
 
+    /**
+     * «Disponível para relatórios» está ligado por omissão; desligado é uma
+     * decisão, e uma decisão não pode ficar escondida.
+     */
+    it('will not hide a reports flag the teacher turned off', async () => {
+        const wrapper = render({ interventions: [intervention({ available_for_reports: false })] });
+
+        await wrapper.findAll('button').find((button) => button.attributes('title') === 'Editar')?.trigger('click');
+        await wrapper.vm.$nextTick();
+
+        const toggle = wrapper.findAll('button').find((button) => button.text().includes('Acompanhamento detalhado'));
+
+        expect(toggle?.attributes('aria-expanded')).toBe('true');
+        expect(toggle?.attributes('disabled')).toBeDefined();
+    });
+
     it('will not hide a validation error the server sent back', async () => {
         const wrapper = render();
         const form = mainForm();
