@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { CalendarClock, CheckCircle2, ChevronDown, FileText, Pencil, Trash2 } from '@lucide/vue';
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
+import { Button } from '@/components/ui/button';
 import type { CatalogueType as InterventionType } from '@/lib/interventionPresentation';
 import { statusToneClasses } from '@/lib/statusTone';
 import InterventionSummary from './partials/InterventionSummary.vue';
@@ -166,6 +167,12 @@ const props = defineProps<{
             review_suggestion: string | null;
         };
     } | null;
+    /**
+     * Onde «Voltar» leva — resolvido no servidor a partir de `?aluno=`, nunca
+     * de um URL arbitrário (ver InterventionController::backTo()). É sempre
+     * um destino que este professor já podia ver.
+     */
+    backTo: { label: string; href: string };
 }>();
 
 const today = new Date().toISOString().slice(0, 10);
@@ -623,6 +630,8 @@ function submit(): void {
         return payload;
     });
 
+    submittingFromThisPage.value = true;
+
     const options = {
         preserveScroll: true,
         onSuccess: () => {
@@ -632,6 +641,9 @@ function submit(): void {
             form.reset();
             resetAutomaticFraming();
         },
+        onFinish: () => {
+            submittingFromThisPage.value = false;
+        },
     };
 
     if (editingUlid.value) {
@@ -640,6 +652,57 @@ function submit(): void {
         form.post(`/classes/${props.schoolClass.ulid}/interventions`, options);
     }
 }
+
+// --- Sair sem perder o que ainda não foi submetido --------------------------
+//
+// O mesmo padrão de resources/js/pages/lessons/Show.vue: `form.isDirty` é a
+// própria comparação do Inertia contra os valores com que o formulário
+// nasceu, e volta a `false` sozinha quando um `submit()` tem sucesso (o
+// `useForm` reancora os seus defaults no `onSuccess`). «Voltar»/«Concluir»,
+// ao fundo da página, são navegação pura — nunca submetem nada — por isso
+// intercetam a saída em vez de a deixar perder um formulário a meio.
+//
+// Um pedido de submissão disparado por este próprio formulário fica isento:
+// não é uma perda, é a forma normal de gravar.
+const submittingFromThisPage = ref(false);
+
+const UNSAVED_CHANGES_MESSAGE =
+    'Tem alterações por submeter neste formulário. Se sair agora, perde o que preencheu. Quer mesmo sair?';
+
+function hasUnsavedChanges(): boolean {
+    return form.isDirty && !submittingFromThisPage.value;
+}
+
+function warnOnUnload(event: BeforeUnloadEvent): void {
+    if (!hasUnsavedChanges()) {
+        return;
+    }
+
+    event.preventDefault();
+}
+
+function guardInAppNavigation(event: Event): void {
+    if (!hasUnsavedChanges()) {
+        return;
+    }
+
+    if (!window.confirm(UNSAVED_CHANGES_MESSAGE)) {
+        event.preventDefault();
+    }
+}
+
+let stopGuardingNavigation: (() => void) | null = null;
+
+onMounted(() => {
+    window.addEventListener('beforeunload', warnOnUnload);
+    stopGuardingNavigation = router.on('before', guardInAppNavigation);
+});
+
+onBeforeUnmount(() => {
+    window.removeEventListener('beforeunload', warnOnUnload);
+    stopGuardingNavigation?.();
+    stopGuardingNavigation = null;
+});
 
 function setStatus(intervention: Intervention, status: string): void {
     router.patch(`/interventions/${intervention.ulid}`, { status }, { preserveScroll: true });
@@ -1585,5 +1648,22 @@ function clearFilters(): void {
                 </div>
             </li>
         </ul>
+
+        <!-- Saída, não submissão: o registo já tem o seu próprio botão
+             («Registar» dentro do formulário) e cada medida grava por ação
+             própria (estado, acompanhamento). «Concluir» aqui é só o gesto de
+             «terminei este ecrã» — o mesmo padrão de
+             resources/js/pages/classes/Characterisation.vue. O destino de
+             ambos vem do servidor (`backTo`), nunca de `history.back()`, e o
+             guarda de alterações por submeter, acima, intercepta a saída se o
+             formulário tiver algo a meio. -->
+        <div class="flex flex-col-reverse justify-between gap-2 border-t border-border pt-4 sm:flex-row">
+            <Button as-child variant="outline" size="sm" class="min-h-11 w-full sm:w-auto">
+                <Link :href="backTo.href">{{ backTo.label }}</Link>
+            </Button>
+            <Button as-child size="sm" class="min-h-11 w-full sm:w-auto">
+                <Link :href="backTo.href">Concluir</Link>
+            </Button>
+        </div>
     </div>
 </template>

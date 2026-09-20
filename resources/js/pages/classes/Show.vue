@@ -14,6 +14,7 @@ import StudentAvatar from '@/components/StudentAvatar.vue';
 import TableShell from '@/components/TableShell.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
     Dialog,
     DialogContent,
@@ -1115,11 +1116,22 @@ function deleteResult(student: Student): void {
             </TableShell>
         </section>
 
-        <div v-if="students.length" class="flex justify-end">
-            <Button as-child variant="link" size="sm">
-                <Link :href="`/classes/${schoolClass.ulid}/characterisation`">Caracterização pedagógica</Link>
-            </Button>
-        </div>
+        <!-- Um cartão, não um link solto: a caracterização pedagógica é um
+             destino próprio da turma, e o resto da página já fala por
+             cartões. -->
+        <Card v-if="students.length">
+            <CardHeader>
+                <CardTitle class="text-sm font-medium">Caracterização pedagógica</CardTitle>
+            </CardHeader>
+            <CardContent class="flex flex-wrap items-center justify-between gap-3">
+                <p class="text-sm text-muted-foreground">
+                    Registe e acompanhe informação pedagógica relevante da turma e dos alunos.
+                </p>
+                <Button as-child size="sm" class="min-h-11 w-full sm:w-auto">
+                    <Link :href="`/classes/${schoolClass.ulid}/characterisation`">Abrir caracterização</Link>
+                </Button>
+            </CardContent>
+        </Card>
 
         <!-- NOT DELETED, JUST NOT HERE ANY MORE. Folded away, because a
              teacher works with the class as it stands — but visible, so

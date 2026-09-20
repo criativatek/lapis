@@ -9,9 +9,9 @@
  * spec is emphatic that a teacher must choose the moment a sentence about a
  * child becomes what is written down.
  */
-import { Head, router } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import { ChevronDown, FileUp, History, Search } from '@lucide/vue';
-import { computed, reactive, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -114,6 +114,11 @@ const classCardOpen = ref(false);
 const classSummaryDraft = ref(props.classCharacterisation.summary ?? '');
 const savingClassSummary = ref(false);
 
+// O que já está gravado — usado para saber se o rascunho tem alterações por
+// guardar (ver a secção de navegação, ao fundo). Atualizado só quando o
+// próprio «Guardar» tem sucesso; nunca ao reabrir o cartão nem ao digitar.
+const savedClassSummary = ref(classSummaryDraft.value);
+
 function saveClassSummary(): void {
     savingClassSummary.value = true;
 
@@ -122,6 +127,9 @@ function saveClassSummary(): void {
         { summary: classSummaryDraft.value },
         {
             preserveScroll: true,
+            onSuccess: () => {
+                savedClassSummary.value = classSummaryDraft.value;
+            },
             onFinish: () => {
                 savingClassSummary.value = false;
             },
@@ -165,6 +173,12 @@ const drafts = reactive<Record<string, DraftSections>>(
     Object.fromEntries(props.students.map((student) => [student.enrollment_ulid, toDraft(student.sections)])),
 );
 
+// O par de savedClassSummary/savedDrafts acima e este: a baseline contra a
+// qual se compara cada rascunho para saber se há algo por guardar.
+const savedDrafts = reactive<Record<string, DraftSections>>(
+    Object.fromEntries(props.students.map((student) => [student.enrollment_ulid, { ...drafts[student.enrollment_ulid] }])),
+);
+
 const savingStudent = ref<string | null>(null);
 const historyOpen = reactive<Record<string, boolean>>({});
 
@@ -180,6 +194,9 @@ function saveStudent(student: Student): void {
         { ...drafts[student.enrollment_ulid] },
         {
             preserveScroll: true,
+            onSuccess: () => {
+                savedDrafts[student.enrollment_ulid] = { ...drafts[student.enrollment_ulid] };
+            },
             onFinish: () => {
                 savingStudent.value = null;
             },
@@ -188,6 +205,69 @@ function saveStudent(student: Student): void {
 }
 
 const importDialogOpen = ref(false);
+
+// --- Sair sem perder o que ainda não foi guardado --------------------------
+//
+// Nada nesta página se grava sozinho — nem ao fechar um Collapsible, nem ao
+// sair de um campo (ver o comentário no topo do ficheiro). «Voltar à turma» e
+// «Concluir», ao fundo, são navegação pura: sinalizam que o professor
+// terminou este ecrã, não que gravou tudo. Se saírem com um rascunho por
+// guardar, o mesmo padrão do sumário da aula (resources/js/pages/lessons/Show.vue)
+// pergunta antes de deixar.
+//
+// Um pedido de gravação disparado por esta página (`saveClassSummary`,
+// `saveStudent`) é a forma normal de guardar, não uma perda — por isso fica
+// isento do aviso enquanto está em curso.
+const UNSAVED_CHANGES_MESSAGE =
+    'Há alterações por guardar nesta caracterização. Se sair agora, perde o que escreveu. Quer mesmo sair?';
+
+function hasUnsavedChanges(): boolean {
+    if (savingClassSummary.value || savingStudent.value !== null) {
+        return false;
+    }
+
+    if (classSummaryDraft.value !== savedClassSummary.value) {
+        return true;
+    }
+
+    return props.students.some((student) => {
+        const draft = drafts[student.enrollment_ulid];
+        const saved = savedDrafts[student.enrollment_ulid];
+
+        return (Object.keys(draft) as (keyof DraftSections)[]).some((key) => draft[key] !== saved[key]);
+    });
+}
+
+function warnOnUnload(event: BeforeUnloadEvent): void {
+    if (!hasUnsavedChanges()) {
+        return;
+    }
+
+    event.preventDefault();
+}
+
+function guardInAppNavigation(event: Event): void {
+    if (!hasUnsavedChanges()) {
+        return;
+    }
+
+    if (!window.confirm(UNSAVED_CHANGES_MESSAGE)) {
+        event.preventDefault();
+    }
+}
+
+let stopGuardingNavigation: (() => void) | null = null;
+
+onMounted(() => {
+    window.addEventListener('beforeunload', warnOnUnload);
+    stopGuardingNavigation = router.on('before', guardInAppNavigation);
+});
+
+onBeforeUnmount(() => {
+    window.removeEventListener('beforeunload', warnOnUnload);
+    stopGuardingNavigation?.();
+    stopGuardingNavigation = null;
+});
 </script>
 
 <template>
@@ -416,5 +496,20 @@ const importDialogOpen = ref(false);
             :class-ulid="schoolClass.ulid"
             :students="students.map((student) => ({ ulid: student.enrollment_ulid, name: student.name, class_number: student.class_number }))"
         />
+
+        <!-- Saída, não gravação: esta página já grava por ação própria (o
+             «Guardar» de cada cartão). «Concluir» aqui não submete nada —
+             é só o gesto de «terminei este ecrã e quero voltar à turma»,
+             o mesmo que o «Concluir» de resources/js/pages/classes/Show.vue.
+             O guarda de alterações por guardar, acima, intercepta a
+             navegação de ambos os botões se houver algo ainda não gravado. -->
+        <div class="flex flex-col-reverse justify-between gap-2 border-t border-border pt-4 sm:flex-row">
+            <Button as-child variant="outline" size="sm" class="min-h-11 w-full sm:w-auto">
+                <Link :href="`/classes/${schoolClass.ulid}`">Voltar à turma</Link>
+            </Button>
+            <Button as-child size="sm" class="min-h-11 w-full sm:w-auto">
+                <Link :href="`/classes/${schoolClass.ulid}`">Concluir</Link>
+            </Button>
+        </div>
     </div>
 </template>
