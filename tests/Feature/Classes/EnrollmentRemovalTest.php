@@ -495,8 +495,13 @@ class EnrollmentRemovalTest extends TestCase
         // Uma query pelos ids da turma, mais uma por relação. NUNCA uma por
         // aluno: doze alunos ou trinta, o custo é o mesmo — que é a condição
         // sob a qual esta antecipação pode viver no ecrã da turma.
-        // 13 = 1 (ids da turma) + 12 relações de EnrollmentHistory::RELATIONS,
-        // agora que `lesson_attendances` (assiduidade) passou a ser uma delas.
-        $this->assertLessThanOrEqual(13, $queries, 'idsWithHistoryIn cresceu com o número de alunos.');
+        // 14 = 1 (ids da turma) + 13 relações de EnrollmentHistory::RELATIONS,
+        // agora que `enrollment_characterisations` (caracterização pedagógica)
+        // passou a ser uma delas.
+        //
+        // O número acompanha as RELAÇÕES e é suposto acompanhá-las; o que este
+        // caso guarda é que não acompanha os ALUNOS — são doze aqui de
+        // propósito, e o custo teria de ser o mesmo com trinta.
+        $this->assertLessThanOrEqual(14, $queries, 'idsWithHistoryIn cresceu com o número de alunos.');
     }
 }

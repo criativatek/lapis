@@ -147,7 +147,11 @@ class ClassCharacterisationController extends Controller
             'summary' => ['nullable', 'string', 'max:5000'],
         ]);
 
-        $characterisation = ClassCharacterisation::firstOrCreate(['class_id' => $class->getKey()]);
+        // Found, or built and NOT saved. `firstOrCreate` here would leave a row
+        // behind for a class somebody merely opened, and an empty row is not
+        // nothing: it is a foreign key that blocks the class from ever being
+        // deleted. RecordCharacterisation saves only when something changed.
+        $characterisation = ClassCharacterisation::query()->firstOrNew(['class_id' => $class->getKey()]);
 
         $changed = $this->recorder->apply($characterisation, $data, $request->user());
 
@@ -188,7 +192,11 @@ class ClassCharacterisationController extends Controller
             ),
         );
 
-        $characterisation = EnrollmentCharacterisation::firstOrCreate(['enrollment_id' => $enrollment->getKey()]);
+        // Built, not created — see the note in update(). An empty row for a
+        // student whose form was opened and closed would block that student
+        // from ever being removed from the class, which is a dead end this
+        // application has as a rule not to introduce.
+        $characterisation = EnrollmentCharacterisation::query()->firstOrNew(['enrollment_id' => $enrollment->getKey()]);
 
         $changed = $this->recorder->apply($characterisation, $data, $request->user());
 

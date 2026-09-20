@@ -56,6 +56,11 @@ class SchoolClassHistory
         'recurring_lesson_slots' => 'tempos do horário',
         'evaluation_sheet_exports' => 'exportações da pauta',
         'class_profile_migrations' => 'migrações de perfil',
+        'class_characterisations' => 'caracterização da turma',
+        // A proveniência de uma importação confirmada. Bloqueia por ser o
+        // registo de que aquilo entrou, de onde e por quem — apagá-la deixaria
+        // caracterizações cuja origem já ninguém consegue explicar.
+        'characterisation_import_batches' => 'importações de caracterização',
     ];
 
     /**

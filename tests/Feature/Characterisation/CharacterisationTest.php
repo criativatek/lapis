@@ -212,6 +212,55 @@ class CharacterisationTest extends TestCase
         $this->assertSame('Banda desenhada.', $characterisation->interests);
     }
 
+    /**
+     * A row is a foreign key, and a foreign key blocks the student from ever
+     * being removed from the class. A student enrolled by mistake, whose form
+     * was opened and closed, must not be stranded there — so a save with
+     * nothing in it creates nothing at all.
+     */
+    #[Test]
+    public function opening_and_saving_an_empty_form_creates_no_row(): void
+    {
+        $class = $this->createClass($this->user);
+        $enrollment = $this->enrol($this->user, $class, 'Ana Silva');
+
+        $this->actingAs($this->user)->put(
+            "/classes/{$class->ulid}/students/{$enrollment->ulid}/characterisation",
+            ['summary' => '', 'strengths' => '   '],
+        )->assertRedirect();
+
+        $this->assertSame(0, EnrollmentCharacterisation::withoutGlobalScope('organization')->count());
+
+        $this->actingAs($this->user)
+            ->put("/classes/{$class->ulid}/characterisation", ['summary' => ''])
+            ->assertRedirect();
+
+        $this->assertSame(0, ClassCharacterisation::withoutGlobalScope('organization')->count());
+    }
+
+    /**
+     * And once there IS text, it is history: removing the student has to be
+     * refused, naming it, rather than dropping what a teacher wrote.
+     */
+    #[Test]
+    public function a_characterised_student_cannot_be_silently_removed_from_the_class(): void
+    {
+        $class = $this->createClass($this->user);
+        $enrollment = $this->enrol($this->user, $class, 'Ana Silva');
+
+        $this->actingAs($this->user)->put(
+            "/classes/{$class->ulid}/students/{$enrollment->ulid}/characterisation",
+            ['summary' => 'Alguém escreveu isto sobre uma criança.'],
+        );
+
+        $this->actingAs($this->user)
+            ->delete("/classes/{$class->ulid}/students/{$enrollment->ulid}")
+            ->assertRedirect();
+
+        $this->assertNotNull(Enrollment::withoutGlobalScopes()->find($enrollment->getKey()));
+        $this->assertSame(1, EnrollmentCharacterisation::withoutGlobalScope('organization')->count());
+    }
+
     // ------------------------------------------------ 4. autorização e isolamento
 
     #[Test]

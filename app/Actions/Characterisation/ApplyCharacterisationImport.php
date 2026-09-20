@@ -102,9 +102,17 @@ class ApplyCharacterisationImport
         });
     }
 
+    /**
+     * Found, or built and not yet saved.
+     *
+     * A row is a foreign key, and a foreign key blocks the student from ever
+     * being removed from the class. Creating one for a row that turns out to
+     * carry nothing — every section blank, every code unrecognised — would
+     * strand a student who was enrolled by mistake.
+     */
     private function characterisationFor(Enrollment $enrollment): EnrollmentCharacterisation
     {
-        return EnrollmentCharacterisation::firstOrCreate(['enrollment_id' => $enrollment->getKey()]);
+        return EnrollmentCharacterisation::query()->firstOrNew(['enrollment_id' => $enrollment->getKey()]);
     }
 
     /**
@@ -165,7 +173,7 @@ class ApplyCharacterisationImport
             // when the versioned catalogue replaces the resolver and a code
             // becomes valid at more than one level, a code-only key would start
             // silently discarding the second one.
-            $exists = $characterisation->sourceMeasures()
+            $exists = $characterisation->exists && $characterisation->sourceMeasures()
                 ->where('support_measure_code', $code->value)
                 ->where('support_measure_level', $code->level()->value)
                 ->exists();
@@ -187,6 +195,14 @@ class ApplyCharacterisationImport
                 // around. Without the source text there is nothing honest to
                 // store, so nothing is stored.
                 continue;
+            }
+
+            // The parent may still be unsaved: a row that carries measures but
+            // no section text never went through RecordCharacterisation's save.
+            // It is persisted here, at the first moment there is actually
+            // something to hang off it.
+            if (! $characterisation->exists) {
+                $characterisation->save();
             }
 
             $measure = new EnrollmentCharacterisationSourceMeasure([

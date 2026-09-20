@@ -51,6 +51,15 @@ class EnrollmentHistory
         'interventions' => 'estratégias e medidas',
         'intervention_enrollment' => 'estratégias e medidas',
         'reports' => 'relatórios',
+        // Texto que um professor escreveu sobre uma criança. Bloqueia, como o
+        // resto desta lista — e não entra na de baixo, porque desaparecer em
+        // silêncio atrás de um botão «Remover» é exatamente o que essa
+        // distinção existe para evitar.
+        //
+        // E não cria beco: uma caracterização só passa a existir quando alguém
+        // lá escreveu mesmo alguma coisa, por isso um aluno acrescentado por
+        // engano não fica preso só por a ficha ter sido aberta e fechada.
+        'enrollment_characterisations' => 'caracterização pedagógica',
     ];
 
     /**
