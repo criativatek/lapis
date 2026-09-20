@@ -2,6 +2,10 @@
 
 namespace App\Services\Characterisation\Import;
 
+use App\Models\Enrollment;
+use App\Models\EnrollmentCharacterisation;
+use App\Models\Intervention;
+use App\Models\InterventionStatus;
 use App\Models\SchoolClass;
 use App\Support\Characterisation\CodeResolution;
 use App\Support\Characterisation\LegalCodeResolver;
@@ -15,6 +19,13 @@ use App\Support\Characterisation\LegalCodeResolver;
  * from parsing to the database, so «gravou sem confirmar» is not a bug that can
  * be introduced here by accident. Writing happens in a separate action that
  * only knows how to take decisions, never a parse.
+ *
+ * IT STILL READS. Showing "já registado" beside a section, or "já registada —
+ * não será duplicada" beside a measure, needs to know what is already there —
+ * a plain SELECT, never a write. That is why this class holds
+ * MergeCharacterisationSections too: the same comparison the write path uses
+ * to decide ADD vs ALREADY_PRESENT is used here to decide what the preview
+ * shows, so the two can never disagree about what counts as new.
  */
 class BuildCharacterisationPreview
 {
@@ -22,6 +33,7 @@ class BuildCharacterisationPreview
         private readonly ClassifyColumns $classifier,
         private readonly MatchCharacterisationRows $matcher,
         private readonly LegalCodeResolver $resolver,
+        private readonly MergeCharacterisationSections $merger,
     ) {}
 
     public function build(SchoolClass $class, TableGrid $grid): CharacterisationPreview
@@ -47,14 +59,19 @@ class BuildCharacterisationPreview
             }
 
             $resolved = $this->resolutionsFor($grid, $row, $columns);
+            $rowMatch = $match($name, $processNumber);
+            $sections = $this->sectionsFor($grid, $row, $columns);
+            $enrollment = $rowMatch->enrollmentUlid === null ? null : $this->enrollmentFor($class, $rowMatch->enrollmentUlid);
 
             $previewRow = new PreviewRow(
                 rowNumber: $index + 1,
                 rawName: trim($name),
                 rawProcessNumber: $processNumber,
-                match: $match($name, $processNumber),
-                sections: $this->sectionsFor($grid, $row, $columns),
+                match: $rowMatch,
+                sections: $sections,
+                sectionMerges: $enrollment === null ? [] : $this->sectionMergesFor($enrollment, $sections),
                 measures: $resolved['measures'],
+                alreadyActiveMeasureCodes: $enrollment === null ? [] : $this->alreadyActiveMeasureCodes($enrollment, $resolved['measures']),
                 resources: $resolved['resources'],
                 unresolved: $resolved['unresolved'],
             );
@@ -175,6 +192,74 @@ class BuildCharacterisationPreview
         }
 
         return array_values($seen);
+    }
+
+    /**
+     * The enrolment a row matched, re-resolved through the class — exactly
+     * the same boundary `ApplyCharacterisationImport` enforces at write time.
+     * A row matched by name/process-number logic alone, with no such
+     * safeguard here, would let the preview happily show "já registado" text
+     * that in fact belongs to a student outside this class.
+     */
+    private function enrollmentFor(SchoolClass $class, string $enrollmentUlid): ?Enrollment
+    {
+        return $class->enrollments()->where('ulid', $enrollmentUlid)->first();
+    }
+
+    /**
+     * What confirming this row would do to each section it names, given what
+     * is already recorded for the matched student — the same computation
+     * `ApplyCharacterisationImport` performs at write time, run here read-only
+     * so the preview can render "já registado" / "a acrescentar" honestly.
+     *
+     * @param  array<string, string>  $sections
+     * @return array<string, SectionMergeResult>
+     */
+    private function sectionMergesFor(Enrollment $enrollment, array $sections): array
+    {
+        $characterisation = EnrollmentCharacterisation::query()
+            ->where('enrollment_id', $enrollment->getKey())
+            ->first();
+
+        $current = [];
+
+        foreach (array_keys($sections) as $key) {
+            $current[$key] = $characterisation?->{$key};
+        }
+
+        $results = $this->merger->merge($current, $sections);
+
+        return array_intersect_key($results, $sections);
+    }
+
+    /**
+     * Which of these measures already have an active Intervention for this
+     * student (§30) — so the preview can say "já registada — não será
+     * duplicada" instead of implying every recognised measure is new.
+     *
+     * @param  list<CodeResolution>  $measures
+     * @return list<string>
+     */
+    private function alreadyActiveMeasureCodes(Enrollment $enrollment, array $measures): array
+    {
+        $codes = array_values(array_unique(array_filter(
+            array_map(fn (CodeResolution $r) => $r->code?->value, $measures),
+        )));
+
+        if ($codes === []) {
+            return [];
+        }
+
+        /** @var list<string> */
+        return Intervention::query()
+            ->where('enrollment_id', $enrollment->getKey())
+            ->whereIn('support_measure_code', $codes)
+            ->whereIn('status', [InterventionStatus::New->value, InterventionStatus::InProgress->value])
+            ->pluck('support_measure_code')
+            ->map(fn ($code) => $code instanceof \BackedEnum ? (string) $code->value : (string) $code)
+            ->unique()
+            ->values()
+            ->all();
     }
 
     /**

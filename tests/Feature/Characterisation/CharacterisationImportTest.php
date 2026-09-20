@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Characterisation;
 
+use App\Actions\Interventions\CreateIntervention;
 use App\Models\AcademicYear;
 use App\Models\CharacterisationImportBatch;
 use App\Models\CharacterisationRevision;
@@ -546,9 +547,13 @@ class CharacterisationImportTest extends TestCase
         $this->assertSame(SupportMeasureLevel::Additional, $measure->support_measure_level);
     }
 
-    /** The importer never creates an intervention — that is a teacher's act. */
+    /**
+     * A recognised, confirmed measure now creates a structured Intervention —
+     * because a person, not a spreadsheet cell, confirmed it (see the
+     * reconciled docblock on `ApplyCharacterisationImport::writeMeasures()`).
+     */
     #[Test]
-    public function importing_a_measure_creates_no_intervention(): void
+    public function a_recognised_measure_creates_an_intervention(): void
     {
         $enrollment = $this->enrol($this->user, $this->class, 'Ana Silva');
 
@@ -558,11 +563,73 @@ class CharacterisationImportTest extends TestCase
             'raw_tokens' => [SupportMeasureCode::PsychopedagogicalSupport->value => 'Apoio psicopedagógico'],
         ]])->assertRedirect();
 
-        // The measure was written…
+        // The measure was written to the characterisation…
         $this->assertSame(1, EnrollmentCharacterisationSourceMeasure::withoutGlobalScope('organization')->count());
-        // …and it did not become an intervention. That is a teacher's act,
-        // with dates, an objective and reviews; deducing one from a cell would
-        // be inventing a measure nobody decided on.
+
+        // …and it ALSO reached Estratégias e Medidas, because the teacher
+        // confirmed it row-by-row from the preview — nobody deduced anything.
+        $intervention = Intervention::withoutGlobalScope('organization')->firstOrFail();
+        $this->assertSame($enrollment->getKey(), $intervention->enrollment_id);
+        $this->assertSame(SupportMeasureCode::PsychopedagogicalSupport, $intervention->support_measure_code);
+        $this->assertSame('characterisation_import', $intervention->origin->value);
+        $this->assertTrue($intervention->started_on->isToday());
+    }
+
+    /** Two distinct recognised measures create two distinct interventions. */
+    #[Test]
+    public function two_recognised_measures_create_two_interventions(): void
+    {
+        $enrollment = $this->enrol($this->user, $this->class, 'Ana Silva');
+
+        $this->confirm([[
+            'enrollment_ulid' => $enrollment->ulid,
+            'measure_codes' => [
+                SupportMeasureCode::PsychopedagogicalSupport->value,
+                SupportMeasureCode::NonSignificantCurricularAdaptation->value,
+            ],
+            'raw_tokens' => [
+                SupportMeasureCode::PsychopedagogicalSupport->value => 'Apoio psicopedagógico',
+                SupportMeasureCode::NonSignificantCurricularAdaptation->value => 'ACNS',
+            ],
+        ]])->assertRedirect();
+
+        $this->assertSame(2, Intervention::withoutGlobalScope('organization')->count());
+    }
+
+    /**
+     * §30: a measure already active for this student does not get a second
+     * Intervention from a re-import — it is left alone rather than guessed
+     * about.
+     */
+    #[Test]
+    public function an_already_active_measure_creates_no_second_intervention(): void
+    {
+        $enrollment = $this->enrol($this->user, $this->class, 'Ana Silva');
+        $code = SupportMeasureCode::PsychopedagogicalSupport;
+
+        $decision = [[
+            'enrollment_ulid' => $enrollment->ulid,
+            'measure_codes' => [$code->value],
+            'raw_tokens' => [$code->value => 'Apoio psicopedagógico'],
+        ]];
+
+        $this->confirm($decision)->assertRedirect();
+        $this->confirm($decision)->assertRedirect();
+
+        $this->assertSame(1, Intervention::withoutGlobalScope('organization')->count());
+    }
+
+    /** A bare, level-less letter creates no measure and no intervention. */
+    #[Test]
+    public function a_bare_letter_creates_no_intervention(): void
+    {
+        $enrollment = $this->enrol($this->user, $this->class, 'Ana Silva');
+
+        $this->confirm([[
+            'enrollment_ulid' => $enrollment->ulid,
+            'measure_codes' => [],
+        ]])->assertRedirect();
+
         $this->assertSame(0, Intervention::withoutGlobalScope('organization')->count());
     }
 
@@ -686,5 +753,179 @@ class CharacterisationImportTest extends TestCase
         $this->preview("Medidas\tObservações\nACNS\tTexto.\n")
             ->assertOk()
             ->assertJsonPath('preview.identifiable', false);
+    }
+
+    // ------------------------------------------------ 8. importar é aditivo
+
+    /** An empty student plus an import creates content — the simple case. */
+    #[Test]
+    public function importing_into_an_empty_student_creates_content(): void
+    {
+        $enrollment = $this->enrol($this->user, $this->class, 'Ana Silva');
+
+        $this->confirm([[
+            'enrollment_ulid' => $enrollment->ulid,
+            'sections' => ['needs' => 'Necessita de apoio na compreensão dos enunciados.'],
+        ]])->assertRedirect();
+
+        $characterisation = EnrollmentCharacterisation::withoutGlobalScope('organization')->firstOrFail();
+        $this->assertSame('Necessita de apoio na compreensão dos enunciados.', $characterisation->needs);
+    }
+
+    /**
+     * THE LOAD-BEARING TEST FOR CHANGE 1. A student who already has hand-written
+     * text keeps it — the import's text lands beside it, never instead of it.
+     */
+    #[Test]
+    public function importing_into_a_student_with_existing_content_preserves_it_and_appends(): void
+    {
+        $enrollment = $this->enrol($this->user, $this->class, 'Ana Silva');
+
+        app(CurrentOrganization::class)->runFor(
+            $this->user->personalOrganization(),
+            fn () => EnrollmentCharacterisation::create([
+                'enrollment_id' => $enrollment->getKey(),
+                'needs' => 'Dificuldade na organização do estudo.',
+            ]),
+        );
+
+        $this->confirm([[
+            'enrollment_ulid' => $enrollment->ulid,
+            'sections' => ['needs' => 'Necessita de apoio na compreensão dos enunciados.'],
+        ]])->assertRedirect();
+
+        $characterisation = EnrollmentCharacterisation::withoutGlobalScope('organization')->firstOrFail();
+        $this->assertStringContainsString('Dificuldade na organização do estudo.', $characterisation->needs);
+        $this->assertStringContainsString('Necessita de apoio na compreensão dos enunciados.', $characterisation->needs);
+    }
+
+    /** §25: re-importing the exact same table twice must not duplicate text. */
+    #[Test]
+    public function reimporting_identical_text_adds_nothing(): void
+    {
+        $enrollment = $this->enrol($this->user, $this->class, 'Ana Silva');
+
+        $decision = [[
+            'enrollment_ulid' => $enrollment->ulid,
+            'sections' => ['needs' => 'Necessita de apoio na compreensão dos enunciados.'],
+        ]];
+
+        $this->confirm($decision)->assertRedirect();
+        $this->confirm($decision)->assertRedirect();
+
+        $characterisation = EnrollmentCharacterisation::withoutGlobalScope('organization')->firstOrFail();
+        $this->assertSame('Necessita de apoio na compreensão dos enunciados.', $characterisation->needs);
+        $this->assertSame(1, CharacterisationRevision::withoutGlobalScope('organization')->count());
+    }
+
+    /** Two sections merge independently — one section's text never leaks into another's. */
+    #[Test]
+    public function two_sections_merge_independently(): void
+    {
+        $enrollment = $this->enrol($this->user, $this->class, 'Ana Silva');
+
+        app(CurrentOrganization::class)->runFor(
+            $this->user->personalOrganization(),
+            fn () => EnrollmentCharacterisation::create([
+                'enrollment_id' => $enrollment->getKey(),
+                'strengths' => 'Trabalha bem em grupo.',
+                'needs' => 'Dificuldade na organização do estudo.',
+            ]),
+        );
+
+        $this->confirm([[
+            'enrollment_ulid' => $enrollment->ulid,
+            'sections' => [
+                'strengths' => 'Boa capacidade de concentração.',
+                'needs' => 'Necessita de apoio na compreensão dos enunciados.',
+            ],
+        ]])->assertRedirect();
+
+        $characterisation = EnrollmentCharacterisation::withoutGlobalScope('organization')->firstOrFail();
+        $this->assertStringContainsString('Trabalha bem em grupo.', $characterisation->strengths);
+        $this->assertStringContainsString('Boa capacidade de concentração.', $characterisation->strengths);
+        $this->assertStringContainsString('Dificuldade na organização do estudo.', $characterisation->needs);
+        $this->assertStringContainsString('Necessita de apoio na compreensão dos enunciados.', $characterisation->needs);
+    }
+
+    /** A revision is created, and it preserves the value that was there before. */
+    #[Test]
+    public function a_merge_creates_a_revision_that_preserves_the_previous_value(): void
+    {
+        $enrollment = $this->enrol($this->user, $this->class, 'Ana Silva');
+
+        app(CurrentOrganization::class)->runFor(
+            $this->user->personalOrganization(),
+            fn () => EnrollmentCharacterisation::create([
+                'enrollment_id' => $enrollment->getKey(),
+                'needs' => 'Dificuldade na organização do estudo.',
+            ]),
+        );
+
+        $this->confirm([[
+            'enrollment_ulid' => $enrollment->ulid,
+            'sections' => ['needs' => 'Necessita de apoio na compreensão dos enunciados.'],
+        ]])->assertRedirect();
+
+        $revision = CharacterisationRevision::withoutGlobalScope('organization')->firstOrFail();
+        $this->assertSame('Dificuldade na organização do estudo.', $revision->previous_values['needs']);
+    }
+
+    /** The preview still writes absolutely nothing, merge logic included. */
+    #[Test]
+    public function previewing_with_existing_content_still_writes_nothing(): void
+    {
+        $enrollment = $this->enrol($this->user, $this->class, 'Ana Silva');
+
+        app(CurrentOrganization::class)->runFor(
+            $this->user->personalOrganization(),
+            fn () => EnrollmentCharacterisation::create([
+                'enrollment_id' => $enrollment->getKey(),
+                'needs' => 'Dificuldade na organização do estudo.',
+            ]),
+        );
+
+        $this->preview("Nome\tNecessidades\nAna Silva\tNecessita de apoio na compreensão dos enunciados.\n")
+            ->assertOk();
+
+        $characterisation = EnrollmentCharacterisation::withoutGlobalScope('organization')->firstOrFail();
+        $this->assertSame('Dificuldade na organização do estudo.', $characterisation->needs);
+        $this->assertSame(0, CharacterisationRevision::withoutGlobalScope('organization')->count());
+    }
+
+    // ------------------------------------------------ 9. atomicidade
+
+    /**
+     * §32: characterisation writes and intervention writes for one confirmed
+     * import happen in ONE transaction. A failure creating the Intervention
+     * must leave the section text and the source measure unwritten too.
+     */
+    #[Test]
+    public function a_failure_partway_through_leaves_nothing_applied(): void
+    {
+        $enrollment = $this->enrol($this->user, $this->class, 'Ana Silva');
+
+        $this->partialMock(CreateIntervention::class, function ($mock) {
+            $mock->shouldReceive('create')->andThrow(new \RuntimeException('forced failure for the atomicity test'));
+        });
+
+        $this->withoutExceptionHandling();
+
+        try {
+            $this->confirm([[
+                'enrollment_ulid' => $enrollment->ulid,
+                'sections' => ['strengths' => 'Trabalha bem em grupo.'],
+                'measure_codes' => [SupportMeasureCode::PsychopedagogicalSupport->value],
+                'raw_tokens' => [SupportMeasureCode::PsychopedagogicalSupport->value => 'Apoio psicopedagógico'],
+            ]]);
+            $this->fail('Expected the forced failure to propagate.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('forced failure for the atomicity test', $exception->getMessage());
+        }
+
+        $this->assertSame(0, EnrollmentCharacterisation::withoutGlobalScope('organization')->count());
+        $this->assertSame(0, EnrollmentCharacterisationSourceMeasure::withoutGlobalScope('organization')->count());
+        $this->assertSame(0, Intervention::withoutGlobalScope('organization')->count());
+        $this->assertSame(0, CharacterisationImportBatch::withoutGlobalScope('organization')->count());
     }
 }

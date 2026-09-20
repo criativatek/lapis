@@ -65,12 +65,13 @@ use Illuminate\Support\Carbon;
  * @property LegalMappingSource|null $legal_mapping_source
  * @property string|null $legal_framework_code
  * @property int|null $created_by
+ * @property InterventionOrigin|null $origin
  */
 #[Fillable([
     'created_batch_ulid', 'class_id', 'enrollment_id', 'academic_period_id', 'domain_id',
     'target_type', 'intervention_type', 'intervention_type_label', 'purpose', 'domain_relation',
     'motive_code', 'motive_label', 'strategy_code', 'strategy_label', 'objective',
-    'title', 'description', 'description_source',
+    'title', 'description', 'description_source', 'origin',
     'status', 'started_on', 'expected_end_on', 'review_on', 'concluded_on',
     'frequency', 'tracking_indicator',
     'include_in_report', 'available_for_reports',
@@ -102,6 +103,7 @@ class Intervention extends Model
             'purpose' => InterventionPurpose::class,
             'domain_relation' => InterventionDomainRelation::class,
             'description_source' => InterventionDescriptionSource::class,
+            'origin' => InterventionOrigin::class,
             'status' => InterventionStatus::class,
             'started_on' => 'date',
             'expected_end_on' => 'date',
