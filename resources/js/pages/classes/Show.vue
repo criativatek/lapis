@@ -906,6 +906,12 @@ function submitPhotos(): void {
             </TableShell>
         </section>
 
+        <div v-if="students.length" class="flex justify-end">
+            <Button as-child variant="link" size="sm">
+                <Link :href="`/classes/${schoolClass.ulid}/characterisation`">Caracterização pedagógica</Link>
+            </Button>
+        </div>
+
         <!-- NOT DELETED, JUST NOT HERE ANY MORE. Folded away, because a
              teacher works with the class as it stands — but visible, so
              importing a roll that moves three students somewhere else does not

@@ -11,6 +11,8 @@ use App\Http\Controllers\AssessmentController;
 use App\Http\Controllers\AssessmentProfileController;
 use App\Http\Controllers\CalendarEventController;
 use App\Http\Controllers\ChangelogController;
+use App\Http\Controllers\CharacterisationImportController;
+use App\Http\Controllers\ClassCharacterisationController;
 use App\Http\Controllers\ClassController;
 use App\Http\Controllers\ClassGroupController;
 use App\Http\Controllers\ClassificationController;
@@ -450,6 +452,26 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // differently, and one must not discard the other.
         Route::post('classes/{class}/students/{enrollment}/photo', [StudentPhotoController::class, 'update'])->name('classes.students.photo.update');
         Route::delete('classes/{class}/students/{enrollment}/photo', [StudentPhotoController::class, 'destroy'])->name('classes.students.photo.destroy');
+
+        // CARACTERIZAÇÃO PEDAGÓGICA — dentro da turma, a seguir à lista de
+        // alunos, sem menu lateral próprio. Autorizada pela policy da turma
+        // (`view` para ler, `update` para escrever): uma caracterização não é
+        // uma coisa que se possa ter permissão para ver independentemente da
+        // turma que descreve.
+        Route::get('classes/{class}/characterisation', [ClassCharacterisationController::class, 'show'])->name('classes.characterisation.show');
+        Route::put('classes/{class}/characterisation', [ClassCharacterisationController::class, 'update'])->name('classes.characterisation.update');
+        Route::put('classes/{class}/students/{enrollment}/characterisation', [ClassCharacterisationController::class, 'updateStudent'])->name('classes.characterisation.student.update');
+        // Dois pedidos, e o primeiro não sabe escrever: `preview` lê o ficheiro
+        // no pedido que o trouxe e esquece-o; `store` só aceita decisões
+        // explícitas, revalidadas contra a turma. Não há token nem pasta
+        // temporária porque não há nada estagiado para lá apontar.
+        // Com throttle, como a pesquisa de alunos aqui ao lado: aceita um
+        // ficheiro de 5 MB e analisa até 500×40 células por pedido, e não
+        // guarda nada — não há nada a ganhar em repeti-lo depressa.
+        Route::post('classes/{class}/characterisation-imports/preview', [CharacterisationImportController::class, 'preview'])
+            ->middleware('throttle:30,1')
+            ->name('classes.characterisation-imports.preview');
+        Route::post('classes/{class}/characterisation-imports', [CharacterisationImportController::class, 'store'])->name('classes.characterisation-imports.store');
 
         Route::post('classes/{class}/roster-imports', [RosterImportController::class, 'store'])->name('classes.roster-imports.store');
         Route::post('classes/{class}/photos', [ClassPhotoImportController::class, 'store'])->name('classes.photos.store');

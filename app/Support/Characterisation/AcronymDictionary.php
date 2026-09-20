@@ -1,0 +1,126 @@
+<?php
+
+namespace App\Support\Characterisation;
+
+use App\Models\SupportMeasureCode;
+use App\Models\SupportMeasureLevel;
+
+/**
+ * The controlled dictionary of acronyms a characterisation import may meet.
+ *
+ * It has two halves, and the second is the point of the whole class.
+ *
+ * The CONFIRMED half holds only acronyms this repository can justify. MU, MS and
+ * MA are the initials of the three SupportMeasureLevel labels; ACNS and ACS are
+ * the initials of two SupportMeasureCode labels; PLNM is a column of the real
+ * school export inspected when the roster importer was designed. Nothing here
+ * was recalled from memory.
+ *
+ * The UNCONFIRMED half holds acronyms that turn up in Portuguese schools and
+ * whose meaning nobody confirmed *for this project*. They are listed so that the
+ * system can say "that is an acronym, I do not know this one" instead of
+ * treating it as prose — but they resolve to nothing. The temptation to fill in
+ * the obvious expansion is exactly what SupportMeasureCode's own docblock
+ * forbids: "inventing pedagogical categories nobody approved is exactly what the
+ * project forbids."
+ *
+ * Adding an expansion here is a decision, not a typo fix. It needs the same
+ * justification as adding a SupportMeasureCode case.
+ */
+class AcronymDictionary
+{
+    /** @var array<string, AcronymEntry>|null */
+    private ?array $entries = null;
+
+    public function find(string $token): ?AcronymEntry
+    {
+        return $this->all()[$this->normalise($token)] ?? null;
+    }
+
+    public function has(string $token): bool
+    {
+        return $this->find($token) !== null;
+    }
+
+    /**
+     * @return array<string, AcronymEntry>
+     */
+    public function all(): array
+    {
+        return $this->entries ??= $this->build();
+    }
+
+    /**
+     * @return array<string, AcronymEntry>
+     */
+    private function build(): array
+    {
+        $entries = [];
+
+        foreach ($this->confirmed() as $entry) {
+            $entries[$this->normalise($entry->token)] = $entry;
+        }
+
+        foreach ($this->knownButUnconfirmed() as $token) {
+            $entries[$this->normalise($token)] = new AcronymEntry(
+                token: $token,
+                expansion: null,
+                scope: AcronymScope::National,
+            );
+        }
+
+        return $entries;
+    }
+
+    /**
+     * @return list<AcronymEntry>
+     */
+    private function confirmed(): array
+    {
+        return [
+            // The three levels of Decreto-Lei 54/2018. The expansions are the
+            // SupportMeasureLevel labels, verbatim.
+            new AcronymEntry('MU', 'Medida universal', AcronymScope::National, level: SupportMeasureLevel::Universal),
+            new AcronymEntry('MS', 'Medida seletiva', AcronymScope::National, level: SupportMeasureLevel::Selective),
+            new AcronymEntry('MA', 'Medida adicional', AcronymScope::National, level: SupportMeasureLevel::Additional),
+
+            // Two measures whose initials are unambiguous against their labels.
+            new AcronymEntry(
+                'ACNS',
+                'Adaptação curricular não significativa',
+                AcronymScope::National,
+                level: SupportMeasureLevel::Selective,
+                code: SupportMeasureCode::NonSignificantCurricularAdaptation,
+            ),
+            new AcronymEntry(
+                'ACS',
+                'Adaptação curricular significativa',
+                AcronymScope::National,
+                level: SupportMeasureLevel::Additional,
+                code: SupportMeasureCode::SignificantCurricularAdaptation,
+            ),
+
+            // Not a measure — a column of the school export. Confirmed because
+            // the real file carried it (2026-07-28 roster-import design).
+            new AcronymEntry('PLNM', 'Português Língua Não Materna', AcronymScope::National),
+        ];
+    }
+
+    /**
+     * Acronyms the system recognises AS acronyms and cannot expand.
+     *
+     * Do not add expansions here. Move a token to confirmed() only with a source
+     * this repository can point at.
+     *
+     * @return list<string>
+     */
+    private function knownButUnconfirmed(): array
+    {
+        return ['RTP', 'PEI', 'PIT', 'CRI', 'PEL', 'SPO', 'DEE', 'ATE', 'CAA', 'GAAF'];
+    }
+
+    private function normalise(string $token): string
+    {
+        return mb_strtoupper(trim($token));
+    }
+}

@@ -13,6 +13,8 @@ use App\Services\Import\Correction\CorrectionGridParserRegistry;
 use App\Services\Import\Correction\GenericSpreadsheetParser;
 use App\Services\Import\Correction\IntuitivoXlsxParser;
 use App\Services\Import\Correction\PlickersCsvParser;
+use App\Support\Characterisation\DecreeLaw54CodeResolver;
+use App\Support\Characterisation\LegalCodeResolver;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Limits\Limits;
 use App\Support\Release\BuildsSsrBundle;
@@ -44,6 +46,15 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(CurrentOrganization::class);
         $this->app->singleton(Entitlements::class);
         $this->app->singleton(Limits::class);
+
+        // THE SEAM FOR THE VERSIONED LEGAL CATALOGUE. Characterisation imports
+        // read school shorthand — «MS b) + ACNS» — through this interface and
+        // nowhere else. Today it resolves against the Decreto-Lei 54/2018 enums
+        // that already live in app/Models; when the versioned catalogue lands it
+        // is bound here instead, and no parser, preview, controller or table
+        // changes. That seam is why this feature did not grow a second,
+        // competing catalogue of its own while the real one is being designed.
+        $this->app->bind(LegalCodeResolver::class, DecreeLaw54CodeResolver::class);
 
         // Real rebuild in every environment except tests — see BuildsSsrBundle's
         // docblock for why `lapis:build-package` cannot trust bootstrap/ssr as

@@ -8,7 +8,7 @@ use App\Domain\Import\RosterMatch;
 use App\Domain\Import\RosterRow;
 use App\Models\Enrollment;
 use App\Models\SchoolClass;
-use Illuminate\Support\Str;
+use App\Services\Import\Concerns\NormalisesStudentIdentifiers;
 
 /**
  * Decides which student on a class's roll — if any — a roster row is about.
@@ -40,6 +40,8 @@ use Illuminate\Support\Str;
  */
 class MatchRosterToEnrollments
 {
+    use NormalisesStudentIdentifiers;
+
     /**
      * @return \Closure(RosterRow): RosterMatch
      */
@@ -133,30 +135,5 @@ class MatchRosterToEnrollments
                 $entries,
             ),
         );
-    }
-
-    /**
-     * Trimmed and upper-cased, and nothing else.
-     *
-     * A leading zero is part of somebody's identifier and not formatting to
-     * tidy away — the same rule StudentEnrollmentService::setProcessNumber()
-     * states when it stores the value. Both sides of the comparison come from
-     * the school's own export anyway, so there is nothing to reconcile beyond
-     * stray spaces and a letter's case.
-     */
-    protected function normalizeProcessNumber(?string $value): ?string
-    {
-        if ($value === null) {
-            return null;
-        }
-
-        $value = Str::upper(trim($value));
-
-        return $value === '' ? null : $value;
-    }
-
-    protected function normalizeName(string $value): string
-    {
-        return Str::of($value)->squish()->lower()->value();
     }
 }
