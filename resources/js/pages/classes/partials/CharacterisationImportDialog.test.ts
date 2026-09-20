@@ -125,7 +125,7 @@ function previewRow(rowNumber: number, name: string) {
 }
 
 function previewResponse(
-    rows: ReturnType<typeof previewRow>[],
+    rows: (ReturnType<typeof previewRow> | Record<string, unknown>)[],
     warnings: string[] = [],
     extra: Record<string, unknown> = {},
 ) {
@@ -452,6 +452,87 @@ describe('CharacterisationImportDialog — §38 structural review step', () => {
         expect(sentTable.rows.map((row: { kind: string }) => row.kind)).toEqual(['header', 'data']);
     });
 
+    /**
+     * Defect (2026-09-20 structural review report): a single-line <input>
+     * cannot hold "\n" — the browser strips it the moment Vue sets the DOM
+     * value, before the teacher ever touches the field. A multiline
+     * observation must render on a <textarea> instead, so opening this step
+     * alone never destroys the line break, and a cell the teacher never
+     * edits is resubmitted byte-identical to what was extracted.
+     */
+    it('preserves a newline in a multiline cell through the structural step, touched or not', async () => {
+        extractTableFromImage.mockResolvedValue({
+            rows: [],
+            source_type: 'image_upload',
+            source_filename: 'tabela.png',
+            warnings: [],
+            extraction_confidence: 1,
+        });
+
+        const wrapper = mountDialog();
+        const input = wrapper.find('input[type="file"]');
+        const image = new File(['fake'], 'tabela.png', { type: 'image/png' });
+
+        Object.defineProperty(input.element, 'files', { value: [image], configurable: true });
+        await input.trigger('change');
+        await flushPromises();
+
+        (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+            jsonResponse(
+                previewResponse([], [], {
+                    source_kind: 'image_upload',
+                    show_structural_step: true,
+                    structural: {
+                        headers: ['Nome', 'Observações'],
+                        rows: [
+                            { number: 1, kind: 'header', cells: ['Nome', 'Observações'] },
+                            {
+                                number: 2,
+                                kind: 'data',
+                                cells: ['Maria Santos', 'MU a) b) e)\nNecessita de apoio na organizacao.'],
+                            },
+                            { number: 3, kind: 'data', cells: ['Ana Silva', 'Sem observações'] },
+                        ],
+                    },
+                }),
+            ),
+        );
+        const previewButton = wrapper.findAll('button').find((b) => b.text().includes('Pré-visualizar'));
+        await previewButton?.trigger('click');
+        await flushPromises();
+
+        // The multiline cell renders on a <textarea>, carrying the newline —
+        // never an <input>, which cannot hold one at all.
+        const textareas = wrapper.findAll('textarea');
+        const multilineField = textareas.find((textarea) => (textarea.element as HTMLTextAreaElement).value.includes('\n'));
+        expect(multilineField).toBeTruthy();
+        expect((multilineField!.element as HTMLTextAreaElement).value).toBe(
+            'MU a) b) e)\nNecessita de apoio na organizacao.',
+        );
+
+        // The single-line cell next to it stays on an ordinary <input>.
+        const singleLineValues = wrapper
+            .findAll('input[type="text"], input:not([type])')
+            .map((el) => (el.element as HTMLInputElement).value);
+        expect(singleLineValues).toContain('Sem observações');
+
+        (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+            jsonResponse(previewResponse([previewRow(1, 'Maria Santos')])),
+        );
+
+        const continueButton = wrapper.findAll('button').find((b) => b.text().includes('Continuar'));
+        await continueButton?.trigger('click');
+        await flushPromises();
+
+        // Resubmitted byte-identical — the cell was never touched.
+        const secondCall = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[1];
+        const secondBody = secondCall[1].body as FormData;
+        const sentTable = JSON.parse(secondBody.get('extracted_table') as string);
+        const sentDataRow = sentTable.rows.find((row: { kind: string }) => row.kind === 'data');
+
+        expect(sentDataRow.cells[1].text).toBe('MU a) b) e)\nNecessita de apoio na organizacao.');
+    });
+
     it('a plain paste never shows the structural step', async () => {
         const wrapper = mountDialog();
         (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(previewResponse([previewRow(1, 'Aluno E1')])));
@@ -463,6 +544,106 @@ describe('CharacterisationImportDialog — §38 structural review step', () => {
 
         expect(wrapper.text()).toContain('Aluno E1');
         expect(wrapper.text()).not.toContain('tal como foi reconhecida');
+    });
+});
+
+/**
+ * §18/§19 — the per-student preview step must show EXTRACTION confidence
+ * ("did I read this right?") as an indicator visually distinct from DOMAIN
+ * confidence ("do I know what this means?", `confidence_label`) — never
+ * merged into one badge — and an unresolved token with a suggestion must
+ * offer an explicit, opt-in "Aceitar" control that leaves the original token
+ * untouched until clicked.
+ */
+describe('CharacterisationImportDialog — §18/§19 extraction confidence and suggestions', () => {
+    function rowWithLowConfidenceUnresolved() {
+        const base = previewRow(1, 'Aluno F1');
+
+        return {
+            ...base,
+            measures: [],
+            unresolved: [
+                {
+                    raw_token: 'ACN5',
+                    confidence: 'unrecognised',
+                    confidence_label: 'Não reconhecido',
+                    level: null,
+                    level_label: null,
+                    code: null,
+                    code_label: null,
+                    unresolved_annotations: [],
+                    scope: 'institutional',
+                    note: 'Sigla não reconhecida.',
+                    storable: false,
+                    family: null,
+                    family_label: null,
+                    has_structured_destination: false,
+                    extraction_confidence: 0.4,
+                    suggested_correction: { token: 'ACNS', expansion: 'Adaptação curricular não significativa' },
+                },
+            ],
+        };
+    }
+
+    it('renders the domain-confidence label and the low-extraction-confidence warning as two separate indicators', async () => {
+        const wrapper = mountDialog();
+        (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+            jsonResponse(previewResponse([rowWithLowConfidenceUnresolved()])),
+        );
+
+        await wrapper.find('#characterisation-paste').setValue('Aluno F1\tACN5');
+        const previewButton = wrapper.findAll('button').find((b) => b.text().includes('Pré-visualizar'));
+        await previewButton?.trigger('click');
+        await flushPromises();
+
+        // Domain confidence (already existed): the raw token next to its
+        // CodeConfidence label.
+        expect(wrapper.text()).toContain('ACN5');
+        expect(wrapper.text()).toContain('Não reconhecido');
+
+        // Extraction confidence (§18): a SEPARATE sentence, never folded into
+        // the domain-confidence text above.
+        expect(wrapper.text()).toContain('Confiança de leitura baixa');
+    });
+
+    it('offers the suggestion with an explicit accept control, without pre-applying it', async () => {
+        const wrapper = mountDialog();
+        (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+            jsonResponse(previewResponse([rowWithLowConfidenceUnresolved()])),
+        );
+
+        await wrapper.find('#characterisation-paste').setValue('Aluno F1\tACN5');
+        const previewButton = wrapper.findAll('button').find((b) => b.text().includes('Pré-visualizar'));
+        await previewButton?.trigger('click');
+        await flushPromises();
+
+        expect(wrapper.text()).toContain('ACNS');
+        expect(wrapper.text()).toContain('ACN5');
+
+        const acceptButton = wrapper.findAll('button').find((b) => b.text().includes('Aceitar correção'));
+        expect(acceptButton).toBeTruthy();
+
+        // Not yet clicked: the original token is still what is shown, and no
+        // extra request has gone out.
+        expect((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1);
+
+        const resolvedRow = previewRow(1, 'Aluno F1');
+        (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(previewResponse([resolvedRow])));
+
+        await acceptButton?.trigger('click');
+        await flushPromises();
+
+        // Accepting resubmitted the SAME source with `corrections` attached —
+        // a second POST, not a client-side rewrite of the row in place.
+        expect((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(2);
+
+        const [, secondInit] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[1];
+        const secondBody = secondInit.body as FormData;
+        expect(secondBody.get('corrections[ACN5]')).toBe('ACNS');
+
+        // The server's fresh response (measure resolved, nothing unresolved)
+        // is what ends up on screen.
+        expect(wrapper.text()).not.toContain('Não reconhecido');
     });
 });
 

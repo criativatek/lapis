@@ -7,8 +7,10 @@ use App\Models\EnrollmentCharacterisation;
 use App\Models\Intervention;
 use App\Models\InterventionStatus;
 use App\Models\SchoolClass;
+use App\Support\Characterisation\AcronymSuggestion;
 use App\Support\Characterisation\CodeResolution;
 use App\Support\Characterisation\LegalCodeResolver;
+use App\Support\Characterisation\SuggestAcronymCorrection;
 
 /**
  * Turns a table into a proposal: who each row is about, what it says, and where
@@ -29,14 +31,34 @@ use App\Support\Characterisation\LegalCodeResolver;
  */
 class BuildCharacterisationPreview
 {
+    /**
+     * Below this EXTRACTION confidence, a token is treated as "may have been
+     * misread" — the trigger for both showing the low-confidence indicator
+     * and attempting a §19 suggestion. Mirrors the 0.7 threshold the §38
+     * structural step already uses client-side (CharacterisationImportDialog.vue),
+     * so the two steps never disagree about what counts as "low".
+     */
+    private const LOW_EXTRACTION_CONFIDENCE = 0.7;
+
     public function __construct(
         private readonly ClassifyColumns $classifier,
         private readonly MatchCharacterisationRows $matcher,
         private readonly LegalCodeResolver $resolver,
         private readonly MergeCharacterisationSections $merger,
+        private readonly SuggestAcronymCorrection $suggester,
     ) {}
 
-    public function build(SchoolClass $class, TableGrid $grid): CharacterisationPreview
+    /**
+     * @param  array<string, string>  $corrections  §19 acceptances: raw token (as it
+     *                                              appeared in the source) => the accepted
+     *                                              replacement. Applied to a cell's text BEFORE
+     *                                              it reaches the resolver, so accepting a
+     *                                              suggestion never bypasses LegalCodeResolver —
+     *                                              it only changes what gets handed to it, exactly
+     *                                              as if the teacher had typed the correction
+     *                                              herself.
+     */
+    public function build(SchoolClass $class, TableGrid $grid, array $corrections = []): CharacterisationPreview
     {
         $columns = $this->classifier->classify($grid);
         $match = $this->matcher->forClass($class);
@@ -58,7 +80,7 @@ class BuildCharacterisationPreview
                 continue;
             }
 
-            $resolved = $this->resolutionsFor($grid, $row, $columns);
+            $resolved = $this->resolutionsFor($grid, $index, $row, $columns, $corrections);
             $rowMatch = $match($name, $processNumber);
             $sections = $this->sectionsFor($grid, $row, $columns);
             $enrollment = $rowMatch->enrollmentUlid === null ? null : $this->enrollmentFor($class, $rowMatch->enrollmentUlid);
@@ -74,6 +96,8 @@ class BuildCharacterisationPreview
                 alreadyActiveMeasureCodes: $enrollment === null ? [] : $this->alreadyActiveMeasureCodes($enrollment, $resolved['measures']),
                 resources: $resolved['resources'],
                 unresolved: $resolved['unresolved'],
+                extractionConfidence: $resolved['extractionConfidence'],
+                suggestions: $resolved['suggestions'],
             );
 
             if ($previewRow->hasContent()) {
@@ -129,13 +153,26 @@ class BuildCharacterisationPreview
      *
      * @param  list<ClassifiedColumn>  $columns
      * @param  list<string>  $row
-     * @return array{measures: list<CodeResolution>, resources: list<CodeResolution>, unresolved: list<CodeResolution>}
+     * @param  array<string, string>  $corrections
+     * @return array{measures: list<CodeResolution>, resources: list<CodeResolution>, unresolved: list<CodeResolution>, extractionConfidence: array<int, ?float>, suggestions: array<int, AcronymSuggestion>}
      */
-    private function resolutionsFor(TableGrid $grid, array $row, array $columns): array
+    private function resolutionsFor(TableGrid $grid, int $rowIndex, array $row, array $columns, array $corrections): array
     {
         $measures = [];
         $resources = [];
         $unresolved = [];
+
+        // §18: keyed on spl_object_id($resolution), never written onto the
+        // CodeResolution object itself — that is what makes it structurally
+        // impossible for extraction confidence to leak into CodeResolution's
+        // own $confidence (domain confidence), a different question this
+        // class has no opinion on (see CodeResolution's own note and
+        // ExtractedCell's docblock). A plain array, not a WeakMap: the
+        // resolutions it describes are kept alive by $measures/$resources/
+        // $unresolved for exactly as long as this array is, so nothing here
+        // needs weak references — only the same "never on the object" seam.
+        /** @var array<int, ?float> */
+        $extractionConfidence = [];
 
         foreach ($columns as $column) {
             if ($column->role !== ColumnRole::Measures && $column->role !== ColumnRole::Resources) {
@@ -148,7 +185,21 @@ class BuildCharacterisationPreview
                 continue;
             }
 
+            // §19: a correction is applied to the CELL TEXT, before the
+            // resolver ever sees it — never as a shortcut that hands out a
+            // resolution directly. Accepting "ACN5 -> ACNS" therefore
+            // resolves through the exact same LegalCodeResolver::resolveCell()
+            // call an exact "ACNS" typed by hand would.
+            $value = $this->applyCorrections($value, $corrections);
+
+            // The EXTRACTION confidence answers "did I read this cell right"
+            // — it is a property of the CELL, not of any one statement inside
+            // it, so every resolution this cell produces shares it.
+            $cellConfidence = $grid->confidence($rowIndex, $column->index);
+
             foreach ($this->resolver->resolveCell($value, $column->level) as $resolution) {
+                $extractionConfidence[spl_object_id($resolution)] = $cellConfidence;
+
                 match (true) {
                     // (B) a named measure, and the only one of the three that
                     // anything will write.
@@ -162,11 +213,72 @@ class BuildCharacterisationPreview
             }
         }
 
+        $unresolved = $this->deduplicate($unresolved);
+
         return [
             'measures' => $this->deduplicate($measures),
             'resources' => $this->deduplicate($resources),
-            'unresolved' => $this->deduplicate($unresolved),
+            'unresolved' => $unresolved,
+            'extractionConfidence' => $extractionConfidence,
+            'suggestions' => $this->suggestionsFor($unresolved, $extractionConfidence),
         ];
+    }
+
+    /**
+     * Never rewrites anything silently: a correction is applied only where
+     * the exact raw token the teacher accepted a suggestion for appears,
+     * whole-word, case-insensitively — the same shape the OCR misreads this
+     * exists for (ACN5, not a substring of some longer word that happens to
+     * contain it).
+     *
+     * @param  array<string, string>  $corrections
+     */
+    private function applyCorrections(string $value, array $corrections): string
+    {
+        foreach ($corrections as $original => $accepted) {
+            if ($original === '') {
+                continue;
+            }
+
+            $value = preg_replace('/\b'.preg_quote($original, '/').'\b/ui', $accepted, $value) ?? $value;
+        }
+
+        return $value;
+    }
+
+    /**
+     * §19: a suggestion is only ever attempted for a token that (a) failed to
+     * resolve AND (b) came from a cell with a LOW extraction confidence — the
+     * combination that actually means "this might be a misread", not merely
+     * "this is a token nobody taught the dictionary". A token read exactly
+     * (extraction confidence null, every source but OCR) never reaches this:
+     * "the school's file literally says ACN5" is a different fact from "the
+     * pixels might have been misread", and correcting the first would be
+     * rewriting what the school actually wrote.
+     *
+     * @param  list<CodeResolution>  $unresolved
+     * @param  array<int, ?float>  $extractionConfidence
+     * @return array<int, AcronymSuggestion>
+     */
+    private function suggestionsFor(array $unresolved, array $extractionConfidence): array
+    {
+        $suggestions = [];
+
+        foreach ($unresolved as $resolution) {
+            $confidence = $extractionConfidence[spl_object_id($resolution)] ?? null;
+
+            if ($confidence === null || $confidence >= self::LOW_EXTRACTION_CONFIDENCE) {
+                continue;
+            }
+
+            $suggestion = $this->suggester->suggest($resolution->rawToken);
+
+            if ($suggestion !== null) {
+                $suggestions[spl_object_id($resolution)] = $suggestion;
+            }
+        }
+
+        return $suggestions;
     }
 
     /**

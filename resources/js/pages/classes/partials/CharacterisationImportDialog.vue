@@ -31,6 +31,14 @@ import { resolvePastePayload } from './characterisation-paste-priority';
 
 type StudentOption = { ulid: string; name: string; class_number: number | null };
 
+// §19 — mirrors AcronymSuggestion::toArray(). Never itself a resolution: it
+// only names a dictionary token the raw text may have meant, for the teacher
+// to explicitly accept or decline.
+type SuggestedCorrection = {
+    token: string;
+    expansion: string | null;
+};
+
 type Resolution = {
     raw_token: string;
     confidence: string;
@@ -46,6 +54,13 @@ type Resolution = {
     family: string | null;
     family_label: string | null;
     has_structured_destination: boolean;
+    // §18 — EXTRACTION confidence ("did I read this cell right?"), never
+    // CodeConfidence ("do I know what it means?" — that's `confidence`
+    // above). Null for every source but OCR; see PreviewRow::extractionArray().
+    extraction_confidence: number | null;
+    // §19 — present only on an unresolved, low-extraction-confidence token
+    // for which the dictionary had a plausible near-miss.
+    suggested_correction: SuggestedCorrection | null;
 };
 
 // Só as medidas (destino B) trazem `already_active` — é o servidor a repetir,
@@ -193,6 +208,22 @@ const pendingOriginalFilename = ref<string | null>(null);
 const structuralCellConfidence = reactive<Record<string, number | null>>({});
 const editedStructuralCells = reactive<Set<string>>(new Set());
 
+// Mirrors BuildCharacterisationPreview::LOW_EXTRACTION_CONFIDENCE — the same
+// threshold the §38 structural step already uses, so the two steps never
+// disagree about what counts as "low".
+const LOW_EXTRACTION_CONFIDENCE = 0.7;
+
+function isLowExtractionConfidence(confidence: number | null): boolean {
+    return confidence !== null && confidence < LOW_EXTRACTION_CONFIDENCE;
+}
+
+// §19: raw token (as the source had it) => the token the teacher accepted in
+// its place. Resubmitting the SAME source with this attached is what re-runs
+// resolution through the normal path (BuildCharacterisationPreview applies it
+// to the cell text before ever calling the resolver) — accepting a
+// suggestion is never a client-side shortcut that fabricates a resolution.
+const corrections = reactive<Record<string, string>>({});
+
 function cellKey(rowNumber: number, columnIndex: number): string {
     return `${rowNumber}:${columnIndex}`;
 }
@@ -227,6 +258,17 @@ function clearPreviewState(): void {
     pendingOriginalFilename.value = null;
 }
 
+// §19: a correction belongs to the source it was accepted against — carrying
+// it over to a freshly chosen file/paste would silently rewrite a token
+// nobody looked at. Deliberately NOT called from clearPreviewState() itself:
+// that helper also runs on every successful postPreview() response
+// (including the very one a correction was just submitted to re-fetch), and
+// clearing there would drop the correction before it could ever be reused on
+// a later resubmission.
+function clearCorrections(): void {
+    Object.keys(corrections).forEach((key) => delete corrections[key]);
+}
+
 function resetToInput(): void {
     step.value = 'input';
     pastedText.value = '';
@@ -240,6 +282,7 @@ function resetToInput(): void {
     ocrAbortController = null;
     tableChoices.value = null;
     clearPreviewState();
+    clearCorrections();
 }
 
 // Usada pelo "Escolher outro ficheiro" e pelo "Voltar" do seletor de tabelas
@@ -250,6 +293,7 @@ function backToInputStep(): void {
     step.value = 'input';
     tableChoices.value = null;
     clearPreviewState();
+    clearCorrections();
 }
 
 function onFileChange(event: Event): void {
@@ -491,18 +535,13 @@ function populateStructuralCellConfidence(rows: StructuralRow[]): void {
     });
 }
 
-async function loadPreview(tableIndex: number | null = null): Promise<void> {
-    if (
-        pastedText.value.trim() === '' &&
-        pastedHtml.value.trim() === '' &&
-        file.value === null &&
-        ocrExtractedTable.value === null
-    ) {
-        loadError.value = 'Cole a tabela ou escolha um ficheiro.';
-
-        return;
-    }
-
+/**
+ * Builds the same FormData shape `postPreview` always expects, from
+ * whichever source is currently held — factored out of `loadPreview` so
+ * `acceptSuggestion` (§19) can resubmit the SAME source, with `corrections`
+ * attached, without duplicating the branching.
+ */
+function buildPreviewBody(tableIndex: number | null): FormData {
     const body = new FormData();
 
     if (ocrExtractedTable.value !== null) {
@@ -523,7 +562,43 @@ async function loadPreview(tableIndex: number | null = null): Promise<void> {
         body.append('pasted_text', pastedText.value);
     }
 
-    await postPreview(body);
+    if (Object.keys(corrections).length > 0) {
+        Object.entries(corrections).forEach(([original, accepted]) => {
+            body.append(`corrections[${original}]`, accepted);
+        });
+    }
+
+    return body;
+}
+
+async function loadPreview(tableIndex: number | null = null): Promise<void> {
+    if (
+        pastedText.value.trim() === '' &&
+        pastedHtml.value.trim() === '' &&
+        file.value === null &&
+        ocrExtractedTable.value === null
+    ) {
+        loadError.value = 'Cole a tabela ou escolha um ficheiro.';
+
+        return;
+    }
+
+    await postPreview(buildPreviewBody(tableIndex));
+}
+
+/**
+ * §19: the explicit, opt-in acceptance a suggestion requires — nothing is
+ * pre-accepted, and declining (never calling this) leaves the original token
+ * and its unresolved state exactly as they were. Re-submits the very same
+ * source through the very same preview endpoint, only now with this
+ * correction attached, so resolution runs through the NORMAL path
+ * (BuildCharacterisationPreview -> LegalCodeResolver) rather than the client
+ * fabricating a resolved measure of its own.
+ */
+async function acceptSuggestion(rawToken: string, acceptedToken: string): Promise<void> {
+    corrections[rawToken] = acceptedToken;
+
+    await postPreview(buildPreviewBody(null));
 }
 
 // §39: the row-kind choices the structural grid offers — mirrors
@@ -546,6 +621,22 @@ function toggleIgnoredColumn(columnIndex: number, value: boolean): void {
     } else {
         ignoredColumns.delete(columnIndex);
     }
+}
+
+// Defect (2026-09-20 structural review report): a single-line `<input>`
+// cannot hold or display "\n" at all — a browser's own value-sanitisation
+// algorithm strips it, silently, the moment Vue sets the DOM value, whether
+// or not the teacher ever touches the field. A cell with a genuinely
+// multiline observation (a common shape: "MU a) b) e)\nNecessita de apoio…")
+// would therefore lose its line break just from §38's review step being
+// OPENED, before any edit — the one step whose whole purpose is to let the
+// teacher check the table before trusting it. Checked against `state.row`,
+// the ORIGINAL StructuralRow from the server, never `state.cells` (which, by
+// the time this is asked, may already have been rendered into an `<input>`
+// once and corrupted) — so a cell that started multiline stays on a
+// `<textarea>` for its whole life in this step, edited or not.
+function cellHasNewline(row: StructuralRow, columnIndex: number): boolean {
+    return (row.cells[columnIndex] ?? '').includes('\n');
 }
 
 function markCellEdited(rowNumber: number, columnIndex: number): void {
@@ -725,7 +816,23 @@ function closeDialog(): void {
             </DialogHeader>
 
             <template v-if="step === 'input'">
-                <div class="space-y-4 py-2">
+                <!-- Defect (2026-09-20, 390px screenshots): DialogContent is
+                     `display: grid` with no explicit template, so its
+                     implicit column track sizes itself to the MAX-CONTENT
+                     width of whatever is inside — for a paragraph, that is
+                     its full text laid out on ONE line, as if it never
+                     wrapped. That pushed this div (and everything in it)
+                     wider than the dialog itself, with no visible
+                     scrollbar, so the extra width simply sat past the
+                     dialog's edge — sentences that read as "cut off" in a
+                     screenshot even though `document.documentElement
+                     .scrollWidth === window.innerWidth` stayed true (the
+                     PAGE never grew; the dialog's own content did).
+                     `min-w-0` is the standard escape from that grid-track
+                     sizing rule: it lets this item shrink back down to the
+                     grid's actual column width, so text wraps within it
+                     instead of dictating a wider one. -->
+                <div class="min-w-0 space-y-4 py-2">
                     <p class="text-sm text-muted-foreground">
                         Cole uma tabela do Word, Excel ou Google Sheets, cole uma imagem da tabela ou escolha um
                         ficheiro. Colar do Word ou do Excel funciona diretamente — não é preciso guardar como
@@ -802,7 +909,10 @@ function closeDialog(): void {
             </template>
 
             <template v-else-if="step === 'chooser' && tableChoices !== null">
-                <div class="space-y-3 py-2">
+                <!-- min-w-0: see the same comment on the other steps'
+                     wrapper — DialogContent's implicit grid track otherwise
+                     sizes to this div's max-content width. -->
+                <div class="min-w-0 space-y-3 py-2">
                     <p class="text-sm text-muted-foreground">
                         Este documento tem mais do que uma tabela. Escolha qual delas é a caracterização a importar.
                     </p>
@@ -830,7 +940,10 @@ function closeDialog(): void {
                  with scroll kept INSIDE the table (§51/§52) so the page
                  itself never grows wider than the viewport. -->
             <template v-else-if="step === 'structural'">
-                <div class="space-y-3 py-2">
+                <!-- min-w-0: see the same comment on the other steps'
+                     wrapper — DialogContent's implicit grid track otherwise
+                     sizes to this div's max-content width. -->
+                <div class="min-w-0 space-y-3 py-2">
                     <p class="text-sm text-muted-foreground">
                         Esta é a tabela tal como foi reconhecida. Corrija o que for preciso — o texto de uma célula,
                         se uma linha é de alunos, um agrupamento ou uma legenda, ou se uma coluna deve ser ignorada —
@@ -907,7 +1020,24 @@ function closeDialog(): void {
                                         class="p-2"
                                         :class="{ 'opacity-40': ignoredColumns.has(columnIndex) }"
                                     >
+                                        <!-- Defect (2026-09-20): a value
+                                             containing "\n" is silently
+                                             stripped by a single-line
+                                             `<input>` — a textarea is the
+                                             only field here that round-trips
+                                             a multiline observation losslessly,
+                                             touched or not. -->
+                                        <Textarea
+                                            v-if="cellHasNewline(state.row, columnIndex)"
+                                            v-model="state.cells[columnIndex]"
+                                            :disabled="ignoredColumns.has(columnIndex)"
+                                            :aria-label="`Linha ${state.row.number}, coluna ${columnIndex + 1}`"
+                                            rows="2"
+                                            class="min-h-8 text-xs"
+                                            @input="markCellEdited(state.row.number, columnIndex)"
+                                        />
                                         <Input
+                                            v-else
                                             v-model="state.cells[columnIndex]"
                                             :disabled="ignoredColumns.has(columnIndex)"
                                             :aria-label="`Linha ${state.row.number}, coluna ${columnIndex + 1}`"
@@ -949,7 +1079,23 @@ function closeDialog(): void {
             </template>
 
             <template v-else-if="step === 'preview' && previewData !== null">
-                <div class="space-y-4 py-2">
+                <!-- Defect (2026-09-20, 390px screenshots): DialogContent is
+                     `display: grid` with no explicit template, so its
+                     implicit column track sizes itself to the MAX-CONTENT
+                     width of whatever is inside — for a paragraph, that is
+                     its full text laid out on ONE line, as if it never
+                     wrapped. That pushed this div (and everything in it)
+                     wider than the dialog itself, with no visible
+                     scrollbar, so the extra width simply sat past the
+                     dialog's edge — sentences that read as "cut off" in a
+                     screenshot even though `document.documentElement
+                     .scrollWidth === window.innerWidth` stayed true (the
+                     PAGE never grew; the dialog's own content did).
+                     `min-w-0` is the standard escape from that grid-track
+                     sizing rule: it lets this item shrink back down to the
+                     grid's actual column width, so text wraps within it
+                     instead of dictating a wider one. -->
+                <div class="min-w-0 space-y-4 py-2">
                     <p class="text-sm text-muted-foreground">
                         Reveja cada linha antes de confirmar. Só as linhas assinaladas serão gravadas —
                         o que não for reconhecido não é guardado.
@@ -1086,6 +1232,16 @@ function closeDialog(): void {
                                     <span v-else class="block text-muted-foreground">
                                         Será adicionada a Estratégias e Medidas.
                                     </span>
+                                    <!-- §18: confiança de EXTRAÇÃO — indicador
+                                         visualmente distinto do domínio (acima),
+                                         nunca combinado com ele. -->
+                                    <span
+                                        v-if="isLowExtractionConfidence(measure.extraction_confidence)"
+                                        class="mt-0.5 flex items-center gap-1 text-amber-700 not-italic dark:text-amber-500"
+                                    >
+                                        <AlertTriangle class="size-3 shrink-0" />
+                                        Confiança de leitura baixa — confirme o texto lido.
+                                    </span>
                                 </p>
                             </div>
 
@@ -1103,6 +1259,13 @@ function closeDialog(): void {
                                     <span class="text-muted-foreground italic">
                                         — {{ resource.note ?? resource.family_label }}
                                     </span>
+                                    <span
+                                        v-if="isLowExtractionConfidence(resource.extraction_confidence)"
+                                        class="mt-0.5 flex items-center gap-1 text-amber-700 not-italic dark:text-amber-500"
+                                    >
+                                        <AlertTriangle class="size-3 shrink-0" />
+                                        Confiança de leitura baixa — confirme o texto lido.
+                                    </span>
                                 </p>
                             </div>
 
@@ -1110,15 +1273,55 @@ function closeDialog(): void {
                                 <p class="text-xs font-medium text-muted-foreground">
                                     Não reconhecido — não será gravado
                                 </p>
-                                <p v-for="unresolved in state.row.unresolved" :key="unresolved.raw_token" class="text-xs text-muted-foreground">
-                                    {{ unresolved.raw_token }} ({{ unresolved.confidence_label }})
-                                </p>
+                                <div v-for="unresolved in state.row.unresolved" :key="unresolved.raw_token" class="text-xs text-muted-foreground">
+                                    <p>
+                                        {{ unresolved.raw_token }}
+                                        <!-- Confiança de DOMÍNIO ("percebo o que
+                                             isto significa?") — já existia. -->
+                                        <span>({{ unresolved.confidence_label }})</span>
+                                    </p>
+                                    <!-- §18: confiança de EXTRAÇÃO ("li bem esta
+                                         célula?") — indicador SEPARADO, nunca
+                                         fundido com o de domínio acima: uma
+                                         sigla lida na perfeição e não
+                                         reconhecida não é o mesmo problema que
+                                         uma sigla mal lida. -->
+                                    <p
+                                        v-if="isLowExtractionConfidence(unresolved.extraction_confidence)"
+                                        class="mt-0.5 flex items-center gap-1 text-amber-700 dark:text-amber-500"
+                                    >
+                                        <AlertTriangle class="size-3 shrink-0" />
+                                        Confiança de leitura baixa — pode ter sido mal lida.
+                                    </p>
+                                    <!-- §19: sugestão explícita, nunca aplicada
+                                         por omissão — o token original fica
+                                         visível e inalterado até ser aceite. -->
+                                    <p v-if="unresolved.suggested_correction" class="mt-0.5 flex flex-wrap items-center gap-1.5">
+                                        <span>
+                                            Talvez quisesse dizer
+                                            <strong>{{ unresolved.suggested_correction.token }}</strong>
+                                            <template v-if="unresolved.suggested_correction.expansion">
+                                                ({{ unresolved.suggested_correction.expansion }})</template
+                                            >?
+                                        </span>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            class="h-6 px-2 text-[11px]"
+                                            :disabled="loading"
+                                            @click="acceptSuggestion(unresolved.raw_token, unresolved.suggested_correction.token)"
+                                        >
+                                            Aceitar correção
+                                        </Button>
+                                    </p>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <DialogFooter class="flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <DialogFooter class="min-w-0 flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <p class="text-xs text-muted-foreground">
                         {{ confirmableCount }} de {{ rows.length }} linhas serão importadas.
                     </p>
