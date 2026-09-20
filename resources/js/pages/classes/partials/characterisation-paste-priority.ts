@@ -59,15 +59,25 @@ export function resolvePastePayload(clipboardData: PasteClipboardData): PastePay
         }
     }
 
-    const imageType = types.find((type) => type.startsWith('image/'));
+    // A pasted screenshot is found by looking at the FILES, not at `types`.
+    //
+    // This is not a detail. When a browser puts an image on the clipboard —
+    // Ctrl+V of a screenshot, the gesture §14 exists for — `types` reads
+    // `["Files"]` and NOT `["image/png"]`: the concrete media type lives on
+    // the file, not in the clipboard's list of flavours. Asking `types` for
+    // something starting with `image/` therefore found nothing, every time,
+    // and the entire OCR path was unreachable by the one gesture it was
+    // built for.
+    //
+    // A unit test can miss this indefinitely, because a test writes the
+    // clipboard object by hand and will happily write the shape the code
+    // expects instead of the shape a browser produces. Measured in a real
+    // browser: `types: ["Files"]`, `files[0].type: "image/png"`.
+    const files = Array.from(clipboardData.files ?? []);
+    const imageFile = files.find((file) => file.type.startsWith('image/'));
 
-    if (imageType) {
-        const files = clipboardData.files ?? [];
-        const imageFile = Array.from(files).find((file) => file.type.startsWith('image/'));
-
-        if (imageFile) {
-            return { kind: 'image', file: imageFile };
-        }
+    if (imageFile) {
+        return { kind: 'image', file: imageFile };
     }
 
     if (types.includes('text/plain')) {
