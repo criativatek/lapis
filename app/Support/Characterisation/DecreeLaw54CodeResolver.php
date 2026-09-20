@@ -4,30 +4,41 @@ namespace App\Support\Characterisation;
 
 use App\Models\SupportMeasureCode;
 use App\Models\SupportMeasureLevel;
+use App\Support\Interventions\InterventionLegalFramework;
 use App\Support\Interventions\LegalFrameworkResolver;
 use App\Support\Tenancy\CurrentOrganization;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
 /**
- * Reads a cell against the Decreto-Lei 54/2018 enums this repository already
- * carries.
+ * Reads a cell of a school's paperwork against the legal framework that
+ * actually applies — and holds no legal knowledge of its own.
+ *
+ * EVERY JURIDICAL FACT COMES FROM THE FRAMEWORK. Which measures exist, what
+ * level each sits at, which article and alínea names it, whether it is still
+ * selectable: all of it is asked, per call, of the
+ * `InterventionLegalFramework` resolved for the applicable date. There is no
+ * list of measures here, no level table, no article map. When the law changes,
+ * a new framework version answers differently and this class needs no edit —
+ * which is the whole reason the catalogue and the parser were kept apart.
  *
  * The rules it enforces, in the order they matter:
  *
- * 1. A sub-paragraph letter — "a)", "b)", "e)" — NEVER becomes a measure. There
- *    is no letter-to-measure mapping anywhere in this repository, and writing
- *    one from memory would be inventing it. Letters travel as annotations,
- *    visible and stored verbatim, and they drag the result down to ambiguous
- *    when nothing else in the cell resolved.
- * 2. A named measure ("ACNS", or the enum's own label) resolves on its own, and
- *    a level token beside it is corroboration, not a requirement. This is why
- *    "MS b) + ACNS" is recognised while a bare "b)" is not.
- * 3. A level with no measure is ambiguous, not recognised: knowing the level
- *    says nothing about which measure was meant.
+ * 1. A sub-paragraph letter resolves ONLY with a level. «b)» is genuinely
+ *    ambiguous — the current regime names a b) under each of the three levels
+ *    (articles 8.º, 9.º and 10.º), so a bare letter identifies three different
+ *    measures at once. With a level in hand it identifies exactly one, and the
+ *    framework is what says which.
+ * 2. A named measure («ACNS», or the diploma's own designation) resolves on its
+ *    own, and a level beside it is corroboration, not a requirement.
+ * 3. A level with no measure and no letter is ambiguous: knowing the level says
+ *    nothing about which measure was meant.
  * 4. A level that contradicts the measure's own level is ambiguous, whatever
  *    the measure was. Two sources disagreeing is not evidence, it is a reason
  *    to ask.
+ * 5. A measure this framework does not name — introduced later, or revoked —
+ *    is NOT recognised. `levelFor()` returning null is an answer, not a gap.
  */
 class DecreeLaw54CodeResolver implements LegalCodeResolver
 {
@@ -37,9 +48,11 @@ class DecreeLaw54CodeResolver implements LegalCodeResolver
         private readonly CurrentOrganization $organization,
     ) {}
 
-    public function resolveCell(string $cell, ?SupportMeasureLevel $columnLevel = null): array
+    public function resolveCell(string $cell, ?SupportMeasureLevel $columnLevel = null, ?CarbonInterface $on = null): array
     {
-        if (! $this->frameworkApplies()) {
+        $framework = $this->framework($on);
+
+        if ($framework === null || ! $framework->hasLegalTaxonomy()) {
             // The organization's jurisdiction has no legal taxonomy — or is one
             // Lapispro has never encoded. «MU» is then just two letters, and
             // reading it as a Portuguese measure level would apply one
@@ -48,7 +61,7 @@ class DecreeLaw54CodeResolver implements LegalCodeResolver
             return array_map(
                 fn (string $statement) => CodeResolution::unrecognised(
                     rawToken: $statement,
-                    note: __('Não há enquadramento legal aplicável a esta organização, por isso os códigos não são interpretados.'),
+                    note: (string) __('Não há enquadramento legal aplicável a esta organização, por isso os códigos não são interpretados.'),
                 ),
                 $this->splitStatements($cell),
             );
@@ -57,7 +70,7 @@ class DecreeLaw54CodeResolver implements LegalCodeResolver
         $resolutions = [];
 
         foreach ($this->splitStatements($cell) as $statement) {
-            foreach ($this->resolveStatement($statement, $columnLevel) as $resolution) {
+            foreach ($this->resolveStatement($statement, $columnLevel, $framework) as $resolution) {
                 $resolutions[] = $resolution;
             }
         }
@@ -65,23 +78,34 @@ class DecreeLaw54CodeResolver implements LegalCodeResolver
         return $resolutions;
     }
 
-    /**
-     * Whether the organization this import belongs to has a legal taxonomy at
-     * all.
-     *
-     * The date is today's, and that is the one place this differs from
-     * interventions, deliberately. An intervention is read under the law in
-     * force when it STARTED; an import is somebody typing, now, what their
-     * school's current paperwork says — so the framework that matters is the
-     * one in force as they type.
-     */
-    private function frameworkApplies(): bool
+    public function levelFor(SupportMeasureCode $code, ?CarbonInterface $on = null): ?SupportMeasureLevel
     {
-        if (! $this->organization->isResolved()) {
-            return false;
+        $framework = $this->framework($on);
+
+        if ($framework === null || ! $framework->hasLegalTaxonomy()) {
+            return null;
         }
 
-        return $this->frameworks->for($this->organization->get(), Carbon::now())->hasLegalTaxonomy();
+        return $framework->levelFor($code);
+    }
+
+    /**
+     * The framework in force on the applicable date.
+     *
+     * The date is the paperwork's when the import supplies one, and otherwise
+     * today's — which is the honest default for somebody typing what their
+     * school's CURRENT paperwork says. It is never «the first framework in the
+     * registry»: the registry resolves by date and skips any version whose
+     * status is not applicable, so a draft or a future regime cannot leak in
+     * through here.
+     */
+    private function framework(?CarbonInterface $on): ?InterventionLegalFramework
+    {
+        if (! $this->organization->isResolved()) {
+            return null;
+        }
+
+        return $this->frameworks->for($this->organization->get(), $on ?? Carbon::now());
     }
 
     /**
@@ -103,43 +127,57 @@ class DecreeLaw54CodeResolver implements LegalCodeResolver
     /**
      * @return list<CodeResolution>
      */
-    private function resolveStatement(string $statement, ?SupportMeasureLevel $columnLevel): array
-    {
+    private function resolveStatement(
+        string $statement,
+        ?SupportMeasureLevel $columnLevel,
+        InterventionLegalFramework $framework,
+    ): array {
         $annotations = $this->extractAnnotations($statement);
-        $codes = $this->extractCodes($statement);
+        $codes = $this->extractCodes($statement, $framework);
         $statedLevel = $this->extractLevel($statement) ?? $columnLevel;
 
         if ($codes !== []) {
             return array_map(
-                fn (SupportMeasureCode $code) => $this->forCode($statement, $code, $statedLevel, $annotations),
+                fn (SupportMeasureCode $code) => $this->forCode($statement, $code, $statedLevel, $annotations, $framework),
                 $codes,
             );
         }
 
-        $unknown = $this->extractUnknownAcronyms($statement);
+        $unknown = $this->extractUnknownAcronyms($statement, $framework);
+
+        // A level AND a letter together name exactly one measure, and the
+        // framework is what resolves the pair. This is the whole difference
+        // between «MU b)» and «b)».
+        if ($statedLevel !== null && $annotations !== []) {
+            return array_merge(
+                array_map(
+                    fn (string $letter) => $this->forSubparagraph($statement, $statedLevel, $letter, $framework),
+                    $annotations,
+                ),
+                $unknown,
+            );
+        }
 
         if ($statedLevel !== null) {
-            // The level is known, the measure is not. Honest answer: ambiguous.
             return array_merge(
                 [CodeResolution::ambiguous(
                     rawToken: $statement,
                     level: $statedLevel,
-                    unresolvedAnnotations: $annotations,
-                    note: $annotations === []
-                        ? __('Nível identificado, medida por identificar.')
-                        : __('Nível identificado; a alínea não identifica a medida.'),
+                    note: (string) __('Nível identificado, medida por identificar.'),
                 )],
                 $unknown,
             );
         }
 
         if ($annotations !== []) {
-            // §13, the canonical case: "b)" with no idea which level's b).
+            // The canonical case, and now provably so: the regime names a b)
+            // under each of the three levels, so a bare letter is three
+            // measures at once.
             return array_merge(
                 [CodeResolution::ambiguous(
                     rawToken: $statement,
                     unresolvedAnnotations: $annotations,
-                    note: __('Alínea sem nível: não é possível saber a que medida se refere.'),
+                    note: (string) __('Alínea sem nível: o diploma tem uma alínea com esta letra em cada um dos três níveis.'),
                 )],
                 $unknown,
             );
@@ -151,8 +189,54 @@ class DecreeLaw54CodeResolver implements LegalCodeResolver
 
         return [CodeResolution::unrecognised(
             rawToken: $statement,
-            note: __('Sem código reconhecido.'),
+            note: (string) __('Sem código reconhecido.'),
         )];
+    }
+
+    /**
+     * The measure this framework names at a level under a given alínea.
+     */
+    private function forSubparagraph(
+        string $statement,
+        SupportMeasureLevel $level,
+        string $letter,
+        InterventionLegalFramework $framework,
+    ): CodeResolution {
+        $matches = [];
+
+        foreach (SupportMeasureCode::cases() as $case) {
+            if ($framework->levelFor($case) !== $level) {
+                continue;
+            }
+
+            $reference = $framework->legalReferenceFor($case);
+
+            if ($reference === null || ! $reference->status->isSelectable()) {
+                // A revoked measure still resolves for history elsewhere, but
+                // it is not something a new import may newly assign to a child.
+                continue;
+            }
+
+            if ($reference->subparagraph !== null && $this->fold($reference->subparagraph) === $this->fold($letter)) {
+                $matches[] = $case;
+            }
+        }
+
+        if (count($matches) !== 1) {
+            return CodeResolution::ambiguous(
+                rawToken: $statement,
+                level: $level,
+                unresolvedAnnotations: [$letter],
+                note: (string) __('O enquadramento em vigor não identifica uma medida única para :letter neste nível.', ['letter' => $letter]),
+            );
+        }
+
+        return CodeResolution::recognised(
+            rawToken: $statement,
+            code: $matches[0],
+            level: $level,
+            note: (string) __('Resolvido pela alínea :letter do enquadramento em vigor.', ['letter' => $letter]),
+        );
     }
 
     /**
@@ -163,27 +247,60 @@ class DecreeLaw54CodeResolver implements LegalCodeResolver
         SupportMeasureCode $code,
         ?SupportMeasureLevel $statedLevel,
         array $annotations,
+        InterventionLegalFramework $framework,
     ): CodeResolution {
-        if ($statedLevel !== null && $statedLevel !== $code->level()) {
+        $level = $framework->levelFor($code);
+
+        if ($level === null) {
+            // The framework applicable here does not name this measure. Storing
+            // it would assert a legal fact under a regime that never said it.
+            return CodeResolution::unrecognised(
+                rawToken: $statement,
+                scope: AcronymScope::National,
+                note: (string) __('O enquadramento aplicável nesta data não nomeia esta medida.'),
+            );
+        }
+
+        if ($statedLevel !== null && $statedLevel !== $level) {
             return CodeResolution::ambiguous(
                 rawToken: $statement,
-                level: null,
                 unresolvedAnnotations: $annotations,
-                note: __('O nível indicado (:stated) não corresponde ao da medida :code (:actual).', [
+                note: (string) __('O nível indicado (:stated) não corresponde ao da medida :code (:actual).', [
                     'stated' => $statedLevel->label(),
                     'code' => $code->label(),
-                    'actual' => $code->level()->label(),
+                    'actual' => $level->label(),
                 ]),
             );
+        }
+
+        $reference = $framework->legalReferenceFor($code);
+
+        // An alínea beside a named measure has to agree with it. «MS c) + ACNS»
+        // is two sources disagreeing, and the answer to that is a question.
+        if ($annotations !== [] && $reference?->subparagraph !== null) {
+            $agrees = array_filter(
+                $annotations,
+                fn (string $letter) => $this->fold($letter) === $this->fold((string) $reference->subparagraph),
+            );
+
+            if ($agrees === []) {
+                return CodeResolution::ambiguous(
+                    rawToken: $statement,
+                    level: $level,
+                    unresolvedAnnotations: $annotations,
+                    note: (string) __('A alínea indicada não é a da medida :code (:actual).', [
+                        'code' => $code->label(),
+                        'actual' => (string) $reference->subparagraph,
+                    ]),
+                );
+            }
         }
 
         return CodeResolution::recognised(
             rawToken: $statement,
             code: $code,
-            unresolvedAnnotations: $annotations,
-            note: $annotations === []
-                ? null
-                : (string) __('A alínea foi lida mas não identifica a medida; fica registada tal como veio.'),
+            level: $level,
+            note: $reference === null ? null : (string) __('Corresponde a :citation.', ['citation' => $reference->citation()]),
         );
     }
 
@@ -200,30 +317,58 @@ class DecreeLaw54CodeResolver implements LegalCodeResolver
     }
 
     /**
+     * Measures named outright — by the diploma's own designation, by the enum's
+     * label, or by an acronym the dictionary confirms.
+     *
+     * The designations are read FROM THE FRAMEWORK, so a measure the catalogue
+     * gains tomorrow is recognised here without this file being touched.
+     *
      * @return list<SupportMeasureCode>
      */
-    private function extractCodes(string $statement): array
+    private function extractCodes(string $statement, InterventionLegalFramework $framework): array
     {
         $found = [];
         $haystack = $this->fold($statement);
 
-        // Full labels first — "Adaptação curricular significativa" contains the
-        // non-significant one's words but not the other way round, so matching
-        // the longest label first avoids reading ACS as ACNS.
-        $cases = SupportMeasureCode::cases();
-        usort($cases, fn ($a, $b) => mb_strlen($b->label()) <=> mb_strlen($a->label()));
+        /** @var list<array{case: SupportMeasureCode, text: string}> $candidates */
+        $candidates = [];
 
-        foreach ($cases as $case) {
-            if (str_contains($haystack, $this->fold($case->label()))) {
-                $found[$case->value] = $case;
+        foreach (SupportMeasureCode::cases() as $case) {
+            $candidates[] = ['case' => $case, 'text' => $case->label()];
+
+            $designation = $framework->legalReferenceFor($case)?->designation;
+
+            if ($designation !== null) {
+                $candidates[] = ['case' => $case, 'text' => $designation];
+            }
+        }
+
+        // Longest first: «adaptações curriculares significativas» contains the
+        // non-significant one's words but not the other way round, so matching
+        // the longest designation first stops ACS being read as ACNS.
+        usort($candidates, fn (array $a, array $b) => mb_strlen($b['text']) <=> mb_strlen($a['text']));
+
+        foreach ($candidates as $candidate) {
+            $needle = $this->fold($candidate['text']);
+
+            // The diploma writes its measures in the plural («as adaptações
+            // curriculares significativas») and a teacher's sheet very often
+            // writes one child's in the singular. Both forms are tried.
+            //
+            // Still SUBSTRING, never a loose word match: «adaptacao curricular
+            // significativa» is not a substring of «adaptacao curricular NÃO
+            // significativa», and that is exactly what stops ACS being found
+            // inside an ACNS cell. A subsequence test would lose that.
+            if (str_contains($haystack, $needle) || str_contains($this->singularise($haystack), $this->singularise($needle))) {
+                $found[$candidate['case']->value] ??= $candidate['case'];
             }
         }
 
         foreach ($this->tokens($statement) as $token) {
             $entry = $this->dictionary->find($token);
 
-            if ($entry?->resolvesToMeasure()) {
-                $found[$entry->code->value] = $entry->code;
+            if ($entry?->code !== null) {
+                $found[$entry->code->value] ??= $entry->code;
             }
         }
 
@@ -255,16 +400,23 @@ class DecreeLaw54CodeResolver implements LegalCodeResolver
      * Acronyms that are acronyms and nothing more: either known to the
      * dictionary without a confirmed meaning, or not known at all.
      *
+     * A TOKEN DOES NOT BECOME A MEASURE BECAUSE THE CATALOGUE HAPPENS TO KNOW A
+     * RELATED CONCEPT. The regime names «o plano individual de transição» at
+     * 10.º/4 c), and a column reading «PIT» is still, far more often, the
+     * document itself rather than a statement that the measure applies. Turning
+     * the sigla into the measure would be the application deciding a legal fact
+     * about a child from an abbreviation nobody confirmed.
+     *
      * @return list<CodeResolution>
      */
-    private function extractUnknownAcronyms(string $statement): array
+    private function extractUnknownAcronyms(string $statement, InterventionLegalFramework $framework): array
     {
         $resolutions = [];
 
         foreach ($this->tokens($statement) as $token) {
             $entry = $this->dictionary->find($token);
 
-            if ($entry !== null && ($entry->resolvesToMeasure() || $entry->level !== null)) {
+            if ($entry !== null && ($entry->code !== null || $entry->level !== null)) {
                 continue;
             }
 
@@ -273,9 +425,9 @@ class DecreeLaw54CodeResolver implements LegalCodeResolver
                 $resolutions[] = CodeResolution::unrecognised(
                     rawToken: $entry->token,
                     scope: $entry->scope,
-                    note: __(':token — :expansion. Não é uma medida de suporte.', [
+                    note: (string) __(':token — :expansion. Não é uma medida de suporte.', [
                         'token' => $entry->token,
-                        'expansion' => $entry->expansion,
+                        'expansion' => (string) $entry->expansion,
                     ]),
                 );
 
@@ -286,8 +438,8 @@ class DecreeLaw54CodeResolver implements LegalCodeResolver
                 rawToken: $token,
                 scope: $entry === null ? AcronymScope::Institutional : $entry->scope,
                 note: $entry !== null
-                    ? __('Sigla reconhecida como sigla; significado por confirmar.')
-                    : __('Sigla não reconhecida.'),
+                    ? (string) __('Sigla reconhecida como sigla; significado por confirmar.')
+                    : (string) __('Sigla não reconhecida.'),
             );
         }
 
@@ -311,11 +463,42 @@ class DecreeLaw54CodeResolver implements LegalCodeResolver
      *
      * Str::ascii, not iconv//TRANSLIT: the latter is locale- and
      * platform-dependent — on Windows it renders «ç» as «c~» — so a measure
-     * label would match on one machine and not on another. A rule about what
-     * the law means cannot depend on which server read it.
+     * designation would match on one machine and not on another. A rule about
+     * what the law means cannot depend on which server read it.
      */
     private function fold(string $value): string
     {
         return mb_strtolower(Str::ascii($value));
+    }
+
+    /**
+     * A crude Portuguese singulariser, used ONLY to compare two spellings of
+     * the same measure — never to store or display anything.
+     *
+     * It is orthography, not interpretation: «adaptações curriculares» and
+     * «adaptação curricular» name the identical measure, and which one a
+     * school's sheet happens to use says nothing about the child. It changes no
+     * decision about meaning, so it does not belong to the class of guesses
+     * this feature refuses to make.
+     */
+    private function singularise(string $folded): string
+    {
+        $words = preg_split('/\s+/u', $folded) ?: [];
+
+        return implode(' ', array_map(function (string $word): string {
+            if (str_ends_with($word, 'oes')) {
+                return substr($word, 0, -3).'ao';
+            }
+
+            if (str_ends_with($word, 'es') && mb_strlen($word) > 4) {
+                return substr($word, 0, -2);
+            }
+
+            if (str_ends_with($word, 's') && mb_strlen($word) > 3) {
+                return substr($word, 0, -1);
+            }
+
+            return $word;
+        }, $words));
     }
 }

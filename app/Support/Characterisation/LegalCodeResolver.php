@@ -2,7 +2,9 @@
 
 namespace App\Support\Characterisation;
 
+use App\Models\SupportMeasureCode;
 use App\Models\SupportMeasureLevel;
+use Carbon\CarbonInterface;
 
 /**
  * Turns what a school wrote in a spreadsheet cell into what this application is
@@ -31,7 +33,21 @@ interface LegalCodeResolver
      *                                                 header, when the header named one. This is what
      *                                                 lets a bare "b)" mean something — and its absence
      *                                                 is what keeps a bare "b)" ambiguous.
+     * @param  CarbonInterface|null  $on  The date the paperwork describes, when the import
+     *                                    supplies one. Null means "the regime in force as the
+     *                                    teacher types", which is what an import of current
+     *                                    paperwork means — never "the first framework in the list".
      * @return list<CodeResolution>
      */
-    public function resolveCell(string $cell, ?SupportMeasureLevel $columnLevel = null): array;
+    public function resolveCell(string $cell, ?SupportMeasureLevel $columnLevel = null, ?CarbonInterface $on = null): array;
+
+    /**
+     * The level the applicable framework puts a measure at, or null when that
+     * framework does not name it.
+     *
+     * Exists so the write path never re-derives a level of its own. A null here
+     * is a real answer — "this regime does not name this measure" — and the
+     * caller must treat it as a refusal, not as something to fill in.
+     */
+    public function levelFor(SupportMeasureCode $code, ?CarbonInterface $on = null): ?SupportMeasureLevel;
 }

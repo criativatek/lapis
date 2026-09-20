@@ -12,6 +12,7 @@ use App\Models\SupportMeasureCode;
 use App\Models\User;
 use App\Services\Characterisation\RecordCharacterisation;
 use App\Support\Characterisation\CharacterisationSection;
+use App\Support\Characterisation\LegalCodeResolver;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -20,10 +21,15 @@ use Illuminate\Support\Facades\DB;
  *
  * THIS ACTION CANNOT PARSE. It takes decisions: an enrolment, some text, some
  * measure codes, each one named explicitly by whoever confirmed the preview. It
- * has no reader, no resolver and no matcher, so there is no path from «a file
- * was uploaded» to «a row was written» that does not pass through a person. The
- * guarantee the brief asks for — nothing saved before confirmation — is
- * therefore structural rather than a rule someone has to remember.
+ * has no reader and no matcher, so there is no path from «a file was uploaded»
+ * to «a row was written» that does not pass through a person. The guarantee the
+ * brief asks for — nothing saved before confirmation — is therefore structural
+ * rather than a rule someone has to remember.
+ *
+ * It does hold the LegalCodeResolver, and only for one question: what level the
+ * applicable framework puts a measure at. That is a lookup, not a parse — it
+ * turns no text into decisions, and it is here precisely so that the level
+ * written to a child's record is the law's answer rather than the client's.
  *
  * EVERYTHING IS RE-VERIFIED HERE. The preview is a document that lived in a
  * browser, and a browser is not a place where authorisation decisions are safe.
@@ -33,7 +39,10 @@ use Illuminate\Support\Facades\DB;
  */
 class ApplyCharacterisationImport
 {
-    public function __construct(private readonly RecordCharacterisation $recorder) {}
+    public function __construct(
+        private readonly RecordCharacterisation $recorder,
+        private readonly LegalCodeResolver $resolver,
+    ) {}
 
     /**
      * @param  list<array{enrollment_ulid: string, sections?: array<string, string|null>, measure_codes?: list<string>, raw_tokens?: array<string, string>}>  $decisions
@@ -168,14 +177,22 @@ class ApplyCharacterisationImport
                 continue;
             }
 
-            // Keyed on the pair, not on the code alone. Today the level is
-            // always derived from the code so the two can never disagree — but
-            // when the versioned catalogue replaces the resolver and a code
-            // becomes valid at more than one level, a code-only key would start
-            // silently discarding the second one.
+            // THE LEVEL COMES FROM THE APPLICABLE FRAMEWORK, never from the
+            // enum and never from the client. `levelFor()` returning null means
+            // the regime does not name this measure — a real answer, and a
+            // refusal to write, not a gap to fill in locally.
+            $level = $this->resolver->levelFor($code);
+
+            if ($level === null) {
+                continue;
+            }
+
+            // Keyed on the pair, not on the code alone: when a future regime
+            // puts a code at a different level, a code-only key would silently
+            // discard the second one.
             $exists = $characterisation->exists && $characterisation->sourceMeasures()
                 ->where('support_measure_code', $code->value)
-                ->where('support_measure_level', $code->level()->value)
+                ->where('support_measure_level', $level->value)
                 ->exists();
 
             if ($exists) {
@@ -207,7 +224,7 @@ class ApplyCharacterisationImport
 
             $measure = new EnrollmentCharacterisationSourceMeasure([
                 'enrollment_characterisation_id' => $characterisation->getKey(),
-                'support_measure_level' => $code->level(),
+                'support_measure_level' => $level,
                 'support_measure_code' => $code,
                 'raw_token' => $rawToken,
                 'unresolved_annotations' => $decision['annotations'][$rawCode] ?? null,

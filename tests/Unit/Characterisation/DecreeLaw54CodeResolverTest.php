@@ -8,22 +8,32 @@ use App\Models\SupportMeasureLevel;
 use App\Support\Characterisation\AcronymDictionary;
 use App\Support\Characterisation\CodeConfidence;
 use App\Support\Characterisation\DecreeLaw54CodeResolver;
+use App\Support\Interventions\InterventionLegalFramework;
 use App\Support\Interventions\LegalFrameworkRegistry;
 use App\Support\Interventions\LegalFrameworkResolver;
 use App\Support\Tenancy\CurrentOrganization;
+use Illuminate\Support\Carbon;
+use Tests\Support\Interventions\FictitiousLegalFramework;
 use Tests\TestCase;
 
 /**
- * The resolver's whole job is knowing when NOT to answer, so most of what is
- * asserted here is restraint: a letter that stays a letter, an acronym that
- * stays unexpanded, a contradiction that stays a contradiction.
+ * Reading a school's shorthand against the legal framework that applies.
  *
- * No database: the resolver reads an organization's jurisdiction and a
- * dictionary, and neither needs a row to exist.
+ * Most of what is asserted here is restraint: a letter that stays a letter
+ * without a level, an acronym that stays unexpanded, a contradiction that stays
+ * a contradiction. The rest asserts the opposite and just as deliberately —
+ * that where the diploma itself supplies the answer, the resolver reads it
+ * instead of holding a copy.
+ *
+ * No database: the resolver reads an organization's jurisdiction and asks a
+ * framework, and neither needs a row to exist.
  */
 class DecreeLaw54CodeResolverTest extends TestCase
 {
-    private function resolver(string $jurisdiction = 'PT'): DecreeLaw54CodeResolver
+    /**
+     * @param  list<InterventionLegalFramework>|null  $frameworks
+     */
+    private function resolver(string $jurisdiction = 'PT', ?array $frameworks = null): DecreeLaw54CodeResolver
     {
         $organization = new Organization;
         $organization->jurisdiction = $jurisdiction;
@@ -45,10 +55,12 @@ class DecreeLaw54CodeResolverTest extends TestCase
 
         return new DecreeLaw54CodeResolver(
             new AcronymDictionary,
-            new LegalFrameworkResolver(new LegalFrameworkRegistry),
+            new LegalFrameworkResolver(new LegalFrameworkRegistry($frameworks)),
             $tenant,
         );
     }
+
+    // ---------------------------------------------- medidas nomeadas
 
     public function test_a_named_measure_resolves_on_its_own(): void
     {
@@ -61,51 +73,31 @@ class DecreeLaw54CodeResolverTest extends TestCase
         $this->assertTrue($resolutions[0]->isStorable());
     }
 
-    /** The brief's worked example: strong contextual evidence, recognised. */
-    public function test_a_level_a_letter_and_a_measure_together_are_recognised(): void
+    /**
+     * The brief's worked example — and under the real diploma the two halves
+     * agree: article 9.º, n.º 2, alínea b) IS «as adaptações curriculares não
+     * significativas». The letter corroborates the measure instead of riding
+     * along unresolved.
+     */
+    public function test_a_level_a_letter_and_a_measure_that_agree_are_recognised(): void
     {
         $resolutions = $this->resolver()->resolveCell('MS b) + ACNS');
 
         $this->assertCount(1, $resolutions);
         $this->assertSame(CodeConfidence::Recognised, $resolutions[0]->confidence);
         $this->assertSame(SupportMeasureCode::NonSignificantCurricularAdaptation, $resolutions[0]->code);
-        // The letter was read and kept, but it did not become the measure.
-        $this->assertSame(['b)'], $resolutions[0]->unresolvedAnnotations);
+        $this->assertSame(SupportMeasureLevel::Selective, $resolutions[0]->level);
+        $this->assertSame([], $resolutions[0]->unresolvedAnnotations);
     }
 
-    /**
-     * The case the brief is most explicit about. A letter alone says nothing
-     * without knowing which level's list it indexes into.
-     */
-    public function test_a_bare_letter_without_a_level_is_ambiguous(): void
+    /** A letter that contradicts the measure beside it is two sources disagreeing. */
+    public function test_a_letter_that_contradicts_its_measure_is_ambiguous(): void
     {
-        $resolutions = $this->resolver()->resolveCell('b)');
+        $resolutions = $this->resolver()->resolveCell('MS c) + ACNS');
 
-        $this->assertCount(1, $resolutions);
         $this->assertSame(CodeConfidence::Ambiguous, $resolutions[0]->confidence);
-        $this->assertNull($resolutions[0]->level);
         $this->assertNull($resolutions[0]->code);
         $this->assertFalse($resolutions[0]->isStorable());
-    }
-
-    public function test_a_column_level_gives_a_bare_letter_its_level_but_never_a_measure(): void
-    {
-        $resolutions = $this->resolver()->resolveCell('b)', SupportMeasureLevel::Universal);
-
-        $this->assertSame(CodeConfidence::Ambiguous, $resolutions[0]->confidence);
-        $this->assertSame(SupportMeasureLevel::Universal, $resolutions[0]->level);
-        $this->assertNull($resolutions[0]->code);
-        $this->assertSame(['b)'], $resolutions[0]->unresolvedAnnotations);
-    }
-
-    public function test_letters_never_resolve_to_a_measure_even_with_a_level(): void
-    {
-        $resolutions = $this->resolver()->resolveCell('MU a) b) e)');
-
-        $this->assertSame(CodeConfidence::Ambiguous, $resolutions[0]->confidence);
-        $this->assertSame(SupportMeasureLevel::Universal, $resolutions[0]->level);
-        $this->assertNull($resolutions[0]->code);
-        $this->assertSame(['a)', 'b)', 'e)'], $resolutions[0]->unresolvedAnnotations);
     }
 
     /**
@@ -119,12 +111,96 @@ class DecreeLaw54CodeResolverTest extends TestCase
 
         $this->assertSame(CodeConfidence::Ambiguous, $resolutions[0]->confidence);
         $this->assertNull($resolutions[0]->code);
-        $this->assertStringContainsString('não corresponde', $resolutions[0]->note);
+        $this->assertStringContainsString('não corresponde', (string) $resolutions[0]->note);
     }
 
-    public function test_a_known_acronym_with_no_confirmed_meaning_is_not_invented(): void
+    // ---------------------------------------------- alíneas
+
+    /**
+     * THE CANONICAL AMBIGUITY, and now provable rather than assumed: the regime
+     * names an alínea b) under each of the three levels — articles 8.º, 9.º and
+     * 10.º — so a bare letter identifies three different measures at once.
+     */
+    public function test_a_bare_letter_without_a_level_is_ambiguous(): void
     {
-        foreach (['RTP', 'PEI', 'CRI', 'PIT', 'GAAF'] as $token) {
+        $resolutions = $this->resolver()->resolveCell('b)');
+
+        $this->assertCount(1, $resolutions);
+        $this->assertSame(CodeConfidence::Ambiguous, $resolutions[0]->confidence);
+        $this->assertNull($resolutions[0]->code);
+        $this->assertSame(['b)'], $resolutions[0]->unresolvedAnnotations);
+        $this->assertFalse($resolutions[0]->isStorable());
+    }
+
+    /**
+     * With a level the same letter identifies exactly one measure, and the
+     * framework is what says which — article 8.º, n.º 2, alínea b).
+     */
+    public function test_a_level_and_a_letter_resolve_through_the_framework(): void
+    {
+        $resolutions = $this->resolver()->resolveCell('MU b)');
+
+        $this->assertSame(CodeConfidence::Recognised, $resolutions[0]->confidence);
+        $this->assertSame(SupportMeasureCode::CurricularAccommodation, $resolutions[0]->code);
+        $this->assertSame(SupportMeasureLevel::Universal, $resolutions[0]->level);
+    }
+
+    /** A column header naming the level is the same evidence as a token. */
+    public function test_a_column_level_is_enough_context_for_a_letter(): void
+    {
+        $resolutions = $this->resolver()->resolveCell('b)', SupportMeasureLevel::Universal);
+
+        $this->assertSame(CodeConfidence::Recognised, $resolutions[0]->confidence);
+        $this->assertSame(SupportMeasureCode::CurricularAccommodation, $resolutions[0]->code);
+    }
+
+    public function test_several_letters_at_one_level_resolve_to_several_measures(): void
+    {
+        $resolutions = $this->resolver()->resolveCell('MU a) b) e)');
+
+        $this->assertCount(3, $resolutions);
+        $this->assertSame(
+            [
+                SupportMeasureCode::PedagogicalDifferentiation,
+                SupportMeasureCode::CurricularAccommodation,
+                SupportMeasureCode::AcademicFocusSmallGroup,
+            ],
+            array_map(fn ($r) => $r->code, $resolutions),
+        );
+    }
+
+    public function test_a_level_with_no_letter_and_no_measure_is_ambiguous(): void
+    {
+        $resolutions = $this->resolver()->resolveCell('MS');
+
+        $this->assertSame(CodeConfidence::Ambiguous, $resolutions[0]->confidence);
+        $this->assertSame(SupportMeasureLevel::Selective, $resolutions[0]->level);
+        $this->assertNull($resolutions[0]->code);
+    }
+
+    // ---------------------------------------------- siglas que não são medidas
+
+    /**
+     * THE TRAP THE CANONICAL CATALOGUE OPENED. The regime names «o plano
+     * individual de transição» at 10.º/4 c) and the catalogue has a case for
+     * it — and a column reading «PIT» is still far more often the document a
+     * school keeps than a statement that the measure applies to that child.
+     * A sigla does not become a measure because a related concept exists.
+     */
+    public function test_pit_does_not_become_a_measure_just_because_the_catalogue_knows_one(): void
+    {
+        $resolutions = $this->resolver()->resolveCell('PIT');
+
+        $this->assertCount(1, $resolutions);
+        $this->assertSame(CodeConfidence::Unrecognised, $resolutions[0]->confidence);
+        $this->assertNull($resolutions[0]->code);
+        $this->assertFalse($resolutions[0]->isStorable());
+    }
+
+    /** Instruments and resources, not measures — whatever the catalogue holds. */
+    public function test_instruments_and_resources_never_become_measures_by_acronym(): void
+    {
+        foreach (['RTP', 'PEI', 'CRI', 'PEL', 'SPO', 'DEE', 'ATE', 'CAA', 'GAAF'] as $token) {
             $resolutions = $this->resolver()->resolveCell($token);
 
             $this->assertSame(CodeConfidence::Unrecognised, $resolutions[0]->confidence, $token);
@@ -132,6 +208,16 @@ class DecreeLaw54CodeResolverTest extends TestCase
             $this->assertNull($resolutions[0]->level, $token);
             $this->assertFalse($resolutions[0]->isStorable(), $token);
         }
+    }
+
+    /** PLNM is a curricular pathway. Confirmed as a sigla, never a measure. */
+    public function test_plnm_is_confirmed_but_is_not_a_measure(): void
+    {
+        $resolutions = $this->resolver()->resolveCell('PLNM');
+
+        $this->assertSame(CodeConfidence::Unrecognised, $resolutions[0]->confidence);
+        $this->assertNull($resolutions[0]->code);
+        $this->assertStringContainsString('Português Língua Não Materna', (string) $resolutions[0]->note);
     }
 
     public function test_an_unknown_acronym_is_unrecognised(): void
@@ -142,46 +228,55 @@ class DecreeLaw54CodeResolverTest extends TestCase
         $this->assertFalse($resolutions[0]->isStorable());
     }
 
-    /** PLNM is confirmed, but it is not a support measure and must not become one. */
-    public function test_a_confirmed_acronym_that_is_not_a_measure_stays_out_of_the_measure_destination(): void
-    {
-        $resolutions = $this->resolver()->resolveCell('PLNM');
+    // ---------------------------------------------- designações do diploma
 
-        $this->assertSame(CodeConfidence::Unrecognised, $resolutions[0]->confidence);
-        $this->assertNull($resolutions[0]->code);
-        $this->assertStringContainsString('Português Língua Não Materna', $resolutions[0]->note);
+    public function test_the_diplomas_own_designations_resolve(): void
+    {
+        $resolutions = $this->resolver()->resolveCell('As adaptações curriculares significativas');
+
+        $this->assertSame(SupportMeasureCode::SignificantCurricularAdaptation, $resolutions[0]->code);
+        $this->assertSame(SupportMeasureLevel::Additional, $resolutions[0]->level);
     }
 
-    public function test_full_labels_resolve_and_the_longer_one_wins(): void
+    /** A sheet written in the singular names the same measure as the diploma's plural. */
+    public function test_singular_and_plural_spellings_reach_the_same_measure(): void
     {
-        $significant = $this->resolver()->resolveCell('Adaptação curricular significativa');
+        $singular = $this->resolver()->resolveCell('Adaptação curricular significativa');
+        $plural = $this->resolver()->resolveCell('Adaptações curriculares significativas');
 
-        $this->assertSame(SupportMeasureCode::SignificantCurricularAdaptation, $significant[0]->code);
-
-        $nonSignificant = $this->resolver()->resolveCell('Adaptação curricular não significativa');
-
-        $this->assertSame(SupportMeasureCode::NonSignificantCurricularAdaptation, $nonSignificant[0]->code);
+        $this->assertSame(SupportMeasureCode::SignificantCurricularAdaptation, $singular[0]->code);
+        $this->assertSame(SupportMeasureCode::SignificantCurricularAdaptation, $plural[0]->code);
     }
 
-    public function test_statements_separated_by_semicolons_resolve_independently(): void
+    /** «significativa» must not be found inside «não significativa». */
+    public function test_the_longer_designation_wins(): void
     {
-        $resolutions = $this->resolver()->resolveCell('MU a); MS b) + ACNS');
+        $resolutions = $this->resolver()->resolveCell('Adaptações curriculares não significativas');
 
-        $this->assertCount(2, $resolutions);
-        $this->assertSame(CodeConfidence::Ambiguous, $resolutions[0]->confidence);
-        $this->assertSame(CodeConfidence::Recognised, $resolutions[1]->confidence);
+        $this->assertCount(1, $resolutions);
+        $this->assertSame(SupportMeasureCode::NonSignificantCurricularAdaptation, $resolutions[0]->code);
     }
 
-    public function test_an_empty_cell_resolves_to_nothing(): void
+    /**
+     * A measure this branch never heard of — it arrived with the canonical
+     * catalogue — resolves without the parser being touched. That is the whole
+     * point of reading the framework instead of holding a list.
+     */
+    public function test_a_measure_the_parser_never_knew_resolves_through_the_catalogue(): void
     {
-        $this->assertSame([], $this->resolver()->resolveCell('   '));
+        $resolutions = $this->resolver()->resolveCell('Os percursos curriculares diferenciados');
+
+        $this->assertSame(CodeConfidence::Recognised, $resolutions[0]->confidence);
+        $this->assertSame(SupportMeasureCode::DifferentiatedCurricularPaths, $resolutions[0]->code);
+        $this->assertSame(SupportMeasureLevel::Selective, $resolutions[0]->level);
     }
+
+    // ---------------------------------------------- enquadramento e tempo
 
     /**
      * A jurisdiction Lapispro has no framework for gets no framework — not
      * Portugal's. «MU» is two letters in a school that never heard of
-     * Decreto-Lei 54/2018, and reading it as a measure level would apply one
-     * country's law to another country's school.
+     * Decreto-Lei 54/2018.
      */
     public function test_a_jurisdiction_without_a_legal_taxonomy_resolves_nothing(): void
     {
@@ -191,8 +286,59 @@ class DecreeLaw54CodeResolverTest extends TestCase
         $this->assertSame(CodeConfidence::Unrecognised, $resolutions[0]->confidence);
         $this->assertNull($resolutions[0]->code);
         $this->assertNull($resolutions[0]->level);
-        $this->assertFalse($resolutions[0]->isStorable());
         $this->assertSame('MS b) + ACNS', $resolutions[0]->rawToken);
+    }
+
+    /**
+     * The level is the applicable framework's answer, not the enum's. A
+     * fictitious regime that puts the same measure somewhere else is read the
+     * way IT reads it — which is what stops a record from 2026 being
+     * reclassified by a law passed afterwards.
+     */
+    public function test_the_level_comes_from_the_framework_not_from_the_enum(): void
+    {
+        $framework = new FictitiousLegalFramework;
+
+        $resolver = $this->resolver($framework->jurisdiction() ?? 'ZZ', [$framework]);
+
+        $level = $resolver->levelFor(SupportMeasureCode::TutorialSupport, Carbon::parse('2026-10-01'));
+
+        $this->assertSame($framework->levelFor(SupportMeasureCode::TutorialSupport), $level);
+    }
+
+    /** No framework covers the date → no level, and therefore nothing storable. */
+    public function test_a_date_no_framework_covers_yields_no_level(): void
+    {
+        $level = $this->resolver()->levelFor(
+            SupportMeasureCode::TutorialSupport,
+            Carbon::parse('1990-01-01'),
+        );
+
+        $this->assertNull($level);
+    }
+
+    public function test_the_current_regime_answers_for_today(): void
+    {
+        $this->assertSame(
+            SupportMeasureLevel::Selective,
+            $this->resolver()->levelFor(SupportMeasureCode::TutorialSupport),
+        );
+    }
+
+    // ---------------------------------------------- forma
+
+    public function test_statements_separated_by_semicolons_resolve_independently(): void
+    {
+        $resolutions = $this->resolver()->resolveCell('MU a); MS b) + ACNS');
+
+        $this->assertCount(2, $resolutions);
+        $this->assertSame(SupportMeasureCode::PedagogicalDifferentiation, $resolutions[0]->code);
+        $this->assertSame(SupportMeasureCode::NonSignificantCurricularAdaptation, $resolutions[1]->code);
+    }
+
+    public function test_an_empty_cell_resolves_to_nothing(): void
+    {
+        $this->assertSame([], $this->resolver()->resolveCell('   '));
     }
 
     /** Whatever the interpretation turns out to be worth, the source text survives it. */

@@ -24,6 +24,16 @@ use App\Models\SupportMeasureLevel;
  * forbids: "inventing pedagogical categories nobody approved is exactly what the
  * project forbids."
  *
+ * THE CATALOGUE KNOWING A RELATED CONCEPT IS NOT A REASON TO PROMOTE A TOKEN.
+ * The regime names «o plano individual de transição» at article 10.º/4 c), and
+ * the catalogue has a case for it — and PIT stays unconfirmed all the same,
+ * because a column reading «PIT» is far more often the document a school keeps
+ * than a statement that the measure applies to that child. The same holds for
+ * RTP and PEI (instruments), for CRI (a resource — the catalogue has no
+ * `resource_support` item at all today) and for PLNM (a curricular pathway, not
+ * a measure). What decides a destination is the column's context and the
+ * framework, never the fact that a string resembles a catalogue entry.
+ *
  * Adding an expansion here is a decision, not a typo fix. It needs the same
  * justification as adding a SupportMeasureCode case.
  */
@@ -85,18 +95,21 @@ class AcronymDictionary
             new AcronymEntry('MA', 'Medida adicional', AcronymScope::National, level: SupportMeasureLevel::Additional),
 
             // Two measures whose initials are unambiguous against their labels.
+            //
+            // NO LEVEL HERE, DELIBERATELY. The level of a measure is what the
+            // applicable framework says it is, and writing it down a second
+            // time would be a copy that can fall out of step with the diploma
+            // the day a measure moves between articles.
             new AcronymEntry(
                 'ACNS',
                 'Adaptação curricular não significativa',
                 AcronymScope::National,
-                level: SupportMeasureLevel::Selective,
                 code: SupportMeasureCode::NonSignificantCurricularAdaptation,
             ),
             new AcronymEntry(
                 'ACS',
                 'Adaptação curricular significativa',
                 AcronymScope::National,
-                level: SupportMeasureLevel::Additional,
                 code: SupportMeasureCode::SignificantCurricularAdaptation,
             ),
 

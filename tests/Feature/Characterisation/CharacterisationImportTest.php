@@ -192,7 +192,10 @@ class CharacterisationImportTest extends TestCase
             ->assertJsonPath('preview.rows.0.measures.0.code', 'non_significant_curricular_adaptation')
             ->assertJsonPath('preview.rows.0.measures.0.storable', true);
 
-        $this->assertSame(['b)'], $response->json('preview.rows.0.measures.0.unresolved_annotations'));
+        // Nothing left unresolved: under the diploma, article 9.º n.º 2 alínea
+        // b) IS «as adaptações curriculares não significativas», so the letter
+        // corroborates the measure instead of riding along unread.
+        $this->assertSame([], $response->json('preview.rows.0.measures.0.unresolved_annotations'));
     }
 
     #[Test]
@@ -222,20 +225,58 @@ class CharacterisationImportTest extends TestCase
     }
 
     /**
-     * A column header naming the level is what gives the letters under it any
-     * meaning — and even then, only the level, never the measure.
+     * A column header naming the level is the context a bare letter needs, and
+     * the framework supplies the rest: «Medidas universais» + «b)» is article
+     * 8.º, n.º 2, alínea b) — as acomodações curriculares.
+     *
+     * Without the header the same cell stays ambiguous, which is the case
+     * above. The difference between the two is the whole rule.
      */
     #[Test]
-    public function a_column_header_supplies_the_level_but_still_not_the_measure(): void
+    public function a_column_header_gives_a_letter_the_context_the_framework_needs(): void
     {
         $this->enrol($this->user, $this->class, 'Ana Silva');
 
         $response = $this->preview("Nome\tMedidas universais\nAna Silva\tb)\n");
 
         $response->assertOk()
-            ->assertJsonPath('preview.rows.0.unresolved.0.confidence', 'ambiguous')
-            ->assertJsonPath('preview.rows.0.unresolved.0.level', 'universal')
+            ->assertJsonPath('preview.rows.0.measures.0.confidence', 'recognised')
+            ->assertJsonPath('preview.rows.0.measures.0.level', 'universal')
+            ->assertJsonPath('preview.rows.0.measures.0.code', 'curricular_accommodation')
+            ->assertJsonPath('preview.rows.0.unresolved', []);
+    }
+
+    /**
+     * The catalogue now names «o plano individual de transição» — and a column
+     * reading «PIT» is still the document a school keeps, not a statement that
+     * the measure applies to that child.
+     */
+    #[Test]
+    public function pit_does_not_become_a_measure_through_the_import(): void
+    {
+        $this->enrol($this->user, $this->class, 'Ana Silva');
+
+        $this->preview("Nome\tMedidas\nAna Silva\tPIT\n")
+            ->assertOk()
+            ->assertJsonPath('preview.rows.0.measures', [])
+            ->assertJsonPath('preview.rows.0.unresolved.0.confidence', 'unrecognised')
             ->assertJsonPath('preview.rows.0.unresolved.0.code', null);
+    }
+
+    /**
+     * A measure that arrived with the canonical catalogue, never known to this
+     * importer, resolves without the parser being touched.
+     */
+    #[Test]
+    public function a_measure_from_the_canonical_catalogue_resolves_without_parser_changes(): void
+    {
+        $this->enrol($this->user, $this->class, 'Ana Silva');
+
+        $this->preview("Nome\tMedidas\nAna Silva\tOs percursos curriculares diferenciados\n")
+            ->assertOk()
+            ->assertJsonPath('preview.rows.0.measures.0.confidence', 'recognised')
+            ->assertJsonPath('preview.rows.0.measures.0.code', 'differentiated_curricular_paths')
+            ->assertJsonPath('preview.rows.0.measures.0.level', 'selective');
     }
 
     // ------------------------------------------------ 4. destinos separados
@@ -387,6 +428,31 @@ class CharacterisationImportTest extends TestCase
         $this->confirm($decision)->assertRedirect();
 
         $this->assertSame(1, EnrollmentCharacterisationSourceMeasure::withoutGlobalScope('organization')->count());
+    }
+
+    /**
+     * §5: the server is the source of the level. The client sends codes; the
+     * framework answers what level each sits at. Nothing the request says about
+     * a level is taken on trust — the request has no field for one at all.
+     */
+    #[Test]
+    public function the_level_written_is_the_frameworks_answer_not_the_clients(): void
+    {
+        $enrollment = $this->enrol($this->user, $this->class, 'Ana Silva');
+        $code = SupportMeasureCode::SignificantCurricularAdaptation->value;
+
+        $this->confirm([[
+            'enrollment_ulid' => $enrollment->ulid,
+            'measure_codes' => [$code],
+            'raw_tokens' => [$code => 'ACS'],
+            // A client insisting on the wrong level, as an old tab or a crafted
+            // request would.
+            'support_measure_level' => SupportMeasureLevel::Universal->value,
+        ]])->assertRedirect();
+
+        $measure = EnrollmentCharacterisationSourceMeasure::withoutGlobalScope('organization')->firstOrFail();
+
+        $this->assertSame(SupportMeasureLevel::Additional, $measure->support_measure_level);
     }
 
     /** The importer never creates an intervention — that is a teacher's act. */

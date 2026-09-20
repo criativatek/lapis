@@ -29,18 +29,26 @@ readonly class CodeResolution
     ) {}
 
     /**
+     * The level is PASSED IN, never derived from the code here.
+     *
+     * The enum can answer "the level under the regime in force today", but this
+     * object may be describing paperwork read under an older regime — and
+     * re-deriving would silently reclassify it. The applicable framework is the
+     * authority, and the caller is the one holding it.
+     *
      * @param  list<string>  $unresolvedAnnotations
      */
     public static function recognised(
         string $rawToken,
         SupportMeasureCode $code,
+        SupportMeasureLevel $level,
         array $unresolvedAnnotations = [],
         ?string $note = null,
     ): self {
         return new self(
             rawToken: $rawToken,
             confidence: CodeConfidence::Recognised,
-            level: $code->level(),
+            level: $level,
             code: $code,
             unresolvedAnnotations: $unresolvedAnnotations,
             scope: AcronymScope::National,
