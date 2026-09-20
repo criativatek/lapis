@@ -25,6 +25,64 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.150.0] — 2026-09-20
+
+A caracterização pedagógica da turma e de cada aluno, e um fluxo para a
+importar das folhas que as escolas já têm — a ler o catálogo legal que a
+0.148.0 tornou canónico, sem guardar uma cópia dele.
+
+### Adicionado
+- **Caracterização pedagógica, dentro da turma**, a seguir à lista de alunos e
+  sem menu lateral novo. Por aluno: caracterização, potencialidades,
+  interesses, necessidades, barreiras e participação — todas opcionais, nenhuma
+  a alimentar cálculo nenhum. A caracterização da turma existe, com uma secção
+  só, e é o acessório: não substitui o que se escreve aluno a aluno.
+  - Vive na **inscrição**, nunca no aluno: o facto pertence ao par (aluno,
+    turma), o que lhe dá de graça o âmbito da turma e do ano letivo e evita que
+    um aluno que muda de turma leve consigo o que outro professor escreveu
+    noutro contexto.
+  - Chama-se «pedagógica» e não «inicial»: pode nascer em setembro, mas
+    atualiza-se o ano inteiro.
+- **Histórico de revisões** que guarda só o valor anterior das secções que
+  mudaram — nem uma fotografia completa a cada vírgula, nem uma caixa que
+  sobrescreve sem deixar rasto. Imutável por contrato, fechado por omissão no
+  ecrã. Uma gravação que não muda nada não escreve revisão nenhuma, porque
+  abrir um aluno, ler e fechar é a coisa mais comum ali.
+- **Importação assistida** por tabela colada, CSV ou XLSX, pelos leitores já
+  endurecidos do importador de grelhas (zip bombs, codificação verificada,
+  fórmulas recusadas). Sem PDF, sem OCR, **sem IA**.
+  - **Propor e escrever são dois pedidos.** O primeiro lê o ficheiro no pedido
+    que o trouxe e esquece-o — sem pasta temporária, sem token, sem uma segunda
+    cópia do texto sobre trinta crianças à espera de ser limpa. O segundo só
+    aceita decisões explícitas e revalida cada inscrição contra a turma. Não há
+    caminho de código entre um parsing e uma escrita.
+  - **Correspondência segura**: n.º de processo, depois nome exato, depois
+    subsequência de palavras. Quatro estados — segura, possível, ambígua, não
+    encontrada — e só a segura chega pré-selecionada. Nenhuma linha se associa
+    a um aluno sem alguém o apontar, e **nunca se cria um aluno**.
+  - **Destinos separados**: caracterização, medidas reconhecidas, apoios, e o
+    que não foi reconhecido — que fica na pré-visualização e não se grava.
+  - **Proveniência mínima** por importação confirmada: origem, data e quem
+    confirmou. Não guarda o documento nem as linhas rejeitadas.
+
+### Alterado
+- **O enquadramento legal é lido, não copiado.** O nível de uma medida vem de
+  `InterventionLegalFramework::levelFor()` resolvido pela data aplicável, e
+  nunca do enum nem do cliente; `null` é uma resposta — «este regime não nomeia
+  esta medida» — e recusa gravar. Como o enquadramento expõe artigo, número e
+  alínea, «MU b)» resolve para as acomodações curriculares (8.º, n.º 2, b))
+  sem nada ser inventado, e «b)» sozinho continua ambíguo **por prova**: o
+  diploma tem uma alínea b) em cada um dos três níveis. Medidas que o catálogo
+  ganhe passam a ser reconhecidas sem o parser ser tocado.
+- **Uma sigla não vira medida porque o catálogo conhece um conceito
+  parecido.** O regime nomeia «o plano individual de transição» em 10.º/4 c),
+  e «PIT» continua a não resolver: uma coluna com PIT é, muito mais vezes, o
+  documento que a escola guarda. O mesmo para RTP e PEI (instrumentos), CRI
+  (recurso) e PLNM (percurso).
+- `EnrollmentHistory` e `SchoolClassHistory` passam a conhecer as tabelas
+  novas: o que está escrito na caracterização **bloqueia** a remoção de um
+  aluno e a eliminação de uma turma, como o resto da história pedagógica.
+
 ## [0.149.0] — 2026-09-20
 
 A reformulação visual de «Estratégias e Medidas», sobre a fundação legal que a
