@@ -122,6 +122,104 @@ class ReadCharacterisationTableTest extends TestCase
         @unlink($path);
     }
 
+    /**
+     * REGRESSION GUARD (2026-09-20 structural review report): the exact
+     * Word-clipboard fixture that surfaced defects 1 and 3 in one pass,
+     * driven through the REAL production entry point
+     * (`fromPastedHtml()` -> `NormaliseExtractedTable` -> `TableGrid`), not a
+     * hand-built ExtractedTable. Pins the WHOLE shape in one test so none of
+     * the three defects it exposed — the second header level offered as a
+     * student, a `<br>` dropped inside a multiline observation, and a
+     * trailing legend miscounted as a grouping caption — can regress on its
+     * own without this test noticing.
+     */
+    public function test_the_word_rtp_fixture_is_fully_and_correctly_classified(): void
+    {
+        $html = <<<'HTML'
+            <table>
+              <tr>
+                <td rowspan="2">Aluno</td>
+                <td rowspan="2">RTP/PEI</td>
+                <td colspan="2">Apoios</td>
+                <td rowspan="2">Observações</td>
+              </tr>
+              <tr>
+                <td>P</td>
+                <td>Ing.</td>
+              </tr>
+              <tr><td colspan="5"><b>Alunos com RTP</b></td></tr>
+              <tr>
+                <td>Maria Santos</td>
+                <td>RTP</td>
+                <td>X</td>
+                <td></td>
+                <td>MU a) b) e)<br>Necessita de apoio na organizacao.</td>
+              </tr>
+              <tr>
+                <td>Joao Pinto</td>
+                <td>PEI</td>
+                <td></td>
+                <td>X</td>
+                <td>MS b) ACNS</td>
+              </tr>
+              <tr><td colspan="5"><b>Alunos sem RTP</b></td></tr>
+              <tr>
+                <td>Leonor Machado</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+              </tr>
+              <tr><td colspan="5">X (continua) - N (novo)</td></tr>
+            </table>
+            HTML;
+
+        $reader = $this->reader();
+        $grid = $reader->fromPastedHtml($html);
+
+        // Defect 1: the merged "Apoios" header joins with its two sub-labels
+        // — row 1 (the second header level) never reaches the data grid.
+        $this->assertSame(
+            ['Aluno', 'RTP/PEI', 'Apoios P', 'Apoios Ing.', 'Observações'],
+            $grid->headers,
+        );
+
+        // Maria, Joao and Leonor survive as data — Leonor included, despite
+        // every one of her columns but the name being empty.
+        $this->assertCount(3, $grid->rows);
+        $this->assertSame('Maria Santos', $grid->cell($grid->rows[0], 0));
+        $this->assertSame('Joao Pinto', $grid->cell($grid->rows[1], 0));
+        $this->assertSame('Leonor Machado', $grid->cell($grid->rows[2], 0));
+
+        // The <br> inside Maria's observation survives as a real newline,
+        // not fused into one word.
+        $this->assertSame(
+            "MU a) b) e)\nNecessita de apoio na organizacao.",
+            $grid->cell($grid->rows[0], 4),
+        );
+
+        // Full classification, row by row, in the structural review.
+        $kinds = [];
+
+        foreach ($reader->lastStructuralRows() as $row) {
+            $kinds[$row['number']] = $row['kind'];
+        }
+
+        $this->assertSame('header', $kinds[1]); // Aluno | RTP/PEI | Apoios | Apoios | Observações
+        $this->assertSame('header', $kinds[2]); // Aluno | RTP/PEI | P | Ing. | Observações (never offered as a student)
+        $this->assertSame('group', $kinds[3]);  // Alunos com RTP
+        $this->assertSame('data', $kinds[4]);   // Maria Santos
+        $this->assertSame('data', $kinds[5]);   // Joao Pinto
+        $this->assertSame('group', $kinds[6]);  // Alunos sem RTP
+        $this->assertSame('data', $kinds[7]);   // Leonor Machado
+        $this->assertSame('legend', $kinds[8]); // X (continua) - N (novo) — defect 3: a legend, not a group
+
+        // Defect 3's warning count: one group caption, one legend — never
+        // both counted as "grupo".
+        $this->assertContains('2 linhas de agrupamento não foram importadas como alunos.', $reader->lastWarnings());
+        $this->assertContains('1 linha de legenda foi ignorada.', $reader->lastWarnings());
+    }
+
     /** PDF is out of scope by decision, not by oversight, and says so. */
     public function test_an_unsupported_format_is_refused_with_an_actionable_message(): void
     {

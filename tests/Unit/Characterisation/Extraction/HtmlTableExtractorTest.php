@@ -182,6 +182,32 @@ class HtmlTableExtractorTest extends TestCase
         $this->assertSame('Leitura', $tables[0]->rows[1]->cells[1]->text);
     }
 
+    /**
+     * Regression guard for a false alarm, not a real defect: a structural
+     * review of the live app once showed this cell fused into
+     * "MU a) b) e)Necessita de apoio na organizacao." with no separator at
+     * all — but that reading came from a single-line `<input>`'s `.value`,
+     * which cannot hold or display "\n" in the first place (see the §39
+     * structural-step textarea fix for the actual bug that caused). This
+     * pins what HtmlTableExtractor itself returns for the exact cell from
+     * that report, straight from the DOM, with no UI layer in between: the
+     * "\n" IS there.
+     */
+    public function test_it_separates_a_br_between_two_p_wrapped_fragments_with_a_newline(): void
+    {
+        $html = <<<'HTML'
+            <table>
+              <tr>
+                <td><p>MU a) b) e)</p><br><p>Necessita de apoio na organizacao.</p></td>
+              </tr>
+            </table>
+            HTML;
+
+        $tables = $this->extractor()->extract($html);
+
+        $this->assertSame("MU a) b) e)\n\nNecessita de apoio na organizacao.", $tables[0]->rows[0]->cells[0]->text);
+    }
+
     public function test_it_never_matches_content_without_a_table(): void
     {
         $this->assertFalse($this->extractor()->supports('<p>Sem tabela aqui.</p>'));

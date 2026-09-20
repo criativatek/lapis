@@ -138,6 +138,64 @@ class NormaliseExtractedTableTest extends TestCase
         $this->assertCount(1, $grid->rows);
     }
 
+    /**
+     * §13 / defect 1 (2026-09-20 structural review report): a two-level
+     * header — «Apoios» merged over two columns in the primary header row,
+     * split into «P»/«Ing.» one printed row down via ROWSPAN on the OTHER
+     * columns («Aluno», «RTP/PEI», «Observações») rather than via a second
+     * merged cell in the row above. FindHeaderRow scores the PRIMARY row
+     * (row 1) as the header, because the second-level row only "looks like
+     * a header" once its rowspan-inherited cells are stripped away — before
+     * this fix, headerLevels() only ever walked UPWARD from the row
+     * FindHeaderRow picked, so this second level was never even considered,
+     * and it fell through as an ordinary Data row: a teacher could
+     * associate a real child to it and overwrite that child's record with
+     * "P"/"Ing.".
+     */
+    public function test_a_second_header_level_split_by_rowspan_is_joined_not_offered_as_data(): void
+    {
+        $rows = [
+            new ExtractedRow(1, [
+                new ExtractedCell('Aluno', 1, 1, rowspan: 2),
+                new ExtractedCell('RTP/PEI', 1, 2, rowspan: 2),
+                new ExtractedCell('Apoios', 1, 3, colspan: 2),
+                new ExtractedCell('Observações', 1, 5, rowspan: 2),
+            ]),
+            new ExtractedRow(2, [
+                new ExtractedCell('P', 2, 3),
+                new ExtractedCell('Ing.', 2, 4),
+            ]),
+            new ExtractedRow(3, [
+                new ExtractedCell('Maria Santos', 3, 1),
+                new ExtractedCell('RTP', 3, 2),
+                new ExtractedCell('X', 3, 3),
+                new ExtractedCell('', 3, 4),
+                new ExtractedCell('Boa evolução.', 3, 5),
+            ]),
+        ];
+
+        $table = new ExtractedTable($rows, ExtractedTableSource::PastedHtml);
+
+        $result = (new NormaliseExtractedTable)->normalise($table);
+
+        $this->assertSame(
+            ['Aluno', 'RTP/PEI', 'Apoios P', 'Apoios Ing.', 'Observações'],
+            $result->grid->headers,
+        );
+
+        // Row 2 ("P"/"Ing.") must NEVER reach the data grid — that is
+        // exactly the row that used to be offered to the teacher as an
+        // unmatched student.
+        $this->assertCount(1, $result->grid->rows);
+        $this->assertSame('Maria Santos', $result->grid->cell($result->grid->rows[0], 0));
+
+        // Both header rows are visible in the structural review, as header —
+        // never as data, group or legend.
+        $headerKinds = array_column($result->structuralRows, 'kind', 'number');
+        $this->assertSame('header', $headerKinds[1]);
+        $this->assertSame('header', $headerKinds[2]);
+    }
+
     public function test_merged_cells_are_expanded_by_repetition_not_left_as_holes(): void
     {
         $rows = [
@@ -229,6 +287,48 @@ class NormaliseExtractedTableTest extends TestCase
         $this->assertCount(1, $result->grid->rows);
         $this->assertSame('Ana Silva', $result->grid->cell($result->grid->rows[0], 0));
         $this->assertNotEmpty($result->warnings);
+    }
+
+    /**
+     * §36 / defect 3 (2026-09-20 structural review report): a full-width
+     * merged row is a caption of SOME kind, but not necessarily a Group —
+     * «X (continua) - N (novo)» is a legend, explaining abbreviations used
+     * above it, not a grouping caption naming the rows that follow. Before
+     * this fix, the structural test (which fires first, from the merge
+     * itself) always classified ANY full-width merge as Group, so this
+     * legend was dropped with a warning that lied about both the count and
+     * the reason.
+     */
+    public function test_a_full_width_merged_legend_is_classified_legend_not_group(): void
+    {
+        $rows = [
+            new ExtractedRow(1, [
+                new ExtractedCell('Nome', 1, 1),
+                new ExtractedCell('Medidas', 1, 2),
+                new ExtractedCell('Observações', 1, 3),
+            ]),
+            new ExtractedRow(2, [
+                new ExtractedCell('Ana Silva', 2, 1),
+                new ExtractedCell('MU', 2, 2),
+                new ExtractedCell('Participa', 2, 3),
+            ]),
+            new ExtractedRow(3, [
+                new ExtractedCell('X (continua) - N (novo)', 3, 1, colspan: 3),
+            ]),
+        ];
+
+        $table = new ExtractedTable($rows, ExtractedTableSource::PastedHtml);
+
+        $result = (new NormaliseExtractedTable)->normalise($table);
+
+        $this->assertCount(1, $result->grid->rows);
+        $this->assertSame('Ana Silva', $result->grid->cell($result->grid->rows[0], 0));
+
+        $kinds = array_column($result->structuralRows, 'kind', 'number');
+        $this->assertSame('legend', $kinds[3]);
+
+        $this->assertContains('1 linha de legenda foi ignorada.', $result->warnings);
+        $this->assertNotContains('1 linha de agrupamento não foi importada como aluno.', $result->warnings);
     }
 
     /**

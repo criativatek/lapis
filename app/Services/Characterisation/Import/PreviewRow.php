@@ -2,6 +2,7 @@
 
 namespace App\Services\Characterisation\Import;
 
+use App\Support\Characterisation\AcronymSuggestion;
 use App\Support\Characterisation\CodeResolution;
 
 /**
@@ -31,6 +32,18 @@ readonly class PreviewRow
      *                                           no item for them, so there is no honest column.
      *                                           Shown, named, and left alone.
      * @param  list<CodeResolution>  $unresolved  Destination D — nothing is stored from these.
+     * @param  array<int, ?float>  $extractionConfidence  §18 — "did I read this cell right?",
+     *                                                    keyed by spl_object_id() of the SAME
+     *                                                    CodeResolution objects that populate
+     *                                                    measures/resources/unresolved — never a
+     *                                                    property on CodeResolution itself, so this
+     *                                                    axis can never be merged into the domain
+     *                                                    confidence CodeConfidence carries.
+     * @param  array<int, AcronymSuggestion>  $suggestions  §19 — a plausible correction for an
+     *                                                      unresolved token that may have been
+     *                                                      misread, keyed the same way. Only ever
+     *                                                      has an entry for a member of `unresolved`,
+     *                                                      and only when one was found.
      */
     public function __construct(
         public int $rowNumber,
@@ -43,6 +56,8 @@ readonly class PreviewRow
         public array $alreadyActiveMeasureCodes = [],
         public array $resources = [],
         public array $unresolved = [],
+        public array $extractionConfidence = [],
+        public array $suggestions = [],
     ) {}
 
     /**
@@ -77,11 +92,44 @@ readonly class PreviewRow
                     // server already checked, exactly as the write path itself
                     // will check it again when the import is confirmed.
                     'already_active' => $r->code !== null && in_array($r->code->value, $this->alreadyActiveMeasureCodes, true),
+                    ...$this->extractionArray($r),
                 ],
                 $this->measures
             ),
-            'resources' => array_map(fn (CodeResolution $r) => $r->toArray(), $this->resources),
-            'unresolved' => array_map(fn (CodeResolution $r) => $r->toArray(), $this->unresolved),
+            'resources' => array_map(
+                fn (CodeResolution $r) => [...$r->toArray(), ...$this->extractionArray($r)],
+                $this->resources
+            ),
+            'unresolved' => array_map(
+                fn (CodeResolution $r) => [...$r->toArray(), ...$this->extractionArray($r), ...$this->suggestionArray($r)],
+                $this->unresolved
+            ),
         ];
+    }
+
+    /**
+     * §18: 'extraction_confidence' — always present, null wherever the cell
+     * was read exactly rather than by OCR. A SEPARATE key from 'confidence'
+     * (CodeConfidence, already in $r->toArray()) — see this class's own
+     * constructor docblock for why the two must never collapse into one.
+     *
+     * @return array{extraction_confidence: ?float}
+     */
+    private function extractionArray(CodeResolution $r): array
+    {
+        return ['extraction_confidence' => $this->extractionConfidence[spl_object_id($r)] ?? null];
+    }
+
+    /**
+     * §19: 'suggested_correction' — null unless a plausible near-miss was
+     * found for this (unresolved, low-extraction-confidence) token. The
+     * client shows it as an explicit, declined-by-default control — never a
+     * pre-applied rewrite (see AcronymSuggestion's own docblock).
+     *
+     * @return array{suggested_correction: ?array<string, mixed>}
+     */
+    private function suggestionArray(CodeResolution $r): array
+    {
+        return ['suggested_correction' => ($this->suggestions[spl_object_id($r)] ?? null)?->toArray()];
     }
 }

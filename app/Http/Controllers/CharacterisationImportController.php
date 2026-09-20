@@ -137,6 +137,12 @@ class CharacterisationImportController extends Controller
             // original filename would otherwise be lost — the request no
             // longer carries the original `file`, only the corrected table.
             'original_filename' => ['nullable', 'string', 'max:255'],
+            // §19: acceptances of a suggested correction — raw token as it
+            // appeared in the source => the token the teacher accepted in its
+            // place. Never a shortcut around LegalCodeResolver: see
+            // BuildCharacterisationPreview::applyCorrections()'s own comment.
+            'corrections' => ['nullable', 'array', 'max:50'],
+            'corrections.*' => ['nullable', 'string', 'max:64'],
         ]);
 
         $pastedHtml = $data['pasted_html'] ?? null;
@@ -204,7 +210,7 @@ class CharacterisationImportController extends Controller
             ]);
         }
 
-        $preview = $this->builder->build($class, $grid);
+        $preview = $this->builder->build($class, $grid, $data['corrections'] ?? []);
 
         return response()->json([
             'preview' => $preview->toArray(),

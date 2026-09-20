@@ -85,16 +85,33 @@ class NormaliseExtractedTable
         // Read BEFORE expand() destroys the merge structure. Keyed by the
         // ExtractedRow's own row number, which is exactly what expand()
         // preserves as the matrix row index (offset by one), so the two stay
-        // aligned without needing to smuggle a kind through the matrix.
-        $structuralGroupRows = $this->structuralGroupRowNumbers($table, $columnCount);
+        // aligned without needing to smuggle a kind through the matrix. Holds
+        // the CAPTION CELL'S OWN TEXT, not a boolean — a full-width merge is
+        // structurally a caption of SOME kind, but which kind (Group or
+        // Legend) is a content question classifyBody() still has to ask; see
+        // its own comment for why deciding it here, as a flat "always
+        // Group", was wrong.
+        $structuralCaptionRows = $this->structuralCaptionRowNumbers($table, $columnCount);
         $hadMergedCells = $this->hasMergedCells($table);
 
-        $matrix = $this->expand($table, $columnCount);
+        $expanded = $this->expand($table, $columnCount);
+        $matrix = $expanded['cells'];
+        $confidenceMatrix = $expanded['confidences'];
 
         $entries = [];
 
         foreach ($matrix as $zeroBasedIndex => $cells) {
-            $entries[] = ['number' => $zeroBasedIndex + 1, 'cells' => $cells];
+            // §18: the confidence row travels alongside 'cells' inside the
+            // SAME entry, rather than as a separate parallel array, so every
+            // later step that filters/slices/reorders $entries (the blank-row
+            // filter just below, splitPreClassified(), the header/body split)
+            // carries it along for free instead of needing its own copy of
+            // that bookkeeping.
+            $entries[] = [
+                'number' => $zeroBasedIndex + 1,
+                'cells' => $cells,
+                'confidences' => $confidenceMatrix[$zeroBasedIndex] ?? array_fill(0, $columnCount, null),
+            ];
         }
 
         $entries = array_values(array_filter(
@@ -152,11 +169,13 @@ class NormaliseExtractedTable
                 $bodyEntries = $entries;
                 $headerWarnings[] = __('Não foi possível identificar a linha de títulos desta tabela — todas as linhas foram importadas como alunos. Confirme se as colunas ficaram corretas.');
             } else {
-                $headerLevels = $this->headerLevels($plainMatrix, $primaryHeaderIndex);
+                $headerLevels = $this->headerLevels($table, $plainMatrix, $primaryHeaderIndex, $columnCount);
                 // headerLevels() always seeds itself with the primary header row
-                // before optionally prefixing earlier levels, so the last
-                // element — the highest index — is always present.
-                $headerEndIndex = $headerLevels[count($headerLevels) - 1];
+                // before optionally prefixing earlier levels or appending a
+                // level below — so the LAST element is always present, but is
+                // no longer guaranteed to be the primary row itself (a level
+                // below sorts after it).
+                $headerEndIndex = $headerLevels[count($headerLevels) - 1]['index'];
                 $headers = $this->joinHeaderLevels($plainMatrix, $headerLevels, $columnCount);
                 $bodyEntries = array_slice($entries, $headerEndIndex + 1);
                 $headerEntries = array_slice($entries, 0, $headerEndIndex + 1);
@@ -166,7 +185,7 @@ class NormaliseExtractedTable
             // recomputed below, uniformly for both branches, from $bodyEntries
             // + $bodyKinds — so only the warnings and the per-row kinds are
             // taken from it here.
-            [, $bodyWarnings, $bodyKinds] = $this->classifyBody($bodyEntries, $structuralGroupRows);
+            [, $bodyWarnings, $bodyKinds] = $this->classifyBody($bodyEntries, $structuralCaptionRows);
         }
 
         $warnings = [...$headerWarnings, ...$bodyWarnings];
@@ -176,10 +195,12 @@ class NormaliseExtractedTable
         }
 
         $dataRows = [];
+        $dataConfidences = [];
 
         foreach ($bodyEntries as $index => $entry) {
             if ($bodyKinds[$index] === ExtractedRowKind::Data) {
                 $dataRows[] = $entry['cells'];
+                $dataConfidences[] = $entry['confidences'] ?? array_fill(0, $columnCount, null);
             }
         }
 
@@ -189,10 +210,17 @@ class NormaliseExtractedTable
             ]));
         }
 
-        $grid = new TableGrid($headers, array_map(
-            fn (array $row) => array_map('strval', array_slice($row, 0, count($headers))),
-            $dataRows,
-        ));
+        $grid = new TableGrid(
+            $headers,
+            array_map(
+                fn (array $row) => array_map('strval', array_slice($row, 0, count($headers))),
+                $dataRows,
+            ),
+            array_map(
+                fn (array $confidences) => array_slice($confidences, 0, count($headers)),
+                $dataConfidences,
+            ),
+        );
 
         $structuralRows = [];
 
@@ -359,9 +387,19 @@ class NormaliseExtractedTable
      * namespace produce one ExtractedCell per occupied column, so a genuine
      * single-cell row is exactly what a merge produces and nothing else does.
      *
-     * @return array<int, true> keyed by ExtractedRow::$index
+     * Row numbers => the caption cell's OWN trimmed text (not a boolean):
+     * classifyBody() still has to ask, by CONTENT, whether a structurally
+     * detected full-width caption is a Group («Alunos com RTP», naming no
+     * student) or a Legend («X (continua) - N (novo)», a glossary key). The
+     * original single-cell text is what that content test needs — reading it
+     * off the EXPANDED matrix instead (after expand() has repeated it across
+     * every column it covers) would fail looksLikeLegend()'s own "few
+     * non-empty cells" heuristic, which is tuned for the merge-less CSV/TSV
+     * fallback and never expects a caption to already be N cells wide.
+     *
+     * @return array<int, string> keyed by ExtractedRow::$index
      */
-    private function structuralGroupRowNumbers(ExtractedTable $table, int $columnCount): array
+    private function structuralCaptionRowNumbers(ExtractedTable $table, int $columnCount): array
     {
         $rowNumbers = [];
 
@@ -382,9 +420,9 @@ class NormaliseExtractedTable
             // but a table with only one or two columns has no room for that
             // slack, or every ordinary single-column cell would qualify.
             if ($columnCount >= 3 && $cell->colspan >= $columnCount - 1) {
-                $rowNumbers[$row->index] = true;
+                $rowNumbers[$row->index] = trim($cell->text);
             } elseif ($columnCount < 3 && $cell->colspan >= $columnCount) {
-                $rowNumbers[$row->index] = true;
+                $rowNumbers[$row->index] = trim($cell->text);
             }
         }
 
@@ -401,7 +439,15 @@ class NormaliseExtractedTable
      * comment. By the time a row has been through here, a full-width merged
      * caption and an ordinary fully-filled row are indistinguishable.
      *
-     * @return list<list<string>>
+     * Builds the EXTRACTION-CONFIDENCE matrix (§18) in the same pass, for the
+     * same reason it builds the text matrix here rather than re-walking
+     * $table a second time: a merged cell's confidence, like its text, has to
+     * be repeated across every cell it covers, and that repetition is exactly
+     * what this loop already does. A cell with no confidence (every source
+     * but OCR) simply repeats null, which is the honest answer for a hole
+     * merged cell as much as it is for one read exactly.
+     *
+     * @return array{cells: list<list<string>>, confidences: list<list<?float>>}
      */
     private function expand(ExtractedTable $table, int $columnCount): array
     {
@@ -431,6 +477,7 @@ class NormaliseExtractedTable
         }
 
         $matrix = array_fill(0, $totalRows, array_fill(0, $columnCount, ''));
+        $confidenceMatrix = array_fill(0, $totalRows, array_fill(0, $columnCount, null));
 
         foreach ($table->rows as $row) {
             foreach ($row->cells as $cell) {
@@ -438,6 +485,7 @@ class NormaliseExtractedTable
                     for ($c = $cell->column; $c < $cell->column + $cell->colspan; $c++) {
                         if ($r - 1 >= 0 && $r - 1 < $totalRows && $c - 1 >= 0 && $c - 1 < $columnCount) {
                             $matrix[$r - 1][$c - 1] = $cell->text;
+                            $confidenceMatrix[$r - 1][$c - 1] = $cell->confidence;
                         }
                     }
                 }
@@ -447,20 +495,29 @@ class NormaliseExtractedTable
         // array_fill/array assignment-in-place already produce contiguous
         // integer keys for the outer array; each row is routed through
         // array_values too so its keys are known-contiguous the same way.
-        return array_map('array_values', $matrix);
+        return [
+            'cells' => array_map('array_values', $matrix),
+            'confidences' => array_map('array_values', $confidenceMatrix),
+        ];
     }
 
     /**
-     * The indices making up the header, in order. A single index for an
-     * ordinary table; several consecutive indices when the header spans more
-     * than one printed row — «Apoio» over «Ing.» becomes column «Apoio Ing.».
+     * The levels making up the header, in printed order. A single level for
+     * an ordinary table; several when the header spans more than one printed
+     * row — «Apoio» over «Ing.» becomes column «Apoio Ing.».
+     *
+     * `ownColumns` is null for the primary row and for any level found by
+     * walking UPWARD (report preamble sits above the header and, like the
+     * primary row itself, contributes to every column it has text in). It is
+     * an explicit column set for a level found BELOW the primary row — see
+     * the second block below for why that direction needs one.
      *
      * @param  list<list<string>>  $matrix
-     * @return list<int>
+     * @return list<array{index: int, ownColumns: ?array<int, true>}>
      */
-    private function headerLevels(array $matrix, int $primary): array
+    private function headerLevels(ExtractedTable $table, array $matrix, int $primary, int $columnCount): array
     {
-        $levels = [$primary];
+        $levels = [['index' => $primary, 'ownColumns' => null]];
 
         // Walk upward while the row above still looks like a header level
         // rather than report preamble: short labels, more than one of them,
@@ -468,11 +525,142 @@ class NormaliseExtractedTable
         $index = $primary - 1;
 
         while ($index >= 0 && $primary - $index <= 2 && $this->looksLikeHeaderLevel($matrix[$index])) {
-            array_unshift($levels, $index);
+            array_unshift($levels, ['index' => $index, 'ownColumns' => null]);
             $index--;
         }
 
+        // A header can also continue BELOW the primary row: a merged cell in
+        // the primary row (colspan>1, «Apoios») splits into short sub-labels
+        // one printed row down («P», «Ing.») — see this class's docblock for
+        // why FindHeaderRow, scoring on the rowspan-EXPANDED matrix, always
+        // lands on the primary row and never on this one. By the time this
+        // runs, the row below reads as a "full" row too — «Aluno», «RTP/PEI»
+        // and «Observações» were repeated into it by the very same rowspan —
+        // so the ONLY reliable signal left is which columns that row OWNS in
+        // $table itself, read before expand() ever ran. A row that owns
+        // every column is an ordinary data row, however short its cells
+        // happen to be, and never qualifies.
+        $belowRowNumber = $primary + 2; // 1-based ExtractedRow::$index of the printed row right below the primary one.
+        $ownColumns = $this->ownColumnsOf($table, $belowRowNumber);
+
+        if ($ownColumns !== null
+            && $ownColumns !== []
+            && count($ownColumns) < $columnCount
+            && $primary + 1 < count($matrix)
+            // Every column this row does NOT own must be accounted for by an
+            // actual rowspan reaching down from an earlier row — never merely
+            // ABSENT. A plain TSV/CSV row shorter than the header (a trailing
+            // cell that simply did not survive the copy — see TableGrid::cell's
+            // own docblock) has missing columns too, but nothing rowspans into
+            // them; treating that as a header continuation would fold a real,
+            // short DATA row straight into the header and lose it as a student.
+            && $this->everyColumnAccountedFor($ownColumns, $this->rowspanCoveredColumns($table, $belowRowNumber), $columnCount)
+            && $this->looksLikeHeaderLevel($this->onlyOwnColumns($matrix[$primary + 1], $ownColumns))
+        ) {
+            $levels[] = ['index' => $primary + 1, 'ownColumns' => $ownColumns];
+        }
+
         return $levels;
+    }
+
+    /**
+     * The 0-based column indices covered by an EARLIER row's rowspan reaching
+     * down into $rowNumber — the structural fact that distinguishes "this
+     * column is missing because a cell above spans down into it" from "this
+     * column is missing because the row simply ended early", which
+     * headerLevels() cannot tell apart any other way (see its own comment).
+     *
+     * @return array<int, true>
+     */
+    private function rowspanCoveredColumns(ExtractedTable $table, int $rowNumber): array
+    {
+        $columns = [];
+
+        foreach ($table->rows as $row) {
+            if ($row->index >= $rowNumber) {
+                continue;
+            }
+
+            foreach ($row->cells as $cell) {
+                if ($cell->row + $cell->rowspan - 1 < $rowNumber) {
+                    continue;
+                }
+
+                for ($c = $cell->column; $c < $cell->column + $cell->colspan; $c++) {
+                    $columns[$c - 1] = true;
+                }
+            }
+        }
+
+        return $columns;
+    }
+
+    /**
+     * @param  array<int, true>  $ownColumns
+     * @param  array<int, true>  $rowspanCoveredColumns
+     */
+    private function everyColumnAccountedFor(array $ownColumns, array $rowspanCoveredColumns, int $columnCount): bool
+    {
+        for ($column = 0; $column < $columnCount; $column++) {
+            if (! isset($ownColumns[$column]) && ! isset($rowspanCoveredColumns[$column])) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * The 0-based column indices an ExtractedRow OWNS — i.e. the columns
+     * covered by that row's OWN cells, never a column merely showing that
+     * row's index because an earlier row's rowspan repeats into it. null
+     * when no row with this number exists at all (the primary header row was
+     * the table's last one, say).
+     *
+     * @return ?array<int, true>
+     */
+    private function ownColumnsOf(ExtractedTable $table, int $rowNumber): ?array
+    {
+        foreach ($table->rows as $row) {
+            if ($row->index !== $rowNumber) {
+                continue;
+            }
+
+            $columns = [];
+
+            foreach ($row->cells as $cell) {
+                for ($c = $cell->column; $c < $cell->column + $cell->colspan; $c++) {
+                    $columns[$c - 1] = true;
+                }
+            }
+
+            return $columns;
+        }
+
+        return null;
+    }
+
+    /**
+     * $row with every column NOT in $ownColumns blanked out — so
+     * looksLikeHeaderLevel() judges a continuation row purely on the short
+     * labels it actually contributes («P», «Ing.»), never on text a rowspan
+     * from the row above merely repeated into it («Aluno», «Observações»),
+     * which would otherwise make an ordinary, un-splittable header look like
+     * report preamble (too many long-ish cells) or fail the test outright.
+     *
+     * @param  list<string>  $row
+     * @param  array<int, true>  $ownColumns
+     * @return list<string>
+     */
+    private function onlyOwnColumns(array $row, array $ownColumns): array
+    {
+        $result = [];
+
+        foreach ($row as $column => $cell) {
+            $result[] = isset($ownColumns[$column]) ? $cell : '';
+        }
+
+        return $result;
     }
 
     /**
@@ -542,7 +730,7 @@ class NormaliseExtractedTable
 
     /**
      * @param  list<list<string>>  $matrix
-     * @param  list<int>  $levels
+     * @param  list<array{index: int, ownColumns: ?array<int, true>}>  $levels
      * @return list<string>
      */
     private function joinHeaderLevels(array $matrix, array $levels, int $columnCount): array
@@ -552,8 +740,17 @@ class NormaliseExtractedTable
         for ($column = 0; $column < $columnCount; $column++) {
             $fragments = [];
 
-            foreach ($levels as $levelIndex) {
-                $text = trim($matrix[$levelIndex][$column] ?? '');
+            foreach ($levels as $level) {
+                // A level below the primary row only contributes to the
+                // columns it OWNS — see headerLevels()'s own comment. Every
+                // other level (the primary row, and any found walking
+                // upward) has `ownColumns === null` and contributes to every
+                // column it has text in, exactly as before.
+                if ($level['ownColumns'] !== null && ! isset($level['ownColumns'][$column])) {
+                    continue;
+                }
+
+                $text = trim($matrix[$level['index']][$column] ?? '');
 
                 if ($text !== '') {
                     $fragments[] = $text;
@@ -571,10 +768,10 @@ class NormaliseExtractedTable
      * counted into the warnings returned alongside the data rows.
      *
      * @param  list<array{number: int, cells: list<string>}>  $bodyEntries
-     * @param  array<int, true>  $structuralGroupRows  row numbers already known to be a merged caption — see structuralGroupRowNumbers()
+     * @param  array<int, string>  $structuralCaptionRows  row numbers already known to be a full-width merged caption, keyed to the caption's own text — see structuralCaptionRowNumbers()
      * @return array{0: list<list<string>>, 1: list<string>, 2: list<ExtractedRowKind>}
      */
-    private function classifyBody(array $bodyEntries, array $structuralGroupRows): array
+    private function classifyBody(array $bodyEntries, array $structuralCaptionRows): array
     {
         $kinds = array_fill(0, count($bodyEntries), ExtractedRowKind::Data);
 
@@ -597,11 +794,26 @@ class NormaliseExtractedTable
             }
 
             // The structural test (read before expansion, from the merge
-            // itself) always wins where it applies. It is only silent for
-            // sources with no merge information, which is when the content
-            // fallback gets a say — and only a caption-shaped text, never
-            // mere isolation in an early column, is enough for it to act.
-            if (isset($structuralGroupRows[$entry['number']]) || $this->looksLikeGroupByContent($entry['cells'])) {
+            // itself) always wins WHETHER a full-width merged row is dropped
+            // at all — it is only silent for sources with no merge
+            // information, which is when the content fallback
+            // (looksLikeGroupByContent()) gets a say instead, and only a
+            // caption-shaped text, never mere isolation in an early column,
+            // is enough for it to act. But a full-width merge is a caption
+            // of SOME kind, not necessarily a Group — «X (continua) - N
+            // (novo)» is a legend, not a grouping caption, and importing it
+            // as one tells the teacher a wrong count and a wrong reason. So
+            // WHICH kind still comes from content, exactly as it always has
+            // for the merge-less fallback.
+            if (isset($structuralCaptionRows[$entry['number']])) {
+                $kinds[$index] = $this->looksLikeLegendCaption($structuralCaptionRows[$entry['number']])
+                    ? ExtractedRowKind::Legend
+                    : ExtractedRowKind::Group;
+
+                continue;
+            }
+
+            if ($this->looksLikeGroupByContent($entry['cells'])) {
                 $kinds[$index] = ExtractedRowKind::Group;
             }
         }
@@ -757,6 +969,35 @@ class NormaliseExtractedTable
         }
 
         return false;
+    }
+
+    /**
+     * The same content test looksLikeLegend() runs per-cell, applied to a
+     * single string instead of a row of cells — for a row the STRUCTURE
+     * already identified as a full-width merged caption (see
+     * structuralCaptionRowNumbers()), where the "few non-empty cells" gate
+     * looksLikeLegend() needs for the merge-less CSV/TSV fallback does not
+     * apply at all: a merged caption is already known to be one cell's
+     * worth of content, expanded or not.
+     */
+    private function looksLikeLegendCaption(string $text): bool
+    {
+        $trimmed = trim($text);
+
+        if ($trimmed === '' || $this->looksLikePersonName($trimmed)) {
+            return false;
+        }
+
+        $folded = mb_strtolower($trimmed);
+
+        if (str_starts_with($folded, 'legenda') || str_starts_with($folded, 'nota:') || str_starts_with($folded, 'key:')) {
+            return true;
+        }
+
+        // A short KEY followed by " - " — see looksLikeLegend()'s own
+        // comment on this same pattern for what it is meant to catch and why
+        // "short" is what does the work.
+        return preg_match('/^.{1,28}?\s-\s/u', $trimmed) === 1;
     }
 
     /**
