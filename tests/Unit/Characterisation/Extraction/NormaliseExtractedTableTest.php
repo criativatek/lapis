@@ -4,6 +4,7 @@ namespace Tests\Unit\Characterisation\Extraction;
 
 use App\Services\Characterisation\Import\Extraction\ExtractedCell;
 use App\Services\Characterisation\Import\Extraction\ExtractedRow;
+use App\Services\Characterisation\Import\Extraction\ExtractedRowKind;
 use App\Services\Characterisation\Import\Extraction\ExtractedTable;
 use App\Services\Characterisation\Import\Extraction\ExtractedTableSource;
 use App\Services\Characterisation\Import\Extraction\NormaliseExtractedTable;
@@ -357,5 +358,123 @@ class NormaliseExtractedTableTest extends TestCase
         $this->expectException(UnreadableSpreadsheet::class);
 
         (new NormaliseExtractedTable)->normalise($table);
+    }
+
+    /**
+     * §38: the structural table must carry EVERY row NormaliseExtractedTable
+     * saw — including the group row that never reaches $grid — tagged with
+     * the kind it was classified as, so the teacher can see why a row is
+     * missing rather than only a count.
+     */
+    public function test_structural_rows_include_the_dropped_group_row_with_its_kind(): void
+    {
+        $table = $this->tableFrom([
+            ['Nome', 'Observações'],
+            ['Alunos com RTP', ''],
+            ['Ana Silva', 'Participa'],
+        ]);
+
+        $result = (new NormaliseExtractedTable)->normalise($table);
+
+        $this->assertSame(['Nome', 'Observações'], $result->structuralHeaders);
+        // The header row itself is included too (kind='header'), so the
+        // teacher sees the whole recognised table, not just its body.
+        $this->assertCount(3, $result->structuralRows);
+        $this->assertSame('header', $result->structuralRows[0]['kind']);
+        $this->assertSame('group', $result->structuralRows[1]['kind']);
+        $this->assertSame('Alunos com RTP', $result->structuralRows[1]['cells'][0]);
+        $this->assertSame('data', $result->structuralRows[2]['kind']);
+        $this->assertSame('Ana Silva', $result->structuralRows[2]['cells'][0]);
+        $this->assertFalse($result->wasPreClassified);
+    }
+
+    public function test_had_merged_cells_is_true_only_when_a_cell_spans_more_than_one_row_or_column(): void
+    {
+        $plain = $this->tableFrom([
+            ['Nome', 'Observações'],
+            ['Ana Silva', 'Participa'],
+        ]);
+
+        $this->assertFalse((new NormaliseExtractedTable)->normalise($plain)->hadMergedCells);
+
+        $merged = new ExtractedTable([
+            new ExtractedRow(1, [
+                new ExtractedCell('Nome', 1, 1),
+                new ExtractedCell('Observações', 1, 2),
+            ]),
+            new ExtractedRow(2, [
+                new ExtractedCell('Ana Silva', 2, 1, colspan: 2),
+            ]),
+        ], ExtractedTableSource::PastedHtml);
+
+        $this->assertTrue((new NormaliseExtractedTable)->normalise($merged)->hadMergedCells);
+    }
+
+    /**
+     * §39: once a row carries an EXPLICIT kind (as a table resubmitted from
+     * the structural correction step does), NormaliseExtractedTable must
+     * honour it instead of re-running its own header/group/legend guesses —
+     * a row the teacher marked Data must not silently flip back to Legend
+     * just because its text still has the shape looksLikeLegend() matches.
+     */
+    public function test_an_explicit_kind_is_honoured_instead_of_being_reclassified(): void
+    {
+        $rows = [
+            new ExtractedRow(1, [
+                new ExtractedCell('Nome', 1, 1),
+                new ExtractedCell('Medidas', 1, 2),
+            ], ExtractedRowKind::Header),
+            new ExtractedRow(2, [
+                new ExtractedCell('Ana Silva', 2, 1),
+                new ExtractedCell('MU', 2, 2),
+            ], ExtractedRowKind::Data),
+            // Legend-shaped text ("MU - Medidas Universais"), but the
+            // teacher explicitly marked it Data in the structural step —
+            // that decision must stick.
+            new ExtractedRow(3, [
+                new ExtractedCell('MU - Medidas Universais', 3, 1),
+                new ExtractedCell('', 3, 2),
+            ], ExtractedRowKind::Data),
+        ];
+
+        $table = new ExtractedTable($rows, ExtractedTableSource::PastedTsv);
+
+        $result = (new NormaliseExtractedTable)->normalise($table);
+
+        $this->assertSame(['Nome', 'Medidas'], $result->grid->headers);
+        $this->assertCount(2, $result->grid->rows);
+        $this->assertSame('MU - Medidas Universais', $result->grid->cell($result->grid->rows[1], 0));
+        $this->assertTrue($result->wasPreClassified);
+        $this->assertSame([], $result->warnings);
+    }
+
+    /**
+     * The inverse: a row explicitly marked Group in the correction step is
+     * dropped even though nothing about its shape would otherwise flag it.
+     */
+    public function test_an_explicit_group_kind_drops_a_row_that_would_otherwise_look_like_a_student(): void
+    {
+        $rows = [
+            new ExtractedRow(1, [
+                new ExtractedCell('Nome', 1, 1),
+                new ExtractedCell('Medidas', 1, 2),
+            ], ExtractedRowKind::Header),
+            new ExtractedRow(2, [
+                new ExtractedCell('Turma Piloto', 2, 1),
+                new ExtractedCell('n/a', 2, 2),
+            ], ExtractedRowKind::Group),
+            new ExtractedRow(3, [
+                new ExtractedCell('Ana Silva', 3, 1),
+                new ExtractedCell('MU', 3, 2),
+            ], ExtractedRowKind::Data),
+        ];
+
+        $table = new ExtractedTable($rows, ExtractedTableSource::PastedTsv);
+
+        $result = (new NormaliseExtractedTable)->normalise($table);
+
+        $this->assertCount(1, $result->grid->rows);
+        $this->assertSame('Ana Silva', $result->grid->cell($result->grid->rows[0], 0));
+        $this->assertNotEmpty($result->warnings);
     }
 }

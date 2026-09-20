@@ -21,6 +21,19 @@ enum ExtractedTableSource: string
     case Csv = 'csv';
     case ImageUpload = 'image_upload';
 
+    // §39: what the structural review step (CharacterisationImportDialog's
+    // "Rever tabela reconhecida") resubmits after the teacher corrects a
+    // .docx or pasted-HTML table — carried as its OWN value, deliberately
+    // distinct from ::Docx/::PastedHtml, so CharacterisationImportController
+    // ::parseExtractedTablePayload can accept a correction WITHOUT reopening
+    // the door that test guards: client JSON claiming to be a genuine ::Docx/
+    // ::PastedHtml extraction is still refused (see
+    // CharacterisationImportExtractedTableTest::an_invalid_source_type_is_refused).
+    // A correction is real, teacher-reviewed text, but it did not come from
+    // this server re-reading the original file, so it never claims to.
+    case CorrectedDocx = 'corrected_docx';
+    case CorrectedPastedHtml = 'corrected_pasted_html';
+
     public function label(): string
     {
         return match ($this) {
@@ -31,6 +44,8 @@ enum ExtractedTableSource: string
             self::Xlsx => __('Folha de cálculo Excel'),
             self::Csv => __('Ficheiro CSV'),
             self::ImageUpload => __('Imagem carregada'),
+            self::CorrectedDocx => __('Documento Word (corrigido)'),
+            self::CorrectedPastedHtml => __('Tabela colada (corrigida)'),
         };
     }
 }

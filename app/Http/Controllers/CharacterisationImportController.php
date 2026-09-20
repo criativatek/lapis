@@ -9,6 +9,7 @@ use App\Services\Characterisation\Import\BuildCharacterisationPreview;
 use App\Services\Characterisation\Import\Extraction\DocxTableExtractor;
 use App\Services\Characterisation\Import\Extraction\ExtractedCell;
 use App\Services\Characterisation\Import\Extraction\ExtractedRow;
+use App\Services\Characterisation\Import\Extraction\ExtractedRowKind;
 use App\Services\Characterisation\Import\Extraction\ExtractedTable;
 use App\Services\Characterisation\Import\Extraction\ExtractedTableSource;
 use App\Services\Characterisation\Import\ReadCharacterisationTable;
@@ -130,6 +131,12 @@ class CharacterisationImportController extends Controller
             // manualmente a seguir, e cada limite aqui espelha
             // NormaliseExtractedTable::MAX_ROWS/MAX_COLUMNS/MAX_CELLS.
             'extracted_table' => ['nullable', 'string', 'max:2000000'],
+            // §39: when `extracted_table` is a CORRECTED table sent back from
+            // the structural review step for a .docx/pasted-HTML source
+            // (never for OCR, which has no filename of its own to lose), the
+            // original filename would otherwise be lost — the request no
+            // longer carries the original `file`, only the corrected table.
+            'original_filename' => ['nullable', 'string', 'max:255'],
         ]);
 
         $pastedHtml = $data['pasted_html'] ?? null;
@@ -151,7 +158,16 @@ class CharacterisationImportController extends Controller
             if (! blank($extractedTableJson)) {
                 $extracted = $this->parseExtractedTablePayload((string) $extractedTableJson);
                 $grid = $this->reader->fromExtractedTable($extracted);
-                $sourceKind = $extracted->sourceType->value;
+                // §39: a "corrected" source resubmits as the ORIGINAL kind
+                // (docx/pasted_html) — the teacher confirmed a Word/pasted
+                // table, not a synthetic new source, and `store()`'s own
+                // source_kind enum (and the confirmation copy the dialog
+                // shows) only knows those two words, never "corrected_*".
+                $sourceKind = match ($extracted->sourceType) {
+                    ExtractedTableSource::CorrectedDocx => 'docx',
+                    ExtractedTableSource::CorrectedPastedHtml => 'pasted_html',
+                    default => $extracted->sourceType->value,
+                };
             } elseif ($hasFile) {
                 $file = $request->file('file');
                 $isDocx = strtolower((string) $file->getClientOriginalExtension()) === 'docx';
@@ -193,11 +209,34 @@ class CharacterisationImportController extends Controller
         return response()->json([
             'preview' => $preview->toArray(),
             'source_kind' => $sourceKind,
-            'original_filename' => $request->file('file')?->getClientOriginalName(),
+            'original_filename' => $request->file('file')?->getClientOriginalName() ?? ($data['original_filename'] ?? null),
             // Populated only on the pasted-HTML/.docx paths, which go through
             // NormaliseExtractedTable — the csv/xlsx/plain-paste readers
             // never drop a row, so they have nothing to warn about.
             'warnings' => $this->reader->lastWarnings(),
+            // §38: the whole recognised table — header rows and dropped
+            // Group/Legend rows included — for "Rever tabela reconhecida".
+            // `show_structural_step` is the ONE trigger rule, decided here so
+            // the dialog never has to re-derive it: .docx and image/OCR
+            // sources always show it; a plain CSV/XLSX/text paste never does
+            // (no merge information exists to review); pasted HTML shows it
+            // only when the pasted markup actually had a merged cell — most
+            // Excel/Google Sheets pastes have none, and forcing every one of
+            // them through an extra step to review nothing would be the
+            // "spreadsheet, not a minimum" this scope explicitly warns
+            // against (§39's own framing).
+            'structural' => [
+                'headers' => $this->reader->lastStructuralHeaders(),
+                'rows' => $this->reader->lastStructuralRows(),
+            ],
+            // §39: a table resubmitted from the structural step itself never
+            // shows that step a second time — the teacher already reviewed
+            // and corrected the structure once; re-showing it on the very
+            // response that carries her corrections would be a loop, not a
+            // review.
+            'show_structural_step' => ! $this->reader->lastWasPreClassified()
+                && (in_array($sourceKind, ['docx', 'pasted_image', 'image_upload'], true)
+                    || ($sourceKind === 'pasted_html' && $this->reader->lastHadMergedCells())),
             'sections' => array_map(
                 fn (CharacterisationSection $section) => [
                     'key' => $section->value,
@@ -258,12 +297,14 @@ class CharacterisationImportController extends Controller
     }
 
     /**
-     * Turns the client-built OCR payload into an ExtractedTable, refusing
-     * anything that does not match the shape ExtractedTable/ExtractedRow/
-     * ExtractedCell expect — a malformed or oversized `extracted_table` is
-     * refused HERE, before NormaliseExtractedTable ever sees it, because
-     * this JSON came from an OCR run the server never witnessed and is
-     * hostile input by construction (see the MAX_EXTRACTED_TABLE_* constants).
+     * Turns the client-built OCR — or §39 structural-correction — payload
+     * into an ExtractedTable, refusing anything that does not match the shape
+     * ExtractedTable/ExtractedRow/ExtractedCell expect. A malformed or
+     * oversized `extracted_table` is refused HERE, before
+     * NormaliseExtractedTable ever sees it, because this JSON came from
+     * client-side code the server never witnessed and is hostile input by
+     * construction (see the MAX_EXTRACTED_TABLE_* constants) — true of an
+     * OCR run exactly as it is true of a teacher's manual row/cell edits.
      */
     private function parseExtractedTablePayload(string $json): ExtractedTable
     {
@@ -283,9 +324,19 @@ class CharacterisationImportController extends Controller
 
         $sourceType = ExtractedTableSource::tryFrom((string) ($decoded['source_type'] ?? ''));
 
-        // Only the two OCR variants — never 'docx', 'xlsx' or anything else
-        // this payload has no business claiming to be.
-        if (! in_array($sourceType, [ExtractedTableSource::PastedImage, ExtractedTableSource::ImageUpload], true)) {
+        // The two OCR variants, PLUS the two §39 "corrected" variants — never
+        // ::Docx or ::PastedHtml themselves, which stay reserved for a
+        // genuine server-side read of the original file (see
+        // ExtractedTableSource::CorrectedDocx's own docblock and
+        // CharacterisationImportExtractedTableTest::an_invalid_source_type_is_refused).
+        $allowed = [
+            ExtractedTableSource::PastedImage,
+            ExtractedTableSource::ImageUpload,
+            ExtractedTableSource::CorrectedDocx,
+            ExtractedTableSource::CorrectedPastedHtml,
+        ];
+
+        if (! in_array($sourceType, $allowed, true)) {
             throw ValidationException::withMessages([
                 'extracted_table' => __('Origem da tabela reconhecida inválida.'),
             ]);
@@ -356,9 +407,16 @@ class CharacterisationImportController extends Controller
                 );
             }
 
+            // §39: a corrected table carries the kind the teacher assigned in
+            // the structural review step ('header'/'data'/'group'/'legend') —
+            // an unrecognised or absent value falls back to Unknown, exactly
+            // as every OCR row always has, so NormaliseExtractedTable keeps
+            // classifying it itself rather than trusting a garbage string.
+            $kind = ExtractedRowKind::tryFrom((string) ($rawRow['kind'] ?? '')) ?? ExtractedRowKind::Unknown;
+
             // ExtractedRow's own index is 1-indexed too (see
             // HtmlTableExtractor's $rowIndex, which starts at 1).
-            $rows[] = new ExtractedRow(index: (int) $rowIndex + 1, cells: $cells);
+            $rows[] = new ExtractedRow(index: (int) $rowIndex + 1, cells: $cells, kind: $kind);
         }
 
         return new ExtractedTable(

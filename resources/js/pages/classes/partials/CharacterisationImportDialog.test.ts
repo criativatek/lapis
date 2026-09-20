@@ -124,7 +124,11 @@ function previewRow(rowNumber: number, name: string) {
     };
 }
 
-function previewResponse(rows: ReturnType<typeof previewRow>[], warnings: string[] = []) {
+function previewResponse(
+    rows: ReturnType<typeof previewRow>[],
+    warnings: string[] = [],
+    extra: Record<string, unknown> = {},
+) {
     return {
         preview: {
             columns: [],
@@ -136,6 +140,9 @@ function previewResponse(rows: ReturnType<typeof previewRow>[], warnings: string
         original_filename: null,
         warnings,
         sections: [{ key: 'needs', label: 'Necessidades' }],
+        structural: { headers: [], rows: [] },
+        show_structural_step: false,
+        ...extra,
     };
 }
 
@@ -298,6 +305,164 @@ describe('CharacterisationImportDialog — F10 rich paste is visible and reversi
 
         expect((textarea.element as HTMLTextAreaElement).disabled).toBe(false);
         expect(wrapper.text()).not.toContain('Tabela reconhecida na cola');
+    });
+});
+
+/**
+ * §38 — "Rever tabela reconhecida": a complex source (here, an OCR'd image)
+ * is shown the WHOLE recognised table — header, data, and what got
+ * classified Group and dropped — BEFORE the per-student preview, and only
+ * once the teacher continues does the per-student step actually appear.
+ */
+function structuralPreviewResponse() {
+    return previewResponse([], [], {
+        source_kind: 'image_upload',
+        show_structural_step: true,
+        structural: {
+            headers: ['Nome', 'Medidas'],
+            rows: [
+                { number: 1, kind: 'header', cells: ['Nome', 'Medidas'] },
+                { number: 2, kind: 'group', cells: ['Alunos com RTP', ''] },
+                { number: 3, kind: 'data', cells: ['Ana Silva', 'MU'] },
+            ],
+        },
+    });
+}
+
+describe('CharacterisationImportDialog — §38 structural review step', () => {
+    it('shows the recognised table, including the dropped group row, before the per-student preview', async () => {
+        extractTableFromImage.mockResolvedValue({
+            rows: [],
+            source_type: 'image_upload',
+            source_filename: 'tabela.png',
+            warnings: [],
+            extraction_confidence: 1,
+        });
+
+        const wrapper = mountDialog();
+        const input = wrapper.find('input[type="file"]');
+        const image = new File(['fake'], 'tabela.png', { type: 'image/png' });
+
+        Object.defineProperty(input.element, 'files', { value: [image], configurable: true });
+        await input.trigger('change');
+        await flushPromises();
+
+        (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(structuralPreviewResponse()));
+        const previewButton = wrapper.findAll('button').find((b) => b.text().includes('Pré-visualizar'));
+        await previewButton?.trigger('click');
+        await flushPromises();
+
+        // The structural grid, not the per-student preview. Cell text lives
+        // in editable <input> VALUES, not text nodes, so it is read from the
+        // input elements rather than wrapper.text().
+        expect(wrapper.text()).toContain('tal como foi reconhecida');
+        const cellValues = wrapper.findAll('input[type="text"], input:not([type])').map((input) => (input.element as HTMLInputElement).value);
+        expect(cellValues).toContain('Alunos com RTP');
+        expect(wrapper.text()).toContain('Agrupamento — não entra como aluno.');
+        expect(wrapper.findAll('button').some((b) => b.text().includes('Confirmar importação'))).toBe(false);
+    });
+
+    it('re-derives the per-student preview from a CORRECTED table, not the original guess', async () => {
+        extractTableFromImage.mockResolvedValue({
+            rows: [],
+            source_type: 'image_upload',
+            source_filename: 'tabela.png',
+            warnings: [],
+            extraction_confidence: 1,
+        });
+
+        const wrapper = mountDialog();
+        const input = wrapper.find('input[type="file"]');
+        const image = new File(['fake'], 'tabela.png', { type: 'image/png' });
+
+        Object.defineProperty(input.element, 'files', { value: [image], configurable: true });
+        await input.trigger('change');
+        await flushPromises();
+
+        (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(structuralPreviewResponse()));
+        const previewButton = wrapper.findAll('button').find((b) => b.text().includes('Pré-visualizar'));
+        await previewButton?.trigger('click');
+        await flushPromises();
+
+        // Continue past the structural step — the second POST should carry
+        // the corrected table (still 3 rows: header + the untouched group +
+        // the untouched data row, since nothing was edited in this test),
+        // not the original OCR JSON, and the server's SECOND response (a
+        // real per-student preview) must be what ends up on screen.
+        (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+            jsonResponse(previewResponse([previewRow(1, 'Ana Silva')])),
+        );
+
+        const continueButton = wrapper.findAll('button').find((b) => b.text().includes('Continuar'));
+        await continueButton?.trigger('click');
+        await flushPromises();
+
+        expect(wrapper.text()).toContain('Ana Silva');
+        expect(wrapper.findAll('button').some((b) => b.text().includes('Confirmar importação'))).toBe(true);
+
+        const secondCall = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[1];
+        const secondBody = secondCall[1].body as FormData;
+        const sentTable = JSON.parse(secondBody.get('extracted_table') as string);
+
+        expect(sentTable.source_type).toBe('image_upload');
+        expect(sentTable.rows).toHaveLength(3);
+        expect(sentTable.rows.map((row: { kind: string }) => row.kind)).toEqual(['header', 'group', 'data']);
+    });
+
+    it('ignoring a row keeps it out of the corrected table sent to the server', async () => {
+        extractTableFromImage.mockResolvedValue({
+            rows: [],
+            source_type: 'image_upload',
+            source_filename: 'tabela.png',
+            warnings: [],
+            extraction_confidence: 1,
+        });
+
+        const wrapper = mountDialog();
+        const input = wrapper.find('input[type="file"]');
+        const image = new File(['fake'], 'tabela.png', { type: 'image/png' });
+
+        Object.defineProperty(input.element, 'files', { value: [image], configurable: true });
+        await input.trigger('change');
+        await flushPromises();
+
+        (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(structuralPreviewResponse()));
+        const previewButton = wrapper.findAll('button').find((b) => b.text().includes('Pré-visualizar'));
+        await previewButton?.trigger('click');
+        await flushPromises();
+
+        // Mark the group row "Ignorar linha" instead of leaving it Group.
+        const kindSelects = wrapper.findAll('select').filter((select) => select.element.getAttribute('aria-label')?.startsWith('Tipo da linha'));
+        expect(kindSelects.length).toBeGreaterThanOrEqual(2);
+        await kindSelects[1].setValue('ignore');
+
+        (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+            jsonResponse(previewResponse([previewRow(1, 'Ana Silva')])),
+        );
+
+        const continueButton = wrapper.findAll('button').find((b) => b.text().includes('Continuar'));
+        await continueButton?.trigger('click');
+        await flushPromises();
+
+        const secondCall = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[1];
+        const secondBody = secondCall[1].body as FormData;
+        const sentTable = JSON.parse(secondBody.get('extracted_table') as string);
+
+        expect(sentTable.rows).toHaveLength(2);
+        expect(sentTable.rows.map((row: { kind: string }) => row.kind)).toEqual(['header', 'data']);
+    });
+
+    it('a plain paste never shows the structural step', async () => {
+        const wrapper = mountDialog();
+        (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(previewResponse([previewRow(1, 'Aluno E1')])));
+
+        await wrapper.find('#characterisation-paste').setValue('Aluno E1\tX');
+        const previewButton = wrapper.findAll('button').find((b) => b.text().includes('Pré-visualizar'));
+        await previewButton?.trigger('click');
+        await flushPromises();
+
+        expect(wrapper.text()).toContain('Aluno E1');
+        expect(wrapper.text()).not.toContain('tal como foi reconhecida');
     });
 });
 

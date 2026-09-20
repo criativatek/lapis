@@ -87,6 +87,7 @@ class NormaliseExtractedTable
         // preserves as the matrix row index (offset by one), so the two stay
         // aligned without needing to smuggle a kind through the matrix.
         $structuralGroupRows = $this->structuralGroupRowNumbers($table, $columnCount);
+        $hadMergedCells = $this->hasMergedCells($table);
 
         $matrix = $this->expand($table, $columnCount);
 
@@ -109,42 +110,77 @@ class NormaliseExtractedTable
             throw new UnreadableSpreadsheet(__('A tabela tem células a mais para ser lida com segurança.'));
         }
 
-        $plainMatrix = array_map(fn (array $entry) => $entry['cells'], $entries);
+        // §39: a row already carries an explicit kind (Header/Data/Group/
+        // Legend) only when it came BACK from the structural correction step
+        // — every other source hands NormaliseExtractedTable rows tagged
+        // Unknown, exactly as it always did (see ExtractedRow's own
+        // docblock). Once the teacher herself has said what a row is, this
+        // class must not re-guess it: the whole point of §39 is that a
+        // correction sticks, so a "MU - Medidas Universais" row she marked
+        // Data does not silently flip back to Legend on the next preview.
+        $explicitKinds = $this->explicitRowKinds($table);
 
-        $primaryHeaderIndex = (new FindHeaderRow)->find($plainMatrix);
+        // Header entries too — separately from $bodyEntries — purely so
+        // structuralRows (below) can show the header row(s) as editable rows
+        // in §38's grid, kind='header', exactly as a Group/Legend row is
+        // shown. $headers itself (the joined column captions) is unaffected.
+        $headerEntries = [];
 
-        $headerWarnings = [];
-
-        if ($primaryHeaderIndex === null) {
-            // F7: FindHeaderRow could not confidently name a header row in
-            // the first 15 — this used to fall back to declaring row 0 the
-            // header anyway and slicing it off, which silently discarded
-            // whatever that row actually was (very often the first real
-            // student, on a header-less export). Refusing the whole import
-            // here would be the OTHER extreme: a table this scorer simply
-            // does not recognise the header shape of is not the same thing
-            // as a table with nothing useful in it. So EVERY row is kept as
-            // data instead — nothing is guessed away — with generic column
-            // labels standing in for a header nobody could identify, and a
-            // warning telling the teacher to check the columns landed right.
-            $headers = $this->genericHeaders($columnCount);
-            $bodyEntries = $entries;
-            $headerWarnings[] = __('Não foi possível identificar a linha de títulos desta tabela — todas as linhas foram importadas como alunos. Confirme se as colunas ficaram corretas.');
+        if ($explicitKinds !== []) {
+            [$headers, $headerEntries, $bodyEntries, $bodyKinds, $bodyWarnings] = $this->splitPreClassified($entries, $explicitKinds, $columnCount);
+            $headerWarnings = [];
         } else {
-            $headerLevels = $this->headerLevels($plainMatrix, $primaryHeaderIndex);
-            // headerLevels() always seeds itself with the primary header row
-            // before optionally prefixing earlier levels, so the last
-            // element — the highest index — is always present.
-            $headerEndIndex = $headerLevels[count($headerLevels) - 1];
-            $headers = $this->joinHeaderLevels($plainMatrix, $headerLevels, $columnCount);
-            $bodyEntries = array_slice($entries, $headerEndIndex + 1);
+            $plainMatrix = array_map(fn (array $entry) => $entry['cells'], $entries);
+
+            $primaryHeaderIndex = (new FindHeaderRow)->find($plainMatrix);
+
+            $headerWarnings = [];
+
+            if ($primaryHeaderIndex === null) {
+                // F7: FindHeaderRow could not confidently name a header row in
+                // the first 15 — this used to fall back to declaring row 0 the
+                // header anyway and slicing it off, which silently discarded
+                // whatever that row actually was (very often the first real
+                // student, on a header-less export). Refusing the whole import
+                // here would be the OTHER extreme: a table this scorer simply
+                // does not recognise the header shape of is not the same thing
+                // as a table with nothing useful in it. So EVERY row is kept as
+                // data instead — nothing is guessed away — with generic column
+                // labels standing in for a header nobody could identify, and a
+                // warning telling the teacher to check the columns landed right.
+                $headers = $this->genericHeaders($columnCount);
+                $bodyEntries = $entries;
+                $headerWarnings[] = __('Não foi possível identificar a linha de títulos desta tabela — todas as linhas foram importadas como alunos. Confirme se as colunas ficaram corretas.');
+            } else {
+                $headerLevels = $this->headerLevels($plainMatrix, $primaryHeaderIndex);
+                // headerLevels() always seeds itself with the primary header row
+                // before optionally prefixing earlier levels, so the last
+                // element — the highest index — is always present.
+                $headerEndIndex = $headerLevels[count($headerLevels) - 1];
+                $headers = $this->joinHeaderLevels($plainMatrix, $headerLevels, $columnCount);
+                $bodyEntries = array_slice($entries, $headerEndIndex + 1);
+                $headerEntries = array_slice($entries, 0, $headerEndIndex + 1);
+            }
+
+            // classifyBody()'s own first return value (the Data-only cells) is
+            // recomputed below, uniformly for both branches, from $bodyEntries
+            // + $bodyKinds — so only the warnings and the per-row kinds are
+            // taken from it here.
+            [, $bodyWarnings, $bodyKinds] = $this->classifyBody($bodyEntries, $structuralGroupRows);
         }
 
-        [$dataRows, $bodyWarnings] = $this->classifyBody($bodyEntries, $structuralGroupRows);
         $warnings = [...$headerWarnings, ...$bodyWarnings];
 
         if (count($headers) > self::MAX_COLUMNS) {
             throw new UnreadableSpreadsheet(__('A tabela tem colunas a mais para ser lida com segurança.'));
+        }
+
+        $dataRows = [];
+
+        foreach ($bodyEntries as $index => $entry) {
+            if ($bodyKinds[$index] === ExtractedRowKind::Data) {
+                $dataRows[] = $entry['cells'];
+            }
         }
 
         if (count($dataRows) > self::MAX_ROWS) {
@@ -158,7 +194,159 @@ class NormaliseExtractedTable
             $dataRows,
         ));
 
-        return new NormalisedTable($grid, $warnings);
+        $structuralRows = [];
+
+        foreach ($headerEntries as $entry) {
+            $structuralRows[] = [
+                'number' => $entry['number'],
+                'kind' => ExtractedRowKind::Header->value,
+                'cells' => array_slice($entry['cells'], 0, $columnCount),
+            ];
+        }
+
+        foreach ($bodyEntries as $index => $entry) {
+            $structuralRows[] = [
+                'number' => $entry['number'],
+                'kind' => $bodyKinds[$index]->value,
+                'cells' => array_slice($entry['cells'], 0, $columnCount),
+            ];
+        }
+
+        // Rows must reach the UI in their ORIGINAL table order — header
+        // first, then body — never grouped by kind, or the structural grid
+        // would no longer read top-to-bottom like the source table it is
+        // reviewing.
+        usort($structuralRows, fn (array $a, array $b) => $a['number'] <=> $b['number']);
+
+        return new NormalisedTable(
+            grid: $grid,
+            warnings: $warnings,
+            structuralHeaders: $headers,
+            structuralRows: $structuralRows,
+            hadMergedCells: $hadMergedCells,
+            wasPreClassified: $explicitKinds !== [],
+        );
+    }
+
+    /**
+     * Whether any cell of the source table spans more than one row/column —
+     * the trigger §38 uses to decide a pasted-HTML table is "complex" enough
+     * to warrant the structural review step (see the controller). A .docx or
+     * an OCR'd image are always shown that step regardless of this flag; a
+     * plain paste/CSV/XLSX never carries merge information at all, so this is
+     * always false for them.
+     */
+    private function hasMergedCells(ExtractedTable $table): bool
+    {
+        foreach ($table->rows as $row) {
+            foreach ($row->cells as $cell) {
+                if ($cell->colspan > 1 || $cell->rowspan > 1) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @return array<int, ExtractedRowKind> keyed by ExtractedRow::$index — see explicitKinds' use in normalise()
+     */
+    private function explicitRowKinds(ExtractedTable $table): array
+    {
+        $kinds = [];
+
+        foreach ($table->rows as $row) {
+            if ($row->kind !== ExtractedRowKind::Unknown) {
+                $kinds[$row->index] = $row->kind;
+            }
+        }
+
+        return $kinds;
+    }
+
+    /**
+     * Partitions an already-classified table (every row explicitly tagged by
+     * the §39 structural correction step) directly by the kind the teacher
+     * gave it — no FindHeaderRow, no content-based group/legend guessing.
+     * Header rows are joined the same way joinHeaderLevels() already does for
+     * an auto-detected header, so a corrected table's columns read exactly
+     * like an ordinary one's.
+     *
+     * @param  list<array{number: int, cells: list<string>}>  $entries
+     * @param  array<int, ExtractedRowKind>  $explicitKinds
+     * @return array{0: list<string>, 1: list<array{number: int, cells: list<string>}>, 2: list<array{number: int, cells: list<string>}>, 3: list<ExtractedRowKind>, 4: list<string>}
+     */
+    private function splitPreClassified(array $entries, array $explicitKinds, int $columnCount): array
+    {
+        $headerEntries = [];
+        $bodyEntries = [];
+        $bodyKinds = [];
+
+        foreach ($entries as $entry) {
+            $kind = $explicitKinds[$entry['number']] ?? ExtractedRowKind::Data;
+
+            if ($kind === ExtractedRowKind::Header) {
+                $headerEntries[] = $entry;
+
+                continue;
+            }
+
+            $bodyEntries[] = $entry;
+            $bodyKinds[] = $kind;
+        }
+
+        $headers = $headerEntries === []
+            ? $this->genericHeaders($columnCount)
+            : $this->joinCellLevels(array_map(fn (array $entry) => $entry['cells'], $headerEntries), $columnCount);
+
+        $warnings = [];
+
+        $groupCount = count(array_filter($bodyKinds, fn (ExtractedRowKind $kind) => $kind === ExtractedRowKind::Group));
+        $legendCount = count(array_filter($bodyKinds, fn (ExtractedRowKind $kind) => $kind === ExtractedRowKind::Legend));
+
+        if ($groupCount > 0) {
+            $warnings[] = trans_choice(
+                ':count linha de agrupamento não foi importada como aluno.|:count linhas de agrupamento não foram importadas como alunos.',
+                $groupCount,
+                ['count' => $groupCount],
+            );
+        }
+
+        if ($legendCount > 0) {
+            $warnings[] = trans_choice(
+                ':count linha de legenda foi ignorada.|:count linhas de legenda foram ignoradas.',
+                $legendCount,
+                ['count' => $legendCount],
+            );
+        }
+
+        return [$headers, $headerEntries, $bodyEntries, $bodyKinds, $warnings];
+    }
+
+    /**
+     * @param  list<list<string>>  $levels
+     * @return list<string>
+     */
+    private function joinCellLevels(array $levels, int $columnCount): array
+    {
+        $headers = [];
+
+        for ($column = 0; $column < $columnCount; $column++) {
+            $fragments = [];
+
+            foreach ($levels as $level) {
+                $text = trim($level[$column] ?? '');
+
+                if ($text !== '') {
+                    $fragments[] = $text;
+                }
+            }
+
+            $headers[] = implode(' ', $fragments);
+        }
+
+        return $headers;
     }
 
     /**
@@ -384,7 +572,7 @@ class NormaliseExtractedTable
      *
      * @param  list<array{number: int, cells: list<string>}>  $bodyEntries
      * @param  array<int, true>  $structuralGroupRows  row numbers already known to be a merged caption — see structuralGroupRowNumbers()
-     * @return array{0: list<list<string>>, 1: list<string>}
+     * @return array{0: list<list<string>>, 1: list<string>, 2: list<ExtractedRowKind>}
      */
     private function classifyBody(array $bodyEntries, array $structuralGroupRows): array
     {
@@ -447,7 +635,7 @@ class NormaliseExtractedTable
             }
         }
 
-        return [$data, $warnings];
+        return [$data, $warnings, array_values($kinds)];
     }
 
     /**
